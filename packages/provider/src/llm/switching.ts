@@ -263,6 +263,24 @@ export class SwitchingModel implements ModelV4 {
   }
 
   /**
+   * Hand over the generation a streamed answer names, withdrawing the missing cost it was held
+   * under since it opened: from then on it is looked up by that generation.
+   * @param upstream - The upstream that answered.
+   * @param generationId - The id a part named, if any.
+   * @param opened - The answer's missing entry, while it has one.
+   * @param opened.missing - Its key.
+   * @returns The id, when it is one the upstream's costs are looked up by.
+   */
+  private named(upstream: string, generationId: unknown, opened: { missing?: string }): string | undefined {
+    const id = this.track(upstream, generationId);
+    if (id !== undefined && opened.missing !== undefined) {
+      this.setup.pending.delete(opened.missing);
+      delete opened.missing;
+    }
+    return id;
+  }
+
+  /**
    * Hand a billed call whose cost nothing can look up to the call's pending costs, as missing.
    * @param upstream - The upstream that answered.
    * @param reason - Why its cost is unknown.
@@ -333,8 +351,9 @@ export class SwitchingModel implements ModelV4 {
     const { pending } = this.setup;
     const { value, servedBy } = await this.attempt(async (c) => {
       const result = await this.setup.modelFor(c).doStream({ ...options, includeRawChunks: true });
-      // A direct vendor names no generation to look up: its answer is missing until its finish is read.
-      const direct = this.setup.tracksGenerations(c.upstream) ? undefined : this.missing(c.upstream, `${c.upstream} opened a stream that did not finish`);
+      // An opened stream was billed: it is missing until it names a generation to look up, or until
+      // its finish is read; a direct vendor never names one.
+      const opened: { missing?: string } = { missing: this.missing(c.upstream, `${c.upstream} opened a stream that did not finish`) };
       const reader = result.stream.getReader();
       const held: StreamPart[] = [];
       for (;;) {
@@ -348,8 +367,8 @@ export class SwitchingModel implements ModelV4 {
         if (read.done) break;
         // Registered as soon as it is read: a call stopped before its content is still billed.
         const part = read.value;
-        if (part.type === "raw") this.track(c.upstream, (part.rawValue as { id?: unknown } | null | undefined)?.id);
-        if (part.type === "response-metadata") this.track(c.upstream, part.id);
+        if (part.type === "raw") this.named(c.upstream, (part.rawValue as { id?: unknown } | null | undefined)?.id, opened);
+        if (part.type === "response-metadata") this.named(c.upstream, part.id, opened);
         if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
           throw new InBandError(part.error);
@@ -357,9 +376,9 @@ export class SwitchingModel implements ModelV4 {
         held.push(part);
         if (CONTENT.has(part.type) || part.type === "finish") break;
       }
-      return { result, reader, held, direct };
+      return { result, reader, held, opened };
     }, options.abortSignal);
-    const { result, reader, held, direct } = value;
+    const { result, reader, held, opened } = value;
     const upstream = servedBy.upstream;
     let generationId: string | undefined;
     /**
@@ -369,7 +388,7 @@ export class SwitchingModel implements ModelV4 {
      */
     const pass = (part: StreamPart): StreamPart | undefined => {
       if (part.type === "raw" || part.type === "response-metadata") {
-        generationId = this.track(upstream, part.type === "raw" ? (part.rawValue as { id?: unknown } | null | undefined)?.id : part.id) ?? generationId;
+        generationId = this.named(upstream, part.type === "raw" ? (part.rawValue as { id?: unknown } | null | undefined)?.id : part.id, opened) ?? generationId;
         return part.type === "raw" && options.includeRawChunks !== true ? undefined : part;
       }
       if (part.type !== "finish") return part;
@@ -377,7 +396,7 @@ export class SwitchingModel implements ModelV4 {
       // finish hands its generation over as costRef; so the generation leaves the pending
       // lookups here, and a stream stopped before its finish keeps it there.
       if (generationId !== undefined) pending.delete(generationId);
-      if (direct !== undefined) pending.delete(direct);
+      if (opened.missing !== undefined) pending.delete(opened.missing);
       const breatic = this.finished(upstream, generationId, part.providerMetadata);
       return { ...part, providerMetadata: { ...part.providerMetadata, breatic: breatic as Record<string, never> } };
     };
