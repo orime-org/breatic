@@ -8,7 +8,8 @@
  * the row into three `dataTransfer` formats (`SideMenu/dragging.ts`), and a
  * `dragstart` listener on the editor's root then parses the `blocknote/html`
  * one back into nodes and hands them to ProseMirror as `view.dragging`
- * (`SideMenu.ts:295-318`; `:596` clears it again at `dragend`). So the slice
+ * (`SideMenu/blockDropHandling.ts:203-236`; `:362` clears it again at
+ * `dragend`). So the slice
  * ProseMirror would write at the landing is fixed at the moment the pointer
  * goes down, and a drop reads it rather than the document
  * (`prosemirror-view/src/input.ts:788-790`).
@@ -36,6 +37,22 @@ import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
+import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+
+/**
+ * Whether a carried block is a table or contains one in its children.
+ * @param node - The carried block.
+ * @returns True when moving it would move a table too.
+ */
+function carriesTable(node: PMNode): boolean {
+  if (node.type.name === DOC_TABLE) return true;
+  let found = false;
+  node.descendants((child) => {
+    if (child.type.name === DOC_TABLE) found = true;
+    return !found;
+  });
+  return found;
+}
 
 /**
  * Where a row would land for a drop at the given document position.
@@ -58,12 +75,14 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * What has to come out of the document for the row to leave.
  *
  * Usually the row itself. When the row is the only child of a NESTED
- * `blockGroup`, that group has to go with it: `BlockGroup.ts:11` is
+ * `blockGroup`, that group has to go with it: `BlockGroup.ts:12` is
  * `blockGroupChild+`, so a group left with no children is refilled by the
  * schema with an empty paragraph, and the reader would watch a blank row
  * appear under the block they dragged out of. The document's own top-level
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
- * requires it, so it stays and the insert below is what keeps it occupied.
+ * requires it, so it stays and the insert below is what keeps it occupied. A
+ * table cell is exempt too: it is a place in its table, and the refill is
+ * the empty paragraph a cell a block left holds.
  * @param doc - The document the row sits in.
  * @param row - The row about to leave.
  * @returns The range to remove.
@@ -73,7 +92,9 @@ export function rangeToLift(
   row: RowInDocument,
 ): { from: number; to: number } {
   const $row = doc.resolve(row.from);
-  if ($row.parent.childCount > 1 || $row.depth <= 1) {
+  // A table cell keeps its place: the schema refills it with an empty
+  // paragraph once its only block leaves (inner#1619 T6).
+  if ($row.parent.childCount > 1 || $row.depth <= 1 || isTableCell($row.parent)) {
     return { from: row.from, to: row.to };
   }
   return { from: $row.before($row.depth), to: $row.after($row.depth) };
@@ -103,6 +124,7 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;

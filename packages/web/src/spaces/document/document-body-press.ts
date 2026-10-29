@@ -25,7 +25,7 @@ import { selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/docum
 import { bodyHolds, layerOf, placeAtLayerAnchor, watchBodyScroll } from '@web/spaces/document/document-body-focus';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
-import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
+import { MEDIA_CONTROLS } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
@@ -100,7 +100,7 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
   if (view.dom.contains(target)) {
     const quiet = target.closest('[data-upload-slot], input[type="checkbox"]');
     if (quiet !== null) return { kind: 'quiet-control', element: quiet };
-    const control = target.closest(`${MEDIA_CHROME}, input, button, textarea`);
+    const control = target.closest(`${MEDIA_CONTROLS}, input, button, textarea`);
     if (control !== null) return { kind: 'control', element: control };
     const hit = rowHit(target);
     if (hit !== null) return { kind: hit.onMedia ? 'media' : 'blank', element: hit.row };

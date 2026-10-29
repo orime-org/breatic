@@ -26,7 +26,7 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
  * space, the marker, then the space that fires the rule.
  *
  * One prop and no type: `updateBlockTr` resolves the node type as
- * `block.type || blockInfo.blockNoteType` (`updateBlock.ts:86`) and merges
+ * `block.type || blockInfo.blockNoteType` (`updateBlock.ts:92`) and merges
  * props onto what the node already carries
  * (`{ ...node.attrs, ...filteredNewAttrs }`, `:462`), so a block keeps its
  * own type and its own props by being handed neither. A level-2 heading typed

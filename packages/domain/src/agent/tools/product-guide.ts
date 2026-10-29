@@ -1176,7 +1176,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
-      `Markdown cannot write, such as colours, an alignment, underlining, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `Markdown cannot write, such as colours, an alignment, underlining, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
@@ -1190,7 +1190,11 @@ export function renderProductGuide(): string {
       "like any other comment. The card then shows " +
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
-      `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again. Viewing an Agent comment selects ` +
+      `${quoted(t("spaces.document.comment.filterAll"))} so its card is visible even after it has been resolved; ` +
+      "a resolved comment's words remain ordinary text. Viewing it again brings the card and its table cell into view. " +
+      "The reader's later choice of comment, filter or closing the panel stays in force when switching Spaces. " +
+      "A card reads whether it landed " +
       "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
       "to its buttons once the reader undoes it. With the document closed, a card pressed in this visit keeps " +
       "showing how its press ended; after a reload it shows its buttons, and pressing one opens the document and " +
@@ -1302,9 +1306,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
-      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
-      "the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
+      "keeping their headings, lists and other blocks, with pictures from other sites left out; pasted with the " +
+      "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
@@ -1362,7 +1366,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      "in its first cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
@@ -1393,9 +1398,17 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
-      "dots. Videos and audio play in place. Someone who can only view the document " +
-      "sees and plays them without the icons.",
-    "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
+      "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
+      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
+      "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
+      "an editable changed caption; Escape cancels it to the latest shared caption.",
+    "- A table shows a table icon left of its first row instead of the six dots, whenever the pointer is " +
+      "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
+      "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
+      "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
@@ -1422,19 +1435,32 @@ export function renderProductGuide(): string {
       "a row. While one of these " +
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
-      "grows. A table wider than the page scrolls sideways inside its own frame.",
-    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+      "grows. A table wider than the page scrolls sideways inside its own frame. When two people add a row and a " +
+      "column to the same table at the same moment, a row can come out a cell short: the gap shows as an empty " +
+      "cell that takes no typing, and Tab or any command from the table's menus fills it in first. A selection " +
+      "that runs from a " +
+      "cell out of the table, by Shift and an arrow or by dragging past the table's edge, takes the whole " +
+      "table: every cell shows as selected, and typing or deleting takes the table away with the rest of the " +
+      "selection.",
+    "- Hovering a cell also shows a small box with a down arrow at that cell's top right corner; the handles " +
+      "and this box go when the pointer leaves the table. The box opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
-      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
-      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
-      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
-      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
-      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
+      "that cell is tinted the way selected cells are. A cell holds blocks " +
+      "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
+      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
+      "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
+      "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
+      "Shift+Tab moves back. Backspace at the start of a cell and Delete at its end stay in the cell. Dragging " +
+      "across cells selects them. With words selected inside a cell, or with cells selected, the text bar's block " +
+      "type button changes the blocks in that cell or in every selected cell, and its colour menu has the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
       `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble with a plus that merges them into one. With every cell of an empty table selected, Backspace or " +
-      "Delete removes the table.",
+      "speech bubble with a plus that merges them into one, the blocks of every cell that held something one after " +
+      "another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
+      "removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
@@ -1456,7 +1482,7 @@ export function renderProductGuide(): string {
       "characters. If the words are deleted before it is posted, the box turns " +
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
-      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
+      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen when opening from the document menu), ` +
       `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +

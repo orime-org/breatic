@@ -16,6 +16,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { caretAt, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -41,15 +42,12 @@ function open(anchor = 0, head = 3): Editor {
   editor.mount(host);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
-    },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
   ] as never);
   const view = editor.prosemirrorView!;
   const cells: number[] = [];
   view.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'tableCell') cells.push(pos);
+    if (node.type.name === 'docTableCell') cells.push(pos);
     return true;
   });
   view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[anchor]!, cells[head]!)));

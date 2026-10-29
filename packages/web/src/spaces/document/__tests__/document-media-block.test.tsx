@@ -17,6 +17,7 @@ import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
 vi.mock('@web/lib/download', () => ({ downloadAsset: download.trigger }));
@@ -86,7 +87,7 @@ function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> 
   // The page's tree, which the blocks are rendered from.
   render(
     <TooltipProvider>
-      <DocumentMediaViews editor={editor} />
+      <DocumentMediaViews editor={editor} viewport={scroller} />
     </TooltipProvider>,
   );
   act(() => {
@@ -648,9 +649,7 @@ describe('where the toolbar goes', () => {
    */
   function place(editor: Editor, mediaTop: number, scrollerTop: number): void {
     const frame = within(element(editor)).getByTestId('doc-media-box');
-    // The body stands in for the scroller the block is shown in.
-    const scroller = document.body;
-    scroller.setAttribute('data-radix-scroll-area-viewport', '');
+    const scroller = scrollerOf(editor);
     vi.spyOn(toolbar(editor), 'offsetHeight', 'get').mockReturnValue(34);
     vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(
       { top: mediaTop, bottom: mediaTop + 200, left: 0, right: 400, width: 400, height: 200 } as DOMRect,
@@ -677,7 +676,7 @@ describe('where the toolbar goes', () => {
 
     place(editor, 110, 100);
     act(() => {
-      document.body.dispatchEvent(new Event('scroll'));
+      scrollerOf(editor).dispatchEvent(new Event('scroll'));
     });
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('inside');
@@ -751,6 +750,24 @@ describe('the toolbar looks like the selection bubble bar', () => {
 });
 
 describe('resizing (A8)', () => {
+  for (const type of ['image', 'video'] as const) {
+    for (const available of [24, 64, 100, 256]) {
+      it.each([-400, 400])(`keeps a ${type} resize within its ${available}px container when dragged %ipx`, (distance) => {
+        const editor = open(type, { previewWidth: 300, textAlignment: 'left' });
+        selectMedia(editor);
+        const box = within(element(editor)).getByTestId('doc-media-box');
+        vi.spyOn(box, 'offsetWidth', 'get').mockReturnValue(Math.min(300, available));
+        vi.spyOn(box.parentElement!, 'clientWidth', 'get').mockReturnValue(available);
+        const handle = within(element(editor)).getByTestId('doc-media-resize-se');
+
+        fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
+        fireEvent.pointerUp(handle, { clientX: 500 + distance, pointerId: 1 });
+
+        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 128 : 48, available));
+      });
+    }
+  }
+
   it('offers a knob on each corner of a selected picture or video, and none before', () => {
     const editor = open('image', { previewWidth: 200 });
     expect(within(element(editor)).queryByTestId('doc-media-resize-se')).toBeNull();
@@ -885,6 +902,24 @@ describe('the frame around a media block', () => {
     expect(box.getAttribute('data-hovered')).toBe('true');
 
     fireEvent.pointerLeave(layer);
+    expect(box.getAttribute('data-hovered')).toBeNull();
+  });
+
+  it('stays while the pointer crosses from the gap above the media onto the toolbar itself', () => {
+    const editor = open('video');
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    const bar = toolbar(editor);
+    const layer = bar.parentElement!.closest<HTMLElement>('[data-media-chrome]')!;
+
+    fireEvent.pointerEnter(frame);
+    fireEvent.pointerOut(frame, { relatedTarget: layer });
+    fireEvent.pointerOver(layer, { relatedTarget: frame });
+    fireEvent.pointerOut(layer, { relatedTarget: bar });
+    fireEvent.pointerOver(bar, { relatedTarget: layer });
+    expect(box.getAttribute('data-hovered')).toBe('true');
+
+    fireEvent.pointerOut(bar, { relatedTarget: document.body });
     expect(box.getAttribute('data-hovered')).toBeNull();
   });
 
@@ -1623,7 +1658,7 @@ describe('a picture with a table right under it', () => {
       editor.replaceBlocks(editor.document, [
         { type: 'paragraph', content: 'Above' },
         { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
-        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+        tableBlock({ rows: [{ cells: ['x', 'y'] }] }),
       ] as never);
     });
     selectMedia(editor);
@@ -1715,7 +1750,7 @@ describe('a click beside a picture when another kind of selection is in the body
       editor.replaceBlocks(editor.document, [
         ...(withAbove ? [{ type: 'paragraph', content: 'Above' }] : []),
         { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
-        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+        tableBlock({ rows: [{ cells: ['x', 'y'] }] }),
       ] as never);
     });
     return editor;

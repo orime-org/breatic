@@ -89,6 +89,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
+import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -381,6 +382,7 @@ export function DocumentBlockMenu({
                 <DocumentInsertChoices
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
+                  tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>

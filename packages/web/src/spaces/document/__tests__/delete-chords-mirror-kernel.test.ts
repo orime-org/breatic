@@ -72,9 +72,9 @@ function unaccountedKeys(block: string): Set<string> {
 
 describe('删除和弦表镜像内核键表', () => {
   const source = readFileSync(require.resolve('@tiptap/core'), 'utf8');
-  const baseBlock = source.match(/const baseKeymap = \{[\s\S]*?\n {4}\};/)?.[0];
-  const pcBlock = source.match(/const pcKeymap = \{[\s\S]*?\n {4}\};/)?.[0];
-  const macBlock = source.match(/const macKeymap = \{[\s\S]*?\n {4}\};/)?.[0];
+  const baseBlock = source.match(/const baseKeymap = \{[\s\S]*?\};/)?.[0];
+  const pcBlock = source.match(/const pcKeymap = \{[\s\S]*?\};/)?.[0];
+  const macBlock = source.match(/const macKeymap = \{[\s\S]*?\};/)?.[0];
 
   it('三个键表定义都还找得到（正则失效要立刻变红，不能静默变空集）', () => {
     expect(baseBlock).toBeTruthy();
