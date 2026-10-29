@@ -83,7 +83,7 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 Breatic is **source-available** under the [Breatic Source-Available License v1.0](LICENSE), based on Apache 2.0 with additional conditions.
 
-The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [licensing@orime.ai](mailto:licensing@orime.ai).
+The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [contact@breatic.ai](mailto:contact@breatic.ai).
 
 Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
 

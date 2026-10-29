@@ -626,7 +626,7 @@ describe('MembershipPanel', () => {
     // The sales card stays: it was never a purchase.
     expect(screen.getByTestId('membership-contact-sales')).toHaveAttribute(
       'href',
-      'mailto:breatic@orime.ai',
+      'mailto:contact@breatic.ai',
     );
   });
 
@@ -786,7 +786,7 @@ describe('MembershipPanel', () => {
     expect(screen.queryByText('Free')).toBeNull();
     // 联系邮箱保留，措辞换成商用授权与支持条款。
     const contact = screen.getByTestId('membership-contact-self-hosted');
-    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact).toHaveAttribute('href', 'mailto:contact@breatic.ai');
     expect(contact.parentElement).toHaveTextContent('commercial licence');
   });
 
@@ -808,7 +808,7 @@ describe('MembershipPanel', () => {
     // 这一档的额度只存在于协议里，用户读完「由单独协议约定」之后想问的
     // 正是「那是多少」——没有邮箱他就没有任何去处。
     const contact = screen.getByTestId('membership-contact-enterprise');
-    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact).toHaveAttribute('href', 'mailto:contact@breatic.ai');
     expect(contact.parentElement).toHaveTextContent('allowances');
   });
 
@@ -844,7 +844,7 @@ describe('MembershipPanel', () => {
     setup();
 
     const contact = await screen.findByTestId('membership-contact-priced');
-    expect(contact).toHaveAttribute('href', 'mailto:breatic@orime.ai');
+    expect(contact).toHaveAttribute('href', 'mailto:contact@breatic.ai');
     expect(contact.parentElement).toHaveTextContent('bigger scale');
   });
 
@@ -860,7 +860,7 @@ describe('MembershipPanel', () => {
       const view = setup();
       expect(await screen.findByTestId(c.testId)).toHaveAttribute(
         'href',
-        'mailto:breatic@orime.ai',
+        'mailto:contact@breatic.ai',
       );
       view.unmount();
     }

@@ -83,7 +83,7 @@ Breatic 处于 Beta 阶段，持续开发中。已发布版本和更新说明见
 
 Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码可用**项目，以 Apache 2.0 为基础附加条款。
 
-许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [licensing@orime.ai](mailto:licensing@orime.ai)。
+许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [contact@breatic.ai](mailto:contact@breatic.ai)。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
 
