@@ -492,7 +492,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         // A 2xx was billed though its body was lost; a refusal's lost body reads as no words.
         throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error));
       }
-      if (!response.ok) return { status: response.status, body: text };
+      if (!isSuccess(response.status)) return { status: response.status, body: text };
       const reported = costedOf(parsed(text)).usage?.cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost };
