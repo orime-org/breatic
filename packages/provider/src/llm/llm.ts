@@ -13,7 +13,7 @@ import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, boundSignal, parsed, readBody, send } from "@provider/http/request.js";
+import { answerText, boundSignal, fetchJson, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
@@ -195,16 +195,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
-   * The OpenRouter backend pin of a model, as OpenRouter takes it.
-   * @param modelId - Our model id.
-   * @returns The option, or nothing.
-   */
-  const backendPin = (modelId: string): VendorOptions => {
-    const pin = config.llm.openrouter_backends[modelId];
-    return pin === undefined ? {} : { provider: { only: pin.only, allow_fallbacks: pin.allow_fallbacks } };
-  };
-
-  /**
    * What a call sends each upstream of its plan, keyed by the SDK name each reads.
    * @param plan - The plan.
    * @param modelId - Our model id.
@@ -215,7 +205,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     const merged: Record<string, VendorOptions> = {};
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
-      merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...(vendor.gateway ? backendPin(modelId) : {}) };
+      // The OpenRouter backend pin is understand's alone (design 4.3), never a prepared call's.
+      merged[vendor.sdkName] = optionsFor(vendor, modelId, wants);
     }
     return merged;
   };
@@ -343,13 +334,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const name = Object.keys(config.upstreams).find((u) => kindOf(u) === "openrouter");
       if (name === undefined) throw new Error("No OpenRouter upstream to read the model list from");
       const url = `${config.upstreams[name]!.base_url}/models`;
-      const bounds = { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs };
-      const response = await send({ url, method: "GET", headers: { accept: "application/json" } }, bounds);
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new Error(`The model list answered ${response.status}`);
-      }
-      const list = modelListSchema.safeParse(parsed(new TextDecoder().decode(await readBody(url, response, Number.MAX_SAFE_INTEGER, policy.timeoutMs, bounds))));
+      const body = await fetchJson(
+        { url, method: "GET", headers: { accept: "application/json" } },
+        { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs, maxBodyBytes: Number.MAX_SAFE_INTEGER, idleMs: policy.timeoutMs },
+      );
+      const list = modelListSchema.safeParse(body);
       if (!list.success) throw new Error("The model list holds no models");
       const pictures = new Map<string, boolean>();
       for (const raw of list.data.data) {
@@ -445,7 +434,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               });
             } catch (error) {
               // A 2xx whose body was lost was still billed, for an amount nobody can now read.
-              if (error instanceof AnswerUnread && error.status >= 200 && error.status < 300) {
+              if (error instanceof AnswerUnread) {
                 billed.push({ state: "missing", reason: `${c.upstream} answered ${error.status} and its body could not be read` });
               }
               throw error;

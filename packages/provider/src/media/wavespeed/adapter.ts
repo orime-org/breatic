@@ -103,7 +103,7 @@ const resultSchema = z.looseObject({
  * @param body - The request body.
  * @param bounds - The deadline and signal.
  * @returns The prediction id, and the outputs when it finished at once.
- * @throws {NotSent | NoAnswer | HttpStatus | Aborted | BodyTooLarge} As the HTTP module classifies the failure.
+ * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {NoAnswer} With a BilledAnswerLost cause carrying one missing cost, when a 2xx answer cannot be read.
  */
 export async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {

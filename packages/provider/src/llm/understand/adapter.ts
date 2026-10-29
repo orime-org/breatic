@@ -109,7 +109,7 @@ export interface UnderstandAdapter {
    * Ask the question, once.
    * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
    * @throws {BodyTooLarge} When a preparatory upload step's answer was larger than provider reads.
-   * @throws {AnswerUnread} When the model answer's status arrived and its body could not be read.
+   * @throws {AnswerUnread} When a 2xx model answer's status arrived and its body could not be read.
    * @throws {StepRefused | UnreadableAnswer} When a preparatory upload step failed or answered something unusable.
    * @throws {Error} For an item whose type the upstream cannot take.
    */
@@ -123,7 +123,7 @@ export interface UnderstandAdapter {
 /** The largest answer read, in bytes. */
 const MAX_ANSWER_BYTES = 10 * 1024 * 1024;
 
-/** An answer whose status arrived and whose body could not be read; the read's failure is its cause. */
+/** A 2xx answer whose status arrived and whose body could not be read; the read's failure is its cause. */
 export class AnswerUnread extends Error {
   readonly status: number;
 
@@ -147,7 +147,7 @@ export class AnswerUnread extends Error {
  * @param call - The call, for its deadline and signal.
  * @returns The answer.
  * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
- * @throws {AnswerUnread} When the status arrived and the body could not be read.
+ * @throws {AnswerUnread} When a 2xx answer's status arrived and its body could not be read; a refusal's lost body reads as no words.
  */
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
