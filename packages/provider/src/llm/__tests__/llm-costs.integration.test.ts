@@ -443,6 +443,13 @@ describe("judge (JEV)", () => {
     expect((await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request)).cost).toBeUndefined();
   });
 
+  it("hands back the refusal's status with no words when its body stops part way (DD 34)", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, raw: "{\"error\":", contentType: "application/json", hold: true }));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 });
+    expect(answer).toEqual({ status: 400, body: "" });
+    fakes.openrouter.release();
+  });
+
   it("throws carrying one missing cost when a 2xx answer stops part way, since it was billed (DD 33)", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: "{\"likely\":", contentType: "application/json", hold: true }));
     const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 }).catch((e: unknown) => e);

@@ -102,6 +102,26 @@ describe("a whole answer of 200 whose body is an error (DD 33)", () => {
   });
 });
 
+describe("a whole 2xx answer that cannot be read (DD 34)", () => {
+  it.each([
+    ["OpenRouter, cut mid-body", "openrouter", "meta/llama-x", OR, '{"id":"gen-cut","choices":[{"message":{"content":"o', { state: "missing" }],
+    ["DeepSeek, cut mid-body", "deepseek", "deepseek/deepseek-v4-pro", { DEEPSEEK_API_KEY: "ds" }, '{"id":"ds-cut","choices":[{"message":{"content":"o', { state: "missing" }],
+    ["DeepSeek, JSON its SDK refuses", "deepseek", "deepseek/deepseek-v4-pro", { DEEPSEEK_API_KEY: "ds" }, '{"id":"ds-odd","choices":"none"}', { state: "missing" }],
+  ] as const)("%s: was billed, so the call hands over one cost", async (_name, upstream, model, keys, raw, expected) => {
+    fakes[upstream].answer(() => ({ status: 200, raw, contentType: "application/json" }));
+    const prepared = llmProvider(fakes, keys, { llmMaxRetries: 0 }).llm.prepare(model, THINK);
+    await expect(generateText({ model: prepared.model, prompt: "hi", ...prepared.options })).rejects.toThrow();
+    expect(prepared.pendingCosts()).toEqual([expect.objectContaining(expected)]);
+  });
+
+  it("keeps the generation the OpenRouter answer names when its SDK refuses the rest", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: '{"id":"gen-odd","choices":"none"}', contentType: "application/json" }));
+    const prepared = llmProvider(fakes, OR, { llmMaxRetries: 0 }).llm.prepare("meta/llama-x", THINK);
+    await expect(generateText({ model: prepared.model, prompt: "hi", ...prepared.options })).rejects.toThrow();
+    expect(prepared.pendingCosts()).toEqual([pending("gen-odd")]);
+  });
+});
+
 describe("a direct vendor's stream cut before its finish (DD 33)", () => {
   const opening = chunk("ds-1", { role: "assistant", content: "he" });
 

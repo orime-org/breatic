@@ -368,3 +368,28 @@ describe("a run's billed predictions reach the caller once, however it ends (des
     );
   });
 });
+
+describe("a refusal whose body cannot be read is still its status (DD 34)", () => {
+  const oversized = (status: number): ReturnType<typeof accepted> => ({ status, raw: "x".repeat(11 * 1024 * 1024), contentType: "text/plain" });
+
+  it("a submit answered 503 with a body over the limit moves to the next upstream", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    a.answer(() => oversized(503));
+    const moved = expectState(await submitVideo(runner()) as MediaAnswer, "send");
+    expect(moved.warnings.map((w) => w.code)).toContain("upstream_switched");
+  });
+
+  it("a submit answered 400 with a body over the limit fails the run", async () => {
+    a.answer(() => oversized(400));
+    expectState(await submitVideo(runner()) as MediaAnswer, "failed");
+  });
+
+  it("a poll answered 503 with a body over the limit is still running", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    a.answer(({ method }) => (method === "POST" ? accepted("p1") : oversized(503)));
+    const r = runner();
+    const running = expectState(await submitVideo(r) as MediaAnswer, "running");
+    expectState(await r.poll(stored(running.ticket), live()), "running");
+  });
+});
+
