@@ -171,6 +171,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   });
 
+  // Contexts of connections `connected` refused as a second connection to a
+  // document on one socket (see there), so their `onDisconnect` releases
+  // nothing.
+  const refusedDuplicates = new WeakSet<object>();
+
   // Replacing a seat happens in Redis, from any instance; demoting the
   // connection it came from can only be done where that connection lives, so
   // the request goes out on a channel every instance listens to — including
@@ -432,6 +437,25 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection,
     }) => {
       const auth = context as AuthContext;
+      // One connection per document per socket. A session-aware client
+      // (`documentName\0sessionId`) can open a document twice on one socket,
+      // and both arrive with the same document name and socket id — the key
+      // of every per-connection record here, so the second would overwrite
+      // the first's and closing it would take the first one's seat. Our web
+      // client opens one provider per document. Decided here rather than in
+      // `onAuthenticate`: two handshakes sent together both pass that hook
+      // before either connection exists, while by now the first one has been
+      // remembered. The previous connection's `onDisconnect` has already
+      // forgotten it, so a reconnect of the same document is let in.
+      if (liveConnections.find(documentName, socketId) !== undefined) {
+        refusedDuplicates.add(context as object);
+        logger.warn(
+          { userId: auth.user.id, documentName, socketId, reason: "duplicate_document_on_socket" },
+          "auth_rejected",
+        );
+        connection.close({ code: 4403, reason: "duplicate-document-on-socket" });
+        return;
+      }
       // Remembering the socket is also what starts listening for its pongs,
       // once, however many documents it carries.
       liveConnections.remember(
@@ -509,6 +533,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     onDisconnect: async ({ documentName, context, socketId }) => {
+      // A refused duplicate held nothing; what is recorded under its socket
+      // and document belongs to the connection it duplicated.
+      if (refusedDuplicates.has(context as object)) return;
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean

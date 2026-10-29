@@ -709,6 +709,88 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     expect(registryStub.unregister).not.toHaveBeenCalled();
   });
 
+  describe("one connection per document on a socket", () => {
+    /** The hooks of one server, and a way to run `connected` on it. */
+    async function serverHooks(): Promise<{
+      connect: (context: Record<string, unknown>) => Promise<FakeConnection>;
+      onDisconnect: (payload: unknown) => Promise<void>;
+    }> {
+      await createCollabServer({
+        collabRedisUrl: "redis://localhost:6379/3",
+        port: 1234,
+        redisKeyPrefix: "dev",
+        shutdownDeadline: () => undefined,
+      });
+      const config = serverSpy.mock.calls.at(-1)?.[0] as {
+        connected: (payload: unknown) => Promise<void>;
+        onDisconnect: (payload: unknown) => Promise<void>;
+      };
+      // Both connections ride the one socket.
+      const webSocket = Object.assign(new EventEmitter(), { send: vi.fn() });
+      return {
+        async connect(context): Promise<FakeConnection> {
+          const connection: FakeConnection = { readOnly: false, close: vi.fn(), context, document: new Y.Doc(), webSocket };
+          await config.connected({
+            documentName: DOC,
+            socketId: "sock-1",
+            context,
+            instance: { documents: new Map() },
+            connectionConfig: { readOnly: false },
+            connection,
+          });
+          return connection;
+        },
+        onDisconnect: config.onDisconnect,
+      };
+    }
+
+    /**
+     * A handshake's context for this document.
+     * @param arrivedAtMs - When it began.
+     * @returns The context.
+     */
+    const contextAt = (arrivedAtMs: number): Record<string, unknown> => ({
+      user: { id: "u1", role: "editor" },
+      seatCap: 2,
+      arrivedAtMs,
+      session: { token: "tok", id: "tok-id" },
+    });
+
+    it("refuses a second connection for a document the socket already carries, and its close leaves the first one's seat alone", async () => {
+      const { connect, onDisconnect } = await serverHooks();
+      const first = await connect(contextAt(1000));
+      loggerWarnSpy.mockClear();
+      const secondContext = contextAt(2000);
+      const second = await connect(secondContext);
+
+      expect(second.close).toHaveBeenCalledTimes(1);
+      expect(first.close).not.toHaveBeenCalled();
+      expect(registryStub.takeSeat).toHaveBeenCalledTimes(1);
+      expect(warnFields("duplicate_document_on_socket")).toEqual(
+        expect.objectContaining({ userId: "u1", documentName: DOC, socketId: "sock-1" }),
+      );
+      expect(loggerWarnSpy.mock.calls.find(([, message]) => message === "auth_rejected")).toBeDefined();
+
+      // The framework reports the refused connection's end like any other.
+      await onDisconnect({ documentName: DOC, context: secondContext, socketId: "sock-1" });
+      expect(registryStub.unregister).not.toHaveBeenCalled();
+    });
+
+    it("accepts the document again on that socket once the previous connection has closed", async () => {
+      const { connect, onDisconnect } = await serverHooks();
+      const firstContext = contextAt(1000);
+      await connect(firstContext);
+      await onDisconnect({ documentName: DOC, context: firstContext, socketId: "sock-1" });
+      loggerWarnSpy.mockClear();
+
+      const again = await connect(contextAt(2000));
+
+      expect(again.close).not.toHaveBeenCalled();
+      expect(registryStub.takeSeat).toHaveBeenCalledTimes(2);
+      expect(warnFields("duplicate_document_on_socket")).toBeUndefined();
+    });
+  });
+
   describe("what a pong's renewal answers, through the real per-socket listener", () => {
     beforeEach(() => {
       registryStub.refreshSocket.mockReset().mockResolvedValue([]);
