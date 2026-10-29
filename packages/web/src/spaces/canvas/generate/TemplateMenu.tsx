@@ -19,6 +19,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
+  DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
@@ -69,7 +70,7 @@ export const TemplateMenu = React.memo(function TemplateMenu({
               data-testid='generate-template-trigger'
               aria-label={t('canvas.template.title')}
               onFocusCapture={suppressTooltipFocusOpen}
-              className='flex h-6 w-6 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+              className='flex h-6 w-6 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-accent aria-expanded:text-accent-foreground'
             >
               <LayoutTemplate className='h-3.5 w-3.5' aria-hidden='true' />
             </Button>
@@ -77,7 +78,7 @@ export const TemplateMenu = React.memo(function TemplateMenu({
         </TooltipTrigger>
         <TooltipContent side='top'>{t('canvas.template.title')}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align='end' avoidCollisions={false} className='w-72'>
+      <DropdownMenuContent align='end' avoidCollisions={false} className='w-max max-w-72'>
         <DropdownMenuLabel>{t('canvas.template.title')}</DropdownMenuLabel>
         {goals.length === 0 ? (
           <p data-testid='generate-template-empty' className='px-2 py-1.5 text-sm text-muted-foreground'>
@@ -88,7 +89,7 @@ export const TemplateMenu = React.memo(function TemplateMenu({
             <DropdownMenuSub key={goal}>
               <DropdownMenuSubTrigger data-testid={`generate-template-goal-${goal}`} className='gap-2'>
                 <span className='min-w-0 flex-1 truncate'>{t(`canvas.template.goal.${goal}`)}</span>
-                <span className='text-xs text-muted-foreground'>{templates.length}</span>
+                <DropdownMenuTrailing>{templates.length}</DropdownMenuTrailing>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className='w-72'>
                 {templates.map((template) => {
@@ -104,10 +105,10 @@ export const TemplateMenu = React.memo(function TemplateMenu({
                       <span className='flex w-full items-center justify-between gap-2'>
                         <span>{t(`canvas.template.${template.id}.name`)}</span>
                         {!available && (
-                          <span className='text-xs text-muted-foreground'>{t('canvas.template.unavailable')}</span>
+                          <DropdownMenuTrailing>{t('canvas.template.unavailable')}</DropdownMenuTrailing>
                         )}
                       </span>
-                      <span className='text-xs text-muted-foreground'>
+                      <span className='text-xs text-muted-foreground in-data-[highlighted]:text-foreground'>
                         {t(`canvas.template.${template.id}.description`)}
                       </span>
                     </DropdownMenuItem>
