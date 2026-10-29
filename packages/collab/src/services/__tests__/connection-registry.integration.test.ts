@@ -428,6 +428,20 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     expect(zremAt).toBeGreaterThan(evalAt);
   });
 
+  it("A15b releases the seat of a disconnect in the same turn after Redis has lost its script cache", async () => {
+    const { reg, w } = build();
+    await reg.takeSeat(DOC, H("s0", "u0", 1000), 2);
+    await reg.unregister(DOC, "s0");
+    // Redis forgets every cached script; the client stays connected.
+    await R.script("FLUSH");
+    const p = reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
+    const u = reg.unregister(DOC, "s1");
+    await u;
+    expect(await p).toEqual({ outcome: "gone" });
+    await w.flush();
+    expect(await members(DOC)).toEqual({});
+  });
+
   it("A16 drops a seated reply that comes back after the disconnect", async () => {
     const { reg, w } = build();
     const mine = m("u1", 5000, "i1", "s1");

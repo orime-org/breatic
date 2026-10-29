@@ -301,14 +301,6 @@ export interface ConnectionRegistry {
   count(documentName: string): Promise<number>;
 }
 
-/** The name {@link SEAT_SCRIPT} is registered under on the client. */
-const SEAT_COMMAND = "collabSeat";
-
-/** A client with {@link SEAT_SCRIPT} registered as {@link SEAT_COMMAND}. */
-type SeatRedis = Redis & {
-  [SEAT_COMMAND]: (key: string, ...args: (string | number)[]) => Promise<unknown>;
-};
-
 /** The two modes of {@link SEAT_SCRIPT}. */
 type ScriptMode = "arrive" | "refresh";
 
@@ -357,11 +349,6 @@ export function createConnectionRegistry(
       `${env.ENV}:collab:seats:${documentName}`,
   } = options;
   const ttlSeconds = Math.ceil((seatExpiryMs * 2) / 1000);
-  // Registered once, so every run is an EVALSHA of a script Redis already
-  // holds rather than the whole script sent again (ioredis falls back to EVAL
-  // on its own when Redis has lost it).
-  redis.defineCommand(SEAT_COMMAND, { numberOfKeys: 1, lua: SEAT_SCRIPT });
-  const seatRedis = redis as SeatRedis;
 
   // socketId -> documentName -> the entry this instance holds. The member is
   // stored rather than rebuilt because `onDisconnect` gets a socket id and
@@ -422,7 +409,9 @@ export function createConnectionRegistry(
    */
   function sendScript(documentName: string, entry: SeatEntry, mode: ScriptMode): Promise<unknown> {
     const t = now();
-    return seatRedis[SEAT_COMMAND](
+    return redis.eval(
+      SEAT_SCRIPT,
+      1,
       keyFor(documentName),
       t - seatExpiryMs,
       entry.cap,

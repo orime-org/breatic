@@ -108,7 +108,6 @@ type Rule =
 export function wrapRedis(real: Redis): WrappedRedis {
   const log: LoggedCall[] = [];
   const rules = new Map<string, Rule[]>();
-  const scriptNames = new Set<string>();
   let gate: ReplyGate | undefined;
 
   const nextRule = (name: string): Rule | undefined => {
@@ -132,7 +131,7 @@ export function wrapRedis(real: Redis): WrappedRedis {
       name = args[0].toLowerCase();
       shown = args.slice(1);
     }
-    if (SCRIPT_COMMANDS.has(name) || scriptNames.has(prop)) name = "eval";
+    if (SCRIPT_COMMANDS.has(name)) name = "eval";
     const call: LoggedCall = { name, args: shown };
     log.push(call);
     const rule = nextRule(name);
@@ -172,13 +171,7 @@ export function wrapRedis(real: Redis): WrappedRedis {
       const value: unknown = Reflect.get(target, prop, receiver);
       if (typeof prop !== "string" || typeof value !== "function") return value;
       const fn = value as (...a: unknown[]) => unknown;
-      if (prop === "defineCommand") {
-        return (name: string, ...rest: unknown[]): unknown => {
-          scriptNames.add(name);
-          return fn.apply(target, [name, ...rest]);
-        };
-      }
-      if (INTERCEPTED.has(prop.toLowerCase()) || scriptNames.has(prop)) {
+      if (INTERCEPTED.has(prop.toLowerCase())) {
         return (...args: unknown[]): Promise<unknown> => invoke(prop, fn, args);
       }
       return fn.bind(target);
