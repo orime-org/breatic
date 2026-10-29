@@ -11,7 +11,7 @@
  * while seats expired under live connections.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { OutgoingMessage } from "@hocuspocus/server";
 
 vi.mock("@breatic/core", () => ({
@@ -200,5 +200,68 @@ describe("live connections — pongs are handled at most twice per ping period (
     clock = 1_000_000 + PING / 2;
     fire(connection, "pong");
     expect(onPong).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("live connections — an early pong is deferred, not dropped (inner#1034)", () => {
+  const PING = 30_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("refreshes at half a period after an early pong, so no gap between refreshes exceeds two periods", () => {
+    vi.useFakeTimers({ now: 0 });
+    const handled: number[] = [];
+    const table = createLiveConnections({ onPong: () => handled.push(Date.now()), pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    // Pings go out at 0, 30, 60 and 90 s; their pongs arrive 20, 0, 25 and 0 s late.
+    for (const at of [20_000, 30_000, 85_000, 90_000]) {
+      vi.advanceTimersByTime(at - Date.now());
+      fire(connection, "pong");
+    }
+    vi.advanceTimersByTime(PING);
+
+    expect(handled).toEqual([20_000, 35_000, 85_000, 100_000]);
+    const gaps = handled.slice(1).map((t, i) => t - handled[i]!);
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(2 * PING);
+  });
+
+  it("handles a flood within half a period once at once and once deferred", () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    for (let i = 0; i < 50; i++) {
+      fire(connection, "pong");
+      vi.advanceTimersByTime(100);
+    }
+    expect(onPong).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(PING / 2);
+    expect(onPong).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(PING * 2);
+    expect(onPong).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a deferred pong when the socket closes", () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    fire(connection, "pong");
+    vi.advanceTimersByTime(1_000);
+    fire(connection, "pong");
+    fire(connection, "close");
+    vi.advanceTimersByTime(PING);
+
+    expect(onPong).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

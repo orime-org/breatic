@@ -62,10 +62,12 @@ export interface LiveConnectionsOptions {
   ) => void;
   /**
    * How often the transport pings each connection. A pong less than half of
-   * this after the last one handled on its socket is ignored: RFC 6455 lets a
-   * client send pongs unasked, each handled one runs a seat script per
-   * document on the Redis every tenant shares, and one inside half a period
-   * proves nothing the last one did not.
+   * this after the last one handled on its socket waits until half a period
+   * has passed, and further early pongs while one waits are dropped: RFC 6455
+   * lets a client send pongs unasked, and each handled one runs a seat script
+   * per document on the Redis every tenant shares. The waiting pong is not
+   * dropped, because it may be the only answer to a ping, and the seat
+   * expires two periods after the last one handled.
    */
   pingIntervalMs: number;
   /** Clock, injectable for tests (default `Date.now`). */
@@ -131,21 +133,32 @@ export function createLiveConnections(
         bySocket.set(socketId, held);
         // The socket's own pong. crossws swallows it before dispatching its
         // own hook, but that early return leaves only crossws's handler —
-        // every other listener on the emitter still fires. No timer of ours
-        // and no extra frames on the wire.
+        // every other listener on the emitter still fires. No extra frames on
+        // the wire; the only timer is the one holding back an early pong.
         let lastHandledAt = -Infinity;
+        let deferred: ReturnType<typeof setTimeout> | undefined;
+        /** Refresh what this socket holds, because it answered a ping. */
+        const handle = (): void => {
+          deferred = undefined;
+          lastHandledAt = now();
+          onPong(socketId, held);
+        };
         /**
-         * Refresh what this socket holds, because it just answered a ping,
-         * unless a pong was handled less than half a period ago.
+         * Handle a pong now, or, within half a period of the last one handled,
+         * once half a period has passed (see `pingIntervalMs`).
          */
         const pong = (): void => {
-          const t = now();
-          if (t - lastHandledAt < minPongGapMs) return;
-          lastHandledAt = t;
-          onPong(socketId, held);
+          const wait = lastHandledAt + minPongGapMs - now();
+          if (wait <= 0) {
+            clearTimeout(deferred);
+            handle();
+          } else if (deferred === undefined) {
+            deferred = setTimeout(handle, wait);
+          }
         };
         connection.webSocket.on("pong", pong);
         connection.webSocket.once("close", () => {
+          clearTimeout(deferred);
           connection.webSocket.off?.("pong", pong);
           bySocket.delete(socketId);
         });
