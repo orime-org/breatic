@@ -7,7 +7,7 @@ export type { ExactPresentationTime, PhysicalVideoFrame, OwnedEditInterval, Owne
 import type { IsoBmffEdit } from "@ingest/container/iso-bmff-metadata.js";
 
 /** A complete source ledger and its explicitly supplied edit schedule. */
-export interface RateOnePresentationInput {
+export interface EditListPresentationInput {
   movieTimescale: string;
   mediaTimescale: string;
   sourceTimeBase: ExactPresentationTime;
@@ -63,7 +63,7 @@ export function planUneditedVideoPresentation(
  * @returns Exact movie intervals and stable occurrence-to-raw identities.
  * @throws {Error} When clocks, edits, ledger or resource ceilings cannot form this exact plan.
  */
-export function planRateOnePresentation(input: RateOnePresentationInput, maxOccurrences: number): OwnedVideoPresentation {
+export function planEditListPresentation(input: EditListPresentationInput, maxOccurrences: number): OwnedVideoPresentation {
   if (!Number.isSafeInteger(maxOccurrences) || maxOccurrences <= 0) throw presentationError("invalid_limits", "Occurrence ceiling must be a positive safe integer");
   const movieScale = positiveClock(input.movieTimescale);
   const mediaScale = positiveClock(input.mediaTimescale);
