@@ -35,7 +35,7 @@ import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
 import { getGenerationTemplate } from "@domain/agent/tools/get-generation-template.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
-import { makeProposeCanvasAction, proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
@@ -222,7 +222,6 @@ export {
   makeSearchTools,
   canvasCapabilities,
   generationModels,
-  makeProposeCanvasAction,
   makeProposeDocumentEdit,
 };
 

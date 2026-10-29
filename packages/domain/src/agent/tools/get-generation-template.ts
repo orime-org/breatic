@@ -59,10 +59,6 @@ export function describeTemplate(template: GenerationTemplate): string {
   );
 }
 
-const [FIRST_ID, ...OTHER_IDS] = GENERATION_TEMPLATES.map((template) => template.id);
-// The registry test keeps the registry non-empty.
-if (FIRST_ID === undefined) throw new Error("no generation templates");
-
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
 export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
   description:
@@ -70,7 +66,7 @@ export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
     "the inputs the reader supplies, each generate node's prompt in the reader's language as the segments to send, " +
     "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
     `${PROPOSE_CANVAS_ACTION}'s description.`,
-  inputSchema: z.object({ id: z.enum([FIRST_ID, ...OTHER_IDS]).describe("The template's id, as the proposal tool's description lists it.") }),
+  inputSchema: z.object({ id: z.enum(GENERATION_TEMPLATES.map((template) => template.id)).describe("The template's id, as the proposal tool's description lists it.") }),
   metadata: { runningLine: "chat.tool.readingTemplate" },
   execute: async (
     { id }: { id: string },

@@ -121,6 +121,9 @@ function miniToolLines(): string[] {
   ]);
 }
 
+/** Joins a list the way an English sentence does: "a, b, and c". */
+const ALL_OF = new Intl.ListFormat("en", { type: "conjunction" });
+
 /**
  * One node type's template menu, read off the registry: each goal the menu
  * lists and the templates it holds, by the names and lines the rows show.
@@ -138,8 +141,7 @@ function templateMenuLine(type: GenerationNodeType, node: string): string {
     const named = templates.map(
       (template) => `${quoted(t(`canvas.template.${template.id}.name`))} (${quoted(t(`canvas.template.${template.id}.description`))})`,
     );
-    const held = named.length < 2 ? named.join("") : `${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
-    return `${quoted(t(`canvas.template.goal.${goal}`))}, holding ${held}`;
+    return `${quoted(t(`canvas.template.goal.${goal}`))}, holding ${ALL_OF.format(named)}`;
   });
   return `${node} lists ${rows.join("; then ")}.`;
 }
