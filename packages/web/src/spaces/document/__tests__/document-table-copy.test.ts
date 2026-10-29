@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -212,5 +212,32 @@ describe('copying a selection that starts in the words of the block a table is n
     expect(data['text/plain']).toContain('em');
     expect(data['text/plain']).toContain('<table>');
     expect(data['text/plain']).toContain('ki');
+  });
+});
+
+describe('copying a picture, a video or a sound selected in a cell (inner#1619 T7)', () => {
+  it.each([
+    ['image', 'https://example.com/a.png'],
+    ['video', 'https://example.com/a.mp4'],
+    ['audio', 'https://example.com/a.mp3'],
+  ])('puts the %s on the clipboard, as in the body', (type, url) => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: [{ blocks: [{ type, props: { url } }] }, 'b1'] }] })] as never);
+    editor.prosemirrorView.focus();
+    const view = editor.prosemirrorView;
+    let media = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (media < 0 && node.type.name === type) media = pos;
+      return media < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, media)));
+
+    const data = clip(editor);
+
+    expect(data['text/html'] ?? '').toContain(url);
   });
 });

@@ -30,7 +30,7 @@ import {
   type BlockNoteEditor,
 } from '@blocknote/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -140,6 +140,9 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
   const { selection } = view.state;
   if (selection.empty) return null;
   if (selection instanceof CellSelection) return cellsBlocks(view, selection);
+  // A node selected in a cell (a picture, a video) is BlockNote's to copy, as
+  // in the body: its content carries the node alone, not the levels above.
+  if (selection instanceof NodeSelection) return null;
   const depth = oneCellDepth(selection);
   if (depth > 0) return inCellBlocks(view, depth);
   // A selection leaving a table carries the whole table (inner#1619 T14).
