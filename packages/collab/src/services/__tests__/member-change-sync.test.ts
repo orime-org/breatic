@@ -60,7 +60,7 @@ function makeHocuspocus(conns: FakeConnection[]): {
     documents.set(c.docName, doc);
     doc.connections.set(
       {
-        context: c.user ? { user: c.user, handedOverFrom: null } : undefined,
+        context: c.user ? { user: c.user, seatCap: null, arrivedAtMs: 0 } : undefined,
         close: ({ code, reason }: { code: number; reason: string }) =>
           closed.push({ docName: c.docName, userId: c.user?.id, code, reason }),
       },

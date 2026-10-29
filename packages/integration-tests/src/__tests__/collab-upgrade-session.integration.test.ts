@@ -175,7 +175,7 @@ async function start(fixture: ProjectFixture, timeout = 10_000): Promise<Running
     redis,
     resolveConnectionLimit: getProjectConcurrentEditorLimit,
     countConnections: (documentName) => registry.count(documentName),
-    claimSeatFrom: (documentName, userId) => registry.claimSeatFrom(documentName, userId),
+    hasOwnSeat: (documentName, userId) => registry.hasOwnSeat(documentName, userId),
   });
   const server = new Server({
     address: "127.0.0.1",

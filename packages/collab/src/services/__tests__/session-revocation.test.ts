@@ -80,7 +80,7 @@ function buildRedis(fails = false): { source: Redis; subscriber: FakeSubscriber 
  */
 function connection(userId: string, token: string): FakeConnection {
   return {
-    context: { user: { id: userId, role: "editor" }, handedOverFrom: null, session: { token, id: `id-${token}` } },
+    context: { user: { id: userId, role: "editor" }, seatCap: null, arrivedAtMs: 0, session: { token, id: `id-${token}` } },
     close: vi.fn(),
   };
 }

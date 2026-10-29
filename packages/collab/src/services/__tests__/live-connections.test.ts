@@ -78,21 +78,6 @@ describe("live connections — one listener per socket", () => {
     expect(second.listeners.get("pong")).toBeUndefined();
   });
 
-  it("reports the same moment for every document on one socket", () => {
-    let clock = 5_000;
-    const table = createLiveConnections({ onPong: vi.fn(), now: () => clock });
-
-    const firstAt = table.remember("s-1", "doc-a", fakeConnection());
-    clock += 900;
-    const secondAt = table.remember("s-1", "doc-b", fakeConnection());
-
-    // This number tells one of a person's connections from another when a
-    // handshake picks which seat to take. It belongs to the socket: every
-    // document on it arrived on the same connection.
-    expect(secondAt).toBe(firstAt);
-    expect(firstAt).toBe(5_000);
-  });
-
   it("hands the pong callback everything that socket carries", () => {
     const onPong = vi.fn();
     const table = createLiveConnections({ onPong });

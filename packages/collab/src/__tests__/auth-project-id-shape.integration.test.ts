@@ -77,7 +77,7 @@ async function authenticate(documentName: string): Promise<PromiseSettledResult<
     redis: getRedis(),
     resolveConnectionLimit: async () => 10,
     countConnections: async () => 0,
-    claimSeatFrom: async () => ({ outcome: "none" }),
+    hasOwnSeat: async () => "no" as const,
   });
   const [outcome] = await Promise.allSettled([
     hook({

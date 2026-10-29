@@ -2,20 +2,28 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The demote channel: the three things one instance does to a connection whose
- * seat has gone to another of the same person's connections.
+ * Demoting a connection, and the channel that asks for it.
  *
- * Each has its own way of going wrong on its own, and none of them shows up
- * anywhere else: skip the `readOnly` write and the connection keeps writing,
- * skip the frame and that browser never learns it went read-only, skip the
- * release and the seat is held by a read-only connection for good.
+ * Three things happen to a connection whose seat has gone to another of the
+ * same person's connections, and each has its own way of going wrong: skip the
+ * `readOnly` write and the connection keeps writing, skip the frame and that
+ * browser never learns it went read-only, skip the release and the seat is
+ * held by a read-only connection for good.
+ *
+ * The first two are one shared function since inner#1034 (design 3.6): the
+ * `connected` hook losing the race for a seat and a pong finding its seat gone
+ * demote through it too, so the frame cannot be forgotten on one path.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { OutgoingMessage } from "@hocuspocus/server";
+
+const { logWarn } = vi.hoisted(() => ({ logWarn: vi.fn() }));
 
 vi.mock("@breatic/core", () => ({
+  env: { ENV: "test" },
   createLogger: () => ({
-    warn: vi.fn(),
+    warn: logWarn,
     error: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
@@ -24,6 +32,7 @@ vi.mock("@breatic/core", () => ({
 
 import {
   createSeatHandover,
+  demoteConnection,
   type DemotableConnection,
   type SeatHandoverDeps,
 } from "@collab/services/seat-handover.js";
@@ -97,7 +106,11 @@ function build(overrides: Partial<SeatHandoverDeps> = {}): {
   return { handover };
 }
 
+/** The frame that tells a client its connection on {@link DOC} is read-only. */
+const READ_ONLY_FRAME = new OutgoingMessage(DOC).writeAuthenticated(true).toUint8Array();
+
 beforeEach(() => {
+  logWarn.mockClear();
   redis = new FakeRedis();
   forgotten = [];
   const sent: Uint8Array[] = [];
@@ -112,16 +125,37 @@ beforeEach(() => {
   };
 });
 
+describe("demoting one connection (the shared function)", () => {
+  it("E-S01 makes a writable connection read-only and tells its client once", () => {
+    expect(demoteConnection(DOC, connection)).toBe(true);
+    expect(connection.readOnly).toBe(true);
+    expect(connection.sent).toEqual([READ_ONLY_FRAME]);
+  });
+
+  it("E-S04 leaves a connection that is already read-only alone (design 3.8)", () => {
+    connection.readOnly = true;
+    expect(demoteConnection(DOC, connection)).toBe(false);
+    expect(connection.readOnly).toBe(true);
+    expect(connection.sent).toEqual([]);
+  });
+});
+
 describe("seat handover — carrying out a demote", () => {
-  it("does all three parts for a connection this instance holds", async () => {
-    const { handover } = build();
+  it("E-S02 does all three parts for a connection this instance holds", async () => {
+    const { handover } = build({
+      forgetSeat: async (documentName, member) => {
+        // The seat goes only once the connection can no longer write.
+        expect(connection.readOnly).toBe(true);
+        forgotten.push({ documentName, member });
+      },
+    });
     await handover.start();
 
     redis.deliver(JSON.stringify({ documentName: DOC, member: MEMBER }));
     await Promise.resolve();
 
     expect(connection.readOnly).toBe(true);
-    expect(connection.sent.length).toBe(1);
+    expect(connection.sent).toEqual([READ_ONLY_FRAME]);
     expect(forgotten).toEqual([{ documentName: DOC, member: MEMBER }]);
   });
 
@@ -156,7 +190,7 @@ describe("seat handover — carrying out a demote", () => {
     expect(forgotten).toEqual([]);
   });
 
-  it("does nothing for a member it cannot take apart", async () => {
+  it("E-S03 does nothing for a member it cannot take apart, and says so", async () => {
     const { handover } = build();
     await handover.start();
 
@@ -167,6 +201,10 @@ describe("seat handover — carrying out a demote", () => {
 
     expect(connection.readOnly).toBe(false);
     expect(forgotten).toEqual([]);
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: "seat_demote_member_unreadable" }),
+      expect.any(String),
+    );
   });
 
   it("ignores a payload that is not a demote request", async () => {
