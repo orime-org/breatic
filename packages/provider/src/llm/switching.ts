@@ -13,7 +13,7 @@ import { APICallError } from "ai";
 import { z } from "zod";
 import { numberLeaf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
-import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
+import { backoff, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
@@ -35,7 +35,10 @@ export interface SwitchingSetup {
   /** Whether an upstream reports a generation id to look its cost up by later. */
   tracksGenerations: (upstream: string) => boolean;
   maxRetries: number;
-  /** The lookups of model calls opened and not finished, shared with the prepared call. */
+  /**
+   * Each billed model call whose finish was not read, shared with the prepared call: a pending
+   * lookup for an OpenRouter generation, a missing cost for a direct vendor's call.
+   */
   pending: Map<string, Cost>;
   /** Extra fields for `providerMetadata.breatic`. */
   breatic: Record<string, string>;
@@ -90,20 +93,6 @@ function statusFailure(status: number, body: unknown, vendor: Vendor | undefined
 function valueFailure(value: unknown, vendor: Vendor | undefined): Failure | undefined {
   const status = inBandStatusOf(vendor, value);
   return status === undefined ? undefined : statusFailure(status, inBandBodyOf(value), vendor);
-}
-
-/**
- * A response body parsed as JSON.
- * @param text - The body.
- * @returns The value, or undefined when it is not JSON.
- */
-export function parsed(text: string | undefined): unknown {
-  if (text === undefined) return undefined;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -274,6 +263,18 @@ export class SwitchingModel implements ModelV4 {
   }
 
   /**
+   * Hand a billed call whose cost nothing can look up to the call's pending costs, as missing.
+   * @param upstream - The upstream that answered.
+   * @param reason - Why its cost is unknown.
+   * @returns The key it is held under.
+   */
+  private missing(upstream: string, reason: string): string {
+    const key = `${upstream}:${globalThis.crypto.randomUUID()}`;
+    this.setup.pending.set(key, { state: "missing", reason });
+    return key;
+  }
+
+  /**
    * One model call, whole.
    * @param options - The AI SDK's call options.
    * @returns The answer, its metadata naming the upstream that served it.
@@ -286,15 +287,17 @@ export class SwitchingModel implements ModelV4 {
        * @returns What it answered.
        */
       const run = async (): Promise<GenerateResult> => this.setup.modelFor(c).doGenerate(options);
-      if (!this.setup.tracksGenerations(c.upstream)) return run();
-      // The SDK throws a 2xx whose body is an error without that body, so the body is read from a copy.
+      const tracks = this.setup.tracksGenerations(c.upstream);
+      // The SDK throws a 2xx it cannot use without its body, so the body is read from a copy.
       const bodies: Promise<string>[] = [];
       try {
-        return await tapAnswers((copy) => void bodies.push(copy.text().catch(() => "")), run);
+        return tracks ? await tapAnswers((copy) => void bodies.push(copy.text().catch(() => "")), run) : await run();
       } catch (error) {
-        // A 2xx whose body is an error was billed, whether the call retries, moves on or stops on it.
+        // A 2xx the SDK could not use (an error body, cut, not JSON, refused by its schema) was billed,
+        // whether the call retries, moves on or stops on it: by the generation it names, else missing.
         if (APICallError.isInstance(error) && error.statusCode !== undefined && error.statusCode >= 200 && error.statusCode < 300) {
-          this.track(c.upstream, (parsed(await bodies.at(-1)) as { id?: unknown } | null | undefined)?.id);
+          const id = tracks ? this.track(c.upstream, (parsed(await bodies.at(-1)) as { id?: unknown } | null | undefined)?.id) : undefined;
+          if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${error.statusCode} with a body its SDK could not use`);
         }
         throw error;
       }
@@ -317,8 +320,7 @@ export class SwitchingModel implements ModelV4 {
     const { value, servedBy } = await this.attempt(async (c) => {
       const result = await this.setup.modelFor(c).doStream({ ...options, includeRawChunks: true });
       // A direct vendor names no generation to look up: its answer is missing until its finish is read.
-      const direct = this.setup.tracksGenerations(c.upstream) ? undefined : `${c.upstream}:${globalThis.crypto.randomUUID()}`;
-      if (direct !== undefined) pending.set(direct, { state: "missing", reason: `${c.upstream} opened a stream that did not finish` });
+      const direct = this.setup.tracksGenerations(c.upstream) ? undefined : this.missing(c.upstream, `${c.upstream} opened a stream that did not finish`);
       const reader = result.stream.getReader();
       const held: StreamPart[] = [];
       for (;;) {

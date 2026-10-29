@@ -30,7 +30,10 @@ export interface PreparedCall {
   options: { providerOptions: Record<string, Record<string, JSONValue>>; maxRetries: 0; temperature?: number };
   /** The system messages, with each upstream's cache marks. */
   system(parts: SystemParts): SystemModelMessage[];
-  /** The lookup of every model call this call opened that has not finished. */
+  /**
+   * Each billed model call whose finish was not read: a pending lookup for an OpenRouter
+   * generation, a missing cost for a direct vendor's call.
+   */
   pendingCosts(): Cost[];
 }
 
