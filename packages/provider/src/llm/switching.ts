@@ -288,16 +288,30 @@ export class SwitchingModel implements ModelV4 {
        */
       const run = async (): Promise<GenerateResult> => this.setup.modelFor(c).doGenerate(options);
       const tracks = this.setup.tracksGenerations(c.upstream);
-      // The SDK throws a 2xx it cannot use without its body, so the body is read from a copy.
-      const bodies: Promise<string>[] = [];
+      // The last answer's status, and a copy of its body when a 2xx may name a generation; any
+      // other copy is cancelled at once, so no body is held twice.
+      let last: { status: number; copy: Response | undefined } | undefined;
+      /**
+       * Keep what the call needs of one answer the SDK fetched.
+       * @param copy - A copy of the answer.
+       */
+      const keep = (copy: Response): void => {
+        void last?.copy?.body?.cancel().catch(() => undefined);
+        const needed = tracks && copy.status >= 200 && copy.status < 300;
+        if (!needed) void copy.body?.cancel().catch(() => undefined);
+        last = { status: copy.status, copy: needed ? copy : undefined };
+      };
       try {
-        return tracks ? await tapAnswers((copy) => void bodies.push(copy.text().catch(() => "")), run) : await run();
+        const answer = await tapAnswers(keep, run);
+        void last?.copy?.body?.cancel().catch(() => undefined);
+        return answer;
       } catch (error) {
-        // A 2xx the SDK could not use (an error body, cut, not JSON, refused by its schema) was billed,
-        // whether the call retries, moves on or stops on it: by the generation it names, else missing.
-        if (APICallError.isInstance(error) && error.statusCode !== undefined && error.statusCode >= 200 && error.statusCode < 300) {
-          const id = tracks ? this.track(c.upstream, (parsed(await bodies.at(-1)) as { id?: unknown } | null | undefined)?.id) : undefined;
-          if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${error.statusCode} with a body its SDK could not use`);
+        // A 2xx that arrived was billed, however the call then ended (its SDK refused the body, it
+        // was cut, the caller stopped): by the generation it names, else missing (DD 35).
+        if (last !== undefined && last.status >= 200 && last.status < 300) {
+          const text = last.copy === undefined ? "" : await last.copy.text().catch(() => "");
+          const id = tracks ? this.track(c.upstream, (parsed(text) as { id?: unknown } | null | undefined)?.id) : undefined;
+          if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${last.status} and the call ended before it could use the answer`);
         }
         throw error;
       }
