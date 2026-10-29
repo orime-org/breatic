@@ -8,8 +8,9 @@ import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
-// Property (design 13.1, DD 33, critical path): whatever OpenRouter and Google answer, every
-// answer an upstream billed reaches the caller exactly once, on the answer or on the error.
+// Property (design 13.1, DD 33, critical path): whatever OpenRouter and Google answer, and
+// whether the deadline or the caller's stop ends the call, every answer an upstream billed
+// reaches the caller exactly once, on the answer or on the error.
 
 let fakes: LlmFakes;
 
@@ -48,6 +49,7 @@ const openRouterAnswers = (n: number): Record<string, Scripted> => {
     busy: { reply: { status: 503, body: { error: { code: 503, message: "busy" } } }, billed: null },
     refused: { reply: { status: 400, body: { error: { code: 400, message: "bad" } } }, billed: null },
     reset: { reply: "reset", billed: null },
+    held: { reply: { status: 200, raw: `{"id":"gen-${n}",`, contentType: "application/json", hold: true }, billed: "missing" },
   };
 };
 
@@ -71,7 +73,8 @@ describe("understand: every billed answer reaches the caller once (critical path
         fc.array(fc.constantFrom(...NAMES), { minLength: 1, maxLength: 6 }),
         fc.constantFrom<"served" | "busy">("served", "busy"),
         fc.nat(2),
-        async (script, google, maxRetries) => {
+        fc.constantFrom<"deadline" | "signal">("deadline", "signal"),
+        async (script, google, maxRetries, ender) => {
           const billed: string[] = [];
           let n = 0;
           fakes.openrouter.answer(() => {
@@ -86,15 +89,20 @@ describe("understand: every billed answer reaches the caller once (critical path
             billed.push("google");
             return { status: 200, body: GENERATE_CONTENT_REPLY };
           });
+          const stop = new AbortController();
+          const timer = setTimeout(() => stop.abort(), 600);
           const outcome = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, { llmMaxRetries: maxRetries, understandOpenRouterFirst: true }).llm
             .understand({
               model: "google/gemini-3.8-flash",
               question: "What is in it?",
               media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
               maxOutputTokens: 50,
-              deadlineAt: Date.now() + 60_000,
+              deadlineAt: Date.now() + (ender === "deadline" ? 600 : 60_000),
+              ...(ender === "signal" ? { signal: stop.signal } : {}),
             })
             .catch((e: unknown) => e);
+          clearTimeout(timer);
+          fakes.openrouter.release();
           const reached = outcome instanceof Error ? costsOf(outcome) : (outcome as { costs: Cost[] }).costs;
           expect(reached.map(keyOf).sort()).toEqual([...billed].sort());
         },

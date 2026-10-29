@@ -92,4 +92,14 @@ describe("orderByPrice and estimateCost (design 3.3, 5.1, 13.1)", () => {
     expect(parsePricingRules(wire).model).toBe("m");
     expect(() => parsePricingRules({ nope: true })).toThrow();
   });
+
+  it.each([
+    ["for_param", { for_param: 7 }],
+    ["per_item", { per_item: "yes" }],
+    ["reused", { reused: "true" }],
+  ])("refuses a step whose %s is of the wrong type, which estimateCost would misread (DD 37)", (_field, step) => {
+    const wire = JSON.parse(JSON.stringify(priced([1, 2, 3]).pricingRules("m"))) as { upstreams: { steps: unknown[] }[] };
+    wire.upstreams[0]!.steps = [{ ...step }];
+    expect(() => parsePricingRules(wire)).toThrow();
+  });
 });

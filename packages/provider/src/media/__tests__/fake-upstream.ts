@@ -20,9 +20,10 @@ export interface Seen {
 
 /**
  * How a fake upstream answers one request: a status and JSON body; a status and
- * raw text, left open when `hold` is set; a reset after the request arrived; or no answer.
+ * raw text, left open when `hold` is set or its connection cut after it when `cut` is set;
+ * a reset after the request arrived; or no answer.
  */
-export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; hold?: boolean } | "reset" | "hang";
+export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; hold?: boolean; cut?: boolean } | "reset" | "hang";
 
 /** Answers a request by its method and path; the default answers 404. */
 export type Route = (req: { method: string; path: string; body: unknown }) => Reply | undefined;
@@ -69,7 +70,8 @@ function write(req: IncomingMessage, res: ServerResponse, reply: Reply): void {
   if (reply === "hang") return;
   if ("raw" in reply) {
     res.writeHead(reply.status, { "content-type": reply.contentType });
-    if (reply.hold === true) res.write(reply.raw);
+    if (reply.cut === true) res.write(reply.raw, () => setTimeout(() => req.socket.destroy(), 20));
+    else if (reply.hold === true) res.write(reply.raw);
     else res.end(reply.raw);
     return;
   }

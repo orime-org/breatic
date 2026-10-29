@@ -3,13 +3,15 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Cost } from "../../cost.js";
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
 import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
-import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream } from "./fake-upstream.js";
+import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
 
 // The loopback image server stands in for a public host; 10.0.0.5 is private.
 vi.mock("../../http/private-address.js", () => ({
@@ -605,5 +607,84 @@ describe("ticketFromLegacy for an element step not yet sent (design 3.4, X3)", (
       "send",
     );
     expect(answer.step.kind).toBe("describe");
+  });
+});
+
+describe("a run with describe steps: every billed answer reaches the caller once (design 13.1, DD 33, critical path)", () => {
+  /**
+   * The understand answers a describe step may get on its n-th request, and whether each was billed.
+   * @param n - The request's place in the run.
+   * @returns The answers by name.
+   */
+  const describeAnswers = (n: number): Record<string, { reply: Reply; billed: boolean }> => {
+    const choice = (content: string, extra: Record<string, unknown> = {}): unknown => ({ index: 0, message: { role: "assistant", content }, finish_reason: "stop", ...extra });
+    return {
+      costed: { reply: { status: 200, body: { id: `gen-${n}`, object: "chat.completion", created: 1, model: "m", choices: [choice(LONG_DESCRIPTION)], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.0004 } } }, billed: true },
+      uncosted: { reply: { status: 200, body: { id: `gen-${n}`, object: "chat.completion", created: 1, model: "m", choices: [choice(LONG_DESCRIPTION)], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } } }, billed: true },
+      passingInChoice: { reply: { status: 200, body: { id: `gen-${n}`, usage: { cost: 0.0007 }, choices: [choice("", { finish_reason: "error", error: { code: 502, message: "Upstream died" } })] } }, billed: true },
+      held: { reply: { status: 200, raw: `{"id":"gen-${n}",`, contentType: "application/json", hold: true }, billed: true },
+      busy: { reply: { status: 503, body: {} }, billed: false },
+      refused: { reply: { status: 400, body: { error: { message: "bad" } } }, billed: false },
+    };
+  };
+  const DESCRIBES = Object.keys(describeAnswers(0));
+  const SUBMITS = ["accept", "busy", "refused"] as const;
+
+  it("property: whatever the describe, element and generate calls answer, and whether the deadline cuts a send", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.array(fc.constantFrom(...DESCRIBES), { maxLength: 5 }), fc.array(fc.constantFrom(...SUBMITS), { maxLength: 5 }), fc.integer({ min: 1, max: 2 }), async (describeScript, submitScript, images) => {
+        vi.spyOn(Math, "random").mockReturnValue(0);
+        let d = 0;
+        let billed = 0;
+        openrouter.answer(({ path }) => {
+          if (!path.endsWith("/chat/completions")) return undefined;
+          const answer = describeAnswers(d)[describeScript[d] ?? "costed"]!;
+          d++;
+          if (answer.billed) billed++;
+          return answer.reply;
+        });
+        let s = 0;
+        wavespeed.answer(({ method, path }) => {
+          if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
+          const id = path.split("/")[2] ?? "";
+          if (method !== "POST") return id.startsWith("p-el-") ? result(id, "completed", [{ element_id: `el-${id}` }]) : result(id, "completed", ["https://out.example/v.mp4"]);
+          const next = submitScript[s++] ?? "accept";
+          if (next === "accept") {
+            billed++;
+            return accepted(path === "/kwaivgi/kling-elements" ? `p-el-${s}` : `p-gen-${s}`);
+          }
+          return next === "busy" ? { status: 503, body: {} } : { status: 400, body: { message: "bad" } };
+        });
+        const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
+        const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
+        const reached: Cost[] = [];
+        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] });
+        let ended = false;
+        for (let turn = 0; turn < 24 && !ended && (answer.state === "send" || answer.state === "running"); turn++) {
+          const ticket = stored((answer as { ticket: MediaTicket }).ticket);
+          if (answer.state === "running") {
+            answer = await r.poll(ticket, live());
+            continue;
+          }
+          try {
+            answer = await r.send(ticket, { deadlineAt: Date.now() + 600 });
+          } catch (error) {
+            // SendNotAccepted leaves the ticket to send again; any other throw ends the task.
+            reached.push(...costsOf(error));
+            if (!(error instanceof SendNotAccepted)) {
+              reached.push(...r.abandon(ticket).costs);
+              ended = true;
+            }
+          }
+        }
+        openrouter.release();
+        if (!ended) {
+          if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
+          else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+        }
+        expect(reached).toHaveLength(billed);
+      }),
+      { numRuns: 30 },
+    );
   });
 });
