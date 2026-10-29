@@ -85,7 +85,9 @@ export interface LiveConnections {
    */
   find(documentName: string, socketId: string): HeldConnection | undefined;
   /**
-   * Drop one connection; the socket's entry goes when its last one does.
+   * Drop one connection. The socket's entry stays, with its pong listener,
+   * until the socket itself closes: a socket whose last document left can
+   * open another, and that one's seats ride the same listener.
    * @param socketId - The socket.
    * @param documentName - The document whose connection ended.
    * @returns Nothing.
@@ -139,10 +141,7 @@ export function createLiveConnections(
     },
 
     forget(socketId: string, documentName: string): void {
-      const entry = bySocket.get(socketId);
-      if (!entry) return;
-      entry.delete(documentName);
-      if (entry.size === 0) bySocket.delete(socketId);
+      bySocket.get(socketId)?.delete(documentName);
     },
   };
 }

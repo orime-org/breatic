@@ -12,11 +12,18 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { OutgoingMessage } from "@hocuspocus/server";
+
+vi.mock("@breatic/core", () => ({
+  env: { ENV: "test" },
+  createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+}));
 
 import {
   createLiveConnections,
   type HeldConnection,
 } from "@collab/services/live-connections.js";
+import { createPongHandler } from "@collab/services/socket-liveness.js";
 
 /** A recording stand-in for the framework's Connection. */
 function fakeConnection(document: object = {}): HeldConnection & {
@@ -132,5 +139,41 @@ describe("live connections — one listener per socket", () => {
 
     expect(table.find("doc-a", "s-2")).toBeUndefined();
     expect(table.find("doc-b", "s-1")).toBeUndefined();
+  });
+});
+
+describe("live connections — a socket outlives the documents on it (inner#1034)", () => {
+  it("keeps one pong listener when the socket's last document leaves and another arrives, and a lost seat still demotes the newcomer", async () => {
+    // One real socket carries both connections, one after the other.
+    const first = fakeConnection();
+    const second = { ...fakeConnection(), webSocket: first.webSocket };
+    // The registry runs one script per seat at a time: of two refreshes fired
+    // by the same pong, only the first gets the answer.
+    const refreshSeats = vi
+      .fn()
+      .mockResolvedValueOnce([{ documentName: "doc-b", member: "u-1:1:i1:s-1", outcome: "lost" }])
+      .mockResolvedValue([]);
+    const table = createLiveConnections({
+      onPong: createPongHandler({
+        refreshSeats,
+        requestDemote: vi.fn(async () => undefined),
+        presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
+      }),
+    });
+
+    table.remember("s-1", "doc-a", first);
+    table.forget("s-1", "doc-a");
+    table.remember("s-1", "doc-b", second);
+
+    expect(first.listeners.get("pong")?.length).toBe(1);
+
+    fire(first, "pong");
+    for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(refreshSeats).toHaveBeenCalledTimes(1);
+    expect(second.readOnly).toBe(true);
+    expect(second.webSocket.send).toHaveBeenCalledWith(
+      new OutgoingMessage("doc-b").writeAuthenticated(true).toUint8Array(),
+    );
   });
 });
