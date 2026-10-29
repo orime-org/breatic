@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { z } from "zod";
 import { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 
 /** How the caller wants its upstream chosen (design 3.2). */
@@ -43,16 +44,20 @@ export interface PricingRules {
   readonly upstreams: readonly unknown[];
 }
 
-/** One upstream's published contract: WaveSpeed's shape, `base_price` in millionths of a USD. */
-export interface FormulaPricing {
-  kind: "formula";
-  base_price: number;
-  formula: string;
-  discount_rate: number;
-}
+/**
+ * How one call on one upstream is priced: the upstream's published contract, WaveSpeed's
+ * shape, `base_price` in millionths of a USD. The one definition the configuration load and
+ * the browser both check against; an unknown key is refused.
+ */
+export const pricingRuleSchema = z.strictObject({
+  kind: z.literal("formula"),
+  base_price: z.number(),
+  formula: z.string(),
+  discount_rate: z.number(),
+});
 
 /** How one call on one upstream is priced. */
-export type PricingRule = FormulaPricing;
+export type PricingRule = z.infer<typeof pricingRuleSchema>;
 
 /** What the browser needs to price a run on one upstream. */
 export interface UpstreamPricing {
@@ -75,13 +80,8 @@ const SAMPLE_TEXT = "x".repeat(1000);
  * @param value - The value.
  * @returns True for a well-formed rule.
  */
-export function isPricingRule(value: unknown): value is PricingRule {
-  if (typeof value !== "object" || value === null) return false;
-  const rule = value as Record<string, unknown>;
-  return rule.kind === "formula"
-    && typeof rule.base_price === "number" && Number.isFinite(rule.base_price)
-    && typeof rule.formula === "string"
-    && typeof rule.discount_rate === "number" && Number.isFinite(rule.discount_rate);
+function isPricingRule(value: unknown): value is PricingRule {
+  return pricingRuleSchema.safeParse(value).success;
 }
 
 /**

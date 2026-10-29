@@ -189,11 +189,11 @@ module.exports = {
       name: "provider-pricing-browser-safe",
       comment:
         "@breatic/provider/pricing runs in the browser to estimate what web shows " +
-        "before a run (design 2.3, 7.2): src/pricing/ imports only itself and " +
-        "jsonata, so nothing Node-only or heavy reaches the web bundle.",
+        "before a run (design 2.3, 7.2): src/pricing/ imports only itself, " +
+        "jsonata and zod, so nothing Node-only or heavy reaches the web bundle.",
       severity: "error",
       from: { path: "^packages/provider/src/pricing/" },
-      to: { pathNot: "^@provider/pricing/|^packages/provider/src/pricing/|node_modules/jsonata/|^jsonata$" },
+      to: { pathNot: "^@provider/pricing/|^packages/provider/src/pricing/|node_modules/jsonata/|^jsonata$|node_modules/zod/|^zod$" },
     },
     {
       name: "provider-media-worker-only",

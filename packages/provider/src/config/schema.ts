@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
+import { pricingRuleSchema } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -11,14 +12,11 @@ const weights = z.record(z.string(), z.number().int().min(0));
 const weighted = z.strictObject({ upstream: z.string(), weight: z.number().int().min(0) });
 
 /**
- * A pricing rule provider can evaluate (pricing/estimate.ts PricingRule): checked at load, an
- * unknown key refused by name, and kept as `unknown` in the types so a caller's yaml reads in
+ * A pricing rule provider can evaluate, checked against pricing's one schema at load (an
+ * unknown key refused by name) and kept as `unknown` in the types so a caller's yaml reads in
  * as it is; its readers take it as a PricingRule.
  */
-const pricingRule = z
-  .unknown()
-  .pipe(z.strictObject({ kind: z.literal("formula"), base_price: z.number(), formula: z.string(), discount_rate: z.number() }))
-  .transform((rule): unknown => rule);
+const pricingRule = z.unknown().pipe(pricingRuleSchema).transform((rule): unknown => rule);
 
 const upstreamSchema = z.strictObject({
   kind: z.string().min(1),
