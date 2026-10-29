@@ -2260,6 +2260,15 @@ body {
   background-color: transparent;
 }
 
+/* A table a selection runs out of is drawn by its cells
+   (`.doc-table-in-selection`, inner#1619 T14). Under a pull ProseMirror holds
+   off writing the selection to the page, so the native one covers only the
+   words swept so far and grows to every cell on release; the cells draw the
+   same either way (inner#1350 A8). */
+.doc-body .doc-table-in-selection ::selection {
+  background-color: transparent;
+}
+
 @layer components {
   /* QUOTING CHANGES NOTHING IN THE VERTICAL. A block keeps the distance it had
      to the line above it and to the line below it; the rule and the space that

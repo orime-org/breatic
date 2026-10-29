@@ -113,6 +113,10 @@ describe('a table in the body', () => {
     );
   });
 
+  it('draws the words in the cells of a table a selection runs out of by their cells alone, under a pull and after it (inner#1619 T14, inner#1350 A8)', () => {
+    expect(ruleBody(`.doc-body .${IN_SELECTION} ::selection`)).toContain('background-color: transparent');
+  });
+
   it('lets a table whose every column has a stored width grow to the sum of its columns (A12)', () => {
     // The library's own rule pins every table to \`width: auto !important\`,
     // so the width prosemirror-tables writes onto a fully sized table never
