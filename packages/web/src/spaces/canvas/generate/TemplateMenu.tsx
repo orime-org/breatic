@@ -20,14 +20,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-  SUBMENU_SIDE_OFFSET,
 } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { templateServed } from '@web/spaces/canvas/generate/template-writes';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
-
 
 interface TemplateMenuProps {
   /** The panel's node type: it lists only that type's templates. */
@@ -92,7 +90,7 @@ export const TemplateMenu = React.memo(function TemplateMenu({
                 <span className='min-w-0 flex-1 truncate'>{t(`canvas.template.goal.${goal}`)}</span>
                 <span className='text-xs text-muted-foreground'>{templates.length}</span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET} className='w-72'>
+              <DropdownMenuSubContent className='w-72'>
                 {templates.map((template) => {
                   const available = templateServed(template, served);
                   return (

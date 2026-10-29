@@ -22,7 +22,6 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  SUBMENU_SIDE_OFFSET,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -90,7 +89,6 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -327,7 +325,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
@@ -378,7 +375,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
@@ -409,7 +405,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='flex flex-col gap-1'
               >
                 {ALIGN_ITEMS.map((item) => {
@@ -451,7 +446,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='py-2'
               >
                 <DocumentColourPanel

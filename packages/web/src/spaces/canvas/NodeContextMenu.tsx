@@ -33,13 +33,11 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-  SUBMENU_SIDE_OFFSET,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
-
 
 /** One row of the tools submenu. */
 export interface NodeMenuTool {
@@ -387,7 +385,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
                   {t('canvas.nodeMenu.tools')}
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET}>
+                <DropdownMenuSubContent>
                   {tools?.map((tool, index) => {
                     const Icon = MINI_TOOL_ICONS[tool.icon];
                     return (

@@ -232,25 +232,23 @@ export function DropdownMenuSubTrigger({
 }
 
 /**
- * The `sideOffset` that stands a submenu 4px off the menu it opens from.
- * `sideOffset` measures from the trigger row, which sits inside the menu
- * surface's 4px padding and 1px border, so those 5px are added back.
- */
-export const SUBMENU_SIDE_OFFSET = 4 + 5;
-
-/**
- * Submenu surface, capped and scrolling like the menu it opens from.
- * @param props - Radix SubContent props plus `rowsClassName`.
+ * Submenu surface, capped and scrolling like the menu it opens from. It
+ * stands 4px off that menu by default: `sideOffset` measures from the trigger
+ * row, which sits inside the menu surface's 4px padding and 1px border, so
+ * those 5px are added back.
+ * @param props - Radix SubContent props (`sideOffset`, …) plus `rowsClassName`.
  * @returns The submenu panel.
  */
 export function DropdownMenuSubContent({
   className,
   rowsClassName,
   children,
+  sideOffset = 4 + 5,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.SubContent> & MenuSurfaceProps): ReactNode {
   return (
     <DropdownMenuPrimitive.SubContent
+      sideOffset={sideOffset}
       className={cn(
         'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
