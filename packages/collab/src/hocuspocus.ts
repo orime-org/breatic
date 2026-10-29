@@ -40,20 +40,19 @@ import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
-  type SeatClaim,
+  type OwnSeat,
+  type SeatRefreshResult,
 } from "@collab/services/connection-registry.js";
 import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
 import { closeIfSessionEnded } from "@collab/services/session-revocation.js";
-import {
-  shouldRegisterConnection,
-  shouldTrackConnection,
-} from "@collab/services/connection-tracking.js";
+import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import {
   createLiveConnections,
   type HeldConnection,
 } from "@collab/services/live-connections.js";
 import {
   createSeatHandover,
+  demoteConnection,
   type SeatHandover,
 } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
@@ -155,10 +154,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // the transport's pong, replied to by the browser's network stack under
   // RFC 6455. Awareness frames come from a JS timer that a browser throttles
   // to once a minute in a tab hidden for over five minutes.
+  //
+  // A renewal can report that an arrival retried on this pong replaced one of
+  // the person's earlier seats. The demote channel that carries that request
+  // is built below, from this table, so the handler reaches it late.
   const liveConnections = createLiveConnections({
     onPong: createPongHandler({
-      refreshSeats: (socketId: string): Promise<void> =>
+      refreshSeats: (socketId: string): Promise<SeatRefreshResult[]> =>
         connectionRegistry.refreshSocket(socketId),
+      requestDemote: (documentName: string, member: string): Promise<void> =>
+        seatHandover.requestDemote(documentName, member),
       presencePolicy: {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
@@ -166,9 +171,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   });
 
-  // Taking a seat is one ZREM from any instance; demoting the connection it
-  // came from can only be done where that connection lives, so the request
-  // goes out on a channel every instance listens to — including this one.
+  // Replacing a seat happens in Redis, from any instance; demoting the
+  // connection it came from can only be done where that connection lives, so
+  // the request goes out on a channel every instance listens to — including
+  // this one.
   const seatHandover = createSeatHandover({
     channelPrefix: infra.redisKeyPrefix,
     publisher: getCollabRedis(),
@@ -182,8 +188,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
   // Subscribing is part of starting: an instance that silently failed to
   // subscribe would keep taking seats and never demote the connections it
-  // took them from, so those people would hold a seat and a writable
-  // connection at once.
+  // replaced, so those people would hold a seat and a writable connection at
+  // once until that connection's next pong.
   await seatHandover.start();
 
   // Native upgrade admission and document authentication share the
@@ -265,14 +271,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     countConnections: (documentName: string): Promise<number> =>
       connectionRegistry.count(documentName),
 
-    // At capacity, the handshake takes one of the arriving person's own
-    // seats rather than settling for read-only, so nobody is kept out by
-    // themselves. Acting on what it took is the `connected` hook's job.
-    claimSeatFrom: (
-      documentName: string,
-      userId: string,
-    ): Promise<SeatClaim> =>
-      connectionRegistry.claimSeatFrom(documentName, userId),
+    // At capacity, the handshake asks whether the arriving person already
+    // holds a seat rather than settling for read-only, so nobody is kept out
+    // by themselves. Replacing that seat is the `connected` hook's job.
+    hasOwnSeat: (documentName: string, userId: string): Promise<OwnSeat> =>
+      connectionRegistry.hasOwnSeat(documentName, userId),
   });
 
   // Assembled after the server exists, because the gate's final store
@@ -404,7 +407,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
     },
 
-    // Register this connection in the cross-instance registry for the
+    // Take this connection's seat in the cross-instance registry for the
     // per-document cap (#1421). The `connected` hook fires only AFTER
     // Hocuspocus has created the Connection object (and wired its
     // onClose → onDisconnect), so a member registered here is guaranteed
@@ -415,43 +418,57 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // onDisconnect never fires for a connection whose load failed). Meta
     // docs are exempt from the cap → not tracked.
     //
-    // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). `connectionConfig` here
-    // is the very object the auth hook mutated: the framework builds one per
-    // document per connection (ClientConnection.ts:620), spreads that same
-    // `hookPayload` into the onAuthenticate call (:518) and into this
-    // `connected` one (:433). So `readOnly` has already settled by the time
-    // this runs, and reading it needs no second channel through `context`.
+    // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). The auth hook is the one
+    // place that decides whether a connection may write and under which
+    // ceiling; it hands that ceiling over as `seatCap`, null for a
+    // connection that takes no seat. The seat script decides atomically
+    // against that ceiling, so handshakes that all counted "one seat left"
+    // cannot all get it.
     connected: async ({
       documentName,
       socketId,
       context,
       instance,
-      connectionConfig,
       connection,
     }) => {
       const auth = context as AuthContext;
       // Remembering the socket is also what starts listening for its pongs,
       // once, however many documents it carries.
-      const connectedAtMs = liveConnections.remember(
+      liveConnections.remember(
         socketId,
         documentName,
         connection as unknown as HeldConnection,
       );
 
-      if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
-        await connectionRegistry.register(documentName, {
-          socketId,
-          userId: auth.user.id,
-          connectedAtMs,
-        });
-      }
-
-      // The handshake took a seat from one of this person's other
-      // connections. Now that this one exists, whichever instance holds that
-      // other connection is told to demote it — doing that any earlier risks
-      // demoting their other tab for a connection that never arrives.
-      if (auth.handedOverFrom !== null) {
-        await seatHandover.requestDemote(documentName, auth.handedOverFrom);
+      if (auth.seatCap !== null) {
+        const seat = await connectionRegistry.takeSeat(
+          documentName,
+          { socketId, userId: auth.user.id, arrivedAtMs: auth.arrivedAtMs },
+          auth.seatCap,
+        );
+        if (seat.outcome === "replaced") {
+          // One of this person's earlier connections gave up its seat. Now
+          // that this one exists, whichever instance holds that one is told
+          // to demote it.
+          await seatHandover.requestDemote(documentName, seat.replaced);
+        } else if (seat.outcome === "full") {
+          // Lost the race for the last seat: the handshake counted room, and
+          // another arrival's script ran first.
+          demoteConnection(documentName, connection);
+          logger.warn(
+            {
+              userId: auth.user.id,
+              documentName,
+              projectId: parseDocName(documentName)?.projectId,
+              liveCount: seat.liveCount,
+              cap: auth.seatCap,
+              reason: "connection_cap_race_degraded",
+            },
+            "connection_cap_race_degraded",
+          );
+        }
+        // `unknown` keeps writing and retries on the next pong (the registry
+        // logged it); `gone` means the connection left or was demoted first.
       }
 
       // The id comes from what onAuthenticate resolved out of the credential,
@@ -500,13 +517,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // the `connected` hook saw, both being bound to the Connection object's
       // lifecycle. Meta / non-project docs were never tracked.
       //
-      // THIS IS DELIBERATELY WIDER THAN THE REGISTER SIDE (#88). Registration
-      // also asks whether the connection was writable; this one cannot —
-      // `onDisconnectPayload` carries no `connectionConfig` at all. It does
-      // not need to: removing a member that was never added is a no-op, so
-      // unregistering every tracked document is correct and idempotent. The
-      // asymmetry is safe in this direction only, and a test in
-      // `connection-tracking.test.ts` pins that registration stays a subset.
+      // THIS IS DELIBERATELY WIDER THAN THE REGISTER SIDE (#88). A seat is
+      // taken only by a connection the auth hook handed a ceiling, i.e. a
+      // writable one; this side cannot ask — `onDisconnectPayload` carries no
+      // `connectionConfig` at all. It does not need to: removing a member
+      // that was never added is a no-op, so unregistering every tracked
+      // document is correct and idempotent. The asymmetry is safe in this
+      // direction only, and a test in `auth.test.ts` pins that a ceiling is
+      // only ever handed to a document this side releases.
       // The socket outlives any one document on it: closing a Space tab ends
       // that document's connection while the project stays open. Dropping it
       // here is what keeps this instance from answering a later demote with a

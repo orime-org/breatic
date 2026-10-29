@@ -49,7 +49,7 @@ type PresenceDoc = Parameters<typeof markOnline>[0]["document"];
  * `@param` line per level — eight of them across this file, all saying the
  * same thing.
  *
- * Not the auth hook's own `AuthContext`, which also carries `handedOverFrom`
+ * Not the auth hook's own `AuthContext`, which also carries `seatCap`
  * and is what that hook RESOLVES. This is what a later hook finds attached.
  */
 interface PresenceContext {

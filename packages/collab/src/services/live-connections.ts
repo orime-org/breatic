@@ -16,11 +16,6 @@
  *   A demote request names a document and a socket, and arrives from whatever
  *   instance ran that handshake. Answering it means asking whether this
  *   process is the one holding that connection.
- *
- * The moment a socket was first seen is kept here too. It is what tells one
- * of a person's connections from another when the handshake picks which seat
- * to take, and it belongs to the socket rather than to any one document on
- * it: every document on a socket arrived on the same connection.
  */
 
 import type * as Y from "yjs";
@@ -65,8 +60,6 @@ export interface LiveConnectionsOptions {
     socketId: string,
     connections: ReadonlyMap<string, HeldConnection>,
   ) => void;
-  /** Clock, injectable for tests (default `Date.now`). */
-  now?: () => number;
 }
 
 /** This instance's connections, indexed by socket (see module doc). */
@@ -77,13 +70,13 @@ export interface LiveConnections {
    * @param socketId - The socket carrying it.
    * @param documentName - The document this connection is for.
    * @param connection - The connection itself.
-   * @returns The moment this socket was first seen, in epoch ms.
+   * @returns Nothing.
    */
   remember(
     socketId: string,
     documentName: string,
     connection: HeldConnection,
-  ): number;
+  ): void;
   /**
    * The connection this instance holds for that document on that socket.
    * @param documentName - The document.
@@ -108,27 +101,19 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong, now = Date.now } = options;
+  const { onPong } = options;
 
-  interface SocketEntry {
-    connectedAtMs: number;
-    connections: Map<string, HeldConnection>;
-  }
-
-  const bySocket = new Map<string, SocketEntry>();
+  const bySocket = new Map<string, Map<string, HeldConnection>>();
 
   return {
     remember(
       socketId: string,
       documentName: string,
       connection: HeldConnection,
-    ): number {
+    ): void {
       let entry = bySocket.get(socketId);
       if (!entry) {
-        const held: SocketEntry = {
-          connectedAtMs: now(),
-          connections: new Map(),
-        };
+        const held = new Map<string, HeldConnection>();
         entry = held;
         bySocket.set(socketId, held);
         // The socket's own pong. crossws swallows it before dispatching its
@@ -139,26 +124,25 @@ export function createLiveConnections(
          * Refresh what this socket holds, because it just answered a ping.
          * @returns Nothing.
          */
-        const pong = (): void => onPong(socketId, held.connections);
+        const pong = (): void => onPong(socketId, held);
         connection.webSocket.on("pong", pong);
         connection.webSocket.once("close", () => {
           connection.webSocket.off?.("pong", pong);
           bySocket.delete(socketId);
         });
       }
-      entry.connections.set(documentName, connection);
-      return entry.connectedAtMs;
+      entry.set(documentName, connection);
     },
 
     find(documentName: string, socketId: string): HeldConnection | undefined {
-      return bySocket.get(socketId)?.connections.get(documentName);
+      return bySocket.get(socketId)?.get(documentName);
     },
 
     forget(socketId: string, documentName: string): void {
       const entry = bySocket.get(socketId);
       if (!entry) return;
-      entry.connections.delete(documentName);
-      if (entry.connections.size === 0) bySocket.delete(socketId);
+      entry.delete(documentName);
+      if (entry.size === 0) bySocket.delete(socketId);
     },
   };
 }
