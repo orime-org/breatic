@@ -671,7 +671,7 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
     expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
     expect(warnFields("connection_cap_race_degraded")).toEqual(
-      expect.objectContaining({ userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2 }),
+      expect.objectContaining({ socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2 }),
     );
     expect(warnFields("connection_cap_degraded")).toBeUndefined();
     expect(collabRedisStub.publish).not.toHaveBeenCalled();
@@ -821,19 +821,23 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     });
 
     it("E-P08 makes the connection read-only when its retried arrival found the document full", async () => {
-      const connection = await pongAnswering({ outcome: "full", liveCount: 2 });
+      const connection = await pongAnswering({ outcome: "full", liveCount: 2, cap: 2 });
       expect(connection.readOnly).toBe(true);
       expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
       expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
-      expect(warnFields("connection_cap_race_degraded")).toBeDefined();
+      expect(warnFields("connection_cap_race_degraded")).toEqual({
+        socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2, reason: "connection_cap_race_degraded",
+      });
     });
 
     it("E-P09 makes the connection read-only when its seat was lost", async () => {
-      const connection = await pongAnswering({ outcome: "lost" });
+      const connection = await pongAnswering({ outcome: "lost", liveCount: 2, cap: 2 });
       expect(connection.readOnly).toBe(true);
       expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
       expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
-      expect(warnFields("connection_seat_lost")).toBeDefined();
+      expect(warnFields("connection_seat_lost")).toEqual({
+        socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2, reason: "connection_seat_lost",
+      });
     });
   });
 

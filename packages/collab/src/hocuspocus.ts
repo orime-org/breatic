@@ -52,7 +52,7 @@ import {
 } from "@collab/services/live-connections.js";
 import {
   createSeatHandover,
-  demoteConnection,
+  demoteForSeat,
   type SeatHandover,
 } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
@@ -479,18 +479,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         } else if (seat.outcome === "full") {
           // Lost the race for the last seat: the handshake counted room, and
           // another arrival's script ran first.
-          demoteConnection(documentName, connection);
-          logger.warn(
-            {
-              userId: auth.user.id,
-              documentName,
-              projectId: parseDocName(documentName)?.projectId,
-              liveCount: seat.liveCount,
-              cap: auth.seatCap,
-              reason: "connection_cap_race_degraded",
-            },
-            "connection_cap_race_degraded",
-          );
+          demoteForSeat(connection, {
+            reason: "connection_cap_race_degraded",
+            socketId,
+            userId: auth.user.id,
+            documentName,
+            liveCount: seat.liveCount,
+            cap: auth.seatCap,
+          });
         }
         // `unknown` keeps writing and retries on the next pong (the registry
         // logged it); `gone` means the connection left or was demoted first.

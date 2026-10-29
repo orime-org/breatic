@@ -31,7 +31,7 @@ import {
 } from "@collab/hooks/presence-wiring.js";
 import type { SeatRefreshResult } from "@collab/services/connection-registry.js";
 import {
-  demoteConnection,
+  demoteForSeat,
   type DemotableConnection,
 } from "@collab/services/seat-handover.js";
 
@@ -87,19 +87,14 @@ export function createPongHandler(
       // Closed in the meantime: `unregister` has the seat.
       const connection = connections.get(documentName);
       if (!connection) continue;
-      demoteConnection(documentName, connection);
-      const userId = connection.context?.user?.id;
-      if (answer.outcome === "full") {
-        logger.warn(
-          { socketId, userId, documentName, liveCount: answer.liveCount, reason: "connection_cap_race_degraded" },
-          "connection_cap_race_degraded",
-        );
-      } else {
-        logger.warn(
-          { socketId, userId, documentName, reason: "connection_seat_lost" },
-          "connection_seat_lost",
-        );
-      }
+      demoteForSeat(connection, {
+        reason: answer.outcome === "full" ? "connection_cap_race_degraded" : "connection_seat_lost",
+        socketId,
+        userId: connection.context?.user?.id,
+        documentName,
+        liveCount: answer.liveCount,
+        cap: answer.cap,
+      });
     }
   }
 

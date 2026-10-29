@@ -205,13 +205,16 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
     const c1 = contentConn();
     const c2 = contentConn();
     const { requestDemote } = await pongWith(
-      [{ documentName: D1, member: M, outcome: "full", liveCount: 2 }],
+      [{ documentName: D1, member: M, outcome: "full", liveCount: 2, cap: 2 }],
       new Map([[D1, c1], [D2, c2]]),
     );
     expect(c1.readOnly).toBe(true);
     expect(c1.webSocket.send).toHaveBeenCalledTimes(1);
     expect(c1.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(D1));
-    expect(warnedWith("connection_cap_race_degraded", { documentName: D1 })).toBe(true);
+    expect(logWarn).toHaveBeenCalledWith(
+      { socketId: "sock-1", userId: ALICE, documentName: D1, projectId: PID, liveCount: 2, cap: 2, reason: "connection_cap_race_degraded" },
+      "connection_cap_race_degraded",
+    );
     expect(c2.readOnly).toBe(false);
     expect(c2.webSocket.send).not.toHaveBeenCalled();
     expect(requestDemote).not.toHaveBeenCalled();
@@ -219,11 +222,14 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P03 demotes the connection that lost its seat and says so in the log", async () => {
     const c1 = contentConn();
-    await pongWith([{ documentName: D1, member: M, outcome: "lost" }], new Map([[D1, c1]]));
+    await pongWith([{ documentName: D1, member: M, outcome: "lost", liveCount: 3, cap: 3 }], new Map([[D1, c1]]));
     expect(c1.readOnly).toBe(true);
     expect(c1.webSocket.send).toHaveBeenCalledTimes(1);
     expect(c1.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(D1));
-    expect(warnedWith("connection_seat_lost", { socketId: "sock-1", documentName: D1 })).toBe(true);
+    expect(logWarn).toHaveBeenCalledWith(
+      { socketId: "sock-1", userId: ALICE, documentName: D1, projectId: PID, liveCount: 3, cap: 3, reason: "connection_seat_lost" },
+      "connection_seat_lost",
+    );
   });
 
   it("E-P04 handles each answer on its own document and still refreshes presence", async () => {
@@ -234,8 +240,8 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
     const { requestDemote } = await pongWith(
       [
         { documentName: D1, member: M, outcome: "replaced", replaced: X },
-        { documentName: D2, member: "u-alice:5000:i1:sock-1", outcome: "full", liveCount: 2 },
-        { documentName: D3, member: "u-alice:5000:i1:sock-1", outcome: "lost" },
+        { documentName: D2, member: "u-alice:5000:i1:sock-1", outcome: "full", liveCount: 2, cap: 2 },
+        { documentName: D3, member: "u-alice:5000:i1:sock-1", outcome: "lost", liveCount: 2, cap: 2 },
       ],
       new Map<string, unknown>([
         [META_DOC, { context: { user: { id: ALICE } }, document: meta }],
@@ -267,7 +273,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P06 skips an answer for a document this socket no longer carries", async () => {
     const c2 = contentConn();
-    await pongWith([{ documentName: D1, member: M, outcome: "full", liveCount: 2 }], new Map([[D2, c2]]));
+    await pongWith([{ documentName: D1, member: M, outcome: "full", liveCount: 2, cap: 2 }], new Map([[D2, c2]]));
     expect(c2.readOnly).toBe(false);
     expect(c2.webSocket.send).not.toHaveBeenCalled();
   });

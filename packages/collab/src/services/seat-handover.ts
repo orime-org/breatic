@@ -13,6 +13,9 @@
  *   seat lost     a pong found the seat gone and the document full (or a
  *                 retried arrival found it full)
  *
+ * The last two also share their log line, through {@link demoteForSeat}, so
+ * one tag carries the same fields wherever it is written.
+ *
  * Demoting is two parts, each with its own way of going wrong if skipped:
  *
  *   set `connection.readOnly`       or the connection goes on writing
@@ -41,6 +44,7 @@
  */
 
 import { createLogger, type Redis } from "@breatic/core";
+import { parseDocName } from "@breatic/shared";
 import { OutgoingMessage } from "@hocuspocus/server";
 
 import { parseSeatMember } from "@collab/services/connection-registry.js";
@@ -79,6 +83,52 @@ export function demoteConnection(
   connection.readOnly = true;
   connection.webSocket.send(
     new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array(),
+  );
+}
+
+/** A demote for a seat this connection could not hold, as it is logged. */
+export interface SeatDegrade {
+  /**
+   * `connection_cap_race_degraded`: an arrival (in `connected`, or retried on
+   * a pong) found the document full. `connection_seat_lost`: a pong found the
+   * seat gone and the document full.
+   */
+  reason: "connection_cap_race_degraded" | "connection_seat_lost";
+  /** The socket the connection rides. */
+  socketId: string;
+  /** Whose connection it is. */
+  userId: string | undefined;
+  /** The document. */
+  documentName: string;
+  /** How many seats the script counted. */
+  liveCount: number;
+  /** The ceiling the handshake judged this connection by. */
+  cap: number;
+}
+
+/**
+ * Demote a connection that could not hold a seat, and log why with the same
+ * fields wherever it happened.
+ * @param connection - The connection.
+ * @param degrade - Why, and the facts the log line carries.
+ */
+export function demoteForSeat(
+  connection: DemotableConnection,
+  degrade: SeatDegrade,
+): void {
+  const { reason, socketId, userId, documentName, liveCount, cap } = degrade;
+  demoteConnection(documentName, connection);
+  logger.warn(
+    {
+      socketId,
+      userId,
+      documentName,
+      projectId: parseDocName(documentName)?.projectId,
+      liveCount,
+      cap,
+      reason,
+    },
+    reason,
   );
 }
 

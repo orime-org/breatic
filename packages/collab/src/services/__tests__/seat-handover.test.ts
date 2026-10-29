@@ -33,6 +33,7 @@ vi.mock("@breatic/core", () => ({
 import {
   createSeatHandover,
   demoteConnection,
+  demoteForSeat,
   type DemotableConnection,
   type SeatHandoverDeps,
 } from "@collab/services/seat-handover.js";
@@ -139,6 +140,39 @@ describe("demoting one connection (the shared function)", () => {
     expect(connection.readOnly).toBe(true);
     expect(connection.sent).toEqual([]);
   });
+});
+
+describe("demoting for a seat, with the one log line both callers write", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const CONTENT_DOC = `project-${PID}/canvas-22222222-2222-4222-9222-222222222222`;
+
+  it.each(["connection_cap_race_degraded", "connection_seat_lost"] as const)(
+    "demotes and logs %s with the same fields",
+    (reason) => {
+      demoteForSeat(connection, {
+        reason,
+        socketId: "sock-1",
+        userId: "user-a",
+        documentName: CONTENT_DOC,
+        liveCount: 2,
+        cap: 2,
+      });
+      expect(connection.readOnly).toBe(true);
+      expect(connection.sent).toEqual([new OutgoingMessage(CONTENT_DOC).writeAuthenticated(true).toUint8Array()]);
+      expect(logWarn).toHaveBeenCalledExactlyOnceWith(
+        {
+          socketId: "sock-1",
+          userId: "user-a",
+          documentName: CONTENT_DOC,
+          projectId: PID,
+          liveCount: 2,
+          cap: 2,
+          reason,
+        },
+        reason,
+      );
+    },
+  );
 });
 
 describe("seat handover — carrying out a demote", () => {

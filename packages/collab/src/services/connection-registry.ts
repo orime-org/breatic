@@ -226,10 +226,10 @@ export type TakeSeatResult =
 export type SeatRefreshResult =
   /** A retried arrival took one of this person's earlier seats. */
   | { documentName: string; member: string; outcome: "replaced"; replaced: string }
-  /** A retried arrival found the document full. */
-  | { documentName: string; member: string; outcome: "full"; liveCount: number }
-  /** A held seat was gone and the document full. */
-  | { documentName: string; member: string; outcome: "lost" };
+  /** A retried arrival found `liveCount` seats taken under its `cap`. */
+  | { documentName: string; member: string; outcome: "full"; liveCount: number; cap: number }
+  /** A held seat was gone and `liveCount` seats taken under its `cap`. */
+  | { documentName: string; member: string; outcome: "lost"; liveCount: number; cap: number };
 
 /** Whether a person holds a seat; `unknown` when Redis could not answer. */
 export type OwnSeat = "yes" | "no" | "unknown";
@@ -548,16 +548,15 @@ export function createConnectionRegistry(
       if (entry.inFlight) continue;
       entry.inFlight = true;
       const mode: ScriptMode = entry.state === "arriving" ? "arrive" : "refresh";
-      const { member } = entry;
+      const { member, cap } = entry;
       pending.push(
         run(socketId, documentName, entry, mode).then((applied): SeatRefreshResult | null => {
           if (applied.kind === "replaced") {
             return { documentName, member, outcome: "replaced", replaced: applied.replaced };
           }
           if (applied.kind !== "full") return null;
-          return mode === "arrive"
-            ? { documentName, member, outcome: "full", liveCount: applied.liveCount }
-            : { documentName, member, outcome: "lost" };
+          const outcome = mode === "arrive" ? "full" : "lost";
+          return { documentName, member, outcome, liveCount: applied.liveCount, cap };
         }),
       );
     }
