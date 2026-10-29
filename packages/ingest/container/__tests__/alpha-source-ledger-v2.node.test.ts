@@ -41,6 +41,8 @@ vi.mock('@ingest/container/plan-command.js', async (original) => ({ ...await ori
 vi.mock('@ingest/container/mini-tool-run.js', async (original) => ({ ...await original<Record<string, unknown>>(), download, put, cpuUsec }));
 
 const NOW = Date.parse('2026-10-29T00:00:00Z');
+// Captured before beforeEach spies the export, so a wrapper can call the real assembler.
+const realAssemble = assemblyOwner.assembleVideoSourceLedgerV2;
 // Six budgets; no frame-count ceiling (design §2 "覆盖全部上传").
 const CAPS = { maxBytes: 1000000, probeStdoutBytes: 234567, metadataBytes: 16384, isoBoxCount: 128, matroskaElementCount: 256, matroskaMaxBlocks: 32 };
 const JOB = { jobId: 'producer', sourceFingerprint: 'a'.repeat(64), deadlineAt: NOW + 7200000, token: 'accepted-original-token',
@@ -277,8 +279,7 @@ describe('source ledger v2 producer ordering and output (inner#1306 §77)', () =
 
   it('V10 starts no ledger PUT when the deadline passes during assembly', async () => {
     const body = job();
-    const real = assemblyOwner.assembleVideoSourceLedgerV2;
-    vi.mocked(assemblyOwner.assembleVideoSourceLedgerV2).mockImplementation((input) => { const value = real(input); now = body.deadlineAt; return value; });
+    vi.mocked(assemblyOwner.assembleVideoSourceLedgerV2).mockImplementation((input) => { const value = realAssemble(input); now = body.deadlineAt; return value; });
     await runAlphaPresentation(body);
     expect(assemblyOwner.assembleVideoSourceLedgerV2).toHaveBeenCalledTimes(1);
     expect(uploads.filter((entry) => new URL(entry.url).hostname === 'source-ledger.local')).toEqual([]);
