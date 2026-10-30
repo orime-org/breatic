@@ -164,7 +164,7 @@ export async function listObjects(operationId: string, tx?: DbTx): Promise<Maint
 }
 
 /**
- * Update lease/registration stop or latest result under its key lock.
+ * Update lease, registration stop or latest fields in the caller's transaction.
  * @param id - Immutable object UUID.
  * @param value - Mutable fields.
  * @param tx - Caller transaction.

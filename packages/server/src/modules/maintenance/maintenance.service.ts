@@ -25,7 +25,7 @@ let taskQueue: ReturnType<typeof createQueue> | null = null;
 /**
  * Read all physical BullMQ categories independently, including paused and prioritized.
  * @returns Fresh queue counts and the actual job failure retention.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On queue or configuration infrastructure failure.
  */
 export async function queue(): Promise<MaintenanceAnswer<unknown>> {
   taskQueue ??= createQueue("tasks");
@@ -58,7 +58,7 @@ function state(op: repo.MaintenanceOperation): MaintenanceState {
  * @param pageSize - Validated page size.
  * @param cursor - Optional immutable UUID cursor.
  * @returns Bounded candidate page.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On candidate or approval lookup infrastructure failure.
  */
 export async function candidates(pageSize: number, cursor?: string): Promise<MaintenanceAnswer<unknown>> {
   const rows = await storageReclaimRepo.listCandidates(pageSize + 1, cursor);
@@ -82,7 +82,7 @@ export async function candidates(pageSize: number, cursor?: string): Promise<Mai
  * @param ids - Validated distinct candidate UUIDs.
  * @param requestedBy - Signed actor.
  * @returns Eligible and explicitly deferred candidates with a durable preview identity.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On qualification, storage or preview persistence infrastructure failure.
  */
 export async function preview(ids: string[], requestedBy: string): Promise<MaintenanceAnswer<unknown>> {
   const rows = await storageReclaimRepo.findCandidates(ids);
@@ -266,7 +266,7 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
  * @param runsPageSize - Bounded history page size.
  * @param runsCursor - Optional cursor belonging to this operation.
  * @returns Complete view or a successful not-found observation.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On operation or execution-history lookup infrastructure failure.
  */
 export async function operation(key: string, runsPageSize = 20, runsCursor?: string): Promise<MaintenanceAnswer<ReclaimOperationView>> {
   const op = await repo.findOperation(key);
@@ -383,7 +383,7 @@ export async function control(input: MaintenanceControlRequest): Promise<Mainten
  * Look up a control receipt while separately reading the latest owner switch.
  * @param key - Independent control key.
  * @returns Receipt and latest switch, or successful not-found observation.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On control or maintenance-state lookup infrastructure failure.
  */
 export async function controlResult(key: string): Promise<MaintenanceAnswer<unknown>> {
   const saved = await repo.findControl(key);

@@ -67,7 +67,7 @@ async function claim(op: repo.MaintenanceOperation, deps: MaintenanceDependencie
 }
 
 /**
- * Store an attempt only while its lease version remains current.
+ * Archive the attempt and update current facts only for the current lease version.
  * @param claimValue - Lease holder.
  * @param result - Attempt outcome.
  * @param observed - New authoritative physical fact, if any.
@@ -130,7 +130,7 @@ function unknownDelete(error: unknown): boolean {
  * Execute direct HEAD/DELETE under product admission, outside SQL transactions.
  * @param c - Exact current claim.
  * @param deps - Physical operations and deterministic clock.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On an infrastructure failure that prevents durable progress or result persistence.
  */
 async function execute(c: Claim, deps: MaintenanceDependencies): Promise<void> {
   let observed: "missing" | "present" | null = null;
@@ -265,7 +265,7 @@ async function execute(c: Claim, deps: MaintenanceDependencies): Promise<void> {
  * @param dependencies - Explicit integration fixture or production runtime.
  * @param isStopped - Prevent new claims once the server begins draining.
  * @returns Once at most batchSize claims have settled.
- * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ * @throws {Error} On an infrastructure failure that prevents durable progress or result persistence.
  */
 export async function runMaintenanceLoopOnce(dependencies?: MaintenanceDependencies,isStopped:()=>boolean=()=>false): Promise<void> {
   if (!dependencies && !maintenanceAvailability().available)

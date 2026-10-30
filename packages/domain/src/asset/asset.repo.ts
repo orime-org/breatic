@@ -408,7 +408,7 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
 }
 
 /**
- * Read any global live reference to an exact key under the shared key lock.
+ * Read any global live reference to an exact key using the caller's optional transaction.
  * @param key - Exact candidate key.
  * @param tx - Optional caller transaction.
  * @returns Whether any studio currently references this key.
