@@ -98,8 +98,8 @@ export const documentChordsExtension = createExtension(() => ({
       const info = getBlockInfoFromSelection(
         (editor as unknown as { prosemirrorState: unknown }).prosemirrorState as never,
       );
-      if (!info.isBlockContainer) return undefined;
-      const update = updateFor(info.blockContent.node, row, false);
+      if (!info.hasContent) return undefined;
+      const update = updateFor(info.content.node, row, false);
       // What the writer typed between the ticks, for the one row that takes
       // a value from the pattern.
       const typed =

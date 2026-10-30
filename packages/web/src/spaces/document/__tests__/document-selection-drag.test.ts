@@ -28,6 +28,7 @@ import { endTableDrag, startTableDrag } from '@web/spaces/document/document-tabl
 import { renderCollabCaret, renderCollabSelection } from '@web/features/collab-editor/caret-render';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
+import { tableBlock, type CellInput, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -123,7 +124,7 @@ function blockTexts(content: HTMLElement): string[] {
 function selectCells(editor: Editor, anchor: string, head: string): void {
   const view = editor.prosemirrorView!;
   const doc = view.state.doc;
-  view.dispatch(view.state.tr.setSelection(CellSelection.create(doc, nodeOf(editor, 'tableCell', anchor), nodeOf(editor, 'tableCell', head))));
+  view.dispatch(view.state.tr.setSelection(CellSelection.create(doc, nodeOf(editor, 'docTableCell', anchor), nodeOf(editor, 'docTableCell', head))));
 }
 
 /**
@@ -147,8 +148,8 @@ function rowsOf(content: HTMLElement): string[][] {
  * @param rows - The rows.
  * @returns The block.
  */
-function table(rows: unknown[]): unknown {
-  return { type: 'table', content: { type: 'tableContent', rows } };
+function table(rows: TableInput['rows']): unknown {
+  return tableBlock({ rows });
 }
 
 /**
@@ -157,8 +158,8 @@ function table(rows: unknown[]): unknown {
  * @param props - Its spans.
  * @returns The cell.
  */
-function merged(content: string, props: { rowspan?: number; colspan?: number }): unknown {
-  return { type: 'tableCell', content, props };
+function merged(content: string, props: { rowspan?: number; colspan?: number }): CellInput {
+  return { type: 'docTableCell', content, props };
 }
 
 /**
@@ -197,7 +198,7 @@ describe('which drag gets the selection preview (design §4, in this order)', ()
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     const view = editor.prosemirrorView!;
     selectText(editor, ['a1', 0], ['a1', 2]);
-    startTableDrag(view, 'row', nodeOf(editor, 'tableCell', 'a1'));
+    startTableDrag(view, 'row', nodeOf(editor, 'docTableCell', 'a1'));
     expect(selectionDragKind(view, { target: view.dom }, textPos(editor, 'a1') + 1)).toBe(null);
     endTableDrag(view);
   });
@@ -290,14 +291,13 @@ describe('the blocks a selection preview draws', () => {
     expect(content.textContent).toContain('nested');
   });
 
-  it('a few words in a table cell: the table block, in the frame it scrolls in', () => {
+  it('a few words in a table cell: the block they are in, the cell read as a body of its own', () => {
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     selectText(editor, ['a1', 0], ['a1', 2]);
     const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
     const content = contentPlaced.content;
-    const block = content.querySelector('[data-content-type="table"]')!;
-    expect(block.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
-    expect(rowsOf(content)).toEqual([['a1:1x1', 'b1:1x1'], ['a2:1x1', 'b2:1x1']]);
+    expect(content.querySelector('table')).toBeNull();
+    expect(blockTexts(content)).toEqual(['a1']);
   });
 });
 
@@ -636,7 +636,7 @@ describe('a preview draws the content, not what the body shows for the moment (C
       { type: 'paragraph', content: 'a', children: [{ ...(table([{ cells: ['x1', 'y1'] }]) as object), props: { quoted: true } }] },
     ]);
     const view = editor.prosemirrorView!;
-    const contentPlaced = tableLinePreviewContent(view, nodeOf(editor, 'tableCell', 'x1'), 'row')!;
+    const contentPlaced = tableLinePreviewContent(view, nodeOf(editor, 'docTableCell', 'x1'), 'row')!;
     const content = contentPlaced.content;
     expect(quoteDepths(content)).toEqual(['0']);
   });

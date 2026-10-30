@@ -16,6 +16,8 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
+import { insertRow } from '@web/spaces/document/document-table-run';
+import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -32,13 +34,13 @@ afterEach(() => {
  * @param columnWidths - The widths stored for its columns, if any.
  * @returns The editor.
  */
-function open(rows: unknown[], columnWidths?: (number | undefined)[]): Editor {
+function open(rows: TableInput['rows'], columnWidths?: (number | undefined)[]): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
   editor.mount(host);
   mounted.push(editor);
-  editor.replaceBlocks(editor.document, [{ type: 'table', content: { type: 'tableContent', rows, columnWidths } }] as never);
+  editor.replaceBlocks(editor.document, [tableBlock({ rows, columnWidths })] as never);
   return editor;
 }
 
@@ -50,7 +52,7 @@ function open(rows: unknown[], columnWidths?: (number | undefined)[]): Editor {
 function tableOf(doc: PMNode): number {
   let at = -1;
   doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'table') at = pos;
+    if (at < 0 && node.type.name === 'docTable') at = pos;
     return at < 0;
   });
   return at;
@@ -96,7 +98,7 @@ describe('holding a table\'s column widths before a column is dragged (A12)', ()
 
   it('gives a cell spanning two columns the width of each', () => {
     const editor = open([
-      { cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }] },
+      { cells: [{ type: 'docTableCell', content: 'ab', props: { colspan: 2 } }] },
       { cells: ['a2', 'b2'] },
     ]);
     const state = editor.prosemirrorState;
@@ -110,5 +112,19 @@ describe('holding a table\'s column widths before a column is dragged (A12)', ()
     const state = editor.prosemirrorState;
 
     expect(holdColumnWidths(state.tr, tableOf(state.doc), [100]).docChanged).toBe(false);
+  });
+});
+
+describe('a row added to a table with set column widths', () => {
+  it('takes the width of each column', () => {
+    const editor = open([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }], [140, 300]);
+
+    insertRow(editor as never, tableOf(editor.prosemirrorState.doc) + 2, 'below');
+
+    expect(widths(editor.prosemirrorState.doc)).toEqual([
+      [[140], [300]],
+      [[140], [300]],
+      [[140], [300]],
+    ]);
   });
 });

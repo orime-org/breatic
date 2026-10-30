@@ -13,6 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 /** One top-level block as the Agent is sent it. */
 export interface ReadBlock {
@@ -28,10 +29,12 @@ export interface ReadBlock {
 
 /**
  * Block attributes Markdown writes out; any other one set off its default is
- * lost by a Markdown rewrite. A merged cell's span is lost too: the export
- * splits it into the cell and empty cells beside it.
+ * lost by a Markdown rewrite. A merged cell's spans are written for a table
+ * whose cells hold blocks: one with a span is written as an HTML table
+ * (`document-table-markdown.ts`). A stored table goes through BlockNote's
+ * export, which splits a merged cell into the cell and empty cells beside it.
  */
-const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption']);
+const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
 
 /** Marks Markdown writes out. */
 const CARRIED_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link']);
@@ -42,7 +45,7 @@ const STAND_INS = new Set(['unsupportedBlock', 'unsupportedInline']);
 /**
  * The words of a block and everything under it -- list items nested in it,
  * every cell of a table -- one paragraph or cell per line.
- * @param node - The block's `blockContainer`.
+ * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns The plain text.
  */
 export function blockPlainText(node: ProseMirrorNode): string {
@@ -63,16 +66,25 @@ function attrSet(node: ProseMirrorNode, key: string): boolean {
 /**
  * Whether a block holds a colour, an alignment, a width, a comment or any
  * other thing a Markdown rewrite would drop.
- * @param node - The block's `blockContainer`.
+ * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns True when it does.
  */
 function lossyBlock(node: ProseMirrorNode): boolean {
-  let lossy = false;
+  /**
+   * Whether one node holds something Markdown drops.
+   * @param child - The node.
+   * @returns True when it does.
+   */
+  const drops = (child: ProseMirrorNode): boolean =>
+    STAND_INS.has(child.type.name) ||
+    Object.keys(child.attrs).some((key) => !CARRIED_ATTRS.has(key) && attrSet(child, key)) ||
+    child.marks.some((mark: Mark) => !CARRIED_MARKS.has(mark.type.name));
+  // The node itself too: a table is a top-level node of its own, its colour
+  // and quote on it (inner#1619).
+  let lossy = drops(node);
   node.descendants((child) => {
     if (lossy) return false;
-    const attrDropped = Object.keys(child.attrs).some((key) => !CARRIED_ATTRS.has(key) && attrSet(child, key));
-    const markDropped = child.marks.some((mark: Mark) => !CARRIED_MARKS.has(mark.type.name));
-    lossy = STAND_INS.has(child.type.name) || attrDropped || markDropped;
+    lossy = drops(child);
     return !lossy;
   });
   return lossy;
@@ -93,7 +105,7 @@ export function readTopBlocks(editor: BlockNoteEditor<never, never, never>): Rea
     const start = typeof block.props.start === 'number' ? block.props.start : 1;
     listNumber = block.type !== 'numberedListItem' ? 0 : listNumber === 0 ? start : listNumber + 1;
     const shown = listNumber > 1 ? { ...block, props: { ...block.props, start: listNumber } } : block;
-    const markdown = editor.blocksToMarkdownLossy([shown as never]).trim();
+    const markdown = blocksMarkdown(editor, [shown]);
     const node = nodes.get(block.id);
     if (markdown === '' || node === undefined) continue;
     out.push({ id: block.id, type: block.type, markdown, text: blockPlainText(node), lossy: lossyBlock(node) });

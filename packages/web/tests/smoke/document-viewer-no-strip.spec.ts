@@ -33,14 +33,20 @@
  * could pass with the second account holding some other role whose connection
  * happened to be read-only, and the word "viewer" in its name would be false.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, type Page, type BrowserContext } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
 import { blankPoint, openCommentRail } from '../helpers/document-body';
+import { resizeDocumentColumn } from '../helpers/document-table-geometry';
+import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
+import { roomForUploads } from '../helpers/upload-budget';
 
 /**
  * The second account's address, which is who the invite names. Read while a
@@ -390,6 +396,128 @@ async function setTheRole(page: Page, role: 'Editor' | 'Viewer'): Promise<void> 
   await expect(page.getByTestId(`members-modal-role-${memberId}`)).toHaveText(role);
   await closeTheRoster(modal);
 }
+
+/**
+ * Opens a narrow video's caption through its keyboard controls.
+ * @param page - The editor or owner page holding the video.
+ * @returns The caption input after the panel hands it focus.
+ */
+async function openVideoCaption(page: Page): Promise<ReturnType<Page['getByTestId']>> {
+  const trigger = visibleSpace(page).getByTestId('doc-media-video-trigger');
+  await expect(trigger).toBeVisible();
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const panel = page.getByTestId('doc-media-video-panel');
+  await expect(panel).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(panel.getByTestId('doc-media-caption-button')).toBeFocused();
+  await page.keyboard.press('Enter');
+  const input = visibleSpace(page).getByTestId('doc-media-caption-input');
+  await expect(input).toBeFocused();
+  await expect(panel).toHaveCount(0);
+  return input;
+}
+
+test('a video caption draft survives a live role change and remote edits, deletion and undo @needs-ingest @needs-storage', async () => {
+  const errors: string[] = [];
+  for (const page of [owner, viewer]) page.on('pageerror', (error) => errors.push(error.message));
+  const ownerSpace = visibleSpace(owner);
+  const viewerSpace = visibleSpace(viewer);
+  await openTheSpace(owner);
+  const target = owner.locator(`${EDITOR} td`).last();
+  await target.click();
+  await roomForUploads(1);
+  await target.evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(atob(base64), (letter) => letter.charCodeAt(0))], 'draft-video.mp4', { type: 'video/mp4' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')).toString('base64'));
+  await expect(target.locator('video')).toBeVisible({ timeout: 60_000 });
+  await owner.locator(`${EDITOR} p`).first().click();
+  await resizeDocumentColumn(owner, target, 80);
+
+  await openTheSpace(viewer);
+  await expect(viewerSpace.getByTestId('doc-media-video-trigger')).toBeVisible();
+  await viewerSpace.getByTestId('doc-media-video-trigger').focus();
+  await viewer.keyboard.press('Enter');
+  const readPanel = viewer.getByTestId('doc-media-video-panel');
+  await expect(readPanel).toBeFocused();
+  await expect(readPanel.getByTestId('doc-media-toolbar')).toBeHidden();
+  await expect(readPanel.getByTestId('seek')).toBeVisible();
+  await readPanel.getByTestId('play-toggle').click();
+  await expect.poll(() => viewer.locator(`${EDITOR} video`).evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  await readPanel.getByTestId('play-toggle').click();
+  await viewer.keyboard.press('Escape');
+
+  await setTheRole(owner, 'Editor');
+  await expect(viewer.locator(EDITOR)).toHaveAttribute('contenteditable', 'true');
+  const draft = await openVideoCaption(viewer);
+  await draft.fill('Local caption draft');
+  await setTheRole(owner, 'Viewer');
+  await expect(viewer.locator(EDITOR)).toHaveAttribute('contenteditable', 'false');
+  await expect(draft).toBeVisible();
+  await expect(draft).toHaveAttribute('readonly', '');
+  await expect(draft).toHaveValue('Local caption draft');
+  await viewer.getByTestId('doc-doc-menu-trigger').focus();
+  await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveCount(0);
+  await viewer.getByTestId('space-drawer-trigger').click();
+  const canvas = viewer.getByTestId('space-drawer').getByRole('button', { name: 'Open Canvas', exact: true });
+  await expect(canvas).toBeVisible();
+  await canvas.click();
+  await expect(viewer.getByTestId('space-drawer')).toHaveCount(0);
+  await expect(viewer.getByTestId('doc-media-video-panel')).toHaveCount(0);
+  await viewer.getByTestId(`space-tab-name-${String(spaceId)}`).click();
+  await expect(draft).toBeVisible();
+  await expect(draft).toHaveAttribute('readonly', '');
+  await expect(draft).toHaveValue('Local caption draft');
+  for (const code of ['zh-CN', 'en']) {
+    await viewer.getByTestId('lang-trigger').click();
+    await viewer.getByTestId(`lang-option-${code}`).click();
+    const catalog = JSON.parse(readFileSync(resolve(__dirname, `../../../../locales/${code}.json`), 'utf8')) as { spaces: { document: { media: { captionReadOnly: string } } } };
+    await expect(viewerSpace.getByText(catalog.spaces.document.media.captionReadOnly, { exact: true })).toBeVisible();
+    await expect(draft).toHaveValue('Local caption draft');
+  }
+
+  const ownerCaption = await openVideoCaption(owner);
+  await ownerCaption.fill('Remote caption');
+  await owner.keyboard.press('Enter');
+  await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveText('Remote caption');
+  await expect(draft).toHaveValue('Local caption draft');
+  await setTheRole(owner, 'Editor');
+  await expect(draft).not.toHaveAttribute('readonly', '');
+  await draft.focus();
+  await viewer.keyboard.press('Enter');
+  await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveText('Local caption draft');
+
+  const clean = await openVideoCaption(viewer);
+  await expect(clean).toHaveValue('Local caption draft');
+  const remote = await openVideoCaption(owner);
+  await remote.fill('Remote clean update');
+  await owner.keyboard.press('Enter');
+  await expect(clean).toHaveValue('Remote clean update');
+  await viewer.keyboard.press('Tab');
+  await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveText('Remote clean update');
+
+  const retained = await openVideoCaption(viewer);
+  await retained.fill('Unsaved caption to retain');
+  await expect(ownerSpace.getByTestId('doc-media-video-trigger')).toBeVisible();
+  await ownerSpace.getByTestId('doc-media-video-trigger').focus();
+  await owner.keyboard.press('Enter');
+  await owner.getByTestId('doc-media-video-panel').getByTestId('doc-media-delete').click();
+  const kept = viewerSpace.getByTestId('doc-media-caption-retained');
+  await expect(kept).toBeVisible();
+  await expect(kept.locator('input')).toHaveValue('Unsaved caption to retain');
+  await kept.locator('input').focus();
+  await viewer.keyboard.press('Meta+a');
+  expect(await kept.locator('input').evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 'Unsaved caption to retain'.length]);
+  await pressAndSettle(owner, 'Meta+z');
+  await expect(viewer.locator(`${EDITOR} video`)).toBeVisible();
+  await expect(viewerSpace.getByTestId('doc-media-caption-input')).toHaveValue('Unsaved caption to retain');
+  await viewerSpace.getByTestId('doc-media-caption-input').focus();
+  await viewer.keyboard.press('Escape');
+  await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveText('Remote clean update');
+  expect(errors).toEqual([]);
+});
 
 /**
  * The background the page draws the selection with, on the first row.

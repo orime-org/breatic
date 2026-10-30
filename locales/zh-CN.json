@@ -1903,7 +1903,9 @@
         "close": "关闭",
         "download": "下载",
         "delete": "删除",
-        "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。"
+        "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。",
+        "captionReadOnly": "当前为只读，可复制这份草稿。",
+        "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。"
       }
     },
     "readOnlyReconnect": "重新连接",
