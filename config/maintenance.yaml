@@ -1,0 +1,10 @@
+# Physical deletion is enabled only after deployment verification.
+enabled: false
+loop_interval_seconds: 30
+check_interval_seconds: 3600
+batch_size: 20
+concurrency: 1
+lease_seconds: 120
+protection_seconds: 86400
+preview_ttl_seconds: 600
+storage_timeout_ms: 15000
