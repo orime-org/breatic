@@ -111,6 +111,7 @@ catalog:
   "typescript": ~5.8.3
   "typescript-eslint": ^8.67.0
   "vitest": ^3.2.7
+  "@vitest/coverage-v8": 3.2.7
 
   # Everything else two or more packages share.
   "lib0": ^0.2.117
