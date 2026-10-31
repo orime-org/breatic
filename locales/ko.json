@@ -2708,7 +2708,7 @@
     "deletedStudio": "삭제된 Studio",
     "deletedBadge": "삭제됨",
     "deletedStudioHint": "이 Studio가 없어져 남은 크레딧을 쓸 수 없습니다",
-    "assignedLots": "충전 {count}건 지정됨",
+    "assignedLots": "크레딧 패키지 {count}개 지정됨",
     "noLotsHere": "지정된 크레딧이 없습니다",
     "debtAndSpent": "미지급 {debt} · 사용 {spent}",
     "spentOnly": "사용 {spent}",

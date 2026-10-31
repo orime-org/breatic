@@ -777,7 +777,7 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('per studio', () => {
-    it('reports four things a row: spendable, debt, spent, purchases pointed there', async () => {
+    it('reports four things a row: spendable, debt, spent, credit packs pointed there', async () => {
       fetchCreditOverview.mockResolvedValue(
         overview({ studios: [studio({ debt: '120.000000' as CreditDecimal })] }),
       );
@@ -787,7 +787,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('2,400');
       expect(body).toHaveTextContent('owes 120');
       expect(body).toHaveTextContent('spent 1,280');
-      expect(body).toHaveTextContent('1 purchase assigned to it');
+      expect(body).toHaveTextContent('1 credit pack assigned to it');
     });
 
     it('withholds the debt from a reader who no longer administers it', async () => {
