@@ -225,10 +225,13 @@ export const videoSourceLedgerV2Schema: z.ZodType<VideoSourceLedgerV2> = z.stric
   return value;
 });
 
+/** The compact object's exact measurements, shared by receipts and their bounded reader. */
+export const videoPresentationTableReceiptSchema = z.strictObject({ url: httpsUrl, sha256: hash, size: positiveCount, frameCount: positiveCount });
+
 /** Stored receipt v2: the full ledger and the compact presentation table written with it. */
 export const videoSourceLedgerReceiptV2Schema: z.ZodType<VideoSourceLedgerReceiptV2> = z.strictObject({
   ...identityV2, url: httpsUrl, etag: z.string().min(1), size: positiveCount, sha256: hash, contentType: z.literal('application/json'),
-  table: z.strictObject({ url: httpsUrl, sha256: hash, size: positiveCount, frameCount: positiveCount }),
+  table: videoPresentationTableReceiptSchema,
 }).refine(value => value.table.url !== value.url, { message: 'The compact table and the full ledger are different objects' });
 
 const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);

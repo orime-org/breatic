@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { alphaManifestMatchesPresentation, alphaManifestSchema, videoPresentationSchema, type AlphaManifest, type VideoPresentation } from '@shared/upload/video-presentation.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
-import { videoSourceLedgerReadLimitsSchema, type VideoSourceLedgerReadLimits } from '@shared/upload/read-video-source-ledger.js';
+import { videoPresentationTableReadLimitsSchema, type VideoPresentationTableReadLimits } from '@shared/upload/read-video-presentation-table.js';
 import { videoSourceLedgerStateSchema } from '@shared/upload/video-source-ledger.js';
 import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
 
@@ -27,7 +27,7 @@ export interface VideoPresentationResponse {
   /** The source frame table's own capability state; absent from a server that predates it. */
   sourceLedger?: VideoSourceLedgerState;
   /** The current policy a reader holds the stored table to; absent means the table is not read. */
-  sourceLedgerReadLimits?: VideoSourceLedgerReadLimits;
+  sourceLedgerReadLimits?: VideoPresentationTableReadLimits;
 }
 
 /** Accepted independently funded metadata work, unchanged on replay. */
@@ -64,7 +64,7 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
   sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationSchema.nullable(),
   manifest: alphaManifestSchema.optional(), preparation: preparation.nullable(),
   pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
-  sourceLedger: videoSourceLedgerStateSchema.optional(), sourceLedgerReadLimits: videoSourceLedgerReadLimitsSchema.optional(),
+  sourceLedger: videoSourceLedgerStateSchema.optional(), sourceLedgerReadLimits: videoPresentationTableReadLimitsSchema.optional(),
 }).superRefine((value, ctx) => {
   const ledger = value.sourceLedger;
   if (ledger !== undefined && ledger !== null &&

@@ -958,6 +958,11 @@ export {
   classifyVideoSourceLedgerFailure,
 } from "@shared/upload/video-source-ledger.js";
 export {
+  readVideoPresentationTable,
+  videoPresentationTableReadLimitsSchema,
+  type VideoPresentationTableReadLimits,
+} from "@shared/upload/read-video-presentation-table.js";
+export {
   readVideoSourceLedger,
   VideoSourceLedgerReadRefused,
   videoSourceLedgerReadLimitsSchema,

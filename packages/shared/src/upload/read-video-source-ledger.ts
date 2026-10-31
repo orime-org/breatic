@@ -99,6 +99,34 @@ export async function readVideoSourceLedger(
   if (measured.size > policy.data.maxBytes || measured.physicalFrameCount > policy.data.maxPhysicalFrames ||
     measured.occurrenceCount > policy.data.maxOccurrences) throw new VideoSourceLedgerReadRefused('over_limit');
 
+  const value = await readMeasuredVideoJson(measured, { deadlineAt, ...(signal === undefined ? {} : { signal }) });
+  const companion = parseVideoSourceLedger(value, measured, policy.data);
+  if (companion === null) throw new VideoSourceLedgerReadRefused('content');
+  return companion;
+}
+
+/**
+ * Read exact measured JSON bytes under one absolute deadline.
+ * @param measured - Already validated storage measurements.
+ * @param measured.url - The immutable stored object address.
+ * @param measured.size - Its measured byte length.
+ * @param measured.sha256 - Its measured lowercase SHA-256 digest.
+ * @param measured.contentType - Its measured media type.
+ * @param options - The caller's deadline and cancellation lifetime.
+ * @param options.deadlineAt - The absolute read deadline in epoch milliseconds.
+ * @param options.signal - The caller's cancellation lifetime.
+ * @returns Complete decoded JSON, never a partial body.
+ * @throws {VideoSourceLedgerReadRefused} When response measurements or JSON differ.
+ * @throws {DeadlinePassed} When the absolute deadline expires.
+ * @throws {BodyTooLarge} When the body exceeds the measured size.
+ * @throws {EmptyBody} When no body exists.
+ * @throws {Error} When transport fails or the caller cancels.
+ */
+export async function readMeasuredVideoJson(
+  measured: { url: string; size: number; sha256: string; contentType: string },
+  options: { deadlineAt: number; signal?: AbortSignal },
+): Promise<unknown> {
+  const { deadlineAt, signal } = options;
   signal?.throwIfAborted();
   const until = untilDeadline(deadlineAt);
   const bound = signal === undefined ? until.signal : AbortSignal.any([until.signal, signal]);
@@ -136,7 +164,7 @@ export async function readVideoSourceLedger(
   } catch {
     throw new VideoSourceLedgerReadRefused('content');
   }
-  const companion = parseVideoSourceLedger(value, measured, policy.data);
-  if (companion === null) throw new VideoSourceLedgerReadRefused('content');
-  return companion;
+  signal?.throwIfAborted();
+  assertBeforeDeadline(deadlineAt);
+  return value;
 }

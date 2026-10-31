@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { alphaManifestKeyFor, alphaPackedKeyFor, readVideoSourceLedger, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
-  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type VideoSourceLedgerCompanion, type VideoSourceLedgerReadLimits,
+  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type VideoSourceLedgerCompanion, type VideoPresentationTableReadLimits,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
@@ -147,12 +147,11 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
 
 /**
  * The current read policy for a stored source frame table.
- * @returns The three ceilings a reader holds the table to.
+ * @returns The configured compact-table byte budget.
  * @throws {Error} When configuration cannot be read.
  */
-function sourceLedgerReadLimits(): VideoSourceLedgerReadLimits {
-  const policy = getMiniToolsConfig().presentation.source_ledger;
-  return { maxBytes: policy.max_bytes, maxPhysicalFrames: policy.max_physical_frames, maxOccurrences: policy.max_occurrences };
+function sourceLedgerReadLimits(): VideoPresentationTableReadLimits {
+  return { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes };
 }
 
 /**
@@ -227,7 +226,9 @@ export async function readSourceLedger(input: ResolveVideoPresentationInput, dea
   if (state.receipt.sourceFingerprint !== binding.contentHash || state.receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey))) {
     throw new VideoSourceLedgerReadRefused('receipt');
   }
-  const ledger = await readVideoSourceLedger(state.receipt, sourceLedgerReadLimits(), { deadlineAt, ...(signal === undefined ? {} : { signal }) });
+  // Legacy callers still need the full v1 companion. Its measured counts bound
+  // parser allocation; the configured byte budget remains the operational cap.
+  const ledger = await readVideoSourceLedger(state.receipt, { ...sourceLedgerReadLimits(), maxPhysicalFrames: state.receipt.physicalFrameCount, maxOccurrences: Math.max(1, state.receipt.occurrenceCount) }, { deadlineAt, ...(signal === undefined ? {} : { signal }) });
   return { sourceBinding: binding, ledger };
 }
 

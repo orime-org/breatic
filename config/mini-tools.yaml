@@ -32,8 +32,6 @@ presentation:
     max_bytes: 16777216
     probe_stdout_bytes: 67108864
     metadata_bytes: 16777216
-    max_physical_frames: 100000
-    max_occurrences: 100000
     iso_box_count: 100000
     matroska_element_count: 1000000
     matroska_max_blocks: 250000
