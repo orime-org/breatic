@@ -42,8 +42,9 @@ export default function SceneModelImportHost({ controller, open, onOpenChange, c
     seen.current = snapshot.objectId;
     onOpenChange(false);
     onPlaced(snapshot.objectId);
+    controller.reset();
     toast.success(successText);
-  }, [snapshot.phase, snapshot.objectId, onOpenChange, onPlaced, successText]);
+  }, [snapshot.phase, snapshot.objectId, onOpenChange, onPlaced, controller, successText]);
   /**
    * Reopen this document's retained import view.
    * @throws {never} Never directly.

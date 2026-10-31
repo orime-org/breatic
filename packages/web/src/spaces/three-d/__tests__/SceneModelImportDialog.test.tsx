@@ -59,8 +59,8 @@ describe('model import dialog controls', () => {
     expect(controller.getSnapshot().name).toBe('My character');
   });
 
-  it('reports a successful placement once when the host observes the created object', async () => {
-    const { controller, upload } = await readyImport();
+  it('reports placement once and releases the completed local preview', async () => {
+    const { controller, prepared, upload } = await readyImport();
     const onOpenChange = vi.fn();
     const onPlaced = vi.fn();
     const { rerender } = render(<SceneModelImportHost open onOpenChange={onOpenChange} onPlaced={onPlaced} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
@@ -68,6 +68,8 @@ describe('model import dialog controls', () => {
     await waitFor(() => expect(onPlaced).toHaveBeenCalledExactlyOnceWith(expect.any(String)));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(toast.success).toHaveBeenCalledExactlyOnceWith('Model imported.');
+    expect(prepared.dispose).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', prepared: null, files: [] });
     rerender(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={onPlaced} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     await controller.confirm();
     expect(onPlaced).toHaveBeenCalledTimes(1);
