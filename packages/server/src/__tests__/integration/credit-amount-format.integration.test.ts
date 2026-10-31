@@ -256,4 +256,18 @@ describe("decimal-v1 amount format on the public readers", () => {
     expect(body.data.designated).toBe(true);
   });
 
+  it("retains signed charged, consumed and owed values through the real Studio runtime schema", async () => {
+    const fx = await seedPersonal(suite.sql);
+    await seedDesignatedLot(suite.sql, fx, 100);
+    const outcome = await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130.01, referenceId: randomUUID() });
+    expect(outcome).toMatchObject({ charged: "100.000000", shortfall: "30.010000" });
+    const view = await read(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, await cookieFor(fx.userId));
+    expect(view).toMatchObject({ spendable: "-30.010000", debt: "30.010000", held: "0.000000", available: "-30.010000" });
+    const ledger = (view.ledger as { items: Record<string, unknown>[] }).items;
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ kind: "generation", projectId: fx.projectId, charged: "-100.000000", consumed: "-130.010000", owed: "-30.010000" });
+    expect(parseView("studioLedgerViewSchema", ledger[0])).toEqual(ledger[0]);
+    expect(parseView("studioCreditsViewSchema", view)).toEqual(view);
+  });
+
 });
