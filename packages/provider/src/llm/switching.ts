@@ -14,6 +14,7 @@ import { z } from "zod";
 import { numberLeaf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, isSuccess, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
+import { costedOf } from "@provider/llm/understand/openrouter.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
@@ -42,6 +43,17 @@ export interface SwitchingSetup {
   pending: Map<string, Cost>;
   /** Extra fields for `providerMetadata.breatic`. */
   breatic: Record<string, string>;
+}
+
+/**
+ * The generation id a stream part names: a raw chunk's, read as OpenRouter's answer is, or the
+ * response metadata's.
+ * @param part - One part of the stream.
+ * @returns The id, or undefined for a part that names none.
+ */
+function idOf(part: StreamPart): string | undefined {
+  if (part.type === "raw") return costedOf(part.rawValue).id;
+  return part.type === "response-metadata" ? part.id : undefined;
 }
 
 /** Parts that are the model's content: the switch boundary (design 5.5). */
@@ -328,7 +340,7 @@ export class SwitchingModel implements ModelV4 {
         // was cut, the caller stopped): by the generation it names, else missing (DD 35).
         if (last !== undefined && isSuccess(last.status)) {
           const text = last.copy === undefined ? "" : await last.copy.text().catch(() => "");
-          const id = tracks ? this.track(c.upstream, (parsed(text) as { id?: unknown } | null | undefined)?.id) : undefined;
+          const id = tracks ? this.track(c.upstream, costedOf(parsed(text)).id) : undefined;
           if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${last.status} and the call ended before it could use the answer`);
         }
         throw error;
@@ -367,8 +379,7 @@ export class SwitchingModel implements ModelV4 {
         if (read.done) break;
         // Registered as soon as it is read: a call stopped before its content is still billed.
         const part = read.value;
-        if (part.type === "raw") this.named(c.upstream, (part.rawValue as { id?: unknown } | null | undefined)?.id, opened);
-        if (part.type === "response-metadata") this.named(c.upstream, part.id, opened);
+        this.named(c.upstream, idOf(part), opened);
         if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
           throw new InBandError(part.error);
@@ -388,7 +399,7 @@ export class SwitchingModel implements ModelV4 {
      */
     const pass = (part: StreamPart): StreamPart | undefined => {
       if (part.type === "raw" || part.type === "response-metadata") {
-        generationId = this.named(upstream, part.type === "raw" ? (part.rawValue as { id?: unknown } | null | undefined)?.id : part.id, opened) ?? generationId;
+        generationId = this.named(upstream, idOf(part), opened) ?? generationId;
         return part.type === "raw" && options.includeRawChunks !== true ? undefined : part;
       }
       if (part.type !== "finish") return part;
