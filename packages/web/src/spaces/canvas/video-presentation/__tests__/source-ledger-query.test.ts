@@ -1,176 +1,99 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/**
- * The source ledger body query (inner#1306 consumer oracle W01–W05). The
- * presentation response arrives already parsed by its own query; this one
- * reads the stored table it names through the shared reader. The real
- * QueryClient, reader, digest and parser run; only `fetch` is controlled.
- */
-
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import * as shared from '@breatic/shared';
-import type { VideoPresentationResponse, VideoSourceLedgerCompanion } from '@breatic/shared';
-
+import type { VideoPresentationResponse, VideoSourceLedgerReceiptV2 } from '@breatic/shared';
 import { sourceLedgerQuery } from '../source-ledger-query';
 
-const { readSpy, realRead } = vi.hoisted(() => ({ readSpy: vi.fn(), realRead: { current: undefined as unknown } }));
-vi.mock('@breatic/shared', async (original) => {
-  const actual = await original<typeof shared>();
-  realRead.current = actual.readVideoSourceLedger;
-  return { ...actual, readVideoSourceLedger: readSpy };
-});
-
-const companion = JSON.parse('{"schemaVersion":1,"sourceFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","producerVersion":1,"attempt":{"jobId":"accepted-source-attempt","deadlineAt":7201000},"strategy":"iso_unedited_rate_one","physical":{"streamIndex":1,"trackId":7,"sourceTimeBase":{"numerator":"1","denominator":"1000"},"frames":[{"rawDecodeOrdinal":0,"ptsTicks":"0"},{"rawDecodeOrdinal":1,"ptsTicks":"40"},{"rawDecodeOrdinal":2,"ptsTicks":"80"}]},"container":{"kind":"iso_bmff","movieTimescale":"1000","movieDurationTicks":"4000","track":{"trackId":7,"trackFlags":1,"durationMovieTicks":"4000","mediaTimescale":"1000","mediaDurationTicks":"1000000000","edits":null,"sampleTiming":{"decodeRuns":[{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"}],"cttsVersion":null,"compositionRuns":null,"compositionShift":null}}},"presentation":{"edits":[],"frames":[{"presentationOrdinal":0,"editOccurrence":0,"rawDecodeOrdinal":0,"sourcePtsTicks":"0","mappedPts":{"numerator":"0","denominator":"1"},"displayStart":{"numerator":"0","denominator":"1"},"displayEnd":{"numerator":"1","denominator":"25"}},{"presentationOrdinal":1,"editOccurrence":0,"rawDecodeOrdinal":1,"sourcePtsTicks":"40","mappedPts":{"numerator":"1","denominator":"25"},"displayStart":{"numerator":"1","denominator":"25"},"displayEnd":{"numerator":"2","denominator":"25"}},{"presentationOrdinal":2,"editOccurrence":0,"rawDecodeOrdinal":2,"sourcePtsTicks":"80","mappedPts":{"numerator":"2","denominator":"25"},"displayStart":{"numerator":"2","denominator":"25"},"displayEnd":{"numerator":"3","denominator":"25"}}]}}') as VideoSourceLedgerCompanion;
-const bytes = new TextEncoder().encode(JSON.stringify(companion));
-const ledgerURL = 'https://assets.example.test/canonical.webm.video-source-ledger.v1.json';
-const limits = { maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 };
-const binding = {
-  assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: 'a'.repeat(64), canonicalURL: 'https://assets.example.test/canonical.webm',
-  kind: 'video' as const, mediaInfo: { width: null, height: null, duration: null, mimeType: 'video/webm' },
-};
-const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<Response>>();
+// S4 replaces the temporary S3 v1-only reader contract: real query, reader,
+// parser, digest and QueryClient; only the network platform is controlled.
+const table = { schemaVersion: 1, timescale: 1000, runs: [{ start: 2000, count: 3, step: 40, duration: 30 }] };
+const bytes = new TextEncoder().encode(JSON.stringify(table));
+const tableURL = 'https://assets.example.test/source.presentation-table.json';
+const binding = { assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: 'a'.repeat(64), canonicalURL: 'https://assets.example.test/source.webm', kind: 'video' as const, mediaInfo: { width: 96, height: 64, duration: 3, mimeType: 'video/webm' } };
+const policy = { maxBytes: 16777216 };
+const attempt = { jobId: 'accepted-source-attempt', deadlineAt: 1 };
+const fetchMock = vi.fn<typeof fetch>();
 let client: QueryClient;
-let receipt: shared.VideoSourceLedgerReceipt;
+let receipt: VideoSourceLedgerReceiptV2;
 
-/**
- * A presentation response carrying this ledger state and policy.
- * @param extra - The ledger fields.
- * @returns The response.
- */
-function presentation(extra: Partial<VideoPresentationResponse> = {}): VideoPresentationResponse {
-  return { sourceBinding: binding, presentation: null, preparation: null, pollAfterMs: null,
-    sourceLedger: { state: 'ready', receipt }, sourceLedgerReadLimits: limits, ...extra };
+/** Builds the authorized response, with the new byte-only compact policy. @throws {never} Never. */
+function response(extra: Record<string, unknown> = {}): VideoPresentationResponse {
+  return { sourceBinding: binding, presentation: { schemaVersion: 1, sourceFingerprint: binding.contentHash, state: 'native', original: { width: 96, height: 64, duration: 3 } }, preparation: null, pollAfterMs: null, sourceLedger: { state: 'ready', receipt }, sourceLedgerReadLimits: policy, ...extra } as VideoPresentationResponse;
 }
-
-/** Serve the stored bytes once. */
-function serve(): void {
-  fetchMock.mockResolvedValueOnce(new Response(bytes, { status: 200, headers: { 'content-type': 'application/json' } }));
-}
+/** Describes the actual consumer query. @throws {never} Never. */
+function options(value = response(), projectId = 'project-a', active = true): ReturnType<typeof sourceLedgerQuery> { return sourceLedgerQuery({ projectId, response: value, active }); }
+/** Serves the compact table once. @throws {Error} When constructing a response fails. */
+function serve(): void { fetchMock.mockResolvedValueOnce(new Response(bytes, { headers: { 'content-type': 'application/json' } })); }
+/** Guards refusal cases against a reader that refuses everything. @throws {Error} When a valid compact read is refused. */
+async function accepts(): Promise<void> { serve(); expect(await client.fetchQuery(options())).toEqual(table); fetchMock.mockClear(); }
 
 beforeEach(async () => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  receipt = {
-    schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, strategy: companion.strategy, attempt: companion.attempt,
-    url: ledgerURL, etag: '"opaque"', size: bytes.byteLength, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(''),
-    contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
-  };
-  fetchMock.mockReset();
-  readSpy.mockReset().mockImplementation(realRead.current as typeof shared.readVideoSourceLedger);
-  vi.stubGlobal('fetch', fetchMock);
+  receipt = { schemaVersion: 2, sourceFingerprint: binding.contentHash, producerVersion: 2, attempt, url: 'https://assets.example.test/source.full-ledger.json', etag: 'opaque', size: 9000, sha256: 'b'.repeat(64), contentType: 'application/json',
+    table: { url: tableURL, size: bytes.length, frameCount: 3, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('') } };
+  fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock);
 });
+afterEach(() => { client.clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-afterEach(() => {
-  client.clear();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
-
-describe('W01 an authorized ready receipt with its policy', () => {
-  it('reads the whole table from the receipt URL through the shared reader', async () => {
-    serve();
-    expect(await client.fetchQuery(sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true }))).toEqual(companion);
-    expect(fetchMock.mock.calls[0]![0]).toBe(ledgerURL);
-    expect(readSpy).toHaveBeenCalledWith(receipt, limits, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+describe('S4 authorized compact-table query', () => {
+  it('W01 enables a current v2 receipt and reads ONLY its compact URL, never the full ledger', async () => {
+    expect(options().enabled).toBe(true); serve();
+    expect(await client.fetchQuery(options())).toEqual(table);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([tableURL]);
+    expect(client.getQueryData(options().queryKey)).toEqual(table);
   });
-});
-
-describe('W02 the key is the receipt, the source and the policy', () => {
-  /**
-   * The key for a response.
-   * @param response - The response.
-   * @returns The query key.
-   */
-  const keyOf = (response: VideoPresentationResponse): readonly unknown[] =>
-    sourceLedgerQuery({ projectId: 'project-a', response, active: true }).queryKey;
-
-  it('is the same for the same receipt, and reads once for two consumers', async () => {
-    serve();
-    expect(keyOf(presentation())).toEqual(keyOf(presentation()));
-    const options = sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true });
-    await Promise.all([client.fetchQuery(options), client.fetchQuery(options)]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  it('W02 sends exactly one compact GET for simultaneous consumers', async () => {
+    serve(); await Promise.all([client.fetchQuery(options()), client.fetchQuery(options())]);
+    expect(fetchMock).toHaveBeenCalledTimes(1); expect(fetchMock.mock.calls[0]?.[0]).toBe(tableURL);
   });
-
   it.each([
-    ['another project', () => sourceLedgerQuery({ projectId: 'project-b', response: presentation(), active: true }).queryKey],
-    ['another receipt digest', () => keyOf(presentation({ sourceLedger: { state: 'ready', receipt: { ...receipt, sha256: 'c'.repeat(64) } } }))],
-    ['another receipt attempt', () => keyOf(presentation({ sourceLedger: { state: 'ready', receipt: { ...receipt, attempt: { jobId: 'b', deadlineAt: 1 } } } }))],
-    ['a tighter policy', () => keyOf(presentation({ sourceLedgerReadLimits: { ...limits, maxOccurrences: 3 } }))],
-  ])('differs for %s, which inherits no earlier table', async (_name, other) => {
-    serve();
-    await client.fetchQuery(sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true }));
-    const key = other();
-    expect(key).not.toEqual(keyOf(presentation()));
-    expect(client.getQueryData(key)).toBeUndefined();
+    ['project', () => options(response(), 'project-b')],
+    ['source', () => options(response({ sourceBinding: { ...binding, canonicalURL: 'https://assets.example.test/other.webm' } }))],
+    ['fingerprint', () => options(response({ sourceBinding: { ...binding, contentHash: 'c'.repeat(64) }, sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } }))],
+    ['table digest', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, table: { ...receipt.table, sha256: 'd'.repeat(64) } } } }))],
+    ['table URL', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, table: { ...receipt.table, url: 'https://assets.example.test/other.table' } } } }))],
+    ['attempt', () => options(response({ sourceLedger: { state: 'ready', receipt: { ...receipt, attempt: { ...attempt, jobId: 'new' } } } }))],
+    ['policy', () => options(response({ sourceLedgerReadLimits: { maxBytes: policy.maxBytes - 1 } }))],
+  ])('W03 isolates %s with no previous table', async (_name, other) => {
+    await accepts(); const changed = other(); expect(changed.queryKey).not.toEqual(options().queryKey);
+    expect(client.getQueryData(changed.queryKey)).toBeUndefined();
   });
-
-  it('carries no frame arrays in its key', () => {
-    expect(JSON.stringify(keyOf(presentation()))).not.toContain('presentationOrdinal');
-  });
-});
-
-describe('W03 nothing to read', () => {
   it.each([
-    ['no response yet', () => undefined],
-    ['a legacy response', () => presentation({ sourceLedger: undefined, sourceLedgerReadLimits: undefined })],
-    ['a ready receipt without read limits', () => presentation({ sourceLedgerReadLimits: undefined })],
-    ['a null ledger', () => presentation({ sourceLedger: null })],
-    ['a pending ledger', () => presentation({ sourceLedger: { state: 'pending', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt } })],
-    ['a failed ledger', () => presentation({ sourceLedger: { state: 'failed', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt, errorCode: 'ledger_invalid' } })],
-    ['a receipt naming another source', () => presentation({ sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } })],
-    ['an inactive Space', 'inactive' as const],
-  ])('reads nothing for %s', async (_name, response) => {
-    const options = sourceLedgerQuery({
-      projectId: 'project-a',
-      response: response === 'inactive' ? presentation() : response(),
-      active: response !== 'inactive',
-    });
-    expect(options.enabled).toBe(false);
-    const observer = new QueryObserver(client, options);
-    const unsubscribe = observer.subscribe(() => undefined);
-    await Promise.resolve();
-    expect(observer.getCurrentResult().data).toBeUndefined();
-    expect(fetchMock).not.toHaveBeenCalled();
-    unsubscribe();
+    ['absent', () => response({ sourceLedger: undefined })], ['null', () => response({ sourceLedger: null })],
+    ['pending', () => response({ sourceLedger: { state: 'pending', schemaVersion: 2, producerVersion: 2, sourceFingerprint: binding.contentHash, attempt } })],
+    ['failed', () => response({ sourceLedger: { state: 'failed', schemaVersion: 2, producerVersion: 2, sourceFingerprint: binding.contentHash, attempt, errorCode: 'expired' } })],
+    ['wrong source', () => response({ sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } })],
+    ['missing policy', () => response({ sourceLedgerReadLimits: undefined })], ['inactive', () => response()],
+    ['v1 receipt', () => { const { table: _table, ...old } = receipt; return response({ sourceLedger: { state: 'ready', receipt: { ...old, schemaVersion: 1, producerVersion: 1, strategy: 'iso_unedited_rate_one' } } }); }],
+  ])('W04 does not read %s', async (name, value) => {
+    await accepts();
+    const query = options(value(), 'project-a', name !== 'inactive'); expect(query.enabled).toBe(false);
+    const observer = new QueryObserver(client, query); const unsubscribe = observer.subscribe(() => undefined);
+    await Promise.resolve(); expect(fetchMock).not.toHaveBeenCalled(); unsubscribe();
   });
-});
-
-describe('W04 a failed read is not a table', () => {
-  it('ends in an error with no data when the body is not the stored table', async () => {
-    const damaged = bytes.slice();
-    damaged[damaged.length - 1] = 0x20;
-    fetchMock.mockResolvedValueOnce(new Response(damaged, { status: 200, headers: { 'content-type': 'application/json' } }));
-    const options = sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true });
-    await expect(client.fetchQuery(options)).rejects.toBeInstanceOf(shared.VideoSourceLedgerReadRefused);
-    expect(client.getQueryData(options.queryKey)).toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  it('W05 a validation error exposes no table and can retry the same current receipt', async () => {
+    await accepts(); client.clear();
+    const damaged = bytes.slice(); damaged[0] = 0x20;
+    fetchMock.mockResolvedValueOnce(new Response(damaged, { headers: { 'content-type': 'application/json' } }));
+    await expect(client.fetchQuery(options())).rejects.toMatchObject({ reason: 'digest' });
+    expect(client.getQueryData(options().queryKey)).toBeUndefined();
+    serve(); expect(await client.fetchQuery(options())).toEqual(table);
   });
-});
-
-describe('W05 one read deadline from the existing default budget', () => {
-  it('forms the deadline once from DEFAULT_TIMEOUT_MS and forwards the query signal', async () => {
-    serve();
-    vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
-    await client.fetchQuery(sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true }));
-    const options = readSpy.mock.calls[0]![2] as { deadlineAt: number; signal: AbortSignal };
-    expect(options.deadlineAt).toBe(1_800_000_000_000 + shared.DEFAULT_TIMEOUT_MS);
-    expect(options.signal).toBeInstanceOf(AbortSignal);
+  it('W06 cancels the actual shared read when the source query is abandoned', async () => {
+    await accepts(); client.clear();
+    fetchMock.mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))));
+    const query = options(); const pending = client.fetchQuery(query).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await client.cancelQueries({ queryKey: query.queryKey }); await pending;
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(client.getQueryData(query.queryKey)).toBeUndefined();
   });
-
-  it('stops the read when the query is cancelled', async () => {
-    fetchMock.mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
-    }));
-    const options = sourceLedgerQuery({ projectId: 'project-a', response: presentation(), active: true });
-    const pending = client.fetchQuery(options).catch((err: unknown) => err);
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await client.cancelQueries({ queryKey: options.queryKey });
-    await pending;
-    expect(fetchMock.mock.calls[0]![1].signal?.aborted).toBe(true);
-    expect(client.getQueryData(options.queryKey)).toBeUndefined();
+  it('W07 source replacement cannot inherit a previously completed table', async () => {
+    await accepts(); const observer = new QueryObserver(client, options()); const unsubscribe = observer.subscribe(() => undefined);
+    observer.setOptions(options(response({ sourceBinding: { ...binding, canonicalURL: 'https://assets.example.test/new.webm', contentHash: 'c'.repeat(64) }, sourceLedger: null })));
+    expect(observer.getCurrentResult().data).toBeUndefined(); expect(fetchMock).not.toHaveBeenCalled(); unsubscribe();
   });
 });

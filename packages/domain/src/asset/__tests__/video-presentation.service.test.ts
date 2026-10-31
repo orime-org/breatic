@@ -168,7 +168,7 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
       sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
         width: null, height: null, duration: null, mimeType: asset.mimeType,
       } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: accepted.jobId, deadlineAt: accepted.deadlineAt } }, pollAfterMs: 5000,
-      sourceLedgerReadLimits: { maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 },
+      sourceLedgerReadLimits: { maxBytes: 16777216 },
     });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({
       assetId: asset.id, sourceFingerprint: asset.contentHash, jobId: accepted.jobId, deadlineAt: accepted.deadlineAt,
@@ -206,7 +206,7 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
       sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
         width: null, height: null, duration: null, mimeType: asset.mimeType,
       } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt } }, pollAfterMs: 5000, attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt },
-      sourceLedgerReadLimits: { maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 },
+      sourceLedgerReadLimits: { maxBytes: 16777216 },
     });
     expect(videoPresentationAtIngest).toHaveBeenCalledWith('https://ingest.example.test', 'secret', expect.objectContaining({
       action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,
@@ -328,7 +328,7 @@ describe('validated source ledger read (inner#1306 N01–N04)', () => {
     stored({ state: 'ready', receipt });
     const got = await resolveVideoPresentation(input);
     expect(got.sourceLedger).toEqual({ state: 'ready', receipt });
-    expect(got.sourceLedgerReadLimits).toEqual({ maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 });
+    expect(got.sourceLedgerReadLimits).toEqual({ maxBytes: 16777216 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -375,6 +375,17 @@ describe('presentation admission requesting the source ledger v2 (inner#1306 §7
   beforeEach(() => {
     loadProjectRole.mockResolvedValue('viewer');
     publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
+  });
+
+  it('S4 D07 advertises the configured byte budget only, independently of retired frame ceilings', async () => {
+    const core = await import('@breatic/core');
+    const settings = getMiniToolsConfig();
+    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, presentation: { ...settings.presentation, source_ledger: { ...settings.presentation.source_ledger, max_bytes: 8192 } } });
+    loadProjectRole.mockResolvedValue('viewer');
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'running', deadlineAt: 1900000000000, status: 'running', usage: null } });
+    try {
+      expect((await resolveVideoPresentation(input)).sourceLedgerReadLimits).toEqual({ maxBytes: 8192 });
+    } finally { spy.mockRestore(); }
   });
 
   it('D01 requests the ledger with its six configured budgets, no frame ceiling and both URLs derived from the registered key', async () => {

@@ -114,7 +114,7 @@ describe('source ledger state and read limits on the presentation response (G01â
     ...identity, strategy: 'matroska_rate_one', url: 'https://assets.example.test/canonical.webm.video-source-ledger.v1.json',
     etag: '"Opaque-R2-ETag"', size: 2048, sha256: 'b'.repeat(64), contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
   };
-  const limits = { maxBytes: 16777216, maxPhysicalFrames: 262144, maxOccurrences: 262144 };
+  const limits = { maxBytes: 16777216 };
   const work = {
     preparation: { status: 'failed', attempt: { jobId: 'presentation-work-b', deadlineAt: 1900000000000 }, error: 'probe_failed' },
     pollAfterMs: null,
@@ -147,12 +147,15 @@ describe('source ledger state and read limits on the presentation response (G01â
   });
 
   it.each([
-    ['a missing field', { maxBytes: 1, maxPhysicalFrames: 1 }],
+    ['a missing byte budget', {}],
     ['zero', { ...limits, maxBytes: 0 }],
-    ['a fraction', { ...limits, maxOccurrences: 1.5 }],
-    ['an unsafe value', { ...limits, maxPhysicalFrames: Number.MAX_SAFE_INTEGER + 1 }],
+    ['a fraction', { maxBytes: 1.5 }],
+    ['an unsafe value', { maxBytes: Number.MAX_SAFE_INTEGER + 1 }],
+    ['a retired physical frame cap', { ...limits, maxPhysicalFrames: 100000 }],
+    ['a retired occurrence cap', { ...limits, maxOccurrences: 100000 }],
     ['an extra key', { ...limits, retries: 3 }],
   ])('rejects read limits with %s (G05)', (_name, sourceLedgerReadLimits) => {
+    expect(videoPresentationResponseSchema.safeParse({ sourceBinding: binding, presentation: null, ...idle, sourceLedger: null, sourceLedgerReadLimits: limits }).success).toBe(true);
     expect(videoPresentationResponseSchema.safeParse({ sourceBinding: binding, presentation: null, ...idle, sourceLedger: null, sourceLedgerReadLimits }).success).toBe(false);
   });
 
