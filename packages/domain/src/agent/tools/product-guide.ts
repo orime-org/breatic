@@ -1384,12 +1384,18 @@ export function renderProductGuide(): string {
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
-      "line shows, or pasted, landing under the caret's line (above it when that line is empty). Nodes copied " +
-      "on the canvas and a picture copied in this chat paste the same way: each text node's lines become lines " +
-      "(only text pastes at the caret, or into a table cell), and each picture, video or audio comes in with " +
-      "the node's name as its caption, in the order they sit on the canvas from the top; with the caret in a " +
-      "table they land under the table. Pictures, videos and audio inside copied web pages or Markdown come " +
-      "in with the text, and dragging a web page's content in does the same. Each picture, video or audio " +
+      "line shows, or pasted at the caret, replacing the selection. Content splits a line at the caret; " +
+      "on an empty line media land above it and leave the line for the caret. Nodes copied on the canvas " +
+      "and a picture copied in this chat paste the same way: each text node's lines become paragraphs with " +
+      "their original words, and each picture, video or audio carries the node's name as its caption, in " +
+      "reading order from the canvas. Inside a table cell, ordinary content keeps its block types and media " +
+      "stay in the cell. A single pasted table fills cells once from the target cell, growing the table " +
+      "when needed; a table mixed with other content is refused with " +
+      `${quoted(t("spaces.document.paste.unsupportedInCell"))}. A cell selection receives a copy of ordinary ` +
+      "content in each cell. In a code block, plain text is inserted verbatim; web text goes into the code " +
+      "and its media beside the code block, while canvas content carrying media lands together beside it. " +
+      "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
+      "a web page's content in does the same. Each picture, video or audio " +
       "first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
       "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
       "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +

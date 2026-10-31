@@ -49,7 +49,7 @@ function tree(editor: Editor): string[] {
       const url = block.props['uploadId'] !== '' && block.props['uploadId'] !== undefined ? 'pending' : String(block.props['url']);
       return `${block.type}(${url}|${String(block.props['name'])}|${String(block.props['caption'])})${quoted}`;
     }
-    if (block.type === 'table') return `table${quoted}`;
+    if (block.type === 'docTable') return `table${quoted}`;
     const level = block.type === 'heading' ? `#${String(block.props['level'])}` : '';
     return `${block.type}${level}${quoted}:${words(block)}`;
   };
@@ -120,26 +120,47 @@ describe('a medium inside a list item', () => {
 });
 
 describe('a medium inside a table', () => {
-  it('in a cell lands under that table', async () => {
+  it('in a cell stays between the ordinary blocks of that cell', async () => {
     const { editor } = await read(`<table><tr><td>x <img src="${A}"></td><td>y</td></tr></table>`);
-    expect(tree(editor)).toEqual(['table', `image(${A}||)`, 'paragraph:end']);
+    expect(tree(editor)).toEqual([
+      'table',
+      '  docTableRow:',
+      '    docTableCell:',
+      '      paragraph:x',
+      `      image(${A}||)`,
+      '    docTableCell:',
+      '      paragraph:y',
+      'paragraph:end',
+    ]);
   });
 
   it.each([
-    ['in the middle of its words, one space between them', `a <img src="${A}"> b`, 'a b'],
-    ['at the start of its words', `<img src="${A}"> x`, 'x'],
-    ['at the end of its words', `x <img src="${A}">`, 'x'],
-    ['between words with no space', `a<img src="${A}">b`, 'ab'],
-    ['two of them, the space before the first', `a <img src="${A}"><img src="${A}">b`, 'a b'],
-  ])('%s leaves the cell its words as they read without it', async (_where, cell, words) => {
-    const { editor } = await read(`<table><tr><td>${cell}</td></tr></table>`);
-    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0];
-    expect(table.content.rows[0].cells[0].content.map((c) => c.text ?? '').join('')).toBe(words);
+    ['in the middle of its words', `a <img src="${A}"> b`, ['paragraph:a', `image(${A}||)`, 'paragraph:b']],
+    ['at the start of its words', `<img src="${A}"> x`, [`image(${A}||)`, 'paragraph:x']],
+    ['at the end of its words', `x <img src="${A}">`, ['paragraph:x', `image(${A}||)`]],
+    ['between words with no space', `a<img src="${A}">b`, ['paragraph:a', `image(${A}||)`, 'paragraph:b']],
+    ['two of them, the space before the first', `a <img src="${A}"><img src="${A}">b`, ['paragraph:a', `image(${A}||)`, `image(${A}||)`, 'paragraph:b']],
+  ])('%s keeps its words and media in their cell order', async (_where, cell, blocks) => {
+    const { editor, sink } = await read(`<table><tr><td>${cell}</td></tr></table>`);
+    expect(tree(editor)).toEqual([
+      'table', '  docTableRow:', '    docTableCell:', ...blocks.map((block) => `      ${block}`), 'paragraph:end',
+    ]);
+    expect(told(sink)).toBe(0);
   });
 
-  it('in the caption lands under that table', async () => {
+  it('in the caption stays in the caption row of that table', async () => {
     const { editor } = await read(`<table><caption>cap <img src="${A}"></caption><tr><td>x</td></tr></table>`);
-    expect(tree(editor)).toEqual(['table', `image(${A}||)`, 'paragraph:end']);
+    expect(tree(editor)).toEqual([
+      'table',
+      '  docTableRow:',
+      '    docTableCell:',
+      '      paragraph:cap',
+      `      image(${A}||)`,
+      '  docTableRow:',
+      '    docTableCell:',
+      '      paragraph:x',
+      'paragraph:end',
+    ]);
   });
 });
 

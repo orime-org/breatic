@@ -3,14 +3,17 @@
 
 /**
  * Web content with media, pasted or dropped the way a reader does it
- * (inner#1351 + inner#1390 design §5.1, §5.4; A5, A7): HTML carrying media is
- * read as HTML even when its plain text looks like Markdown; with the caret
- * in a table cell the words go into the cell and every medium lands under
- * the table; a drop of web content is judged as a paste is.
+ * (inner#1351 + inner#1390 design §5.1, §5.4; A5, A7, A12–A14): HTML carrying
+ * media is read as HTML even when its plain text looks like Markdown;
+ * ordinary media stay in their table cells, mixed table content is rejected
+ * in a cell, and a drop of web content is judged as a paste is.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CellSelection } from '@tiptap/pm/tables';
+
+import { toast } from '@web/lib/toast';
 
 import {
   OURS,
@@ -31,7 +34,85 @@ import {
   type Sink,
 } from './paste-harness';
 
-afterEach(unmountAll);
+beforeEach(() => {
+  vi.spyOn(toast, 'warning').mockReturnValue('html-media-warning');
+});
+
+afterEach(() => {
+  unmountAll();
+  vi.restoreAllMocks();
+});
+
+/** A table layout block or an ordinary block held in a cell. */
+type Block = {
+  type: string;
+  props: Record<string, unknown>;
+  content?: { text?: string }[];
+  children?: Block[];
+};
+
+/**
+ * Opens a body and lets fixture DOM updates settle before a user selection.
+ * @param blocks - The initial body.
+ * @returns The mounted body, undo manager and upload sink.
+ */
+async function openReady(blocks: Parameters<typeof open>[0]): Promise<ReturnType<typeof open>> {
+  const opened = open(blocks);
+  await act(async () => { await settled(); });
+  return opened;
+}
+
+/**
+ * Reads the ordinary blocks in one new-table cell.
+ * @param editor - The editor.
+ * @param table - The top-level table index.
+ * @param row - The row index.
+ * @param column - The cell index.
+ * @returns The cell's direct blocks.
+ */
+function cellBlocks(editor: Editor, table = 0, row = 0, column = 0): Block[] {
+  return (editor.document as Block[])[table]!.children![row]!.children![column]!.children!;
+}
+
+/**
+ * Labels the ordinary blocks in one cell without moving media outside it.
+ * @param editor - The editor.
+ * @param table - The top-level table index.
+ * @param row - The row index.
+ * @param column - The cell index.
+ * @returns Block types, words, media status and captions in cell order.
+ */
+function cellShape(editor: Editor, table = 0, row = 0, column = 0): string[] {
+  return cellBlocks(editor, table, row, column).map((block) => ['image', 'video', 'audio'].includes(block.type)
+    ? `${block.type}[${block.props['uploadId'] !== '' ? 'pending' : String(block.props['url'])}|${String(block.props['caption'])}]`
+    : `${block.type}:${(block.content ?? []).map((part) => part.text ?? '').join('')}`);
+}
+
+/**
+ * Pastes unsupported mixed content and checks that rejection has no side effects.
+ * @param html - The original clipboard HTML.
+ * @param text - Its original plain text.
+ * @param blocks - The unchanged target fixture.
+ */
+async function rejectInCell(html: string, text: string, blocks: Parameters<typeof open>[0] = [TABLE]): Promise<void> {
+  const { editor, sink, manager } = await openReady(blocks);
+  caretIn(editor, 0);
+  const before = editor.prosemirrorView.state;
+  const undo = manager.undoStack.slice();
+  const redo = manager.redoStack.slice();
+  const warnings = vi.mocked(toast.warning).mock.calls.length;
+
+  paste(editor, html, text);
+  await settled();
+
+  expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before.doc.toJSON());
+  expect(editor.prosemirrorView.state.selection.toJSON()).toEqual(before.selection.toJSON());
+  expect(manager.undoStack).toEqual(undo);
+  expect(manager.redoStack).toEqual(redo);
+  expect(vi.mocked(toast.warning).mock.calls.length).toBe(warnings + 1);
+  expect(sink.start).not.toHaveBeenCalled();
+  expect(sink.onLeftOut).not.toHaveBeenCalled();
+}
 
 describe('HTML carrying media', () => {
   it('is read as HTML even when its plain text looks like Markdown, so the picture is not lost', async () => {
@@ -47,9 +128,9 @@ describe('HTML carrying media', () => {
 
   it.each([
     ['a line', [{ type: 'paragraph', content: 'lead' }], ['paragraph:leada', 'image[pending|]', 'paragraph:b']],
-    ['a table cell', [TABLE], ['table', 'image[pending|]', 'paragraph:']],
+    ['a table cell', [TABLE], ['table']],
   ])('a picture given only by srcset, pasted on %s, is fetched from its densest candidate', async (_where, blocks, expected) => {
-    const { editor, sink } = open(blocks);
+    const { editor, sink } = _where === 'a table cell' ? await openReady(blocks) : open(blocks);
     caretIn(editor, 0);
 
     paste(
@@ -60,6 +141,10 @@ describe('HTML carrying media', () => {
     await settled();
 
     expect(shape(editor)).toEqual(expected);
+    if (_where === 'a table cell') {
+      expect(cellShape(editor)).toEqual(['paragraph:cell a', 'image[pending|]', 'paragraph:b']);
+      expect(firstCell(editor, 0)).toBe('cell ab');
+    }
     expect(sink.start).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
       kind: 'address',
       url: 'https://elsewhere.example/i2.png',
@@ -223,19 +308,7 @@ describe('a web table whose cells hold media', () => {
   const WITH = '<p>a</p><table><tr><td><img src="https://elsewhere.example/a.png"> x</td><td>y</td></tr></table><p>b</p>';
   const WITHOUT = '<p>a</p><table><tr><td> x</td><td>y</td></tr></table><p>b</p>';
 
-  /**
-   * The labels a paste without the media gives, with the media pending right
-   * after the table.
-   * @param plain - The editor the media-less HTML went into.
-   * @returns The labels.
-   */
-  function underTable(plain: Editor): string[] {
-    const labels = shape(plain);
-    labels.splice(labels.indexOf('table') + 1, 0, 'image[pending|]');
-    return labels;
-  }
-
-  it('pasted on a line, lands as it does without them, the media under the table', async () => {
+  it('pasted on a line, keeps the table and its media in the original cell', async () => {
     const plain = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(plain.editor, 0);
     paste(plain.editor, WITHOUT, 'a x y b');
@@ -246,12 +319,15 @@ describe('a web table whose cells hold media', () => {
     paste(editor, WITH, 'a x y b');
     await settled();
 
-    expect(shape(editor)).toEqual(underTable(plain.editor));
+    expect(shape(editor)).toEqual(shape(plain.editor));
+    expect(shape(editor)).toEqual(['paragraph:leada', 'table', 'paragraph:b']);
+    expect(cellShape(editor, 1)).toEqual(['image[pending|]', 'paragraph:x']);
+    expect(cellShape(editor, 1, 0, 1)).toEqual(['paragraph:y']);
     expect(sink.start).toHaveBeenCalledOnce();
     expect(sink.onLeftOut).not.toHaveBeenCalled();
   });
 
-  it('dropped on a line, lands as it does without them, the media under the table', async () => {
+  it('dropped on a line, keeps the table and its media in the original cell', async () => {
     const plain = open([{ type: 'paragraph', content: 'lead' }]);
     drop(plain.editor, caretIn(plain.editor, 0), WITHOUT, 'a x y b');
     await settled();
@@ -260,7 +336,10 @@ describe('a web table whose cells hold media', () => {
     drop(editor, caretIn(editor, 0), WITH, 'a x y b');
     await settled();
 
-    expect(shape(editor)).toEqual(underTable(plain.editor));
+    expect(shape(editor)).toEqual(shape(plain.editor));
+    expect(shape(editor)).toEqual(['paragraph:leada', 'table', 'paragraph:b']);
+    expect(cellShape(editor, 1)).toEqual(['image[pending|]', 'paragraph:x']);
+    expect(cellShape(editor, 1, 0, 1)).toEqual(['paragraph:y']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
@@ -269,16 +348,16 @@ describe('a web table whose cells hold media', () => {
       'a figure in a cell, with its caption',
       '<table><tr><td><figure><img src="https://elsewhere.example/a.png"><figcaption>Cap</figcaption></figure></td></tr></table>',
       '<table><tr><td></td></tr></table>',
-      'Cap',
+      'Cap', '', '',
     ],
     [
       'a figure around the whole table',
       '<figure><table><tr><td><img src="https://elsewhere.example/a.png"> x</td></tr></table><figcaption>T</figcaption></figure>',
       '<figure><table><tr><td> x</td></tr></table></figure>',
       // The figure's only medium takes its caption, as BlockNote reads a figure.
-      'T',
+      'T', 'x', ' x',
     ],
-  ])('with %s, lands as it does without the medium, the medium after the table', async (_what, html, plainHtml, caption) => {
+  ])('with %s, keeps the medium and its caption in the original cell', async (_what, html, plainHtml, caption, words, plainWords) => {
     const plain = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(plain.editor, 0);
     paste(plain.editor, plainHtml, 'x');
@@ -289,36 +368,36 @@ describe('a web table whose cells hold media', () => {
     paste(editor, html, 'x');
     await settled();
 
-    expect(withoutMediaBlocks(editor)).toBe(withoutMediaBlocks(plain.editor));
-    const order = blockOrder(editor);
-    expect(order.indexOf(`image|${caption}`)).toBeGreaterThan(order.indexOf('table'));
-    expect(sink.start).toHaveBeenCalledOnce();
-  });
-
-  it('pasted into a table cell, puts its media under the table the caret is in', async () => {
-    const { editor, sink } = open([TABLE]);
-    caretIn(editor, 0);
-
-    paste(editor, WITH, 'a x y b');
-    await settled();
-
-    expect(shape(editor)[1]).toBe('image[pending|]');
+    expect(shape(editor)).toEqual(shape(plain.editor));
+    // Splitting at a medium cleans the whitespace at the cut (§5.4.2).
+    expect(firstCell(editor, 1)).toBe(words);
+    expect(firstCell(plain.editor, 1)).toBe(plainWords);
+    expect(cellShape(editor, 1)).toEqual(_what === 'a figure in a cell, with its caption'
+      ? [`image[pending|${caption}]`]
+      : [`image[pending|${caption}]`, 'paragraph:x']);
+    expect(blockOrder(editor).filter((block) => block.startsWith('image|'))).toEqual([`image|${caption}`]);
     expect(sink.start).toHaveBeenCalledOnce();
     expect(sink.onLeftOut).not.toHaveBeenCalled();
   });
+
+  it('pasted into a table cell, rejects the table mixed with surrounding prose', async () => {
+    await rejectInCell(WITH, 'a x y b');
+  });
 });
 
-describe('with the caret in a table cell (A7)', () => {
-  it('puts the words in the cell and the medium under the table, pending', async () => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+describe('with the caret in a table cell (A13)', () => {
+  it('puts the words and pending medium in the cell', async () => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png" alt="A">', 'words');
     await settled();
 
     expect(firstCell(editor, 0)).toBe('cell words');
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
-    const image = (editor.document as { props: Record<string, unknown> }[])[1]!;
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell words', 'image[pending|]', 'paragraph:']);
+    const image = cellBlocks(editor)[1]!;
+    expect(image.props['name']).toBe('A');
     expect(sink.start).toHaveBeenCalledExactlyOnceWith(image.props['uploadId'], {
       kind: 'address',
       url: 'https://elsewhere.example/a.png',
@@ -326,7 +405,7 @@ describe('with the caret in a table cell (A7)', () => {
   });
 
   it('carries a figure\'s caption, keeps a medium of ours as it is, and loses none', async () => {
-    const { editor } = open([TABLE]);
+    const { editor } = await openReady([TABLE]);
     caretIn(editor, 0);
 
     paste(
@@ -337,12 +416,13 @@ describe('with the caret in a table cell (A7)', () => {
     );
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|Cap]', `image[${OURS}b.png|]`, 'paragraph:']);
+    expect(shape(editor)).toEqual(['table']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell ', 'image[pending|Cap]', 'paragraph:words', `image[${OURS}b.png|]`, 'paragraph:']);
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
   it('counts a medium it cannot fetch as left out', async () => {
-    const { editor, sink } = open([TABLE]);
+    const { editor, sink } = await openReady([TABLE]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="http://elsewhere.example/a.png">', 'words');
@@ -353,109 +433,106 @@ describe('with the caret in a table cell (A7)', () => {
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
-  it('a drop of web content puts the words in the cell and the medium under the table, pending', async () => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+  it('a drop of web content puts the words and pending medium in the cell', async () => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(editor, 0);
 
     drop(editor, at, '<p>dropped</p><img src="https://elsewhere.example/a.png">', 'dropped');
     await settled();
 
-    expect(firstCell(editor, 0)).toContain('cell dropped');
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(firstCell(editor, 0)).toBe('cell dropped');
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell dropped', 'image[pending|]', 'paragraph:']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('plain text carrying a Markdown picture puts the words in the cell and the picture under the table', async () => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+  it('plain text carrying a Markdown picture puts its words and picture in the cell', async () => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '', 'words\n\n![alt](https://elsewhere.example/a.png)');
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell words', 'image[pending|]', 'paragraph:']);
+    expect(firstCell(editor, 0)).toBe('cell words');
+    expect(cellBlocks(editor)[1]!.props['name']).toBe('alt');
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('web content with a picture and a ragged table lands as it does without the picture, the picture under the table', async () => {
+  it('rejects prose mixed with a ragged table, with or without its picture', async () => {
     const TABLE_HTML = '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>';
-    const plain = open([TABLE, { type: 'paragraph', content: 'after' }]);
-    caretIn(plain.editor, 0);
-    paste(plain.editor, `<p>words</p>${TABLE_HTML}`, 'words a b c');
-    await settled();
-    const withPicture = open([TABLE, { type: 'paragraph', content: 'after' }]);
-    caretIn(withPicture.editor, 0);
-
-    paste(withPicture.editor, `<p>words</p><img src="https://elsewhere.example/a.png">${TABLE_HTML}`, 'words a b c');
-    await settled();
-
-    const expected = shape(plain.editor);
-    // The picture lands under the table it was pasted in, and the caret
-    // gets a line of its own before the table that follows.
-    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]', 'paragraph:');
-    expect(shape(withPicture.editor)).toEqual(expected);
-    expect(withPicture.sink.start).toHaveBeenCalledOnce();
+    await rejectInCell(`<p>words</p>${TABLE_HTML}`, 'words a b c', [TABLE, { type: 'paragraph', content: 'after' }]);
+    await rejectInCell(`<p>words</p><img src="https://elsewhere.example/a.png">${TABLE_HTML}`, 'words a b c', [TABLE, { type: 'paragraph', content: 'after' }]);
   });
 
-  it('a picture alone puts nothing in the cell and the picture under the table', async () => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+  it('a picture alone keeps the original words and lands as a block in the cell', async () => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '<img src="https://elsewhere.example/a.png">', '');
     await settled();
 
     expect(firstCell(editor, 0)).toBe('cell ');
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell ', 'image[pending|]', 'paragraph:']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
   it.each([
-    ['a line break', '<img src="https://elsewhere.example/a.png"><br>'],
-    ['a rule', '<img src="https://elsewhere.example/a.png"><hr>'],
-    ['a break inside its paragraph', '<p><img src="https://elsewhere.example/a.png"><br></p>'],
-  ])('a picture followed by %s that leaves the cell as it was still lands under the table', async (_what, html) => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    ['a line break', '<img src="https://elsewhere.example/a.png"><br>', ['paragraph:cell ', 'image[pending|]', 'paragraph:']],
+    ['a rule', '<img src="https://elsewhere.example/a.png"><hr>', ['paragraph:cell ', 'image[pending|]', 'divider:', 'paragraph:']],
+    ['a break inside its paragraph', '<p><img src="https://elsewhere.example/a.png"><br></p>', ['paragraph:cell ', 'image[pending|]', 'paragraph:']],
+  ])('a picture followed by %s keeps its ordinary blocks inside the cell', async (_what, html, blocks) => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, html, '');
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(blocks);
+    expect(firstCell(editor, 0)).toBe('cell ');
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('a drop of a picture and a line break that leaves the cell as it was still lands the picture under the table', async () => {
-    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+  it('a drop of a picture and a line break keeps the picture in the cell', async () => {
+    const { editor, sink } = await openReady([TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(editor, 0);
 
     drop(editor, at, '<img src="https://elsewhere.example/a.png"><br>', '');
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(shape(editor)).toEqual(['table', 'paragraph:after']);
+    expect(cellShape(editor)).toEqual(['paragraph:cell ', 'image[pending|]', 'paragraph:']);
+    expect(firstCell(editor, 0)).toBe('cell ');
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('web content dropped on a cell with the caret elsewhere lands as it does without its picture, the picture under the table', async () => {
+  it('web content dropped on a cell with the caret elsewhere keeps its words and picture in that cell', async () => {
     const HTML = '<h2>Head</h2><p>para</p>';
-    const plain = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
+    const plain = await openReady([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
     const plainAt = caretIn(plain.editor, 1);
     caretIn(plain.editor, 2);
     drop(plain.editor, plainAt, HTML, 'Head para');
     await settled();
-    const withPicture = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
+    const withPicture = await openReady([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(withPicture.editor, 1);
     caretIn(withPicture.editor, 2);
 
     drop(withPicture.editor, at, `${HTML}<img src="https://elsewhere.example/a.png">`, 'Head para');
     await settled();
 
-    const expected = shape(plain.editor);
-    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
-    expect(shape(withPicture.editor)).toEqual(expected);
+    expect(shape(withPicture.editor)).toEqual(shape(plain.editor));
+    expect(shape(withPicture.editor)).toEqual(['paragraph:before', 'table', 'paragraph:after']);
+    expect(cellShape(withPicture.editor, 1)).toEqual(['paragraph:cell Head', 'paragraph:para', 'image[pending|]', 'paragraph:']);
+    expect(firstCell(withPicture.editor, 1)).toBe('cell Headpara');
     expect(firstCell(withPicture.editor, 1)).toBe(firstCell(plain.editor, 1));
+    expect(withPicture.sink.start).toHaveBeenCalledOnce();
   });
 
   it('is taken away by one undo', async () => {
-    const { editor, manager } = open([TABLE]);
+    const { editor, manager } = await openReady([TABLE]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png">', 'words');
@@ -532,7 +609,7 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
   });
 
   it('typing just before a paste in a table cell stays when the paste is undone', async () => {
-    const { editor, manager } = open([TABLE]);
+    const { editor, manager } = await openReady([TABLE]);
     caretIn(editor, 0);
 
     type(editor, 'typed');
@@ -570,7 +647,7 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
   });
 
   it('typing just before a table pasted into a cell stays when the paste is undone', async () => {
-    const { editor, manager } = open([TABLE]);
+    const { editor, manager } = await openReady([TABLE]);
     caretIn(editor, 0);
 
     type(editor, 'typed');
@@ -596,13 +673,13 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
   });
 
   it('typing just before web content pasted over a cell selection stays when the paste is undone', async () => {
-    const { editor, manager } = open([TWO_CELLS]);
+    const { editor, manager } = await openReady([TWO_CELLS]);
     caretIn(editor, 0);
     type(editor, 'typed');
     const view = editor.prosemirrorView!;
     const cells: number[] = [];
     view.state.doc.descendants((node, at) => {
-      if (node.type.name === 'tableCell') cells.push(at);
+      if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') cells.push(at);
       return true;
     });
     view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
@@ -683,16 +760,16 @@ describe('pasted in the middle of a line', () => {
 });
 
 describe('the body\'s own HTML pasted into a table cell', () => {
-  it('a medium nested under a row lands under the table and the cell gets the words as without it', async () => {
+  it('keeps a medium nested under its original row inside the cell', async () => {
     const rows = (children: unknown[]): unknown[] => [
       { type: 'paragraph', content: 'p1', children },
       { type: 'paragraph', content: 'kid' },
     ];
-    const plain = open([TABLE]);
+    const plain = await openReady([TABLE]);
     caretIn(plain.editor, 0);
     paste(plain.editor, plain.editor.blocksToFullHTML(rows([]) as never), 'p1\nkid');
     await settled();
-    const withMedium = open([TABLE]);
+    const withMedium = await openReady([TABLE]);
     caretIn(withMedium.editor, 0);
 
     paste(
@@ -703,6 +780,17 @@ describe('the body\'s own HTML pasted into a table cell', () => {
     await settled();
 
     expect(firstCell(withMedium.editor, 0)).toBe(firstCell(plain.editor, 0));
-    expect(shape(withMedium.editor)).toEqual(['table', 'image[pending|]', 'paragraph:']);
+    expect(firstCell(withMedium.editor, 0)).toBe('cell p1kid');
+    expect(shape(withMedium.editor)).toEqual(['table']);
+    expect(cellShape(withMedium.editor)).toEqual(['paragraph:cell ', 'paragraph:p1', 'paragraph:kid']);
+    expect(blockOrder(withMedium.editor)).toEqual(['docTable', 'docTableRow', 'docTableCell', 'paragraph', 'paragraph', 'image|', 'paragraph']);
+    const nested = cellBlocks(withMedium.editor)[1]!.children!;
+    expect(nested.map((block) => block.type)).toEqual(['image']);
+    expect(nested[0]!.props['url']).toBe('');
+    expect(nested[0]!.props['uploadId']).toEqual(expect.any(String));
+    expect(nested[0]!.props['uploadId']).not.toBe('');
+    expect(withMedium.sink.start).toHaveBeenCalledExactlyOnceWith(nested[0]!.props['uploadId'], {
+      kind: 'address', url: 'https://elsewhere.example/a.png',
+    });
   });
 });

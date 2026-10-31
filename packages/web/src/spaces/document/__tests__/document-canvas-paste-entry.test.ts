@@ -7,6 +7,7 @@
  * and which uploads start.
  */
 
+import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -14,7 +15,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
-import { caretIn, open as openBody, pasteFormats, unmountAll, type Editor } from './paste-harness';
+import { caretIn, firstCell, open as openBody, pasteFormats, unmountAll, type Editor } from './paste-harness';
 
 const OURS = 'https://cdn.example/2026-10-14/a.png';
 
@@ -76,8 +77,25 @@ function shape(editor: Editor): string[] {
   return (editor.document as { type: string; props: Record<string, unknown>; content?: { text?: string }[] }[]).map((b) =>
     b.type === 'image' || b.type === 'video' || b.type === 'audio'
       ? `${b.type}[${b.props['uploadId'] === '' ? 'none' : 'id'}|${String(b.props['caption'])}|${String(b.props['url'])}]`
-      : `${b.type}:${Array.isArray(b.content) ? b.content.map((c) => c.text ?? '').join('') : ''}`,
+      : `${b.type === 'docTable' ? 'table' : b.type}:${Array.isArray(b.content) ? b.content.map((c) => c.text ?? '').join('') : ''}`,
   );
+}
+
+/**
+ * Reads the text of each ordinary block in new-table cells.
+ * @param editor - The editor.
+ * @returns Block texts for every cell, in row order.
+ */
+function cellTextRows(editor: Editor): string[][] {
+  const cells: string[][] = [];
+  editor.prosemirrorView.state.doc.descendants((node) => {
+    if (node.type.name !== 'docTableCell' && node.type.name !== 'docTableHeader') return true;
+    const texts: string[] = [];
+    node.forEach((block) => texts.push(block.textContent));
+    cells.push(texts);
+    return false;
+  });
+  return cells;
 }
 
 describe('text only', () => {
@@ -103,43 +121,43 @@ describe('text only, as an undo step', () => {
 describe('text only, in a table cell', () => {
   it('goes into the cell', () => {
     const { editor } = open(
-      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } }],
+      [tableBlock({ rows: [{ cells: ['cell '] }] })],
       0,
     );
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_x_') } }));
-    const table = (editor.document as { type: string; content: { rows: { cells: { content: { text: string }[] }[] }[] } }[])[0]!;
-    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text).join('')).toBe('cell _x_');
+    expect(firstCell(editor, 0)).toBe('cell _x_');
     expect(editor.document).toHaveLength(1);
   });
 
   it('every line goes into the cell, as a plain text paste of the same lines does', () => {
     const { editor } = open(
-      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } }, { type: 'paragraph', content: 'after' }],
+      [tableBlock({ rows: [{ cells: ['cell '] }] }), { type: 'paragraph', content: 'after' }],
       0,
     );
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
-    const table = (editor.document as { type: string; content: { rows: { cells: { content: { type: string; text?: string }[] }[] }[] } }[])[0]!;
-    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '\n').join('')).toBe('cell one\ntwo');
+    expect(cellTextRows(editor)[0]).toEqual(['cell one', 'two']);
     expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
   });
 
-  it('with several cells selected, fills every one, the cells staying selected', () => {
+  it('with several cells selected, fills every one and leaves the caret in the first cell', () => {
     const { editor } = open(
-      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } }, { type: 'paragraph', content: 'after' }],
+      [tableBlock({ rows: [{ cells: ['c1', 'c2'] }] }), { type: 'paragraph', content: 'after' }],
       1,
     );
     const view = editor.prosemirrorView;
     const cells: number[] = [];
     view.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'tableCell') cells.push(pos);
+      if (node.type.name === 'docTableCell') cells.push(pos);
       return true;
     });
     view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
     view.focus();
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_one_', 'two') } }));
-    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0]!;
-    expect(table.content.rows[0]!.cells.map((cell) => cell.content.map((c) => c.text ?? '\n').join(''))).toEqual(['_one_\ntwo', '_one_\ntwo']);
-    expect(view.state.selection).toBeInstanceOf(CellSelection);
+    expect(cellTextRows(editor)).toEqual([['_one_', 'two'], ['_one_', 'two']]);
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.empty).toBe(true);
+    expect(view.state.selection.$head.parent.textContent).toBe('two');
+    expect(view.state.selection.$head.node(-2).type.name).toBe('docTableCell');
   });
 });
 
@@ -226,16 +244,23 @@ describe('with media', () => {
     expect(sink.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: 'https://imgs.example/x.jpg' });
   });
 
-  it('in a table cell, the whole paste lands below the table', () => {
+  it('in a table cell, the media land inside that cell', () => {
     const { editor } = open(
       [
-        { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell']] }] } },
+        tableBlock({ rows: [{ cells: ['cell'] }] }),
         { type: 'paragraph', content: 'after' },
       ],
       0,
     );
     paste(editor, clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS } }));
-    expect(shape(editor).slice(1)).toEqual(['image[id|Hero|]', 'paragraph:after']);
+    expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+    expect(cellTextRows(editor)[0]).toEqual(['cell', '', '']);
+    const media: { name: unknown; caption: unknown; uploadId: unknown }[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'image') media.push({ name: node.attrs['name'], caption: node.attrs['caption'], uploadId: node.attrs['uploadId'] });
+      return true;
+    });
+    expect(media).toEqual([{ name: 'Hero', caption: 'Hero', uploadId: expect.any(String) }]);
   });
 });
 

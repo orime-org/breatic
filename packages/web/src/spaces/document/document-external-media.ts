@@ -224,8 +224,9 @@ export function documentPastedMediaExtension(
               // A row moved or copied within the body is ProseMirror's own
               // drop; files go to the file drop entry.
               drop: (view, event) => {
+                if (event.defaultPrevented) return false;
                 const data = event.dataTransfer;
-                if (view.dragging !== null || !view.editable || data === null || Array.from(data.types).includes('Files')) return false;
+                if (view.dragging !== null || !view.editable || data === null || data === undefined || Array.from(data.types).includes('Files')) return false;
                 const read = readTransfer(editor, data, media.lands);
                 event.preventDefault();
                 const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;

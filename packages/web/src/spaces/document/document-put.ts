@@ -26,7 +26,8 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
-import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { heldTables, swapHeld, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -502,7 +503,10 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const { doc, selection } = view.state;
   const $drop = options.dropAt === undefined ? null : doc.resolve(options.dropAt);
   const opened = $drop !== null && !$drop.parent.isTextblock;
-  const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : view.state.tr.deleteSelection().selection.$from);
+  const probe = view.state.tr;
+  const rest = swapHeld(selection, probe, bodyEdgeBetween);
+  if (rest !== null) probe.setSelection(rest);
+  const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : probe.deleteSelection().selection.$from);
   const cell = selection instanceof CellSelection && $drop === null ? selection.$anchorCell : cellAround($at);
   const inCell = cell !== null && ($drop !== null || heldTables(selection) === null);
   /**
@@ -512,7 +516,10 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
    * @returns Where it landed.
    */
   const atDrop = (place: () => Placed | null): Placed | null => {
-    if ($drop === null) return place();
+    if ($drop === null) {
+      if (selection.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) swapHeldTables(view);
+      return place();
+    }
     aim(view, $drop, opened);
     const placed = place();
     view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
@@ -722,5 +729,9 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, from + 1)));
     return;
   }
-  view.dispatch(view.state.tr.setSelection(TextSelection.between(doc.resolve(from), doc.resolve(to)) as Selection));
+  // A boundary after a medium needs the text ahead of it; between() looks
+  // back and would leave the last medium outside the range.
+  const $to = doc.resolve(to);
+  const $head = $to.parent.inlineContent ? $to : (Selection.findFrom($to, 1, true)?.$head ?? $to);
+  view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $head) as Selection));
 }

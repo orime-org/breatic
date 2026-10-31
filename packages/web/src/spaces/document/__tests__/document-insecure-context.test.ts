@@ -39,15 +39,26 @@ describe('a page that is not a secure context', () => {
     expect(sink.start).toHaveBeenCalledTimes(1);
   });
 
-  it('lands the picture of web content pasted in a table cell under the table', async () => {
-    const { editor } = open([TABLE]);
+  it('lands a pending picture inside the target cell', async () => {
+    const { editor, sink } = open([TABLE]);
+    await settled();
     caretIn(editor, 0);
     insecure();
 
     paste(editor, '<p>w</p><img src="https://e.example/a.png">', 'w');
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:']);
+    expect(shape(editor)).toEqual(['table']);
+    const types: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'docTableCell') {
+        node.forEach((block) => types.push(block.firstChild!.type.name));
+        return false;
+      }
+      return true;
+    });
+    expect(types).toEqual(['paragraph', 'image', 'paragraph']);
+    expect(sink.start).toHaveBeenCalledTimes(1);
   });
 
   it('lands a canvas paste of a picture and words', async () => {
