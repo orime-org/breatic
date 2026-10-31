@@ -42,7 +42,7 @@ CREATE TABLE credit_gifts (
   requested_by uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT credit_gifts_source_fk FOREIGN KEY (id,source_kind) REFERENCES credit_sources(id,kind) ON DELETE RESTRICT,
-  CONSTRAINT credit_gifts_origin_check CHECK (
+  CONSTRAINT credit_gifts_metadata_check CHECK (
     (origin = 'registration' AND id = target_user_id AND reason IS NULL AND operation_key IS NULL AND requested_by IS NULL)
     OR (origin = 'operator' AND reason IS NOT NULL AND length(btrim(reason)) BETWEEN 1 AND 500
       AND operation_key IS NOT NULL AND requested_by IS NOT NULL

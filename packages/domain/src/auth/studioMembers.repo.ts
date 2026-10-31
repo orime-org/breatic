@@ -377,6 +377,9 @@ export async function updateRole(
 /**
  * Lock a grant's member identity, then let the caller check its current role.
  * The predicate never filters role: a concurrent downgrade must be observed.
+ * @param studioId - The personal Studio identity to lock.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns The current active role, or null when the member is unavailable.
  * @throws {Error} When the member lock cannot be acquired.
  */

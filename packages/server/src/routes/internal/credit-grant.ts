@@ -13,12 +13,20 @@ const OPERATION = "/internal/v1/credit-grant-operations/:key";
 const uuid = z.string().uuid();
 const requestKey = z.string().regex(/^bo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
-/** Translate the finite service response to the internal HTTP protocol. */
+/**
+ * Translate the finite service response to the internal HTTP protocol.
+ * @returns The internal HTTP response.
+ * @param c - The authenticated internal HTTP context.
+ * @param answer - The finite service answer.
+ */
 function send(c: Context, answer: creditGrantService.GrantAnswer<unknown>): Response {
   return c.json(answer.body as object, answer.status);
 }
 
-/** Register the three signed endpoints exclusively on the internal listener. */
+/**
+ * Register the three signed endpoints exclusively on the internal listener.
+ * @param app - The authenticated internal listener.
+ */
 export function registerCreditGrantRoutes(app: Hono): void {
   app.get(`${ACCOUNT}/profile`, validate("param", z.object({ userId: uuid })), async (c) => send(c, await creditGrantService.profile(c.req.valid("param").userId)));
   app.get(OPERATION, validate("param", z.object({ key: requestKey })), async (c) => send(c, await creditGrantService.operation(c.req.valid("param").key)));

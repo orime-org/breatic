@@ -523,6 +523,8 @@ export async function countMembersByStudioIds(
 
 /**
  * Lock and recheck the account's personal Studio for one grant decision.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns Its current personal Studio, or null when unavailable.
  * @throws {Error} When the identity lock cannot be acquired.
  */

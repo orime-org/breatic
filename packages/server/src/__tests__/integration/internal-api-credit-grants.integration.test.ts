@@ -1,10 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { db, initCore, logger } from "@breatic/core";
+import { db, initCore, initLogger, logger } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { call, initInternalCore, useInternalApp } from "./internal-api-harness.js";
 import { GRANT_ADMIN, OTHER_ADMIN, applied, expectGrantTables, expectStoredGrant, fundingState, grantBody, grantKey, grantPath, operationPath, postGrant, profilePath, seedDebt, seedPersonal } from "./operator-credit-grant-fixtures.js";
@@ -218,7 +221,7 @@ describe("operator credit grants over signed HTTP", () => {
     const fx = await seedPersonal(suite.sql);
     const other = await seedPersonal(suite.sql);
     const result = applied(await postGrant(suite, fx, grantKey(), grantBody(fx, { kind })));
-    const [team] = await suite.sql<{ id: string }[]>`insert into studios(created_by_user_id,slug,type,name) values(${fx.userId},${`pin-team-${randomUUID()}`},'team','Team') returning id`;
+    const [team] = await suite.sql<{ id: string }[]>`insert into studios(created_by_user_id,slug,type,name) values(${fx.userId},${`pt-${randomUUID()}`},'team','Team') returning id`;
     await suite.sql`insert into studio_members(studio_id,user_id,role) values(${team!.id},${fx.userId},'admin')`;
     for (const studioId of [fx.studioId, team!.id, other.studioId, null]) {
       await expect(creditLotService.designateLot({ lotId: result.lotId, requestingUserId: fx.userId, studioId })).rejects.toMatchObject({ statusCode: 403 });
@@ -287,6 +290,8 @@ describe("operator credit grants over signed HTTP", () => {
     const fx = await seedPersonal(suite.sql);
     const key = grantKey();
     const original = applied(await postGrant(suite, fx, key));
+    const logsRoot = mkdtempSync(join(tmpdir(), "credit-grant-read-failure-"));
+    initLogger("credit-grant-read-failure", { logsRoot, debug: false, console: "none" });
     const error = vi.spyOn(logger, "error");
     await suite.sql`alter table credit_grant_operations rename to credit_grant_operations_read_failure`;
     try {
@@ -297,6 +302,7 @@ describe("operator credit grants over signed HTTP", () => {
     } finally {
       await suite.sql`alter table credit_grant_operations_read_failure rename to credit_grant_operations`;
       error.mockRestore();
+      rmSync(logsRoot, { recursive: true, force: true });
     }
     expect((await call(suite.baseUrl, operationPath(key), { admin: GRANT_ADMIN })).json).toEqual(original);
   });

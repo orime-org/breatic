@@ -28,7 +28,7 @@ async function insertOperation(tx: postgres.TransactionSql, fx: PersonalFixture,
   const result = { status: "applied", operation: { key, accountId: fx.userId, adminId: GRANT_ADMIN, requestHash: "a".repeat(64), recordedAt: "2026-10-31T00:00:00.000Z" },
     sourceId, sourceKind: "compensation", lotId, personalStudioId: fx.studioId, grantedCredits: "100.000000", repaidCredits: "0.000000", remainingCredits: "100.000000", debtBefore: "0.000000", debtAfter: "0.000000" };
   await tx`insert into credit_grant_operations(key,request_hash,target_user_id,requested_by,request_body,result)
-    values(${key},${"a".repeat(64)},${fx.userId},${GRANT_ADMIN},${tx.json(body)},${tx.json(result)})`;
+    values(${key},${"a".repeat(64)},${fx.userId},${GRANT_ADMIN},${tx.json({ ...body })},${tx.json(result)})`;
 }
 
 /** Build one parent/child receipt using the agreed product schema fields. */
@@ -61,9 +61,9 @@ async function oldGiftData(tx: postgres.TransactionSql, fixtures: readonly Perso
   for (const [index, fx] of fixtures.entries()) {
     const sourceId = unclassified && index === 0 ? randomUUID() : fx.userId;
     const at = `2020-01-0${index + 1}T00:00:00.123456Z`;
-    await tx`insert into credit_sources(id,kind,created_at) values(${sourceId},'gift',${at}::timestamptz)`;
+    await tx`insert into credit_sources(id,kind,created_at) values(${sourceId},'gift',${at}::text::timestamptz)`;
     await tx`insert into credit_lots(source_id,source_kind,user_id,purchased_credits,remaining_credits,designated_studio_id,lifecycle,created_at,deleted_at)
-      values(${sourceId},'gift',${fx.userId},100,${index === 1 ? "0" : "100"}::numeric,${fx.studioId},${index === 1 ? "depleted" : "active"},${at}::timestamptz,${index === 2 ? at : null}::timestamptz)`;
+      values(${sourceId},'gift',${fx.userId},100,${index === 1 ? "0" : "100"}::numeric,${fx.studioId},${index === 1 ? "depleted" : "active"},${at}::text::timestamptz,${index === 2 ? at : null}::text::timestamptz)`;
     expected.push({ sourceId, userId: fx.userId, studioId: fx.studioId, credits: "100.000000", createdAt: at });
   }
   return expected;

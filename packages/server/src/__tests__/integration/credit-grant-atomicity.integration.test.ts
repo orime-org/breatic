@@ -42,6 +42,7 @@ async function failAt(sql: Sql, table: string, predicate: string, run: () => Pro
 
 describe("operator credit grant atomicity and observed locks", () => {
   it.each([
+    ["credit_sources", "NEW.kind"],
     ["credit_compensations", "NEW.target_user_id"],
     ["credit_gifts", "NEW.target_user_id"],
     ["credit_lots", "NEW.user_id"],
@@ -57,7 +58,7 @@ describe("operator credit grant atomicity and observed locks", () => {
     const sourcesBefore = await suite.sql`select count(*)::int as n from credit_sources`;
     const ledger = stage.startsWith("credit_ledger");
     const table = ledger ? "credit_ledger" : stage;
-    const identity = stage === "studio_credit_debts" ? fx.studioId : fx.userId;
+    const identity = stage === "studio_credit_debts" ? fx.studioId : stage === "credit_sources" ? "compensation" : fx.userId;
     const entry = ledger ? ` and NEW.entry_type='${stage.endsWith("topup") ? "topup" : "debt_repayment"}'` : stage === "studio_credit_debts" ? " and TG_OP='UPDATE'" : "";
     await failAt(suite.sql, table, `${field}::text='${identity}'${entry}`, async () => {
       const response = await postGrant(suite, fx, grantKey(), { kind: stage === "credit_gifts" ? "gift" : "compensation", credits: "100.00", reason: "Service compensation", expectedPersonalStudioId: fx.studioId });

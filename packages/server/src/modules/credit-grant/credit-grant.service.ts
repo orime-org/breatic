@@ -16,6 +16,8 @@ export type GrantAnswer<T> = { status: 200; body: T } | { status: 404; body: { c
 
 /**
  * Resolve and hold the complete grant identity in the established lock order.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns A current identity or the finite reason it cannot receive funding.
  * @throws {Error} When an identity lock cannot be acquired.
  */
@@ -33,6 +35,7 @@ async function lockIdentity(userId: string, tx: DbTx): Promise<
 
 /**
  * Read the account's current personal Studio and debt from a coherent identity.
+ * @param userId - The target product account UUID.
  * @returns Its contract-checked profile, or a missing-account response.
  * @throws {Error} When the database or stored profile fails.
  */
@@ -53,6 +56,7 @@ export async function profile(userId: string): Promise<GrantAnswer<CreditGrantPr
 
 /**
  * Recover the committed original decision without recalculating balances.
+ * @param key - The stable original request key.
  * @returns The stored result or a currently absent operation.
  * @throws {Error} When the database or result contract fails.
  */
@@ -63,6 +67,7 @@ export async function operation(key: string): Promise<GrantAnswer<CreditGrantRes
 
 /**
  * Commit one original decision together with every funding and repayment fact.
+ * @param request - The signed identity and normalized original intent.
  * @returns Its original result, or a conflict when another intent owns the key.
  * @throws {Error} When any write fails; the enclosing transaction rolls back.
  */

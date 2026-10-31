@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { creditSources, creditGifts, creditCompensations, type DbTx } from "@breatic/core";
+import { inArray } from "drizzle-orm";
+import { db, creditSources, creditGifts, creditCompensations, type DbTx } from "@breatic/core";
 import type { CreditSourceKind } from "@breatic/shared";
 
 // Re-exported rather than declared here: the browser decides what a row
@@ -68,6 +69,11 @@ export async function claimSource(
 
 /**
  * Store the registration claim details in the source claim's transaction.
+ * @param input - The validated funding facts.
+ * @param input.userId - The product account receiving credits.
+ * @param input.studioId - The personal Studio receiving the funding.
+ * @param input.credits - The exact credit quantity.
+ * @param tx - The transaction holding the identity and funding locks.
  * @throws {Error} When the receipt cannot be persisted.
  */
 export async function createRegistrationGift(input: { userId: string; studioId: string; credits: string }, tx: DbTx): Promise<void> {
@@ -88,6 +94,8 @@ export interface OperatorReceipt {
 
 /**
  * Create a parent source and its matching operator receipt atomically.
+ * @param input - The validated funding facts.
+ * @param tx - The transaction holding the identity and funding locks.
  * @throws {Error} When a source or child constraint rejects the receipt.
  */
 export async function createOperatorSource(input: OperatorReceipt, tx: DbTx): Promise<void> {
@@ -95,4 +103,24 @@ export async function createOperatorSource(input: OperatorReceipt, tx: DbTx): Pr
   const values = { id: input.id, sourceKind: input.kind, targetUserId: input.userId, personalStudioId: input.studioId, credits: input.credits, reason: input.reason, operationKey: input.operationKey, requestedBy: input.adminId };
   if (input.kind === "gift") await tx.insert(creditGifts).values({ ...values, origin: "operator" });
   else await tx.insert(creditCompensations).values(values);
+}
+
+
+/**
+ * Read gift provenance through the source table owner for a page of sources.
+ * @param sourceIds - The immutable source identities in the requested page.
+ * @param tx - The enclosing read transaction, when present.
+ * @returns The recorded origin keyed by the immutable source identity.
+ * @throws {Error} When the provenance query fails.
+ */
+export async function readGiftOrigins(sourceIds: readonly string[], tx?: DbTx): Promise<Map<string, "registration" | "operator">> {
+  if (sourceIds.length === 0) return new Map();
+  const rows = await (tx ?? db).select({ id: creditGifts.id, origin: creditGifts.origin }).from(creditGifts)
+    .where(inArray(creditGifts.id, [...sourceIds]));
+  const origins = new Map<string, "registration" | "operator">();
+  for (const row of rows) {
+    if (row.origin !== "registration" && row.origin !== "operator") throw new Error("Invalid gift origin");
+    origins.set(row.id, row.origin);
+  }
+  return origins;
 }

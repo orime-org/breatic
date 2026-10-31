@@ -10,6 +10,8 @@ export interface StoredGrantOperation { requestHash: string; result: CreditGrant
 
 /**
  * Serialize decisions over one original key before reading or evaluating it.
+ * @param key - The stable original request key.
+ * @param tx - The transaction holding the identity and funding locks.
  * @throws {Error} When the database cannot acquire the transaction lock.
  */
 export async function lockOperationKey(key: string, tx: DbTx): Promise<void> {
@@ -18,6 +20,8 @@ export async function lockOperationKey(key: string, tx: DbTx): Promise<void> {
 
 /**
  * Read the original immutable decision without rechecking today's identity.
+ * @param key - The stable original request key.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns The original result or null for a currently unused key.
  * @throws {Error} When the database fails or stored data violates the contract.
  */
@@ -29,6 +33,14 @@ export async function findOperation(key: string, tx?: DbTx): Promise<StoredGrant
 
 /**
  * Retain every original decision in the transaction that produced its effects.
+ * @param input - The validated funding facts.
+ * @param input.key - The stable original request key.
+ * @param input.hash - The canonical original intent fingerprint.
+ * @param input.userId - The product account receiving credits.
+ * @param input.adminId - The authenticated back-office operator UUID.
+ * @param input.body - The normalized original request body.
+ * @param input.result - The immutable decision retained for replay.
+ * @param tx - The transaction holding the identity and funding locks.
  * @throws {Error} When the decision cannot be persisted.
  */
 export async function insertOperation(input: {

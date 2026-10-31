@@ -335,6 +335,8 @@ export async function linkGoogleIdentity(userId: string, googleId: string): Prom
 
 /**
  * Lock the grant account without blocking foreign-key key-share checks.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns The current active account, or null after erasure or absence.
  * @throws {Error} When the account lock cannot be acquired.
  */

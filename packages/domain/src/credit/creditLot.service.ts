@@ -1095,6 +1095,12 @@ export async function hasActiveDesignationsTo(
 /**
  * Repay a locked Studio debt from a locked or newly created designated lot.
  * The caller owns both locks and the transaction; the payer is always the lot owner.
+ * @param input - The validated funding facts.
+ * @param input.lot - The locked or newly created designated lot.
+ * @param input.studioId - The Studio receiving the designated funding.
+ * @param input.owedMicro - The Studio debt read under its debt lock.
+ * @param input.actorUserId - The product actor, or null for system repayment.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns The updated lot and exact debt repayment facts.
  * @throws {Error} When any funding write fails; the caller's transaction rolls back.
  */
@@ -1103,10 +1109,10 @@ export async function repayDesignatedLot(input: {
   studioId: string;
   owedMicro: bigint;
   actorUserId: string | null;
-}, tx: DbTx): Promise<{ lot: CreditLotEntity; repaidCredits: string; debtAfter: string }> {
+}, tx: DbTx): Promise<{ lot: CreditLotEntity; repaidCredits: CreditDecimal; debtAfter: CreditDecimal }> {
   const remainingMicro = parseCreditDecimal(input.lot.remainingCredits);
   const repaidMicro = input.owedMicro < remainingMicro ? input.owedMicro : remainingMicro;
-  if (repaidMicro <= 0n) return { lot: input.lot, repaidCredits: "0.000000", debtAfter: serializeCreditMicro(input.owedMicro) };
+  if (repaidMicro <= 0n) return { lot: input.lot, repaidCredits: serializeCreditMicro(0n), debtAfter: serializeCreditMicro(input.owedMicro) };
   const repaid = serializeCreditMicro(repaidMicro);
   const charged = await creditLotRepo.applyCharge(input.lot.id, repaid, tx);
   const debtAfter = await creditLotRepo.adjustDebt(input.studioId, serializeCreditMicro(-repaidMicro), tx);
@@ -1123,6 +1129,15 @@ export async function repayDesignatedLot(input: {
 
 /**
  * Grant operator funding to the personal identity already locked by the server.
+ * @param input - The validated funding facts.
+ * @param input.userId - The product account receiving credits.
+ * @param input.studioId - The Studio receiving the designated funding.
+ * @param input.kind - The compensation or gift source kind.
+ * @param input.credits - The exact credit quantity.
+ * @param input.reason - The original normalized operator reason.
+ * @param input.operationKey - The original request key owning this receipt.
+ * @param input.adminId - The authenticated back-office operator UUID.
+ * @param tx - The transaction holding the identity and funding locks.
  * @returns Immutable funding and repayment facts from this transaction.
  * @throws {Error} When any source, receipt, lot or ledger write fails.
  */
@@ -1136,7 +1151,7 @@ export async function grantOperatorCredits(input: {
   adminId: string;
 }, tx: DbTx): Promise<{
   sourceId: string; sourceKind: "compensation" | "gift"; lotId: string; personalStudioId: string;
-  grantedCredits: string; repaidCredits: string; remainingCredits: string; debtBefore: string; debtAfter: string;
+  grantedCredits: CreditDecimal; repaidCredits: CreditDecimal; remainingCredits: CreditDecimal; debtBefore: CreditDecimal; debtAfter: CreditDecimal;
 }> {
   const debtBefore = serializeCreditMicro(parseCreditDecimal(await creditLotRepo.lockDebt(input.studioId, tx)));
   const sourceId = randomUUID();
