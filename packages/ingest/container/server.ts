@@ -6,7 +6,8 @@
  *
  * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
  * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
- * asked for one and there is still time, and answers with all three. The run
+ * asked for one and there is still time, reads an audio object's peaks when
+ * asked for them, and answers with all of it. The run
  * takes one mini-tool job (inner#888), answers 202, and reports on its own
  * when the job ends. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
@@ -32,26 +33,34 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
+  LONG_MEDIA_PROBE_PATH,
+  LONG_MEDIA_SEGMENT_PATH,
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
 import {
   PREVIEW_MAX_BYTES,
   PROBE_MAX_BYTES,
+  peaksArgs,
   probeArgs,
   coverArgs,
   previewArgs,
+  agentPictureArgs,
   readProbeOutput,
 } from "@ingest/probe-command.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { previewSource } from "@ingest/preview-step.js";
 import type { UprightOrder } from "@ingest/upright-run.js";
 import { runUpright, type UprightDeps } from "./upright-probe.js";
 import { openObject, runTool } from "./run-tool.js";
+import { streamPeaks } from "./stream-peaks.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
+import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
+import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
 
 /**
  * The most a cover frame may weigh.
@@ -173,6 +182,37 @@ function uprightOrderOf(sent: unknown): UprightOrder | null {
   };
 }
 
+/**
+ * Read the supported JPEG specification at the container boundary.
+ * @param sent - Untrusted decoded request field.
+ * @returns The complete version-one specification, when valid.
+ * @throws {never} Never.
+ */
+function pictureSpecOf(sent: unknown): ProbeRequest["agentPicture"] {
+  if (typeof sent !== "object" || sent === null) return undefined;
+  const spec = sent as Record<string, unknown>;
+  if (spec.version !== 1 || typeof spec.longEdge !== "number" || !Number.isInteger(spec.longEdge) || spec.longEdge < 1 ||
+    typeof spec.quality !== "number" || !Number.isInteger(spec.quality) || spec.quality < 1 || spec.quality > 100) return undefined;
+  return { version: 1, longEdge: spec.longEdge, quality: spec.quality };
+}
+
+/**
+ * Produce the separate static JPEG directly from the authorized object stream.
+ * @param request - The authorized source and specification.
+ * @param signal - Original media-task deadline.
+ * @returns JPEG bytes or none when generation failed or was not requested.
+ * @throws {never} Tool and source failures are recorded by their boundaries.
+ */
+async function cutAgentPicture(request: ProbeRequest, signal: AbortSignal): Promise<Uint8Array | null> {
+  if (request.agentPicture === undefined || signal.aborted) return null;
+  const input = await openObject(request.objectUrl, signal);
+  if (input === null) return null;
+  const cut = await runTool("vips", agentPictureArgs(request.agentPicture), {
+    input, signal, maxBytes: PREVIEW_MAX_BYTES,
+  });
+  return cut === null ? null : new Uint8Array(cut);
+}
+
 /** What an upright run reaches out to, in this container. */
 const UPRIGHT_DEPS: UprightDeps = {
   openObject,
@@ -212,6 +252,52 @@ function send(res: ServerResponse, answer: Response): void {
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === LONG_MEDIA_SEGMENT_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let segment: unknown;
+      try {
+        segment = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const parsed = readLongMediaSegmentRunRequest(segment);
+      if (parsed === null) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaSegment(parsed).catch((err: unknown) => {
+        console.error("long_media_segment_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
+    return;
+  }
+  if (req.method === "POST" && req.url === LONG_MEDIA_PROBE_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let probe: LongMediaProbeRunRequest;
+      try {
+        probe = JSON.parse(Buffer.concat(chunks).toString("utf8")) as LongMediaProbeRunRequest;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      if (typeof probe.objectUrl !== "string" || typeof probe.reportUrl !== "string" ||
+          typeof probe.deadlineAt !== "number" || !Number.isSafeInteger(probe.deadlineAt)) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaProbe(probe).catch((err: unknown) => {
+        console.error("long_media_probe_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
+    return;
+  }
   if (req.method === "POST" && req.url === RUN_PATH) {
     void (async () => {
       const chunks: Buffer[] = [];
@@ -254,7 +340,9 @@ createServer((req, res) => {
       objectUrl: asked.objectUrl,
       wantCover: asked.wantCover === true,
       wantPreview: asked.wantPreview === true,
+      wantPeaks: asked.wantPeaks === true,
       deadlineAt: asked.deadlineAt,
+      ...(pictureSpecOf(asked.agentPicture) !== undefined && { agentPicture: pictureSpecOf(asked.agentPicture) }),
     };
     // Every tool in this run is held to the task's deadline and nothing else
     // (inner#1367). A timer cannot be set to a negative span, so a run that
@@ -272,6 +360,10 @@ createServer((req, res) => {
 
     const found = await probe(request.objectUrl, request.wantCover, signal);
     const preview = await cutPreview(request, found, signal);
-    send(res, buildProbeAnswer(found.report, found.cover, preview));
+    const samples = peaksSampleCount({ wantPeaks: request.wantPeaks === true, report: found.report });
+    const peaks =
+      samples === null ? null : await streamPeaks("ffmpeg", peaksArgs(request.objectUrl), samples, signal);
+    const agentPicture = await cutAgentPicture(request, signal);
+    send(res, buildProbeAnswer(found.report, found.cover, preview, null, peaks, agentPicture));
   })();
 }).listen(PROBE_PORT);

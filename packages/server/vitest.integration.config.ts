@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
 /**
  * Vitest configuration for integration tests.
  *
@@ -6,7 +9,7 @@
  *   - take 30–120 seconds to run (container boot + migration + E2E flow)
  *   - must NOT run as part of the default `pnpm test` CI step
  *
- * Run with: pnpm --filter @breatic/server test:integration
+ * Run with: pnpm exec turbo run test:integration --filter=@breatic/server
  */
 
 import type {} from "@breatic/integration-tests/provided-context";
@@ -37,11 +40,18 @@ export default defineConfig({
     ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.
     setupFiles: ["@breatic/integration-tests/env"],
-    // Single fork: one worker process, one container set, no port conflicts.
+    // One file at a time, each in a fresh fork, all against the one container
+    // set globalSetup started. A single fork for every file runs out of heap:
+    // `singleFork` turns off module isolation, every file re-evaluates the
+    // server's source, and the copies stay reachable, so the heap grows by
+    // about 19 MB a file (measured: 162 MB at the first of 193 files, 3880 MB
+    // at the last, against a 4288 MB default limit). A fresh fork per file
+    // peaks at 367 MB; the run takes about twice as long.
     pool: "forks",
+    fileParallelism: false,
     poolOptions: {
       forks: {
-        singleFork: true,
+        singleFork: false,
       },
     },
     // Long timeout: testcontainers + migration + BullMQ job execution

@@ -22,7 +22,7 @@ const sonnerMock = vi.hoisted(() => {
 });
 vi.mock('sonner', () => ({ toast: sonnerMock }));
 
-import { toast } from '@web/lib/toast';
+import { _unmuteToastsForTests, muteToasts, toast } from '@web/lib/toast';
 
 describe('toast wrapper — the app\'s single, typed, content-deduped entry point', () => {
   beforeEach(() => {
@@ -75,5 +75,25 @@ describe('toast wrapper — the app\'s single, typed, content-deduped entry poin
     expect(toast.promise).toBe(sonnerMock.promise);
     expect(toast.dismiss).toBe(sonnerMock.dismiss);
     expect(toast.custom).toBe(sonnerMock.custom);
+  });
+});
+
+describe('muteToasts — nothing else is worth reading once the page must reload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _unmuteToastsForTests();
+  });
+
+  it('clears what is on screen and shows nothing typed afterwards', () => {
+    muteToasts();
+    expect(sonnerMock.dismiss).toHaveBeenCalledTimes(1);
+    toast.error('a');
+    toast.warning('b');
+    toast.success('c');
+    toast.info('d');
+    expect(sonnerMock.error).not.toHaveBeenCalled();
+    expect(sonnerMock.warning).not.toHaveBeenCalled();
+    expect(sonnerMock.success).not.toHaveBeenCalled();
+    expect(sonnerMock.info).not.toHaveBeenCalled();
   });
 });

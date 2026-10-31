@@ -106,6 +106,8 @@ interface Run {
   source: string;
   slots?: Record<string, string>;
   prompt?: string;
+  /** A slider moved by key before Run, for a tool that holds Run back at its defaults. */
+  keys?: { slider: string; key: string; times: number };
   /** Result nodes the run builds. */
   outputs: number;
   /** Set when the run must fail instead, with the task row's cause. */
@@ -219,6 +221,10 @@ async function start(run: Run): Promise<void> {
     await visibleSpace(page).locator(`.react-flow__node[data-id="${sources.get(file)!}"]`).click();
   }
   if (run.prompt !== undefined) await page.getByTestId('mini-tool-prompt').fill(run.prompt);
+  if (run.keys !== undefined) {
+    const thumb = page.getByTestId(run.keys.slider).getByRole('slider');
+    for (let i = 0; i < run.keys.times; i += 1) await thumb.press(run.keys.key);
+  }
   const before = new Set((await documentNodes()).map((n) => n.id));
   await page.getByTestId('mini-tool-run').click();
   let made: string[] = [];
@@ -283,7 +289,7 @@ const RUNS: Run[] = [
   { label: 'crop video', tool: 'video.crop', source: 'short720.mp4', outputs: 1 },
   { label: 'speed', tool: 'video.speed', source: 'short720.mp4', outputs: 1 },
   { label: 'cut', tool: 'video.cut', source: 'short720.mp4', outputs: 1 },
-  { label: 'adjust', tool: 'video.adjust', source: 'short720.mp4', outputs: 1 },
+  { label: 'adjust', tool: 'video.adjust', source: 'short720.mp4', keys: { slider: 'mini-tool-adjust-exposure-slider', key: 'ArrowRight', times: 10 }, outputs: 1 },
   { label: 'denoise', tool: 'video.audio-denoise', source: 'short720.mp4', outputs: 1 },
   { label: 'stabilize', tool: 'video.stabilize', source: 'shaky.mp4', outputs: 1 },
   { label: 'hdr', tool: 'video.hdr', source: 'short720.mp4', outputs: 1 },

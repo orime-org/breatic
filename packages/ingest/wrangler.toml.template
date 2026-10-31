@@ -129,6 +129,24 @@ storage = "sqlite"
 type = "durable-object"
 storage = "sqlite"
 
+# Long media jobs keep their own durable state and use the same media image at
+# standard-4 size. Their global active limit is owned by understand.yaml.
+[[containers]]
+class_name = "LongMediaContainer"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 2
+image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
+
+[[durable_objects.bindings]]
+name = "LONG_MEDIA"
+class_name = "LongMediaContainer"
+
+[exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
 # Nothing else here keeps state between requests. What one upload needs
 # remembered — its multipart upload id and the parts that landed — travels with
 # the browser and comes back on every request, which is how Cloudflare's own
@@ -259,5 +277,20 @@ type = "durable-object"
 storage = "sqlite"
 
 [env.production.exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "LongMediaContainer"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 2
+
+[[env.production.durable_objects.bindings]]
+name = "LONG_MEDIA"
+class_name = "LongMediaContainer"
+
+[env.production.exports.LongMediaContainer]
 type = "durable-object"
 storage = "sqlite"

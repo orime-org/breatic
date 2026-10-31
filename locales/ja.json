@@ -8,6 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
+      "payload_too_large": "リクエストの内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
+      "transfer_invalid": "アップロードした内容を使用できませんでした。もう一度お試しください。",
       "internal": "内部サーバーエラー"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
       "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
       "none": "クレジットが不足しています。チャージしてください。",
+      "held_by_running": "{held} クレジットが実行中のタスクに確保されています。現在の利用可能額は {available} です。",
       "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
       "refund_restored": "この購入は返金に失敗した後クレジットに戻されたため、返金を申請できません。",
@@ -31,6 +34,7 @@
       "email_taken": "このメールアドレスは既に登録されています",
       "token_expired": "セッションが期限切れです。再度ログインしてください",
       "logout_success": "ログアウトしました",
+      "logout_others_success": "他のデバイスからログアウトしました",
       "not_authenticated": "認証されていません",
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
@@ -60,7 +64,9 @@
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
-      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -79,7 +85,9 @@
       "not_found": "Project が見つかりません",
       "archived": "この Project はアーカイブ済みのため閲覧のみです。",
       "copy_name": "コピー - {name}",
-      "leave_owner": "Owner は所有権を譲渡してから退出してください。"
+      "leave_owner": "Owner は所有権を譲渡してから退出してください。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -165,7 +173,10 @@
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
-      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
+      "ask_not_found": "この会話にこの質問カードはありません。",
+      "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "確認コード",
         "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
         "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} さんが {project} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Project <b>{project}</b> に <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} さんが {studio} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Studio <b>{studio}</b> に <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
       }
     },
     "mini_tool": {
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
-      "foreignSource": "このファイルは処理できません。"
+      "foreignSource": "このファイルは処理できません。",
+      "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -284,7 +307,7 @@
   "chat": {
     "composer": {
       "chipsAria": "選択された chips",
-      "placeholder": "質問するか、キャンバス上のものを渡してください…",
+      "placeholder": "質問するか、Canvas 上のものを渡してください…",
       "inputAria": "Chat 入力",
       "send": "送信",
       "sending": "送信中",
@@ -308,11 +331,13 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintDirect": "下の入力欄からどうぞ ↓",
+      "capabilities": "素材探し、記事や脚本の執筆、Canvas での生成フロー作成、Document の修正をお手伝いします",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
-        "writePrompt": "イラスト生成のプロンプトを書いて",
-        "refinePrompt": "このプロンプトをもっと具体的にして"
+        "writeScript": "3分の短編映画の脚本を書いて",
+        "buildWorkflow": "キャラ三面図のフローを Canvas に組んで",
+        "annotateDocument": "Document の修正案を出して",
+        "writePrompt": "イラスト生成のプロンプトを書いて"
       }
     },
     "history": {
@@ -335,7 +360,8 @@
     },
     "error": {
       "network": "ネットワークエラー",
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
+      "turnTooLong": "今回処理する内容が多すぎて完了できませんでした。範囲を絞ってもう一度お試しください。"
     },
     "message": {
       "interrupted": "停止しました",
@@ -348,22 +374,60 @@
     "tool": {
       "unfinished": "停止しました",
       "failure": {
-        "upstream": "実行エラー",
-        "unreachable": "実行エラー",
-        "generic": "実行エラー"
+        "busy": "サービスでエラーが発生しました。しばらくしてから再試行してください",
+        "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
+        "refused": "サービスがこのリクエストを受け付けませんでした",
+        "unavailable": "この機能は現在利用できません",
+        "badAnswer": "サービスから使える結果が返ってきませんでした",
+        "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
+        "fileTooLarge": "ファイルが大きすぎます",
+        "unsupportedType": "このファイル形式には対応していません",
+        "emptyFile": "ファイルが空です",
+        "tooSlow": "ファイルのダウンロードが遅く、完了しませんでした",
+        "storageFull": "Studio のストレージがいっぱいです",
+        "noPermission": "この Project の編集権限がありません",
+        "notMember": "この Project のメンバーではなくなりました",
+        "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
+        "declined": "サービスがこの内容の処理を拒否しました",
+        "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
       },
+      "failedLine": "{step}が完了しませんでした：{reason}",
+      "failedStep": "{step}が完了しませんでした",
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
-      "checkingCanvas": "キャンバスでできることを確認中",
+      "checkingCanvas": "Canvas でできることを確認中",
       "proposingNodes": "提案をまとめています",
       "proposingDocumentEdit": "修正案をまとめています",
       "savingImage": "画像を保存中",
       "checkingModels": "利用できるモデルを確認中",
       "readingGuide": "製品の使い方を確認中",
+      "readingTemplate": "テンプレートを確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
-      "running": "{tool} を実行中"
+      "searchingConversations": "会話を検索中",
+      "readingConversation": "会話を確認中",
+      "readingNodeHistory": "ノードの履歴を確認中",
+      "readingActivity": "Project アクティビティを確認中",
+      "running": "{tool} を実行中",
+      "step": {
+        "webSearch": "「{query}」の検索",
+        "searchImages": "「{query}」の画像検索",
+        "understandMedia": "メディアの確認",
+        "saveImage": "画像の保存",
+        "judge": "判断",
+        "proposeCanvas": "提案の作成",
+        "proposeDocument": "修正案の作成",
+        "listModels": "利用できるモデルの確認",
+        "canvasCapabilities": "Canvas でできることの確認",
+        "productGuide": "使い方の確認",
+        "searchConversations": "会話の検索",
+        "readConversation": "会話の確認",
+        "readNodeHistory": "ノードの履歴の確認",
+        "readActivity": "Project アクティビティの確認",
+        "other": "{tool} の実行",
+        "readTemplate": "テンプレートの確認"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -409,7 +473,7 @@
       "building": "作成中…",
       "failed": "作成できませんでした。",
       "expired": "この提案は期限切れです。Agent に新しく提案してもらってください。",
-      "needCanvas": "先にキャンバスを開いてください。",
+      "needCanvas": "先に Canvas を開いてください。",
       "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。",
       "settingsReady": "設定は完了しています。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。"
     },
@@ -441,9 +505,22 @@
     "thinkingNow": "考え中",
     "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました",
     "attachment": {
-      "kind": "{kind, select, canvas {キャンバス} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
+      "kind": "{kind, select, canvas {Canvas} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
       "nodes": "{count} 個のノード",
       "more": "ほか {count} 件"
+    },
+    "questionnaire": {
+      "submit": "送信",
+      "hint": "どれも合わない場合は、入力欄で直接返信できます",
+      "other": "その他（自由に入力）…",
+      "ownWords": "回答を入力…",
+      "multi": "複数選択可",
+      "skipped": "スキップ",
+      "yourAnswers": "あなたの回答",
+      "replied": "チャットで返信しました",
+      "show": "開く",
+      "hide": "閉じる",
+      "atLeastOne": "少なくとも1問に答えてください"
     }
   },
   "canvas": {
@@ -469,8 +546,8 @@
       "nodeAudio": "オーディオ"
     },
     "emptyState": {
-      "title": "キャンバスは空です",
-      "hint": "素材をキャンバスにドラッグするか、左メニューからノードタイプを選んで作成してください。"
+      "title": "Canvas は空です",
+      "hint": "素材を Canvas にドラッグするか、左メニューからノードタイプを選んで作成してください。"
     },
     "nodePlaceholder": {
       "text": "ダブルクリックで入力",
@@ -479,7 +556,12 @@
       "audio": "ダブルクリックでアップロード",
       "3d": "ダブルクリックで 3D モデルをアップロード",
       "web": "ダブルクリックで URL を埋め込む",
-      "rightClickHint": "右クリックで生成など"
+      "rightClickHint": "右クリックで生成など",
+      "peer": {
+        "upload": "{name} がアップロード中",
+        "readText": "{name} がファイルを読み込み中",
+        "tool": "{name} が{tool}を実行中"
+      }
     },
     "textNode": {
       "editorPlaceholder": "入力を始めましょう"
@@ -518,12 +600,20 @@
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },
+    "transcribe": {
+      "title": "文字起こし",
+      "keepFillers": "フィラーを残す",
+      "keepFillersOn": "「えー」「あの」「um」などを話したとおりに書きます",
+      "keepFillersOff": "「えー」「あの」「um」などを省きます。ほかの語句が少し変わることがあります",
+      "couldNotStart": "文字起こしを開始できませんでした。もう一度お試しください。",
+      "sourceGone": "文字起こし元のノードがありません。この文字起こしに線はつながっていません。"
+    },
     "generatePanel": {
       "focus": "フォーカス",
       "reference": "参照",
       "focusTip": "ノードの一部の領域を参照にします",
-      "referenceTip": "キャンバスから画像を選んで参照にします",
-      "referenceTipAudio": "キャンバスから文字を選んで参照にします",
+      "referenceTip": "Canvas から画像を選んで参照にします",
+      "referenceTipAudio": "Canvas から文字を選んで参照にします",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
@@ -552,12 +642,12 @@
       "voiceVolume": "音量",
       "sfxDuration": "長さ",
       "sfxDurationSeconds": "{n}秒",
-      "selectFromCanvas": "キャンバスから参照を選択",
-      "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
-      "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
-      "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
-      "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
-      "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
+      "selectFromCanvas": "Canvas から参照を選択",
+      "selectFirstFrameFromCanvas": "Canvas で最初のフレームにする画像を選択",
+      "selectEndFrameFromCanvas": "Canvas で最後のフレームにする画像を選択",
+      "selectCharacterImageFromCanvas": "Canvas でキャラクターにする画像を選択",
+      "selectDrivingVideoFromCanvas": "Canvas で動きの元にする動画を選択",
+      "selectDrivingAudioFromCanvas": "Canvas で口の動きに合わせる音声を選択",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "camera": "カメラ",
@@ -573,6 +663,7 @@
       "errorCredits": "クレジットが不足しているため生成できません。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
+      "errorTooLargeNoLimit": "リクエストの内容が大きすぎます。プロンプトか参照しているテキストを短くしてください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考{kind, select, video {動画を最大 {limit} 本} audio {音声を最大 {limit} 本} other {画像を最大 {limit} 枚}}まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
@@ -628,17 +719,17 @@
       "sourceVideoTip": "動画を選ぶ",
       "removeSourceVideo": "動画を削除",
       "errorNoSourceVideo": "動画を選んでください",
-      "selectSourceVideoFromCanvas": "キャンバスで動画を選択",
+      "selectSourceVideoFromCanvas": "Canvas で動画を選択",
       "leftAudio": "左側の音声",
       "leftAudioTip": "左の話者の音声を選ぶ",
       "removeLeftAudio": "左側の音声を削除",
       "errorNoLeftAudio": "左側の音声を選んでください",
-      "selectLeftAudioFromCanvas": "キャンバスで左の話者の音声を選択",
+      "selectLeftAudioFromCanvas": "Canvas で左の話者の音声を選択",
       "rightAudio": "右側の音声",
       "rightAudioTip": "右の話者の音声を選ぶ",
       "removeRightAudio": "右側の音声を削除",
       "errorNoRightAudio": "右側の音声を選んでください",
-      "selectRightAudioFromCanvas": "キャンバスで右の話者の音声を選択",
+      "selectRightAudioFromCanvas": "Canvas で右の話者の音声を選択",
       "drivingAudio": "口の動きの元の音声",
       "drivingVideoTip": "動きをコピーする動画を選ぶ",
       "drivingAudioTip": "口の動きに合わせる音声を選ぶ",
@@ -730,7 +821,14 @@
         "motion_prompt": "動きの説明",
         "append_duration": "延長する長さ",
         "ambience": "環境音",
-        "double_output": "2 パターン生成"
+        "double_output": "2 パターン生成",
+        "light_azimuth": "光の方向",
+        "light_elevation": "光の高さ",
+        "light_color": "光の色",
+        "light_color_hex": "カスタムの光の色",
+        "light_intensity": "強さ",
+        "light_quality": "光の質",
+        "strength": "強さ"
       },
       "paramField": {
         "speaker": "名前",
@@ -752,7 +850,7 @@
       "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です",
       "style": "スタイル",
       "styleTip": "画像を最大3枚選んでスタイル参照にします",
-      "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "selectStyleFromCanvas": "Canvas からスタイル参照を選択",
       "removeStyle": "スタイル参照を削除",
       "errorNoStyleImage": "先にスタイル画像を選んでください",
       "cameraCommands": "カメラワーク",
@@ -772,7 +870,6 @@
         "reset": "リセット",
         "loadFailed": "3D ビューを読み込めませんでした。ページを再読み込みすると使えます"
       },
-      "editMarks": "角括弧と波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "notePrefix": "注意事項："
     },
@@ -786,7 +883,8 @@
       "history": "履歴",
       "snapshot": "スナップショットを保存",
       "download": "ダウンロード",
-      "understand": "内容を読み取る"
+      "understand": "内容を読み取る",
+      "transcribe": "文字起こし"
     },
     "edge": {
       "delete": "接続を削除"
@@ -809,7 +907,7 @@
       "failed": "貼り付けに失敗しました。"
     },
     "minimap": {
-      "label": "キャンバスのミニマップ"
+      "label": "Canvas のミニマップ"
     },
     "connection": {
       "rejected": "{source}は{target}に接続できません",
@@ -899,25 +997,28 @@
       "failure": {
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {このファイルは文字起こしの上限を超えています。} other {このファイルは文字起こしの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは文字起こしの上限を超えています（{file}）。} other {このファイルは文字起こしの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは文字起こしの上限を超えています（{file}、{bytes}）。} other {このファイルは文字起こしの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}} other {{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {文字起こしできないファイル形式です。} other {文字起こしできないファイル形式です（{type}）。}}} other {{type, select, none {文字起こしできないファイル形式です（{file}）。} other {文字起こしできないファイル形式です（{file}、{type}）。}}}}} other {{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}}}",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
         "source_cut_off": "このアドレスからの送信がファイルの途中で止まりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
-        "internal": "こちら側で問題が起きました。",
+        "internal": "内部サーバーエラーが発生しました。",
         "no_credits": "利用できるクレジットがありません。",
+        "credits_held": "クレジットが実行中のタスクに確保されています。",
         "declined": "モデルがこのリクエストを拒否しました。",
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
-        "no_audio_track": "この動画には音声トラックがありません。"
+        "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
+        "cut_short": "長すぎて最後まで文字起こしできませんでした。"
       },
       "kind": {
         "upload": "アップロード",
         "generate": "生成",
-        "understand": "内容を読み取る"
+        "understand": "内容を読み取る",
+        "transcribe": "文字起こし"
       }
     },
     "panel": {
@@ -954,6 +1055,42 @@
         },
         "rotate": {
           "label": "回転・反転"
+        },
+        "grid": {
+          "label": "グリッド分割"
+        },
+        "adjust": {
+          "label": "色調整"
+        },
+        "expand": {
+          "label": "拡張",
+          "prompt": "補う内容を入力。空欄なら画像に合わせて自然に広げます"
+        },
+        "mark": {
+          "label": "マークアップ"
+        },
+        "angle": {
+          "label": "マルチアングル",
+          "prompt": "補足があれば入力（例：背景はくっきりのまま）"
+        },
+        "relight": {
+          "label": "ライティング変更",
+          "prompt": "光について補足があれば入力（例：ろうそくの光、背後にネオンサイン）",
+          "slot": {
+            "light_reference": "光を写したい画像を選択"
+          }
+        },
+        "restyle": {
+          "label": "スタイル変換",
+          "prompt": "補足があれば入力（例：色を柔らかめに）",
+          "slotTitle": "スタイル画像",
+          "slot": {
+            "style": "スタイルを使う画像を最大 3 枚選択"
+          }
+        },
+        "quickEdit": {
+          "label": "クイック編集",
+          "prompt": "変えたい内容を入力（例：雨の夜にする、シャツを黒いジャケットに替える）"
         }
       },
       "video": {
@@ -1018,6 +1155,40 @@
         "extend": {
           "label": "延長",
           "prompt": "続ける音を説明"
+        },
+        "denoise": {
+          "label": "ノイズ除去"
+        },
+        "normalize": {
+          "label": "ラウドネス正規化",
+          "note": "ピーク上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "速度"
+        },
+        "cut": {
+          "label": "カット"
+        },
+        "eq": {
+          "label": "イコライザー"
+        },
+        "compress": {
+          "label": "コンプレッサー"
+        },
+        "pan": {
+          "label": "ステレオ"
+        },
+        "reverb": {
+          "label": "リバーブ"
+        },
+        "voice": {
+          "label": "声の強調"
+        },
+        "pitch": {
+          "label": "ピッチ変更"
+        },
+        "enhance": {
+          "label": "音声補正"
         }
       },
       "param": {
@@ -1050,6 +1221,42 @@
         },
         "transfer": {
           "label": "伝達特性"
+        },
+        "rows": {
+          "label": "行数"
+        },
+        "cols": {
+          "label": "列数"
+        },
+        "target": {
+          "label": "目標ラウドネス"
+        },
+        "keepPitch": {
+          "label": "ピッチを保つ"
+        },
+        "eq": {
+          "label": "プリセット"
+        },
+        "dynamics": {
+          "label": "プリセット"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "広がり"
+        },
+        "room": {
+          "label": "空間"
+        },
+        "amount": {
+          "label": "リバーブ量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "セント"
         }
       },
       "panel": {
@@ -1068,7 +1275,13 @@
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
-        "drawingEmpty": "先に画像に描いてください。"
+        "drawingEmpty": "先に画像に描いてください。",
+        "reset": "リセット",
+        "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
+        "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
+        "ratioTooLarge": "拡張できる最大サイズを超えます",
+        "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+        "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
       },
       "adjust": {
         "exposure": "露出",
@@ -1087,6 +1300,12 @@
         "grain": "粒子",
         "fade": "フェード"
       },
+      "adjustGroup": {
+        "light": "ライト",
+        "color": "カラー",
+        "detail": "ディテール",
+        "effects": "効果"
+      },
       "draw": {
         "brush": "ブラシ",
         "rect": "長方形",
@@ -1098,22 +1317,150 @@
         "undo": "元に戻す",
         "redo": "やり直す",
         "clear": "クリア"
+      },
+      "mark": {
+        "select": "選択",
+        "arrow": "矢印",
+        "rect": "四角形",
+        "ellipse": "楕円",
+        "line": "直線",
+        "pen": "ペン",
+        "text": "テキスト"
+      },
+      "grid": {
+        "picked": "{picked} / {total} 件を選択",
+        "pickAll": "すべて選択",
+        "pickNone": "選択をすべて解除"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "ライティング参考画像",
+        "optional": "任意",
+        "followsReference": "この画像の光に合わせます",
+        "referenceNote": "光はこの画像から取ります。右側の色・強さ・質で上書きできます。",
+        "fromReference": "参考画像に合わせる",
+        "sourceFromReference": "参考画像に合わせる"
+      },
+      "dynamics": {
+        "threshold": "スレッショルド",
+        "ratio": "レシオ",
+        "attack": "アタック",
+        "release": "リリース",
+        "makeup": "メイクアップゲイン"
       }
     },
     "template": {
       "title": "テンプレート",
       "empty": "テンプレートはありません",
       "unavailable": "利用できません",
+      "goal": {
+        "character": "キャラクター設定と一貫性",
+        "comics-storyboards": "漫画と絵コンテ"
+      },
       "storyboard-grid-25": {
         "name": "25コマ絵コンテ",
         "description": "1つの物語を5×5で並べた連続画面。動画の素材に",
-        "prompt": "[📎 キャラクターまたはシーンの参照画像] を参照として、1枚の画像を作成してください：ちょうど5行5列、合計25コマの時系列ストーリーボード。コマの間は細い白線で区切り、左から右、上から下へ時間の順に続きます。ストーリー：{✏️ ストーリー}。すべてのコマで人物、服装、場所、光を参照画像と同じに保つこと。コマごとにショットサイズとカメラアングルを変え、映画の絵コンテのようにする。文字や番号は入れない。"
+        "prompt": "[📎 人物または場面] を参照として、1枚の画像を作成してください：ちょうど5行5列、合計25コマの時系列ストーリーボード。コマの間は細い白線で区切り、左から右、上から下へ時間の順に続きます。ストーリー：{✏️ ストーリー}。すべてのコマで人物、服装、場所、光を参照画像と同じに保つこと。コマごとにショットサイズとカメラアングルを変え、映画の絵コンテのようにする。文字や番号は入れない。",
+        "input": {
+          "reference": {
+            "name": "人物または場面",
+            "note": "先に人物または場面の参照画像を入れてから生成してください"
+          }
+        }
       },
       "costume-sheet": {
         "name": "三面図キャラクター設定",
         "description": "正面・側面・背面の三面図と部分のクローズアップ",
-        "prompt": "[📎 キャラクターの参照画像] をキャラクターの参照として、1枚の画像を作成してください：無地の明るいグレー背景のキャラクター衣装設定シート。左側に同じキャラクターの正面・側面・背面の全身三面図を並べて立たせ、右側に{✏️ 手や体の一部}のクローズアップを小さく配置。参照画像と同じ写実的な写真のスタイルで、イラストではない。どのビューでも顔、髪型、服装、色、体型を参照画像と一致させる。均一な撮影照明。文字は入れない。"
-      }
+        "prompt": "[📎 キャラクター] をキャラクターの参照として、1枚の画像を作成してください：無地の明るいグレー背景のキャラクター衣装設定シート。左側に同じキャラクターの正面・側面・背面の全身三面図を並べて立たせ、右側に{✏️ 手や体の一部}のクローズアップを小さく配置。参照画像と同じ写実的な写真のスタイルで、イラストではない。どのビューでも顔、髪型、服装、色、体型を参照画像と一致させる。均一な撮影照明。文字は入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの参照画像を入れてから生成してください"
+          }
+        }
+      },
+      "character-bible": {
+        "name": "キャラクター設定表",
+        "description": "1人のキャラクターのビュー・表情・ポーズ・細部",
+        "prompt": "[📎 キャラクター] を唯一のキャラクター参照として使い、新しいキャラクターは作らない。1枚の画像を生成する：このキャラクターだけのキャラクター設定表、無地の薄いグレー背景。正面・斜め45度・横・背面の全身メインビュー4つを最も大きく配置する。その周りに順番に：髪・肌・衣装のカラーパレット、黒いシルエット、8種類の表情、5種類の微表情、4つの頭部アングル、3つのポーズ、強い感情のバストアップ1枚、衣装のディテールのクローズアップ、手のジェスチャー。小さなコマもすべてメインビューと同じ画風で、顔・髪型・衣装・色・体型は参照と同じ。画風：{✏️ 参照と同じ画風}。均一な撮影照明。文字やラベルは入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの参照画像を入れてから生成してください"
+          }
+        }
+      },
+      "expression-sheet": {
+        "name": "表情シート",
+        "description": "同じ顔の表情・微表情・頭部アングル",
+        "prompt": "[📎 キャラクター] をキャラクター参照として、1枚の画像を生成する：このキャラクターの表情シート、無地の薄いグレー背景、どのコマも頭と肩。1段目は8種類の表情：無表情、微笑み、大笑い、悲しみ、怒り、驚き、恐れ、嫌悪。2段目は5種類の微表情：こらえた笑み、疑い、軽蔑、涙をこらえる、気まずさ。3段目は無表情の顔の4つの頭部アングル：正面、斜め45度、横顔、うつむき。どのコマも顔・髪型・肌・光が同じで、参照と一致する。画風：{✏️ 参照と同じ画風}。文字やラベルは入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの参照画像を入れてから生成してください"
+          }
+        }
+      },
+      "character-design-from-text": {
+        "name": "説明からキャラクター設計",
+        "description": "文章からキャラクターをデザインし、設定表まで作る",
+        "prompt": "(💡 先にキャラクターデザインを生成してください)[📎 キャラクターデザイン] を唯一のキャラクター参照として使い、新しいキャラクターは作らない。1枚の画像を生成する：このキャラクターだけのキャラクター設定表、無地の薄いグレー背景。正面・斜め45度・横・背面の全身メインビュー4つを最も大きく配置する。その周りに順番に：髪・肌・衣装のカラーパレット、黒いシルエット、8種類の表情、5種類の微表情、4つの頭部アングル、3つのポーズ、強い感情のバストアップ1枚、衣装のディテールのクローズアップ、手のジェスチャー。メインビューも小さなコマもすべて参照の描き方をそのまま保つ：3D レンダーなら 3D、手描きなら手描き。顔・髪型・衣装・色・体型も同じ。均一な撮影照明。文字やラベルは入れない。",
+        "node": {
+          "design": {
+            "name": "キャラクターデザイン",
+            "prompt": "{✏️ どんなキャラクターか：年齢、体型、顔、髪型、衣装、色}の全身キャラクターデザイン、画風は{✏️ 1つの画風、例：3Dカートゥーン、アニメ、実写風}。カメラに向いたニュートラルな立ちポーズ、腕は自然に下ろし、頭からつま先まで全身が入る、無地の薄いグレー背景。均一な撮影照明。文字は入れない。"
+          }
+        }
+      },
+      "single-view-refs-scene": {
+        "name": "キャラクターのシーン動画",
+        "description": "正面・横・背面の3枚で同じ人物のまま動画を作る",
+        "prompt": "(💡 先に正面を生成してください)(💡 先に横を生成してください)(💡 先に背面を生成してください)この動画の人物は [📎 キャラクター]。[📎 正面]、[📎 横]、[📎 背面] は同じ人物の正面・横・背面。これらの画像からは顔・髪型・体型・衣装一式だけを使い、背景・ポーズ・光は使わない。場所：{✏️ どこで起きるか}。1つの連続したショットで、{✏️ その人物がする1つのこと}。カメラ：{✏️ 始点・方向・終点のある1つのカメラワーク、例：人物の背後の引きから顔のクローズアップまで寄る}。最初のフレームから完成した画で、すでに動いている。光源は終始1つ。音：その場の環境音と人物の足音、音楽なし、セリフなし。画面に文字は入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先に人物の写真を入れてから、正面・横・背面を生成してください"
+          }
+        },
+        "node": {
+          "front": {
+            "name": "正面",
+            "prompt": "[📎 キャラクター] をキャラクター参照として、同じ人物を正面から見た全身、まっすぐ立った姿、無地の薄いグレー背景、均一な撮影照明。参照からは顔・髪型・体型・衣装一式だけを引き継ぎ、背景・ポーズ・光は引き継がない。"
+          },
+          "side": {
+            "name": "横",
+            "prompt": "[📎 キャラクター] をキャラクター参照として、同じ人物を横から見た全身、まっすぐ立った姿、無地の薄いグレー背景、均一な撮影照明。参照からは顔・髪型・体型・衣装一式だけを引き継ぎ、背景・ポーズ・光は引き継がない。"
+          },
+          "back": {
+            "name": "背面",
+            "prompt": "[📎 キャラクター] をキャラクター参照として、同じ人物を背後から見た全身、まっすぐ立った姿、無地の薄いグレー背景、均一な撮影照明。参照からは顔・髪型・体型・衣装一式だけを引き継ぎ、背景・ポーズ・光は引き継がない。"
+          }
+        }
+      },
+      "identity-locked-sequence": {
+        "name": "同じキャラクターで3ショット",
+        "description": "同じキャラクターの連続した3ショット",
+        "prompt": "[📎 キャラクター] が唯一のキャラクターで、どのショットも同じ人物。0–3秒：このキャラクター、{✏️ 4つの特徴、例：黒いショートヘア、丸眼鏡、赤いマフラー、グレーのウールコート}、{✏️ どこで何をするか}。3–6秒：このキャラクター、{✏️ 同じ4つの特徴}、{✏️ 次に何をするか}。6–8秒：このキャラクター、{✏️ 同じ4つの特徴}、{✏️ どう終わるか}。顔は変わらず、衣装の種類と主な色も変わらない。ショットごとにカメラワークは1つで、それぞれ終点がある。画面に文字は入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの参照画像を入れてから生成してください"
+          }
+        }
+      },
+      "character-showcase-orbit": {
+        "name": "キャラクター周回ショット",
+        "description": "カメラがキャラクターの周りを回って見た目を見せる",
+        "prompt": "[📎 キャラクター] が{✏️ 無地の背景、またはある場所}の中央で、腕を自然に下ろしたリラックスした姿勢のまま、その場に立っている。カメラはキャラクターの正面・胸の高さから始まり、周りを180度回って背後で終わる。高さと距離は終始同じ。キャラクターはカメラに合わせて振り向かず、その場から動かない。動くのはカメラだけ。カメラが回るにつれて背景にははっきりした視差がある。片側からの柔らかい光。画面に文字は入れない。",
+        "input": {
+          "reference": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの参照画像を入れてから生成してください"
+          }
+        }
+      },
+      "applyFailed": "テンプレートを適用できませんでした。",
+      "groupLocked": "グループはロックされています。ノードを追加するにはロックを解除してください。"
     },
     "promptMark": {
       "reference": "@ で {label} を選択"
@@ -1156,7 +1503,10 @@
         "resendIn": "{seconds} 秒後に再送信できます",
         "changeEmail": "別のメールアドレスを使う",
         "newCodeSent": "新しいコードを送信しました。"
-      }
+      },
+      "invitedBanner": "{inviterName} さんが {targetName} に招待しています",
+      "invitedEmailMismatch": "この招待は {email} 宛てです。別のアドレスで登録しても、この招待は届きません。",
+      "inviteClosed": "この招待は無効になりました。"
     },
     "onboarding": {
       "title": "Slug を選択",
@@ -1238,7 +1588,11 @@
       "title": "作業中ですが移動しますか?",
       "description": "アップロードまたは編集がまだ同期されていません。今移動すると失われる可能性があります。",
       "stay": "とどまる",
-      "leave": "移動する"
+      "leave": "移動する",
+      "unsyncedDescription": "一部の変更が未同期です。今すぐ再読み込みするか離れると、変更が失われる可能性があります。",
+      "combinedDescription": "一部の変更が未同期で、アップロードまたは編集が進行中です。今すぐ再読み込みするか離れると、作業が失われる可能性があります。",
+      "completeDescription": "変更の同期と操作が完了しました。",
+      "completeTitle": "続行できます"
     },
     "header": {
       "renameFailed": "Project 名を変更できませんでした"
@@ -1252,7 +1606,11 @@
         "create": "Space の作成に失敗しました",
         "restore": "Space の復元に失敗しました",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
-        "notSynced": "Project を同期中です。しばらくしてから再試行してください"
+        "notSynced": "Project を同期中です。しばらくしてから再試行してください",
+        "limit": "Space は {max} 個までです",
+        "busy": "他のメンバーが操作中です。しばらくしてから再試行してください",
+        "alreadyRestored": "この Space はすでに復元されています",
+        "gone": "この Space は削除されています"
       },
       "loading": {
         "create": "Space を作成中…"
@@ -1264,7 +1622,7 @@
       "title": "新しいバージョンが利用できます",
       "description": "再読み込みすると新しいバージョンを利用できます。",
       "busy": "アップロードなどの操作が進行中です。再読み込みすると中断されるため、完了するまでお待ちください。",
-      "later": "後で",
+      "later": "後で更新",
       "refresh": "更新"
     },
     "archived": {
@@ -1278,6 +1636,11 @@
       "confirm": "退出",
       "done": "「{name}」から退出しました",
       "failed": "退出できませんでした"
+    },
+    "refreshGuard": {
+      "title": "未完了の作業があります。再読み込みしますか？",
+      "refresh": "再読み込みする",
+      "failed": "再読み込みできませんでした。もう一度お試しください。"
     }
   },
   "common": {
@@ -1357,13 +1720,15 @@
         "deleteConfirmDescription": "この Space と内容はソフト削除されます。Owner は Project メッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
-        "operationFail": "操作に失敗しました",
         "deleteFail": "削除に失敗しました"
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "3D で配置と共同編集",
       "canvas": "Canvas",
-      "canvasSub": "無限キャンバス + ノード",
+      "canvasSub": "無限 Canvas + ノード",
       "document": "Document",
       "documentSub": "リッチテキスト + 共同編集",
       "timeline": "Timeline",
@@ -1393,10 +1758,10 @@
     "document": {
       "loading": "エディターを読み込み中…",
       "unavailable": {
-        "text": "このドキュメントを開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
+        "text": "この Document を開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
         "action": "再試行"
       },
-      "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
+      "refusedNotice": "この Document への接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
       "clearConfirm": {
         "title": "すべての内容を削除しますか？",
@@ -1456,7 +1821,7 @@
         "filterOpen": "未解決",
         "filterAll": "すべて",
         "closeRail": "コメント欄を閉じる",
-        "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
+        "empty": "この Document にはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
         "nothingUnresolved": "未解決のコメントはありません。",
         "writeFailed": "この変更を保存できませんでした。",
         "unknownAuthor": "不明",
@@ -1471,7 +1836,7 @@
         "deleteReply": "この返信を削除"
       },
       "schemaOutdated": {
-        "headline": "ドキュメントエディターが更新されました",
+        "headline": "Document エディターが更新されました",
         "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
         "published": "新しいバージョンは{when}に公開されました。",
         "risksLead": "再読み込みの前にご注意ください：",
@@ -1479,7 +1844,7 @@
         "action": "ページを再読み込み"
       },
       "docMenu": {
-        "label": "ドキュメント全体の操作",
+        "label": "Document 全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "未提供",
@@ -1531,11 +1896,6 @@
         "uploadingPercent": "アップロード中 {percent}%",
         "retry": "再試行",
         "remove": "削除",
-        "notFinished": "アップロードが完了していません",
-        "pendingExport": "{name}（アップロード未完了）",
-        "uploadFailed": "アップロードに失敗しました",
-        "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
-        "notWrittenYet": "アップロード済み。まだ追加されていません",
         "caption": "キャプション",
         "captionPlaceholder": "キャプションを追加",
         "fullscreen": "全画面で表示",
@@ -1543,17 +1903,75 @@
         "download": "ダウンロード",
         "delete": "削除",
         "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。",
+        "captionReadOnly": "読み取り専用です。この下書きはコピーできます。",
+        "captionRetained": "メディアが削除されました。Spaceを閉じる前に下書きをコピーしてください。",
+        "notFinished": "アップロードが完了していません",
+        "pendingExport": "{name}（アップロード未完了）",
+        "uploadFailed": "アップロードに失敗しました",
+        "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
+        "notWrittenYet": "アップロード済み。まだ追加されていません",
         "notPasted": "{count} 件を貼り付けられませんでした。"
       }
     },
-    "readOnlyReconnect": "再接続"
+    "readOnlyReconnect": "再接続",
+    "threeD": {
+      "loading": "シーンを読み込み中…",
+      "loadFailed": "シーンを読み込めませんでした。",
+      "reload": "ページを再読み込み",
+      "valueFailed": "値を適用できませんでした。",
+      "figure": "人物",
+      "box": "ステージブロック",
+      "move": "移動",
+      "rotate": "回転",
+      "scale": "拡大縮小",
+      "focus": "選択対象を表示",
+      "duplicate": "複製",
+      "delete": "削除",
+      "undo": "元に戻す",
+      "redo": "やり直す",
+      "objects": "オブジェクト",
+      "properties": "プロパティ",
+      "addFigure": "人物を追加",
+      "addBox": "ブロックを追加",
+      "position": "位置 (m)",
+      "rotation": "回転 (°)",
+      "name": "名前",
+      "lock": "ロック",
+      "unlock": "ロック解除",
+      "selectedCount": "{count} 個を選択中",
+      "multiTransform": "シーンのギズモで、選択したオブジェクトを中心の周りで変形します。",
+      "mixed": "複数の値",
+      "selectObject": "オブジェクトを選択してプロパティを編集します。",
+      "refused": "このシーンへの接続が拒否されました。変更は保存されません。",
+      "retry": "再試行",
+      "viewFailed": "個人の視点を保存できませんでした。",
+      "commandFailed": "操作を適用できませんでした。選択、ロック、編集権限を確認してください。",
+      "invalidObject": "読み取れないオブジェクト: {id}",
+      "empty": "人物やブロックを追加してシーンを配置します。",
+      "unsupported": "このシーンの形式に対応していません。ページを再読み込みしてください。",
+      "modelFailed": "モデルを読み込めませんでした。",
+      "peerSelection": "{name}: {count} 個を選択中",
+      "add": "追加",
+      "generate": "AI 生成",
+      "annotationsLater": "注釈（後日提供）",
+      "help": "ヘルプ",
+      "tasks": "生成タスク",
+      "minimap": "シーンのミニマップ",
+      "generationDev": "3D モデル生成は開発中です",
+      "prompt": "生成する 3D モデルを説明してください",
+      "reference": "参照画像（任意）",
+      "chooseReference": "参照画像を選択",
+      "submit": "生成",
+      "helpBody": "オブジェクトをクリックして選択します。空白をドラッグして視点を回転し、ホイールで拡大縮小します。選択後はフローティングメニューで移動・回転・拡大縮小できます。",
+      "closePanel": "閉じる"
+    }
   },
   "menu": {
     "createAria": "作成メニュー",
     "item": {
       "nodes": "ノードライブラリ",
       "upload": "素材をアップロード(混在ファイル可)",
-      "comment": "キャンバスに注釈を追加",
+      "comment": "Canvas に注釈を追加",
       "collection": "Collection(近日対応)",
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
@@ -1598,7 +2016,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+    "awaitingSignup": "登録待ち",
+    "pendingTitle": "招待中",
+    "pendingBadge": "{role} · 回答待ち",
+    "revoke": "取り消す",
+    "revokeSuccess": "招待を取り消しました。",
+    "revokeFailed": "招待を取り消せませんでした。もう一度お試しください。"
   },
   "notifications": {
     "title": "通知",
@@ -1687,6 +2112,11 @@
       "home": "Studio ホーム",
       "account": "アカウント",
       "signOut": "ログアウト",
+      "logoutOthers": "他のデバイスからログアウト",
+      "logoutOthersTitle": "他のデバイスからログアウトしますか？",
+      "logoutOthersBody": "このデバイスはログインしたままです。他のデバイスはすべてログアウトされ、そこで開いている Canvas と Document はすぐに切断されます。",
+      "logoutOthersDone": "他のデバイスからログアウトしました",
+      "logoutOthersFailed": "他のデバイスからログアウトできませんでした。もう一度お試しください。",
       "credits": "クレジット",
       "creditsUnavailable": "取得できません",
       "membership": "メンバーシップ",
@@ -1762,7 +2192,7 @@
         "new": "Project を新規作成",
         "createError": "Project を作成できませんでした",
         "emptyTitle": "Projects がまだありません",
-        "emptyHint": "Project は無限キャンバスで創作する場所です。最初の Project を作成して始めましょう。"
+        "emptyHint": "Project は無限 Canvas で創作する場所です。最初の Project を作成して始めましょう。"
       },
       "collections": {
         "new": "Collection を新規作成",
@@ -1775,9 +2205,12 @@
         "spendableHint": "この Studio の Project で生成すると、ここのクレジットを使います。",
         "noneHint": "この Studio に割り当てられたクレジットはまだありません。",
         "nonePrompt": "クレジットは Studio に割り当ててから使えます。アカウントのクレジットで割り当ててください。",
-        "lotsTitle": "クレジット内訳",
+        "lotsTitle": "クレジットパック内訳",
         "lotsDebt": "未払い",
         "lotsTotal": "合計",
+        "lotsHeld": "実行中のタスクで確保",
+        "lotsHeldNote": "タスク終了後に実費で差し引かれ、余った分は戻ります",
+        "heldHint": "クレジットはすべて、終了するまで実行中のタスクに確保されています。",
         "depletedHint": "この Studio のクレジットは使い切りました。",
         "debtHint": "次に割り当てるクレジットは、まず未払い分に充当されます。",
         "depletedPrompt": "アカウントのクレジットから新しく割り当ててください。",
@@ -1829,7 +2262,9 @@
         "pendingBadge": "{role}・保留中",
         "revoke": "取り消す",
         "revokeSuccess": "招待を取り消しました。",
-        "inviteSent": "招待を送信しました。"
+        "inviteSent": "招待を送信しました。",
+        "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+        "awaitingSignup": "登録待ち"
       },
       "settings": {
         "basicTitle": "基本情報",
@@ -1895,10 +2330,9 @@
         "nameLabel": "名前",
         "namePlaceholder": "マイ Project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "slugHelperCollection": "Collection のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "descriptionLabel": "説明(任意)",
+        "slugPlaceholder": "空欄なら名前から自動で作られます",
+        "slugHelperProject": "Project のURLの一部です。空欄の場合は名前から自動で作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "slugHelperCollection": "Collection のURLの一部です。空欄の場合は名前から自動で作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
         "create": "作成",
         "cancel": "キャンセル",
         "slugFormat": "小文字で始め、小文字・数字・ハイフンのみ使えます。ハイフンは連続や末尾には使えません。",
@@ -1911,8 +2345,13 @@
         "namePlaceholderStudio": "マイ Studio",
         "namePlaceholderCollection": "マイ Collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。"
+        "slugPlaceholderCollection": "空欄なら名前から自動で作られます",
+        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "nameRequired": "名前を入力してください。",
+        "slugRequired": "Slug を入力してください。",
+        "emailRequired": "メールアドレスを入力してください。",
+        "slugUnverified": "今は確認できません。送信時にサーバーが判断します。",
+        "slugLabelOptional": "Slug(任意)"
       },
       "toolbar": {
         "sortLabel": "並び替え",
@@ -1992,8 +2431,8 @@
       "notifications": "通知",
       "newSpace": "新規 Space",
       "revealActiveTab": "現在の Space を表示",
-      "agentHide": "エージェントパネルを隠す",
-      "agentShow": "エージェントパネルを表示",
+      "agentHide": "Agent パネルを隠す",
+      "agentShow": "Agent パネルを表示",
       "openHistory": "会話履歴",
       "newConversation": "新規会話"
     },
@@ -2005,7 +2444,7 @@
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",
       "openSpaces": "開いている Space",
-      "agentColumnWidth": "エージェントパネルの幅を調整",
+      "agentColumnWidth": "Agent パネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
     },
@@ -2098,6 +2537,8 @@
     "declinedBody": "ここで行うことはもうありません。",
     "expiredTitle": "このリクエストは終了しました",
     "expiredBody": "もう回答できません。",
+    "invalidatedTitle": "このリクエストは無効になりました",
+    "invalidatedBody": "もう回答できません。",
     "revokedTitle": "このリクエストは取り消されました",
     "revokedBody": "送信した人が取り下げました。",
     "goneTitle": "対象はすでに存在しません",
@@ -2137,7 +2578,7 @@
       "projectsPerStudio": "Studio ごとの Project 上限",
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
-      "concurrentEditors": "1 ドキュメントの同時編集数"
+      "concurrentEditors": "1 Document の同時編集数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 件",
@@ -2179,7 +2620,7 @@
       "month": "月払い",
       "year": "年払い"
     },
-    "saveTwoMonths": "12 か月分を 10 か月分の料金で",
+    "saveTwoMonths": "2か月分無料",
     "yearSaving": "年払いで約 {percent}% お得",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2191,7 +2632,7 @@
     "card": {
       "storage": "ストレージ {value}",
       "teamStudios": "{count, plural, =0 {チーム Studio なし} other {チーム Studio # 個}}",
-      "connections": "{count, plural, other {1 ドキュメントあたり # 接続}}",
+      "connections": "{count, plural, other {1 Document あたり # 接続}}",
       "enterpriseScale": "容量は個別契約",
       "enterpriseGovernance": "SSO・監査・知的財産補償"
     },
@@ -2348,5 +2789,43 @@
   "pageLoadError": {
     "message": "ページを読み込めませんでした。もう一度お試しください。",
     "retry": "再試行"
+  },
+  "consent": {
+    "link": "Cookie 設定",
+    "banner": {
+      "text": "サイトを正しく動作させるために Cookie を使用しています。同意いただいた場合は、製品の利用状況の把握（製品分析）と広告効果の測定（広告）にも使用します。この設定は「Cookie 設定」からいつでも変更できます。",
+      "privacy": "プライバシーポリシー",
+      "acceptAll": "すべて許可",
+      "rejectAll": "すべて拒否",
+      "settings": "設定",
+      "gpc": "お使いのブラウザは Global Privacy Control を送信しているため、広告は初期設定でオフです。"
+    },
+    "settings": {
+      "title": "Cookie 設定",
+      "save": "保存",
+      "close": "閉じる",
+      "status": {
+        "gpc": "お使いのブラウザは Global Privacy Control を送信しているため、広告は初期設定でオフです。"
+      },
+      "necessary": {
+        "title": "必須",
+        "description": "ログイン、テーマと言語の設定、およびこの設定自体。常に有効です。"
+      },
+      "analytics": {
+        "title": "製品分析",
+        "description": "機能の利用状況を集計します。Project の中身は含みません。"
+      },
+      "ads": {
+        "title": "広告",
+        "description": "どの広告が登録や購入などの主要な行動につながったかを測定します。"
+      }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "ページのバージョンが古くなっています",
+      "description": "このページは古いバージョンのため、今回の操作は完了していません。再読み込みすると続行できます。",
+      "refresh": "更新"
+    }
   }
 }

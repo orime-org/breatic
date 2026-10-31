@@ -8,6 +8,8 @@
  *
  *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
  *     activity signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
+ *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -27,7 +29,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers both channels.
+ * One `psubscribe` on `{prefix}:project:*` covers all three channels.
  *
  * Membership changes do not come through here: `member-change-sync.ts` hears
  * them from the trigger on `project_members`.
@@ -46,19 +48,46 @@ import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
   projectMetaDocName,
   type ActivityNewControlEvent,
+  type CreditsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
+  CREDITS_CHANGED_SIGNAL,
   type ActivityNewSignal,
+  type CreditsChangedSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 
 const logger = createLogger("project-control-sync");
 
-type ProjectControlEvent = ActivityNewControlEvent | ProjectConnectionsCloseEvent;
+type ProjectControlEvent = ActivityNewControlEvent | CreditsChangedControlEvent | ProjectConnectionsCloseEvent;
+
+/**
+ * Relay a stateless signal to this instance's connections on a project's meta
+ * doc. An instance that holds no connection to the project has no doc loaded
+ * and relays nothing.
+ * @param hocuspocus - Running Hocuspocus server.
+ * @param projectId - The project whose meta doc carries the signal.
+ * @param signal - The signal, as its connections parse it.
+ */
+function relayOnMetaDoc(
+  hocuspocus: Hocuspocus,
+  projectId: string,
+  signal: ActivityNewSignal | CreditsChangedSignal,
+): void {
+  const docName = projectMetaDocName(projectId);
+  const doc = hocuspocus.documents?.get(docName);
+  if (!doc) return;
+  try {
+    doc.relayStateless(JSON.stringify(signal));
+  } catch (err) {
+    logger.warn({ err, docName, signal: signal.t }, "meta_signal_relay_failed");
+  }
+}
 
 /**
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
+ * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
@@ -81,20 +110,14 @@ async function handleEvent(
     // Relay a server/worker-written activity row to connected members
     // as the same stateless signal collab-originated rows broadcast
     // directly (ADR 2026-07-04 project-activity-feed).
-    const docName = projectMetaDocName(event.projectId);
-    const doc = hocuspocus.documents?.get(docName);
-    if (doc) {
-      try {
-        doc.relayStateless(
-          JSON.stringify({
-            t: ACTIVITY_NEW_SIGNAL,
-            projectId: event.projectId,
-          } satisfies ActivityNewSignal),
-        );
-      } catch (err) {
-        logger.warn({ err, docName }, "activity_signal_relay_failed");
-      }
-    }
+    relayOnMetaDoc(hocuspocus, event.projectId, { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
+    return;
+  }
+
+  if (event.type === "project-credits:changed") {
+    // A charge made in this project committed; members' top bars read
+    // their credits again.
+    relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
     return;
   }
 

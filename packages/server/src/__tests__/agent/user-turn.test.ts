@@ -10,7 +10,19 @@ import { describe, it, expect } from "vitest";
 
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
-import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
+import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel as modelUserTurn } from "@server/agent/user-turn.js";
+
+/**
+ * Narrow the legacy fixtures, which supply no prepared pictures, to their text contract.
+ * @param args - The original fixture arguments.
+ * @returns The unchanged text result.
+ * @throws {Error} When a fixture unexpectedly produces native media content.
+ */
+function userTurnForModel(...args: Parameters<typeof modelUserTurn>): string {
+  const content = modelUserTurn(...args);
+  if (typeof content !== "string") throw new Error("A legacy fixture without prepared pictures must remain text");
+  return content;
+}
 
 const image: ChatAttachedChip = {
   id: "a1",
@@ -324,7 +336,8 @@ describe("userMessageForModel", () => {
     expect(userMessageForModel("The reader's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
       "The reader's clock reads 09:00.\n\n画一只猫\n\n" +
         "(Reply and write every text the user will read or edit in the language this message is written in, " +
-        "unless the user has asked for a specific language or the work itself sets one.)",
+        "unless the user has asked for a specific language or the work itself sets one. " +
+        "Keep the product terms the system prompt lists in English, even where this message translates them.)",
     );
   });
 

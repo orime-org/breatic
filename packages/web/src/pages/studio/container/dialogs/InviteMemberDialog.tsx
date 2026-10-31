@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { FieldError } from '@web/components/FieldError';
 import { Button } from '@web/components/ui/button';
 import {
   Dialog,
@@ -23,24 +24,27 @@ import {
 } from '@web/components/ui/select';
 import type { GrantableStudioRole } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 interface InviteMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Called with a valid email + role on submit; the parent runs the mutation. */
   onInvite: (values: { email: string; role: GrantableStudioRole }) => void;
-  /** Whether the invite mutation is in flight (disables the submit button). */
+  /** Whether the invite mutation is in flight (spins the submit button). */
   pending: boolean;
   /**
    * A server-side error from the last invite attempt, shown inline (e.g. "email
    * not registered" / "already a member"). `null` clears the inline error.
    */
   error: string | null;
+  /** Called when the email is edited, so the parent can drop an error about the old one. */
+  onEmailEdit?: () => void;
 }
 
 /**
- * The invite-member dialog (spec §3.7) — a small form (registered email + a
- * `maintainer` / `guest` role) that an admin uses to add someone to a team
+ * The invite-member dialog (spec §3.7) — a small form (email and a
+ * `maintainer` / `guest` role) that an admin uses to invite someone to a team
  * studio. On a valid submit it reports the values to the parent (which runs the
  * mutation) and keeps the dialog open until the parent closes it on success, so
  * a server error (`404` email not registered / `409` already a member) can be
@@ -51,6 +55,7 @@ interface InviteMemberDialogProps {
  * @param props.onInvite called with the entered email + role on a valid submit.
  * @param props.pending whether the invite mutation is in flight.
  * @param props.error a server-side error to show inline, or `null`.
+ * @param props.onEmailEdit called when the email is edited (optional).
  * @returns the invite-member dialog.
  */
 export function InviteMemberDialog({
@@ -59,10 +64,13 @@ export function InviteMemberDialog({
   onInvite,
   pending,
   error,
+  onEmailEdit,
 }: InviteMemberDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [email, setEmail] = React.useState('');
   const [role, setRole] = React.useState<GrantableStudioRole>('guest');
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+  const emailRef = React.useRef<HTMLInputElement>(null);
 
   // Reset the form whenever the dialog opens, so a re-open starts clean (the
   // parent owns the server error, which it clears on open).
@@ -70,17 +78,27 @@ export function InviteMemberDialog({
     if (open) {
       setEmail('');
       setRole('guest');
+      setEmailError(null);
     }
   }, [open]);
 
   /**
-   * Validate the form and report the values on a successful submit.
+   * Validate the form and report the values on a successful submit; a refused
+   * press says why under the email field (inner#1652).
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
     const trimmed = email.trim();
-    if (trimmed === '') {
+    const reason =
+      trimmed === ''
+        ? t('studio.container.dialog.emailRequired')
+        : looksLikeEmail(trimmed)
+          ? null
+          : t('auth.invalidEmail');
+    if (reason !== null) {
+      setEmailError(reason);
+      emailRef.current?.focus();
       return;
     }
     onInvite({ email: trimmed, role });
@@ -98,7 +116,7 @@ export function InviteMemberDialog({
         <DialogHeader>
           <DialogTitle>{t('studio.container.members.inviteTitle')}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <DialogBody className='flex flex-col gap-4'>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={emailId}>
@@ -106,15 +124,27 @@ export function InviteMemberDialog({
               </Label>
               <Input
                 id={emailId}
+                ref={emailRef}
                 type='email'
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                // Read-only keeps the focus Enter left here, so a refused
+                // invite is corrected by typing straight away.
+                readOnly={pending}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailError(null);
+                  onEmailEdit?.();
+                }}
                 placeholder={t(
                   'studio.container.members.inviteEmailPlaceholder',
                 )}
-                required
+                aria-invalid={emailError !== null}
+                aria-describedby={emailError !== null ? `${emailId}-error` : undefined}
                 autoComplete='off'
               />
+              {emailError !== null ? (
+                <FieldError id={`${emailId}-error`} className='text-xs'>{emailError}</FieldError>
+              ) : null}
             </div>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={roleId}>
@@ -157,7 +187,7 @@ export function InviteMemberDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button type='submit' disabled={pending || email.trim() === ''} loading={pending}>
+            <Button type='submit' loading={pending}>
               {t('studio.container.members.inviteSubmit')}
             </Button>
           </DialogFooter>

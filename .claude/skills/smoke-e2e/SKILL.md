@@ -27,7 +27,12 @@ Check: did what I observed come from a process I started, running the code I cha
 
 **When setup stops with "The app painted nothing", fix the environment before touching code.** Setup opens `/login` first and fails on an empty `#root` or a page error; after a branch switch the usual cause is a dependency's `dist` built from the other branch. Restart `pnpm dev`, rebuilding the library packages first.
 
-**Run the suite through `pnpm --filter @breatic/web test:smoke` (or `test:visual`), not `playwright test` directly.** The script first runs `pnpm -w db:check-watermark` and then excludes `@needs-*` cases and prints what it left out; a bare `playwright test` does neither. Extra arguments are forwarded, so a case selection goes after the script name.
+**Run the suite through `pnpm --filter @breatic/web test:smoke` (or `test:visual`), not `playwright test` directly.** The script first runs `pnpm -w db:check-watermark` and then excludes `@needs-*` cases and prints what it left out; a bare `playwright test` does neither. Extra arguments are forwarded, so a case selection goes straight after the script name, with no `--`: pnpm passes a `--` on to Playwright too, which then ignores the selection and runs the whole suite.
+
+```sh
+pnpm --filter @breatic/web test:smoke -- tests/smoke/a.spec.ts:12   # wrong: runs every case
+pnpm --filter @breatic/web test:smoke tests/smoke/a.spec.ts:12      # right
+```
 
 ## Choosing what to run
 
@@ -48,6 +53,8 @@ Check: did what I observed come from a process I started, running the code I cha
 ## Accounts and data
 
 **The suite makes its own accounts, studios and Projects (docs §2.1); never register an account for a spec or point a spec at a personal one.**
+
+**Run one smoke run at a time per worktree.** Runs share the slot accounts and their projects (docs §2.1), so a second run started beside the first sees the first's teardown archive projects it still has open: its remaining cases time out on clicks and both teardowns report Spaces they did not make. Check: is another `playwright test` of this worktree still running?
 
 **For hand-driven checks, register accounts through the UI and reuse them.** Multi-member flows (invites, transfers, members joining and leaving) need several: register a batch at once. Leave these accounts in the local dev database; they exist to be reused.
 

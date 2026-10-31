@@ -4,12 +4,13 @@
 import * as React from 'react';
 
 import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
+import { attributionBody } from '@web/data/analytics';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@web/components/ui/input-otp';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 const CODE_LENGTH = 6;
 const SLOT_INDEXES = Array.from({ length: CODE_LENGTH }, (_, i) => i);
@@ -139,7 +140,7 @@ export function SignupCodeStep({
       setError(null);
       setInfo(null);
       try {
-        const { user } = await authApi.verifySignupCode({ code: value });
+        const { user } = await authApi.verifySignupCode({ code: value, ...attributionBody() });
         onVerified(user);
       } catch (err) {
         if (err instanceof ApiException && err.status === HTTP_EXPIRED) {

@@ -43,12 +43,12 @@ const MESSAGE_INDEX: Readonly<Record<string, number>> = { AppError: 1 };
  * `super(409, …)`. So the rule reads `super()` too, and it shipped a hardcoded
  * English message there until Gate 2 found it.
  *
- * The `super()` half is coarser than it looks: the rule has no view of what
- * the enclosing class extends, so it treats every `super()` in the linted
- * packages as the `AppError` shape and reads the second argument. Today that
- * misses nothing and reports nothing wrongly — the nine `super()` calls in
- * server, domain and core are this family's own plus two single-argument
- * calls — but a message-first subclass would slip past it. Task #76.
+ * A `super()` call is read as a call to the class named in the enclosing
+ * class's `extends` clause, so `AppError` subclasses are read at their second
+ * argument and subclasses of the message-first errors at their first. A class
+ * that extends anything outside the family, or an expression rather than a
+ * name, is not read: a family member reached through another file's class is
+ * out of one file's sight.
  */
 export const noUntranslatedErrorMessage = createRule<[], "untranslatedMessage">(
   {
@@ -72,14 +72,29 @@ export const noUntranslatedErrorMessage = createRule<[], "untranslatedMessage">(
           report(node.callee.name, node.arguments);
         },
 
-        // Every `super()` in the linted packages, whatever the class extends —
-        // the selector cannot reach the `extends` clause, so it assumes the
-        // `AppError` shape and reads the second argument. See the note on that
-        // gap in this file's docstring.
         "CallExpression[callee.type='Super']"(node: TSESTree.CallExpression): void {
-          report("AppError", node.arguments);
+          const parent = extendedClassName(node);
+          if (parent !== null) report(parent, node.arguments);
         },
       };
+
+      /**
+       * Name of the class the `super()` call's enclosing class extends.
+       * @param node - The `super()` call.
+       * @returns The extended class's name, or null when it is not a plain name.
+       */
+      function extendedClassName(node: TSESTree.Node): string | null {
+        let current: TSESTree.Node | undefined = node.parent;
+        while (
+          current !== undefined &&
+          current.type !== "ClassDeclaration" &&
+          current.type !== "ClassExpression"
+        ) {
+          current = current.parent;
+        }
+        const superClass = current?.superClass;
+        return superClass?.type === "Identifier" ? superClass.name : null;
+      }
 
       /**
        * Report the message argument when it is written inline.

@@ -13,7 +13,7 @@
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { FAILURE_LINES } from "@breatic/shared";
+import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
 import { readerUrlSchema } from "@domain/asset/source-url.js";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
@@ -64,6 +64,14 @@ const inputSchema = z.object({
   url: readerUrlSchema.describe("The https address of the picture to save, as it was found."),
 });
 
+/** The reader's cause for each reason a link could not be saved. */
+const LINK_LINES: Readonly<Record<string, FailureLine>> = {
+  source_unreachable: FAILURE_LINES.linkUnreachable,
+  unsupported_type: FAILURE_LINES.unsupportedType,
+  over_cap: FAILURE_LINES.fileTooLarge,
+  empty: FAILURE_LINES.emptyFile,
+};
+
 /**
  * The failure the model and the reader are told for one refusal.
  * @param refused - What the server refused.
@@ -76,23 +84,23 @@ function refusalFailure(refused: SaveRefused): Error {
       return toolFailed(
         `The picture at that address could not be saved (${refused.detail ?? "no reason given"}). ` +
           "Pick another picture rather than trying this address again.",
-        refused.detail === "source_unreachable" ? FAILURE_LINES.unreachable : FAILURE_LINES.generic,
+        LINK_LINES[refused.detail ?? ""] ?? FAILURE_LINES.ourFault,
       );
     case "rate_limited":
       return toolFailed(
         "Too many links were fetched into storage in a short time (saves and links pasted on the canvas count " +
           "together). Wait a minute before saving another.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.tooFrequent,
       );
     case "storage_full":
       return toolFailed(
         "The studio has no storage left, so nothing can be saved. Tell the user, and do not try again.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.storageFull,
       );
     case "no_access":
       return toolFailed(
         "The user cannot add material to this project. Tell the user, and do not try again.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.noPermission,
       );
   }
 }
@@ -141,7 +149,7 @@ export function makeSaveImageTool(): Tool<z.infer<typeof inputSchema>, SavedMate
         if (err instanceof SaveRefused) throw refusalFailure(err);
         throw toolFailed(
           "Saving the picture failed on our side. Trying once more may work.",
-          FAILURE_LINES.generic,
+          FAILURE_LINES.ourFault,
           err,
         );
       } finally {
@@ -151,7 +159,7 @@ export function makeSaveImageTool(): Tool<z.infer<typeof inputSchema>, SavedMate
       if (!saved.mimeType.startsWith("image/")) {
         throw toolFailed(
           `That address holds ${saved.mimeType}, not a picture. Save only addresses of pictures.`,
-          FAILURE_LINES.generic,
+          FAILURE_LINES.unsupportedType,
         );
       }
       return saved;

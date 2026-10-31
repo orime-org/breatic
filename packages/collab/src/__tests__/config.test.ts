@@ -14,6 +14,7 @@
  *
  * The YAML is read for real — stubbing the loader would make these vacuous.
  */
+import type * as FsModule from "node:fs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
@@ -132,5 +133,26 @@ describe("the knobs of several collab instances (inner#1497)", () => {
     // A peer's store lock lasts one second and is not extended.
     expect(cfg.unload_store_retry_ms).toBeGreaterThan(1000);
     expect(cfg.unload_store_retry_ms).toBeGreaterThan(cfg.unload_store_retry_interval_ms);
+  });
+});
+
+describe("the session recheck interval", () => {
+  // A timer quietly turns a delay above MAX_TIMER_MS into one millisecond,
+  // which would read every session on every tick (inner#1548).
+  it("refuses an interval no timer can hold, when the config loads", async () => {
+    const { MAX_TIMER_MS } = await import("@breatic/shared");
+    const real = readFileSync(resolve(import.meta.dirname, "../../../../config/collab.yaml"), "utf-8");
+    vi.resetModules();
+    vi.doMock("node:fs", async (orig) => ({
+      ...(await orig<typeof FsModule>()),
+      readFileSync: () =>
+        real.replace(/^session_recheck_interval_ms:.*$/m, `session_recheck_interval_ms: ${MAX_TIMER_MS + 1}`),
+    }));
+    try {
+      const mod = await import("../config.js");
+      expect(() => mod.getCollabConfig()).toThrow(/session_recheck_interval_ms[\s\S]*too_big|too_big[\s\S]*session_recheck_interval_ms/);
+    } finally {
+      vi.doUnmock("node:fs");
+    }
   });
 });

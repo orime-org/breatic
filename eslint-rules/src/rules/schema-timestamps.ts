@@ -35,8 +35,24 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "what a studio owes (0063): soft-deleting the row is the debt vanishing, and preventing exactly that is the only reason this table exists. What becomes of a debt when its studio is deleted is a business decision — transfer it, write it off — not a hidden row",
   ],
   [
+    "creditHolds",
+    "credits reserved for running work (0099, inner#1611): a hold ends by being released, and `status` records that; soft-deleting a row would release a hold without saying so, and the admission it was counted in could no longer be reconstructed",
+  ],
+  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
+  ],
+  [
+    "adsConversionUploads",
+    "record of what was reported to an ad platform (0094, inner#1442): the platform keeps the conversion whatever happens to the row, and a refund looks the row up to restate it, so a missing row would make a refund upload a brand-new zero-value conversion instead",
+  ],
+  [
+    "analyticsConsentEvents",
+    "consent receipts (0094, inner#1442 §4.4.6): a receipt is the record that a person made that choice, so it is never edited; it is removed whole when it lapses or the account is erased, and a soft-deleted receipt would still be a choice on file",
+  ],
+  [
+    "analyticsMilestones",
+    "claims for milestones reported once (0094, inner#1442): a row is the record that the milestone already happened, so removing it would report the same milestone a second time",
   ],
   [
     "storageReclaimQueue",

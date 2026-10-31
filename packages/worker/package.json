@@ -11,12 +11,14 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "voice-samples": "tsx src/voice-samples.ts"
+    "voice-samples": "tsx src/voice-samples.ts",
+    "template-resources": "tsx src/template-resources.ts"
   },
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
     "@breatic/shared": "workspace:*",
+    "@google-ads/datamanager": "catalog:",
     "@sentry/node": "catalog:",
     "ai": "catalog:",
     "bullmq": "catalog:",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "fast-check": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

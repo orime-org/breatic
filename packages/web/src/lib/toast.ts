@@ -7,6 +7,9 @@ type ToastMessage = Parameters<typeof sonnerToast.error>[0];
 type ToastOptions = Parameters<typeof sonnerToast.error>[1];
 type ToastId = ReturnType<typeof sonnerToast.error>;
 
+/** Set once the page must reload; see {@link muteToasts}. */
+let muted = false;
+
 /**
  * Derives the sonner options for a typed toast, adding a stable de-dup `id` from
  * `type + message` unless the caller already set one. sonner de-duplicates by
@@ -49,15 +52,33 @@ function withDedupId(
  */
 export const toast = {
   error: (message: ToastMessage, options?: ToastOptions): ToastId =>
-    sonnerToast.error(message, withDedupId('error', message, options)),
+    muted ? '' : sonnerToast.error(message, withDedupId('error', message, options)),
   warning: (message: ToastMessage, options?: ToastOptions): ToastId =>
-    sonnerToast.warning(message, withDedupId('warning', message, options)),
+    muted ? '' : sonnerToast.warning(message, withDedupId('warning', message, options)),
   success: (message: ToastMessage, options?: ToastOptions): ToastId =>
-    sonnerToast.success(message, withDedupId('success', message, options)),
+    muted ? '' : sonnerToast.success(message, withDedupId('success', message, options)),
   info: (message: ToastMessage, options?: ToastOptions): ToastId =>
-    sonnerToast.info(message, withDedupId('info', message, options)),
+    muted ? '' : sonnerToast.info(message, withDedupId('info', message, options)),
   loading: sonnerToast.loading,
   promise: sonnerToast.promise,
   dismiss: sonnerToast.dismiss,
   custom: sonnerToast.custom,
 };
+
+
+/**
+ * Silence every typed toast for the rest of this page's life.
+ *
+ * Called once the page is found out of date: a modal that only reloads is up,
+ * and the refusal that proved it, plus anything else still failing for the
+ * same reason, would only contradict it.
+ */
+export function muteToasts(): void {
+  muted = true;
+  sonnerToast.dismiss();
+}
+
+/** Let toasts through again between tests; a real page only reloads. */
+export function _unmuteToastsForTests(): void {
+  muted = false;
+}

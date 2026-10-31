@@ -12,17 +12,15 @@ import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import type { ChatMishap } from '@web/stores/chat-mishaps';
-import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
-import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
+import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import { readSpaceContext } from '@web/pages/project/chat/space-context';
 import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 
@@ -123,9 +121,9 @@ export function ChatPanel({
     turnPhase,
     navigating,
     hasMore,
-    mishap,
     loadEarlier,
     send,
+    answer,
     abort,
     conversations,
     hasMoreConversations,
@@ -133,7 +131,6 @@ export function ChatPanel({
     nextPageFailed,
     loadingMore,
     listLoading,
-    rowMishap,
     reloadList,
     currentId,
     draft,
@@ -141,8 +138,7 @@ export function ChatPanel({
     switchTo,
     rename,
     remove,
-  } = useChatSession(projectId, historyOpen, readSpaces);
-  const t = useTranslation();
+  } = useChatSession(projectId, readSpaces);
 
   // Two independent gates over one wait, because they answer different
   // questions. Whether there is a conversation to draw at all is `ready`;
@@ -150,6 +146,10 @@ export function ChatPanel({
   // Collapsing them into one would put the empty-conversation greeting on
   // screen during the wait, which is a whole screenful of the wrong thing.
   const ready = status === 'ready';
+  // Keyed on the boolean: every phase change would otherwise hand the one
+  // waiting card a new value for the same answer.
+  const busy = turnPhase !== 'idle';
+  const answering = React.useMemo(() => ({ answer, busy }), [answer, busy]);
   // A long conversation folds its oldest part into memory before this turn is
   // answered, which is a second model call in front of the reply. Read here
   // rather than passed down the turn: the panel can be unmounted when the
@@ -179,7 +179,7 @@ export function ChatPanel({
     },
     [currentId],
   );
-  const attachFiles = useAttachFiles(projectId, currentId);
+  const attachFiles = useAttachFiles(projectId);
 
   /**
    * Send what is in the box.
@@ -216,72 +216,6 @@ export function ChatPanel({
     },
     [switchTo, onHistoryOpenChange],
   );
-
-  // Read out here rather than inside the memo below. `t` keeps the same
-  // identity for the life of the page -- switching language re-renders
-  // without replacing it -- so a memo that depends on `t` and calls it inside
-  // would go on showing the sentence in the language it first ran in.
-  const networkErrorText = t('chat.error.network');
-  const turnFailedText = t('chat.error.turnFailed');
-  const goneText = t('chat.conversation.gone');
-
-  /**
-   * Put a mishap into words, wherever it is going to be drawn.
-   *
-   * One function for both places, because which of the four sentences a
-   * mishap gets is a property of the mishap, not of where it is shown.
-   */
-  const sayMishap = React.useCallback(
-    (m: ChatMishap): string => {
-      // Not an error -- the conversation was there and is not any more.
-      if (m.kind === 'gone') return goneText;
-      // The server wrote this one for the reader, in their own language.
-      if (m.kind === 'server') return m.message;
-      // It answered, but with nothing a reader could act on -- so this end
-      // says the one thing that is true: the reply is not coming, send again.
-      if (m.kind === 'turn') return turnFailedText;
-      return networkErrorText;
-    },
-    [goneText, networkErrorText, turnFailedText],
-  );
-
-  /**
-   * The one line, and it is only ever saying one thing.
-   *
-   * Four things it can be, and which one turns on what came back with the
-   * answer. A sentence of ours did, and it is passed through rather than
-   * replaced -- the server wrote it in the reader's own language, and it is
-   * the only sentence anyone wrote about this. A 404 is the exception among
-   * those: the server's words are about a resource, while this end knows
-   * which one and that nothing went wrong, so it says that instead. An answer
-   * with none of ours in it says only that the turn is over, so this end
-   * supplies the one thing that is true about that. No answer at all leaves
-   * nothing to quote and nothing to add: two words, and no advice about what
-   * to do next, because that is the reader's own business.
-   */
-  const notice = React.useMemo(
-    () => (mishap === null ? null : sayMishap(mishap)),
-    [mishap, sayMishap],
-  );
-
-  /**
-   * What the list says about the row an action was taken on, in words.
-   *
-   * Read the same way as the panel's own line -- the
-   * difference is only where it is drawn.
-   */
-  const rowNotice = React.useMemo(() => {
-    if (rowMishap === null) return null;
-    // The id travels as it is: a row's id puts the words against that row,
-    // and null means they are about the list itself. So does `at`, which is
-    // what tells two failures apart when they say the same thing -- without
-    // it the second one changes nothing on screen and nothing is announced.
-    return {
-      conversationId: rowMishap.conversationId,
-      text: sayMishap(rowMishap),
-      at: rowMishap.at,
-    };
-  }, [rowMishap, sayMishap]);
 
   /**
    * Fetch the list afresh every time it is opened.
@@ -320,31 +254,28 @@ export function ChatPanel({
       // off the top, or the composer off the bottom.
       className='flex w-full min-h-0 flex-1 flex-col'
     >
-      <MessageList
-        // The conversation travels as a prop rather than as a key. The list
-        // does have to notice a switch -- it is what tells it to follow the
-        // bottom again -- but keying it made React tear down the scroller and
-        // every bubble to do it, and the scroller it discarded stayed in the
-        // document: an empty half-column above the conversation, in every
-        // project, from the moment the first one opened.
-        conversationId={currentId}
-        messages={messages}
-        consolidating={consolidating}
-        ready={ready}
-        skeleton={skeleton}
-        sentCount={sentCount}
-        hasEarlier={hasMore}
-        onLoadEarlier={loadEarlier}
-        onQuickAction={quickAction}
-        navigating={navigating}
-      />
-      {/* One line, on the top edge of the composer, for everything this panel
-          has to say -- and it says each thing once. Nothing here is a state
-          the chat is in, so nothing here stays. */}
-      {/* Keyed by which telling this is, so the same sentence twice is torn
-          down and put up again -- otherwise React leaves the line alone and
-          the second failure is invisible and unspoken. */}
-      <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
+      {/* A questionnaire card inside a message answers in the conversation
+          this panel holds (inner#1542). */}
+      <QuestionnaireAnswerContext.Provider value={answering}>
+        <MessageList
+          // The conversation travels as a prop rather than as a key. The list
+          // does have to notice a switch -- it is what tells it to follow the
+          // bottom again -- but keying it made React tear down the scroller and
+          // every bubble to do it, and the scroller it discarded stayed in the
+          // document: an empty half-column above the conversation, in every
+          // project, from the moment the first one opened.
+          conversationId={currentId}
+          messages={messages}
+          consolidating={consolidating}
+          ready={ready}
+          skeleton={skeleton}
+          sentCount={sentCount}
+          hasEarlier={hasMore}
+          onLoadEarlier={loadEarlier}
+          onQuickAction={quickAction}
+          navigating={navigating}
+        />
+      </QuestionnaireAnswerContext.Provider>
       <ChatComposer
         conversationId={currentId ?? null}
         draft={draft}
@@ -355,7 +286,6 @@ export function ChatPanel({
         onAbort={abort}
         attachments={attachments}
         attachAccept={attachFiles.accept}
-        attachNotice={attachFiles.notice}
         onAttachFiles={attachFiles.attach}
         onPasteCanvas={pasteCanvas}
         onRemoveAttachment={removeAttachment}
@@ -374,7 +304,6 @@ export function ChatPanel({
         loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
         listLoading={listLoading}
-        rowMishap={rowNotice}
       />
     </div>
   );

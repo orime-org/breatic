@@ -99,6 +99,32 @@ export const storageConfigSchema = z
       upright_jpeg_quality: z.number().int().min(1).max(100).default(90),
     })
     .prefault({}),
+
+  /**
+   * Transfer uploads (inner#1006): a request body too large for the API,
+   * moved through storage. Sizes count the whole transfer file, signature
+   * line included.
+   */
+  transfer: z
+    .object({
+      /** Largest transfer file each route that accepts one may reference. */
+      route_max_bytes: z
+        .object({
+          chat_message: z.number().int().positive().default(4194304),
+          canvas_paste: z.number().int().positive().default(25165824),
+          node_history_snapshot: z.number().int().positive().default(25165824),
+        })
+        .prefault({}),
+      /** How long, in seconds, a finished transfer may be referenced (once). */
+      reference_ttl_seconds: z.number().int().positive().default(3600),
+      /** How long, in seconds, one user's in-flight transfer read holds its lock. */
+      read_lock_seconds: z.number().int().positive().default(60),
+      /** How long, in seconds, a reference waits for that lock before answering 429. */
+      read_lock_wait_seconds: z.number().int().positive().default(10),
+      /** How long, in milliseconds, a waiting reference sleeps between tries for the lock. */
+      read_lock_retry_ms: z.number().int().positive().default(100),
+    })
+    .prefault({}),
   });
 
 /** Validated storage configuration type. */

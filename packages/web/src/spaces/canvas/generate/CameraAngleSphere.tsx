@@ -13,17 +13,16 @@
 import * as React from 'react';
 import * as THREE from 'three';
 
-import type { CameraAngle } from '@breatic/shared';
+import type { AngleGrid, CameraAngle } from '@breatic/shared';
 
 import {
-  AZIMUTH_STEPS,
-  ELEVATION_RANGE,
   angleFromOffset,
+  elevationRange,
   cameraOffset,
   pickOnSphere,
   radiusFor,
 } from '@web/spaces/canvas/generate/camera-angle-geometry';
-import type { CameraAngleSphereProps, SphereColors } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
+import type { CameraAngleSphereProps, LightTint, SphereColors } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
 
 /** Where the card's centre sits. */
 const CENTER = new THREE.Vector3(0, 0.15, 0);
@@ -84,6 +83,36 @@ interface Scene {
   camera: THREE.Group;
   cameraMaterial: THREE.MeshBasicMaterial;
   ray: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>;
+  /** A light marker's own parts: its outline, its glow and the lit side of the card. */
+  light?: {
+    outline: THREE.MeshBasicMaterial;
+    glow: THREE.Sprite;
+    lit: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  };
+  /** The light the marker shines in, when the control hands one. */
+  tint: LightTint | undefined;
+}
+
+/**
+ * A white texture whose alpha falls off from the middle, or from the right edge.
+ * @param shape - `radial` for a glow, `edge` for the lit side of the card.
+ * @returns The texture.
+ */
+function fadeTexture(shape: 'radial' | 'edge'): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const g = canvas.getContext('2d');
+  if (g) {
+    const fade = shape === 'radial' ? g.createRadialGradient(32, 32, 0, 32, 32, 32) : g.createLinearGradient(64, 0, 16, 0);
+    fade.addColorStop(0, 'rgba(255,255,255,1)');
+    fade.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = fade;
+    g.fillRect(0, 0, 64, 64);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.center.set(0.5, 0.5);
+  return texture;
 }
 
 /**
@@ -104,10 +133,12 @@ function arcPoints(from: number, to: number): THREE.Vector3[] {
 /**
  * Builds the scene into a canvas.
  * @param canvas - The canvas to draw into.
+ * @param grid - The grid: one tick per azimuth, and the arc over its heights.
+ * @param marker - What sits on the sphere.
  * @returns The scene.
  * @throws {Error} When the browser cannot create a WebGL context.
  */
-function buildScene(canvas: HTMLCanvasElement): Scene {
+function buildScene(canvas: HTMLCanvasElement, grid: AngleGrid, marker: CameraAngleSphereProps['marker']): Scene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   const scene = new THREE.Scene();
@@ -134,13 +165,13 @@ function buildScene(canvas: HTMLCanvasElement): Scene {
   ring.position.copy(CENTER);
   scene.add(ring);
 
-  const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints(...ELEVATION_RANGE)), new THREE.LineBasicMaterial());
+  const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints(...elevationRange(grid))), new THREE.LineBasicMaterial());
   arc.position.copy(CENTER);
   scene.add(arc);
 
   const tickMaterial = new THREE.MeshBasicMaterial();
   const tickGeometry = new THREE.SphereGeometry(0.035, 12, 8);
-  const ticks = AZIMUTH_STEPS.map((azimuth) => {
+  const ticks = grid.azimuth.map((azimuth) => {
     const mesh = new THREE.Mesh(tickGeometry, tickMaterial);
     scene.add(mesh);
     return { azimuth, mesh };
@@ -148,17 +179,35 @@ function buildScene(canvas: HTMLCanvasElement): Scene {
 
   const cameraMaterial = new THREE.MeshBasicMaterial();
   const camera = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.18), cameraMaterial);
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 16), cameraMaterial);
-  lens.rotation.x = Math.PI / 2;
-  lens.position.z = 0.13;
-  camera.add(body, lens);
+  let light: Scene['light'];
+  if (marker === 'light') {
+    camera.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), cameraMaterial));
+    // An outline in the theme's ink keeps a pale light visible on a pale well.
+    const outline = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+    camera.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 20, 14), outline));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: fadeTexture('radial'), transparent: true, depthWrite: false }));
+    glow.scale.setScalar(0.7);
+    camera.add(glow);
+    const lit = new THREE.Mesh(
+      new THREE.PlaneGeometry(CARD_SIZE * 0.75, CARD_SIZE),
+      new THREE.MeshBasicMaterial({ map: fadeTexture('edge'), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    lit.position.z = 0.002;
+    card.add(lit);
+    light = { outline, glow, lit };
+  } else {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.18), cameraMaterial);
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 16), cameraMaterial);
+    lens.rotation.x = Math.PI / 2;
+    lens.position.z = 0.13;
+    camera.add(body, lens);
+  }
   scene.add(camera);
 
   const ray = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ dashSize: 0.06, gapSize: 0.05 }));
   scene.add(ray);
 
-  return { renderer, scene, eye, card, ring, arc, ticks, tickMaterial, camera, cameraMaterial, ray };
+  return { renderer, scene, eye, card, ring, arc, ticks, tickMaterial, camera, cameraMaterial, ray, light, tint: undefined };
 }
 
 /**
@@ -170,9 +219,15 @@ function applyColors(s: Scene, colors: SphereColors): void {
   paint(s.ring.material, colors.line);
   paint(s.tickMaterial, colors.line);
   paint(s.arc.material, colors.accent);
-  paint(s.cameraMaterial, colors.accent);
-  paint(s.ray.material, colors.accent);
   if (s.card.material.map === null) paint(s.card.material, colors.card);
+  const shine = s.tint?.color ?? colors.accent;
+  paint(s.cameraMaterial, shine);
+  paint(s.ray.material, shine);
+  if (s.light) {
+    paint(s.light.outline, colors.accent);
+    s.light.glow.material.color.setStyle(shine);
+    s.light.lit.material.color.setStyle(shine);
+  }
 }
 
 /**
@@ -195,6 +250,14 @@ function place(s: Scene, pose: CameraAngle): void {
   });
   s.ray.geometry.setFromPoints([at, CENTER]);
   s.ray.computeLineDistances();
+  if (s.light) {
+    // The lit side faces the light across the card's plane, and fades as the light goes behind it.
+    const strength = s.tint === undefined ? 0 : s.tint.strength;
+    const facing = 0.35 + 0.65 * Math.max(0, offset.z / r);
+    s.light.lit.material.opacity = strength * facing;
+    s.light.lit.material.map!.rotation = Math.atan2(offset.y, offset.x);
+    s.light.glow.material.opacity = strength;
+  }
 }
 
 /**
@@ -231,14 +294,14 @@ function turn(from: number, to: number): number {
  * @returns The canvas.
  */
 export default function CameraAngleSphere(props: CameraAngleSphereProps): React.JSX.Element {
-  const { pose, subjectUrl, colors, animate, onDragStart, onDrag, onDragEnd, onUnavailable } = props;
+  const { pose, grid, marker, subjectUrl, colors, tint, animate, onDragStart, onDrag, onDragEnd, onUnavailable } = props;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const sceneRef = React.useRef<Scene | null>(null);
   const viewRef = React.useRef<CameraAngle>(pose);
   const draggingRef = React.useRef(false);
   const frameRef = React.useRef(0);
-  const latest = React.useRef({ pose, onDrag, colors });
-  latest.current = { pose, onDrag, colors };
+  const latest = React.useRef({ pose, onDrag, colors, grid });
+  latest.current = { pose, onDrag, colors, grid };
 
   /** Draws the current view. */
   const draw = React.useCallback((): void => {
@@ -255,7 +318,7 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     if (!canvas) return;
     let s: Scene;
     try {
-      s = buildScene(canvas);
+      s = buildScene(canvas, grid, marker);
     } catch {
       onUnavailable();
       return;
@@ -276,14 +339,20 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
       dispose(s);
       sceneRef.current = null;
     };
-  }, [draw, onUnavailable]);
+  }, [draw, onUnavailable, grid, marker]);
 
+  const tintColor = tint?.color;
+  const tintStrength = tint?.strength;
   React.useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
+    s.tint = tintColor === undefined || tintStrength === undefined ? undefined : { color: tintColor, strength: tintStrength };
+    // The light's colour, readable outside WebGL.
+    if (tintColor === undefined) canvasRef.current?.removeAttribute('data-light');
+    else canvasRef.current?.setAttribute('data-light', tintColor);
     applyColors(s, colors);
     draw();
-  }, [colors, draw]);
+  }, [colors, tintColor, tintStrength, draw]);
 
   React.useEffect(() => {
     const s = sceneRef.current;
@@ -384,6 +453,7 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     const { azimuth, elevation } = angleFromOffset(
       { x: point.x - CENTER.x, y: point.y - CENTER.y, z: point.z - CENTER.z },
       r,
+      latest.current.grid,
     );
     latest.current.onDrag({ azimuth, elevation, distance: latest.current.pose.distance });
   }, []);

@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
+import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
@@ -21,19 +22,28 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { env, getHonouredTierForUser } from "@breatic/core";
+import {
+  currentConsent,
+  enqueueAdsConversion,
+  env,
+  getHonouredTierForUser,
+  logger,
+  recordReportedConsent,
+  trackServerEvent,
+} from "@breatic/core";
 import {
   setSession,
   getSession,
-  deleteSession,
-  deleteAllSessions,
+  revokeSession,
+  revokeAllSessions,
+  type RevokeOutcome,
 } from "@breatic/core";
 import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { UserEntity } from "@breatic/shared";
+import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import type { Attribution, ReportedConsent, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -51,17 +61,39 @@ export function hashPassword(password: string): Promise<string> {
  * sign-up for the same mailbox wrote first. Every sign-up checks the address
  * before it writes, and two that arrive together both pass that check; the
  * unique index is what decides between them.
+ *
+ * Every way of signing up ends here, so this is where `signup_completed` is
+ * sent. The campaign source is kept only when the signing-up browser accepted
+ * a consent category (inner#1442 design §4.5).
  * @param data - The account to create, as `userRepo.createUser` takes it.
  * @returns The created account.
  * @throws {ConflictError} When the address already belongs to an account.
  */
 export async function createAccount(data: Parameters<typeof userRepo.createUser>[0]): Promise<UserEntity> {
+  const consent = currentConsent();
+  const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
+  let user: UserEntity;
   try {
-    return await userRepo.createUser(data);
+    user = await userRepo.createUser({ ...data, attribution });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
     throw err;
   }
+  trackServerEvent("signup_completed", {
+    userId: user.id,
+    insertId: `signup:${user.id}`,
+    properties: { method: data.googleId ? "google" : "email" },
+  });
+  enqueueAdsConversion({
+    userId: user.id,
+    conversion: "signup",
+    transactionId: `signup:${user.id}`,
+    click: adClickFrom(attribution, Date.now()),
+  }).catch((err: unknown) => {
+    logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
+  });
+  if (user.emailVerified) await claimEmailInvitations(user);
+  return user;
 }
 
 /**
@@ -81,6 +113,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
  * a "save this now" UX; only the bcrypt hash is persisted server-side.
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
+ * @param attribution - Campaign source the browser recorded before sign-up
  * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
@@ -88,6 +121,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
 export async function register(
   email: string,
   password: string,
+  attribution: Attribution | null = null,
 ): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
@@ -95,7 +129,7 @@ export async function register(
   }
 
   const hashedPassword = await hashPassword(password);
-  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale() });
+  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale(), attribution });
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -164,6 +198,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
@@ -186,15 +221,18 @@ export async function loginEmail(
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
  * @param authoritativeEmail - Whether Google owns verification of this email (Gmail or Workspace).
+ * @param attribution - Campaign source the browser recorded, kept only on a new account.
  * @throws {UnauthorizedError} If linking would claim an unproven or differently bound email.
- * @returns The user and a session token
+ * @returns The user, a session token, and whether this call created the account
  */
 export async function loginOrCreateGoogle(
   googleId: string,
   email: string,
   authoritativeEmail = false,
-): Promise<{ user: UserEntity; token: string }> {
+  attribution: Attribution | null = null,
+): Promise<{ user: UserEntity; token: string; created: boolean }> {
   let user = await userRepo.getUserByGoogleId(googleId);
+  let created = false;
 
   if (!user) {
     user = await userRepo.getUserByEmail(email);
@@ -206,19 +244,21 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await createAccount({ email, googleId, locale: getActiveLocale() });
+      user = await createAccount({ email, googleId, emailVerified: authoritativeEmail, locale: getActiveLocale(), attribution });
+      created = true;
     }
   }
 
   // Google may attest a different address after the account's email changes.
   // It cannot verify the old address still stored on our account.
-  if (authoritativeEmail && user.email === normalizeEmail(email)) {
+  if (!created && authoritativeEmail && user.email === normalizeEmail(email)) {
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
-  return { user, token };
+  return { user, token, created };
 }
 
 /**
@@ -243,6 +283,17 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
  */
 export async function setLocale(userId: string, locale: string): Promise<void> {
   await userRepo.updateUser(userId, { locale });
+}
+
+/**
+ * Keep what a signed-in browser reports as the account's latest consent
+ * (`PUT /users/me/consent`, inner#1442 design §4.4.6); a deleted account is
+ * left as it is.
+ * @param userId - The account.
+ * @param report - The browser's consent in force.
+ */
+export async function reportConsent(userId: string, report: ReportedConsent): Promise<void> {
+  await recordReportedConsent(userId, report);
 }
 
 /**
@@ -272,21 +323,25 @@ export async function getUserByToken(
 }
 
 /**
- * Invalidate a single session.
+ * End a single session; collab closes the connections opened with it.
  * @param token - The session token to revoke
+ * @returns Whether telling collab failed; the caller logs it.
+ * @throws {Error} When Redis cannot delete the session.
  */
-export async function logout(token: string): Promise<void> {
-  const redis = getRedis();
-  await deleteSession(redis, token);
+export async function logout(token: string): Promise<RevokeOutcome> {
+  return revokeSession(getRedis(), token);
 }
 
 /**
- * Invalidate all sessions for a user (logout everywhere).
- * @param userId - The ID of the user whose sessions should be revoked
+ * End every session of a user except the one making the request ("sign out of
+ * other devices"); collab closes the connections opened with them.
+ * @param userId - Whose sessions end.
+ * @param currentToken - The caller's own session, which stays.
+ * @returns Whether telling collab failed; the caller logs it.
+ * @throws {Error} When Redis cannot be scanned or written.
  */
-export async function logoutAll(userId: string): Promise<void> {
-  const redis = getRedis();
-  await deleteAllSessions(redis, userId);
+export async function logoutOthers(userId: string, currentToken: string): Promise<RevokeOutcome> {
+  return revokeAllSessions(getRedis(), userId, { keep: currentToken });
 }
 
 const RESET_TOKEN_TTL = 3600;
@@ -344,9 +399,10 @@ export async function forgotPassword(
  * Verify reset token and update password.
  * @param token - One-time reset token from the email link
  * @param newPassword - New plaintext password to hash and store
+ * @returns Whether telling collab about the ended sessions failed; the caller logs it.
  * @throws {UnauthorizedError} if token is invalid or expired
  */
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
+export async function resetPassword(token: string, newPassword: string): Promise<RevokeOutcome> {
   const redis = getRedis();
   const key = `${env.ENV}:password-reset:${token}`;
   const userId = await redis.get(key);
@@ -362,10 +418,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await redis.del(key);
 
   // Invalidate all existing sessions (security: force re-login)
-  await deleteAllSessions(redis, userId);
-
-  // Caller logs `password_reset_completed` audit line (userId
-  // returned via the calling route's request context).
+  return revokeAllSessions(redis, userId);
 }
 
 /**
@@ -383,13 +436,14 @@ export async function resetPassword(token: string, newPassword: string): Promise
  *   5. markRecoveryCodeUsed (used_at = now)
  *   6. Generate + store a fresh recovery code (rotate-on-use -
  *      old one cannot reset again, new one shown to user)
- *   7. deleteAllSessions (force re-login on all devices)
+ *   7. revokeAllSessions (force re-login on all devices)
  *   8. Return the new plaintext code (shown once - frontend MUST
  *      re-prompt user to save it)
  * @param email - Email address the reset is requested for
  * @param code - Plaintext recovery code the user supplied
  * @param newPassword - New plaintext password to hash and store
- * @returns `{ newRecoveryCode }` - fresh plaintext code to display
+ * @returns `{ newRecoveryCode, userId }` - fresh plaintext code to display -
+ *   plus `signalFailure` when telling collab about the ended sessions failed
  * @throws {UnauthorizedError} on any failure (uniform error to
  *   prevent oracle attacks on email vs. code)
  */
@@ -397,7 +451,7 @@ export async function resetPasswordWithRecoveryCode(
   email: string,
   code: string,
   newPassword: string,
-): Promise<{ newRecoveryCode: string; userId: string }> {
+): Promise<{ newRecoveryCode: string; userId: string } & RevokeOutcome> {
   const user = await userRepo.getUserByEmail(email);
   if (!user) {
     throw new UnauthorizedError(t("server.auth.invalid_recovery_code"));
@@ -426,9 +480,8 @@ export async function resetPasswordWithRecoveryCode(
   await userRepo.setRecoveryCode(user.id, newHash);
 
   // 4. Force re-login (security: all existing tokens revoked).
-  const redis = getRedis();
-  await deleteAllSessions(redis, user.id);
+  const outcome = await revokeAllSessions(getRedis(), user.id);
 
   // Caller logs `password_reset_via_recovery_code` audit line.
-  return { newRecoveryCode, userId: user.id };
+  return { newRecoveryCode, userId: user.id, ...outcome };
 }

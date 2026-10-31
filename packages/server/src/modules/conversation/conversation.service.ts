@@ -12,9 +12,10 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { t } from "@breatic/shared";
+import { answersMismatch, readQuestionnaire, t } from "@breatic/shared";
 import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
-import type { ConversationEntity, MessageData } from "@breatic/shared";
+import type { AskUserAnswer, ConversationEntity, MessageData } from "@breatic/shared";
+import { askResultForModel } from "@server/agent/ask-result.js";
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -451,4 +452,31 @@ export async function deleteConversation(
   const conversation = await validateOwnership(conversationId, userId);
   await projectService.assertNotArchived(conversation.projectId);
   await conversationRepo.softDeleteConversation(conversationId);
+}
+
+/**
+ * Take the reader's answer to the questionnaire the agent is waiting on
+ * (inner#1542), once.
+ *
+ * The answer is held to the questions as they were asked, and the call is
+ * settled only while it is still waiting: of two answers, or an answer and a
+ * message written instead, the first one in is the one that counts.
+ * @param conversationId - The conversation, already checked writable by the caller.
+ * @param answer - What the browser sent.
+ * @returns How it went: answered (with the turn to resume), already settled,
+ *   not fitting the questions, or no such card.
+ * @throws {NotFoundError} if the conversation is gone.
+ */
+export async function answerAsk(
+  conversationId: string,
+  answer: AskUserAnswer,
+): Promise<messageRepo.AnswerOutcome> {
+  return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
+    const asked = readQuestionnaire(input);
+    if (asked === null) return { reason: "The call is not a questionnaire." };
+    const reason = answersMismatch(asked.questions, answer.answers);
+    if (reason !== null) return { reason };
+    const result = { answers: answer.answers };
+    return { output: result, forModel: askResultForModel(answer.toolCallId, result) };
+  });
 }

@@ -58,6 +58,7 @@ import {
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "turn-billing-once-test-driver";
 
@@ -130,15 +131,10 @@ async function seed(credits = 100_000): Promise<Seeded> {
 
   // One purchase, assigned to this studio — otherwise nothing here can be
   // charged, since an unassigned lot is unspendable.
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${user!.id}, 1000, 'completed', ${credits}) RETURNING id
+    VALUES (${sourceId}, ${user!.id}, 1000, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

@@ -8,7 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 
-import type { Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
 import { readImageOrientation } from '../../../ingest/src/image-orientation';
 import { VISIBLE_SPACE } from './space';
@@ -188,4 +188,53 @@ export function hueOf([r, g, b]: Rgb): 'red' | 'blue' | 'other' {
   if (r > 180 && g < 80 && b < 80) return 'red';
   if (b > 180 && r < 80 && g < 80) return 'blue';
   return 'other';
+}
+
+/** One request the page sent. */
+export interface SentRequest {
+  method: string;
+  url: string;
+}
+
+/**
+ * Record every request the page sends from now on.
+ * @param target - The page.
+ * @returns The list the requests are appended to, in the order sent.
+ */
+export function recordRequests(target: Page): SentRequest[] {
+  const sent: SentRequest[] = [];
+  target.on('request', (request) => {
+    sent.push({ method: request.method(), url: request.url() });
+  });
+  return sent;
+}
+
+/** A part sent to the ingest Worker: `PUT …/uploads/<uploadId>/parts/<n>`. */
+export const PART_PATH = /\/uploads\/[^/]+\/parts\/\d+$/;
+
+/**
+ * Assert a ticket answer is an upload our server already opened (inner#1595):
+ * it names the upload id and first token, and carries no ticket.
+ * @param answer - One opened upload from the ticket endpoint.
+ */
+export function expectOpenedUpload(answer: Record<string, unknown>): void {
+  expect(typeof answer.uploadId).toBe('string');
+  expect(typeof answer.token).toBe('string');
+  expect(answer).not.toHaveProperty('ticket');
+}
+
+/**
+ * Assert the page sent the ingest Worker nothing but parts (inner#1595): our
+ * server opens every upload, so a page never posts to `/uploads`.
+ * @param sent - What the page sent.
+ * @param uploadUrl - The Worker's base address, as the ticket answer named it.
+ * @returns How many parts were sent.
+ */
+export function expectOnlyPartsTo(sent: SentRequest[], uploadUrl: string): number {
+  const toIngest = sent.filter((request) => request.url.startsWith(uploadUrl));
+  for (const request of toIngest) {
+    expect(request.method).toBe('PUT');
+    expect(new URL(request.url).pathname).toMatch(PART_PATH);
+  }
+  return toIngest.length;
 }

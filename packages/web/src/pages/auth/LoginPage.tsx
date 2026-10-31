@@ -9,6 +9,7 @@ import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
+import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
@@ -17,7 +18,9 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
+import { safeNextPath } from '@web/lib/safe-next-path';
 
 /**
  * Email + password login.
@@ -50,6 +53,10 @@ export default function LoginPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const next = safeNextPath(params.get('next'));
+  const registerPath = params.has('next')
+    ? `/register?next=${encodeURIComponent(next)}`
+    : '/register';
   const setUser = useCurrentUserStore((s) => s.setUser);
 
   const [email, setEmail] = React.useState('');
@@ -72,12 +79,14 @@ export default function LoginPage(): React.JSX.Element {
     pending.current = true;
     setSubmitting(true);
     setFormError(null);
+    trackEvent('signup_started', { method: 'google' });
     try {
-      const { user } = await authApi.google({ credential });
+      const { user, created } = await authApi.google({ credential, ...attributionBody() });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
+      if (created) reportConversion('signup', `signup:${user.id}`);
       changeLocale(user.locale);
-      navigate(params.get('next') ?? '/studio', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
     } finally {
@@ -106,7 +115,7 @@ export default function LoginPage(): React.JSX.Element {
     setFormError(null);
     const trimmedEmail = email.trim();
     const nextErrors: typeof errors = {};
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!looksLikeEmail(trimmedEmail)) {
       nextErrors.email = t('auth.invalidEmail');
     }
     if (password.length < 8) {
@@ -121,7 +130,7 @@ export default function LoginPage(): React.JSX.Element {
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
       changeLocale(user.locale);
-      navigate(params.get('next') ?? '/studio', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
@@ -144,7 +153,7 @@ export default function LoginPage(): React.JSX.Element {
       footer={
         <>
           {t('auth.login.noAccount')}{' '}
-          <AuthLink to='/register'>{t('auth.login.signUp')}</AuthLink>
+          <AuthLink to={registerPath}>{t('auth.login.signUp')}</AuthLink>
         </>
       }
     >
@@ -160,7 +169,7 @@ export default function LoginPage(): React.JSX.Element {
               setEmail(e.target.value);
               if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!errors.email || undefined}
             aria-describedby={errors.email ? 'login-email-error' : undefined}
           />
@@ -184,7 +193,7 @@ export default function LoginPage(): React.JSX.Element {
               setPassword(e.target.value);
               if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!errors.password || undefined}
             aria-describedby={errors.password ? 'login-password-error' : undefined}
             showLabel={t('auth.passwordShow')}

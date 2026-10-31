@@ -5,7 +5,7 @@
  * Adds a hand-written migration to drizzle's journal.
  *
  * Migrations here are written by hand — drizzle-kit's snapshot has been frozen
- * at 0017 since 0018, so `db:generate` would regenerate history wrongly — and
+ * at 0017 since 0018, so `drizzle-kit generate` would regenerate history wrongly — and
  * the journal entry was written by hand with them. That left `when` with no
  * source: drizzle takes it from the clock when it generates a migration, and
  * a person typing it takes it from nowhere. Measured across 54 entries, all

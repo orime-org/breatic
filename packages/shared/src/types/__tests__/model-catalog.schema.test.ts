@@ -65,6 +65,23 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.total).toBe(2);
   });
 
+  // inner#1305: the panel holds a run back by the source's size, and the
+  // worker stores a result under the type its model returns.
+  it("keeps a param's byte ceiling and the type an entry returns", () => {
+    const out = sanitizeModelCatalog(
+      catalog([
+        entry("clean", {
+          output_type: "audio/wav",
+          params: { audio: { description: "", default: null, accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 } },
+        }),
+        entry("plain", { output_type: 7 }),
+      ]),
+    );
+    expect(out.image[0]?.params.audio?.max_bytes).toBe(536_870_912);
+    expect(out.image[0]?.output_type).toBe("audio/wav");
+    expect(out.image[1]?.output_type).toBeUndefined();
+  });
+
   it("keeps the variant that tells a model apart from a namesake, and drops one that is not text", () => {
     const out = sanitizeModelCatalog(catalog([entry("a", { variant: "Reference" }), entry("b", { variant: 3 }), entry("c")]));
     expect(out.image.map((m) => m.variant)).toEqual(["Reference", undefined, undefined]);

@@ -11,8 +11,9 @@
  * node_history.
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "@core/config/env.js";
+import { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 import type { StorageAdapter } from "@core/infra/storage/index.js";
 
 /** Everything needed to reach one S3-compatible bucket. */
@@ -110,6 +111,31 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   /**
+   * Read at most `maxBytes` of an object. Asks for one byte more than that
+   * with a Range, so an object holding exactly `maxBytes` is told apart from
+   * a larger one without reading the rest of it.
+   * @param key - The object's key.
+   * @param maxBytes - The most bytes the caller takes.
+   * @returns The object's bytes.
+   * @throws {ObjectTooLarge} When the object holds more than `maxBytes`.
+   * @throws {ObjectMissing} When no object is stored under the key.
+   */
+  async read(key: string, maxBytes: number): Promise<Uint8Array> {
+    let bytes: Uint8Array;
+    try {
+      const out = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${maxBytes}` }),
+      );
+      bytes = (await out.Body?.transformToByteArray()) ?? new Uint8Array(0);
+    } catch (err) {
+      if (err instanceof NoSuchKey) throw new ObjectMissing(key);
+      throw err;
+    }
+    if (bytes.length > maxBytes) throw new ObjectTooLarge(key);
+    return bytes;
+  }
+
+  /**
    * Build the public URL for an S3 key without fetching.
    * @param key - the S3 object key to build a URL for
    * @returns the public (CDN or S3-direct) URL for the key
@@ -121,18 +147,17 @@ export class S3StorageAdapter implements StorageAdapter {
   /**
    * The key `url` names, or null when it names nothing of ours.
    *
-   * The prefix that decides whether a URL is ours is the same one that has to
-   * come off to leave the key, so both answers are read here. Two functions
-   * each holding their own copy of it disagree the moment the base carries a
-   * path or a trailing slash — and a key stripped wrong reaches the bucket as
-   * a miss with nothing in it to trace back.
+   * Source authorization and re-hosting share this classification. Equivalent
+   * origins and view-only query parameters must resolve to the same object.
    * @param url - The URL to read.
    * @returns The object's key, or null.
+   * @throws {never} Invalid addresses do not name a stored object.
    */
   keyFromUrl(url: string): string | null {
-    const prefix = `${this.publicBaseUrl}/`;
-    if (!url.startsWith(prefix)) return null;
-    const key = url.slice(prefix.length);
+    const source = URL.parse(url);
+    const base = URL.parse(`${this.publicBaseUrl}/`);
+    if (source === null || base === null || source.origin !== base.origin || !source.pathname.startsWith(base.pathname)) return null;
+    const key = source.pathname.slice(base.pathname.length);
     return key === "" ? null : key;
   }
 

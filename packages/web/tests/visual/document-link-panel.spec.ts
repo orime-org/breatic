@@ -40,11 +40,14 @@ import {
 import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 /**
- * The middle of an element's text, in that element's own coordinates.
+ * The middle of the words an element starts with, in that element's own
+ * coordinates.
  *
  * A block's inline content fills the row it sits on, so its own centre is out
  * in the room to the right of a short line — where a press belongs at the end
- * of the line. A case that needs the caret among the words has to say so.
+ * of the line. A case that needs the caret among the words has to say so. The
+ * words are the first run of text outside a co-editor's caret, whose name
+ * label is part of the element's contents and widens their box.
  * @param target - The element holding the text.
  * @returns A position for `click`.
  */
@@ -52,8 +55,14 @@ async function textCentre(
   target: Locator,
 ): Promise<{ x: number; y: number }> {
   return target.evaluate((element: HTMLElement) => {
+    const words = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        node.parentElement?.closest('.collaboration-carets__caret') == null
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT,
+    }).nextNode()!;
     const range = document.createRange();
-    range.selectNodeContents(element);
+    range.selectNodeContents(words);
     const text = range.getBoundingClientRect();
     const own = element.getBoundingClientRect();
     return {
@@ -736,8 +745,8 @@ test('link: the toolbar keeps its link while a co-editor styles it', async ({ pa
 
     // Reached from the plain text in front of it: pressing inside a link opens
     // the address, so there is no other way to take hold of part of one. Aimed
-    // at the middle of the words, since the element itself runs the full width
-    // of the row and its centre is past the end of them.
+    // at the middle of the plain words, since the element itself runs the full
+    // width of the row and its centre is past the end of them.
     const plain = other
       .locator(`${DOCUMENT_EDITOR} p`)
       .first();

@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it, vi } from "vitest";
-import { monitoringOptions } from "@ingest/error-monitoring.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as Sentry from "@sentry/cloudflare";
+import { monitoringOptions, noteFailure } from "@ingest/error-monitoring.js";
+
+vi.mock("@sentry/cloudflare", () => ({ captureMessage: vi.fn(), captureException: vi.fn() }));
 
 const DSN = "https://publickey@sentry.test.example/1";
 const SHA = "4ca3e774ad2bb6b8f9406579ddc4bb611e5037a0";
@@ -56,5 +59,60 @@ describe("monitoringOptions", () => {
       request: { headers: { referer: "https://app.test/reset-password?token=R" } },
     });
     expect(sent.request?.headers).toEqual({ referer: "https://app.test/reset-password" });
+  });
+});
+
+// inner#1595 B2: a failure that must leave a record every time it happens
+// passes its own message and a fixed fingerprint, so the SDK's dedupe keeps
+// each occurrence while Sentry groups them as one issue.
+describe("noteFailure", () => {
+  const LABEL = "ingest_open_without_secret";
+  const CTX = { storageKey: "k-1", userId: "u-1", studioId: "s-1", requestId: "r-1" };
+
+  beforeEach(() => {
+    vi.mocked(Sentry.captureMessage).mockClear();
+    vi.mocked(Sentry.captureException).mockClear();
+  });
+
+  it("T89: reports a per-occurrence failure under its own message and a fixed fingerprint", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    noteFailure(LABEL, CTX, undefined, {
+      perOccurrence: { message: `${LABEL} k-1 r-1`, fingerprint: [LABEL] },
+    });
+
+    expect(Sentry.captureMessage).toHaveBeenCalledExactlyOnceWith(`${LABEL} k-1 r-1`, {
+      level: "error",
+      tags: { label: LABEL },
+      contexts: { ingest: CTX },
+      fingerprint: [LABEL],
+    });
+    expect(logged).toHaveBeenCalledExactlyOnceWith(LABEL, CTX);
+    logged.mockRestore();
+  });
+
+  it("T89: leaves every other failure's message as its label, with no fingerprint", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    noteFailure("ingest_source_refused", { storageKey: "k-1" });
+
+    expect(vi.mocked(Sentry.captureMessage).mock.calls).toStrictEqual([
+      ["ingest_source_refused", { level: "error", tags: { label: "ingest_source_refused" }, contexts: { ingest: { storageKey: "k-1" } } }],
+    ]);
+    logged.mockRestore();
+  });
+
+  it("T89: reports nothing for the reader's own input, whatever else it passes", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    noteFailure(LABEL, CTX, undefined, {
+      userInput: true,
+      perOccurrence: { message: `${LABEL} k-1 r-1`, fingerprint: [LABEL] },
+    });
+
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(logged).toHaveBeenCalledExactlyOnceWith(LABEL, CTX);
+    logged.mockRestore();
   });
 });

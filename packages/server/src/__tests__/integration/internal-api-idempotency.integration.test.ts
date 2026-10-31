@@ -14,8 +14,8 @@
  * still holding its lease (or its mail `sending`) → 409 `request_in_progress`.
  * An attempt that ends with the disposition still `started` releases its
  * lease, so a repeat after the answer went out replays (v8 round 5).
- * A request refused at a precondition stores no disposition and no key, so
- * its key stays free; the refund copies of what it read are the one thing it
+ * A final business refusal retains its status and response under the key;
+ * validation failures leave the key available. The refund copies it read are what it
  * keeps (v6 §4.6, §6.4).
  *
  * The fingerprint is `sha256(method \n route template \n target id \n
@@ -312,8 +312,8 @@ describe("same key while the original runs: 409 request_in_progress", () => {
   });
 });
 
-describe("a refused request stores nothing, so its key stays free", () => {
-  it("after a 409 the same key runs a valid request", async () => {
+describe("a final refusal owns its key and prevalidation leaves an unused key", () => {
+  it("after a 409 another target under the same key is refused as reused", async () => {
     const refunding = await lotOnStripe("refunding");
     await seedOperation(suite.sql, refunding, { kind: "approve", status: "needs_attention", attentionReason: "partial_refund" });
     const pending = await lotOnStripe("refund_pending");
@@ -324,12 +324,12 @@ describe("a refused request stores nothing, so its key stays free", () => {
     expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
 
     const accepted = await post(paths.reject(pending.lotId), REJECT, key);
-    expect(accepted.status).toBe(200);
-    expect(accepted.json).toMatchObject({ lotId: pending.lotId, result: "rejected" });
-    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+    expect(accepted.status).toBe(422);
+    expect(accepted.json.code).toBe("idempotency_key_reused");
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
   });
 
-  it("a 409 at the judgement still keeps the copy of the succeeded refund it read, but not the key", async () => {
+  it("a final 409 keeps its refund copies and binds the key to the original request", async () => {
     const pending = await seedRefundLot(suite.sql, "refund_pending");
     const succeeded = reId("seen");
     fakeStripe.register(pending.paymentIntentId, PAID_CENTS, [refundObject(succeeded, "succeeded", 300)]);
@@ -346,12 +346,13 @@ describe("a refused request stores nothing, so its key stays free", () => {
     expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
 
     const accepted = await post(paths.reject(free.lotId), REJECT, key);
-    expect(accepted.status).toBe(200);
-    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+    expect(accepted.status).toBe(422);
+    expect(accepted.json.code).toBe("idempotency_key_reused");
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
     await mailsSettled(suite.sql, free);
   });
 
-  it("after a 404 the same key runs a valid request", async () => {
+  it("after a 404 another target under the same key is refused as reused", async () => {
     const pending = await lotOnStripe("refund_pending");
     const key = freshKey("reject");
 
@@ -359,8 +360,9 @@ describe("a refused request stores nothing, so its key stays free", () => {
     expect(missing.status).toBe(404);
 
     const accepted = await post(paths.reject(pending.lotId), REJECT, key);
-    expect(accepted.status).toBe(200);
-    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+    expect(accepted.status).toBe(422);
+    expect(accepted.json.code).toBe("idempotency_key_reused");
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
   });
 
   it("after a 422 the same key runs a valid request", async () => {

@@ -6,6 +6,45 @@ import type { QueryClient } from '@tanstack/react-query';
 import { creditOverviewKey } from '@web/features/credits/use-credit-overview';
 
 /**
+ * Query key for the account's purchases read as lots.
+ *
+ * Without a scope it is the prefix both lists share, so invalidating it marks
+ * the assign list (`active`) and the refunds list (`all`) together.
+ * @param userId - Whose money, or null while nobody is signed in.
+ * @param scope - Which lots one list reads.
+ * @returns That key.
+ */
+export function creditLotsKey(
+  userId: string | null,
+  scope?: 'active' | 'all',
+): readonly unknown[] {
+  return scope === undefined ? ['credits', 'lots', userId] : ['credits', 'lots', userId, scope];
+}
+
+/**
+ * Query key for the account's credit ledger.
+ *
+ * Without a Studio it is the prefix every filtered page shares.
+ * @param userId - Whose money, or null while nobody is signed in.
+ * @param studioId - The Studio filter one page reads.
+ * @returns That key.
+ */
+export function creditLedgerKey(userId: string | null, studioId?: string): readonly unknown[] {
+  return studioId === undefined
+    ? ['credits', 'ledger', userId]
+    : ['credits', 'ledger', userId, studioId];
+}
+
+/**
+ * Query key for the account's purchase history.
+ * @param userId - Whose money, or null while nobody is signed in.
+ * @returns That key.
+ */
+export function paymentHistoryKey(userId: string | null): readonly unknown[] {
+  return ['payment', 'history', userId];
+}
+
+/**
  * Re-reads everything on this panel that speaks about one purchase.
  *
  * A purchase is a row on the history, a figure among the overview's three,
@@ -25,9 +64,9 @@ export async function invalidateAccountReads(
   userId: string | null,
 ): Promise<void> {
   await Promise.all([
-    client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
+    client.invalidateQueries({ queryKey: creditLotsKey(userId) }),
     client.invalidateQueries({ queryKey: creditOverviewKey(userId) }),
-    client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
+    client.invalidateQueries({ queryKey: paymentHistoryKey(userId) }),
   ]);
 }
 
@@ -47,6 +86,6 @@ export async function invalidateAfterLedgerWrite(
 ): Promise<void> {
   await Promise.all([
     invalidateAccountReads(client, userId),
-    client.invalidateQueries({ queryKey: ['credits', 'ledger', userId] }),
+    client.invalidateQueries({ queryKey: creditLedgerKey(userId) }),
   ]);
 }

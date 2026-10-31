@@ -10,6 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
+import type { Queue } from "bullmq";
 import { exitProcess, initSentry } from "@worker/sentry.js";
 import {
   env,
@@ -18,6 +19,7 @@ import {
   createWorker,
   createQueue,
   createQueueEvents,
+  defaultJobOpts,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -30,15 +32,27 @@ import {
   startHealthServer,
   runGracefulShutdown,
   getAgentConfig,
+  getWorkerConfig,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
+  flushServerAnalytics,
+  adsConversionState,
+  initServerAnalytics,
+  ADS_CONVERSION_QUEUE,
+  scheduleAdsUploadSweep,
+  unscheduleAdsUploadSweep,
+  adsConversionConfig,
+  type AdsConversionJob,
 } from "@breatic/core";
+import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
+  AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
+  type AudioPeaksJob,
   type MailJob,
   type MediaReadJob,
   type UploadFinishJob,
@@ -51,6 +65,14 @@ const monitoring = initSentry();
 
 initLogger("worker");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
 // back when no catalog is loaded, so without this a failed node reads a
 // message key where a sentence belongs.
@@ -101,8 +123,28 @@ import { runUrlIngest, type UrlIngestJobData } from "@worker/handlers/url-ingest
 import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
+import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
+import {
+  LONG_MEDIA_DISPATCH_QUEUE,
+  LONG_MEDIA_OPERATIONS_QUEUE,
+  runLongMediaDispatchSweep,
+  type LongMediaOperationJob,
+} from "@worker/handlers/long-media-dispatch.js";
+
+/** Every BullMQ queue this process runs a worker for. */
+const WORKER_QUEUES: readonly string[] = [
+  "tasks",
+  "url-ingest",
+  UPLOAD_FINISH_QUEUE,
+  USAGE_LOOKUP_QUEUE,
+  MEDIA_READ_QUEUE,
+  AUDIO_PEAKS_QUEUE,
+  MAIL_QUEUE,
+  ADS_CONVERSION_QUEUE,
+  LONG_MEDIA_DISPATCH_QUEUE,
+];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -152,14 +194,25 @@ export function startWorker(): void {
 
   // A per-queue figure for a queue this process does not run is a typo that
   // would leave the queue it meant at the default.
-  assertKnownQueues([
-    "tasks",
-    "url-ingest",
-    UPLOAD_FINISH_QUEUE,
-    USAGE_LOOKUP_QUEUE,
-    MEDIA_READ_QUEUE,
-    MAIL_QUEUE,
-  ]);
+  assertKnownQueues(WORKER_QUEUES);
+
+  const longMediaOperationQueue = createQueue(LONG_MEDIA_OPERATIONS_QUEUE);
+  const longMediaDispatchQueue = createQueue(LONG_MEDIA_DISPATCH_QUEUE);
+  const longMediaDispatch = createWorker<Record<string, never>>(
+    LONG_MEDIA_DISPATCH_QUEUE,
+    () => runLongMediaDispatchSweep(longMediaOperationQueue as Queue<LongMediaOperationJob>),
+  );
+  longMediaDispatch.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "long_media_dispatch_sweep_failed");
+  });
+  const longMediaSweepJob = "long-media-dispatch-sweep";
+  void longMediaDispatchQueue.upsertJobScheduler(
+    longMediaSweepJob,
+    { every: getWorkerConfig().poll_interval },
+    { name: longMediaSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "long_media_dispatch_sweep_schedule_failed");
+  });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
@@ -241,6 +294,24 @@ export function startWorker(): void {
     );
   });
 
+  // An audio row's peaks, read after it registered (inner#1305 §4.4). Its
+  // retries are the shared ones; what is left after the last is an audio whose
+  // cut band, until the backfill reads it, draws the browser's own decode within
+  // the waveform ceilings (config/mini-tools.yaml) and stays plain past them.
+  const audioPeaks = createWorker<AudioPeaksJob>(AUDIO_PEAKS_QUEUE, (job) => runAudioPeaks(job));
+
+  audioPeaks.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        assetId: job?.data.assetId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "audio_peaks_job_failed",
+    );
+  });
+
   // Notification mail a request queued instead of waiting on SMTP (#1232).
   // A send that throws retries on the shared options, except one the server
   // refused for good; what is left after that is a mail never sent, and the
@@ -257,6 +328,31 @@ export function startWorker(): void {
         attemptsAllowed: job?.opts?.attempts,
       },
       "mail_send_failed",
+    );
+  });
+
+  // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
+  // built on the first job, so a deployment without Google Ads configured
+  // never constructs a client.
+  let adsSink: AdsConversionSink | undefined;
+  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
+    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
+  );
+  // Queues again any upload whose job was lost between the claim and the add.
+  (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
+    logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
+  );
+
+  adsConversion.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        conversion: job?.data.conversion,
+        transactionId: job?.data.transactionId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "ads_conversion_failed",
     );
   });
 
@@ -312,14 +408,7 @@ export function startWorker(): void {
 
   logger.info(
     {
-      queues: [
-        "tasks",
-        "url-ingest",
-        UPLOAD_FINISH_QUEUE,
-        USAGE_LOOKUP_QUEUE,
-        MEDIA_READ_QUEUE,
-        MAIL_QUEUE,
-      ],
+      queues: WORKER_QUEUES,
     },
     "BullMQ workers started",
   );
@@ -405,7 +494,10 @@ export function startWorker(): void {
         () => uploadFinish.close(),
         () => usageLookup.close(),
         () => mediaRead.close(),
+        () => audioPeaks.close(),
         () => mail.close(),
+        () => adsConversion.close(),
+        () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

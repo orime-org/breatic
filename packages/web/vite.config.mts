@@ -39,6 +39,11 @@ export default defineConfig(({ command, mode }) => {
     // Inject the public Google client identifier; never inject backend secrets.
     define: {
       '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
+      // Whether a product analytics vendor is configured (inner#1442). A
+      // literal, so a build without one drops the analytics code entirely.
+      '__ANALYTICS_CONFIGURED__': JSON.stringify(
+        Boolean(env.VITE_AMPLITUDE_API_KEY?.trim() || env.VITE_GOOGLE_ADS_TAG_ID?.trim()),
+      ),
     },
     plugins: [
       react(),

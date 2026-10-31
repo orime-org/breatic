@@ -141,6 +141,27 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(result.current.provider).toBeNull();
   });
 
+  it('does not let a previous document cleanup release its replacement with the same wire name', () => {
+    const name = 'project-p1/3d-s1';
+    const oldDoc = new Y.Doc();
+    const nextDoc = new Y.Doc();
+    // One application has one current account/provider boundary. Exercise the
+    // hook's document replacement here; account switches belong to OpenSpace's
+    // single-root test rather than two simultaneously authenticated roots.
+    const { result, rerender } = renderHook(
+      ({ doc }) => useSocket({ name, doc }),
+      { initialProps: { doc: oldDoc }, wrapper: wrapper('u1') },
+    );
+    rerender({ doc: nextDoc });
+
+    expect(providerInstances).toHaveLength(2);
+    expect(providerInstances[0]!.destroy).toHaveBeenCalledOnce();
+    expect(result.current.provider).toBe(providerInstances[1]);
+    act(() => vi.runAllTimers());
+    expect(providerInstances[1]!.destroy).not.toHaveBeenCalled();
+    expect(result.current.provider).toBe(providerInstances[1]);
+  });
+
   it('subscribes to the provider lifecycle events for the banner status', () => {
     const doc = new Y.Doc();
     renderHook(() => useSocket({ name: 'project-p1/meta', doc }), {
@@ -213,6 +234,22 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(result.current.hasEverSynced).toBe(true);
   });
 
+  it.each([1002, 1008, 1009, 1013])('WU09 treats a %i close from collab as a soft disconnect', (code) => {
+    // collab closes an over-limit or malformed reassembly with these codes;
+    // the shared socket reconnects and resends, as after any drop.
+    const doc = new Y.Doc();
+    const name = `project-p1/document-wu09-${code}`;
+    const { result } = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() => {
+      providerInstances[providerInstances.length - 1]!.emit('close', { event: { code, reason: '' } });
+    });
+
+    expect(result.current.status).toBe('disconnected');
+  });
+
   it('leaves reporting a dropped connection to the shared socket', () => {
     // One connection carries every open document; each document hearing the
     // close and reporting it turned one drop into a dozen alerts.
@@ -274,11 +311,16 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     act(() => vi.runAllTimers());
     expect(providerInstances[0]!.destroy).toHaveBeenCalledOnce();
 
+    // A reopen gets a new document once; subsequent hook renders must keep it,
+    // exactly as the real caller's memoized getDoc binding does.
+    const reopenedDoc = new Y.Doc();
     const reopened = renderHook(
-      () => useSocket({ name, doc: new Y.Doc() }),
+      () => useSocket({ name, doc: reopenedDoc }),
       { wrapper: wrapper('u1') },
     );
     expect(reopened.result.current.hasEverSynced).toBe(false);
+    expect(providerInstances).toHaveLength(2);
+    expect(reopened.result.current.provider).toBe(providerInstances[1]);
   });
 
   it('remembers a refusal across a consumer unmounting, the way it remembers a sync', () => {
@@ -313,6 +355,82 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(reopened.result.current.authFailedReason).toBe('Forbidden');
     // Refused means refused: a client that cannot authenticate cannot write.
     expect(reopened.result.current.writeAccess).toBe('denied');
+  });
+
+  it('does not report the refusal that follows its session being ended', () => {
+    // inner#1548: collab closes a document whose session was signed out
+    // elsewhere; the re-sent token is then refused. That is the system working,
+    // not a failure, and one password reset would otherwise raise an error per
+    // open document.
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended';
+    const { result } = renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(result.current.status).toBe('authFailed');
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps quiet about that refusal across later reconnects', () => {
+    // The refused tab stays open behind its banner; every socket reconnect
+    // (a collab release, a network blip, a laptop waking) re-sends the token
+    // and is refused again.
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended-reconnect';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+      providerInstances[0]!.emit('close', { event: { code: 1006 } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps quiet for a document opened after the session ended', () => {
+    // The session belongs to the tab, not to one document: a Space opened
+    // behind the banner is refused for the same reason and never receives
+    // the close that announced it.
+    vi.mocked(reportCollabFailure).mockClear();
+    const beforeDoc = new Y.Doc();
+    const afterDoc = new Y.Doc();
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-before', doc: beforeDoc }), { wrapper: wrapper('u1') });
+    const before = providerInstances.length - 1;
+    act(() => {
+      providerInstances[before]!.emit('close', { event: { code: 4401, reason: 'Session ended' } });
+      providerInstances[before]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-after', doc: afterDoc }), { wrapper: wrapper('u1') });
+    const after = providerInstances.length - 1;
+    act(() => {
+      providerInstances[after]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports refusals again once a handshake has succeeded since', () => {
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended-then-back';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticated', { scope: 'read-write' });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Forbidden' });
+    });
+
+    expect(reportCollabFailure).toHaveBeenCalledWith(expect.objectContaining({ kind: 'auth', reason: 'Forbidden' }));
   });
 
   it('lets a later successful handshake clear an earlier refusal', () => {

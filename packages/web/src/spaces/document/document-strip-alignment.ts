@@ -4,7 +4,8 @@
 /**
  * Where the strip sits against the row it points at: vertically on the row's
  * first line (A2), horizontally `STRIP_OUTSET` out from the body's left edge
- * (#1097 A13, inner#1126, see `stripPlacement`).
+ * (#1097 A13, inner#1126), a block in a table cell beside its cell and a
+ * table further out (inner#1619 T13, see `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -24,14 +25,14 @@
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
  * the reader's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
- * spread after the library's defaults (`SideMenuController.tsx:120-129`), so a
+ * spread after the library's defaults (`SideMenuController.tsx:128-137`), so a
  * `middleware` list without it leaves the carrier exactly on the row's top
  * edge and the strip does the rest itself.
  *
  * WHY THE STRIP AND NOT THE CARRIER, VERTICALLY. The carrier's position reference is a
  * VIRTUAL element — `GenericPopover` hands floating-ui a cached
  * `getBoundingClientRect` plus `contextElement`, the block container
- * (`GenericPopover.tsx:196-202`). A line box can only be measured on the
+ * (`GenericPopover.tsx:200-206`). A line box can only be measured on the
  * element the words are in, which is a descendant of that container and is
  * looked up by id anyway (a type change replaces it, see below), so the row is
  * reached here by its id and the strip shifts itself down. Sideways the carrier
@@ -47,6 +48,8 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
+import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * How far the strip stands out from the body's left edge, the same on every
@@ -57,15 +60,76 @@ import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
  */
 export const STRIP_OUTSET = 12;
 
+/** The strip's width: one 24px handle (`STRIP_BUTTON` in `DocumentBlockHandle`). */
+export const STRIP_SIZE = 24;
+
+/**
+ * How far a table's own strip stands out from the body's left edge, whatever
+ * the table's nesting: for a top-level table, whose left line is the body's
+ * edge, past the strip of a block in its first column, which stands where
+ * every other block's does, by a 4px gap (inner#1619 T13, user 2026-10-21). The gutter
+ * this side of it belongs to the first column's blocks
+ * (`document-table-side-menu.ts`).
+ */
+export const TABLE_STRIP_OUTSET = STRIP_OUTSET + STRIP_SIZE + 4;
+
+/**
+ * The body's left gutter: as far out as a table's own strip reaches, and 8px
+ * more to the viewport edge, the gap the whole-document entry keeps from the
+ * page on the right (`--doc-entry-clearance`).
+ */
+export const BODY_GUTTER_START = TABLE_STRIP_OUTSET + STRIP_SIZE + 8;
+
+
+/**
+ * Where a table's own strip starts on the left: `TABLE_STRIP_OUTSET` and its
+ * width out from the body's left edge, the root block group, whatever the
+ * table's nesting (#1097 A13). The pointer counts as over the table from here.
+ * @param body - The editable element.
+ * @returns The x, or undefined before the body holds a block group.
+ */
+export function tableStripLeft(body: Element): number | undefined {
+  const root = body.firstElementChild;
+  return root === null ? undefined : root.getBoundingClientRect().left - TABLE_STRIP_OUTSET - STRIP_SIZE;
+}
+
+/**
+ * A table's left line as it is drawn:the table body's left edge, or the
+ * scroll frame's when the table is scrolled sideways past it.
+ * @param inTable - The table's body, an element in it, or the table's element.
+ * @returns The line's x, or undefined when there is no table body.
+ */
+export function tableLineOf(inTable: Element): number | undefined {
+  const body = inTable.closest('tbody') ?? inTable.querySelector('tbody');
+  if (body === null) return undefined;
+  const frame = body.closest(SCROLL_VIEWPORT);
+  const left = body.getBoundingClientRect().left;
+  return frame === null ? left : Math.max(left, frame.getBoundingClientRect().left);
+}
+
+/**
+ * Whether a cell's left line is drawn on the table's left line: the first
+ * column, or a cell scrolled partly out of the frame.
+ * @param cell - The cell.
+ * @returns True when it is.
+ */
+function standsOnTableLine(cell: Element): boolean {
+  const line = tableLineOf(cell);
+  return line !== undefined && cell.getBoundingClientRect().left < line + 1;
+}
+
 /**
  * The carrier's placement: the library's left-start against the row, with its
  * table of per-type offsets replaced by one sideways move.
  *
  * The move puts the carrier `STRIP_OUTSET` out from the body's left edge
- * whatever the row's nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * whatever the row's nesting (#1097 A13, user 2026-10-01), a table's
+ * `TABLE_STRIP_OUTSET` out, and a block in a table cell outside its cell's
+ * left line, or out from the table's left line in the first column
+ * (inner#1619 T13). For a row outside a table the reference is the row's own
  * container, which a nested row has indented with it. The body's edge is the
- * root block group, the element the library itself takes the side menu's x
- * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
+ * root block group, the element the library probes the pointer's line from
+ * (`sideMenuHover.ts:52-59`, `probeBlockAtHeight`). Moving the carrier rather than the strip
  * inside it leaves nothing of it in the indent, where a click has to reach
  * the row; and the x comes from the same reference rect floating-ui placed
  * with, so a stale reference after a move still lands `STRIP_OUTSET` out
@@ -83,10 +147,28 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
           name: 'bodyEdge',
           // Both lefts are read in viewport coordinates: floating-ui's own
           // `rects` are in the carrier's offset-parent coordinates.
-          fn: ({ x, elements }) => {
+          fn: ({ x, elements, rects }) => {
             const root = bodyOf()?.firstElementChild;
             if (root == null) return {};
             const rowLeft = elements.reference.getBoundingClientRect().left;
+            // A block in a table cell, whatever its nesting there: the strip
+            // stands outside the cell's left line (inner#1619 T13), in the
+            // cell to the left clear of the line's column-resize zone, or in
+            // the first column where every other block's strip stands, out
+            // from the table's left line. The table's own strip stands
+            // further out than that.
+            const anchor = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
+            const cell = anchor?.closest('td, th');
+            if (cell != null) {
+              const width = rects.floating.width;
+              const left = standsOnTableLine(cell)
+                ? tableLineOf(cell)! - STRIP_OUTSET - width
+                : cell.getBoundingClientRect().left - COLUMN_RESIZE_ZONE - 1 - width;
+              return { x: x + left - (rowLeft - width) };
+            }
+            if (anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true) {
+              return { x: x + tableStripLeft(bodyOf()!)! - (rowLeft - rects.floating.width) };
+            }
             return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
           },
         },
@@ -236,9 +318,9 @@ export function useStripOnFirstLine(
   // identity stays put. Measured 2026-09-18 — a co-editor turning the hovered
   // row into a heading left the handle 6.25px off the line, three times the
   // tolerance A2 is held to, and nothing upstream reports it: the library
-  // refreshes its state on a document change (`SideMenu.ts:683-688`) but
-  // `updateStateFromMousePos` returns early while the hovered element still
-  // carries the same `data-id` (`:229-236`).
+  // refreshes its state on a document change (`SideMenu.ts:381-385`) but
+  // `update` keeps the menu as it is while the pointer still resolves to the
+  // menu's block (`:201-206`).
   //
   // THE CONTAINER, NOT THE CONTENT ELEMENT. A type change replaces the
   // `.bn-block-content` element and detaches the old one, while the `[data-id]`

@@ -13,7 +13,7 @@ import {
 } from '@web/components/ui/select';
 import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLedger } from '@web/data/api/credits';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -27,6 +27,7 @@ import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { creditLedgerKey } from '@web/features/credits/account-reads';
 
 /** Whose spending, and which studios there are to narrow to. */
 interface LedgerSectionProps {
@@ -70,7 +71,7 @@ export function LedgerSection({
     [studioId],
   );
   const paging = useCreditsPaging<CreditLedgerView>({
-    queryKey: ['credits', 'ledger', userId, studioId],
+    queryKey: creditLedgerKey(userId, studioId),
     read,
     enabled: userId !== null,
   });

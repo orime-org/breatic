@@ -28,6 +28,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 
 import { textblocks } from './textblocks';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -425,5 +426,20 @@ describe('Tab says so when a block cannot go any further', () => {
     const marked = nudged(editor);
     expect(marked).toHaveLength(1);
     expect(marked[0]!.textContent).toBe('first');
+  });
+});
+
+describe('Tab over a whole document that opens with a table (inner#1619)', () => {
+  it('marks the table, not the line in its first cell', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), { type: 'paragraph', content: 'after' }] as never);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    pressTab(editor);
+
+    const marked = [...view.dom.querySelectorAll('[data-tab-blocked]')];
+    expect(marked).toHaveLength(1);
+    expect(marked[0]!.querySelector('table')).not.toBeNull();
   });
 });

@@ -31,6 +31,8 @@
  * outcome (the row marked failed, its counts republished) applied by the collab
  * task-listener; re-applying it to an already-idle node is harmless.
  */
+import { reportCollaboratorFirstAction } from "@breatic/core";
+import { NO_CONSENT } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
@@ -46,9 +48,11 @@ import {
 import {
   mediaKindForActivity,
   recordGenerationForNodes,
+  releaseRunHold,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
+import { isTranscription } from "@worker/handlers/transcribe-question.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -93,6 +97,11 @@ export async function cleanupFailedJobNodes(
   // primary case this net targets — moves to failed WITHOUT incrementing
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
+
+  // The run is over whatever it was, so what was held for it is free again
+  // (inner#1611). Released before the canvas checks below, which only decide
+  // what the nodes are told. A release that fails leaves the hold to expire.
+  await releaseRunHold(job.data.taskId, job.data.userId);
 
   const { projectId, spaceId, targetNodeIds } = job.data;
   if (!projectId) return 0;
@@ -156,6 +165,10 @@ export async function cleanupFailedJobNodes(
         },
       });
       await publishActivityNew(projectId);
+      await reportCollaboratorFirstAction(
+        { projectId, userId: task.userId, action: "generation" },
+        job.data.analyticsConsent ?? NO_CONSENT,
+      );
     } catch {
       // Best-effort activity; the node re-record + write-back below is critical.
     }
@@ -208,7 +221,13 @@ export async function cleanupFailedJobNodes(
         errorMessage: `Task failed: ${reason}`,
       },
     });
-    if (inserted) await publishActivityNew(projectId);
+    if (inserted) {
+      await publishActivityNew(projectId);
+      await reportCollaboratorFirstAction(
+        { projectId, userId: job.data.userId, action: "generation" },
+        job.data.analyticsConsent ?? NO_CONSENT,
+      );
+    }
   } catch (err) {
     // The node write-backs below are the critical part, so this moves on.
     // Nothing above catches this, so the reason is written here or nowhere.
@@ -236,6 +255,8 @@ export async function cleanupFailedJobNodes(
         errorMessage: storedFailure(
           job.data.taskType,
           new Error(`Task failed: ${reason}`),
+          undefined,
+          isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
         ),
       });
       emitted++;

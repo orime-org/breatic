@@ -11,7 +11,7 @@
 
 import { newId } from "@breatic/shared";
 import { Hono } from "hono";
-import { stream } from "hono/streaming";
+import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
 import {
   idempotencyKeyHeaderSchema,
@@ -56,25 +56,12 @@ textTools.post(
     // the value that reaches the charge is the one the schema passed.
     const idempotencyKey = c.req.valid("header")["idempotency-key"] ?? newId();
 
-    // Set SSE headers
-    c.header("Content-Type", "text/event-stream");
-    c.header("Cache-Control", "no-cache");
-    c.header("Connection", "keep-alive");
-
-    // AbortController for client disconnect detection
-    const abortController = new AbortController();
-
-    return stream(c, async (s) => {
-      // Detect client disconnect
-      s.onAbort(() => {
-        abortController.abort();
-      });
-
+    return streamUntilClientLeaves(c, async (s, stopped) => {
       for await (const event of textToolService.executeTextTool(
         user.id,
         tool,
         params,
-        abortController.signal,
+        stopped,
         idempotencyKey,
       )) {
         if (event.type === "text_delta") {

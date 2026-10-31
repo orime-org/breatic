@@ -14,7 +14,7 @@ import {
   HOVER_CLOSE_DELAY_MS,
 } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
-import { PreviewImg } from '@web/components/preview-img';
+import { PreviewImg } from '@web/components/PreviewImg';
 
 /** How far the preview stays from the viewport edge when pushed against it, in px. */
 const HOVER_PREVIEW_EDGE_GAP = 6;

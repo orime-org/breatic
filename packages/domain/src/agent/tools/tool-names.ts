@@ -46,6 +46,13 @@ export const LIST_GENERATION_MODELS = "list_generation_models";
  */
 export const GET_PRODUCT_GUIDE = "get_product_guide";
 
+/**
+ * Read one generation template in full (inner#1807).
+ *
+ * Named here because the proposal tool's description points the model at it.
+ */
+export const GET_GENERATION_TEMPLATE = "get_generation_template";
+
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
@@ -64,6 +71,9 @@ export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
  */
 export const SAVE_IMAGE = "save_image";
 
+/** Understands one ordered batch of images, video or audio. */
+export const UNDERSTAND_MEDIA = "understand_media";
+
 /**
  * Ask for a judgement over what the model is holding, with the odds (#282).
  *
@@ -72,3 +82,22 @@ export const SAVE_IMAGE = "save_image";
  * from the requirements table is one a deployment with no key offers anyway.
  */
 export const JUDGE_LIKELIHOOD = "judge_likelihood";
+
+// The four tools that read the user's records (inner#1469). Named here
+// because the turn's tool context hands each of them the turn's records under
+// its name, and their descriptions point at one another.
+
+/** List or search the user's conversations in this project. */
+export const SEARCH_CONVERSATIONS = "search_conversations";
+
+/** Read whole turns of one of the user's conversations. */
+export const READ_CONVERSATION = "read_conversation";
+
+/** Read a canvas node's tasks and versions. */
+export const READ_NODE_HISTORY = "read_node_history";
+
+/** Read the project's activity feed. */
+export const LIST_PROJECT_ACTIVITY = "list_project_activity";
+
+/** The four record tools' names, the one list every place that treats them alike reads. */
+export const RECORD_TOOL_NAMES = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;

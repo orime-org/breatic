@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { consentForCollab } from '@web/data/analytics';
 import {
   newId,
   type SpaceRpcRequest,
@@ -119,7 +120,9 @@ export async function sendSpaceRpc(
       );
     }, timeoutMs);
 
-    const envelope = { id, ...request } as SpaceRpcRequest;
+    // The sender's analytics consent rides on each request; collab reads no
+    // cookie per message (inner#1442 §4.4.5).
+    const envelope = { id, ...request, analyticsConsent: consentForCollab() } as SpaceRpcRequest;
     provider.sendStateless(JSON.stringify(envelope));
   });
 }

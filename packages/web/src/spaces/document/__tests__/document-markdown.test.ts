@@ -18,7 +18,7 @@ describe('markdownBlocks', () => {
     expect(got.map((b) => [(b.block as { type?: unknown }).type, b.text])).toEqual([
       ['paragraph', 'A bold link'],
       ['heading', 'Scene 3'],
-      ['table', 'Shot\nSize\n1\nWide'],
+      ['docTable', 'Shot\nSize\n1\nWide'],
     ]);
   });
 

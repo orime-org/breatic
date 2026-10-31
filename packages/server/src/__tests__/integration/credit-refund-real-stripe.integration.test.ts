@@ -31,7 +31,7 @@
  * Every case is tagged, so the default integration run leaves the file out
  * (`testNamePattern` in vitest.integration.config.ts). Run it on purpose:
  *
- *   STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+ *   STRIPE_SECRET_KEY=sk_test_… pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * The suite refuses any key that is not `sk_test_…`, before the first call.
@@ -51,7 +51,7 @@
  * It prints "Your webhook signing secret is whsec_…". In another:
  *
  *   STRIPE_CLI_FORWARDING=1 STRIPE_WEBHOOK_SECRET=whsec_… STRIPE_SECRET_KEY=sk_test_… \
- *     pnpm --filter @breatic/server test:integration \
+ *     pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * Without STRIPE_CLI_FORWARDING=1 the webhook case reports itself skipped;
@@ -72,12 +72,14 @@ import {
   call,
   errorShape,
   freshKey,
+  holdersOf,
   mailsSettled,
   paths,
   resetInternalRateLimit,
   serveOnLoopback,
   type InternalSuite,
   type RunningApp,
+  type CallResult,
 } from "./internal-api-harness.js";
 import {
   CREDITS,
@@ -92,10 +94,12 @@ import {
   readLot,
   readOp,
   seedRefundLot,
+  seedOperation,
   unresolvedViewOf,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 import { expectRestored, expectRestoredBell } from "./credit-refund-cells.js";
+import { realStripeTestConfig } from "./real-stripe-config.js";
 
 /**
  * Long enough for Stripe to move a `pm_card_refundFail` refund to `failed`
@@ -123,6 +127,7 @@ let running: RunningApp | undefined;
 /** The product app with the Stripe webhook, served only while the CLI forwards. */
 let webhookApp: RunningApp | undefined;
 let stripe: Stripe;
+let stripeAccountId: string;
 const lots: SeededLot[] = [];
 
 beforeAll(async () => {
@@ -135,7 +140,7 @@ beforeAll(async () => {
     throw new Error("STRIPE_CLI_FORWARDING=1 needs STRIPE_WEBHOOK_SECRET set to the whsec_ that `stripe listen` printed.");
   }
   stripe = new Stripe(key);
-  initCore({
+  const configured = await realStripeTestConfig(stripe, {
     ...process.env,
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: key,
@@ -144,6 +149,8 @@ beforeAll(async () => {
     INTERNAL_API_SECRET: SECRET,
     INTERNAL_API_SECRET_PREVIOUS: PREVIOUS_SECRET,
   });
+  stripeAccountId = configured.STRIPE_WEBHOOK_ACCOUNT_ID;
+  initCore(configured);
   loadLocales();
   suite.sql = postgres(inject("DATABASE_URL"), {
     max: 8,
@@ -674,9 +681,237 @@ describe("the three refund webhooks, forwarded by the Stripe CLI", () => {
           expect(typesOf(pendingRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.updated"]));
           expect(typesOf(failedRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.failed"]));
           expect(await claimedEvents(sent.map((e) => e.id))).toEqual(Object.fromEntries(sent.map((e) => [e.id, e.type])));
+          const attempts = await suite.sql`
+            SELECT event_id, event_type, account_id, endpoint_id, livemode,
+              connected_account_id, response_status, result, finished_at IS NOT NULL AS finished
+            FROM stripe_webhook_attempts WHERE event_id IN ${suite.sql(sent.map(e => e.id))} AND deleted_at IS NULL
+          `;
+          for (const event of sent) {
+            expect(attempts).toContainEqual({
+              event_id: event.id, event_type: event.type, account_id: stripeAccountId,
+              endpoint_id: null, livemode: false, connected_account_id: null,
+              response_status: 200, result: "refund_synced", finished: true,
+            });
+          }
+          console.info(`@needs-payments attempt recording observed: ${JSON.stringify({
+            eventTypes: [...new Set(sent.map(event => event.type))].sort(),
+            eventCount: sent.length, completedAttempts: attempts.filter(attempt => attempt.finished).length,
+            mode: "test", endpoint: "unknown_cli_forwarding", responseStatus: 200, result: "refund_synced",
+          })}`);
         },
         { timeout: 60_000, interval: 3_000 },
       );
+    },
+    CASE_TIMEOUT_MS,
+  );
+});
+
+/** The four preview actions added by backoffice#98 / inner#1544. */
+type PreviewOneShotKind = "reject" | "settle" | "send_back" | "resolve_outside";
+type OneShotVerdict = { outcome: "allowed" } | { outcome: "blocked"; code: string; reason?: string };
+const ONE_SHOT_REASON = "The operator reviewed the payment and refund facts.";
+const ONE_SHOT_KINDS = ["reject", "settle", "send_back", "resolve_outside"] as const;
+const ALLOWED = { outcome: "allowed" } as const;
+const WRONG_LOT = { outcome: "blocked", code: "lot_state_changed" } as const;
+const BELOW_PAID = { outcome: "blocked", code: "stripe_blocks", reason: "succeeded_below_paid" } as const;
+const MONEY_RETURNED = { outcome: "blocked", code: "stripe_blocks", reason: "refund_succeeded" } as const;
+
+/** The endpoint of a preview action, preserving the signed HTTP boundary. */
+function oneShotPath(kind: PreviewOneShotKind, lot: SeededLot): string {
+  switch (kind) {
+    case "reject": return paths.reject(lot.lotId);
+    case "settle": return paths.settle(lot.lotId);
+    case "send_back": return paths.sendBack(lot.lotId);
+    case "resolve_outside": return paths.resolvedOutside(lot.lotId);
+  }
+}
+
+/** Confirm precisely the succeeded amount the real Stripe fixture holds. */
+function oneShotBody(kind: PreviewOneShotKind, succeededCents: number): Record<string, unknown> {
+  switch (kind) {
+    case "settle": return { reason: ONE_SHOT_REASON, notify: false, confirmedSucceededCents: succeededCents };
+    case "resolve_outside": return { reason: ONE_SHOT_REASON, failedRefundIds: [], confirmedSucceededCents: succeededCents };
+    default: return { reason: ONE_SHOT_REASON };
+  }
+}
+
+/** Assert all four HTTP verdicts together, including the blocked reasons. */
+async function expectOneShotPreview(lot: SeededLot, expected: Record<PreviewOneShotKind, OneShotVerdict>): Promise<void> {
+  const preview = await call(suite.baseUrl, paths.preview(lot.lotId));
+  expect(preview.status).toBe(200);
+  expect(preview.json.oneShot).toEqual(expected);
+}
+
+/** Assert that the final HTTP refusal exclusively owns its original key. */
+async function expectRealStripeRefusal(
+  lot: SeededLot,
+  kind: PreviewOneShotKind,
+  key: string,
+  answer: CallResult,
+): Promise<void> {
+  const rows = await suite.sql`
+    SELECT target_kind, target_id, request_kind, requested_by, request_reason,
+           request_hash, response_status, response_body
+    FROM credit_refund_refusals WHERE idempotency_key = ${key}
+  `;
+  expect(rows).toEqual([{
+    target_kind: "lot", target_id: lot.lotId, request_kind: kind,
+    requested_by: ADMIN, request_reason: ONE_SHOT_REASON,
+    request_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    response_status: answer.status, response_body: answer.json,
+  }]);
+  expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
+}
+
+describe("#98 four one-shot previews and final refusals against real Stripe", () => {
+  it.each(ONE_SHOT_KINDS)(
+    "%s: the complete preview allows the same-facts POST, commits its result and preserves the real Stripe refund set @needs-payments",
+    async (kind) => {
+      const lot = await paidLot("pm_card_visa");
+      let succeededCents = 0;
+      let refundId: string | undefined;
+      let attentionId: string | undefined;
+      if (kind === "send_back") {
+        // A recoverable invalid-create answer leaves this local state; the
+        // payment and every Stripe read remain real, without any Stripe stub.
+        await suite.sql`UPDATE credit_lots SET lifecycle = 'refunding' WHERE id = ${lot.lotId}`;
+        attentionId = (await seedOperation(suite.sql, lot, {
+          kind: "approve", status: "needs_attention", attentionReason: "stripe_request_invalid",
+        })).id;
+      }
+      if (kind === "settle" || kind === "resolve_outside") {
+        succeededCents = kind === "settle" ? PAID_CENTS : PAID_CENTS / 2;
+        const refund = await stripe.refunds.create({ payment_intent: lot.paymentIntentId, amount: succeededCents });
+        expect(refund).toMatchObject({ status: "succeeded", amount: succeededCents });
+        refundId = refund.id;
+      }
+      const refundsBefore = await stripeRefundsOf(lot.paymentIntentId);
+      expect(refundsBefore.map((r) => ({ id: r.id, amount: r.amount, status: r.status }))).toEqual(
+        refundId ? [{ id: refundId, amount: succeededCents, status: "succeeded" }] : [],
+      );
+      await expectOneShotPreview(lot, {
+        reject: kind === "send_back" ? WRONG_LOT : succeededCents > 0 ? MONEY_RETURNED : ALLOWED,
+        settle: kind === "settle" ? ALLOWED : BELOW_PAID,
+        send_back: kind === "send_back" ? ALLOWED : WRONG_LOT,
+        resolve_outside: ALLOWED,
+      });
+      const ledgerBefore = await ledgerOf(suite.sql, lot.lotId);
+      const key = freshKey(kind);
+      const answer = await post(oneShotPath(kind, lot), oneShotBody(kind, succeededCents), key);
+      const result = { reject: "rejected", settle: "refunded", send_back: "sent_back", resolve_outside: "resolved_outside" }[kind];
+      expect(answer.status).toBe(200);
+      expect(answer.json).toMatchObject({ lotId: lot.lotId, kind, status: "succeeded", result, requestedBy: ADMIN });
+      const opId: string = answer.json.id;
+      expect(await readOp(suite.sql, opId)).toMatchObject({
+        kind, status: "succeeded", result, idempotency_key: key, requested_by: ADMIN,
+        confirmed_succeeded_cents: kind === "settle" || kind === "resolve_outside" ? succeededCents : null,
+        settled_succeeded_cents: kind === "settle" || kind === "resolve_outside" ? succeededCents : null,
+      });
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+      const refusals = await suite.sql`SELECT id FROM credit_refund_refusals WHERE idempotency_key = ${key}`;
+      expect(refusals).toEqual([]);
+      if (refundId) {
+        await expectBookedOn(lot, refundId);
+        expect(await copiesOf(suite.sql, lot.lotId)).toEqual([expect.objectContaining({
+          stripe_refund_id: refundId, status: "succeeded", amount_cents: succeededCents, ever_succeeded: true,
+        })]);
+      } else {
+        expect(await readLot(suite.sql, lot.lotId)).toEqual({
+          lifecycle: kind === "reject" ? "active" : "refund_pending", remaining: `${CREDITS}.000000`,
+          attempts: kind === "reject" ? 1 : 0,
+        });
+        expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(kind === "reject" ? [
+          ...ledgerBefore, { entry_type: "refund_rejected", amount: "0.000000", reference_id: opId },
+        ] : ledgerBefore);
+        expect(await copiesOf(suite.sql, lot.lotId)).toEqual([]);
+      }
+      if (attentionId) expect(await readOp(suite.sql, attentionId)).toMatchObject({ attention_closed_by: opId });
+      expect((await stripeRefundsOf(lot.paymentIntentId)).map((r) => ({ id: r.id, amount: r.amount, status: r.status }))).toEqual(
+        refundsBefore.map((r) => ({ id: r.id, amount: r.amount, status: r.status })),
+      );
+      await mailsSettled(suite.sql, lot);
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it.each(ONE_SHOT_KINDS)(
+    "%s: the complete preview and POST agree on refusal, persist its JSON and reject a changed body under the key @needs-payments",
+    async (kind) => {
+      const lot = await paidLot("pm_card_visa");
+      let succeededCents = 0;
+      if (kind === "resolve_outside") {
+        const approved = await post(paths.approve(lot.lotId), APPROVE);
+        expect(approved.status).toBe(200);
+        expect(approved.json).toMatchObject({ status: "succeeded", result: "refunded" });
+        await expectBookedOn(lot, approved.json.stripeRefundId);
+        succeededCents = PAID_CENTS;
+      } else if (kind === "reject" || kind === "send_back") {
+        if (kind === "send_back") {
+          await suite.sql`UPDATE credit_lots SET lifecycle = 'refunding' WHERE id = ${lot.lotId}`;
+          await seedOperation(suite.sql, lot, {
+            kind: "approve", status: "needs_attention", attentionReason: "stripe_request_invalid",
+          });
+        }
+        succeededCents = PAID_CENTS / 2;
+        const refund = await stripe.refunds.create({ payment_intent: lot.paymentIntentId, amount: succeededCents });
+        expect(refund).toMatchObject({ status: "succeeded", amount: succeededCents });
+      }
+      const expected: Record<PreviewOneShotKind, OneShotVerdict> = kind === "resolve_outside" ? {
+        reject: WRONG_LOT, settle: WRONG_LOT, send_back: WRONG_LOT, resolve_outside: WRONG_LOT,
+      } : {
+        reject: kind === "send_back" ? WRONG_LOT : kind === "settle" ? ALLOWED : MONEY_RETURNED,
+        settle: BELOW_PAID,
+        send_back: kind === "send_back" ? MONEY_RETURNED : WRONG_LOT,
+        resolve_outside: ALLOWED,
+      };
+      await expectOneShotPreview(lot, expected);
+      const stripeBefore = (await stripeRefundsOf(lot.paymentIntentId)).map((r) => ({ id: r.id, amount: r.amount, status: r.status }));
+      expect(stripeBefore.map((r) => [r.amount, r.status])).toEqual(succeededCents === 0 ? [] : [[succeededCents, "succeeded"]]);
+      const lotBefore = await readLot(suite.sql, lot.lotId);
+      const ledgerBefore = await ledgerOf(suite.sql, lot.lotId);
+      const key = freshKey(kind);
+      const body = oneShotBody(kind, succeededCents);
+      const first = await post(oneShotPath(kind, lot), body, key);
+      const verdict = expected[kind];
+      expect(first.status).toBe(409);
+      expect(verdict.outcome).toBe("blocked");
+      if (verdict.outcome !== "blocked") throw new Error("The refusal fixture must have a blocked preview verdict.");
+      expect(errorShape(first.json)).toEqual({ code: verdict.code, reason: verdict.reason, detailTranslated: true });
+      await expectRealStripeRefusal(lot, kind, key, first);
+      expect(await readLot(suite.sql, lot.lotId)).toEqual(lotBefore);
+      expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
+
+      // Unlike asynchronous refundFail fixtures, a real Visa refund changes
+      // this payment's facts synchronously and needs no extra waiting budget.
+      if (kind === "settle") {
+        const external = await stripe.refunds.create({ payment_intent: lot.paymentIntentId });
+        expect(external).toMatchObject({ amount: PAID_CENTS, status: "succeeded" });
+        await expectOneShotPreview(lot, {
+          reject: MONEY_RETURNED, settle: ALLOWED, send_back: WRONG_LOT, resolve_outside: ALLOWED,
+        });
+        expect(await copiesOf(suite.sql, lot.lotId)).toEqual([expect.objectContaining({
+          stripe_refund_id: external.id, status: "succeeded", amount_cents: PAID_CENTS,
+        })]);
+      }
+      const replay = await post(oneShotPath(kind, lot), body, key);
+      expect({ status: replay.status, body: replay.json }).toEqual({ status: first.status, body: first.json });
+      const changed = await post(oneShotPath(kind, lot), { ...body, reason: "The request body changed after refusal." }, key);
+      expect(changed.status).toBe(422);
+      expect(changed.json.code).toBe("idempotency_key_reused");
+      await expectRealStripeRefusal(lot, kind, key, first);
+      expect(await readLot(suite.sql, lot.lotId)).toEqual(lotBefore);
+      expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
+      if (kind === "settle") {
+        const nowAllowed = await post(paths.settle(lot.lotId), oneShotBody(kind, PAID_CENTS));
+        expect(nowAllowed.status).toBe(200);
+        expect(nowAllowed.json).toMatchObject({ kind, status: "succeeded", result: "refunded" });
+        const refunds = await stripeRefundsOf(lot.paymentIntentId);
+        expect(refunds).toHaveLength(1);
+        await expectBookedOn(lot, refunds[0]!.id);
+      } else {
+        expect((await stripeRefundsOf(lot.paymentIntentId)).map((r) => ({ id: r.id, amount: r.amount, status: r.status }))).toEqual(stripeBefore);
+      }
+      await mailsSettled(suite.sql, lot);
     },
     CASE_TIMEOUT_MS,
   );

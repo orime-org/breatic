@@ -11,8 +11,8 @@
  * of owned children lives in {@link cascadeDeleteConversations}.
  */
 
-import { and, or, eq, lt, desc, isNull, inArray, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { and, or, eq, lt, desc, isNull, inArray, sql, type SQL } from "drizzle-orm";
+import { db, type ActivityCursor } from "@breatic/core";
 import {
   conversations,
   conversationAttachments,
@@ -166,6 +166,88 @@ export async function listConversations(
     conversations: rows.slice(0, limit).map(toEntity),
     hasMore: rows.length > limit,
   };
+}
+
+/** One of a user's conversations, with how many turns it holds and where a page after it starts. */
+export interface ConversationWithTurns {
+  conversation: ConversationEntity;
+  /** The highest turn index among its live messages; 0 when it has none. */
+  turns: number;
+  /** `updated_at` as text, at the precision the column stores, for a cursor. */
+  cursorAt: string;
+}
+
+/**
+ * The conditions of a user's live conversations in one project.
+ * @param userId - Their owner.
+ * @param projectId - The project.
+ * @returns The conditions, for a `where`.
+ */
+function liveInProject(userId: string, projectId: string): SQL[] {
+  return [
+    eq(conversations.userId, userId),
+    eq(conversations.projectId, projectId),
+    isNull(conversations.deletedAt),
+  ];
+}
+
+/**
+ * One page of a user's live conversations in a project, newest update first,
+ * each with how many turns it holds (inner#1469).
+ * @param userId - Their owner.
+ * @param projectId - The project.
+ * @param opts - The page.
+ * @param opts.limit - How many the page holds.
+ * @param opts.after - Where the previous page stopped: the last row's
+ *   `updated_at` as text (in the cursor's `createdAt`) and its id.
+ * @returns The page, and whether the list goes on past it.
+ */
+export async function listWithTurnCounts(
+  userId: string,
+  projectId: string,
+  opts: { limit: number; after?: ActivityCursor },
+): Promise<{ rows: ConversationWithTurns[]; hasMore: boolean }> {
+  const { limit, after } = opts;
+  const conditions = liveInProject(userId, projectId);
+  if (after !== undefined) {
+    // The text cursor, not a Date: the column keeps microseconds.
+    conditions.push(
+      sql`(${conversations.updatedAt}, ${conversations.id}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`,
+    );
+  }
+  const rows = await db
+    .select({
+      row: conversations,
+      cursorAt: sql<string>`${conversations.updatedAt}::text`,
+      // Written out rather than interpolated: drizzle renders a column bare
+      // inside a subquery, where `id` would name the message's own id.
+      turns: sql<number>`(
+        SELECT coalesce(max(m.turn_index), 0)::int FROM conversation_messages m
+        WHERE m.conversation_id = conversations.id AND m.deleted_at IS NULL
+      )`,
+    })
+    .from(conversations)
+    .where(and(...conditions))
+    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+    .limit(limit + 1);
+  return {
+    rows: rows.slice(0, limit).map((r) => ({ conversation: toEntity(r.row), turns: r.turns, cursorAt: r.cursorAt })),
+    hasMore: rows.length > limit,
+  };
+}
+
+/**
+ * How many live conversations a user has in a project.
+ * @param userId - Their owner.
+ * @param projectId - The project.
+ * @returns The count.
+ */
+export async function countInProject(userId: string, projectId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(conversations)
+    .where(and(...liveInProject(userId, projectId)));
+  return rows[0]?.count ?? 0;
 }
 
 /**

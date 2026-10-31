@@ -8,7 +8,7 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
   valid: [
     // The shape every client-facing throw should have.
-    { code: 'throw new NotFoundError(t("server.skill.not_found"));' },
+    { code: 'throw new NotFoundError(t("server.conversation.not_found"));' },
     { code: 'throw new ConflictError(t("server.studio.already_member"));' },
     // AppError puts the status first, so the message is the second argument.
     { code: 'throw new AppError(402, t("server.error.insufficient_credits", { required, available }));' },
@@ -20,13 +20,18 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // a caller has no message argument to get wrong.
     { code: "throw new ConflictLockedError({ holdingBy, holdingByName, taskId, startedAt, estimatedSeconds });" },
     { code: "class NodeLocked extends AppError { constructor(d) { super(409, t('server.canvas.node_locked')); } }" },
+    // `super()` reads the argument the extended class takes its message in,
+    // so a class outside the family is not read at all.
+    { code: "class Retry extends Error { constructor(n) { super(n, 'attempt failed'); } }" },
+    { code: "class Retry extends Base { constructor(n) { super(n, 'attempt failed'); } }" },
+    { code: "class Gone extends NotFoundError { constructor() { super(t('server.node.gone')); } }" },
     // Not our error family.
     { code: 'throw new Error("internal invariant broken");' },
     { code: 'throw new TypeError("expected a number");' },
   ],
   invalid: [
     {
-      code: 'throw new NotFoundError("Skill not found");',
+      code: 'throw new NotFoundError("Conversation not found");',
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
     {
@@ -46,7 +51,7 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     },
     // Concatenation is the same literal with extra steps.
     {
-      code: 'throw new ValidationError("Skill " + name + " not found");',
+      code: 'throw new ValidationError("Conversation " + name + " not found");',
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
     // A subclass hardcoding its own message. `ConflictLockedError` shipped
@@ -54,6 +59,15 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // watching callers alone said nothing about the sentence on the wire.
     {
       code: "class NodeLocked extends AppError { constructor(d) { super(409, 'Node is locked'); } }",
+      errors: [{ messageId: "untranslatedMessage", line: 1 }],
+    },
+    // A message-first subclass carries its message in the first argument.
+    {
+      code: "class Gone extends NotFoundError { constructor() { super('Node is gone'); } }",
+      errors: [{ messageId: "untranslatedMessage", line: 1 }],
+    },
+    {
+      code: "const Gone = class extends ConflictError { constructor() { super(`Taken: ${x}`); } };",
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
   ],

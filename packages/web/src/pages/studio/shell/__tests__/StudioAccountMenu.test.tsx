@@ -203,16 +203,18 @@ describe('StudioAccountMenu', () => {
     setup();
     await openMenu(user);
 
-    // Sign out is the fourth and sits below a separator; it is part of the
-    // order this asserts, because "last" is where a destructive action belongs.
+    // Sign out is last and sits below a separator; it is part of the order
+    // this asserts, because "last" is where a destructive action belongs.
+    // Signing out of other devices comes just before it (inner#1548).
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(4);
+    expect(labels).toHaveLength(5);
     expect(labels[0]).toContain('Account settings');
     expect(labels[1]).toContain('Membership');
     expect(labels[2]).toContain('Credits');
-    expect(labels[3]).toContain('Sign out');
+    expect(labels[3]).toBe('Sign out of other devices');
+    expect(labels[4]).toBe('Sign out');
   });
 
   it('takes Credits to the credits overlay, over the page below', async () => {

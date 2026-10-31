@@ -39,6 +39,7 @@ import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import { readFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { openPaymentSource } from "./payment-source.js";
 
 const MIGRATION = new URL(
   "../../../../core/src/db/migrations/0094_credit_refund_operations.sql",
@@ -199,20 +200,18 @@ async function seedLot(lifecycle = "refund_pending"): Promise<Lot> {
     INSERT INTO users (email, email_verified)
     VALUES (${`refund-schema-${Date.now()}-${seq}@example.test`}, true) RETURNING id
   `;
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   await sql`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${user!.id}, 1000, 'completed', 880)
+    VALUES (${sourceId}, ${user!.id}, 1000, 'completed', 880)
   `;
   const [lot] = await sql<{ id: string }[]>`
     INSERT INTO credit_lots
       (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
-    VALUES (${source!.id}, 'payment', ${user!.id}, 880, 880, ${lifecycle})
+    VALUES (${sourceId}, 'payment', ${user!.id}, 880, 880, ${lifecycle})
     RETURNING id
   `;
-  return { userId: user!.id, paymentId: source!.id, lotId: lot!.id };
+  return { userId: user!.id, paymentId: sourceId, lotId: lot!.id };
 }
 
 interface OperationRow {

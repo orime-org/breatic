@@ -170,7 +170,7 @@ export type StudioInvitationStatus =
   | "pending"
   | "accepted"
   | "declined"
-  | "expired"
+  | "failed"
   | "revoked";
 
 /**
@@ -182,7 +182,9 @@ export type StudioInvitationStatus =
  */
 export interface PendingInvitationSummary {
   invitationId: string;
-  invitedUserId: string;
+  invitedUserId: string | null;
+  /** Whether this recipient still needs to register and verify their email. */
+  awaitingSignup: boolean;
   name: string;
   email: string;
   avatarUrl: string | null;

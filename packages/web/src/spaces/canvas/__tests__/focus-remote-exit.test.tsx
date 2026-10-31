@@ -20,6 +20,7 @@ import {
   type Nodes,
 } from '@web/spaces/canvas/__tests__/focus-harness';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { FOCUS_TARGET_Z } from '@web/spaces/canvas/viewport-layers';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
@@ -238,7 +239,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('A9：拖动别的节点 → 聚焦照常，目标还在 1002', () => {
+  it('A9: keeps the focus and the target lifted while another node is dragged', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const src = image('src', 300);
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0), src]));
@@ -254,7 +255,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     rerender();
 
     expect(warn).not.toHaveBeenCalled();
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
     expect(focusTarget()).toBe('src');
   });
 

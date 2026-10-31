@@ -49,6 +49,12 @@ beforeEach(() => {
 });
 
 describe('useSlugAvailability', () => {
+  it('reports a check that could not run as unverified, not as checking forever (inner#1652)', async () => {
+    vi.mocked(studiosApi.checkSlugAvailable).mockRejectedValue(new Error('network down'));
+    const { result } = renderHook(() => useSlugAvailability('fresh-studio'), { wrapper });
+    await waitFor(() => expect(result.current.state).toBe('unverified'));
+  });
+
   it('is empty for an empty slug and never calls the server', () => {
     const { result } = renderHook(() => useSlugAvailability(''), { wrapper });
     expect(result.current.state).toBe('empty');

@@ -8,8 +8,8 @@
  *
  * The port comes from `dev-ports.mts` — the same module `vite.config.mts`
  * uses, so the target cannot drift from the server it is aimed at.
- * That module stays free of `@breatic/shared` on purpose: playwright loads
- * configs through CJS `require()` and shared is ESM-only.
+ * That module stays free of `@breatic/shared`, so loading this config never
+ * depends on shared having been built.
  * That matters once more than one worktree runs `pnpm dev` at a time
  * (#1831): a hard-coded 8000 would silently test a different worktree's
  * frontend.
@@ -52,6 +52,11 @@ export default defineConfig({
   },
   use: {
     baseURL,
+    // One click, fill or hover that cannot happen fails here, with the page
+    // as it stood, rather than waiting out the whole case; Playwright's own
+    // default is no limit (inner#1304). Waiting for a slow model belongs to
+    // the case's own timeout and its `expect(...).toPass`/`poll` waits.
+    actionTimeout: 15_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

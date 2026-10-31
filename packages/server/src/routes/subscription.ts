@@ -13,8 +13,9 @@
  * halfway through.
  */
 
+import { subscriptionConversion } from "@server/modules/subscription/subscription-analytics.js";
 import { Hono } from "hono";
-import { logger } from "@breatic/core";
+import { adsAllowedFor, currentAdsBrowser, logger } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -135,7 +136,9 @@ subscription.post("/resume", async (c) => {
  * Settles that checkout there and then rather than waiting for the webhook,
  * so the person who just paid sees the tier they bought. The webhook still
  * arrives and finds the work done.
- * @returns `200` with the membership panel's answer; `404` when the session
+ * @returns `200` with the membership panel's answer and, once the
+ *   subscription is active and `adsAllowed` lets ads run for this account and
+ *   browser, the ad conversion the page reports (inner#1442 §4.9); `404` when the session
  *   is not a membership checkout of theirs; `503` when it could not be
  *   confirmed yet.
  */
@@ -146,9 +149,18 @@ subscription.post(
     assertPaymentsEnabled();
     const user = c.get("user");
     const { session_id: sessionId } = c.req.valid("json");
-    await subscriptionService.confirmCheckout(user.id, sessionId);
+    const stored = await subscriptionService.confirmCheckout(user.id, sessionId);
     logger.info({ userId: user.id, sessionId }, "subscription_checkout_confirmed");
-    return c.json({ data: await readAccountMembership(user.id) });
+    const membership = await readAccountMembership(user.id);
+    const candidate = subscriptionConversion(stored);
+    let conversion: typeof candidate = null;
+    // The subscription is already confirmed; a failed ads lookup only withholds the conversion.
+    try {
+      if (candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser()))) conversion = candidate;
+    } catch (err) {
+      logger.error({ err, userId: user.id }, "ads_conversion_gate_failed");
+    }
+    return c.json({ data: { ...membership, conversion } });
   },
 );
 

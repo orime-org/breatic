@@ -15,6 +15,7 @@
 export const IDEMPOTENCY_SCOPES = [
   "generate",
   "understand",
+  "transcribe",
   "mini-tool",
   "conversation",
   "membership",
@@ -40,6 +41,7 @@ const DAY_SECONDS = 24 * 60 * 60;
 export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, number>> = {
   generate: DAY_SECONDS,
   understand: DAY_SECONDS,
+  transcribe: DAY_SECONDS,
   "mini-tool": DAY_SECONDS,
   conversation: DAY_SECONDS,
   membership: DAY_SECONDS,

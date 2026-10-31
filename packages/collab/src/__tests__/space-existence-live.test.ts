@@ -95,6 +95,7 @@ function storedMetaWith(ids: string[]): Uint8Array {
     const entry = new Y.Map<unknown>();
     spaces.set(id, entry);
     entry.set("id", id);
+    entry.set("type", "document");
   }
   return Y.encodeStateAsUpdate(doc);
 }
@@ -171,6 +172,7 @@ describe("Space existence over a live server", () => {
       const entry = new Y.Map<unknown>();
       live.getMap("spaces").set(SID, entry);
       entry.set("id", SID);
+      entry.set("type", "document");
     });
 
     const client = await connect(DOCUMENT_DOC);

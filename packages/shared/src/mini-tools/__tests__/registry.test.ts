@@ -6,28 +6,43 @@ import { describe, it, expect } from "vitest";
 import {
   MINI_TOOLS,
   defaultParamsOf,
+  isModelTool,
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,
   catalogEntryOf,
   miniToolsFor,
   modelOf,
+  mostOutputsOf,
+  outputsOf,
   servedMiniToolsFor,
   toolFilledParams,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
+import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
+import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
+
 
 const BATCH_ONE = {
-  // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
+  // The confirmed demo's order: quick edit first (inner#1304), then the free and usage-billed edits, the other model tools after.
   image: [
+    "image.quickEdit",
     "image.crop",
     "image.rotate",
+    "image.adjust",
+    "image.mark",
+    "image.grid",
     "image.remove-bg",
     "image.upscale",
     "image.digital-human",
     "image.inpaint",
     "image.erase",
     "image.sketch",
+    "image.expand",
+    "image.angle",
+    "image.relight",
+    "image.restyle",
   ],
   video: [
     "video.cut",
@@ -44,7 +59,22 @@ const BATCH_ONE = {
     "video.motion",
     "video.animate",
   ],
-  audio: ["audio.separate", "audio.extend"],
+  // inner#1305: the ten container edits, then enhance before the batch-one model tools.
+  audio: [
+    "audio.denoise",
+    "audio.normalize",
+    "audio.speed",
+    "audio.cut",
+    "audio.eq",
+    "audio.compress",
+    "audio.pan",
+    "audio.reverb",
+    "audio.voice",
+    "audio.pitch",
+    "audio.enhance",
+    "audio.separate",
+    "audio.extend",
+  ],
 } as const;
 
 describe("MINI_TOOLS registry", () => {
@@ -58,13 +88,85 @@ describe("MINI_TOOLS registry", () => {
 
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
-      expect(tool.outputs.length).toBeGreaterThan(0);
+      expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
     }
+  });
+
+  it("asks how every upload of one grouped export ended in a single status request", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.groupOutputs === true)) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(UPLOAD_STATUS_MAX_KEYS);
+    }
+  });
+
+  it("keeps every container tool within the outputs one ingest job takes", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.run.kind === "container")) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(MINI_TOOL_JOB_MAX_OUTPUTS);
+    }
+  });
+
+  it("counts a variable tool only off whole-number params from one and off list params", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (!count) continue;
+      const keys = count.kind === "product" ? count.params : [count.param];
+      for (const key of keys) {
+        const param = tool.params.find((p) => p.key === key);
+        if (count.kind === "product") {
+          expect(param && "kind" in param && param.kind === "number" && Number.isInteger(param.step) && param.min >= 1, `${tool.id}.${key}`).toBe(true);
+        } else {
+          expect(param && "kind" in param && param.kind === "list", `${tool.id}.${key}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("skips cells only through a cells param", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (count?.kind !== "product" || count.except === undefined) continue;
+      const param = tool.params.find((p) => p.key === count.except);
+      expect(param && "kind" in param && param.kind, tool.id).toBe("cells");
+    }
+  });
+
+  it("lets the grid split skip tiles", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.outputCount).toEqual({ kind: "product", params: ["rows", "cols"], except: "skip" });
+  });
+
+  it("adjusts a picture with the same sliders as a video, in the browser", () => {
+    const image = miniToolById("image.adjust");
+    const video = miniToolById("video.adjust");
+    expect(image?.run.kind).toBe("browser");
+    expect(image?.params).toEqual(video?.params);
+    expect(image && outputsOf(image, {}).map((output) => [output.modality, output.namePrefix])).toEqual([
+      ["image", "ADJUST"],
+    ]);
+  });
+
+  it("marks a picture up in the browser, for people to read", () => {
+    const mark = miniToolById("image.mark");
+    expect(mark?.run.kind).toBe("browser");
+    expect(mark?.markup).toBe(true);
+    expect(mark?.params).toEqual([]);
+    expect(mark && outputsOf(mark, {}).map((output) => output.namePrefix)).toEqual(["MARK"]);
+  });
+
+  it("cuts a grid into rows times columns of tiles inside a group", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.run.kind).toBe("browser");
+    expect(grid?.groupOutputs).toBe(true);
+    expect(grid?.outputLayout).toBe("grid");
+    expect(grid && outputsOf(grid, {}).length).toBe(9);
+    expect(grid && outputsOf(grid, { rows: 2, cols: 8 }).map((output) => output.namePrefix)).toEqual(
+      Array.from({ length: 16 }, () => "GRID"),
+    );
+    expect(grid && mostOutputsOf(grid)).toBe(64);
   });
 
   it("splits vocals and instrumental into two outputs", () => {
     const separate = miniToolById("audio.separate");
-    expect(separate?.outputs.map((output) => output.namePrefix)).toEqual([
+    expect(separate && outputsOf(separate, {}).map((output) => output.namePrefix)).toEqual([
       "VOCALS",
       "INSTRUMENTAL",
     ]);
@@ -73,13 +175,13 @@ describe("MINI_TOOLS registry", () => {
   it("makes the digital human an image tool whose output is a video", () => {
     const digitalHuman = miniToolById("image.digital-human");
     expect(digitalHuman?.source).toBe("image");
-    expect(digitalHuman?.outputs.map((output) => output.modality)).toEqual(["video"]);
+    expect(digitalHuman && outputsOf(digitalHuman, {}).map((output) => output.modality)).toEqual(["video"]);
     expect(digitalHuman?.slots.map((slot) => [slot.key, slot.accepts])).toEqual([
       ["audio", "audio"],
     ]);
   });
 
-  it("runs crop and rotate in the browser and the seven video operations in a container", () => {
+  it("runs crop and rotate in the browser and the video and audio edits in a container", () => {
     expect(miniToolById("image.crop")?.run.kind).toBe("browser");
     expect(miniToolById("image.rotate")?.run.kind).toBe("browser");
     const containerIds = MINI_TOOLS.filter((tool) => tool.run.kind === "container").map(
@@ -94,6 +196,7 @@ describe("MINI_TOOLS registry", () => {
         "video.audio-denoise",
         "video.stabilize",
         "video.hdr",
+        ...BATCH_ONE.audio.slice(0, 10),
       ].sort(),
     );
   });
@@ -126,10 +229,23 @@ describe("servedMiniToolsFor", () => {
     credit_multiplier: 1,
   } as never;
 
+  // inner#1304: quick edit leads the picture's list; after it every source lists its edits before its other model tools.
+  it("lists quick edit first, then every source's edits before its other model tools", () => {
+    expect(MINI_TOOLS.find((tool) => tool.source === "image")?.id).toBe("image.quickEdit");
+    for (const source of new Set(MINI_TOOLS.map((tool) => tool.source))) {
+      const rest = MINI_TOOLS.filter((tool) => tool.source === source && tool.id !== "image.quickEdit").map(isModelTool);
+      const firstModel = rest.indexOf(true);
+      expect(firstModel === -1 ? [] : rest.slice(firstModel), source).not.toContain(false);
+    }
+  });
+
   it("keeps browser tools and the model tools the catalog serves, in order", () => {
     expect(servedMiniToolsFor("image", catalog).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.adjust",
+      "image.mark",
+      "image.grid",
       "image.upscale",
     ]);
   });
@@ -138,6 +254,9 @@ describe("servedMiniToolsFor", () => {
     expect(servedMiniToolsFor("image", undefined).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.adjust",
+      "image.mark",
+      "image.grid",
     ]);
   });
 
@@ -167,6 +286,11 @@ describe("defaultParamsOf", () => {
     expect(rotate && defaultParamsOf(rotate)).toEqual({
       orient: { turns: 0, flipX: false, flipY: false },
     });
+  });
+
+  it("starts the grid split with every tile picked", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid && defaultParamsOf(grid)).toEqual({ rows: 3, cols: 3, skip: [] });
   });
 
   it("starts HDR on PQ", () => {
@@ -205,6 +329,20 @@ describe("miniToolRequestSchema", () => {
   it("refuses a browser tool, which never reaches the server", () => {
     const parsed = miniToolRequestSchema.safeParse({ ...base, tool: "image.crop", params: {} });
     expect(parsed.success).toBe(false);
+  });
+
+  // Each channel's range is the one the sliders offer (ADJUST_RANGES).
+  it("holds each adjust channel to its own range", () => {
+    const adjust = (value: Record<string, number>) =>
+      miniToolRequestSchema.safeParse({
+        ...base,
+        tool: "video.adjust",
+        source: { url: "https://cdn.example.com/a.mp4" },
+        params: { value: { ...defaultAdjustValue, ...value } },
+      }).success;
+    expect(adjust({ grain: 100, exposure: -100 })).toBe(true);
+    expect(adjust({ grain: -50 })).toBe(false);
+    expect(adjust({ vignette: -1 })).toBe(false);
   });
 
   it("refuses a node count that differs from the tool's outputs", () => {
@@ -268,9 +406,9 @@ describe("drawing tools", () => {
     expect(miniToolById("image.erase")?.prompt).toBeUndefined();
   });
 
-  it("marks the sketch tool's source param as a list and no other tool's", () => {
+  it("marks a source param as a list only where the pinned model takes a list of images", () => {
     const lists = MINI_TOOLS.filter((tool) => tool.sourceMany).map((tool) => tool.id);
-    expect(lists).toEqual(["image.sketch"]);
+    expect(lists).toEqual(["image.quickEdit", "image.sketch", "image.angle", "image.relight", "image.restyle"]);
   });
 
   it("names every media param a tool fills, the mask included", () => {
@@ -370,5 +508,134 @@ describe("drawing tools", () => {
       });
       expect(parsed.success).toBe(false);
     });
+  });
+});
+
+// inner#1304: multi-angle, relight, restyle and quick edit.
+describe("batch-four tools", () => {
+  const SOURCE = "https://cdn.example.com/a.png";
+  const base = {
+    project_id: "00000000-0000-4000-8000-000000000001",
+    space_id: "00000000-0000-4000-8000-000000000002",
+    node_ids: ["00000000-0000-4000-8000-000000000003"],
+    source: { url: SOURCE, width: 768, height: 1152 },
+    slots: {},
+  };
+
+  it("pins each tool to its model, prefix and icon, one image out", () => {
+    const rows = ["image.angle", "image.relight", "image.restyle", "image.quickEdit"].map((id) => {
+      const tool = miniToolById(id)!;
+      return [id, modelOf(tool), tool.icon, outputsOf(tool, {}).map((o) => [o.modality, o.namePrefix])];
+    });
+    expect(rows).toEqual([
+      ["image.angle", "qwen-image-edit-multiple-angles", "Rotate3d", [["image", "ANGLE"]]],
+      ["image.relight", "nano-banana-2-relight", "Lightbulb", [["image", "RELIGHT"]]],
+      ["image.restyle", "gpt-image-2.5-sunburst-edit", "Palette", [["image", "RESTYLE"]]],
+      ["image.quickEdit", "nano-banana-2-quick-edit", "SquarePen", [["image", "EDIT"]]],
+    ]);
+  });
+
+  it("exposes the camera pose on the multi-angle tool, with a prompt that may stay empty", () => {
+    const angle = miniToolById("image.angle")!;
+    expect(toolParamKeys(angle)).toEqual(["horizontal_angle", "vertical_angle", "distance"]);
+    expect(angle.slots).toEqual([]);
+    expect(angle.prompt?.defaultText).toBe("");
+  });
+
+  it("draws the light direction as one sphere and the colour as swatches, at 2K by default", () => {
+    const relight = miniToolById("image.relight")!;
+    expect(isModelTool(relight) && relight.params).toEqual([
+      { key: "light_azimuth", display: "lightAngle" },
+      { key: "light_elevation", display: "lightAngle" },
+      { key: "light_color", display: "swatches" },
+      { key: "light_color_hex", display: "swatchCustom" },
+      { key: "light_intensity" },
+      { key: "light_quality" },
+      { key: "resolution", default: "2k" },
+    ]);
+    expect(relight.prompt?.defaultText).toBe("");
+    expect(relight.sourceAspectParam).toBe("aspect_ratio");
+  });
+
+  it("takes an optional light reference that hides the direction once filled", () => {
+    const relight = miniToolById("image.relight")!;
+    expect(relight.slots.map((s) => [s.key, s.param, s.accepts, s.many, s.required])).toEqual([
+      ["light_reference", "light_reference", "image", false, undefined],
+    ]);
+    expect(relight.panel).toEqual({
+      columns: { left: ["light_azimuth", "light_elevation"] },
+      whenSlotFilled: { slot: "light_reference", hide: ["light_azimuth", "light_elevation"] },
+    });
+  });
+
+  it("requires one to three style pictures and always prefixes the restyle prompt", () => {
+    const restyle = miniToolById("image.restyle")!;
+    expect(restyle.slots.map((s) => [s.key, s.param, s.many, s.required])).toEqual([
+      ["style", "style_images", true, true],
+    ]);
+    expect(restyle.slots[0]?.titleKey).toBe("canvas.miniTool.image.restyle.slotTitle");
+    expect(isModelTool(restyle) && restyle.params).toEqual([{ key: "resolution", default: "2k" }, { key: "quality" }]);
+    expect(restyle.prompt?.defaultText).toBe("");
+    expect(restyle.prompt?.preamble).toMatch(/style references/);
+  });
+
+  it("asks quick edit for a prompt it cannot run without", () => {
+    const quickEdit = miniToolById("image.quickEdit")!;
+    expect(isModelTool(quickEdit) && quickEdit.params).toEqual([{ key: "resolution", default: "2k" }]);
+    expect(quickEdit.prompt?.defaultText).toBeUndefined();
+    expect(quickEdit.prompt?.preamble).toBeUndefined();
+  });
+
+  it("names in a panel layout only the tool's own params and slots", () => {
+    for (const tool of MINI_TOOLS) {
+      if (tool.panel === undefined) continue;
+      const keys = new Set(tool.params.map((p) => p.key));
+      for (const key of [...(tool.panel.columns?.left ?? []), ...(tool.panel.whenSlotFilled?.hide ?? [])]) {
+        expect(keys.has(key), `${tool.id}.${key}`).toBe(true);
+      }
+      const slot = tool.panel.whenSlotFilled?.slot;
+      if (slot !== undefined) expect(tool.slots.map((s) => s.key), tool.id).toContain(slot);
+    }
+  });
+
+  it("keeps the server-filled aspect param out of what the reader sends", () => {
+    for (const tool of MINI_TOOLS) {
+      if (tool.sourceAspectParam === undefined) continue;
+      expect(toolParamKeys(tool), tool.id).not.toContain(tool.sourceAspectParam);
+    }
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.relight",
+      params: { light_azimuth: 315, aspect_ratio: "2:3" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("takes a relight run with its light settings and a reference picture", () => {
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.relight",
+      prompt: "",
+      params: {
+        light_azimuth: 315,
+        light_elevation: 30,
+        light_color: "warm",
+        light_intensity: "auto",
+        light_quality: "soft",
+        resolution: "2k",
+      },
+      slots: { light_reference: { url: "https://cdn.example.com/ref.png" } },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("takes a restyle run with up to its style pictures", () => {
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.restyle",
+      params: { resolution: "2k", quality: "medium" },
+      slots: { style: [{ url: "https://cdn.example.com/s1.png" }, { url: "https://cdn.example.com/s2.png" }] },
+    });
+    expect(parsed.success).toBe(true);
   });
 });

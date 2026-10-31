@@ -74,6 +74,12 @@ export function fromFraction(frac: CropRect, box: BoxSize): CropRect {
 }
 
 /**
+ * The black laid over the part of a picture a tool leaves out — outside the
+ * crop box, an unpicked grid tile — so it darkens in both themes.
+ */
+export const OUTSIDE_DIM = 'rgb(0 0 0 / 0.4)';
+
+/**
  * The factor that keeps a handle at its screen size inside the zoomed node
  * layer. A handle is a control the reader drags, so it holds its size at
  * every zoom (user 2026-10-07), unlike the node's name, which stops growing

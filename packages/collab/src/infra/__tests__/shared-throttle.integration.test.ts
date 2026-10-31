@@ -11,6 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 
 import { createRedisClient, initCore, type Redis } from "@breatic/core";
@@ -39,12 +40,7 @@ async function connect(
   throttle: ReturnType<typeof createSharedThrottle>,
   ip: string | undefined,
 ): Promise<"allowed" | "denied"> {
-  try {
-    await throttle(ip ?? "");
-    return "allowed";
-  } catch {
-    return "denied";
-  }
+  return (await throttle.count(ip ?? "")) ? "allowed" : "denied";
 }
 
 /**
@@ -84,6 +80,16 @@ describe("createSharedThrottle", () => {
     expect(ttl).toBeLessThanOrEqual(180);
   });
 
+  it("reports a banned address as banned and another one as not", async () => {
+    const throttle = createSharedThrottle({ redis, maxAttempts: 1, banMinutes: 3, onError: () => {} });
+    const ip = freshIp();
+    expect(await throttle.isBanned(ip)).toBe(false);
+    await connect(throttle, ip);
+    await connect(throttle, ip);
+    expect(await throttle.isBanned(ip)).toBe(true);
+    expect(await throttle.isBanned(freshIp())).toBe(false);
+  });
+
   it("counts each identity separately", async () => {
     const throttle = createSharedThrottle({ redis, maxAttempts: 2, banMinutes: 5, onError: () => {} });
     const ip = freshIp();
@@ -106,7 +112,7 @@ describe("createSharedThrottle", () => {
 
 describe("the connection gate feeding the shared throttle", () => {
   /**
-   * Run one connection through the gate's upgrade and connect hooks.
+   * Run one new WebSocket through the gate's upgrade hook.
    * @param gate - The gate.
    * @param peer - The socket's peer address.
    * @param realIp - What nginx put in `x-real-ip`.
@@ -118,10 +124,13 @@ describe("the connection gate feeding the shared throttle", () => {
     realIp: string | undefined,
   ): Promise<"allowed" | "denied"> {
     const headers: Record<string, string> = realIp === undefined ? {} : { "x-real-ip": realIp };
-    const socket = { remoteAddress: peer, write: () => true, destroy: () => undefined };
-    await gate.onUpgrade({ request: { headers } as unknown as IncomingMessage, socket });
+    const socket = Object.assign(new EventEmitter(), {
+      remoteAddress: peer,
+      write: () => true,
+      destroy: () => undefined,
+    });
     try {
-      await gate.onConnect({ request: { headers: new Headers(headers) } });
+      await gate.onUpgrade({ request: { headers } as unknown as IncomingMessage, socket });
       return "allowed";
     } catch {
       return "denied";

@@ -37,6 +37,10 @@ export interface ProbeStream {
   colorTransfer?: string;
   colorPrimaries?: string;
   colorSpace?: string;
+  /** An audio stream's sample rate in hertz, when ffprobe read one; the audio tools resample to it. */
+  sampleRate?: number;
+  /** An audio stream's channel count, when ffprobe read one. */
+  channels?: number;
 }
 
 /** One /probe answer, minus the cover bytes. */

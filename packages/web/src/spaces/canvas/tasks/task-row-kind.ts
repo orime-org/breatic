@@ -8,7 +8,7 @@
  * reading and a tool run read apart at a glance.
  */
 
-import { ArrowUp, ScanText, Sparkles, type LucideIcon } from 'lucide-react';
+import { ArrowUp, Captions, ScanText, Sparkles, type LucideIcon } from 'lucide-react';
 import { UNDERSTAND_MODEL, type NodeTaskEntry } from '@breatic/shared';
 import { miniToolById } from '@breatic/shared/mini-tools';
 
@@ -55,6 +55,12 @@ export function taskRowKind(
       return {
         icon: ScanText,
         label: t('canvas.task.kind.understand'),
+        detail: entry.label === UNDERSTAND_MODEL.id ? UNDERSTAND_MODEL.displayName : entry.label,
+      };
+    case 'transcribe':
+      return {
+        icon: Captions,
+        label: t('canvas.task.kind.transcribe'),
         detail: entry.label === UNDERSTAND_MODEL.id ? UNDERSTAND_MODEL.displayName : entry.label,
       };
     case 'mini_tool': {

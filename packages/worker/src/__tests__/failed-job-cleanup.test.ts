@@ -19,6 +19,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
+const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
@@ -48,6 +49,7 @@ vi.mock("@breatic/domain", async () => ({
     "@domain/canvas-node/node-state-events.js",
   )),
   settleTaskForNode: mockSettleTaskForNode,
+  creditHoldService: { releaseHold: mockReleaseHold },
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
@@ -180,6 +182,21 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     };
     expect(await cleanupFailedJobNodes(streamRedis, job, "boom")).toBe(0);
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+
+  // A job the queue gave up on is over, wherever it ran (inner#1611).
+  it("releases the credits held for a finally-failed job, canvas or not", async () => {
+    mockReleaseHold.mockClear();
+    await cleanupFailedJobNodes(streamRedis, jobWith({ projectId: "p1", spaceId: "s1", targetNodeIds: ["n1"] }), "x");
+    await cleanupFailedJobNodes(streamRedis, jobWith({ taskId: "t2" }), "x");
+    expect(mockReleaseHold.mock.calls).toEqual([["t1"], ["t2"]]);
+  });
+
+  it("keeps the credits held while a retry is pending", async () => {
+    mockReleaseHold.mockClear();
+    const job = { data: { taskId: "t1", taskType: "generate", userId: "u1", params: {} } as TaskJobData };
+    await cleanupFailedJobNodes(streamRedis, job, "boom");
+    expect(mockReleaseHold).not.toHaveBeenCalled();
   });
 
   it("no-ops for non-canvas jobs (no projectId/spaceId or no targetNodeIds)", async () => {

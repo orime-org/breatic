@@ -53,12 +53,23 @@ describe("no-translated-product-noun", () => {
     expect(findings[0]?.message).toContain("a.b.c");
   });
 
+  it("catches Canvas, Document and Agent in every language", () => {
+    const context = fakeContext({
+      "locales/zh-CN.json": JSON.stringify({ a: "画布是空的", b: "这个文档", c: "智能体" }),
+      "locales/zh-TW.json": JSON.stringify({ a: "畫布是空的" }),
+      "locales/ja.json": JSON.stringify({ a: "キャンバス", b: "ドキュメント", c: "エージェント" }),
+      "locales/ko.json": JSON.stringify({ a: "캔버스", b: "문서", c: "에이전트" }),
+    });
+    expect(noTranslatedProductNoun.run(context)).toHaveLength(10);
+  });
+
   it("leaves the collision forms alone — they are frozen per key elsewhere", () => {
-    // Canvas's form is also the drawing surface and Timeline's is also the
-    // video track, so neither can be banned outright. The web package's
+    // Timeline's form is also the video track, Space's is also storage space,
+    // and the Traditional Chinese form of Document is the Simplified word for
+    // "file", so none can be banned outright. The web package's
     // frozen-product-terms test pins those by key instead.
     expect(
-      noTranslatedProductNoun.run(catalog({ a: "画布", b: "时间轴" })),
+      noTranslatedProductNoun.run(catalog({ a: "时间轴", b: "存储空间", c: "文件" })),
     ).toEqual([]);
   });
 

@@ -19,6 +19,7 @@ import {
   subscriptionClock,
   subscriptionSituation,
   tierForSituation,
+  markFirstActive,
   upsertSubscription,
 } from "@breatic/core";
 import type { DbTx, SubscriptionWrite } from "@breatic/core";
@@ -31,6 +32,8 @@ export interface AppliedSubscription {
   readonly tier: MembershipTier;
   /** The paid tier that ended, when this ended one and an email is owed. */
   readonly endedFrom: MembershipTier | null;
+  /** This write was the subscription's first activation; a start is reported after commit. */
+  readonly started: boolean;
 }
 
 /**
@@ -44,7 +47,8 @@ export interface AppliedSubscription {
  * @param input.write - The snapshot, already read from Stripe.
  * @param input.referenceId - Identifies this change in the tier ledger.
  * @param input.tx - The caller's transaction.
- * @returns The tier now in force, and whether an email is owed.
+ * @returns The tier now in force, whether an email is owed, and whether this
+ *   write was the subscription's first activation.
  * @throws {Error} if the account does not exist or a write fails.
  */
 export async function applySubscriptionWrite(input: {
@@ -56,6 +60,7 @@ export async function applySubscriptionWrite(input: {
   const { userId, write, referenceId, tx } = input;
   await lockAccountRow(userId, tx);
   await upsertSubscription(write, tx);
+  const started = await markFirstActive(write.stripeSubscriptionId, tx);
 
   const reading = subscriptionSituation(
     await listSubscriptions(userId, tx),
@@ -63,5 +68,5 @@ export async function applySubscriptionWrite(input: {
   );
   const tier = tierForSituation(reading.situation, reading.record);
   const settled = await settleTier({ userId, toTier: tier, referenceId, tx });
-  return { tier, endedFrom: settled.endedFrom };
+  return { tier, endedFrom: settled.endedFrom, started };
 }

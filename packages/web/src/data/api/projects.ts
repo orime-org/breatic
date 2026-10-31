@@ -139,6 +139,9 @@ export function invalidateProjectListings(
   );
 }
 
+/** A project just created or copied; `isFirst` when it is the caller's first (inner#1442 §4.9). */
+export type CreatedProject = ProjectDetail & { isFirst?: boolean };
+
 export const projectsApi = {
   get(id: string) {
     return apiGet<ProjectDetail>(`/projects/${id}`);
@@ -156,10 +159,10 @@ export const projectsApi = {
     description?: string;
   }, key: string) {
     // `key` is the press's Idempotency-Key: a re-send with it makes no second project.
-    return apiPost<ProjectDetail>('/projects', body, runOnceRequest(key));
+    return apiPost<CreatedProject>('/projects', body, runOnceRequest(key));
   },
   duplicate(id: string) {
-    return apiPost<ProjectDetail>(`/projects/${id}/duplicate`, {});
+    return apiPost<CreatedProject>(`/projects/${id}/duplicate`, {});
   },
   /**
    * `POST /api/v1/projects/:id/archive` — archive the project. Studio admin only.

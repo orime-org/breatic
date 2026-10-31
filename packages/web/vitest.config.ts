@@ -7,10 +7,10 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     globals: true,
     css: true,
-    // tests/smoke/ and tests/visual/ are Playwright suites (`pnpm test:smoke`
-    // / `pnpm test:visual`); exclude both from vitest so the two runners do not
-    // clash on `test()` globals.
-    exclude: ['node_modules', 'dist', 'tests/smoke/**', 'tests/visual/**'],
+    // tests/smoke/, tests/visual/ and tests/consent/ are Playwright suites
+    // (`pnpm test:smoke` / `pnpm test:visual` / `pnpm test:consent`); exclude
+    // them from vitest so the two runners do not clash on `test()` globals.
+    exclude: ['node_modules', 'dist', 'tests/smoke/**', 'tests/visual/**', 'tests/consent/**'],
     // 15s rather than vitest's 5s default: under turbo's cross-package
     // parallelism a test gets well under one core, and the 5s default was
     // failing @breatic/server's bcrypt invariant that passes in ~0.5s alone

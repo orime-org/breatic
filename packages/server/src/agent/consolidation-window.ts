@@ -2,18 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * How much history one consolidation takes away.
+ * How much history one consolidation takes away (inner#1567, design 6.4.1).
  *
- * It takes from the oldest end until what is left is at or under the keep
- * line. Written that way rather than as a fixed amount because a turn has no
- * upper bound: `stopWhen: stepCountIs(40)` lets one question run forty model
- * calls and every tool result is stored whole, so a single recent turn can be
- * larger than any fixed figure. Stopping on "what remains" makes "under the
- * budget after this" a property of the loop rather than an argument about how
- * fast a conversation grows.
- *
- * In the ordinary case the two lines are 850,000 and 500,000 tokens and a pass
- * takes about the 350,000 between them.
+ * One rule for every fold, whatever set it off: from the oldest whole turn
+ * before the current one, take at least one, then keep taking while what
+ * remains is still over the target line. A fold runs only when the request
+ * did not fit, so taking nothing is never the answer while there is
+ * something to take; and the current turn is never taken, so a resumed
+ * segment, which reads its own turn as history, keeps it.
  */
 
 /** One turn and what it costs the assembled payload. */
@@ -30,57 +26,40 @@ export interface ConsolidationRequest {
   assembled: number;
   /** The unconsolidated turns, oldest first. */
   turns: readonly TurnCost[];
-  /** Over this, a pass runs. */
-  budget: number;
-  /** A pass takes until what remains is at or under this. */
-  keep: number;
+  /** A fold takes until what remains is at or under this. */
+  target: number;
+  /** The turn being answered; only turns before it may be taken. */
+  currentTurn: number;
 }
 
-/** What one pass would do. */
+/** What one fold would do. */
 export interface ConsolidationPlan {
-  /** What the payload measures once they are gone. */
+  /** What the request measures once the taken turns are gone. */
   remaining: number;
   /**
-   * Where the watermark lands, and `null` when this pass does nothing.
-   *
-   * Also says which turns were taken: they are the ones at or below it.
-   *
-   * One field answers both questions because they have one answer: a payload
-   * over the budget is by that fact over the keep line as well (the keep line
-   * is the lower of the two), so the loop below always takes at least one
-   * turn once it runs at all.
+   * The last turn taken, which is where the watermark lands; `null` only when
+   * there is no turn before the current one to take.
    */
   newWatermark: number | null;
 }
 
 /**
- * Decide whether to consolidate and how far back to go.
- * @param request - The assembled total, the turns on hand, and the two lines.
- * @returns The plan; `newWatermark` is null when nothing needs doing.
+ * Decide how far back one fold goes.
+ * @param request - The assembled total, the turns on hand, the target line and the current turn.
+ * @returns The plan; `newWatermark` is null when nothing can be taken.
+ * @throws {never} Never.
  */
 export function planConsolidation(request: ConsolidationRequest): ConsolidationPlan {
-  const { assembled, turns, budget, keep } = request;
-
-  const nothing: ConsolidationPlan = {
-    remaining: assembled,
-    newWatermark: null,
-  };
-
-  if (assembled <= budget) return nothing;
-
+  const { assembled, turns, target, currentTurn } = request;
   let remaining = assembled;
   let newWatermark: number | null = null;
-
-  // The turns arrive oldest first and are taken from that end without a gap,
-  // so where the pass stopped says everything about which turns it took: the
-  // ones at or below it. With no history to take, the loop runs zero times
-  // and the watermark stays null — over the budget on the fixed cost alone,
-  // which no pass can shorten.
+  // Oldest first and without a gap, so the watermark alone says which turns
+  // were taken: the ones at or below it.
   for (const turn of turns) {
-    if (remaining <= keep) break;
+    if (turn.turnIndex >= currentTurn) break;
+    if (newWatermark !== null && remaining <= target) break;
     newWatermark = turn.turnIndex;
     remaining -= turn.tokens;
   }
-
   return { remaining, newWatermark };
 }

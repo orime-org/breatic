@@ -88,6 +88,7 @@ import {
   handlePaymentFailed,
 } from "@server/modules/payment/payment.service.js";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -153,15 +154,10 @@ async function seedPending(
     INSERT INTO users (email, email_verified)
     VALUES (${`fulfil-${stamp}@example.test`}, true) RETURNING id
   `;
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
-    VALUES (${source!.id}, ${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending', ${sql.json(metadata)})
+    VALUES (${sourceId}, ${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending', ${sql.json(metadata)})
     RETURNING id
   `;
   return { userId: user!.id, paymentId: payment!.id, sessionId };

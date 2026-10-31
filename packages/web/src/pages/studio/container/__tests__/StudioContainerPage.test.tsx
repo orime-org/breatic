@@ -3,13 +3,14 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import type { ProjectSummary, StudioProjectPage, StudioDetail, StudioSummary } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({
@@ -272,9 +273,9 @@ describe('StudioContainerPage', () => {
     await screen.findByText('Real Studio Project');
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
-    // Create waits for the live slug check to settle.
-    await screen.findByText('Slug is available');
+    // The slug follows the name until the reader writes their own.
+    await user.clear(screen.getByLabelText(/^Slug/));
+    await user.type(screen.getByLabelText(/^Slug/), 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     // studioId is the current studio (s-acme), and the first space defaults to
     // canvas (the only selectable type today). The studio selector that would
@@ -285,7 +286,6 @@ describe('StudioContainerPage', () => {
       name: 'Fresh',
       slug: 'fresh-proj',
       spaceType: 'canvas',
-      description: undefined,
     }, expect.any(String));
   });
 

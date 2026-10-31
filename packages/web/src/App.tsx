@@ -5,7 +5,8 @@ import type * as React from 'react';
 
 import { AppRouter } from '@web/app/AppRouter';
 import AuthBootstrap from '@web/app/AuthBootstrap';
-import { LoadingScreenHost } from '@web/components/loading-screen';
+import { LoadingScreenHost } from '@web/components/LoadingScreen';
+import { StaleReleaseDialog } from '@web/app/StaleReleaseDialog';
 import { Toaster } from '@web/components/ui/sonner';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
@@ -17,7 +18,7 @@ import { router } from '@web/app/routes';
  *     → TooltipProvider (Radix tooltip context)
  *       → AuthBootstrap (pings /auth/me once, populates useCurrentUserStore)
  *         → AppRouter (the data router; the one shared loading screen is a
- *           route inside it, see `loading-boundary.tsx`)
+ *           route inside it, see `LoadingBoundary.tsx`)
  *
  * `AppRouter` sits inside `AuthBootstrap` so the boot ping and the toast
  * surface both stay mounted while a route's chunk is on the wire.
@@ -40,6 +41,7 @@ export default function App(): React.JSX.Element {
         <AuthBootstrap>
           <AppRouter router={router} />
           <LoadingScreenHost />
+          <StaleReleaseDialog />
           {/* Toast surface mounts at the top-center of the viewport so
               critical / interaction-blocking messages (lock notice,
               RPC failures, rename refusals) sit in the user's primary

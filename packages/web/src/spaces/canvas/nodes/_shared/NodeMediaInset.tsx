@@ -37,7 +37,7 @@ export function NodeMediaInset({
   children,
 }: NodeMediaInsetProps): React.JSX.Element {
   return (
-    <div data-testid='node-media-inset' className='p-1'>
+    <div data-testid='node-media-inset' className='relative p-1'>
       {children}
     </div>
   );

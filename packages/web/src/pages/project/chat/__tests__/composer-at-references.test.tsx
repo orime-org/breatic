@@ -5,7 +5,13 @@
 // reference to it in the words.
 
 import * as React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { undo } from '@tiptap/pm/history';
@@ -587,7 +593,7 @@ describe('@ in the chat box', () => {
     press('Enter');
 
     expect(String(onChange.mock.lastCall?.[0]).slice(9_995)).toBe(`yy ${attachmentMarker('a1')} `);
-    expect(screen.queryByTestId('chat-composer-limit')).toBeNull();
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
   it('refuses a pick whose block and spaces would pass the limit, keeping the words', async () => {
@@ -599,7 +605,7 @@ describe('@ in the chat box', () => {
 
     expect(screen.queryByTestId('chat-reference')).toBeNull();
     expect(String(onChange.mock.lastCall?.[0])).toBe(`${'y'.repeat(9_998)}@`);
-    expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
+    expect(toastSpy.warning).toHaveBeenCalled();
   });
 
   it('scrolls a cut paste into view and marks it as a paste, as an uncut one is', () => {

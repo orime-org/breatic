@@ -103,6 +103,11 @@ function renderRow(
 }
 
 describe('NodeHistoryRow (#1619)', () => {
+  it('shows what a generation cost to at most two decimals, rounded up (inner#1666)', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 3.4512 } }));
+    expect(screen.getByText('3.46')).toBeInTheDocument();
+  });
+
   // #1 (user 2026-07-22): the type chip states ONLY the type (Generated /
   // Upload), never the outcome. Before the fix a FAILED row's chip rendered
   // `canvas.history.failed` ("Can't restore") and the type key was absent —

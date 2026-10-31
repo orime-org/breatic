@@ -4,4 +4,5 @@
 export * from "@shared/mini-tools/types.js";
 export * from "@shared/mini-tools/tools.js";
 export * from "@shared/mini-tools/derive.js";
+export * from "@shared/mini-tools/outputs.js";
 export * from "@shared/mini-tools/request-schema.js";

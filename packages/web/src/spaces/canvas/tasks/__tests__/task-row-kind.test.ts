@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ArrowUp, ScanText, Sparkles } from 'lucide-react';
+import { ArrowUp, Captions, ScanText, Sparkles } from 'lucide-react';
 import { UNDERSTAND_MODEL } from '@breatic/shared';
 import { miniToolById } from '@breatic/shared/mini-tools';
 
@@ -64,6 +64,17 @@ describe('taskRowKind', () => {
     ).toEqual({
       icon: ScanText,
       label: 'canvas.task.kind.understand',
+      detail: UNDERSTAND_MODEL.displayName,
+    });
+  });
+
+  // inner#856: a transcription names itself, with the menu entry's icon.
+  it('badges a transcription with the menu entry that starts it', () => {
+    expect(
+      taskRowKind({ action: 'transcribe', label: UNDERSTAND_MODEL.id }, t, displayNameOf),
+    ).toEqual({
+      icon: Captions,
+      label: 'canvas.task.kind.transcribe',
       detail: UNDERSTAND_MODEL.displayName,
     });
   });

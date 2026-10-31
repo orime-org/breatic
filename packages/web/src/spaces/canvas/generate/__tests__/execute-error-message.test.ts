@@ -19,17 +19,17 @@ import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-m
 const echo = (key: string): string => key;
 
 describe('executeErrorMessage', () => {
-  it('says storage is full on 507', () => {
-    expect(executeErrorMessage(507, echo)).toBe(
+  it('says storage is full on 507', async () => {
+    expect(await executeErrorMessage(507, echo)).toBe(
       'canvas.generatePanel.errorStorageFull',
     );
   });
 
-  it('still falls back for a status it has no sentence for', () => {
-    expect(executeErrorMessage(500, echo)).toBe(
+  it('still falls back for a status it has no sentence for', async () => {
+    expect(await executeErrorMessage(500, echo)).toBe(
       'canvas.generatePanel.errorFailed',
     );
-    expect(executeErrorMessage(undefined, echo)).toBe(
+    expect(await executeErrorMessage(undefined, echo)).toBe(
       'canvas.generatePanel.errorFailed',
     );
   });

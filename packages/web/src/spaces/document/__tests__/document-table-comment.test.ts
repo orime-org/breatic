@@ -18,6 +18,7 @@ import { commentTool } from '@web/spaces/document/document-comment-entries';
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -45,10 +46,7 @@ function open(): Editor {
   editor.mount(root);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
-    },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
   ] as never);
   return editor;
 }
@@ -62,7 +60,7 @@ function open(): Editor {
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'tableCell' && node.textContent === text) at = pos;
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === text) at = pos;
     return at < 0;
   });
   return at;
@@ -76,7 +74,7 @@ function cellOf(editor: Editor, text: string): number {
 function commented(editor: Editor): string[] {
   const out: string[] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name === 'tableCell') {
+    if (node.type.name === 'docTableCell') {
       let marked = false;
       node.descendants((child) => {
         if (child.marks.some((mark) => mark.type.name === 'comment')) marked = true;

@@ -143,22 +143,6 @@ thank you.
 
 ---
 
-## Our Security Track Record
-
-Breatic has undergone multiple rounds of **independent security audits**
-as part of our pre-launch engineering discipline. Identified issues
-are tracked in our **private security backlog** —
-**150+ findings as of April 2026**, with the count growing as new
-reviews and reports come in. We believe maintaining a private backlog
-for unfixed vulnerabilities is responsible disclosure practice; once
-issues are remediated, they appear in the public release notes.
-
-To request access to the private backlog (vetted security researchers
-or downstream integrators), email security@breatic.ai with your
-GitHub handle and the context of your interest.
-
----
-
 ## A Note on AI Platforms
 
 Breatic is an AI-assisted content creation platform. Some categories

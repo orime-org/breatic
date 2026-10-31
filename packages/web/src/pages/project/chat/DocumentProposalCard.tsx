@@ -8,6 +8,7 @@ import { useParams } from 'react-router-dom';
 import { getLocale, hasWords, type DocumentProposal } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { docName } from '@web/data/yjs/manager';
 import { useTranslation } from '@web/i18n/use-translation';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
@@ -245,34 +246,26 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           </Button>
         </div>
       ) : (
-        <div className='flex w-full max-w-[270px] gap-2 self-center'>
+        <ProposalActions>
           {commentable ? (
-            <Button
-              type='button'
-              variant='outline'
-              size='form'
+            <ProposalAction
               loading={working && card?.action === 'comment'}
               disabled={unread || (working && card?.action !== 'comment')}
               onClick={onComment}
-              className='flex-1'
             >
               {t('chat.documentProposal.addComment')}
-            </Button>
+            </ProposalAction>
           ) : null}
           {proposal.kind === 'comment' ? null : (
-            <Button
-              type='button'
-              variant='outline'
-              size='form'
+            <ProposalAction
               loading={working && card?.action === 'write'}
               disabled={unread || (working && card?.action !== 'write')}
               onClick={onWrite}
-              className='flex-1'
             >
               {t(proposal.kind === 'insert' ? 'chat.documentProposal.insert' : 'chat.documentProposal.apply')}
-            </Button>
+            </ProposalAction>
           )}
-        </div>
+        </ProposalActions>
       )}
     </div>
   );

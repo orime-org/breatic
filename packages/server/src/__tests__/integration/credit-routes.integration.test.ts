@@ -28,6 +28,8 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import {
@@ -36,8 +38,12 @@ import {
   getRedis,
   setSession,
   sessionCookieName,
+  logger,
+  initLogger,
 } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService } from "@breatic/domain";
+import { t } from "@breatic/shared";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-routes-test-driver";
 
@@ -52,6 +58,13 @@ beforeAll(async () => {
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
   });
   loadLocales();
+  // A real pino instance, as in production: the default export is a Proxy
+  // that a spy cannot attach to.
+  initLogger("credit-routes-test", {
+    logsRoot: resolve(tmpdir(), "breatic-test-logs"),
+    debug: false,
+    console: "none",
+  });
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -126,15 +139,10 @@ async function seedLot(
   credits: number,
   designateTo: string | null = null,
 ): Promise<string> {
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
+    VALUES (${sourceId}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,
@@ -543,7 +551,82 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => {
+  it("sends each lot as buyer, date, purchased and remaining, and nothing about its refunds", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 120, fx.studioId);
+    await sql`UPDATE credit_lots SET refund_attempts = 2 WHERE id = ${lotId}`;
+    const [stored] = await sql<{ created_at: Date }[]>`
+      SELECT created_at FROM credit_lots WHERE id = ${lotId}
+    `;
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { lots: Record<string, unknown>[] } };
+    expect(body.data.lots).toHaveLength(1);
+    expect(Object.keys(body.data.lots[0]!).sort()).toEqual([
+      "buyerName",
+      "createdAt",
+      "id",
+      "purchasedCredits",
+      "remainingCredits",
+    ]);
+    expect(body.data.lots[0]).toEqual({
+      id: lotId,
+      purchasedCredits: 120,
+      remainingCredits: 120,
+      createdAt: stored!.created_at.toISOString(),
+      buyerName: fx.personalStudioName,
+    });
+  });
+});
+
+describe("GET /studio/:slug/credits — holds (inner#1611)", () => {
+  it("reports what running work holds and what is left beside the spendable figure", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await creditHoldService.reserveCredits({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      referenceId: `studio-hold-${Date.now()}`,
+      amount: 30,
+      ttlMs: 3_600_000,
+    });
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { spendable: number; held: number; available: number } };
+    expect(body.data).toMatchObject({ spendable: 100, held: 30, available: 70 });
+  });
+});
+
 describe("GET /projects/:id/credits", () => {
+  it("reports what running work holds and what is left (inner#1611)", async () => {
+    const fx = await seedFixture();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${fx.projectId}, ${fx.userId}, 'owner')
+    `;
+    await seedLot(fx, 100, fx.studioId);
+    await creditHoldService.reserveCredits({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      referenceId: `project-hold-${Date.now()}`,
+      amount: 40,
+      ttlMs: 3_600_000,
+    });
+
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { spendable: 100, held: 40, available: 60 } });
+  });
+
   it("未登录答 401", async () => {
     const fx = await seedFixture();
     const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`);
@@ -558,6 +641,22 @@ describe("GET /projects/:id/credits", () => {
       headers: { Cookie: stranger.cookie },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("answers 404 for an id that is not a uuid, with nothing logged as an error (inner#1139)", async () => {
+    const fx = await seedFixture();
+    const errors = vi.spyOn(logger, "error");
+    try {
+      const res = await app.request("/api/v1/projects/not-a-uuid/credits", {
+        headers: { Cookie: fx.cookie },
+      });
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: number; message: string } };
+      expect(body.error).toMatchObject({ code: 404, message: t("server.error.not_found") });
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("给这个 project 的成员看它所属 studio 还能花多少", async () => {

@@ -38,23 +38,27 @@ function mailpitUrl(): string {
 }
 
 /**
- * Wait for the newest sign-up code mailed to an address after `since`.
- * @param api - Any request context (Mailpit needs no cookies).
- * @param to - The address the code was mailed to.
- * @param since - Only mail that arrived at or after this moment counts.
- * @returns The six digits.
- * @throws {Error} When no such mail arrives within twenty seconds.
+ * Wait for a matching value in the newest local email to an address.
+ * @param api - A request context that can read Mailpit.
+ * @param to - The recipient address.
+ * @param since - The earliest message that belongs to this operation.
+ * @param extract - Extracts the value the caller is waiting for.
+ * @param purpose - The requested value, included in a failure message.
+ * @returns The extracted value.
+ * @throws {Error} When the local inbox is unavailable or no matching email arrives.
  */
-export async function readSignupCode(
+async function readMailValue(
   api: APIRequestContext,
   to: string,
   since: Date,
+  extract: (text: string) => string | undefined,
+  purpose: string,
 ): Promise<string> {
   const inbox = mailpitUrl();
   const reachable = await api.get(`${inbox}/api/v1/info`).then((r) => r.ok()).catch(() => false);
   if (!reachable) {
     throw new Error(
-      `Email is enabled on this stack, so signing up needs the mailed code, and no Mailpit answers at ${inbox}. ` +
+      `Email is enabled on this stack, so ${purpose} must reach Mailpit, and no inbox answers at ${inbox}. ` +
         'Start the stack with `pnpm dev:mailpit` to catch mail locally.',
     );
   }
@@ -68,17 +72,41 @@ export async function readSignupCode(
       .sort((a, b) => b.Created.localeCompare(a.Created))[0];
     if (newest) {
       const message = (await (await api.get(`${inbox}/api/v1/message/${newest.ID}`)).json()) as MailpitMessage;
-      const code = CODE_PATTERN.exec(message.Text ?? '')?.[1];
-      if (code) return code;
+      const value = extract(message.Text ?? '');
+      if (value) return value;
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_EVERY_MS));
   }
-  // Mailpit answering says nothing about where the server sends mail: a stack
-  // started with plain `pnpm dev` mails through the backend in `.env`.
   throw new Error(
-    `No sign-up code reached ${to} in Mailpit within ${POLL_FOR_MS / 1000}s. ` +
+    `No ${purpose} reached ${to} in Mailpit within ${POLL_FOR_MS / 1000}s. ` +
       'Mail reaches Mailpit only when the stack runs under `pnpm dev:mailpit`.',
   );
+}
+
+/**
+ * Wait for the newest sign-up code mailed to an address after the operation began.
+ * @param api - Any request context.
+ * @param to - The address the code was mailed to.
+ * @param since - The start of the sign-up operation.
+ * @returns The six digits.
+ * @throws {Error} When no matching code reaches Mailpit.
+ */
+export function readSignupCode(api: APIRequestContext, to: string, since: Date): Promise<string> {
+  return readMailValue(api, to, since, (text) => CODE_PATTERN.exec(text)?.[1], 'sign-up code');
+}
+
+/**
+ * Read the registration link from a real invitation email in the local inbox.
+ * @param api - Any request context.
+ * @param to - The address invited to register.
+ * @param since - The start of the invitation operation.
+ * @returns The registration link carrying the invitation token.
+ * @throws {Error} When no matching invitation email reaches Mailpit.
+ */
+export function readSignupInvitationLink(api: APIRequestContext, to: string, since: Date): Promise<string> {
+  return readMailValue(api, to, since,
+    (text) => /https?:\/\/[^\s<>"']+\/register\?invite=[a-zA-Z0-9_-]+/.exec(text)?.[0],
+    'invitation registration link');
 }
 
 /**

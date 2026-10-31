@@ -20,16 +20,14 @@ export interface Tray {
  * Open the list above the box for one attempt to attach.
  *
  * The conversation on screen is used, opened first the way a first message
- * opens one when there is none. What was said about the last attempt is
- * cleared, since this one is about to say its own.
+ * opens one when there is none.
  * @param projectId - The project the chat is in.
  * @returns Where to attach, or undefined when no conversation could be opened
- *   or the limits could not be read -- the latter said beside the attach button.
+ *   or the limits could not be read -- the latter told in a toast.
  */
 export async function openTray(projectId: string): Promise<Tray | undefined> {
   const conversationId = await conversationRuntime.conversationForSending(projectId);
   if (conversationId === undefined) return undefined;
-  chatAttachments.say(conversationId, null);
   try {
     const config = await chatApi.streamConfig();
     return {
@@ -37,7 +35,7 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
       limits: { maxItems: config.attachmentMaxItems, maxChars: config.attachmentMaxChars },
     };
   } catch {
-    chatAttachments.say(conversationId, { key: 'unavailable' });
+    chatAttachments.say({ key: 'unavailable' });
     return undefined;
   }
 }
@@ -46,8 +44,8 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
  * Hand items to the agent: from the canvas, a document or a paste.
  *
  * The agent column is brought back into view so the reader sees them arrive.
- * The batch goes in whole or not at all, and what stopped it is said above
- * the box.
+ * The batch goes in whole or not at all, and what stopped it is told in a
+ * toast.
  * @param projectId - The project the items come from.
  * @param items - The items, ready, in order.
  */

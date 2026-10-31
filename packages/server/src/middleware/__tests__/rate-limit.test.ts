@@ -23,6 +23,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getRedis: () => ({}),
     checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
     decideClientIdentity: actual.decideClientIdentity,
+    // validate.ts defines its refusal class on load, so it needs the real base.
+    ValidationError: actual.ValidationError,
     logger,
   };
 });
@@ -153,5 +155,20 @@ describe("rateLimit middleware", () => {
     const res = await app.request("/", {}, DIRECT);
     expect(res.status).toBe(200);
     expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "internal-api:203.0.113.9", max: 120, windowSeconds: 60 }]);
+  });
+
+  it("keys by user id and the named route param when keyBy is userAndParam", async () => {
+    const app = new Hono<{ Variables: { user: { id: string } } }>();
+    app.use("*", async (c, next) => {
+      c.set("user", { id: "user-9" });
+      await next();
+    });
+    const limiter = rateLimit({ quotas: [{ prefix: "up", max: 3, windowSeconds: 60, keyBy: { userAndParam: "uploadId" } }] });
+    app.post("/uploads/:uploadId/parts", limiter, (c) => c.text("ok"));
+    app.post("/uploads", limiter, (c) => c.text("ok"));
+    await app.request("/uploads/u-1/parts", { method: "POST" }, DIRECT);
+    await app.request("/uploads", { method: "POST" }, DIRECT);
+    expect(checkRateLimit).toHaveBeenNthCalledWith(1, expect.anything(), [{ key: "up:user-9:u-1", max: 3, windowSeconds: 60 }]);
+    expect(checkRateLimit).toHaveBeenNthCalledWith(2, expect.anything(), [{ key: "up:user-9:", max: 3, windowSeconds: 60 }]);
   });
 });

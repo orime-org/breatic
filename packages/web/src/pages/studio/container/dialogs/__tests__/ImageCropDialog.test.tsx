@@ -26,15 +26,18 @@ const revoked: string[] = [];
 beforeEach(() => {
   objectUrls.length = 0;
   revoked.length = 0;
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => {
-      const u = `blob:mock/${objectUrls.length}`;
-      objectUrls.push(u);
-      return u;
+  // A subclass keeps `new URL(...)` working for every module loaded while the stub stands.
+  vi.stubGlobal(
+    'URL',
+    Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => {
+        const u = `blob:mock/${objectUrls.length}`;
+        objectUrls.push(u);
+        return u;
+      }),
+      revokeObjectURL: vi.fn((u: string) => revoked.push(u)),
     }),
-    revokeObjectURL: vi.fn((u: string) => revoked.push(u)),
-  });
+  );
 });
 
 /**

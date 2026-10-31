@@ -32,7 +32,6 @@ import {
 
 /** A file with every tier-and-period combination filled in. */
 const validFile = {
-  stale_after_days: 14,
   stripe_call_timeout_ms: 5000,
   plans: {
     pro: {

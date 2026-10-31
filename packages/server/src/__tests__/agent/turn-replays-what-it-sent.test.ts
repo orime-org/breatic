@@ -63,7 +63,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: modelSays.tools }),
+    buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: modelSays.tools }),
     // The real one, so the reply is written down.
     finalizeTurn: actual.finalizeTurn,
     getModel: () =>
@@ -81,19 +81,20 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   setUserForModel,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: vi.fn(async () => false) }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext, logger } = await import("@breatic/core");
 
 /** What the mocked factory resolves every turn to. */
-const PREFIX: RequestPrefix = { instructions: "system", tools: {}, modelId: "test" };
+const PREFIX: RequestPrefix = { instructions: { base: "system" }, tools: {}, modelId: "test" };
 
 const ASKED: ModelMessage = { role: "user", content: "earlier question, as sent" };
 const ANSWERED: ModelMessage[] = [
@@ -198,7 +199,7 @@ describe("a turn replays the history as it was sent", () => {
   });
 
   it("leaves an earlier reply's thinking out once what came before it changed", async () => {
-    modelSays.history = earlierTurn({ ...PREFIX, instructions: "an older system prompt" });
+    modelSays.history = earlierTurn({ ...PREFIX, instructions: { base: "an older system prompt" } });
 
     await runOneTurn("next question");
 

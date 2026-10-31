@@ -98,6 +98,6 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ## Space lifecycle
 
-### Space delete lock
+### Space count lock
 
-**A guard in `services/space-rpc.ts` that can reduce the number of live Spaces must run under `withSpaceDeleteLock` and read the live count from Postgres (`countLiveSpaceDocs`).** `conn.transact` is atomic within one instance only; two collaborators on different instances both read the old meta and both pass the guard.
+**Every RPC in `services/space-rpc.ts` that changes the number of live Spaces (create, restore, delete) must run under `withSpaceCountLock` and read the live count from Postgres (`countLiveSpaceDocs`), which guards both the one-Space floor and the `MAX_SPACES_PER_PROJECT` ceiling.** `conn.transact` is atomic within one instance only; two collaborators on different instances both read the old meta and both pass the guard.

@@ -60,7 +60,7 @@ describe('the colour panel both menus open', () => {
     carriers.forEach((file) => {
       const source = readFileSync(resolve(here, file), 'utf8');
       expect(source, `${file} draws the panel itself`).toContain(
-        'from \'@web/spaces/document/document-colour-panel\'',
+        'from \'@web/spaces/document/DocumentColourPanel\'',
       );
     });
   });
@@ -89,7 +89,7 @@ describe('the colour panel both menus open', () => {
     carriers.forEach((file) => {
       const source = readFileSync(resolve(here, file), 'utf8');
       expect(source, `${file} draws the column itself`).toContain(
-        'from \'@web/spaces/document/document-menu-tick\'',
+        'from \'@web/spaces/document/MenuTick\'',
       );
       expect(source, `${file} spells the column out by hand`).not.toContain(
         'size-4 shrink-0 items-center justify-center',

@@ -141,9 +141,23 @@ async function file(s: Scene, requester: string): Promise<void> {
 async function latest(
   projectId: string,
   userId: string,
-): Promise<{ id: string; status: string; share_token: string; notification_id: string | null }> {
-  const [row] = await sql<{ id: string; status: string; share_token: string; notification_id: string | null }[]>`
-    SELECT id, status, share_token, notification_id FROM role_upgrade_requests
+): Promise<{
+  id: string;
+  status: string;
+  failed_reason: string | null;
+  share_token: string;
+  notification_id: string | null;
+}> {
+  const [row] = await sql<
+    {
+      id: string;
+      status: string;
+      failed_reason: string | null;
+      share_token: string;
+      notification_id: string | null;
+    }[]
+  >`
+    SELECT id, status, failed_reason, share_token, notification_id FROM role_upgrade_requests
     WHERE project_id = ${projectId} AND requester_user_id = ${userId}
     ORDER BY created_at DESC LIMIT 1
   `;
@@ -237,7 +251,10 @@ describe("an owner change re-addresses pending role-upgrade requests", () => {
 
     await transfer(s);
 
-    expect((await latest(s.project.id, s.heir)).status).toBe("expired");
+    expect(await latest(s.project.id, s.heir)).toMatchObject({
+      status: "failed",
+      failed_reason: "invalidated",
+    });
     expect((await bell(own.notification_id!)).retired).toBe(true);
     expect(await unreadUpgradeBells(s.heir, s.project.id)).toBe(0);
   });

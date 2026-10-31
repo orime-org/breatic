@@ -21,6 +21,7 @@ import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
   clip,
+  failedWith,
   isStop,
   keepInside,
   nextMovesFor,
@@ -61,7 +62,7 @@ const moves = nextMovesFor(voice);
 function unanswered(cause: unknown): Error {
   return toolFailed(
     reason(`Nothing answered the ${voice.act} request.`, moves.retryOnce),
-    FAILURE_LINES.unreachable,
+    FAILURE_LINES.noConnection,
     cause,
   );
 }
@@ -322,10 +323,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       : res.status === 422
         ? true
         : undefined;
-    throw toolFailed(
-      refusalReason(voice, asked, res.status, complaint, rewordable),
-      FAILURE_LINES.upstream,
-    );
+    throw failedWith(refusalReason(voice, asked, res.status, complaint, rewordable));
   }
 
   let text: string;
@@ -341,17 +339,14 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // writes its headers and then stops ends here with the whole figure spent.
     // That is the same fact as nothing answering at all, and says so.
     if (spanning.aborted) throw unanswered(err);
-    throw toolFailed(
-      readFailedReason(voice, asked, reasonOf(err)),
-      FAILURE_LINES.upstream,
-    );
+    throw failedWith(readFailedReason(voice, asked, reasonOf(err)));
   }
 
   onBilled(reportedCost(text));
 
   const split = readAnswers(text, Object.keys(questions));
   if (split === null) {
-    throw toolFailed(notOurPayloadReason(voice, asked), FAILURE_LINES.upstream);
+    throw failedWith(notOurPayloadReason(voice, asked));
   }
   // Every key unreadable is the same fact as one of them being unreadable, and
   // A4's answer to it is the same: the names travel and the model decides.

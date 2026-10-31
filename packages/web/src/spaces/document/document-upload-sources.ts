@@ -93,6 +93,8 @@ const FETCH_RETRY_CAN_CHANGE: Readonly<Record<TaskFailureReason, boolean>> = {
   tool_failed: false,
   media_refused: false,
   no_audio_track: false,
+  credits_held: false,
+  cut_short: false,
 };
 
 /** The failure every catch-all says. */

@@ -97,6 +97,8 @@ EMAIL_BACKEND=console
 
 这条 CORS 规则用于浏览器读取图片并进行画布裁剪。上传发送到 Ingest Worker，由下一节的 `ALLOWED_ORIGINS` 控制；两处都要配置。
 
+5. 加一条生命周期规则：前缀 `transfer/` 的对象 1 天后删除。服务端拒收超过 1 MiB 的请求体（`config/limits.yaml` 的 `request_body_max_bytes`），更大的粘贴、快照和 Agent 消息会作为临时传输文件上传到这里。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
+
 在根目录 `.env` 中填写：
 
 ```dotenv

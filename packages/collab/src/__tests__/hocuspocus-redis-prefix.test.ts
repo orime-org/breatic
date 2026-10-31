@@ -27,9 +27,16 @@
  * Everything that would open a socket or a timer is mocked; the YAML config
  * is read for real (it is a pure file read).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { IncomingMessage } from "node:http";
+import { Duplex } from "node:stream";
+import type { Socket } from "node:net";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
+import type * as HocuspocusServerModule from "@hocuspocus/server";
+import type * as ConnectionGateModuleShape from "@collab/infra/connection-gate.js";
+import type * as CoreModuleShape from "@breatic/core";
+import type * as ConfigModuleShape from "@collab/config.js";
 
 /** The real module, so the mock can keep everything it does not replace. */
 type ConnectionRegistryModule = typeof ConnectionRegistryModuleShape;
@@ -41,7 +48,17 @@ const {
   registryFactorySpy,
   collabRedisStub,
   loadProjectRoleStub,
+  connectionGateSpy,
+  failedAuthWrapperSpy,
+  loggerInfoSpy,
+  authRedisStub,
+  sessionLookupSpy,
+  throttleCountSpy,
+  testConfig,
 } = vi.hoisted(() => ({
+  connectionGateSpy: vi.fn(),
+  failedAuthWrapperSpy: vi.fn(),
+  loggerInfoSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
@@ -59,6 +76,10 @@ const {
   // The `connected` hook re-reads the role; by default it reads back what
   // the handshake granted, so nothing is closed.
   loadProjectRoleStub: vi.fn(async (): Promise<string | undefined> => undefined),
+  authRedisStub: { on: vi.fn() },
+  sessionLookupSpy: vi.fn<(...args: unknown[]) => Promise<string | null>>(async () => "user-a"),
+  throttleCountSpy: vi.fn<(_identity: string) => Promise<boolean>>(async () => true),
+  testConfig: { throttleEnabled: true },
 }));
 
 vi.mock("@hocuspocus/extension-redis", () => ({
@@ -69,7 +90,8 @@ vi.mock("@hocuspocus/extension-redis", () => ({
   },
 }));
 
-vi.mock("@hocuspocus/server", () => ({
+vi.mock("@hocuspocus/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof HocuspocusServerModule>()),
   Server: class {
     hocuspocus = { documents: new Map() };
     constructor(config: unknown) {
@@ -78,9 +100,10 @@ vi.mock("@hocuspocus/server", () => ({
   },
 }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof CoreModuleShape>()),
   createLogger: () => ({
-    info: vi.fn(),
+    info: loggerInfoSpy,
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
@@ -91,7 +114,9 @@ vi.mock("@breatic/core", () => ({
     subscribe: vi.fn(async () => 1),
     unsubscribe: vi.fn(async () => 1),
   })),
-  getRedis: vi.fn(() => ({ on: vi.fn() })),
+  getRedis: vi.fn(() => authRedisStub),
+  getSession: sessionLookupSpy,
+  sessionCookieName: () => "breatic_session_wiring-test",
   getCollabRedis: vi.fn(() => collabRedisStub),
   // The timed store's alert arm (#40) reaches operations through core's
   // mailer, and its rescue directory resolves from the monorepo root.
@@ -102,7 +127,44 @@ vi.mock("@breatic/core", () => ({
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
+  runWithConsent: <T>(_consent: unknown, fn: () => T): T => fn(),
 }));
+
+vi.mock("@collab/config.js", async (importOriginal) => {
+  const real = await importOriginal<typeof ConfigModuleShape>();
+  return {
+    ...real,
+    getCollabConfig: () => ({ ...real.getCollabConfig(), throttle_enabled: testConfig.throttleEnabled }),
+  };
+});
+
+vi.mock("@collab/services/space-rpc.js", () => ({
+  handleSpaceRpc: vi.fn(async (_deps: unknown, _projectId: string, _caller: unknown, req: { id: string }) => ({
+    id: req.id,
+    ok: true,
+    result: {},
+  })),
+}));
+
+vi.mock("@collab/infra/connection-gate.js", async () => {
+  const real = await vi.importActual<typeof ConnectionGateModuleShape>(
+    "@collab/infra/connection-gate.js",
+  );
+  return {
+    ...real,
+    createConnectionGate: ((...args: Parameters<typeof real.createConnectionGate>) => {
+      vi.spyOn(args[0], "count").mockImplementation(throttleCountSpy);
+      const gate = real.createConnectionGate(...args);
+      connectionGateSpy(gate);
+      return gate;
+    }) as typeof real.createConnectionGate,
+    recordingFailedAuth: ((...args: Parameters<typeof real.recordingFailedAuth>) => {
+      const wrapped = real.recordingFailedAuth(...args);
+      failedAuthWrapperSpy(wrapped);
+      return wrapped;
+    }) as typeof real.recordingFailedAuth,
+  };
+});
 
 vi.mock("@collab/services/persistence.js", () => ({
   createPersistenceExtension: vi.fn(() => ({ name: "persistence-stub" })),
@@ -124,9 +186,17 @@ vi.mock("@collab/services/connection-registry.js", async () => {
 import * as Y from "yjs";
 
 import { createCollabServer } from "../hocuspocus.js";
-import { getCollabConfig, getConnectionTimings } from "../config.js";
+import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
-import { socketCeilings } from "../infra/socket-ceilings.js";
+import {
+  connectLiveClient,
+  createLiveServer,
+  statelessFrame,
+  syncFrame,
+  waitFor as waitForLive,
+  WIRE,
+} from "./helpers/live-hocuspocus.js";
+import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -137,6 +207,151 @@ function capturedPrefix(): string {
   const config = redisExtensionSpy.mock.calls[0]?.[0] as { prefix: string };
   return config.prefix;
 }
+
+beforeEach(() => {
+  testConfig.throttleEnabled = true;
+  sessionLookupSpy.mockReset().mockResolvedValue("user-a");
+});
+
+afterEach(() => {
+  testConfig.throttleEnabled = true;
+});
+
+/** The independent lifecycle exposed by a session admission extension. */
+interface WiredSessionGate {
+  onUpgrade: (payload: { request: IncomingMessage; socket: Duplex; head: Buffer }) => Promise<void>;
+  stop: () => void;
+  onDestroy: unknown;
+}
+
+/**
+ * Locate the session admission extension by its approved lifecycle contract.
+ * @param extensions - The extensions passed to the real server constructor boundary.
+ * @returns The single session admission extension.
+ */
+function sessionGateFrom(extensions: unknown[]): WiredSessionGate {
+  const gates = extensions.filter((extension) => {
+    if (typeof extension !== "object" || extension === null) return false;
+    return typeof Reflect.get(extension, "onUpgrade") === "function"
+      && typeof Reflect.get(extension, "stop") === "function"
+      && typeof Reflect.get(extension, "onDestroy") === "function";
+  });
+  expect(gates).toHaveLength(1);
+  return gates[0] as WiredSessionGate;
+}
+
+describe("createCollabServer — mandatory session admission", () => {
+  beforeEach(() => {
+    serverSpy.mockClear();
+    connectionGateSpy.mockClear();
+    sessionLookupSpy.mockClear();
+    throttleCountSpy.mockClear();
+  });
+
+  it.each([true, false])("registers DB0 session admission with throttle enabled=%s", async (enabled) => {
+    testConfig.throttleEnabled = enabled;
+    const result = await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const stream = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+    const request = new IncomingMessage(stream as unknown as Socket);
+    request.headers.cookie = "breatic_session_wiring-test=valid-session";
+    let gate: WiredSessionGate | undefined;
+    try {
+      const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+      gate = sessionGateFrom(config.extensions);
+      expect(connectionGateSpy).toHaveBeenCalledTimes(enabled ? 1 : 0);
+      if (enabled) {
+        const connectionGate = connectionGateSpy.mock.calls[0]?.[0];
+        expect(config.extensions.indexOf(gate)).toBeGreaterThan(config.extensions.indexOf(connectionGate));
+      }
+      await gate.onUpgrade({ request, socket: stream, head: Buffer.alloc(0) });
+      expect(sessionLookupSpy).toHaveBeenCalledExactlyOnceWith(authRedisStub, "valid-session");
+      const stop = Reflect.get(result, "stopUpgradeSessions");
+      expect(typeof stop).toBe("function");
+      stop();
+      expect(stream.destroyed).toBe(false);
+    } finally {
+      stream.destroy();
+      gate?.stop();
+      result.storeLoop.stop();
+      await result.seatHandover.stop();
+    }
+  });
+
+  it.each([true, false])("accounts a rejected session according to throttle enabled=%s", async (enabled) => {
+    testConfig.throttleEnabled = enabled;
+    const result = await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const stream = Object.assign(new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } }), {
+      remoteAddress: "172.18.0.4",
+    });
+    const request = new IncomingMessage(stream as unknown as Socket);
+    request.headers["x-real-ip"] = "203.0.113.9";
+    request.headers["x-breatic-connection-verdict"] = "count";
+    let gate: WiredSessionGate | undefined;
+    try {
+      const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+      gate = sessionGateFrom(config.extensions);
+      const outcome = await gate.onUpgrade({ request, socket: stream, head: Buffer.alloc(0) }).then(
+        () => ({ rejected: false, error: undefined }),
+        (error: unknown) => ({ rejected: true, error }),
+      );
+      expect(outcome.rejected).toBe(true);
+      expect(Boolean(outcome.error)).toBe(false);
+      expect(throttleCountSpy.mock.calls).toEqual(enabled ? [["203.0.113.9"]] : []);
+      expect(sessionLookupSpy).not.toHaveBeenCalled();
+    } finally {
+      stream.destroy();
+      gate?.stop();
+      result.storeLoop.stop();
+      await result.seatHandover.stop();
+    }
+  });
+
+  it("returns a stop function that terminates a pending request through the registered gate", async () => {
+    let finishLookup!: (userId: string | null) => void;
+    sessionLookupSpy.mockReturnValueOnce(new Promise<string | null>((resolve) => { finishLookup = resolve; }));
+    const result = await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const stream = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+    const request = new IncomingMessage(stream as unknown as Socket);
+    request.headers.cookie = "breatic_session_wiring-test=valid-session";
+    let gate: WiredSessionGate | undefined;
+    try {
+      const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+      gate = sessionGateFrom(config.extensions);
+      const watched = gate.onUpgrade({ request, socket: stream, head: Buffer.alloc(0) }).then(
+        () => ({ rejected: false, error: undefined }),
+        (error: unknown) => ({ rejected: true, error }),
+      );
+      const stop = Reflect.get(result, "stopUpgradeSessions");
+      expect(typeof stop).toBe("function");
+      expect(stop()).toBeUndefined();
+      expect(stream.destroyed).toBe(true);
+      const outcome = await watched;
+      expect(outcome.rejected).toBe(true);
+      expect(Boolean(outcome.error)).toBe(false);
+    } finally {
+      finishLookup("user-a");
+      stream.destroy();
+      gate?.stop();
+      result.storeLoop.stop();
+      await result.seatHandover.stop();
+    }
+  });
+});
 
 describe("createCollabServer — Redis channel prefix", () => {
   beforeEach(() => {
@@ -199,8 +414,8 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(config).toMatchObject({
-      // Both ceilings that close a whole socket, derived from one number.
-      ...socketCeilings(getCollabConfig().max_documents_per_socket),
+      // Both ceilings that close a whole socket.
+      ...SOCKET_CEILINGS,
       // Broadcast on apply rather than coalescing per event-loop turn. The
       // library's own default is `0`, which batches; the Space RPC commit
       // boundary is built on the broadcast being the synchronous, observable
@@ -208,6 +423,55 @@ describe("createCollabServer — Redis channel prefix", () => {
       // would also let the activity signal overtake the change it announces.
       flushDelay: false,
     });
+  });
+
+  it("prints the socket ceilings it runs with in the startup log", async () => {
+    loggerInfoSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const banner = loggerInfoSpy.mock.calls.find(
+      ([, message]) => message === "Hocuspocus server configured",
+    );
+    expect(banner?.[0]).toMatchObject({
+      ...SOCKET_CEILINGS,
+      concurrentEditorsFrom: "current Studio admin membership reading: configured or negotiated concurrent_editors",
+    });
+  });
+
+  it("counts a rejected authentication with the connection gate", async () => {
+    failedAuthWrapperSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls[0]?.[0] as { onAuthenticate: unknown };
+    expect(failedAuthWrapperSpy).toHaveBeenCalledTimes(1);
+    expect(config.onAuthenticate).toBe(failedAuthWrapperSpy.mock.calls[0]?.[0]);
+  });
+
+  it("registers the connection gate it built as an extension", async () => {
+    // The per-WebSocket count and the ban check run only as this extension's
+    // onUpgrade and onConnect, so a gate that is built but not registered
+    // leaves production unthrottled while every gate test stays green.
+    connectionGateSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+    expect(connectionGateSpy).toHaveBeenCalledTimes(1);
+    expect(config.extensions).toContain(connectionGateSpy.mock.calls[0]?.[0]);
   });
 
   it("never uses the Redis URL as the prefix", async () => {
@@ -514,5 +778,328 @@ describe("createCollabServer — a connection re-reads its role once registered"
     });
     expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
     expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
+  });
+});
+
+describe("createCollabServer — content sync receipts (inner#1641)", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const SID = "22222222-2222-4222-9222-222222222222";
+  const ID = "33333333-3333-4333-8333-333333333333";
+  type StatelessHook = (payload: unknown) => Promise<void>;
+
+  /**
+   * Reads the dispatcher actually installed by the production server factory.
+   * @returns The configured stateless hook.
+   * @throws {AssertionError} When the factory omits the dispatcher.
+   */
+  async function dispatcher(): Promise<StatelessHook> {
+    serverSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3", port: 1234,
+      redisKeyPrefix: "test", shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as { onStateless: StatelessHook };
+    expect(typeof config.onStateless).toBe("function");
+    return config.onStateless;
+  }
+
+  it.each(["canvas", "document"])("confirms only the requesting live writable %s connection", async (kind) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    const broadcastStateless = vi.fn();
+    await hook({
+      documentName: `project-${PID}/${kind}-${SID}`,
+      document: { hasConnection: (candidate: unknown): boolean => candidate === connection, broadcastStateless },
+      connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }),
+    });
+    expect(connection.sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "sync:confirmed", id: ID, ok: true }));
+    expect(broadcastStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it("rejects a receipt from an attached readonly connection", async () => {
+    const hook = await dispatcher();
+    const connection = { readOnly: true, context: {}, sendStateless: vi.fn() };
+    await hook({
+      documentName: `project-${PID}/canvas-${SID}`,
+      document: { hasConnection: (): boolean => true },
+      connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }),
+    });
+    expect(connection.sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "sync:confirmed", id: ID, ok: false }));
+  });
+
+  it.each([`project-${PID}/meta`, `project-${PID}/timeline-${SID}`, "invalid"])("does not confirm the non-content document %s", async (documentName) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName, document: { hasConnection: (): boolean => true }, connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }) });
+    expect(connection.sendStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not confirm a connection already detached from the document", async () => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName: `project-${PID}/canvas-${SID}`, document: { hasConnection: (): boolean => false }, connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }) });
+    const successes = connection.sendStateless.mock.calls.map(([body]) => JSON.parse(String(body))).filter((body) => body.ok === true);
+    expect(successes).toEqual([]);
+  });
+
+  it.each(["{", "null", JSON.stringify({ type: "sync:confirm", id: "bad" }), JSON.stringify({ type: "sync:confirm", id: ID, extra: 1 }), JSON.stringify({ type: "sync:confirmed", id: ID, ok: true })])("ignores invalid content receipt input %s", async (payload) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName: `project-${PID}/canvas-${SID}`, document: { hasConnection: (): boolean => true }, connection, payload });
+    expect(connection.sendStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it.each(["applied", "rejected"] as const)("settles the preceding real Connection update as %s before handling its receipt", async (outcome) => {
+    const hook = await dispatcher();
+    const documentName = `project-${PID}/document-${SID}`;
+    let releaseUpdate: (() => void) | undefined;
+    let rejectUpdate: ((reason: Error) => void) | undefined;
+    let updateEntered = false;
+    const heldUpdate = new Promise<void>((resolve, reject) => { releaseUpdate = resolve; rejectUpdate = reject; });
+    const failure = new Error("Injected preceding-update failure");
+    const appliedAtReply: string[] = [];
+    const server = createLiveServer({
+      onAuthenticate: async (): Promise<Record<string, never>> => ({}),
+      beforeHandleMessage: async (): Promise<void> => {
+        updateEntered = true;
+        await heldUpdate;
+      },
+      onStateless: async (payload: { document: Y.Doc }): Promise<void> => {
+        appliedAtReply.push(payload.document.getText('body').toString());
+        await hook(payload);
+      },
+    });
+    const client = await connectLiveClient(server, documentName);
+    const document = server.documents.get(documentName)!;
+    const local = new Y.Doc();
+    const errors = vi.spyOn(console, "error");
+    try {
+      local.getText('body').insert(0, 'pending content');
+      client.send(syncFrame(documentName, 0, 2, Y.encodeStateAsUpdate(local)));
+      client.send(statelessFrame(documentName, JSON.stringify({ type: 'sync:confirm', id: ID })));
+      await waitForLive(() => updateEntered, 'the preceding update entered the real queue');
+      expect(appliedAtReply).toEqual([]);
+      expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+      if (outcome === "rejected") {
+        rejectUpdate?.(failure);
+        await waitForLive(() => client.frames().some((frame) => frame.type === WIRE.close || frame.stateless !== undefined), 'the failed update reached a close or receipt outcome');
+        expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+        expect(client.frames().filter((frame) => frame.type === WIRE.close).map((frame) => frame.docName)).toEqual([documentName]);
+        expect(document.getText('body').toString()).toBe('');
+        expect(document.getConnectionsCount()).toBe(0);
+        expect(appliedAtReply).toEqual([]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining('closing connection'), failure);
+        return;
+      }
+      releaseUpdate?.();
+      await waitForLive(() => appliedAtReply.length === 1, 'the confirmation entered the real dispatcher');
+      expect(appliedAtReply).toEqual(['pending content']);
+      await waitForLive(() => client.frames().some((frame) => frame.stateless !== undefined), 'the production sync confirmation reply');
+      expect(client.frames().filter((frame) => frame.stateless !== undefined).map((frame) => JSON.parse(frame.stateless!))).toEqual([{ type: 'sync:confirmed', id: ID, ok: true }]);
+    } finally {
+      releaseUpdate?.();
+      client.close();
+      local.destroy();
+      errors.mockRestore();
+    }
+  });
+});
+
+describe("createCollabServer — a Space RPC answer goes to its sender", () => {
+  const META = "project-11111111-1111-4111-8111-111111111111/meta";
+  const REQUEST = JSON.stringify({
+    id: "r1",
+    type: "space:delete",
+    payload: { spaceId: "22222222-2222-4222-9222-222222222222" },
+  });
+
+  beforeEach(() => {
+    serverSpy.mockClear();
+  });
+
+  /**
+   * The `onStateless` hook handed to Hocuspocus.
+   * @returns The hook.
+   */
+  async function onStateless(): Promise<(payload: unknown) => Promise<void>> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      onStateless: (payload: unknown) => Promise<void>;
+    };
+    return config.onStateless;
+  }
+
+  it("sends the reply on the requesting connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: { user: { id: "u-1", role: "owner" } }, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(JSON.stringify({ id: "r1", ok: true, result: {} }));
+    expect(broadcastStateless).not.toHaveBeenCalled();
+  });
+
+  it("refuses an anonymous request on its own connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: {}, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(
+      JSON.stringify({ id: "r1", ok: false, error: { code: "FORBIDDEN", message: "Anonymous caller" } }),
+    );
+    expect(broadcastStateless).not.toHaveBeenCalled();
+  });
+});
+
+describe("createCollabServer — frame reassembly wiring (inner#1585)", () => {
+  /** The reassembly hooks and options handed to the server. */
+  interface FrameWiring {
+    websocketOptions?: { maxPayload?: number };
+    receiveFrame?: (peer: unknown, message: unknown) => Uint8Array | undefined;
+    onPeerClose?: (peer: unknown, event: unknown) => void;
+    onPeerError?: (peer: unknown, error: unknown) => void;
+    extensions: unknown[];
+  }
+
+  let nextPeer = 0;
+
+  /**
+   * A crossws peer as the reassembler sees it.
+   * @param nodeReq - The upgrade request it belongs to.
+   * @returns The peer.
+   */
+  function fakePeer(nodeReq: object = {}): { close: ReturnType<typeof vi.fn> } {
+    const n = ++nextPeer;
+    return { id: `w${n}`, remoteAddress: `10.1.0.${n}`, _hocuspocus: { socketId: `ws-${n}` }, _internal: { nodeReq }, close: vi.fn(), send: vi.fn() } as never;
+  }
+
+  /**
+   * A declaration text frame.
+   * @param bytes - Declared bytes.
+   * @returns The message.
+   */
+  function declaration(bytes: number): unknown {
+    const s = JSON.stringify({ type: "chunked", bytes });
+    return { rawData: s, text: () => s, uint8Array: () => new TextEncoder().encode(s) };
+  }
+
+  /**
+   * Build the server and return what it handed to `Server`.
+   * @returns The wiring and a cleanup.
+   */
+  async function wired(): Promise<{ config: FrameWiring; done: () => Promise<void> }> {
+    serverSpy.mockClear();
+    const result = await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls.at(-1)?.[0] as FrameWiring;
+    return {
+      config,
+      done: async () => {
+        sessionGateFrom(config.extensions).stop();
+        result.storeLoop.stop();
+        await result.seatHandover.stop();
+      },
+    };
+  }
+
+  it("W01 caps a single frame at the shared constant", async () => {
+    const { COLLAB_FRAME_MAX_BYTES } = await import("@breatic/shared");
+    const { config, done } = await wired();
+    try {
+      expect(config.websocketOptions?.maxPayload).toBe(131_072);
+      expect(config.websocketOptions?.maxPayload).toBe(COLLAB_FRAME_MAX_BYTES);
+    } finally {
+      await done();
+    }
+  });
+
+  it("W02 wires a reassembler built with the per-connection cap from the shipped config", async () => {
+    const { config, done } = await wired();
+    try {
+      expect(config.receiveFrame).toBeTypeOf("function");
+      expect(config.onPeerClose).toBeTypeOf("function");
+      expect(config.onPeerError).toBeTypeOf("function");
+      const over = fakePeer();
+      const at = fakePeer();
+      config.receiveFrame!(over, declaration(10_551_297));
+      expect(over.close).toHaveBeenCalledWith(1009, "message too large");
+      expect(config.receiveFrame!(at, declaration(10_551_296))).toBeUndefined();
+      expect(at.close).not.toHaveBeenCalled();
+      config.onPeerClose!(at, { code: 1000, reason: "" });
+    } finally {
+      await done();
+    }
+  });
+
+  it("W03 wires the shipped process budget", async () => {
+    const { config, done } = await wired();
+    try {
+      const peers = Array.from({ length: 7 }, () => fakePeer());
+      for (const p of peers) config.receiveFrame!(p, declaration(10_551_296));
+      for (const p of peers.slice(0, 6)) expect(p.close).not.toHaveBeenCalled();
+      expect(peers[6]!.close).toHaveBeenCalledWith(1013, "reassembly budget exhausted");
+      for (const p of peers) config.onPeerClose!(p, { code: 1000, reason: "" });
+    } finally {
+      await done();
+    }
+  });
+
+  it("W04 wires the shipped idle timeout", async () => {
+    const { config, done } = await wired();
+    vi.useFakeTimers();
+    try {
+      const p = fakePeer();
+      config.receiveFrame!(p, declaration(131_073));
+      vi.advanceTimersByTime(29_999);
+      expect(p.close).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(p.close).toHaveBeenCalledWith(1008, "reassembly idle timeout");
+    } finally {
+      vi.useRealTimers();
+      await done();
+    }
+  });
+
+  it("W05 keys the per-user share by the session gate's user", async () => {
+    const { config, done } = await wired();
+    const stream = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+    const request = new IncomingMessage(stream as unknown as Socket);
+    request.headers.cookie = "breatic_session_wiring-test=valid-session";
+    try {
+      await sessionGateFrom(config.extensions).onUpgrade({ request, socket: stream, head: Buffer.alloc(0) });
+      const first = fakePeer(request);
+      const second = fakePeer(request);
+      config.receiveFrame!(first, declaration(10_551_296));
+      config.receiveFrame!(second, declaration(10_551_296));
+      expect(first.close).not.toHaveBeenCalled();
+      expect(second.close).toHaveBeenCalledWith(1013, "reassembly budget exhausted");
+      config.onPeerClose!(first, { code: 1000, reason: "" });
+      config.onPeerClose!(second, { code: 1000, reason: "" });
+    } finally {
+      stream.destroy();
+      await done();
+    }
   });
 });

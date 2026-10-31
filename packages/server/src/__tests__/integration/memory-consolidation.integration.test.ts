@@ -120,12 +120,13 @@ describe("a consolidation that lands", () => {
     // two into the instructions a turn is sent with. Stopping at the context
     // object leaves that hop unguarded, and it is a hop this task edited.
     const { buildAgentConfig } = await import("@breatic/domain");
-    const { instructions } = buildAgentConfig({
+    const { instructions } = await buildAgentConfig({
       basePrompt: "system",
       memoryContext: context,
     });
-    expect(instructions).toContain("noir look");
-    expect(instructions).toContain("noir short");
+    // Each memory rides in its own part of the system prompt.
+    expect(instructions.conversation).toContain("noir look");
+    expect(instructions.project).toContain("noir short");
   });
 
   it("hands the injection only as much memory as the ceiling allows", async () => {

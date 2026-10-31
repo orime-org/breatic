@@ -21,7 +21,7 @@
  * well be the same one; it takes the same path, so there is one flow rather
  * than a local case and a remote case.
  *
- * The channel is on DB3 alongside the Hocuspocus pub/sub and the space-delete
+ * The channel is on DB3 alongside the Hocuspocus pub/sub and the Space count
  * lock, and carries the deployment's key prefix in its name: pub/sub is not
  * scoped by database number, so that prefix is the only thing keeping two
  * deployments sharing one Redis from answering each other's requests.

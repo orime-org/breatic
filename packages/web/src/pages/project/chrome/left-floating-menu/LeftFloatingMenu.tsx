@@ -203,6 +203,8 @@ export function LeftFloatingMenu({
     <nav
       aria-label={t('menu.createAria')}
       data-testid='left-floating-menu'
+      // Read by the canvas to keep what it brings into view clear of it.
+      data-canvas-chrome=''
       data-disabled={disabled ? 'true' : undefined}
       // Concealment slides, never unmounts (state survives the pick). The
       // -translate-x COMPOSES with the -translate-y-1/2 vertical centering.

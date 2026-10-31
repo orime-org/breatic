@@ -12,7 +12,14 @@
  * 输入框会在用户还在打字时不再接受任何东西，而屏幕上什么都不说。
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { t as translate } from '@breatic/shared';
+
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 
@@ -26,7 +33,6 @@ vi.mock('@breatic/shared', async (importOriginal) => {
 
 const { CHAT_MESSAGE_MAX_CHARS } = await import('@breatic/shared');
 const { ChatComposer } = await import('@web/pages/project/chat/ChatComposer');
-const { NOTICE_LINGERS_MS } = await import('@web/pages/project/chat/notice-timing');
 
 /**
  * 渲染一个输入框，草稿内容由用例给。
@@ -67,78 +73,61 @@ describe('输入框的上限', () => {
     });
 
     expect(box().state.doc.textContent).toBe(`${'y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3)}abc`);
-    expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
+    expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
   });
 
   it('到了上限才说，说的是已经到了', () => {
     fillToLimit();
 
-    expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
+    expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
   });
 
   it('说出来的那个数就是真正生效的那个', () => {
     fillToLimit();
 
-    expect(screen.getByTestId('chat-composer-limit')).toHaveTextContent(
-      '12,345',
-    );
+    expect(String(toastSpy.warning.mock.calls.at(-1)?.[0])).toContain('12,345');
   });
 
   it('差一个字符时不说话', () => {
     // 提示提前出现比不出现更糟：它会让人以为打不进去了，而其实还能打。
     setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS - 1));
 
-    expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
   it('空着的时候不说话', () => {
     setup('');
 
-    expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
   it('打开一个本来就写满的草稿时不说话', () => {
     // 说的是刚刚发生的事。打开时就满着，不是这一刻发生的。
     setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS));
 
-    expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
   it('says it again when a full box turns a keystroke away', () => {
-    vi.useFakeTimers();
-    try {
-      fillToLimit();
-      act(() => {
-        vi.advanceTimersByTime(NOTICE_LINGERS_MS);
-      });
-      expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
+    fillToLimit();
+    expect(toastSpy.warning).toHaveBeenCalledTimes(1);
 
-      act(() => {
-        const e = box();
-        e.view.dispatch(e.state.tr.insertText('a', e.state.doc.content.size - 1));
-      });
+    act(() => {
+      const e = box();
+      e.view.dispatch(e.state.tr.insertText('a', e.state.doc.content.size - 1));
+    });
 
-      expect(box().state.doc.textContent).not.toContain('a');
-      expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(box().state.doc.textContent).not.toContain('a');
+    expect(toastSpy.warning).toHaveBeenCalledTimes(2);
   });
 
   it('满了之后按方向键不说话——它本来就不产生字符', () => {
-    vi.useFakeTimers();
-    try {
-      fillToLimit();
-      const box = screen.getByTestId('chat-composer-box');
-      act(() => {
-        vi.advanceTimersByTime(NOTICE_LINGERS_MS);
-      });
+    fillToLimit();
+    const box = screen.getByTestId('chat-composer-box');
+    expect(toastSpy.warning).toHaveBeenCalledTimes(1);
 
-      fireEvent.keyDown(box, { key: 'ArrowLeft' });
+    fireEvent.keyDown(box, { key: 'ArrowLeft' });
 
-      expect(screen.queryByTestId('chat-composer-limit')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(toastSpy.warning).toHaveBeenCalledTimes(1);
   });
 });

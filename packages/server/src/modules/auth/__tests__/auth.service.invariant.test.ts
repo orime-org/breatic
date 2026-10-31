@@ -25,7 +25,7 @@
  *
  *   4. resetPassword token contract — expired (null Redis GET) throws;
  *      valid token causes (a) password updated with cost-12 bcrypt,
- *      (b) Redis key deleted (no replay), (c) deleteAllSessions called
+ *      (b) Redis key deleted (no replay), (c) revokeAllSessions called
  *      (force re-login after reset). Defends against partial cleanup
  *      regressions.
 
@@ -36,7 +36,7 @@ import fc from "fast-check";
 
 // Redis + session funcs + env all resolve from the @breatic/core barrel
 // now (post core-convergence): auth.service reads getRedis() / setSession
-// / deleteAllSessions / env.ENV from it. Mock the barrel — importOriginal
+// / revokeAllSessions / env.ENV from it. Mock the barrel — importOriginal
 // keeps the real ConflictError / UnauthorizedError classes for the throw
 // assertions.
 const mockRedis = {
@@ -44,7 +44,7 @@ const mockRedis = {
   get: vi.fn(),
   del: vi.fn().mockResolvedValue(1),
 };
-const mockDeleteAllSessions = vi.fn();
+const mockRevokeAllSessions = vi.fn().mockResolvedValue({});
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
@@ -53,15 +53,21 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
     getRedis: () => mockRedis,
     setSession: vi.fn(),
     getSession: vi.fn(),
-    deleteSession: vi.fn(),
-    deleteAllSessions: mockDeleteAllSessions,
+    revokeSession: vi.fn().mockResolvedValue({}),
+    revokeAllSessions: mockRevokeAllSessions,
     env: { ENV: "test" },
+    // Sign-up queues its ad conversion; the queue is not what these tests lock.
+    enqueueAdsConversion: vi.fn(async () => false),
   };
 });
 
 // Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
 // pulls the real agent llm and the `ai` SDK behind it.
 vi.mock("@breatic/domain", () => ({
+}));
+
+vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
+  claimEmailInvitations: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);
@@ -137,7 +143,9 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     await register("noname@example.com", "validPassword123");
 
     expect(captured).toBeDefined();
-    expect(Object.keys(captured!).sort()).toEqual(["email", "hashedPassword", "locale"]);
+    // `attribution` is the campaign source (inner#1442), null without consent.
+    expect(Object.keys(captured!).sort()).toEqual(["attribution", "email", "hashedPassword", "locale"]);
+    expect(captured!.attribution).toBeNull();
     expect(captured).not.toHaveProperty("username");
   });
 
@@ -247,10 +255,10 @@ describe("auth.service invariant — resetPassword token contract (锁现状回�
 
     expect(mockUpdatePassword).not.toHaveBeenCalled();
     expect(mockRedis.del).not.toHaveBeenCalled();
-    expect(mockDeleteAllSessions).not.toHaveBeenCalled();
+    expect(mockRevokeAllSessions).not.toHaveBeenCalled();
   });
 
-  it("on success: updatePassword + Redis DEL + deleteAllSessions all called (atomic semantics — no partial cleanup)", async () => {
+  it("on success: updatePassword + Redis DEL + revokeAllSessions all called (atomic semantics — no partial cleanup)", async () => {
     mockRedis.get.mockResolvedValue("u-1");
 
     const { resetPassword } = await import("../auth.service.js");
@@ -260,7 +268,7 @@ describe("auth.service invariant — resetPassword token contract (锁现状回�
     expect(mockRedis.del).toHaveBeenCalledOnce();
     const delKey = mockRedis.del.mock.calls[0]?.[0] as string;
     expect(delKey).toMatch(/^test:password-reset:valid-token$/);
-    expect(mockDeleteAllSessions).toHaveBeenCalledOnce();
+    expect(mockRevokeAllSessions).toHaveBeenCalledOnce();
   });
 });
 
@@ -379,7 +387,13 @@ describe('Google identity session success boundaries', () => {
     vi.mocked(repo.createUser).mockResolvedValue({ id: 'new', email: 'new@example.com', googleId: 'subject', emailVerified: false } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
     const result = await loginOrCreateGoogle('subject', 'new@example.com', false);
-    expect(repo.createUser).toHaveBeenCalledWith({ email: 'new@example.com', googleId: 'subject', locale: 'en' });
+    expect(repo.createUser).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      googleId: 'subject',
+      emailVerified: false,
+      locale: 'en',
+      attribution: null,
+    });
     expect(repo.updateUser).not.toHaveBeenCalled();
     expect(result.user.emailVerified).toBe(false);
   });

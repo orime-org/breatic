@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { useQuery } from '@tanstack/react-query';
+import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import {
@@ -19,10 +20,11 @@ import {
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
-import { canvasRootOf, useCanvasContext, useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
@@ -30,19 +32,23 @@ import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
+  expandCapOf,
+  readsShownSize,
   miniToolRefusal,
   resolvedParams,
   sizeTierChoices,
   slotLengthCap,
+  sourceLimitOf,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
-import type { MiniToolDrawingSnapshot } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { expandDrop, frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
+import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
 
-/** The params a changed source resets: they are measured on the source. */
-const SOURCE_BOUND = new Set(['rect', 'range', 'orient']);
+/** The params a changed source resets: they are measured on, or picked from, the source. */
+const SOURCE_BOUND = new Set(['rect', 'range', 'orient', 'cells']);
 
 /** Nothing picked into any slot. */
 const NO_SLOTS = {} as const;
@@ -62,7 +68,8 @@ export interface MiniToolPanelContainerProps {
     nodeId: string,
     spec: MiniToolSpec,
     snapshot: MiniToolSnapshot,
-    drawing: MiniToolDrawingSnapshot | undefined,
+    capture: MiniToolCapture | undefined,
+    sourceSize: { width: number; height: number } | undefined,
   ) => Promise<unknown>;
 }
 
@@ -173,6 +180,9 @@ function OpenMiniToolPanel({
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
+  const setExpand = useCanvasSession((s) => s.setExpand);
+  const setMiniToolSourceSize = useCanvasSession((s) => s.setMiniToolSourceSize);
+  const sessionStore = useCanvasSessionStore();
 
   const { data: catalog, isError } = useQuery(modelCatalogQuery());
   const entry =
@@ -202,8 +212,7 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined) &&
-      (dataWidth === undefined || dataHeight === undefined),
+    readsShownSize(spec) && (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
@@ -211,9 +220,44 @@ function OpenMiniToolPanel({
       height: crops ? measured?.height : (dataHeight ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
       url: content === '' ? undefined : content,
+      sizeBytes: view !== undefined && 'sizeBytes' in view ? view.sizeBytes : undefined,
     }),
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
+
+  // An expand frame is held as shares of the source and sized against the
+  // source's pixels, which go into the draft (`sourceSize`) that
+  // `ExpandFrameOverlay` reads; the overlay reads the model's cap itself.
+  const expandDraft = draft?.expand ?? null;
+  // The panel hangs under the expand frame, which reaches past the node. Read
+  // from the draft and the node's size, which the canvas keeps while the node
+  // is off screen; the panel re-renders only when the reach itself changes.
+  const drop = useStore((s) =>
+    expandDraft === null ? 0 : expandDrop(expandDraft, s.nodeLookup.get(nodeId)?.measured.height ?? 0, s.transform[2]),
+  );
+  const sourceWidth = source.width;
+  const sourceHeight = source.height;
+  const heldSize = draft?.sourceSize;
+  React.useEffect(() => {
+    if (spec.expand === undefined || sourceWidth === undefined || sourceHeight === undefined) return;
+    if (heldSize?.width === sourceWidth && heldSize.height === sourceHeight) return;
+    setMiniToolSourceSize({ width: sourceWidth, height: sourceHeight });
+  }, [spec, sourceWidth, sourceHeight, heldSize, setMiniToolSourceSize]);
+  // Built from the ratio alone, so dragging the frame does not re-render the
+  // panel; a ratio reads the frame as it stands when picked.
+  const expandRatio = expandDraft?.ratio;
+  const expand = React.useMemo(() => {
+    if (expandRatio === undefined || sourceWidth === undefined || sourceHeight === undefined) return undefined;
+    const size = { width: sourceWidth, height: sourceHeight };
+    return {
+      ratio: expandRatio,
+      fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, expandCapOf(entry)),
+      onRatio: (ratio: ExpandRatio): void => {
+        const frame = sessionStore.getState().miniTool?.expand?.frame;
+        if (frame !== undefined) setExpand({ frame: frameForRatio(ratio, size, frame), ratio });
+      },
+    };
+  }, [expandRatio, sourceWidth, sourceHeight, entry, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).
@@ -238,17 +282,20 @@ function OpenMiniToolPanel({
     () => sizeTierChoices(spec, entry, draftParams ?? {}, source),
     [spec, entry, draftParams, source],
   );
+  const slots = draft?.slots ?? NO_SLOTS;
   const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers),
-    [spec, entry, draftParams, source, sizeTiers],
+    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers, slots),
+    [spec, entry, draftParams, source, sizeTiers, slots],
   );
   // A param chosen as an output size draws as tiers; the rest as the model's controls.
   const modelControls = React.useMemo(() => {
     if (entry === undefined) return undefined;
     const tiered = new Set(tieredParamKeys(spec));
-    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)));
+    const display = Object.fromEntries(
+      isModelTool(spec) ? spec.params.flatMap((param) => (param.display === undefined ? [] : [[param.key, param.display]])) : [],
+    );
+    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)), display);
   }, [entry, spec]);
-  const slots = draft?.slots ?? NO_SLOTS;
   const prompt = draft?.prompt ?? '';
   const slotCaps = React.useMemo(
     () => Object.fromEntries(spec.slots.map((slot) => [slot.key, entry?.params[slot.param]?.max_items])),
@@ -291,6 +338,9 @@ function OpenMiniToolPanel({
     tiers: sizeTiers,
     exporting,
     inked,
+    params,
+    expandFrame: draft?.expand?.frame,
+    mark: draft?.mark,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
@@ -321,24 +371,56 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.noUsableTier'));
       return;
     }
+    if (refusal === 'sourceTooLargeToExpand') {
+      toast.warning(t('canvas.miniTool.panel.sourceTooLargeToExpand'));
+      return;
+    }
     if (refusal === 'slotTooLong') {
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
     }
+    if (refusal === 'sourceTooLong' || refusal === 'sourceTooLarge') {
+      const limit = sourceLimitOf(spec, entry, source)?.limit ?? 0;
+      toast.warning(
+        refusal === 'sourceTooLong'
+          ? t('canvas.miniTool.panel.sourceTooLong', { minutes: Math.round(limit / 60) })
+          : t('canvas.miniTool.panel.sourceTooLarge', { size: formatBytes(limit) }),
+      );
+      return;
+    }
     if (refusal !== null) return;
-    const drawing =
+    // What the reader made on the node is copied out now, so a later change
+    // to the draft does not reach this run.
+    const expandFrame = sessionStore.getState().miniTool?.expand?.frame;
+    let capture: MiniToolCapture | undefined =
       spec.drawing !== undefined && drawingSteps !== undefined
-        ? { kind: spec.drawing.kind, ops: visibleOps(drawingSteps) }
-        : undefined;
-    void onRun(nodeId, spec, snapshot, drawing);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, t]);
+        ? { kind: 'strokes', ops: visibleOps(drawingSteps) }
+        : spec.expand !== undefined && expandFrame !== undefined && source.width !== undefined && source.height !== undefined
+          ? { kind: 'expand', frame: { ...expandFrame }, sourceSize: { width: source.width, height: source.height } }
+          : undefined;
+    if (spec.markup === true) {
+      // A text being edited is written back first, so the press takes it.
+      const session = sessionStore.getState();
+      if (session.miniTool?.mark?.editingText != null) session.markChannel?.exitEditing();
+      const objects = sessionStore.getState().miniTool?.mark?.objects ?? [];
+      // §6.6: the press acts on what leaving the edit left.
+      if (objects.length === 0) return;
+      capture = { kind: 'mark', objects };
+    }
+    // A grid lays its tiles out from the source's pixels before the export.
+    const sourceSize =
+      source.width !== undefined && source.height !== undefined ? { width: source.width, height: source.height } : undefined;
+    // Pressing Run leaves picking, as pressing generate does (inner#1304).
+    if (sessionStore.getState().pickSession !== null) endPick();
+    void onRun(nodeId, spec, snapshot, capture, sourceSize);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);
 
   if (isModelTool(spec) && entry === undefined) return null;
   return (
-    <NodePanelMount nodeId={nodeId}>
+    <NodePanelMount nodeId={nodeId} drop={drop}>
       <MiniToolPanel
         spec={spec}
         modelControls={modelControls}
@@ -358,6 +440,7 @@ function OpenMiniToolPanel({
         refusal={refusal}
         onRun={onRunPress}
         onClose={closeActivePanel}
+        expand={expand}
       />
     </NodePanelMount>
   );

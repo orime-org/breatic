@@ -29,6 +29,12 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// The server opens every upload at the ingest Worker itself before it
+// answers a ticket (inner#1595); that one call is answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
+
 // 邮件那条腿不在本文件的主题内，顶掉它免得真去连 SMTP。
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({
   sendBestEffortMail: async () => {},

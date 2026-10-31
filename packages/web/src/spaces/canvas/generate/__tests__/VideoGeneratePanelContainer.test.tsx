@@ -329,6 +329,7 @@ function panelTree(
               ...(board.nodes ?? []),
             ]}
             getLastWriteWasLocal={author}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -549,6 +550,7 @@ describe('VideoGeneratePanelContainer', () => {
               nodes={[]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>

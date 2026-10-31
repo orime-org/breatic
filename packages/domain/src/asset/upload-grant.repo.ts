@@ -21,7 +21,15 @@
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
-import type { StudioAssetEntity } from "@breatic/shared";
+import type { DbTx } from "@breatic/core";
+import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
+
+/**
+ * What a grant says its upload is: an asset source, or `"transfer"` for a
+ * request body moved through storage (inner#1006), which never becomes an
+ * asset row.
+ */
+export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
 
 /**
  * A row of the upload-grant ledger.
@@ -62,11 +70,14 @@ export interface UploadGrant {
   filename: string | null;
   /**
    * What the asset this grant produces is, in the ledger's own values (see
-   * `StudioAssetEntity["source"]`). Null means an ordinary upload.
+   * `StudioAssetEntity["source"]`), or `"transfer"`. Null means an ordinary
+   * upload.
    */
-  assetSource: StudioAssetEntity["source"] | null;
+  assetSource: GrantAssetSource | null;
   /** The generation whose output these bytes are, when they are one. */
   generationTaskId: string | null;
+  /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
+  analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
 }
 
@@ -96,8 +107,9 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     filename: row.filename,
     // Read back as the ledger's own values. Only our own code writes
     // this column, and it writes what `register` accepts.
-    assetSource: row.assetSource as StudioAssetEntity["source"] | null,
+    assetSource: row.assetSource as GrantAssetSource | null,
     generationTaskId: row.generationTaskId,
+    analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
   };
 }
@@ -124,6 +136,8 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   not an ordinary upload.
  * @param input.context.generationTaskId - The generation that produced these
  *   bytes, when one did.
+ * @param input.analyticsConsent - The uploading browser's analytics consent;
+ *   absent reads as no consent.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
  */
@@ -141,9 +155,10 @@ export async function issueGrant(input: {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
-    assetSource?: StudioAssetEntity["source"] | null;
+    assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
   };
+  analyticsConsent?: ConsentSnapshot;
 }): Promise<UploadGrant> {
   const rows = await db
     .insert(uploadGrants)
@@ -162,6 +177,7 @@ export async function issueGrant(input: {
       filename: input.context.filename ?? null,
       assetSource: input.context.assetSource ?? null,
       generationTaskId: input.context.generationTaskId ?? null,
+      analyticsConsent: input.analyticsConsent ?? null,
     })
     .returning();
   return toEntity(rows[0]!);
@@ -177,7 +193,7 @@ export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
  * finish that follows decides off it whether to read the media now (#299).
  */
 export type FinalizeClaim =
-  | { granted: true; assetSource: StudioAssetEntity["source"] | null }
+  | { granted: true; assetSource: GrantAssetSource | null }
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -232,7 +248,7 @@ export async function claimFinalize(params: {
   if (won.length === 1) {
     return {
       granted: true,
-      assetSource: (won[0]!.assetSource ?? null) as StudioAssetEntity["source"] | null,
+      assetSource: (won[0]!.assetSource ?? null) as GrantAssetSource | null,
     };
   }
 
@@ -282,6 +298,32 @@ export async function consumeGrant(params: {
 }
 
 /**
+ * Mark a transfer grant complete (inner#1006): its bytes are stored and may
+ * be referenced, and no asset row stands behind it, so `asset_id` stays null.
+ *
+ * Safe to run again: a grant already complete keeps its first `consumed_at`
+ * and still answers true, so a rerun of the finish job changes nothing. A
+ * voided grant, or one that is not a transfer, is left alone.
+ * @param storageKey - The transfer's key.
+ * @returns True when the grant is complete after this call; false when it is
+ *   voided, not a transfer, or not there.
+ */
+export async function completeTransferGrant(storageKey: string): Promise<boolean> {
+  const rows = await db
+    .update(uploadGrants)
+    .set({ consumedAt: sql`coalesce(${uploadGrants.consumedAt}, now())` })
+    .where(
+      and(
+        eq(uploadGrants.storageKey, storageKey),
+        eq(uploadGrants.assetSource, "transfer"),
+        isNull(uploadGrants.voidedAt),
+      ),
+    )
+    .returning({ id: uploadGrants.id });
+  return rows.length > 0;
+}
+
+/**
  * Read a grant by its key alone, whatever state it is in.
  *
  * The report path needs the row in any state: a Durable Object retries until
@@ -293,12 +335,14 @@ export async function consumeGrant(params: {
  * which proves nothing but that it holds the shared secret — every fact about
  * who this upload belongs to comes off the row itself.
  * @param storageKey - The key the report names.
+ * @param tx - Optional transaction retained through maintenance admission.
  * @returns The grant, or null when no such key was ever issued.
  */
 export async function findGrantByKey(
   storageKey: string,
+  tx?: DbTx,
 ): Promise<UploadGrant | null> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select()
     .from(uploadGrants)
     .where(eq(uploadGrants.storageKey, storageKey))

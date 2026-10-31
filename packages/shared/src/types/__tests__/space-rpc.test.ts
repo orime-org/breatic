@@ -4,11 +4,24 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  MAX_SPACES_PER_PROJECT,
+  SpaceRpcErrorCodeSchema,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
 } from "../space-rpc.js";
 
 describe("SpaceRpcRequestSchema — discriminated union", () => {
+  it("accepts 3D Space creation without a caller-selected Space id", () => {
+    const request = {
+      id: "create-3d",
+      type: "space:create",
+      payload: { type: "3d", name: "Scene", claimToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301" },
+    };
+    expect(SpaceRpcRequestSchema.parse(request)).toEqual(request);
+    expect(SpaceRpcRequestSchema.safeParse({
+      ...request, payload: { ...request.payload, spaceId: "caller-chosen" },
+    }).success).toBe(false);
+  });
   // The happy-path space:create case moved to the "server-minted ids and
   // the claim token" block below — the payload changed shape, so asserting
   // the old one here would only re-test what that block already covers.
@@ -81,6 +94,10 @@ describe("SpaceRpcRequestSchema — discriminated union", () => {
 });
 
 describe("SpaceRpcResponseSchema", () => {
+  it("retains the 3D Space type in the creation result", () => {
+    const response = { id: "create-3d", ok: true, result: { spaceId: "scene-1", type: "3d", name: "Scene" } };
+    expect(SpaceRpcResponseSchema.parse(response)).toEqual(response);
+  });
   it("parses success response with result", () => {
     const r = SpaceRpcResponseSchema.parse({
       id: "r1",
@@ -103,6 +120,11 @@ describe("SpaceRpcResponseSchema", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe("FORBIDDEN");
+  });
+
+  it("accepts SPACE_LIMIT and BUSY as error codes", () => {
+    expect(SpaceRpcErrorCodeSchema.safeParse("SPACE_LIMIT").success).toBe(true);
+    expect(SpaceRpcErrorCodeSchema.safeParse("BUSY").success).toBe(true);
   });
 
   it("rejects unknown error code", () => {
@@ -182,5 +204,11 @@ describe("SpaceRpcRequestSchema — server-minted ids and the claim token", () =
       });
       expect(r.success, `claimToken ${JSON.stringify(bad)}`).toBe(false);
     }
+  });
+});
+
+describe("MAX_SPACES_PER_PROJECT", () => {
+  it("caps a project at 200 live Spaces", () => {
+    expect(MAX_SPACES_PER_PROJECT).toBe(200);
   });
 });

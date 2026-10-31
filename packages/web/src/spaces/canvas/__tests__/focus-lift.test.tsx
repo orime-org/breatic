@@ -16,6 +16,7 @@ import {
   type Nodes,
 } from '@web/spaces/canvas/__tests__/focus-harness';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { FOCUS_TARGET_Z } from '@web/spaces/canvas/viewport-layers';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   const actual =
@@ -48,7 +49,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     canvasSessions.of('s').setState({ pickSession: null });
   });
 
-  it('A1：点中聚焦源之后，它带 zIndex 1002', () => {
+  it('A1: lifts the focus source to the focus target z once picked', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300)]),
     );
@@ -59,10 +60,10 @@ describe('聚焦目标的抬升（#2000）', () => {
     clickNode('src');
 
     expect(focusTarget()).toBe('src');
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
   });
 
-  it('A2：1002 高于一个被选中的节点（选中加成是 1000）', () => {
+  it('A2: puts the focus target above a selected node (selection adds 1000)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('other', 300), image('src', 600)]),
     );
@@ -78,7 +79,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('other')));
   });
 
-  it('A2：1002 高于一个组成员', () => {
+  it('A2: puts the focus target above a group member', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
         image('host', 0),
@@ -95,7 +96,51 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
   });
 
-  it('A2：1002 高于一个被选中的组的成员（父链把它推到 1001）', () => {
+  // A note stays visible over what it points at while that is being worked
+  // on: above a member of a selected group, the tallest a node other than a
+  // pin or the focus target reaches.
+  it('paints a pin above a member of a selected group', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([
+        {
+          id: 'pin',
+          type: 'annotation',
+          position: { x: 320, y: 20 },
+          data: { content: 'look here', createdBy: 'u-1', createdAt: 1, replies: [] },
+        } as Nodes[number],
+        group('g', 300),
+        { ...image('member', 20), parentId: 'g' } as Nodes[number],
+      ]),
+    );
+    renderSpace();
+    clickNode('g');
+    expect(zOf('member')).toBe('1001');
+    expect(Number(zOf('pin'))).toBeGreaterThan(Number(zOf('member')));
+  });
+
+  // The crop owns the screen while it runs, so its target covers a note too.
+  it('A2: puts the focus target above a pin', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([
+        image('host', 0),
+        image('src', 300),
+        {
+          id: 'pin',
+          type: 'annotation',
+          position: { x: 320, y: 20 },
+          data: { content: 'look here', createdBy: 'u-1', createdAt: 1, replies: [] },
+        } as Nodes[number],
+      ]),
+    );
+    renderSpace();
+
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
+    clickNode('src');
+
+    expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('pin')));
+  });
+
+  it('A2: puts the focus target above a member of a selected group (its parent chain lifts it to 1001)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
         image('host', 0),
@@ -106,8 +151,9 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
     // A selected group is 1000; calculateChildXYZ then gives its member
-    // parentZ + 1. That 1001 is the tallest a node reaches, since groups
-    // cannot nest — it is the number 1002 was chosen against.
+    // parentZ + 1. That 1001 is the tallest a node other than a pin or the
+    // focus target reaches, since groups cannot nest — it is one of the
+    // ceilings the focus target is set against.
     clickNode('g');
     expect(zOf('g')).toBe('1000');
     expect(zOf('member')).toBe('1001');
@@ -126,7 +172,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
 
     // Confirm, Cancel and the overlay's bare Esc share backToPick, which
     // drops the crop target and leaves the session running — the banner
@@ -147,7 +193,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
 
     act(() => canvasSessions.of('s').getState().startReferencePick('host'));
     expect(zOf('src')).toBe('0');
@@ -161,11 +207,11 @@ describe('聚焦目标的抬升（#2000）', () => {
 
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('a');
-    expect(zOf('a')).toBe('1002');
+    expect(zOf('a')).toBe(String(FOCUS_TARGET_Z));
 
     clickNode('b');
     expect(zOf('a')).toBe('0');
-    expect(zOf('b')).toBe('1002');
+    expect(zOf('b')).toBe(String(FOCUS_TARGET_Z));
   });
 
   it('A3：退出聚焦后 zIndex 回到原值', () => {
@@ -176,7 +222,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
 
     act(() => canvasSessions.of('s').getState().endPick());
     expect(zOf('src')).toBe('0');
@@ -192,7 +238,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
 
     act(() => canvasSessions.of('s').getState().endPick());
 
@@ -223,7 +269,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     act(() => canvasSessions.of('s').getState().startFocusPick('host'));
     clickNode('src');
 
-    expect(zOf('src')).toBe('1002');
+    expect(zOf('src')).toBe(String(FOCUS_TARGET_Z));
     const el = document.querySelector('.react-flow__node[data-id="src"]')!;
     expect(el.className).not.toContain('draggable');
   });

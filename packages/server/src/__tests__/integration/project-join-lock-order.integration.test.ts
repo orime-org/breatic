@@ -216,7 +216,7 @@ async function requestOf(
 
 /**
  * Play `archiveProject`'s statements from a separate connection in its own
- * order — lock the project, expire its role upgrades and join requests — then
+ * order — lock the project, fail its role upgrades and join requests — then
  * start `other`, and once `other` has parked, play the rest of the sweep.
  * Played by hand so `other` can be started in the middle of the sweep; that
  * the real `archiveProject` takes the project row before any request row is
@@ -240,26 +240,26 @@ async function againstArchive(
     await sweep.begin(async (c) => {
       await c`SELECT id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL FOR UPDATE`;
       await c`
-        UPDATE role_upgrade_requests SET status = 'expired', decided_at = null,
-          expires_at = LEAST(expires_at, now())
+        UPDATE role_upgrade_requests SET status = 'failed',
+          failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
         WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
       `;
       await c`
-        UPDATE project_join_requests SET status = 'expired', decided_at = null,
-          expires_at = LEAST(expires_at, now())
+        UPDATE project_join_requests SET status = 'failed',
+          failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
         WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
       `;
       running = track(other());
       await waitUntilBlockedOn(sql, parkedOn, 1);
       try {
         const swept = await c<{ notification_id: string | null }[]>`
-          UPDATE project_transfers SET status = 'expired', decided_at = null,
-            expires_at = LEAST(expires_at, now())
+          UPDATE project_transfers SET status = 'failed',
+            failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
           WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
           RETURNING notification_id
         `;
         await c`
-          UPDATE project_invitations SET status = 'expired', expires_at = LEAST(expires_at, now())
+          UPDATE project_invitations SET status = 'failed', failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
           WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
         `;
         for (const row of swept) {
@@ -421,10 +421,10 @@ describe("a role upgrade decision against an owner change", () => {
     // The requester now owns the project, so accepting settled their own
     // request; the approval that queued behind it finds it already handled.
     expect(approved.status === "rejected" ? approved.reason : null).toBeInstanceOf(ConflictError);
-    const [upgrade] = await sql<{ status: string }[]>`
-      SELECT status FROM role_upgrade_requests WHERE id = ${requestId}
+    const [upgrade] = await sql<{ status: string; failed_reason: string | null }[]>`
+      SELECT status, failed_reason FROM role_upgrade_requests WHERE id = ${requestId}
     `;
-    expect(upgrade!.status).toBe("expired");
+    expect(upgrade).toEqual({ status: "failed", failed_reason: "invalidated" });
     const [owner] = await sql<{ user_id: string }[]>`
       SELECT user_id FROM project_members
       WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL
@@ -499,8 +499,10 @@ describe("an owner change against a project archive", () => {
     expect(sqlStateOf(sweepError)).not.toBe(DEADLOCK);
     expect(sqlStateOf(otherError)).not.toBe(DEADLOCK);
     expect(sweepError).toBeNull();
-    const [after] = await sql<{ status: string }[]>`SELECT status FROM project_transfers WHERE id = ${offer!.id}`;
-    expect(after!.status).toBe("expired");
+    const [after] = await sql<{ status: string; failed_reason: string | null }[]>`
+      SELECT status, failed_reason FROM project_transfers WHERE id = ${offer!.id}
+    `;
+    expect(after).toEqual({ status: "failed", failed_reason: "invalidated" });
     const [owner] = await sql<{ user_id: string }[]>`
       SELECT user_id FROM project_members
       WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL

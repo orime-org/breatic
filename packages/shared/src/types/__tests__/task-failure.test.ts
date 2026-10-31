@@ -165,6 +165,31 @@ describe("a cause and what it was about", () => {
     );
   });
 
+  // inner#856: a transcription's row and its history entry say "transcribe"
+  // read off the record itself.
+  it("carries which reading was cut short", () => {
+    const stored = encodeTaskFailure("cut_short", { reading: "transcribe" });
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "cut_short",
+      reading: "transcribe",
+    });
+    expect(
+      readTaskFailure(
+        encodeTaskFailure("understand_over_cap", { reading: "transcribe", file: "a.mp3", bytes: 9 }),
+      ),
+    ).toEqual({ reason: "understand_over_cap", reading: "transcribe", file: "a.mp3", bytes: 9 });
+  });
+
+  it("drops a reading that is not one of ours", () => {
+    expect(readTaskFailure('{"reason":"cut_short","reading":"guess"}')).toEqual({
+      reason: "cut_short",
+    });
+  });
+
+  it("names a transcription truncated by the service", () => {
+    expect(TASK_FAILURE_REASONS).toContain("cut_short");
+  });
+
   // Every row written before a cause could carry anything holds a bare code,
   // and reads back the same way it always has.
   it("reads a bare code as the cause it has always been", () => {

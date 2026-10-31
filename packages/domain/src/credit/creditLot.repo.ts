@@ -19,15 +19,15 @@
  *      gone. Spelling this out per query is how the two halves drift apart and
  *      an account starts showing a number it cannot spend.
  *
- *   2. A lot is locked by `id` alone, and everything that decides whether it
- *      may be charged is re-read after the lock is held. Postgres re-evaluates
+ *   2. The general-purpose `lockLot` locks by `id` alone. Everything deciding
+ *      whether it may be charged is re-read after the lock is held. Postgres re-evaluates
  *      a `FOR UPDATE` predicate against the row as it stands once the lock is
  *      granted and skips the row if it no longer matches — so putting
  *      `lifecycle` or `designated_studio_id` in the locking predicate makes the
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -264,6 +264,28 @@ export async function lockLot(
     .select()
     .from(creditLots)
     .where(eq(creditLots.id, lotId))
+    .for("update");
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * Lock a live lot for a new request's target decision.
+ *
+ * Unlike the historical-row lock used for financial completion, a deleted
+ * row is unavailable here. PostgreSQL re-checking this deletion predicate
+ * after waiting must return null when the target was deleted meanwhile.
+ * @param lotId - The live target to lock.
+ * @param tx - The transaction holding the request key's lock.
+ * @returns The locked live lot, or null if absent or soft-deleted.
+ */
+export async function lockLiveLot(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .select()
+    .from(creditLots)
+    .where(and(eq(creditLots.id, lotId), isNull(creditLots.deletedAt)))
     .for("update");
   return rows[0] ? toLotEntity(rows[0]) : null;
 }
@@ -1398,6 +1420,9 @@ export interface StudioLedgerRow {
  * `spend` rows against the lot owner and its shortfall against nobody at
  * all — the studio owes that part — so filtering by payer would leave out
  * the shortfall entirely and report the run as costing less than it did.
+ *
+ * `rounding_adjustment` rows are left out: they record migration 0100
+ * rounding an old debt up to whole cents, which no one in the studio did.
  * @param studioId - The studio whose ledger to read.
  * @param limit - How many lines to return.
  * @param cursor - The `(created_at, id)` of the previous page's last line.
@@ -1449,7 +1474,7 @@ export async function listLedgerByStudio(
       ),
     )
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
-    .where(eq(creditLedger.studioId, studioId))
+    .where(and(eq(creditLedger.studioId, studioId), ne(creditLedger.entryType, "rounding_adjustment")))
     .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
     .having(
       cursor

@@ -34,7 +34,7 @@ describe('chat update pacing', () => {
     const { renderHook } = await import('@testing-library/react');
     const { useChatSession } = await import('@web/pages/project/chat/use-chat-session');
 
-    renderHook(() => useChatSession('p-1', false, () => ({ spaces: [] })));
+    renderHook(() => useChatSession('p-1', () => ({ spaces: [] })));
 
     expect(useChatSpy).toHaveBeenCalled();
     const options = useChatSpy.mock.calls[0]?.[0] as { throttle?: number };

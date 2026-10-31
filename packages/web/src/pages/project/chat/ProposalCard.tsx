@@ -5,13 +5,14 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import * as React from 'react';
 
-import { promptPlainText, type CanvasProposal } from '@breatic/shared';
+import { promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
-import { Button } from '@web/components/ui/button';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import {
+  guidesOf,
   modelOf,
   nameOf,
   shapeOf,
@@ -51,7 +52,6 @@ export const ProposalCard = React.memo(function ProposalCard({
   const outcome = useCanvasStore((s) => s.proposalOutcome);
   const clearOutcome = useCanvasStore((s) => s.clearProposalOutcome);
   const [building, setBuilding] = React.useState(false);
-  const [failed, setFailed] = React.useState(false);
   const { data: catalog } = useQuery(modelCatalogQuery());
 
   const shape = React.useMemo(() => shapeOf(proposal), [proposal]);
@@ -63,6 +63,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   );
   const todos = React.useMemo(() => todosOf(proposal, panelLines), [proposal, panelLines]);
   const words = React.useMemo(() => writtenOf(proposal), [proposal]);
+  const guides = React.useMemo(() => guidesOf(proposal), [proposal]);
   // One note describes one model, so it is drawn only when the whole flow
   // runs on one. Three angles on three models leave it saying nothing anyone
   // can place.
@@ -75,13 +76,16 @@ export const ProposalCard = React.memo(function ProposalCard({
 
   // The canvas answers once the group is placed or once placing threw. Only
   // the card that is waiting reads it: placing runs to completion inside one
-  // synchronous effect, so no second card can have posted in between.
+  // synchronous effect, so no second card can have posted in between. A
+  // failure is told in a toast as it is answered (inner#1530); the button is
+  // free to press again.
+  const failedLine = t('chat.proposal.failed');
   React.useEffect(() => {
     if (!building || outcome === null) return;
     setBuilding(false);
-    setFailed(outcome === 'failed');
+    if (outcome === 'failed') toast.error(failedLine);
     clearOutcome();
-  }, [building, outcome, clearOutcome]);
+  }, [building, outcome, clearOutcome, failedLine]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud
@@ -92,7 +96,6 @@ export const ProposalCard = React.memo(function ProposalCard({
       toast.warning(t('chat.proposal.needCanvas'));
       return;
     }
-    setFailed(false);
     setBuilding(true);
     requestNodeCreate({ proposal });
   }, [canvasListening, proposal, requestNodeCreate, t]);
@@ -159,29 +162,7 @@ export const ProposalCard = React.memo(function ProposalCard({
         ))}
       </div>
       {words.map((node, i) => (
-        // The words are already written, so they are read here rather than
-        // after placing: a reader who wants another version asks for one in
-        // the chat, with nothing of theirs on the canvas to undo. Not
-        // truncated -- a note they cannot finish reading is one they cannot
-        // judge, and the chat column scrolls.
-        <div key={`words-${String(i)}`} className='flex flex-col gap-1'>
-          {/* Always named, unlike the to-do heading below: a proposal with
-              words in it carries a generation too -- the check turns away one
-              that generates nothing -- so there is always a second node to
-              tell this one apart from. */}
-          <div
-            data-testid='proposal-words-name'
-            className='text-xs font-medium text-foreground'
-          >
-            {node.name}
-          </div>
-          <div
-            data-testid='proposal-words'
-            className='whitespace-pre-wrap rounded-chrome border border-border px-2 py-1.5 text-xs text-foreground'
-          >
-            {promptPlainText(node.prompt ?? [])}
-          </div>
-        </div>
+        <WrittenWords key={`words-${String(i)}`} node={node} />
       ))}
       {model && proposal.modelNote ? (
         <div className='text-xs text-muted-foreground'>
@@ -212,25 +193,48 @@ export const ProposalCard = React.memo(function ProposalCard({
           ))}
         </div>
       ) : null}
-      {failed ? (
-        <div data-testid='proposal-failed' className='text-xs text-status-error'>
-          {t('chat.proposal.failed')}
-        </div>
-      ) : null}
-      {/* 270px is the card's inner width at the narrowest Agent column, so the
-          button fills the card there and stops growing as the column widens
-          (inner#1372). */}
-      <Button
-        type='button'
-        variant='outline'
-        size='sm'
-        data-testid='proposal-use'
-        disabled={building}
-        onClick={onUse}
-        className='w-full max-w-[270px] self-center'
+      {guides.map((node, i) => (
+        <WrittenWords key={`guide-${String(i)}`} node={node} />
+      ))}
+      <ProposalActions>
+        <ProposalAction data-testid='proposal-use' disabled={building} onClick={onUse}>
+          {building ? t('chat.proposal.building') : t('chat.proposal.use')}
+        </ProposalAction>
+      </ProposalActions>
+    </div>
+  );
+});
+
+/**
+ * One node's words, already written, drawn in full under its name.
+ *
+ * Read here rather than after placing: a reader who wants another version
+ * asks for one in the chat, with nothing of theirs on the canvas to undo. Not
+ * truncated -- a note they cannot finish reading is one they cannot judge,
+ * and the chat column scrolls.
+ * @param root0 - The component props.
+ * @param root0.node - The written node.
+ * @returns The block.
+ */
+const WrittenWords = React.memo(function WrittenWords({ node }: { node: ProposalNode }): React.JSX.Element {
+  return (
+    <div className='flex flex-col gap-1'>
+      {/* Always named, unlike the to-do heading: a proposal with words in it
+          carries a generation too -- the check turns away one that generates
+          nothing -- so there is always a second node to tell this one apart
+          from. */}
+      <div
+        data-testid='proposal-words-name'
+        className='text-xs font-medium text-foreground'
       >
-        {building ? t('chat.proposal.building') : t('chat.proposal.use')}
-      </Button>
+        {node.name}
+      </div>
+      <div
+        data-testid='proposal-words'
+        className='whitespace-pre-wrap rounded-chrome border border-border px-2 py-1.5 text-xs text-foreground'
+      >
+        {promptPlainText(node.prompt ?? [])}
+      </div>
     </div>
   );
 });

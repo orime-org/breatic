@@ -8,6 +8,13 @@ import userEvent from '@testing-library/user-event';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 describe('NodePlaceholder', () => {
+  // inner#1303 §6.7: a failure line can be longer than the node is wide; it
+  // wraps inside the node (the Button primitive keeps its text on one line).
+  it('lets its lines wrap inside the node', () => {
+    render(<NodePlaceholder modality='image' />);
+    expect(screen.getByTestId('node-placeholder')).toHaveClass('whitespace-normal');
+  });
+
   it('text modality: two lines — "write" action + the shared right-click hint', () => {
     render(<NodePlaceholder modality='text' />);
     const ph = screen.getByTestId('node-placeholder');
@@ -23,11 +30,6 @@ describe('NodePlaceholder', () => {
     // The old copy conflated upload + generate on one line ("...or generate an
     // image"); the new model splits them — generate moved to the right-click menu.
     expect(ph.textContent).not.toMatch(/or generate/i);
-  });
-
-  it('renders custom hint when provided', () => {
-    render(<NodePlaceholder modality='audio' hint='Recording…' />);
-    expect(screen.getByText('Recording…')).toBeInTheDocument();
   });
 
   it('DOUBLE-click calls onActivate; a single click does NOT (single click selects the node)', async () => {

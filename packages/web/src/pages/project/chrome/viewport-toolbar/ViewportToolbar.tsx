@@ -134,6 +134,8 @@ export function ViewportToolbar({
   return (
     <div
       data-testid='viewport-toolbar'
+      // Read by the canvas to keep what it brings into view clear of it.
+      data-canvas-chrome=''
       role='toolbar'
       aria-label={t('viewportToolbar.aria')}
       // Concealment slides, never unmounts (state survives the pick).

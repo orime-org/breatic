@@ -45,7 +45,7 @@ const {
   softDeleteByNameMock,
   restoreByNameMock,
   countLiveSpaceDocsMock,
-  withSpaceDeleteLockMock,
+  withSpaceCountLockMock,
   FakeLockBusyError,
   activityInsertMock,
 } = vi.hoisted(() => ({
@@ -53,7 +53,7 @@ const {
   softDeleteByNameMock: vi.fn(),
   restoreByNameMock: vi.fn(),
   countLiveSpaceDocsMock: vi.fn(),
-  withSpaceDeleteLockMock: vi.fn(),
+  withSpaceCountLockMock: vi.fn(),
   FakeLockBusyError: class FakeLockBusyError extends Error {},
   activityInsertMock: vi.fn(),
 }));
@@ -66,9 +66,9 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   fetchDocData: vi.fn(),
 }));
 
-vi.mock("@collab/services/space-delete-lock.js", () => ({
-  withSpaceDeleteLock: withSpaceDeleteLockMock,
-  SpaceDeleteLockBusyError: FakeLockBusyError,
+vi.mock("@collab/services/space-count-lock.js", () => ({
+  withSpaceCountLock: withSpaceCountLockMock,
+  SpaceCountLockBusyError: FakeLockBusyError,
 }));
 
 // Real `writeSpaceEntry` / `encodeInitialSpaceContent` — the entry shape
@@ -291,8 +291,8 @@ beforeEach(() => {
   restoreByNameMock.mockReset();
   countLiveSpaceDocsMock.mockReset();
   countLiveSpaceDocsMock.mockResolvedValue(2);
-  withSpaceDeleteLockMock.mockReset();
-  withSpaceDeleteLockMock.mockImplementation(
+  withSpaceCountLockMock.mockReset();
+  withSpaceCountLockMock.mockImplementation(
     async (_projectId: string, fn: () => Promise<unknown>) => fn(),
   );
   activityInsertMock.mockReset();

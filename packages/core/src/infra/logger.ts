@@ -65,6 +65,35 @@ function currentDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Where an error keeps the errors it wraps: `Error.cause`, `AggregateError.errors`, the AI SDK's `RetryError.lastError`. */
+const NESTED_ERRORS = ["cause", "errors", "lastError"] as const;
+
+/**
+ * pino's error serializer, less the request body a failed AI SDK call carries
+ * (`APICallError.requestBodyValues`), at every level of wrapping. That body is
+ * the whole conversation sent to the model: megabytes per line, written
+ * synchronously, and the reader's content in the log file.
+ * @param err - What was logged under `err`.
+ * @param seen - The errors being serialized above this one, so a cycle ends.
+ * @returns The serialized error, or the value as it came when it is not one.
+ * @throws {never} Never.
+ */
+export function serializeErr(err: unknown, seen: WeakSet<Error> = new WeakSet()): unknown {
+  if (!(err instanceof Error) || seen.has(err)) return err instanceof Error ? "[Circular]" : err;
+  seen.add(err);
+  const out: Record<string, unknown> = { ...pino.stdSerializers.err(err) };
+  delete out.requestBodyValues;
+  // pino's copy of `errors`, serialized with the bodies in; `errors` below replaces it.
+  delete out.aggregateErrors;
+  for (const key of NESTED_ERRORS) {
+    const nested: unknown = (err as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(nested)) out[key] = nested.map((one) => serializeErr(one, seen));
+    else if (nested instanceof Error) out[key] = serializeErr(nested, seen);
+  }
+  seen.delete(err);
+  return out;
+}
+
 /**
  * Build a pino logger that fans out to a per-service file plus an
  * optional console, all on the **main thread** via `pino.multistream`.
@@ -111,6 +140,7 @@ export function buildServiceLogger(
     {
       name: serviceName,
       level,
+      serializers: { err: serializeErr },
       timestamp: () =>
         `,"timestamp":"${new Date().toISOString()}","time":${Date.now()}`,
     },

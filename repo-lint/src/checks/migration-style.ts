@@ -316,7 +316,7 @@ async function crowdedFragments(
  * Hand-written migrations separate their statements and name their keys.
  *
  * Every migration since 0018 is hand-written: drizzle-kit's snapshot is
- * frozen at 0017, so `db:generate` would regenerate history wrongly. Two
+ * frozen at 0017, so `drizzle-kit generate` would regenerate history wrongly. Two
  * conventions the tool used to emit are therefore the author's job now,
  * and #1839 shipped a migration that missed both.
  *

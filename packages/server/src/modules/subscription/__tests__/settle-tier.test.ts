@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@breatic/core", () => ({
   changeMembershipTier: vi.fn(),
   getUserMembershipTier: vi.fn(),
+  getMembershipReadingForUser: vi.fn(),
 }));
 
 // The mail goes on the worker's queue; this suite reads the tier and the bell.
@@ -29,7 +30,7 @@ vi.mock("@server/modules/notification/notification.service.js", () => ({
   createMembershipEnded: vi.fn(),
 }));
 
-import { changeMembershipTier, getUserMembershipTier } from "@breatic/core";
+import { changeMembershipTier, getUserMembershipTier, getMembershipReadingForUser } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { settleTier } from "@server/modules/subscription/settle-tier.js";
 
@@ -38,6 +39,10 @@ const USER = "u-1";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getUserMembershipTier).mockResolvedValue("pro");
+  vi.mocked(getMembershipReadingForUser).mockImplementation(async (userId, tx) => {
+    const storedTier = await getUserMembershipTier(userId, tx);
+    return { storedTier, settlementProtected: storedTier === "enterprise" || storedTier === "self_hosted" } as never;
+  });
 });
 
 describe("settleTier — 订阅只管它自己给出的那些档位", () => {

@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
@@ -162,6 +162,16 @@ describe("what the guide says", () => {
     }
   });
 
+  // drawing-history.ts routes undo and redo to an open markup draft, and the
+  // canvas steps the markup size on [ and ] (CanvasSpace.tsx).
+  it("says the undo keys, the view bar's undo and [ ] act on markup while its panel is open", () => {
+    expect(webSource("spaces/canvas/mini-tool/drawing-history.ts")).toContain("if (draft?.mark != null) {");
+    const markup = renderProductGuide().split(`"${t("canvas.miniTool.image.mark.label")}" writes notes`)[1] ?? "";
+    expect(markup.split(`"${t("canvas.miniTool.image.expand.label")}"`)[0]).toMatch(
+      /Cmd\+Z or Ctrl\+Z and the view bar's undo and redo step through the markup.*\[ and \] keys.*next one drawn when none is selected.*while a text is being typed, these keys act on the text itself/s,
+    );
+  });
+
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the
@@ -220,7 +230,7 @@ describe("what the guide says", () => {
     // A paperclip asks the reader to @ a node, a pencil is words they write,
     // and an orange note says how to operate the panel and is never sent.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/A 📎 mark in square brackets asks the reader to @ a node/);
+    expect(proposals).toMatch(/A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/);
     expect(proposals).toMatch(/A ✏️ mark in braces is words only the reader can write/);
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
@@ -514,7 +524,7 @@ describe("what the guide says", () => {
 
   it("says how @ references an attachment", () => {
     expect(webSource("pages/project/chat/use-composer-editor.tsx")).toContain("placement: 'top-start'");
-    expect(webSource("features/reference-mention/mention-list.tsx")).toContain("event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)");
+    expect(webSource("features/reference-mention/MentionList.tsx")).toContain("event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Typing @ in the box opens a list, just above the @/);
     expect(chat).toMatch(/Enter or Tab puts the highlighted one into the text/);
@@ -558,6 +568,36 @@ describe("what the guide says", () => {
     expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
     const pool = cards.split("Into the reference list")[1] ?? "";
     expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
+  });
+
+  it("says the template list opens on creative goals, each opening its templates, in the panel's order for each node type", () => {
+    const generating = section("Generating");
+    const list = generating.slice(generating.indexOf(`"${t("canvas.template.title")}"`));
+    expect(list).toMatch(/a list under that heading of creative goals; pointing at a goal opens the templates for it/);
+    const picture = list.slice(list.indexOf("A picture node"), list.indexOf("A video node"));
+    const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
+    for (const [type, text] of [["image", picture], ["video", video]] as const) {
+      const rows = templateGoalsFor(type).flatMap(({ goal, templates }) => [
+        [`canvas.template.goal.${goal}`],
+        ...templates.map((template) => [`canvas.template.${template.id}.name`]),
+      ]);
+      expectRowsInOrder(text, rows);
+    }
+    expect(list.slice(list.indexOf("A sound node"))).toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
+    expect(list).not.toMatch(/video and sound nodes list none/);
+  });
+
+  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+    const generating = section("Generating");
+    expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    expect(generating).not.toMatch(/the two listed here do neither/);
+  });
+
+  it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {
+    const cards = section("Proposal cards");
+    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: their prompt or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d\./);
+    expect(cards).not.toMatch(/a 📎 mark is left only where/);
   });
 
   it("says how to indent and outdent in a document", () => {
@@ -622,7 +662,15 @@ describe("in the reader's language", () => {
     // translations; a name written out in English instead shows up as a
     // fragment no id accounts for.
     const text = runWithLocale("zh-CN", renderProductGuide);
-    const ids: MessageCall[] = [...messageCalls(), ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined])];
+    const ids: MessageCall[] = [
+      ...messageCalls(),
+      ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined]),
+      ...TEMPLATE_GOALS.map((goal): MessageCall => [`canvas.template.goal.${goal}`, undefined]),
+      ...GENERATION_TEMPLATES.flatMap((template): MessageCall[] => [
+        [`canvas.template.${template.id}.name`, undefined],
+        [`canvas.template.${template.id}.description`, undefined],
+      ]),
+    ];
     const shown = new Set(ids.map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
@@ -667,11 +715,17 @@ describe("messages the guide borrows", () => {
 
 describe("the guide's source", () => {
   it("spells every message id out, where the missing-key check can read it", () => {
-    // The one id read off a value is each mini-tool's name, whose keys the
-    // registry's own copy check holds against every locale.
-    const registry = "t(tool.labelKey)";
-    expect(source.split(registry)).toHaveLength(2);
-    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => call !== registry);
+    // The ids read off a value are each mini-tool's name and each template's
+    // goal, name and line, whose keys their registries' own copy checks hold
+    // against every locale.
+    const registry = [
+      "t(tool.labelKey)",
+      "t(`canvas.template.goal.${goal}`)",
+      "t(`canvas.template.${template.id}.name`)",
+      "t(`canvas.template.${template.id}.description`)",
+    ];
+    for (const call of registry) expect(source.split(call), call).toHaveLength(2);
+    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
     // A sample number may fill a message that carries one; nothing else goes in.
     for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
@@ -736,8 +790,8 @@ describe("what the guide says about each surface", () => {
 
   it("says a task changes nothing on the node and a failed reading leaves it as it was", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/A running, failed or expired task changes nothing on the node/);
-    expect(filling).toMatch(/leaves the node as it was, and a message names the file it could not read/);
+    expect(filling).toMatch(/a running, failed or expired task changes nothing on the node/);
+    expect(filling).toMatch(/leaves the node as it was, and a message on the node names the file it could not read/);
   });
 
   it("says files dropped on a node still make new nodes", () => {
@@ -777,11 +831,23 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
-    expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
+    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/background Space tabs of the current Project/);
+    expect(wrong).toMatch(/connection banner's refresh button asks/);
+    expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
     expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
     expect(wrong).toMatch(/press Cmd\/Ctrl\+A twice, then Cmd\/Ctrl\+C, to copy it out before signing in again or reloading/);
     expect(wrong).toMatch(/as many open editing connections as the plan of the studio's admin allows \(only their upgrade raises it\)/);
+  });
+
+  it("says where to sign out of other devices, and what those devices then show", () => {
+    // inner#1548: the account menu is on the studio pages, which the coverage
+    // test does not reach, so this pins the sentence directly.
+    const wrong = section("When something is wrong");
+    expect(wrong).toContain(`"${t("studio.topBar.logoutOthers")}"`);
+    expect(wrong).toMatch(/account menu on the studio pages/);
+    expect(wrong).toMatch(/every device except the one/);
   });
 
   it("says where credits are bought and that only the studio's admin assigns them", () => {
@@ -841,6 +907,25 @@ describe("mini-tools and the task rows", () => {
     for (const tool of MINI_TOOLS) {
       expect(tools).toContain(`"${t(tool.labelKey)}": ${tool.guide}`);
     }
+  });
+
+  // The cost sentence points at the marks in the list instead of naming the
+  // tools, so only the mark says which tools are billed by run time.
+  it("marks exactly the tools run in the media container as billed by run time", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in the list above are billed that way/);
+    for (const tool of MINI_TOOLS) {
+      const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
+      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
+    }
+  });
+
+  // The canvas moves by itself on these two presses; the reader may ask why.
+  it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toMatch(/opening it on a picture zooms the canvas in until the node and its panel fill the view/i);
+    expect(tools).toMatch(/not already in view, the canvas slides to show them, with the source too when both fit at the current zoom, and zooms out only when the new nodes alone do not fit/i);
+    expect(renderProductGuide()).toMatch(/text node connected to it \(the canvas slides to show it when it lands out of view/i);
   });
 
   it("says what each task row offers, View opening history at that result", () => {

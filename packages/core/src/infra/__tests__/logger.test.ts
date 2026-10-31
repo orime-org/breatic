@@ -17,10 +17,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APICallError, RetryError } from "ai";
 import {
   buildServiceLogger,
   createLogger,
   initLogger,
+  serializeErr,
 } from "@core/infra/logger.js";
 
 /**
@@ -129,5 +131,36 @@ describe("core logger — main-thread multistream, no worker", () => {
     const content = readServiceLog(root, "svc-f");
     expect(content).toContain('"name":"svc-f"');
     expect(content).toContain('"component":"early-bird"');
+  });
+
+  it("logs a failed model call without the request body it carried, however deeply wrapped", () => {
+    const root = tmpRoot();
+    const log = buildServiceLogger("svc-err", { logsRoot: root, debug: true, console: "none" });
+    const body = "x".repeat(100_000);
+    const call = new APICallError({
+      message: "This endpoint's maximum context length is 131072 tokens.",
+      url: "https://example.test/v1/chat",
+      requestBodyValues: { messages: [{ role: "user", content: body }] },
+      statusCode: 400,
+      responseBody: '{"error":{"message":"too long"}}',
+    });
+    const retried = new RetryError({ message: "Failed after 2 attempts.", reason: "maxRetriesExceeded", errors: [call, call] });
+    log.error({ err: new Error("turn failed", { cause: retried }) }, "agent_turn_failed");
+    const content = readServiceLog(root, "svc-err");
+    expect(content).not.toContain(body);
+    expect(content).not.toContain("requestBodyValues");
+    expect(content).toContain("maximum context length is 131072 tokens");
+    expect(content).toContain('"statusCode":400');
+    expect(content.length).toBeLessThan(20_000);
+  });
+
+  it("ends an error cycle instead of overflowing the stack", () => {
+    const err = new Error("loop") as Error & { cause?: unknown };
+    err.cause = err;
+    expect(serializeErr(err)).toMatchObject({ cause: "[Circular]" });
+  });
+
+  it("passes a value that is not an error through as it came", () => {
+    expect(serializeErr("plain")).toBe("plain");
   });
 });

@@ -203,6 +203,25 @@ describe("canvas and project entries", () => {
     expect(await taskCounts(projectId, nodeId)).toEqual({ tasks: 1, nodeTasks: 1 });
   });
 
+  // inner#856: the row this opens says "transcribe", which the column's own
+  // CHECK has to allow.
+  it("starts one transcription for a press sent twice", async () => {
+    const { cookie, projectId } = await seedAccount();
+    const nodeId = crypto.randomUUID();
+
+    const { first, again } = await pressTwice("/api/v1/canvas/transcribe", cookie, {
+      project_id: projectId,
+      space_id: crypto.randomUUID(),
+      source_type: "audio",
+      source_url: "https://assets.invalid/audio/a.m4a",
+      node_ids: [nodeId],
+      keep_fillers: true,
+    });
+
+    await expectReplayed(first, again, 201);
+    expect(await taskCounts(projectId, nodeId)).toEqual({ tasks: 1, nodeTasks: 1 });
+  });
+
   it("starts one mini-tool run for a press sent twice", async () => {
     const { cookie, projectId } = await seedAccount();
     const nodeId = crypto.randomUUID();

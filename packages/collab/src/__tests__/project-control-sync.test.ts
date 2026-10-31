@@ -22,7 +22,12 @@ import { EventEmitter } from "node:events";
 import * as Y from "yjs";
 import type { Redis } from "@breatic/core";
 import type { Hocuspocus } from "@hocuspocus/server";
-import { activityNewChannel, projectConnectionsCloseChannel } from "@breatic/shared";
+import {
+  activityNewChannel,
+  CREDITS_CHANGED_SIGNAL,
+  creditsChangedChannel,
+  projectConnectionsCloseChannel,
+} from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
 // below is hoisted above these lines and would otherwise capture it undefined.
@@ -125,6 +130,34 @@ describe("startProjectControlSync — activity:new", () => {
 
     expect(metaDoc.relayStateless).toHaveBeenCalledTimes(1);
     expect(metaDoc.broadcastStateless).not.toHaveBeenCalled();
+  });
+});
+
+describe("startProjectControlSync — credits:changed", () => {
+  it("relays the credits signal on the project's meta doc", async () => {
+    const metaDoc: DocSpy = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map(),
+    };
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
+    await Promise.resolve();
+
+    subscriber.emit(
+      "pmessage",
+      `${TEST_PREFIX}:project:*`,
+      creditsChangedChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-credits:changed", projectId: PID, ts: Date.now() }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(
+      JSON.stringify({ t: CREDITS_CHANGED_SIGNAL, projectId: PID }),
+    );
   });
 });
 

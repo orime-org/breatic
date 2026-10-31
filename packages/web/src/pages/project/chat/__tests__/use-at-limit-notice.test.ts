@@ -1,113 +1,67 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * The word about a full box is a thing that happened (inner#1530): a toast,
+ * said when the text reaches the limit and again for every keystroke the box
+ * turns away after that.
+ */
+import { renderHook, act } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '@breatic/shared';
 
-import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
-import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn() } }));
+
+const { useAtLimitNotice } = await import('@web/pages/project/chat/use-at-limit-notice');
 
 const LIMIT = 10;
+/**
+ * The line, in the language loaded when a case runs.
+ * @returns It.
+ */
+const line = (): string => t('chat.composer.atLimit', { limit: LIMIT });
 
-describe('the word about a full box is a thing that happened', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
+describe('the word about a full box', () => {
   it('says nothing while there is still room', () => {
-    const { result } = renderHook(() => useAtLimitNotice(LIMIT - 1, LIMIT));
-    expect(result.current.showing).toBe(false);
+    renderHook(({ length }) => useAtLimitNotice(length, LIMIT), { initialProps: { length: LIMIT - 1 } });
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
-  it('says it the moment the text reaches the limit', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT - 1 },
+  it('says it the moment the text reaches the limit, once', () => {
+    const { rerender } = renderHook(({ length }) => useAtLimitNotice(length, LIMIT), {
+      initialProps: { length: LIMIT - 1 },
     });
-    expect(result.current.showing).toBe(false);
-
-    rerender({ n: LIMIT });
-    expect(result.current.showing).toBe(true);
+    rerender({ length: LIMIT });
+    rerender({ length: LIMIT });
+    expect(toastSpy.warning.mock.calls).toEqual([[line()]]);
   });
 
-  it('stops saying it on its own, with the text still at the limit', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT - 1 },
+  it('says it again for a keystroke the box refused', () => {
+    const { result, rerender } = renderHook(({ length }) => useAtLimitNotice(length, LIMIT), {
+      initialProps: { length: LIMIT - 1 },
     });
-    rerender({ n: LIMIT });
-    expect(result.current.showing).toBe(true);
-
-    act(() => {
-      vi.advanceTimersByTime(NOTICE_LINGERS_MS);
-    });
-    expect(result.current.showing).toBe(false);
-  });
-
-  it('says it again for a keystroke the box refused after it went quiet', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT - 1 },
-    });
-    rerender({ n: LIMIT });
-    act(() => {
-      vi.advanceTimersByTime(NOTICE_LINGERS_MS);
-    });
-    expect(result.current.showing).toBe(false);
-
-    act(() => {
-      result.current.sayAgain();
-    });
-    expect(result.current.showing).toBe(true);
-  });
-
-  it('starts the wait over on every refused keystroke', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT - 1 },
-    });
-    rerender({ n: LIMIT });
-
-    act(() => {
-      vi.advanceTimersByTime(NOTICE_LINGERS_MS - 1);
-      result.current.sayAgain();
-    });
-    act(() => {
-      vi.advanceTimersByTime(NOTICE_LINGERS_MS - 1);
-    });
-    expect(result.current.showing).toBe(true);
-
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(result.current.showing).toBe(false);
-  });
-
-  it('goes quiet at once when a character is deleted', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT - 1 },
-    });
-    rerender({ n: LIMIT });
-    expect(result.current.showing).toBe(true);
-
-    rerender({ n: LIMIT - 1 });
-    expect(result.current.showing).toBe(false);
+    rerender({ length: LIMIT });
+    act(() => result.current.sayAgain());
+    expect(toastSpy.warning).toHaveBeenCalledTimes(2);
   });
 
   it('says nothing about a draft that was already full when it opened', () => {
-    const { result } = renderHook(() => useAtLimitNotice(LIMIT, LIMIT));
-    expect(result.current.showing).toBe(false);
+    renderHook(({ length }) => useAtLimitNotice(length, LIMIT), { initialProps: { length: LIMIT } });
+    expect(toastSpy.warning).not.toHaveBeenCalled();
   });
 
   it('says it again when the text comes back to the limit', () => {
-    const { result, rerender } = renderHook(({ n }) => useAtLimitNotice(n, LIMIT), {
-      initialProps: { n: LIMIT },
+    const { rerender } = renderHook(({ length }) => useAtLimitNotice(length, LIMIT), {
+      initialProps: { length: LIMIT - 1 },
     });
-    act(() => {
-      vi.advanceTimersByTime(NOTICE_LINGERS_MS);
-    });
-    rerender({ n: LIMIT - 1 });
-    rerender({ n: LIMIT });
-    expect(result.current.showing).toBe(true);
+    rerender({ length: LIMIT });
+    rerender({ length: LIMIT - 1 });
+    rerender({ length: LIMIT });
+    expect(toastSpy.warning).toHaveBeenCalledTimes(2);
   });
 });

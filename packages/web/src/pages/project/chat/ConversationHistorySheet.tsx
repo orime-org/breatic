@@ -37,7 +37,6 @@ import { useHeldName } from '@web/lib/use-held-name';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
-import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { formatLocalDay } from '@web/lib/format-day';
 
 /**
@@ -109,9 +108,8 @@ interface ConversationHistorySheetProps {
   /**
    * The last attempt at the next page failed.
    *
-   * Two things follow. The reader is told here rather than in the panel: this
-   * sheet is opaque and covers the column, so a line above the composer is a
-   * line nobody can read. And what is watched changes: the end of the list stops being
+   * The reader is told in a toast as it happens (inner#1530); what this
+   * changes here is what is watched: the end of the list stops being
    * watched and a single scroll is watched instead -- a failure moves nothing,
    * so an end still in view would have the failure asking again on its own.
    */
@@ -124,18 +122,6 @@ interface ConversationHistorySheetProps {
    * this and believe they misremembered.
    */
   listLoading?: boolean;
-  /**
-   * What to say inside the list, and which row it is about.
-   *
-   * This sheet covers the whole column, so the panel's own line -- on the top
-   * edge of the composer -- is a line nobody can read while it is open. The
-   * words go against the row named by `conversationId` when this page holds
-   * it, and at the top of the list otherwise: `null` says they are about the
-   * list itself, and a row this page does not hold has nowhere else to put
-   * them. `at` is when it was said, which is what tells two failures apart
-   * when they say the same thing.
-   */
-  rowMishap?: { conversationId: string | null; text: string; at: number } | null;
 }
 
 /**
@@ -182,30 +168,6 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
     key: 'chat.relative.isoDate',
     params: { date: formatLocalDay(parsed) },
   };
-}
-
-/**
- * A sentence in the list about something that did not work.
- *
- * One shape for both places it can stand -- against the row it is about, or at
- * the top when it is about the list itself or about a conversation this page
- * does not hold. Written twice at first, identically, which is two places to
- * keep in step for no reason.
- * @param root0 - The component props.
- * @param root0.text - What to say.
- * @param root0.testId - Which of the two placements this is, for tests.
- * @returns The line.
- */
-function MishapLine({ text, testId }: { text: string; testId: string }): React.JSX.Element {
-  return (
-    <li
-      className='mx-3 my-2 rounded-content-sm border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-2xs leading-relaxed text-status-error-foreground'
-      role='alert'
-      data-testid={testId}
-    >
-      {text}
-    </li>
-  );
 }
 
 interface RowProps {
@@ -456,7 +418,6 @@ function ConversationRowView({
  * @param root0.loadingMore - A request for the next page is out.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
  * @param root0.listLoading - The first page of the list is on its way.
- * @param root0.rowMishap - What to say about one row, and which one.
  * @returns The left-side sheet listing the project's conversations.
  */
 function ConversationHistorySheetInner({
@@ -472,7 +433,6 @@ function ConversationHistorySheetInner({
   loadingMore,
   nextPageFailed,
   listLoading = false,
-  rowMishap = null,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   // Which conversation the reader has asked to delete, while they are being
@@ -505,17 +465,6 @@ function ConversationHistorySheetInner({
     },
     [deleting, onDelete, trackDelete],
   );
-  // A word about one row goes against that row, and everything else goes to
-  // the top. The list is one page: a rename started from the header is about
-  // whichever conversation is on screen, and that one need not be on the page
-  // in hand. Asking "which row is it about" instead of "is it about a row"
-  // dropped those on the floor -- the reader pressed rename, is waiting to
-  // hear, and nothing at all appeared.
-  const mishapRow =
-    rowMishap !== null && conversations.some((c) => c.id === rowMishap.conversationId)
-      ? rowMishap.conversationId
-      : null;
-
   // The confirm dialog is a sibling of the sheet, not a child, and it is
   // portalled to the body -- so closing the sheet leaves it on screen, and a
   // scrim over the column cannot cover it either. It asks about a row in a
@@ -524,22 +473,6 @@ function ConversationHistorySheetInner({
   React.useEffect(() => {
     if (!open) setDeleting(null);
   }, [open]);
-  // The line about a page that did not arrive takes itself away. What it says
-  // is an event, not a state: the reader was told, and the list in front of
-  // them is unchanged and still usable. The mark in the store stays -- that is
-  // what keeps the end-of-list watcher off duty until the reader scrolls
-  // again, which is a different question from how long the words are up.
-  const [showFailure, setShowFailure] = React.useState(false);
-  React.useEffect(() => {
-    if (!nextPageFailed) {
-      setShowFailure(false);
-      return undefined;
-    }
-    setShowFailure(true);
-    const forgetting = setTimeout(() => setShowFailure(false), NOTICE_LINGERS_MS);
-    return () => clearTimeout(forgetting);
-  }, [nextPageFailed]);
-
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
@@ -604,13 +537,6 @@ function ConversationHistorySheetInner({
               data-testid='conversation-history-list'
               role='list'
             >
-              {rowMishap !== null && mishapRow === null ? (
-                <MishapLine
-                  key={rowMishap.at}
-                  text={rowMishap.text}
-                  testId='conversation-list-mishap'
-                />
-              ) : null}
               {conversations.length === 0 ? (
                 listLoading ? (
                   <li
@@ -626,22 +552,14 @@ function ConversationHistorySheetInner({
                 )
               ) : (
                 conversations.map((c) => (
-                  <React.Fragment key={c.id}>
-                    <ConversationRowView
-                      row={c}
-                      isActive={c.id === activeId}
-                      onPick={onPick}
-                      onRename={onRename}
-                      onAskDelete={setDeleting}
-                    />
-                    {rowMishap !== null && mishapRow === c.id ? (
-                      <MishapLine
-                        key={rowMishap.at}
-                        text={rowMishap.text}
-                        testId='conversation-row-mishap'
-                      />
-                    ) : null}
-                  </React.Fragment>
+                  <ConversationRowView
+                    key={c.id}
+                    row={c}
+                    isActive={c.id === activeId}
+                    onPick={onPick}
+                    onRename={onRename}
+                    onAskDelete={setDeleting}
+                  />
                 ))
               )}
             </ul>
@@ -650,9 +568,8 @@ function ConversationHistorySheetInner({
             <div ref={sentinelRef} data-testid='conversation-list-end' />
             {/* The foot of the list says what is happening there, and there is
                 nothing here to press: reaching the end is what asks for a
-                page. While one is out this says so; when one does not arrive
-                it says that instead, for as long as `NOTICE_LINGERS_MS`
-                gives it. Then it goes, and the next scroll to the end asks
+                page. While one is out this says so; one that does not arrive
+                is told in a toast, and the next scroll to the end asks
                 again. */}
             {loadingMore ? (
               <p
@@ -660,13 +577,6 @@ function ConversationHistorySheetInner({
                 data-testid='conversation-list-loading-more'
               >
                 {t('chat.history.loadingMore')}
-              </p>
-            ) : showFailure ? (
-              <p
-                className='m-3 text-2xs text-status-error'
-                data-testid='conversation-list-more-failed'
-              >
-                {t('chat.history.moreFailed')}
               </p>
             ) : null}
           </ScrollArea>

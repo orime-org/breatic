@@ -34,6 +34,7 @@
     "dev-ports.mts",
     "proxy-targets.mts",
     "playwright.config.ts",
+    "playwright.consent.config.ts",
     "vitest.config.ts",
     "vitest.setup.ts"
   ]

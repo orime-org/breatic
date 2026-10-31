@@ -30,6 +30,7 @@ import { initCore } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -95,12 +96,10 @@ async function insertLot(
   studioId: string | null,
   lifecycle: "active" | "depleted" = "active",
 ): Promise<string> {
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${userId}, 1000, 'completed', 500) RETURNING id
+    VALUES (${sourceId}, ${userId}, 1000, 'completed', 500) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

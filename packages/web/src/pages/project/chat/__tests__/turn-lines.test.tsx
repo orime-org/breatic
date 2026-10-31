@@ -224,162 +224,62 @@ describe('how a turn ended', () => {
   });
 });
 
-describe('the line a failed tool step leaves', () => {
+describe('the line a failed tool step leaves (inner#1620)', () => {
   /**
-   * A tool call that ended in an error.
-   * @param name - Which tool.
-   * @param extra - The ending's key and kind, as the call carries them.
-   * @returns The call.
+   * A reply read the way the panel reads it.
+   * @param parts - Its parts.
+   * @param streaming - Whether it is still arriving.
+   * @returns The rendered bubble.
    */
-  const failedCall = (name: string, extra: Partial<ToolCall> = {}): ToolCall => ({
-    id: `c-${name}`,
-    name,
-    args: {},
-    status: 'error',
-    ...extra,
-  });
-
-  it('says a step failed, under the answer and above how the turn ended', () => {
+  const drawn = (parts: unknown[], streaming = false): ReturnType<typeof render> =>
     render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'carried on without it',
-          failed: true,
-          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
-        }}
-      />,
+      <MessageBubble message={toChatMessage({ id: 'm', role: 'assistant', parts } as never, { streaming })} />,
     );
 
-    const step = screen.getByTestId('message-bubble-tool-failed');
-    expect(step).toHaveTextContent('Execution error');
-    const content = screen.getByTestId('message-bubble-content');
-    const ending = screen.getByTestId('message-bubble-error');
-    expect(content.compareDocumentPosition(step) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(step.compareDocumentPosition(ending) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  /**
+   * A search that ended in an error.
+   * @param errorText - What the wire carried.
+   * @returns The part.
+   */
+  const failedSearch = (errorText = 'chat.tool.failure.busy'): unknown => ({
+    type: 'tool-web_search',
+    toolCallId: 's1',
+    state: 'output-error',
+    input: { query: 'poster' },
+    errorText,
   });
 
-  it('folds steps that failed with the same words into one line that says how many', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'done',
-          toolCalls: [
-            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
-            { ...running('search_images'), status: 'success', result: {} },
-            failedCall('understand_media', { failureKey: 'chat.tool.failure.unreachable' }),
-          ],
-        }}
-      />,
-    );
+  it('says which step did not finish and why, where it happened', () => {
+    drawn([{ type: 'text', text: 'Let me look.' }, failedSearch(), { type: 'text', text: 'Carrying on.' }]);
 
-    const lines = screen.getAllByTestId('message-bubble-tool-failed');
-    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2']);
+    expect(screen.getByTestId('message-bubble-tool-failed').textContent).toBe(
+      'Search for “poster” didn\'t finish: the service ran into an error, try again later',
+    );
   });
 
-  it('gives each different line its own row, in the order each first appeared', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'done',
-          toolCalls: [
-            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
-            failedCall('search_images', { failureKey: 'chat.tool.unfinished' }),
-            failedCall('understand_media', { failureKey: 'chat.tool.failure.generic' }),
-          ],
-        }}
-      />,
-    );
+  it('draws it the moment the step fails, while the reply is still arriving', () => {
+    drawn([{ type: 'text', text: 'Let me look.' }, failedSearch()], true);
 
-    const lines = screen.getAllByTestId('message-bubble-tool-failed');
-    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2', 'Stopped']);
-  });
-
-  it('leaves the count off a line that happened once', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'done',
-          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
-        }}
-      />,
-    );
-
-    expect(screen.getByTestId('message-bubble-tool-failed').textContent).toBe('Execution error');
-  });
-
-  it('falls back to the general line for a step that ended with no key of its own', () => {
-    render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'done', toolCalls: [failedCall('web_search')] }}
-      />,
-    );
-
-    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent('Execution error');
+    expect(screen.getByTestId('message-bubble-tool-failed')).toBeInTheDocument();
   });
 
   it('draws nothing for a step the reader stopped, which the turn already says', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: '',
-          interrupted: true,
-          toolCalls: [failedCall('web_search', { failureKind: 'user_aborted' })],
-        }}
-      />,
-    );
+    drawn([
+      { type: 'tool-web_search', toolCallId: 's1', state: 'input-available', input: { query: 'q' } },
+      { type: 'data-interrupted', data: {} },
+    ]);
 
     expect(screen.queryByTestId('message-bubble-tool-failed')).not.toBeInTheDocument();
     expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
   });
 
   it('draws nothing for a call turned away to steer the model, and still draws a real failure', () => {
-    // A second question, a second media call while one runs, input the SDK
-    // refused: nothing went wrong, so nothing is drawn for them.
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: 'asked one thing',
-          toolCalls: [
-            failedCall('ask_user', { failureKind: 'turned_away' }),
-            failedCall('understand_media', { failureKind: 'turned_away' }),
-            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
-          ],
-        }}
-      />,
-    );
+    drawn([
+      { type: 'tool-understand_media', toolCallId: 'u1', state: 'output-error', input: {}, errorText: 'turned_away' },
+      failedSearch(),
+    ]);
 
-    // Exactly the one real failure: counted in with it, the two turned away
-    // would fold into "Execution error ×3".
     expect(screen.getAllByTestId('message-bubble-tool-failed')).toHaveLength(1);
-    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent(/^Execution error$/);
-  });
-
-  it('draws nothing while the turn is still running', () => {
-    render(
-      <MessageBubble
-        message={{
-          id: 'm',
-          role: 'assistant',
-          content: '',
-          streaming: true,
-          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
-        }}
-      />,
-    );
-
-    expect(screen.queryByTestId('message-bubble-tool-failed')).not.toBeInTheDocument();
   });
 });
 
@@ -395,7 +295,24 @@ describe('how a stored turn reads when the conversation is reopened', () => {
       />,
     );
 
-    expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveClass('text-status-error-foreground');
+    // Wrapped so its last line is never a single word.
+    expect(screen.getByText('This reply could not be finished. Try sending it again.')).toHaveClass('text-pretty');
+  });
+
+  it('says a turn that ended too long to finish so, and not that it should be sent again (inner#1567)', () => {
+    render(
+      <MessageBubble
+        message={toChatMessage({ id: 'm', role: 'assistant', parts: [{ type: 'data-failed', data: { reason: 'too_long' } }] })}
+      />,
+    );
+
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveTextContent('This turn had too much to process and could not finish. Try a narrower request.');
+    expect(line).not.toHaveTextContent('Try sending it again');
+    // A ceiling the request hit, drawn like the length-limit ending.
+    expect(line).toHaveClass('text-status-warning-foreground');
   });
 
   it('says a turn that produced nothing produced nothing', () => {
@@ -425,7 +342,8 @@ describe('how a stored turn reads when the conversation is reopened', () => {
       />,
     );
 
-    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent('Execution error');
+    // Stored before causes were recorded: the step is named, the cause is not.
+    expect(screen.getByTestId('message-bubble-tool-failed').textContent).toBe('Calling always_fails didn\'t finish');
     expect(screen.getByTestId('message-bubble-content')).toHaveTextContent('Carrying on without it.');
   });
 });

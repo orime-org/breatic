@@ -47,6 +47,17 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 // events is the library's own rather than a copy typed in a test.
 vi.mock("@breatic/domain", async (importOriginal) => ({
   ...(await importOriginal<typeof domainModule>()),
+  // The catalog serves only models with a key set, and tests set none; this
+  // holds the one entry the enhance tool is pinned to, as its yaml declares it.
+  modelCatalog: {
+    getModelCatalog: () => ({
+      image: [],
+      video: [],
+      audio: [{ name: "veed-clean-audio", output_type: "audio/wav" }],
+      tts: [],
+      three_d: [],
+    }),
+  },
   backendUploadService: {
     uploadBytesToStorage: mockUploadBytes,
     transferUrlToStorage: mockTransferUrl,
@@ -71,7 +82,7 @@ vi.mock("ai", () => ({
   stepCountIs: vi.fn(),
 }));
 
-import { persistOutputs } from "@worker/handlers/dispatch.js";
+import { declaredOutputType, persistOutputs } from "@worker/handlers/dispatch.js";
 
 /** One sync-transport output: bytes this process is holding. */
 function bufferOutput(): { extra: Record<string, unknown> } {
@@ -89,6 +100,31 @@ beforeEach(() => {
   mockTransferUrl.mockReset().mockResolvedValue({ assetId: "a1", fileUrl: CANONICAL });
   mockAdapterUpload.mockReset();
   mockWarn.mockReset();
+});
+
+// inner#1305 §7.4: a model that declares what it returns is stored as that,
+// key and served type alike; the rest keep the task type's.
+describe("persistOutputs — the type a declared output is stored as", () => {
+  it("names a link's key and type after the model's declared output", async () => {
+    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio", outputType: "audio/wav" });
+    expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".wav", contentType: "audio/wav" });
+  });
+
+  // A mini-tool's job carries no model: a model tool's comes from the
+  // registry, which is what its run is pinned to.
+  it("reads the declared output of the model a mini-tool is pinned to", () => {
+    expect(declaredOutputType(undefined, "audio.enhance")).toBe("audio/wav");
+  });
+
+  it("reads none for a container mini-tool or a model that declares nothing", () => {
+    expect(declaredOutputType(undefined, "audio.denoise")).toBeUndefined();
+    expect(declaredOutputType(undefined, undefined)).toBeUndefined();
+  });
+
+  it("keeps the task type's when the model declares nothing", async () => {
+    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio" });
+    expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".mp3", contentType: "audio/mpeg" });
+  });
 });
 
 describe("persistOutputs — the lane an output takes", () => {

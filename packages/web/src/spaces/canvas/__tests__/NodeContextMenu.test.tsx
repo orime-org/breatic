@@ -309,6 +309,34 @@ describe('NodeContextMenu', () => {
       ]);
     });
 
+    // inner#1304: quick edit leads the list, a model tool above the edits.
+    it('puts a separator wherever the list turns between edits and model tools', () => {
+      setup({
+        target: 'node',
+        onUpload: () => {},
+        toolsOffered: true,
+        tools: [
+          { id: 'image.quickEdit', labelKey: 'canvas.miniTool.image.quickEdit.label', icon: 'SquarePen' as const, model: true },
+          { id: 'image.crop', labelKey: 'canvas.miniTool.image.crop.label', icon: 'Crop' as const, model: false },
+          { id: 'image.rotate', labelKey: 'canvas.miniTool.image.rotate.label', icon: 'RotateCw' as const, model: false },
+          ...TOOLS,
+        ],
+        onTool: () => {},
+      });
+      fireEvent.keyDown(screen.getByTestId('node-menu-tools'), { key: 'ArrowRight' });
+
+      const rows = [...screen.getByTestId('node-menu-tool-image.crop').parentElement!.children];
+      expect(rows.map((row) => row.getAttribute('data-testid') ?? row.getAttribute('role'))).toEqual([
+        'node-menu-tool-image.quickEdit',
+        'separator',
+        'node-menu-tool-image.crop',
+        'node-menu-tool-image.rotate',
+        'separator',
+        'node-menu-tool-image.upscale',
+        'node-menu-tool-image.remove-bg',
+      ]);
+    });
+
     it('keeps Tools apart from the asset actions', () => {
       setup({
         target: 'node',
@@ -359,6 +387,41 @@ describe('NodeContextMenu', () => {
 
     fireEvent.click(screen.getByTestId('node-menu-understand'));
     expect(onUnderstand).toHaveBeenCalledTimes(1);
+  });
+
+  // inner#856 T1: Transcribe sits right under Understand on an audio or video
+  // node, greys the way Understand does, and opens its panel when chosen.
+  describe('transcribe item', () => {
+    it('leaves Transcribe off a kind that has no speech to hear', () => {
+      setup({ target: 'node', onUpload: () => {}, onTranscribe: () => {} });
+      expect(screen.queryByTestId('node-menu-transcribe')).toBeNull();
+    });
+
+    it('leaves Transcribe off a node holding no asset', () => {
+      setup({ target: 'node', onUpload: () => {}, assetActionsOffered: false, transcribeOffered: true });
+      expect(screen.queryByTestId('node-menu-transcribe')).toBeNull();
+    });
+
+    it('sits right under Understand', () => {
+      setup({ target: 'node', onUpload: () => {}, transcribeOffered: true, onTranscribe: () => {} });
+      const understand = screen.getByTestId('node-menu-understand');
+      expect(understand.nextElementSibling).toBe(screen.getByTestId('node-menu-transcribe'));
+    });
+
+    it('greys Transcribe on a node with nothing to transcribe yet', () => {
+      setup({ target: 'node', onUpload: () => {}, transcribeOffered: true });
+      const item = screen.getByTestId('node-menu-transcribe');
+      expect(item).toHaveAttribute('data-disabled');
+      expect(item.className).toContain('data-[disabled]:pointer-events-auto');
+      expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
+    });
+
+    it('fires onTranscribe when chosen', () => {
+      const onTranscribe = vi.fn();
+      setup({ target: 'node', onUpload: () => {}, transcribeOffered: true, onTranscribe });
+      fireEvent.click(screen.getByTestId('node-menu-transcribe'));
+      expect(onTranscribe).toHaveBeenCalledTimes(1);
+    });
   });
 
   // #2175: only a text node offers Snapshot. Every other modality's content

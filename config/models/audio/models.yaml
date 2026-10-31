@@ -342,6 +342,54 @@ models:
           formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
           discount_rate: 100
 
+  # inner#1305: the audio enhance mini-tool. Verified against the WaveSpeed
+  # page on 2026-10-21: up to 30 minutes and 512 MB, a 0–1 strength, a target
+  # loudness, and a lossless 48 kHz mono result as FLAC or WAV.
+  - name: "veed-clean-audio"
+    display_name: "VEED Clean Audio"
+    mode: "enhance"
+    takes_prompt: false
+    tier: "internal"
+    description: "Cleans speech: noise out, level evened"
+    guide: "Speech cleaned of background noise and room echo, levelled to -16 LUFS, returned in mono."
+    generation_time: 60
+    icon: "vocal-isolator"
+    output_type: "audio/wav"
+    params:
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "tool"
+        max_total_duration: 1800
+        max_bytes: 536870912
+      strength:
+        description: "How much is cleaned out"
+        default: 0.85
+        min: 0
+        max: 1
+        step: 0.05
+        fill: "tool"
+      target_lufs:
+        description: "Loudness the result is levelled to"
+        default: -16
+        fill: "none"
+        note: "pinned to the loudness tool's podcast default"
+      output_format:
+        description: "Output container"
+        values: ["wav"]
+        default: "wav"
+        fill: "none"
+        note: "output container, fixed to one the asset pipeline takes"
+    providers:
+      - name: "wavespeed"
+        model_id: "veed/clean-audio"
+        priority: 1
+        pricing:
+          base_price: 14000
+          formula: "{\"total_price\": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}"
+          discount_rate: 100
+
   - name: "sfx-1.6-extend-audio"
     display_name: "Mirelo SFX 1.6"
     mode: "extend"

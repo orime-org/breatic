@@ -52,10 +52,10 @@ const panelProps = vi.hoisted(
   () => [] as { face: unknown; onSet: unknown; onClear: unknown }[],
 );
 
-vi.mock('@web/spaces/document/document-colour-panel', async (importOriginal) => {
+vi.mock('@web/spaces/document/DocumentColourPanel', async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import('@web/spaces/document/document-colour-panel')
+      typeof import('@web/spaces/document/DocumentColourPanel')
     >();
   const Real = actual.DocumentColourPanel;
   return {

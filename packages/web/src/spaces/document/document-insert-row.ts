@@ -23,6 +23,7 @@ import {
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
+import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -37,18 +38,19 @@ export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: Tabl
  * An empty table of a size.
  * @param size - Rows and columns.
  * @param quoted - Whether it sits in a quote.
- * @returns The block, every cell empty.
+ * @returns The block, every cell one empty paragraph.
  */
 function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
   return {
-    type: 'table',
+    type: DOC_TABLE,
     props: { [QUOTED]: quoted },
-    content: {
-      type: 'tableContent',
-      rows: Array.from({ length: size.rows }, () => ({
-        cells: Array.from({ length: size.cols }, () => []),
+    children: Array.from({ length: size.rows }, () => ({
+      type: DOC_TABLE_ROW,
+      children: Array.from({ length: size.cols }, () => ({
+        type: DOC_TABLE_CELL,
+        children: [{ type: 'paragraph' }],
       })),
-    },
+    })),
   };
 }
 
@@ -57,9 +59,9 @@ function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
  *
  * The new row goes directly under the pressed row's own content and BEFORE
  * anything indented under it, which is why the pressed row is not handed to
- * `insertBlocks` with `'after'` — `insertBlocks.ts:41-42` advances by the
- * container's `nodeSize`, and a container holds its nested blocks
- * (`BlockContainer.ts:27`), so the new row would land below the whole subtree.
+ * `insertBlocks` with `'after'` — `getInsertionPos` puts it at the
+ * container's end (`getBlockInfoFromPos.ts:580-582`), and a container holds its nested blocks
+ * (`BlockContainer.ts:71`), so the new row would land below the whole subtree.
  * Referencing the first child with `'before'` is the same place the reader
  * gets from pressing Enter.
  *
@@ -82,7 +84,9 @@ export function insertRowForMenu(
   lead: readonly BlockSpec[] = [],
 ): string {
   const quoted = row.props?.[QUOTED] === true;
-  const firstChild = row.children?.[0];
+  // A table's children are its rows, which hold no block to go before; the
+  // row goes under the table, as under any block without children.
+  const firstChild = row.type === DOC_TABLE ? undefined : row.children?.[0];
   const made = editor.insertBlocks(
     quotedAs([...lead, { type: 'paragraph' }], quoted) as never,
     firstChild?.id ?? row.id,

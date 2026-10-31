@@ -21,6 +21,7 @@ import {
   insertMediaOnRow,
 } from '@web/spaces/document/document-insert-row';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -159,13 +160,15 @@ describe('a table inserted below (inner#1126 A1)', () => {
     insertBelow(editor, editor.document[0] as never, PICK);
 
     const blocks = editor.document as unknown as Read[];
-    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'table', 'paragraph', 'paragraph']);
-    const rows = (blocks[1]!.content as { rows: { cells: unknown[] }[] }).rows;
-    expect(rows.map((r) => r.cells.length)).toEqual([4, 4, 4]);
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'docTable', 'paragraph', 'paragraph']);
+    const rows = (blocks[1] as unknown as { children: { children: unknown[] }[] }).children;
+    expect(rows.map((r) => r.children.length)).toEqual([4, 4, 4]);
     expect(blocks[2]!.content).toEqual([]);
     const { $head } = editor.prosemirrorState.selection;
-    expect($head.parent.type.name).toBe('tableParagraph');
-    expect([$head.index($head.depth - 3), $head.index($head.depth - 2)]).toEqual([0, 0]);
+    expect($head.parent.type.name).toBe('paragraph');
+    // Paragraph, its container, the cell, the row, the table.
+    expect($head.node($head.depth - 2).type.name).toBe('docTableCell');
+    expect([$head.index($head.depth - 4), $head.index($head.depth - 3)]).toEqual([0, 0]);
   });
 
   it('carries the quote of the row to the table and the line after it', () => {
@@ -291,5 +294,16 @@ describe('the media a pick brings in (inner#1351 + inner#1390 design §5.9)', ()
     expect(kinds(blocks)).toEqual(['above', 'image', '']);
     expect(blocks[1]!.props?.['quoted']).toBe(true);
     expect((editor.getTextCursorPosition().block as { id: string }).id).toBe(line.id);
+  });
+});
+
+describe('the row insert-below makes under a table (inner#1619)', () => {
+  it('goes right under the table, its rows left as they are', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), { type: 'paragraph', content: 'after' }]);
+
+    insertRowForMenu(editor, editor.document[0] as never);
+
+    expect((editor.document as Seen[]).map((block) => block.type)).toEqual(['docTable', 'paragraph', 'paragraph']);
+    expect(shape(editor.document).slice(1)).toEqual(['', 'after']);
   });
 });

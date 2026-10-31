@@ -23,14 +23,17 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 
-import type { ProjectRole } from '@breatic/shared';
+import { MAX_SPACES_PER_PROJECT, type ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { toast } from '@web/lib/toast';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores';
@@ -206,7 +209,7 @@ interface SpaceTabBarProps {
   /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
   activeSpaceId: string;
-  /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
+  /** Owning Project, used by Space task-status readers and drawer row test ids. */
   projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
@@ -261,7 +264,7 @@ interface SpaceTabBarProps {
  * @param root0.spaces - Tabs currently open in the bar, in the order they are painted.
  * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
  * @param root0.activeSpaceId - Id of the active space, used to highlight and scroll to its tab.
- * @param root0.projectId - Project id, threaded to the drawer for row test ids.
+ * @param root0.projectId - Owning Project for Space task-status readers and drawer row test ids.
  * @param root0.onActivate - Activates the space with the given id.
  * @param root0.onCreate - Creates a new space of the given type and name.
  * @param root0.onClose - Closes a tab (removes it from the bar without deleting the space).
@@ -291,6 +294,11 @@ export function SpaceTabBar({
   onReorder,
 }: SpaceTabBarProps): React.JSX.Element {
   const t = useTranslation();
+  // Counted off the same meta doc the strip and the drawer read. The server
+  // makes the binding check under its lock; this keeps the reader from
+  // starting what it would refuse.
+  const spaceLimitReached = allSpaces.length >= MAX_SPACES_PER_PROJECT;
+  const spaceLimitText = t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT });
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
@@ -559,6 +567,7 @@ export function SpaceTabBar({
               {spaces.map((s) => (
                 <SpaceTab
                   key={s.id}
+                  projectId={projectId}
                   id={s.id}
                   name={s.name}
                   type={s.type}
@@ -623,24 +632,53 @@ export function SpaceTabBar({
             disabled). Editors + owners can create spaces; the all-spaces
             drawer + project-activity buttons stay visible for everyone.
             Backend `requireRole` on `space:create` is the real boundary. */}
+        {/* At the cap the button is unavailable but stays in the Tab order
+            (aria-disabled): hovering it shows the reason, pressing it shows
+            the same reason as a toast and opens nothing. The dialog stays
+            mounted, so one already open is not yanked away when a
+            collaborator's create fills the project; submitting it then gets
+            the server's refusal as a toast. */}
+        {/* disableHoverableContent: below the cap there is no content, and
+            only the content closes a hoverable tooltip when the pointer
+            leaves; without it the open state outlives the hover and the
+            reason pops up by itself the moment the project fills.
+            suppressTooltipFocusOpen: closing the dialog hands focus back to
+            the button, which would open the tooltip the same way. */}
         {currentUserRole === 'viewer' ? null : (
-          <NewSpaceDialog
-            onCreate={onCreate}
-            trigger={
-              <Button
-                variant='chrome-ghost'
-                size='chrome'
-                aria-label={t('chrome.tooltip.newSpace')}
-                data-testid='new-space-button'
-                style={{
-                  height: 'var(--btn-chrome)',
-                  width: 'var(--btn-chrome)',
-                }}
-              >
-                <Plus className='h-[18px] w-[18px]' />
-              </Button>
-            }
-          />
+          <Tooltip disableHoverableContent>
+            <NewSpaceDialog
+              onCreate={onCreate}
+              trigger={
+                <TooltipTrigger asChild>
+                  <Button
+                    variant='chrome-ghost'
+                    size='chrome'
+                    aria-label={t('chrome.tooltip.newSpace')}
+                    data-testid='new-space-button'
+                    aria-disabled={spaceLimitReached || undefined}
+                    onClick={(e) => {
+                      if (!spaceLimitReached) return;
+                      // Runs before the dialog trigger's handler, which skips
+                      // a prevented click.
+                      e.preventDefault();
+                      toast.warning(spaceLimitText);
+                    }}
+                    onFocusCapture={suppressTooltipFocusOpen}
+                    className={spaceLimitReached ? 'opacity-50' : undefined}
+                    style={{
+                      height: 'var(--btn-chrome)',
+                      width: 'var(--btn-chrome)',
+                    }}
+                  >
+                    <Plus className='h-[18px] w-[18px]' />
+                  </Button>
+                </TooltipTrigger>
+              }
+            />
+            {spaceLimitReached ? (
+              <TooltipContent>{spaceLimitText}</TooltipContent>
+            ) : null}
+          </Tooltip>
         )}
         <SpaceDrawer
           spaces={allSpaces}
@@ -656,6 +694,7 @@ export function SpaceTabBar({
           provider={metaProvider}
           currentUserRole={currentUserRole}
           onRestore={onRestoreSpace}
+          spaceLimitReached={spaceLimitReached}
         />
       </div>
     </div>

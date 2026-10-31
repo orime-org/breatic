@@ -30,9 +30,11 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { LanguageModel, streamText } from "ai";
+import type { LanguageModel, SystemModelMessage, streamText } from "ai";
 import { env } from "@breatic/core";
 import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
+import { instructionsText } from "@domain/agent/instructions.js";
+import type { Instructions } from "@domain/agent/instructions.js";
 
 /**
  * What a model call carries to ask its provider for reasoning, caching and a
@@ -93,8 +95,8 @@ interface Route {
   name: string;
   /** The provider, built on first use and kept. */
   provider: () => (modelId: string) => LanguageModel;
-  /** How this provider is told to reason, and how it is told not to. */
-  reasoning: { on: ProviderOptionsFor; off: ProviderOptionsFor };
+  /** How this provider is told to reason for a model, and how it is told not to. */
+  reasoning: { on: (modelString: string | undefined) => ProviderOptionsFor; off: ProviderOptionsFor };
   /**
    * How this provider is told to cache the prompt prefix for a model, or
    * nothing when it caches a repeated prefix on its own.
@@ -185,7 +187,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     reasoning: {
       // The same depth as the fallback asks for: Opus 5.5 left without an
       // effort thinks at its own default, medium.
-      on: { thinking: { type: "adaptive", display: "summarized" }, effort: "high" },
+      on: () => ({ thinking: { type: "adaptive", display: "summarized" }, effort: "high" }),
       // Not read: `callOptionsFor` sends Claude nothing when thinking is off.
       off: {},
     },
@@ -200,7 +202,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       // Gemini 3 Pro takes only LOW or HIGH and has no off position, so on
       // that model this is the instruction going out rather than a promise
       // about what comes back. Gemini 2.5 Flash and its like accept 0.
-      on: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
+      on: () => ({ thinkingConfig: { thinkingBudget: -1, includeThoughts: true } }),
       off: { thinkingConfig: { thinkingBudget: 0 } },
     },
     vendorId: asWritten,
@@ -211,7 +213,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     keyName: "OPENAI_API_KEY",
     name: "openai",
     provider: memo(() => createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined })),
-    reasoning: { on: { reasoningEffort: "high" }, off: { reasoningEffort: "none" } },
+    reasoning: { on: () => ({ reasoningEffort: "high" }), off: { reasoningEffort: "none" } },
     vendorId: asWritten,
     cache: cachesOnItsOwn,
   },
@@ -221,10 +223,13 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     name: "deepseek",
     provider: memo(() => createDeepSeek({ apiKey: env.DEEPSEEK_API_KEY || undefined })),
     reasoning: {
-      on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+      // DeepSeek's deepest level; inner#1650 measured Flash 1017 at it.
+      on: () => ({ thinking: { type: "enabled" }, reasoningEffort: "max" }),
       off: { thinking: { type: "disabled" } },
     },
-    vendorId: asWritten,
+    // Configured ids are written the way OpenRouter names the model
+    // (`deepseek-v4.1-flash-1017`); DeepSeek serves Flash 1017 as `deepseek-flash`.
+    vendorId: (modelId) => (modelId === "deepseek-v4.1-flash-1017" ? "deepseek-flash" : modelId),
     cache: cachesOnItsOwn,
   },
 ] as const;
@@ -237,7 +242,9 @@ export const FALLBACK_ROUTE: Route = {
   reasoning: {
     // `max_tokens` or `effort` is required alongside; `enabled` alone does
     // not compile. `none` is the documented way to turn it off.
-    on: { reasoning: { effort: "high" } },
+    // OpenRouter lists max, high, low and none for DeepSeek Flash 1017 and
+    // turns `xhigh` into `high`; `max` is the level the direct route asks for.
+    on: (modelString) => ({ reasoning: { effort: modelString?.startsWith("deepseek/") ? "max" : "high" } }),
     off: { reasoning: { effort: "none" } },
   },
   // OpenRouter turns a request-level `cache_control` into Anthropic's
@@ -297,6 +304,23 @@ export function resolveProvider(modelString: string | undefined): string {
 }
 
 /**
+ * The route a model call takes and the cache mark it carries there.
+ *
+ * The request-level mark and the marks on the system prompt's parts come from
+ * this one place, so the two always agree on whether this call caches.
+ * @param modelString - Model identifier, or undefined for the fallback.
+ * @param cache - How long to cache, or false when the call does not cache.
+ * @returns The route, and the mark (empty when nothing is marked).
+ */
+function cacheMarkFor(
+  modelString: string | undefined,
+  cache: PromptCacheTtl | false,
+): { route: Route; mark: ProviderOptionsFor } {
+  const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
+  return { route, mark: cache === false || modelString === undefined ? {} : route.cache(modelString, cache) };
+}
+
+/**
  * What to send so this model's provider reasons, or does not, caches the
  * prompt prefix, or does not, and keeps a conversation on one provider.
  *
@@ -313,21 +337,57 @@ export function resolveProvider(modelString: string | undefined): string {
  * @throws {never} Never.
  */
 export function callOptionsFor(modelString: string | undefined, wants: CallWants): CallOptions {
-  const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
+  const { route, mark: cache } = cacheMarkFor(modelString, wants.cache);
   // Claude, on either route, gets no thinking field when it is off: the 4.x
   // models then do not think, and Opus 5.5, which rejects
   // `{ type: "disabled" }` with a 400, falls to the adaptive thinking it
   // cannot leave (Anthropic thinking docs, "Configuring thinking").
   const reasoning = wants.thinking
-    ? route.reasoning.on
+    ? route.reasoning.on(modelString)
     : isClaude(modelString)
       ? {}
       : route.reasoning.off;
-  const cache = wants.cache === false || modelString === undefined ? {} : route.cache(modelString, wants.cache);
   // Current Claude models return a 400 for any non-default temperature, and
   // older ones for any temperature while thinking is on (Anthropic thinking
   // docs, "Sampling parameters").
   const temperature = wants.temperature === undefined || isClaude(modelString) ? {} : { temperature: wants.temperature };
   const session = wants.session !== undefined && route === FALLBACK_ROUTE ? { session_id: wants.session } : {};
   return { providerOptions: { [route.name]: { ...reasoning, ...cache, ...session } }, ...temperature };
+}
+
+/**
+ * The system prompt as the messages a model call sends.
+ *
+ * Where this route marks cache breakpoints for this model, each part another
+ * conversation also sends goes as its own message ending in a mark: request-
+ * level caching writes one entry, for the prefix ending at the last block, so
+ * a new conversation, whose first message is new, would find nothing to read
+ * even though everything before that message is the same as in other
+ * conversations in its request locale (Anthropic prompt caching, "The system
+ * does not write entries for any earlier position"). The entry a mark writes
+ * covers the tools before the system prompt, so the mark after the base
+ * prompt writes an entry every conversation in that locale reads, the one after the
+ * project's memory an entry the same user's other conversations in that
+ * project read. Where nothing is marked, the prompt goes whole, as one
+ * message.
+ * @param modelString - Model identifier, or undefined for the fallback.
+ * @param parts - The base prompt, the project's memory and this
+ *   conversation's memory, the last two when there are any.
+ * @param cache - How long to cache, or false when the call does not cache.
+ * @returns The system messages, in order.
+ * @throws {never} Never.
+ */
+export function systemFor(
+  modelString: string | undefined,
+  parts: Instructions,
+  cache: PromptCacheTtl | false,
+): SystemModelMessage[] {
+  const { route, mark } = cacheMarkFor(modelString, cache);
+  if (Object.keys(mark).length === 0) return [{ role: "system", content: instructionsText(parts) }];
+  const providerOptions = { [route.name]: mark };
+  return [
+    { role: "system", content: parts.base, providerOptions },
+    ...(parts.project === undefined ? [] : [{ role: "system" as const, content: parts.project, providerOptions }]),
+    ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
+  ];
 }

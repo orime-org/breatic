@@ -144,21 +144,29 @@ async function outboxTypes(projectId: string): Promise<string[]> {
 }
 
 /**
- * Read a request row's status and whether its bell entry is still unread.
+ * Read a request row's status, why it failed if it did, and whether its bell
+ * entry is still unread.
  * @param table - Request table name.
  * @param id - Request id.
- * @returns The status and the bell entry's read state.
+ * @returns The status, the failure reason (null when it did not fail), and
+ *   the bell entry's read state.
  */
-async function stateOf(table: string, id: string): Promise<{ status: string; bellUnread: boolean }> {
-  const rows = await sql<{ status: string; notification_id: string | null }[]>`
-    SELECT status, notification_id FROM ${sql(table)} WHERE id = ${id}
+async function stateOf(
+  table: string,
+  id: string,
+): Promise<{ status: string; failedReason: string | null; bellUnread: boolean }> {
+  const rows = await sql<
+    { status: string; failed_reason: string | null; notification_id: string | null }[]
+  >`
+    SELECT status, failed_reason, notification_id FROM ${sql(table)} WHERE id = ${id}
   `;
   const row = rows[0]!;
-  if (row.notification_id === null) return { status: row.status, bellUnread: false };
+  const outcome = { status: row.status, failedReason: row.failed_reason };
+  if (row.notification_id === null) return { ...outcome, bellUnread: false };
   const notices = await sql<{ read_at: Date | null }[]>`
     SELECT read_at FROM notifications WHERE id = ${row.notification_id}
   `;
-  return { status: row.status, bellUnread: notices[0]?.read_at == null };
+  return { ...outcome, bellUnread: notices[0]?.read_at == null };
 }
 
 /** The single pending request on a project in a table. */
@@ -215,7 +223,7 @@ describe("archive", () => {
     await expect(projectService.archive(projectId, adminId)).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("expires every pending request against the project and takes their bells down", async () => {
+  it("fails every pending request against the project as invalidated and takes their bells down", async () => {
     const s = await seedScene();
     await roleUpgradeService.request({ requesterUserId: s.memberId, projectId: s.projectId, projectName: "Demo" });
     await projectTransferService.requestProjectTransfer(s.projectId, s.adminId, s.memberId);
@@ -234,8 +242,46 @@ describe("archive", () => {
       ["project_join_requests", join],
       ["project_invitations", invite],
     ] as const) {
-      expect(await stateOf(table, id)).toEqual({ status: "expired", bellUnread: false });
+      expect(await stateOf(table, id)).toEqual({ status: "failed", failedReason: "invalidated", bellUnread: false });
     }
+  });
+
+  it("records a request whose deadline had already passed as expired, and keeps its deadline", async () => {
+    // Nobody reaped it yet, so it is still `pending` when the archive sweeps
+    // it. The deadline came first, so that is why it ended.
+    const s = await seedScene();
+    await roleUpgradeService.request({ requesterUserId: s.memberId, projectId: s.projectId, projectName: "Demo" });
+    await projectTransferService.requestProjectTransfer(s.projectId, s.adminId, s.memberId);
+    await joinService.request({ projectId: s.projectId, requesterUserId: s.guestId });
+    await projectInviteService.createInvite(s.projectId, s.adminId, s.outsiderEmail, "editor");
+    const aged: { table: string; id: string; deadline: number }[] = [];
+    for (const table of ["role_upgrade_requests", "project_transfers", "project_join_requests", "project_invitations"]) {
+      const id = await pendingId(table, s.projectId);
+      const [row] = await sql<{ expires_at: Date }[]>`
+        UPDATE ${sql(table)} SET expires_at = now() - interval '1 day' WHERE id = ${id} RETURNING expires_at
+      `;
+      aged.push({ table, id, deadline: row!.expires_at.getTime() });
+    }
+
+    await projectService.archive(s.projectId, s.adminId);
+
+    for (const { table, id, deadline } of aged) {
+      expect(await stateOf(table, id)).toMatchObject({ status: "failed", failedReason: "expired" });
+      const [row] = await sql<{ expires_at: Date }[]>`SELECT expires_at FROM ${sql(table)} WHERE id = ${id}`;
+      expect(row!.expires_at.getTime()).toBe(deadline);
+    }
+  });
+
+  it("keeps the deadline of a request it ends early", async () => {
+    const s = await seedScene();
+    await roleUpgradeService.request({ requesterUserId: s.memberId, projectId: s.projectId, projectName: "Demo" });
+    const id = await pendingId("role_upgrade_requests", s.projectId);
+    const [before] = await sql<{ expires_at: Date }[]>`SELECT expires_at FROM role_upgrade_requests WHERE id = ${id}`;
+
+    await projectService.archive(s.projectId, s.adminId);
+
+    const [after] = await sql<{ expires_at: Date }[]>`SELECT expires_at FROM role_upgrade_requests WHERE id = ${id}`;
+    expect(after!.expires_at.getTime()).toBe(before!.expires_at.getTime());
   });
 
   it("leaves the project's other unread notifications alone", async () => {

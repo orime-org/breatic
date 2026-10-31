@@ -185,6 +185,21 @@ export function statelessFrame(docName: string, payload: string): Uint8Array {
 }
 
 /**
+ * A stateless frame whose total length is exactly `bytes`.
+ * @param docName - Document the frame is addressed to.
+ * @param bytes - The frame length wanted.
+ * @returns The encoded frame.
+ */
+export function statelessFrameOfSize(docName: string, bytes: number): Uint8Array {
+  let filler = Math.max(0, bytes - 32);
+  for (;;) {
+    const frame = statelessFrame(docName, "x".repeat(filler));
+    if (frame.byteLength === bytes) return frame;
+    filler += bytes - frame.byteLength;
+  }
+}
+
+/**
  * A frame carrying an awareness (presence / cursor) update.
  * @param docName - Document the presence belongs to.
  * @param update - Encoded awareness update.

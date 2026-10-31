@@ -101,7 +101,7 @@ function terms(expression: string): string[] {
  *
  * Every term has to be permissive, not just one. A dual offer such as
  * `MIT OR GPL-3.0-or-later` means we elect the MIT half, and the election is
- * the thing the notice records — its own DOMPurify entry is written that way.
+ * the thing the notice records — its jszip entry is written that way.
  * @param expression - The licence expression to judge.
  * @returns True when nothing about this package needs writing down.
  */
@@ -161,9 +161,10 @@ export function licenceCoverage(
   for (const [licence, packages] of Object.entries(groups)) {
     if (isFullyPermissive(licence)) continue;
     for (const pkg of packages) {
-      // The notice writes `DOMPurify` where the package is `dompurify`, so the
-      // name is matched without case. Its entries quote names in backticks and
-      // also use them as headings, and both forms count.
+      // A heading may capitalise a name the way its project does (`DOMPurify`
+      // for the package `dompurify`), so the name is matched without case.
+      // Entries quote names in backticks and also use them as headings, and
+      // both forms count.
       const name = pkg.name.toLowerCase();
       const naming = entries.filter((text) => text.includes(name));
       if (naming.length === 0) {

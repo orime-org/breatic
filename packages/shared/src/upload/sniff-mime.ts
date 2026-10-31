@@ -3,12 +3,13 @@
 
 /**
  * Backend-authoritative MIME sniffing (#1826, design §4.2) — derives a file's
- * real content type from its BYTES, never from a client claim. Two gates read
- * it: `setAvatar`, which admits an avatar only when the type derived here has
- * an extension in its accepted list, and the ingest Worker, which registers
- * every stored asset under what its bytes read as.
+ * real content type from its BYTES, never from a client claim. The ingest
+ * Worker reads it (`sniffMimeTypeOfStream`) and registers every stored object
+ * under what its bytes read as.
  *
- * Two layers:
+ * Three layers, in order:
+ *   0. our own transfer file (inner#1006): the transfer signature line at
+ *      byte 0 → `TRANSFER_MEDIA_TYPE`, whatever follows it;
  *   1. magic-bytes (`file-type`) for binary formats with a signature;
  *   2. content-aware fallback for signature-less formats — `file-type` returns
  *      undefined for SVG (XML text) and CSV/JSON/TXT (plain text). Answering
@@ -19,6 +20,11 @@
  */
 
 import { fileTypeFromBuffer, fileTypeFromStream } from "file-type";
+
+import {
+  TRANSFER_MEDIA_TYPE,
+  startsWithTransferSignature,
+} from "@shared/upload/transfer-format.js";
 
 /** SVG root element — an `<svg` followed by whitespace, `/`, or `>`. */
 const SVG_ROOT = /<svg[\s/>]/i;
@@ -85,8 +91,7 @@ function shapeOf(head: Uint8Array, wasXml: boolean): string {
  * What these bytes are, given whatever the signature layer made of them.
  *
  * The two entry points differ only in how they reach the signature layer, and
- * this is everything they decide once it has answered — one gate reads avatars
- * and the other reads every asset that reaches storage, so a rule written twice
+ * this is everything they decide once it has answered, so a rule written twice
  * is a rule the two can stop sharing without anything saying so.
  * @param detected - The signature layer's answer, or undefined for no match.
  * @param head - The leading bytes, for the content-aware layer.
@@ -97,6 +102,8 @@ function decide(
   head: Uint8Array,
 ): string {
   if (head.length === 0) return "application/octet-stream";
+  // Our transfer file wins over anything its body happens to look like.
+  if (startsWithTransferSignature(head)) return TRANSFER_MEDIA_TYPE;
   // A concrete binary signature (png / jpeg / mp4 / …) is authoritative.
   if (detected && detected.mime !== XML) return detected.mime;
   // Cut to the window here rather than inside, so one caller handing over a

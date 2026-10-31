@@ -16,6 +16,8 @@ import {
   type WriteAccess,
 } from '@web/data/yjs/collab-socket';
 
+export type { WriteAccess } from '@web/data/yjs/collab-socket';
+
 interface UseSocketOptions {
   /** Document name (e.g. `project-abc/meta`). */
   name: string;
@@ -40,6 +42,7 @@ export type ConnectionStatus =
   | 'authFailed'
   | 'disconnected';
 
+/** The current connection and its local display mirrors. */
 export interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
@@ -173,7 +176,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setAuthFailedReason(null);
       // Read from the provider rather than the facts: unlike a refusal, the
       // granted scope can change across reconnects, so the live value wins.
-      setWriteAccess(readWriteAccess(provider));
+      setWriteAccess(readWriteAccess(provider, facts.authFailure));
     }
 
     /**
@@ -205,9 +208,13 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // fine until the Space was deleted — hands the user a live editor over a
       // dead connection.
       setWriteAccess('denied');
-      // Always report — an auth rejection is a genuine failure (the
-      // stuck-banner bug). console for dev, Sentry for prod oncall.
-      reportCollabFailure({ kind: 'auth', docName: name, reason });
+      // Report it — an auth rejection is a genuine failure (the stuck-banner
+      // bug) — unless this tab's session has ended (collab closed one of its
+      // documents with "Session ended" and no handshake has succeeded since):
+      // then every refusal is the expected outcome (inner#1548).
+      if (!readDocFacts(name).sessionEnded) {
+        reportCollabFailure({ kind: 'auth', docName: name, reason });
+      }
     };
     /**
      * Socket closed for a non-auth reason → soft disconnect (auto-reconnects).
@@ -247,7 +254,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
       setProvider(null);
-      releaseDocProvider(name);
+      releaseDocProvider(name, doc);
       setSynced(false);
       // Not a reset of the latch itself — that lives in the registry and is
       // untouched here. This only clears the local mirror for the case where

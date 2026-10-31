@@ -22,9 +22,9 @@ import {
   blockToNode,
   createExtension,
   type BlockNoteEditorOptions,
-  type ComputeDropPositionContext,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
+import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 

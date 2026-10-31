@@ -8,7 +8,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
 import { CROP_RATIOS } from '@web/lib/crop-math';
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
 import {

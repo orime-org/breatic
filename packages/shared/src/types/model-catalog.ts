@@ -164,6 +164,8 @@ export interface ParamDescriptor {
   max_items?: number;
   /** The longest the picked clips may run together, in seconds. */
   max_total_duration?: number;
+  /** The largest file the model takes here, in bytes (inner#1305). */
+  max_bytes?: number;
   /** The fewest entries a run takes; the panel keeps rows up to it. */
   min_items?: number;
   /** Another param this one stands in for: when this one is sent, that one is not. */
@@ -283,6 +285,17 @@ export interface ModelEntry {
    * invented here would refuse text the vendor accepts.
    */
   max_input_chars?: number;
+  /**
+   * The longest side, in pixels, of a picture this model is known to take and
+   * answer at its own size (inner#1303), so the expand tool stops a picture
+   * growing past it. Absent when none was measured, and absent means uncapped.
+   */
+  max_output_side?: number;
+  /**
+   * The media type this model returns, when it is not the one its modality's
+   * results are stored as (inner#1305): the result is stored under it.
+   */
+  output_type?: string;
   /**
    * The bracketed camera commands this model reads out of its prompt, each
    * with the clip that previews it. Absent on a model that reads none.
@@ -478,6 +491,7 @@ const paramDescriptorSchema = z
     type: z.enum(["list", "items", "text"]).optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     max_total_duration: z.number().optional().catch(undefined),
+    max_bytes: z.number().optional().catch(undefined),
     min_items: z.number().optional().catch(undefined),
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
@@ -596,6 +610,10 @@ const modelEntrySchema = z.object({
   // malformed one degrades to absent for the same reason a bad rate does: a
   // number this side invented would refuse text the vendor accepts.
   max_input_chars: z.number().optional().catch(undefined),
+  // The longest side the expand tool may grow to (inner#1303); a malformed one
+  // degrades to absent, as a bad text cap does.
+  max_output_side: z.number().optional().catch(undefined),
+  output_type: z.string().optional().catch(undefined),
   // A malformed list degrades to absent: the panel then offers no picker,
   // where a half-parsed one would offer commands with no clip.
   camera_commands: z

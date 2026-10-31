@@ -8,6 +8,8 @@
       "upload_too_large": "檔案超過上傳大小限制。",
       "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
+      "payload_too_large": "請求內容超過 {limit}，請縮短提示詞或減少引用的文字。",
+      "transfer_invalid": "上傳的內容無法使用，請重試。",
       "internal": "伺服器內部錯誤"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
       "none": "點數不足，請先儲值。",
+      "held_by_running": "{held} 點數正被進行中的任務凍結，目前可用 {available}。",
       "granted_elsewhere": "你的點數是贈送的，只能用在你的個人 Studio 裡。",
       "refund_already_asked": "這筆已經提交過退款。",
       "refund_restored": "這筆退款失敗後已恢復為點數，不能再申請退款。",
@@ -31,6 +34,7 @@
       "email_taken": "該電子郵件已註冊",
       "token_expired": "登入已過期，請重新登入",
       "logout_success": "已登出",
+      "logout_others_success": "已登出其他裝置",
       "not_authenticated": "未登入",
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
@@ -60,7 +64,9 @@
       "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
-      "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。"
+      "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。",
+      "email_not_registered_no_mail": "此信箱尚未註冊。這個部署未啟用電子郵件，無法邀請尚未註冊的信箱。",
+      "invite_mail_failed": "郵件未能寄出，請重試。"
     },
     "project": {
       "join_already_member": "你已經是這個 Project 的成員。",
@@ -79,7 +85,9 @@
       "not_found": "找不到這個 Project",
       "archived": "這個 Project 已封存，只能檢視。",
       "copy_name": "副本 - {name}",
-      "leave_owner": "Owner 需要先轉讓所有權才能退出。"
+      "leave_owner": "Owner 需要先轉讓所有權才能退出。",
+      "email_not_registered_no_mail": "此信箱尚未註冊。這個部署未啟用電子郵件，無法邀請尚未註冊的信箱。",
+      "invite_mail_failed": "郵件未能寄出，請重試。"
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
@@ -165,7 +173,10 @@
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
       "current_space_too_long": "目前 Space 的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 個，這則有 {actual, number} 個。",
-      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。"
+      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
+      "ask_not_found": "這段對話裡沒有這張問題卡片。",
+      "ask_already_answered": "這張問題卡片已經回答過了。",
+      "answer_mismatch": "這些答案和卡片上的問題對不上。"
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "你的驗證碼",
         "lead": "在註冊頁面輸入下方的驗證碼，完成建立帳號。",
         "footer": "驗證碼將在 {minutes, plural, other {# 分鐘}}後失效。如果不是你本人操作，可以忽略這封郵件。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} 邀請你加入 {project}",
+        "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身分參與 Project <b>{project}</b>。",
+        "action": "註冊並加入"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} 邀請你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身分加入 Studio <b>{studio}</b>。",
+        "action": "註冊並加入"
       }
     },
     "mini_tool": {
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
-      "foreignSource": "這個檔案無法處理。"
+      "foreignSource": "這個檔案無法處理。",
+      "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
+      "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -284,7 +307,7 @@
   "chat": {
     "composer": {
       "chipsAria": "已選 chips",
-      "placeholder": "問點什麼，或者把畫布上的東西交給我…",
+      "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
       "inputAria": "Chat 輸入",
       "send": "傳送",
       "sending": "傳送中",
@@ -306,13 +329,15 @@
       "atEmpty": "沒有可引用的附件"
     },
     "empty": {
-      "greetingWithName": "嗨,{name}!",
+      "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
-      "hintDirect": "在下方輸入對話 ↓",
+      "capabilities": "我可以幫你找素材、寫文章和劇本、在 Canvas 上搭生成流程、修改 Document",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
-        "writePrompt": "幫我寫一個生成插畫的提示詞",
-        "refinePrompt": "幫我把這段提示詞改得更具體"
+        "writeScript": "幫我寫一個三分鐘短片的劇本",
+        "buildWorkflow": "幫我在 Canvas 上搭一個生成角色三視圖的流程",
+        "annotateDocument": "幫我給 Document 提修改意見",
+        "writePrompt": "幫我寫一個生成插畫的提示詞"
       }
     },
     "history": {
@@ -335,7 +360,8 @@
     },
     "error": {
       "network": "網路錯誤",
-      "turnFailed": "這則回覆沒能完成，可以再發一次。"
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "turnTooLong": "這次要處理的內容太多，沒能完成。可以縮小範圍再試。"
     },
     "message": {
       "interrupted": "已停止",
@@ -348,22 +374,60 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "執行錯誤",
-        "unreachable": "執行錯誤",
-        "generic": "執行錯誤"
+        "busy": "服務出錯了，稍後可以再試",
+        "noConnection": "連不上服務，稍後可以再試",
+        "refused": "服務沒有接受這次請求",
+        "unavailable": "這項功能暫時無法使用",
+        "badAnswer": "服務回傳的內容無法使用",
+        "linkUnreachable": "這個網址打不開，可以換一個連結",
+        "fileTooLarge": "檔案太大",
+        "unsupportedType": "不支援這種檔案格式",
+        "emptyFile": "檔案是空的",
+        "tooSlow": "檔案下載太慢，沒能下完",
+        "storageFull": "Studio 的儲存空間已滿",
+        "noPermission": "你在這個 Project 裡沒有編輯權限",
+        "notMember": "你已經不是這個 Project 的成員",
+        "tooFrequent": "剛才取的連結太多，等一分鐘再試",
+        "declined": "服務拒絕處理這項內容",
+        "ourFault": "伺服器出了問題，可以再試一次"
       },
+      "failedLine": "{step}沒有完成：{reason}",
+      "failedStep": "{step}沒有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
-      "checkingCanvas": "正在查畫布能做什麼",
+      "checkingCanvas": "正在查 Canvas 能做什麼",
       "proposingNodes": "正在擬一份提議",
       "proposingDocumentEdit": "正在擬一份修改提議",
       "savingImage": "正在儲存圖片",
       "checkingModels": "正在查可用的模型",
       "readingGuide": "正在查產品怎麼用",
+      "readingTemplate": "正在讀範本",
       "understanding": "正在檢視媒體",
       "judging": "正在權衡",
-      "running": "正在呼叫 {tool}"
+      "searchingConversations": "正在查找你的對話",
+      "readingConversation": "正在讀對話紀錄",
+      "readingNodeHistory": "正在查節點的歷史",
+      "readingActivity": "正在查 Project 活動",
+      "running": "正在呼叫 {tool}",
+      "step": {
+        "webSearch": "搜尋「{query}」",
+        "searchImages": "找「{query}」的圖片",
+        "understandMedia": "檢視媒體",
+        "saveImage": "儲存圖片",
+        "judge": "權衡",
+        "proposeCanvas": "擬提議",
+        "proposeDocument": "擬修改提議",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什麼",
+        "productGuide": "查產品怎麼用",
+        "searchConversations": "查找你的對話",
+        "readConversation": "讀對話紀錄",
+        "readNodeHistory": "查節點的歷史",
+        "readActivity": "查 Project 活動",
+        "other": "呼叫 {tool}",
+        "readTemplate": "讀範本"
+      }
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -409,7 +473,7 @@
       "building": "正在建…",
       "failed": "沒建成，可以再試一次。",
       "expired": "這張提議已過期，請讓 Agent 重新提議。",
-      "needCanvas": "先開啟一個畫布。",
+      "needCanvas": "先開啟一個 Canvas。",
       "promptReady": "提示詞已寫好，右鍵節點選「生成」，在開啟的生成面板裡查看",
       "settingsReady": "設定已配好，右鍵節點選「生成」，在開啟的生成面板裡查看"
     },
@@ -441,9 +505,22 @@
     "thinkingNow": "思考中",
     "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
     "attachment": {
-      "kind": "{kind, select, canvas {畫布} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
+      "kind": "{kind, select, canvas {Canvas} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
       "nodes": "{count} 個節點",
       "more": "還有 {count} 個"
+    },
+    "questionnaire": {
+      "submit": "提交",
+      "hint": "以上都不認可時，可以直接在輸入框回覆",
+      "other": "其他，自己寫…",
+      "ownWords": "寫下你的回答…",
+      "multi": "可多選",
+      "skipped": "略過",
+      "yourAnswers": "你的回答",
+      "replied": "你已在對話中回覆",
+      "show": "展開",
+      "hide": "收起",
+      "atLeastOne": "至少回答一題"
     }
   },
   "canvas": {
@@ -469,8 +546,8 @@
       "nodeAudio": "音訊"
     },
     "emptyState": {
-      "title": "畫布是空的",
-      "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
+      "title": "Canvas 是空的",
+      "hint": "拖入素材到 Canvas,或從左側選單選擇節點類型建立"
     },
     "nodePlaceholder": {
       "text": "雙擊書寫",
@@ -479,7 +556,12 @@
       "audio": "雙擊上傳",
       "3d": "雙擊上傳 3D 模型",
       "web": "雙擊嵌入網址",
-      "rightClickHint": "右鍵可生成等更多"
+      "rightClickHint": "右鍵可生成等更多",
+      "peer": {
+        "upload": "{name} 正在上傳",
+        "readText": "{name} 正在讀取檔案",
+        "tool": "{name} 正在使用{tool}"
+      }
     },
     "textNode": {
       "editorPlaceholder": "開始寫作"
@@ -518,12 +600,20 @@
       "couldNotStart": "沒能開始，可以重試。",
       "sourceGone": "被讀取的節點已不存在。這次理解沒有連線。"
     },
+    "transcribe": {
+      "title": "轉寫",
+      "keepFillers": "保留口頭禪",
+      "keepFillersOn": "「嗯」「呃」「um」這類詞照說的寫",
+      "keepFillersOff": "去掉「嗯」「呃」「um」這類詞，偶爾會順帶改動個別字",
+      "couldNotStart": "轉寫沒能開始，可以重試。",
+      "sourceGone": "被轉寫的節點已不存在。這次轉寫沒有連線。"
+    },
     "generatePanel": {
       "focus": "聚焦",
       "reference": "參考",
       "focusTip": "取節點上的一塊區域作為參考",
-      "referenceTip": "從畫布選圖作為參考",
-      "referenceTipAudio": "從畫布選文字作為參考",
+      "referenceTip": "從 Canvas 選圖作為參考",
+      "referenceTipAudio": "從 Canvas 選文字作為參考",
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",
@@ -552,12 +642,12 @@
       "voiceVolume": "音量",
       "sfxDuration": "時長",
       "sfxDurationSeconds": "{n} 秒",
-      "selectFromCanvas": "從畫布選擇參考",
-      "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
-      "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
-      "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
-      "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
-      "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
+      "selectFromCanvas": "從 Canvas 選擇參考",
+      "selectFirstFrameFromCanvas": "在 Canvas 上選一張圖片作為首幀",
+      "selectEndFrameFromCanvas": "在 Canvas 上選一張圖片作為尾幀",
+      "selectCharacterImageFromCanvas": "在 Canvas 上選一張圖片作為角色",
+      "selectDrivingVideoFromCanvas": "在 Canvas 上選一段影片來驅動動作",
+      "selectDrivingAudioFromCanvas": "在 Canvas 上選一段音訊，口型跟著它動",
       "exitSelect": "退出",
       "locateSource": "定位到來源節點",
       "camera": "攝影機",
@@ -573,6 +663,7 @@
       "errorCredits": "點數不足，無法生成。",
       "errorUnavailable": "生成服務暫時無法使用，請稍後重試。",
       "errorFailed": "生成啟動失敗，請重試。",
+      "errorTooLargeNoLimit": "請求內容過大，請縮短提示詞或減少引用的文字。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "errorTooManyReferences": "此模型最多接受 {limit} {kind, select, video {段參考影片} audio {段參考音訊} other {張參考圖}} —— 移除一些再生成。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
@@ -628,17 +719,17 @@
       "sourceVideoTip": "挑一段影片",
       "removeSourceVideo": "移除影片",
       "errorNoSourceVideo": "先挑一段影片",
-      "selectSourceVideoFromCanvas": "在畫布上選一段影片",
+      "selectSourceVideoFromCanvas": "在 Canvas 上選一段影片",
       "leftAudio": "左側音訊",
       "leftAudioTip": "挑左邊那個人的音訊",
       "removeLeftAudio": "移除左側音訊",
       "errorNoLeftAudio": "先挑左側音訊",
-      "selectLeftAudioFromCanvas": "在畫布上選左邊那個人的音訊",
+      "selectLeftAudioFromCanvas": "在 Canvas 上選左邊那個人的音訊",
       "rightAudio": "右側音訊",
       "rightAudioTip": "挑右邊那個人的音訊",
       "removeRightAudio": "移除右側音訊",
       "errorNoRightAudio": "先挑右側音訊",
-      "selectRightAudioFromCanvas": "在畫布上選右邊那個人的音訊",
+      "selectRightAudioFromCanvas": "在 Canvas 上選右邊那個人的音訊",
       "drivingAudio": "驅動音訊",
       "drivingVideoTip": "挑一段影片，它的動作會被套到角色上",
       "drivingAudioTip": "挑一段音訊，口型會跟著它動",
@@ -730,7 +821,14 @@
         "motion_prompt": "動作描述",
         "append_duration": "延長時長",
         "ambience": "環境音",
-        "double_output": "生成兩版"
+        "double_output": "生成兩版",
+        "light_azimuth": "光源方向",
+        "light_elevation": "光源高度",
+        "light_color": "光的顏色",
+        "light_color_hex": "自訂光色",
+        "light_intensity": "強度",
+        "light_quality": "光質",
+        "strength": "強度"
       },
       "paramField": {
         "speaker": "名字",
@@ -751,8 +849,8 @@
       "refuseStoryboardShotTooLong": "鏡頭 {shot, number} 超過 {limit, number} 字上限",
       "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒",
       "style": "風格",
-      "styleTip": "從畫布選最多 3 張圖作為風格參考",
-      "selectStyleFromCanvas": "從畫布選擇風格參考",
+      "styleTip": "從 Canvas 選最多 3 張圖作為風格參考",
+      "selectStyleFromCanvas": "從 Canvas 選擇風格參考",
       "removeStyle": "移除風格參考",
       "errorNoStyleImage": "先挑一張風格圖",
       "cameraCommands": "運鏡",
@@ -772,7 +870,6 @@
         "reset": "重設",
         "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用"
       },
-      "editMarks": "請替換中括號和大括號裡的內容。橘色的注意事項不會傳給模型。",
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項："
     },
@@ -786,7 +883,8 @@
       "history": "歷史記錄",
       "snapshot": "儲存快照",
       "download": "下載",
-      "understand": "理解"
+      "understand": "理解",
+      "transcribe": "轉寫"
     },
     "edge": {
       "delete": "刪除連線"
@@ -809,7 +907,7 @@
       "failed": "貼上失敗。"
     },
     "minimap": {
-      "label": "畫布縮略圖"
+      "label": "Canvas 縮略圖"
     },
     "connection": {
       "rejected": "{source}無法接入{target}",
@@ -899,25 +997,28 @@
       "failure": {
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限。} other {這個檔案超過了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}）。} other {這個檔案超過了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}，{bytes}）。} other {這個檔案超過了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的檔案類型。} other {不能理解的檔案類型（{type}）。}}} other {{type, select, none {不能理解的檔案類型（{file}）。} other {不能理解的檔案類型（{file}，{type}）。}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {這個檔案超過了轉寫的大小上限。} other {這個檔案超過了轉寫的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {這個檔案超過了轉寫的大小上限（{file}）。} other {這個檔案超過了轉寫的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {這個檔案超過了轉寫的大小上限（{file}，{bytes}）。} other {這個檔案超過了轉寫的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}} other {{file, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限。} other {這個檔案超過了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}）。} other {這個檔案超過了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}，{bytes}）。} other {這個檔案超過了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {不能轉寫的檔案類型。} other {不能轉寫的檔案類型（{type}）。}}} other {{type, select, none {不能轉寫的檔案類型（{file}）。} other {不能轉寫的檔案類型（{file}，{type}）。}}}}} other {{file, select, none {{type, select, none {不能理解的檔案類型。} other {不能理解的檔案類型（{type}）。}}} other {{type, select, none {不能理解的檔案類型（{file}）。} other {不能理解的檔案類型（{file}，{type}）。}}}}}}",
         "expired": "它逾時了。",
         "no_result": "這次執行沒有產出內容。",
         "source_unreachable": "這個網址打不開。",
         "source_cut_off": "這個網址的內容沒傳完就斷了。",
         "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
-        "internal": "我們這邊出錯了。",
-        "no_credits": "沒有可用積分。",
+        "internal": "伺服器內部錯誤。",
+        "no_credits": "沒有可用點數。",
+        "credits_held": "點數正被進行中的任務凍結。",
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
-        "no_audio_track": "這個影片沒有音軌。"
+        "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}",
+        "cut_short": "內容太長，沒能轉寫完。"
       },
       "kind": {
         "upload": "上傳",
         "generate": "生成",
-        "understand": "理解"
+        "understand": "理解",
+        "transcribe": "轉寫"
       }
     },
     "panel": {
@@ -954,6 +1055,42 @@
         },
         "rotate": {
           "label": "旋轉/翻轉"
+        },
+        "grid": {
+          "label": "宮格切圖"
+        },
+        "adjust": {
+          "label": "調色"
+        },
+        "expand": {
+          "label": "外擴",
+          "prompt": "寫下要補畫什麼，留空就依圖片內容自然外擴"
+        },
+        "mark": {
+          "label": "備註"
+        },
+        "angle": {
+          "label": "多角度",
+          "prompt": "想補充的可以寫在這裡，例如：背景保持清晰"
+        },
+        "relight": {
+          "label": "重新打光",
+          "prompt": "想補充光照的可以寫在這裡，例如：燭光、身後有霓虹燈招牌",
+          "slot": {
+            "light_reference": "選一張圖，照它的光照來打光"
+          }
+        },
+        "restyle": {
+          "label": "風格化",
+          "prompt": "想補充的可以寫在這裡，例如：顏色柔和一些",
+          "slotTitle": "風格圖",
+          "slot": {
+            "style": "選最多三張圖，照它們的風格來畫"
+          }
+        },
+        "quickEdit": {
+          "label": "快速編輯",
+          "prompt": "寫下要改什麼，例如：改成下雨的夜晚、把襯衫換成黑夾克"
         }
       },
       "video": {
@@ -1018,6 +1155,40 @@
         "extend": {
           "label": "延長",
           "prompt": "描述要接上的聲音"
+        },
+        "denoise": {
+          "label": "降噪"
+        },
+        "normalize": {
+          "label": "響度標準化",
+          "note": "峰值上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "變速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "eq": {
+          "label": "等化"
+        },
+        "compress": {
+          "label": "壓縮"
+        },
+        "pan": {
+          "label": "聲像"
+        },
+        "reverb": {
+          "label": "殘響"
+        },
+        "voice": {
+          "label": "人聲增強"
+        },
+        "pitch": {
+          "label": "變調"
+        },
+        "enhance": {
+          "label": "增強"
         }
       },
       "param": {
@@ -1050,6 +1221,42 @@
         },
         "transfer": {
           "label": "傳輸特性"
+        },
+        "rows": {
+          "label": "列數"
+        },
+        "cols": {
+          "label": "欄數"
+        },
+        "target": {
+          "label": "目標響度"
+        },
+        "keepPitch": {
+          "label": "保持音調"
+        },
+        "eq": {
+          "label": "預設"
+        },
+        "dynamics": {
+          "label": "預設"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "寬度"
+        },
+        "room": {
+          "label": "空間"
+        },
+        "amount": {
+          "label": "殘響量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "音分"
         }
       },
       "panel": {
@@ -1068,7 +1275,13 @@
         "sourceChanged": "素材已更換。",
         "sourceChangedByPeer": "協作者更換了素材。",
         "couldNotStart": "工具沒能啟動，請重試。",
-        "drawingEmpty": "請先在圖上畫。"
+        "drawingEmpty": "請先在圖上畫。",
+        "reset": "重設",
+        "imageTooLarge": "這張圖片太大，這台裝置上無法調色。",
+        "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。",
+        "ratioTooLarge": "超出外擴能做的最大尺寸",
+        "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
+        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1087,6 +1300,12 @@
         "grain": "顆粒",
         "fade": "褪色"
       },
+      "adjustGroup": {
+        "light": "光線",
+        "color": "顏色",
+        "detail": "細節",
+        "effects": "效果"
+      },
       "draw": {
         "brush": "畫筆",
         "rect": "矩形",
@@ -1098,22 +1317,150 @@
         "undo": "復原",
         "redo": "重做",
         "clear": "清除"
+      },
+      "mark": {
+        "select": "選取",
+        "arrow": "箭頭",
+        "rect": "矩形",
+        "ellipse": "橢圓",
+        "line": "直線",
+        "pen": "畫筆",
+        "text": "文字"
+      },
+      "grid": {
+        "picked": "已選 {picked} / {total}",
+        "pickAll": "全選",
+        "pickNone": "全不選"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "光照參考圖",
+        "optional": "選填",
+        "followsReference": "光照跟隨這張圖",
+        "referenceNote": "光照取自這張圖。右側的顏色、強度、光質會覆蓋它。",
+        "fromReference": "跟隨參考圖",
+        "sourceFromReference": "跟隨參考圖"
+      },
+      "dynamics": {
+        "threshold": "閾值",
+        "ratio": "比率",
+        "attack": "啟動",
+        "release": "釋放",
+        "makeup": "補償增益"
       }
     },
     "template": {
       "title": "範本",
       "empty": "暫無範本",
       "unavailable": "目前無法使用",
+      "goal": {
+        "character": "角色設定與一致性",
+        "comics-storyboards": "漫畫與分鏡"
+      },
       "storyboard-grid-25": {
         "name": "25 宮格時序圖",
         "description": "一張 5×5 的連續畫面，用來生成影片",
-        "prompt": "以 [📎 角色或場景參考圖] 為參考，生成一張圖：正好 5 行 5 列、共 25 格的時序分鏡圖，格子之間用細白線隔開，從左到右、從上到下按時間順序連續發生。故事：{✏️ 故事內容}。每一格的人物、服裝、場景和光線都與參考圖一致。景別和機位逐格變化，像電影分鏡。不出現文字和編號。"
+        "prompt": "以 [📎 角色或場景] 為參考，生成一張圖：正好 5 行 5 列、共 25 格的時序分鏡圖，格子之間用細白線隔開，從左到右、從上到下按時間順序連續發生。故事：{✏️ 故事內容}。每一格的人物、服裝、場景和光線都與參考圖一致。景別和機位逐格變化，像電影分鏡。不出現文字和編號。",
+        "input": {
+          "reference": {
+            "name": "角色或場景",
+            "note": "先放入角色或場景參考圖，再生成"
+          }
+        }
       },
       "costume-sheet": {
         "name": "三視圖定妝照",
         "description": "正面、側面、背面三視圖，加局部特寫",
-        "prompt": "以 [📎 角色參考圖] 為角色參考，生成一張圖：淺灰純色背景的角色定妝照。左邊是同一角色的正面、側面、背面全身三視圖，並排站立；右邊是{✏️ 手部或身體某個部位}的局部特寫小圖。與參考圖同樣的寫實攝影風格，不是插畫。每一個視圖裡，臉、髮型、服裝、顏色和身材比例都與參考圖一致。均勻的棚拍光線。不出現文字。"
-      }
+        "prompt": "以 [📎 角色] 為角色參考，生成一張圖：淺灰純色背景的角色定妝照。左邊是同一角色的正面、側面、背面全身三視圖，並排站立；右邊是{✏️ 手部或身體某個部位}的局部特寫小圖。與參考圖同樣的寫實攝影風格，不是插畫。每一個視圖裡，臉、髮型、服裝、顏色和身材比例都與參考圖一致。均勻的棚拍光線。不出現文字。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "character-bible": {
+        "name": "角色設定卡",
+        "description": "一個角色的視圖、表情、姿勢和細節",
+        "prompt": "以 [📎 角色] 為唯一的角色參考，不要創造新角色。生成一張圖：只畫這一個角色的角色設定卡，淺灰純色背景。正面、四分之三側面、側面、背面四個全身主視圖佔最大面積。周圍依序排列：頭髮、皮膚和服裝的色票；黑色剪影；8 種表情；5 種微表情；4 個頭部角度；3 種姿勢；一張強烈情緒的胸像；服裝細節特寫；手勢。每個小圖都與主視圖同一畫風，臉、髮型、服裝、顏色和身材比例都與參考圖一致。畫風：{✏️ 與參考圖相同的畫風}。均勻的棚拍光線。不出現文字和標註。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "expression-sheet": {
+        "name": "表情設定",
+        "description": "同一張臉的表情、微表情和頭部角度",
+        "prompt": "以 [📎 角色] 為角色參考，生成一張圖：這個角色的表情設定圖，淺灰純色背景，每格都是頭肩。第一行 8 種表情：平靜、微笑、大笑、悲傷、憤怒、驚訝、害怕、厭惡。第二行 5 種微表情：忍住的笑、懷疑、輕蔑、強忍淚水、尷尬。第三行是平靜的臉的 4 個頭部角度：正面、四分之三側面、側臉、低頭。每格的臉、髮型、膚色和光線都相同，與參考圖一致。畫風：{✏️ 與參考圖相同的畫風}。不出現文字和標註。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "character-design-from-text": {
+        "name": "從描述設計角色",
+        "description": "先依文字設計角色，再出完整設定卡",
+        "prompt": "(💡 先生成角色設計)以 [📎 角色設計] 為唯一的角色參考，不要創造新角色。生成一張圖：只畫這一個角色的角色設定卡，淺灰純色背景。正面、四分之三側面、側面、背面四個全身主視圖佔最大面積。周圍依序排列：頭髮、皮膚和服裝的色票；黑色剪影；8 種表情；5 種微表情；4 個頭部角度；3 種姿勢；一張強烈情緒的胸像；服裝細節特寫；手勢。主視圖和每個小圖都保持參考圖的渲染方式：3D 渲染就畫成 3D，手繪就畫成手繪；臉、髮型、服裝、顏色和身材比例都一致。均勻的棚拍光線。不出現文字和標註。",
+        "node": {
+          "design": {
+            "name": "角色設計",
+            "prompt": "{✏️ 角色是誰：年齡、體型、臉、髮型、服裝、顏色}的全身角色設計圖，畫風為{✏️ 一種畫風，例如 3D 卡通、日式動畫或寫實}。面向鏡頭的中性站姿，雙臂自然下垂，從頭到腳完整入畫，淺灰純色背景。均勻的棚拍光線。不出現文字。"
+          }
+        }
+      },
+      "single-view-refs-scene": {
+        "name": "角色入場景影片",
+        "description": "用正面、側面、背面三張圖讓同一個人演完一段影片",
+        "prompt": "(💡 先生成正面)(💡 先生成側面)(💡 先生成背面)影片裡的人是 [📎 角色]；[📎 正面]、[📎 側面]、[📎 背面] 是同一個人的正面、側面和背面。只從這些圖裡取臉、髮型、身形和整套服裝，不取背景、姿勢和光線。地點：{✏️ 發生在哪裡}。一個連續鏡頭裡，{✏️ 這個人做的一件事}。運鏡：{✏️ 一個有起點、方向和終點的運鏡，例如從人物背後的遠景推到臉部特寫}。第一格就是成品畫面，而且已經在動。全程一個光源。聲音：現場環境音和人物的腳步聲，沒有音樂，沒有說話。畫面裡不出現文字。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色照片，再生成正面、側面、背面"
+          }
+        },
+        "node": {
+          "front": {
+            "name": "正面",
+            "prompt": "以 [📎 角色] 為角色參考。從正面看同一個人，全身，站直，淺灰純色背景，均勻的棚拍光線。只保留參考圖裡的臉、髮型、身形和整套服裝，不保留它的背景、姿勢和光線。"
+          },
+          "side": {
+            "name": "側面",
+            "prompt": "以 [📎 角色] 為角色參考。從側面看同一個人，全身，站直，淺灰純色背景，均勻的棚拍光線。只保留參考圖裡的臉、髮型、身形和整套服裝，不保留它的背景、姿勢和光線。"
+          },
+          "back": {
+            "name": "背面",
+            "prompt": "以 [📎 角色] 為角色參考。從背後看同一個人，全身，站直，淺灰純色背景，均勻的棚拍光線。只保留參考圖裡的臉、髮型、身形和整套服裝，不保留它的背景、姿勢和光線。"
+          }
+        }
+      },
+      "identity-locked-sequence": {
+        "name": "同一角色三個鏡頭",
+        "description": "同一個角色連續的三個鏡頭",
+        "prompt": "[📎 角色] 是唯一的角色，每個鏡頭裡都是同一個人。0–3 秒：這個角色，{✏️ 4 個特徵，例如黑色短髮、圓框眼鏡、紅圍巾、灰色呢大衣}，{✏️ 在哪裡做什麼}。3–6 秒：這個角色，{✏️ 同樣的 4 個特徵}，{✏️ 接著做什麼}。6–8 秒：這個角色，{✏️ 同樣的 4 個特徵}，{✏️ 怎麼結束}。臉不變，服裝的類別和主色不變。每個鏡頭一個運鏡，都有終點。畫面裡不出現文字。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "character-showcase-orbit": {
+        "name": "角色環繞展示",
+        "description": "鏡頭繞著角色轉，展示造型",
+        "prompt": "[📎 角色] 站在{✏️ 純色攝影棚或某個地點}的中間，姿態放鬆，雙臂自然下垂，原地不動。鏡頭從角色正面、胸口高度開始，環繞 180 度移到角色背後結束，全程高度和距離不變。角色不跟著鏡頭轉身，也不離開原地，只有鏡頭在動。鏡頭環繞時背景有明顯的視差。柔和的側光。畫面裡不出現文字。",
+        "input": {
+          "reference": {
+            "name": "角色",
+            "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "applyFailed": "模板套用失敗。",
+      "groupLocked": "群組已鎖定，解鎖後才能放入新節點。"
     },
     "promptMark": {
       "reference": "請用 @ 選擇 {label}"
@@ -1156,7 +1503,10 @@
         "resendIn": "{seconds} 秒後可重新傳送",
         "changeEmail": "換一個電子郵件",
         "newCodeSent": "新驗證碼已傳送。"
-      }
+      },
+      "invitedBanner": "{inviterName} 邀請你加入 {targetName}",
+      "invitedEmailMismatch": "邀請已寄給 {email}，使用其他信箱註冊不會收到這份邀請。",
+      "inviteClosed": "這份邀請已失效。"
     },
     "onboarding": {
       "title": "選擇你的 Slug",
@@ -1209,7 +1559,7 @@
     "terms": {
       "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
       "termsLink": "使用條款",
-      "privacyLink": "隱私權政策"
+      "privacyLink": "隱私政策"
     }
   },
   "roleTag": {
@@ -1238,7 +1588,11 @@
       "title": "有未完成的操作,確定離開?",
       "description": "上傳或編輯還沒同步完,現在離開可能遺失。",
       "stay": "留下",
-      "leave": "仍然離開"
+      "leave": "仍然離開",
+      "unsyncedDescription": "部分修改尚未同步，現在重新整理或離開可能遺失這些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上傳或編輯操作正在進行。現在重新整理或離開可能遺失這些工作。",
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以繼續"
     },
     "header": {
       "renameFailed": "重新命名 Project 失敗"
@@ -1252,7 +1606,11 @@
         "create": "Space 建立失敗",
         "restore": "Space 還原失敗",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
-        "notSynced": "Project 正在同步,請稍後再試"
+        "notSynced": "Project 正在同步,請稍後再試",
+        "limit": "已達 {max} 個 Space 上限",
+        "busy": "其他成員正在操作，請稍後再試",
+        "alreadyRestored": "這個 Space 已經還原了",
+        "gone": "這個 Space 已被刪除"
       },
       "loading": {
         "create": "正在建立 Space…"
@@ -1264,7 +1622,7 @@
       "title": "有新版本可用",
       "description": "新版本已上線，重新整理後即可使用。",
       "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
-      "later": "稍後",
+      "later": "稍後更新",
       "refresh": "更新"
     },
     "archived": {
@@ -1278,6 +1636,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失敗"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要重新整理嗎？",
+      "refresh": "仍然重新整理",
+      "failed": "重新整理失敗，請重試。"
     }
   },
   "common": {
@@ -1357,13 +1720,15 @@
         "deleteConfirmDescription": "此 Space 及其內容將被軟刪除。Owner 可從 Project 訊息頻道還原。",
         "lockFail": "鎖定失敗",
         "unlockFail": "解鎖失敗",
-        "operationFail": "操作失敗",
         "deleteFail": "刪除失敗"
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "在三維場景中佈置與協作",
       "canvas": "Canvas",
-      "canvasSub": "無限畫布 + 節點",
+      "canvasSub": "無限 Canvas + 節點",
       "document": "Document",
       "documentSub": "富文本 + 協作",
       "timeline": "Timeline",
@@ -1393,10 +1758,10 @@
     "document": {
       "loading": "正在載入編輯器…",
       "unavailable": {
-        "text": "這個文件開不了。它可能已被刪除，或者你已經沒有存取權限了。",
+        "text": "這個 Document 開不了。它可能已被刪除，或者你已經沒有存取權限了。",
         "action": "重試"
       },
-      "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
+      "refusedNotice": "與這個 Document 的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
       "clearConfirm": {
         "title": "刪除全部內容？",
@@ -1456,7 +1821,7 @@
         "filterOpen": "未解決",
         "filterAll": "全部",
         "closeRail": "關閉批註欄",
-        "empty": "這份文件還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
+        "empty": "這個 Document 還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
         "nothingUnresolved": "沒有未解決的批註。",
         "writeFailed": "這次改動沒能儲存。",
         "unknownAuthor": "未知",
@@ -1471,7 +1836,7 @@
         "deleteReply": "刪除這條回覆"
       },
       "schemaOutdated": {
-        "headline": "文件編輯器已更新",
+        "headline": "Document 編輯器已更新",
         "body": "這個頁面用的還是舊版本，繼續編輯會破壞別人寫的內容。",
         "published": "新版本發布於{when}。",
         "risksLead": "重新整理前請留意：",
@@ -1479,7 +1844,7 @@
         "action": "重新整理頁面"
       },
       "docMenu": {
-        "label": "整篇文件的命令",
+        "label": "整個 Document 的命令",
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
         "notOpenYet": "未開放",
@@ -1531,11 +1896,6 @@
         "uploadingPercent": "上傳中 {percent}%",
         "retry": "重試",
         "remove": "移除",
-        "notFinished": "上傳沒有完成",
-        "pendingExport": "{name}（尚未上傳完成）",
-        "uploadFailed": "上傳失敗",
-        "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
-        "notWrittenYet": "已上傳，還沒寫進正文",
         "caption": "說明",
         "captionPlaceholder": "新增說明",
         "fullscreen": "全螢幕檢視",
@@ -1543,17 +1903,75 @@
         "download": "下載",
         "delete": "刪除",
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",
+        "captionReadOnly": "目前為唯讀，可複製這份草稿。",
+        "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
+        "notFinished": "上傳沒有完成",
+        "pendingExport": "{name}（尚未上傳完成）",
+        "uploadFailed": "上傳失敗",
+        "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
+        "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。"
       }
     },
-    "readOnlyReconnect": "重新連線"
+    "readOnlyReconnect": "重新連線",
+    "threeD": {
+      "loading": "正在載入場景…",
+      "loadFailed": "場景載入失敗。",
+      "reload": "重新載入頁面",
+      "valueFailed": "未能套用這個值。",
+      "figure": "人物",
+      "box": "場景方塊",
+      "move": "移動",
+      "rotate": "旋轉",
+      "scale": "縮放",
+      "focus": "定位選取物件",
+      "duplicate": "建立副本",
+      "delete": "刪除",
+      "undo": "復原",
+      "redo": "重做",
+      "objects": "物件",
+      "properties": "屬性",
+      "addFigure": "新增人物",
+      "addBox": "新增方塊",
+      "position": "位置（公尺）",
+      "rotation": "旋轉（度）",
+      "name": "名稱",
+      "lock": "鎖定",
+      "unlock": "解鎖",
+      "selectedCount": "已選取 {count} 個物件",
+      "multiTransform": "使用場景中的控制柄，圍繞選取集合的中心調整變換。",
+      "mixed": "混合值",
+      "selectObject": "選取物件以編輯屬性。",
+      "refused": "與此場景的連線被拒絕了，變更不會被儲存。",
+      "retry": "重試",
+      "viewFailed": "個人視角未能儲存。",
+      "commandFailed": "未能執行操作，請檢查選取物件、鎖定狀態及編輯權限。",
+      "invalidObject": "無法讀取的物件：{id}",
+      "empty": "新增人物或方塊，開始佈置場景。",
+      "unsupported": "此場景使用目前頁面不支援的格式，請重新載入頁面。",
+      "modelFailed": "模型載入失敗。",
+      "peerSelection": "{name}：選取 {count} 個物件",
+      "add": "新增",
+      "generate": "AI 生成",
+      "annotationsLater": "批註（稍後提供）",
+      "help": "說明",
+      "tasks": "生成任務",
+      "minimap": "場景小地圖",
+      "generationDev": "3D 模型生成正在開發中",
+      "prompt": "描述你想生成的 3D 模型",
+      "reference": "參考圖（選填）",
+      "chooseReference": "選擇參考圖",
+      "submit": "生成",
+      "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
+      "closePanel": "關閉"
+    }
   },
   "menu": {
     "createAria": "建立選單",
     "item": {
       "nodes": "節點庫",
       "upload": "上傳素材(多檔案混合)",
-      "comment": "在畫布加註解",
+      "comment": "在 Canvas 加註解",
       "collection": "Collection(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
@@ -1598,7 +2016,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} 尚未註冊，已寄出郵件邀請對方註冊。",
+    "awaitingSignup": "等待註冊",
+    "pendingTitle": "邀請中",
+    "pendingBadge": "{role} · 待確認",
+    "revoke": "撤銷",
+    "revokeSuccess": "邀請已撤銷。",
+    "revokeFailed": "無法撤銷邀請，請重試。"
   },
   "notifications": {
     "title": "通知",
@@ -1687,6 +2112,11 @@
       "home": "Studio 首頁",
       "account": "帳號",
       "signOut": "登出",
+      "logoutOthers": "登出其他裝置",
+      "logoutOthersTitle": "登出其他裝置？",
+      "logoutOthersBody": "這台裝置保持登入。其他裝置上的登入都會失效，那裡開著的 Canvas 和 Document 會立即中斷。",
+      "logoutOthersDone": "已登出其他裝置",
+      "logoutOthersFailed": "登出其他裝置失敗，請重試。",
       "credits": "點數",
       "creditsUnavailable": "目前無法取得",
       "membership": "會員",
@@ -1762,7 +2192,7 @@
         "new": "新增 Project",
         "createError": "建立 Project 失敗",
         "emptyTitle": "還沒有 Projects",
-        "emptyHint": "Project 是你在無限畫布上創作的地方。建立第一個 Project,開始你的創作。"
+        "emptyHint": "Project 是你在無限 Canvas 上創作的地方。建立第一個 Project,開始你的創作。"
       },
       "collections": {
         "new": "新增 Collection",
@@ -1775,9 +2205,12 @@
         "spendableHint": "在這個 Studio 的 Project 裡生成，花的都是這裡的點數。",
         "noneHint": "還沒有點數指定給這個 Studio。",
         "nonePrompt": "買來的點數需要先指定給一個 Studio 才能使用。到帳號點數裡指定。",
-        "lotsTitle": "點數明細",
+        "lotsTitle": "點數包明細",
         "lotsDebt": "欠帳",
         "lotsTotal": "合計",
+        "lotsHeld": "進行中凍結",
+        "lotsHeldNote": "任務結束後按實際花費扣除，多出的部分會退回",
+        "heldHint": "點數都被進行中的任務凍結，直到任務結束。",
         "depletedHint": "這個 Studio 的點數已經用完。",
         "debtHint": "新指定進來的點數會先抵掉欠帳。",
         "depletedPrompt": "到帳號點數裡指定新的點數。",
@@ -1829,7 +2262,9 @@
         "pendingBadge": "{role} · 待確認",
         "revoke": "撤銷",
         "revokeSuccess": "已撤銷邀請。",
-        "inviteSent": "邀請已送出。"
+        "inviteSent": "邀請已送出。",
+        "inviteSentPendingSignup": "{email} 尚未註冊，已寄出郵件邀請對方註冊。",
+        "awaitingSignup": "等待註冊"
       },
       "settings": {
         "basicTitle": "基本資訊",
@@ -1895,10 +2330,9 @@
         "nameLabel": "名稱",
         "namePlaceholder": "我的 Project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project 網址的一部分，會出現在瀏覽器網址列。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
-        "slugHelperCollection": "Collection 網址的一部分，會出現在瀏覽器網址列。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
-        "descriptionLabel": "簡介(選填)",
+        "slugPlaceholder": "不填會依名稱自動產生",
+        "slugHelperProject": "Project 網址的一部分，不填會依名稱自動產生。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
+        "slugHelperCollection": "Collection 網址的一部分，不填會依名稱自動產生。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
         "create": "建立",
         "cancel": "取消",
         "slugFormat": "要以小寫字母開頭，只能使用小寫字母、數字和連字號，連字號不能連用或放在結尾。",
@@ -1911,8 +2345,13 @@
         "namePlaceholderStudio": "我的 Studio",
         "namePlaceholderCollection": "我的 Collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "Studio 網址的一部分（/studio/…）。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。"
+        "slugPlaceholderCollection": "不填會依名稱自動產生",
+        "slugHelperStudio": "Studio 網址的一部分（/studio/…）。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
+        "nameRequired": "請填寫名稱。",
+        "slugRequired": "請填寫 Slug。",
+        "emailRequired": "請填寫電子郵件。",
+        "slugUnverified": "暫時無法檢查，送出時由伺服器判斷。",
+        "slugLabelOptional": "Slug（選填）"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -2098,6 +2537,8 @@
     "declinedBody": "這裡沒有別的事要做了。",
     "expiredTitle": "這個請求已經結束",
     "expiredBody": "它不能再被答覆了。",
+    "invalidatedTitle": "這個請求已不再適用",
+    "invalidatedBody": "它不能再被答覆了。",
     "revokedTitle": "這個請求已被撤回",
     "revokedBody": "發起人把它收回去了。",
     "goneTitle": "相關內容已不存在",
@@ -2137,7 +2578,7 @@
       "projectsPerStudio": "每個 Studio 可建 Project",
       "studioMembers": "每個 Studio 成員上限",
       "projectMembers": "每個 Project 成員上限",
-      "concurrentEditors": "每份文件同時可編輯"
+      "concurrentEditors": "每個 Document 同時可編輯"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 個",
@@ -2179,7 +2620,7 @@
       "month": "月付",
       "year": "年付"
     },
-    "saveTwoMonths": "十二個月，按十個月的價",
+    "saveTwoMonths": "省兩個月",
     "yearSaving": "年付約省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2191,7 +2632,7 @@
     "card": {
       "storage": "{value} 儲存",
       "teamStudios": "{count, plural, =0 {不含團隊 Studio} other {# 個團隊 Studio}}",
-      "connections": "{count, plural, other {每份文件 # 條連線}}",
+      "connections": "{count, plural, other {每個 Document # 條連線}}",
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },
@@ -2348,5 +2789,43 @@
   "pageLoadError": {
     "message": "頁面載入失敗，請重試。",
     "retry": "重試"
+  },
+  "consent": {
+    "link": "Cookie 設定",
+    "banner": {
+      "text": "我們使用 cookie 讓網站正常運作。經你同意，也會用它統計產品的使用情況（產品分析），以及衡量廣告成效（廣告）。你可以隨時在「Cookie 設定」中修改。",
+      "privacy": "隱私政策",
+      "acceptAll": "全部接受",
+      "rejectAll": "全部拒絕",
+      "settings": "設定",
+      "gpc": "你的瀏覽器傳送了 Global Privacy Control，廣告預設關閉。"
+    },
+    "settings": {
+      "title": "Cookie 設定",
+      "save": "儲存",
+      "close": "關閉",
+      "status": {
+        "gpc": "你的瀏覽器傳送了 Global Privacy Control，廣告預設關閉。"
+      },
+      "necessary": {
+        "title": "必要",
+        "description": "登入、主題與語言偏好，以及這項選擇本身。一律開啟。"
+      },
+      "analytics": {
+        "title": "產品分析",
+        "description": "統計功能的使用情況，不含你 Project 裡的內容。"
+      },
+      "ads": {
+        "title": "廣告",
+        "description": "衡量廣告帶來的註冊、購買等關鍵步驟。"
+      }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "頁面版本已過期",
+      "description": "目前頁面是舊版本，這次操作沒有完成。重新整理後即可繼續。",
+      "refresh": "更新"
+    }
   }
 }

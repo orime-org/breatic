@@ -8,7 +8,7 @@
  * network to be assembled or read back.
  */
 
-import { SNIFF_WINDOW, sniffMimeTypeOfStream } from "@breatic/shared";
+import { SNIFF_WINDOW, canonicalMediaType, sniffMimeTypeOfStream } from "@breatic/shared";
 
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
@@ -236,14 +236,45 @@ export async function writeStreamedObject(
     );
   } catch (err) {
     if (err instanceof SourceReadError && err.cause instanceof OverCeiling) parts = "over_cap";
-    else throw err;
+    else {
+      try {
+        await created.abort();
+      } catch (abortError) {
+        throw new AggregateError([err, abortError], "The stream failed and its R2 multipart upload could not be aborted.");
+      }
+      throw err;
+    }
   }
   if (parts === "over_cap") {
     await created.abort();
     return "over_cap";
   }
-  const stored = await created.complete(parts);
-  return { sizeBytes: stored.size };
+  try {
+    const stored = await created.complete(parts);
+    return { sizeBytes: stored.size };
+  } catch (completeError) {
+    let stored: R2Object | null;
+    try {
+      stored = await bucket.head(key);
+    } catch (headError) {
+      try {
+        await created.abort();
+      } catch (abortError) {
+        throw new AggregateError(
+          [completeError, headError, abortError],
+          "Multipart completion, object inspection, and upload cleanup all failed.",
+        );
+      }
+      throw new AggregateError([completeError, headError], "Multipart completion failed and its object could not be inspected.");
+    }
+    if (stored !== null) return { sizeBytes: stored.size };
+    try {
+      await created.abort();
+    } catch (abortError) {
+      throw new AggregateError([completeError, abortError], "Multipart completion failed and its upload could not be aborted.");
+    }
+    throw completeError;
+  }
 }
 
 /**
@@ -322,7 +353,7 @@ export async function hashStoredObject(
  * the size looked at there are one figure.
  * @param bucket - The bucket holding it.
  * @param storageKey - The assembled object's key.
- * @returns The media type its bytes are.
+ * @returns The media type its bytes are, under the one name the registry lists it by.
  * @throws {Error} When the object is not readable.
  */
 export async function sniffStoredObject(
@@ -335,8 +366,8 @@ export async function sniffStoredObject(
   if (head === null) throw new Error(`completed object ${storageKey} is missing`);
   const whole = await bucket.get(storageKey);
   if (whole === null) throw new Error(`completed object ${storageKey} is missing`);
-  return sniffMimeTypeOfStream(
-    whole.body,
-    new Uint8Array(await head.arrayBuffer()),
+  // One spelling for a format with several, as the ledger records it.
+  return canonicalMediaType(
+    await sniffMimeTypeOfStream(whole.body, new Uint8Array(await head.arrayBuffer())),
   );
 }

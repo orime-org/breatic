@@ -12,7 +12,7 @@
  */
 
 import type { CanvasNodeFields } from '@breatic/shared';
-import { newId } from '@breatic/shared';
+import { NODE_MEDIA_KEYS, newId } from '@breatic/shared';
 import type { CanvasEdge, SnapshotNode } from '@web/data/yjs/canvas-space';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
@@ -294,14 +294,16 @@ export interface CloneOptions {
 
 /**
  * Clone a payload into fresh nodes and edges for the canvas (design 5.2–5.6).
- * Content is carried whole; a node's state and running work are not (lock,
- * task counts, failure message), and its creation stamp is new. Members of a
- * copied Group follow the fresh Group; a lone member rejoins an existing Group
- * when one is given, else becomes top-level. Stickies are not pasted onto the
- * canvas. Edges between copies are rebuilt, and an upstream edge is kept when
- * `keepUpstream` says so; their `createdAt` keeps the original order. Mentions
- * of copied nodes point at the copies, kept upstream and focus mentions stay,
- * any other mention becomes the text "@name".
+ * Content is carried whole; a node's state and running work are not (the
+ * fields in `NOT_COPIED`, and on a node with no content the media fields of
+ * the run planned for it, `NODE_MEDIA_KEYS`), and its creation stamp is new.
+ * Members of a copied Group follow the fresh Group; a lone member rejoins an
+ * existing Group when one is given, else becomes top-level. Stickies are not
+ * pasted onto the canvas. Edges between copies are rebuilt, and an upstream
+ * edge is kept when `keepUpstream` says so; their `createdAt` keeps the
+ * original order. Mentions of copied nodes point at the copies, kept
+ * upstream and focus mentions stay, any other mention becomes the text
+ * "@name".
  * @param payload - The clipboard payload.
  * @param createdBy - User id minted onto every clone.
  * @param offset - Per-axis shift applied to each absolute position.
@@ -348,7 +350,7 @@ export function cloneForPaste(
       const parentAbs = options.externalParentAbs.get(node.parentId) as { x: number; y: number };
       position = { x: absShifted.x - parentAbs.x, y: absShifted.y - parentAbs.y };
     }
-    const data = rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>;
+    const data = withCopiedAnchor(rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>, idMap);
     const fallbackName = node.type === 'group' ? 'Group' : MODALITY_LABEL[node.type];
     const name = typeof data.name === 'string' ? data.name : fallbackName;
     if (node.external === true) {
@@ -377,11 +379,15 @@ export function cloneForPaste(
 /**
  * A node's data without its state and running work.
  * @param data - The stored data snapshot.
- * @returns A copy without the fields in {@link NOT_COPIED}.
+ * @returns A copy without the fields in {@link NOT_COPIED}, and without
+ *   `NODE_MEDIA_KEYS` when the node has no content.
  */
 function contentOf(data: Record<string, unknown>): Record<string, unknown> {
   const out = { ...data };
   for (const key of NOT_COPIED) delete out[key];
+  // With nothing in the node, its media fields describe a result still to come
+  // (inner#1303 §6.7), which is its run's, not content.
+  if (typeof out.content !== 'string' || out.content === '') for (const key of NODE_MEDIA_KEYS) delete out[key];
   return out;
 }
 
@@ -422,6 +428,19 @@ function cloneEdges(
     });
   }
   return out;
+}
+
+/**
+ * A guide text node's anchor, pointed at the anchor's copy when the anchor is
+ * copied along (inner#1345); copied without it, the guide keeps the original.
+ * @param data - The copied node data.
+ * @param idMap - Original node id to its copy's id.
+ * @returns The data, its template tag's anchor rewritten where it was copied.
+ */
+function withCopiedAnchor(data: Record<string, unknown>, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  const tag = data.templateNode as { anchor?: unknown } | undefined;
+  const copy = typeof tag?.anchor === 'string' ? idMap.get(tag.anchor) : undefined;
+  return copy === undefined ? data : { ...data, templateNode: { ...tag, anchor: copy } };
 }
 
 /**

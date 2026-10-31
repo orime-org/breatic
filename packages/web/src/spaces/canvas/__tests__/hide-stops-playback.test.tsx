@@ -11,7 +11,7 @@ import { act, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
-import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
+import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 
 const pauseSpy = vi.fn();
 

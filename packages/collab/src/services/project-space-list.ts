@@ -13,7 +13,7 @@
  */
 
 import type * as Y from "yjs";
-import { createLogger } from "@breatic/core";
+import { createLogger, listedContentDocNames } from "@breatic/core";
 import { projectMetaDocName } from "@breatic/shared";
 
 const logger = createLogger("collab-project-space-list");
@@ -137,9 +137,11 @@ function unloadAfterReading(
  * @param instance - The running Hocuspocus server, for the document it holds or can load.
  * @param request - The upgrade request, passed through to the load hooks.
  * @param socketId - The requesting connection's socket id, passed through on the same path.
- * @returns The Space ids currently listed in `meta.spaces`.
+ * @returns The content doc names the Spaces currently listed in
+ *   `meta.spaces` own — id and type together, so a doc of another kind under
+ *   a listed id is not among them.
  */
-export async function readProjectSpaceIds(
+export async function readListedContentDocNames(
   projectId: string,
   instance: DocumentRegistry,
   request: Request,
@@ -148,7 +150,7 @@ export async function readProjectSpaceIds(
   const docName = projectMetaDocName(projectId);
 
   const held = instance.documents.get(docName);
-  if (held) return new Set(held.getMap("spaces").keys());
+  if (held) return listedContentDocNames(projectId, held.getMap("spaces"));
 
   // Read-only: this never writes to the document, and the flag travels into
   // the load hooks as the reason it is being opened.
@@ -156,7 +158,7 @@ export async function readProjectSpaceIds(
     isAuthenticated: true,
     readOnly: true,
   });
-  const ids = new Set(loaded.getMap("spaces").keys());
+  const names = listedContentDocNames(projectId, loaded.getMap("spaces"));
   unloadAfterReading(instance, loaded, docName);
-  return ids;
+  return names;
 }

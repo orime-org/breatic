@@ -91,6 +91,7 @@ import {
   type RefundFixture,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const WEBHOOK_SECRET = "whsec_refund_webhook_suite";
 
@@ -356,14 +357,12 @@ describe("not a credit-pack payment", () => {
     const [user] = await suite.sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified) VALUES (${`refund-hook-${tag}@example.test`}, true) RETURNING id
     `;
-    const [source] = await suite.sql<{ id: string }[]>`
-      INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-    `;
+    const sourceId = await openPaymentSource(suite.sql);
     const pi = `pi_nolot_${tag}`;
     await suite.sql`
       INSERT INTO payments
         (id, user_id, amount_cents, total_cents, currency, status, credits_granted, stripe_payment_intent_id)
-      VALUES (${source!.id}, ${user!.id}, 1000, ${PAID_CENTS}, 'usd', 'completed', ${CREDITS}, ${pi})
+      VALUES (${sourceId}, ${user!.id}, 1000, ${PAID_CENTS}, 'usd', 'completed', ${CREDITS}, ${pi})
     `;
     fakeStripe.register(pi, PAID_CENTS, [refundObject(reId("x"), "succeeded", 500)]);
     const event = refundEvent("refund.updated", refundObject(reId("x"), "succeeded", 500), pi);
@@ -373,7 +372,7 @@ describe("not a credit-pack payment", () => {
     expect(res.status).toBe(200);
     expect(await claimedTypes(event.id as string)).toEqual(["refund.updated"]);
     expect(listed(pi)).toBe(false);
-    const copies = await suite.sql`SELECT 1 FROM credit_refunds WHERE payment_id = ${source!.id}`;
+    const copies = await suite.sql`SELECT 1 FROM credit_refunds WHERE payment_id = ${sourceId}`;
     expect(copies).toHaveLength(0);
   });
 });

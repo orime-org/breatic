@@ -39,6 +39,8 @@ export * from "@core/db/yjs-schema.js";
 export {
   defaultSpaceName,
   encodeInitialMetaState,
+  listedContentDocNames,
+  listedContentDocNamesInState,
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
@@ -60,8 +62,10 @@ export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
+export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -73,13 +77,13 @@ export {
   getMembershipConfig,
   getMembershipLimits,
   getDefaultMembershipTier,
+  getSubscriptionStaleAfterDays,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
   findOfferByPriceId,
-  getSubscriptionStaleAfterDays,
   subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
@@ -89,7 +93,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -129,6 +133,7 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
+export { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
@@ -141,8 +146,10 @@ export {
 } from "@core/infra/event-stream.js";
 export {
   publishActivityNew,
+  publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,
@@ -158,7 +165,16 @@ export {
   type ClientIdentityInput,
   type RefusalReason,
 } from "@core/infra/client-identity.js";
-export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
+export {
+  setSession,
+  getSession,
+  sessionId,
+  revokeSession,
+  revokeAllSessions,
+  sessionCookieName,
+  type RevokeOutcome,
+} from "@core/infra/session-store.js";
+export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────
@@ -201,12 +217,17 @@ export {
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
+export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
+export type { MembershipReading } from "@core/auth/membership.repo.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
+export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
 // ceilings above are read here too, and a subscription whose paid period ran
 // out says the tier on the account is stale.
 export {
   listSubscriptions,
+  markFirstActive,
   upsertSubscription,
 } from "@core/auth/subscription.repo.js";
 export type {
@@ -229,6 +250,23 @@ export type {
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
+export {
+  currentAdsBrowser,
+  currentConsent,
+  runWithConsent,
+} from "@core/analytics/consent-context.js";
+export {
+  flushServerAnalytics,
+  initServerAnalytics,
+  reportAnalyticsFailure,
+  resetServerAnalyticsForTest,
+  serverAnalyticsOn,
+  serverAnalyticsWanted,
+  trackServerEvent,
+  type AnalyticsClient,
+  type OutgoingEvent,
+  type ServerAnalyticsStart,
+} from "@core/analytics/server-analytics.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { logger, initLogger, createLogger } from "@core/infra/logger.js";
@@ -241,3 +279,44 @@ export {
   UnauthorizedError,
   TooManyRequestsError,
 } from "@core/app-errors.js";
+export {
+  ADS_CONVERSION_QUEUE,
+  adsConversionConfig,
+  adsConversionState,
+  enqueueAdsConversion,
+  requeueStaleAdsUploads,
+  unscheduleAdsUploadSweep,
+  scheduleAdsUploadSweep,
+  settleAdsRefused,
+  settleAdsUpload,
+  setAdsConversionConfigForTest,
+  type AdsConversionConfig,
+} from "@core/ads/ads-conversion.js";
+export { getUploadStatus } from "@core/ads/ads-conversion.repo.js";
+export {
+  ADS_CONVERSIONS,
+  ADS_SWEEP_JOB,
+  ADS_UPLOAD_STATUSES,
+  AdsConversionJobSchema,
+  type AdsConversionJob,
+  type AdsConversionName,
+  type AdsUploadStatus,
+} from "@core/ads/ads-types.js";
+export {
+  collaborationActionOf,
+  reportCollaboratorFirstAction,
+  type CollaborationAction,
+} from "@core/analytics/collaboration.js";
+export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
+export {
+  accountOnlyConsent,
+  adsAllowedFor,
+  eraseAccountAnalytics,
+  getAccountAttribution,
+  recordReportedConsent,
+} from "@core/analytics/account.repo.js";
+
+export * from "@core/maintenance/types.js";
+export * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
+export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceStorage } from "@core/maintenance/storage.js";
+export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";

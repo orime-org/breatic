@@ -21,12 +21,18 @@ interface SlugFieldProps {
   /** What the field is for and its rules, shown while it is empty. */
   helper: string;
   /**
-   * Greys the input out while an edit could not be submitted anyway — the
-   * rename dialog sets it while ANY settings save is in flight, which is the
-   * same condition that holds its Confirm button back. Typing into a field
-   * whose Confirm is unreachable only looks like it will work.
+   * Holds the value while an edit could not be submitted anyway (a request is
+   * in flight). Read-only, not disabled: Chromium drops a disabled field's
+   * focus to the page, so after a refused submit the reader's typing would go
+   * nowhere.
    */
-  disabled?: boolean;
+  readOnly?: boolean;
+  /**
+   * A reason found when the form was submitted (an empty required slug). It
+   * replaces the check's own line until the reader edits the field. A form
+   * that refuses a shape at the press passes it as an `invalid` check instead.
+   */
+  error?: string | null;
 }
 
 /** Colour of the hint line for each state. */
@@ -35,14 +41,17 @@ const HINT_TONE: Record<SlugCheck['state'], string> = {
   checking: 'text-muted-foreground',
   invalid: 'text-status-error-foreground',
   valid: 'text-status-success-foreground',
+  unverified: 'text-muted-foreground',
 };
 
 /**
  * The slug input shared by the create-studio, create-project/collection,
  * rename-studio and onboarding forms. One line under the input carries the
  * whole story: the description while the field is empty, a pending line while
- * a check runs, then the reason it was refused (red) or that it is available
- * (green).
+ * a check runs, then the reason it was refused (red), that it is available
+ * (green), or that the check itself failed (grey; the press goes ahead and the
+ * server decides). A reason found at the press replaces the line in red until
+ * the field is edited.
  * @param props the field id, label, value, change handler, check, bounds and helper.
  * @param props.id the field id.
  * @param props.label the display label.
@@ -52,7 +61,8 @@ const HINT_TONE: Record<SlugCheck['state'], string> = {
  * @param props.check where the slug stands now.
  * @param props.bounds the slug length bounds.
  * @param props.helper the description shown while the field is empty.
- * @param props.disabled whether the input is greyed out (optional).
+ * @param props.readOnly whether the value is held while a request is out (optional).
+ * @param props.error a submit-time reason shown in red over the check's line (optional).
  * @returns the slug field.
  */
 export function SlugField({
@@ -64,27 +74,32 @@ export function SlugField({
   check,
   bounds,
   helper,
-  disabled = false,
+  readOnly = false,
+  error = null,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
   const hintId = `${id}-hint`;
-  const text =
-    check.state === 'empty'
+  const invalid = error !== null || check.state === 'invalid';
+  const text = error !== null
+    ? error
+    : check.state === 'empty'
       ? helper
       : check.state === 'checking'
         ? t('studio.container.dialog.slugChecking')
-        : check.state === 'valid'
-          ? t('studio.container.dialog.slugAvailable')
-          : check.reason === 'format'
-            ? t('studio.container.dialog.slugFormat')
-            : check.reason === 'length'
-              ? t('studio.container.dialog.slugLength', {
-                min: bounds.min,
-                max: bounds.max,
-              })
-              : check.reason === 'reserved'
-                ? t('studio.container.dialog.slugReserved')
-                : t('studio.container.dialog.slugTaken');
+        : check.state === 'unverified'
+          ? t('studio.container.dialog.slugUnverified')
+          : check.state === 'valid'
+            ? t('studio.container.dialog.slugAvailable')
+            : check.reason === 'format'
+              ? t('studio.container.dialog.slugFormat')
+              : check.reason === 'length'
+                ? t('studio.container.dialog.slugLength', {
+                  min: bounds.min,
+                  max: bounds.max,
+                })
+                : check.reason === 'reserved'
+                  ? t('studio.container.dialog.slugReserved')
+                  : t('studio.container.dialog.slugTaken');
   return (
     <div className='flex flex-col gap-1.5'>
       <Label htmlFor={id}>{label}</Label>
@@ -92,9 +107,9 @@ export function SlugField({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
+        readOnly={readOnly}
         placeholder={placeholder}
-        aria-invalid={check.state === 'invalid'}
+        aria-invalid={invalid}
         aria-describedby={hintId}
         autoComplete='off'
         autoCapitalize='none'
@@ -103,7 +118,7 @@ export function SlugField({
       <p
         id={hintId}
         data-testid={hintId}
-        className={`text-xs ${HINT_TONE[check.state]}`}
+        className={`text-xs ${error !== null ? HINT_TONE.invalid : HINT_TONE[check.state]}`}
       >
         {text}
       </p>

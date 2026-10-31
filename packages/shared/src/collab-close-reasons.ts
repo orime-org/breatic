@@ -24,6 +24,8 @@ export const COLLAB_REAUTH_REASONS = {
   projectContentUpdated: "Project content updated",
   /** This member's role changed: come back with the new one. */
   permissionChanged: "Permission changed, please reconnect",
+  /** The session this connection was opened with ended: the handshake now fails. */
+  sessionEnded: "Session ended",
 } as const;
 
 const REAUTH_REASONS: ReadonlySet<string> = new Set(Object.values(COLLAB_REAUTH_REASONS));

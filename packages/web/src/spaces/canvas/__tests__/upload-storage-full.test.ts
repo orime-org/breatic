@@ -27,6 +27,7 @@ import {
   type MediaUploadDeps,
   type UploadFailure,
 } from '@web/data/upload/media-upload';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 
 const CONFIG = {
   maxUploadBytes: 2147483648,
@@ -98,7 +99,7 @@ describe('a 507 reads as storage rather than an ordinary upload failure', () => 
   });
 });
 
-describe('filling an existing node hands the failure to the one exit', () => {
+describe('filling an existing node says a full account on the node', () => {
   /**
    * Fill deps whose ticket request always answers that storage is full.
    * @param extra - What this case overrides or adds.
@@ -113,26 +114,24 @@ describe('filling an existing node hands the failure to the one exit', () => {
       },
       sendToIngest: async () => ({}),
       extractText: async () => '',
-      onTypeMismatch: () => {},
       setContent: () => true,
-      onExtractionFailure: () => {},
       onUploadFailure: () => {},
+      spaceId: 's1',
+      markOp: '',
       ...extra,
     } as unknown as FillNodeDeps;
   }
 
-  it('hands storage over and writes nothing onto the node itself', async () => {
+  // inner#1303 §6.7: refused before any ticket, so no task row; the node says it.
+  it('marks the node with the full account and hands nothing to the caller', async () => {
+    useUploadMarksStore.setState({ marks: {} });
+    const markOp = useUploadMarksStore.getState().begin('s1', 'n1', 'upload');
     const onUploadFailure = vi.fn((_outcome: UploadFailure) => {});
-    const onExtractionFailure = vi.fn();
-    await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({
-      onUploadFailure,
-      onExtractionFailure,
-    }));
-    expect(onUploadFailure).toHaveBeenCalledOnce();
-    expect(onUploadFailure.mock.calls[0]?.[0]).toEqual({ reason: 'storage' });
-    // The sentence the user reads is written by that one exit. Keeping a
-    // second copy here would mean changing one of them leaves what the user
-    // sees untouched.
-    expect(onExtractionFailure).not.toHaveBeenCalled();
+    await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({ onUploadFailure, markOp }));
+    expect(onUploadFailure).not.toHaveBeenCalled();
+    expect(useUploadMarksStore.getState().markOf('s1', 'n1')).toMatchObject({
+      state: 'failed',
+      message: { key: 'canvas.upload.storageFull' },
+    });
   });
 });

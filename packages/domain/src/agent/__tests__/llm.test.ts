@@ -303,9 +303,9 @@ const SPELLINGS = [
     name: "deepseek",
     authHeader: "authorization",
     authPrefix: "Bearer ",
-    on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+    on: { thinking: { type: "enabled" }, reasoningEffort: "max" },
     off: { thinking: { type: "disabled" } },
-    onWire: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    onWire: { thinking: { type: "enabled" }, reasoning_effort: "max" },
     offWire: { thinking: { type: "disabled" } },
   },
   {
@@ -367,6 +367,18 @@ describe("callOptionsFor", () => {
       expect(callOptionsFor(model, { thinking: false, cache: false }).providerOptions).toEqual({ [name]: off });
     },
   );
+
+  // inner#1650 measured DeepSeek Flash 1017 at `max` and Claude at `high`.
+  it.each([
+    ["deepseek/deepseek-v4.1-flash-1017", "max"],
+    ["anthropic/claude-opus-5.5", "high"],
+  ])("asks OpenRouter for %s to think at %s", async (model, effort) => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { callOptionsFor } = await freshLlm();
+    const { providerOptions } = callOptionsFor(model, { thinking: true, cache: false });
+    expect(providerOptions).toEqual({ openrouter: { reasoning: { effort } } });
+    expect((await callWith(model, providerOptions)).body.reasoning).toEqual({ effort });
+  });
 
   it("takes the fallback when the caller has no model to name", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
@@ -445,6 +457,112 @@ describe("prompt caching", () => {
   it("sends nothing about caching when the caller does not ask", async () => {
     keys.current = { ANTHROPIC_API_KEY: "k" };
     expect((await sendCached("anthropic/claude-opus-5.5", false)).body.cache_control).toBeUndefined();
+  });
+});
+
+describe("the parts of the system prompt other conversations share", () => {
+  /**
+   * Runs one call whose instructions come from `systemFor`.
+   * @param model - The model id to route.
+   * @param parts - The base prompt, the project's memory and this
+   *   conversation's memory, the last two when there are any.
+   * @param cache - The cache lifetime asked for, or false for none.
+   * @returns The intercepted request.
+   */
+  async function sendSystem(
+    model: string,
+    parts: { base: string; project?: string; conversation?: string },
+    cache: LlmModule.CallWants["cache"],
+  ): Promise<Seen> {
+    const { getModel, callOptionsFor, systemFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel(model),
+      system: systemFor(model, parts, cache),
+      prompt: "hi",
+      ...callOptionsFor(model, { thinking: true, cache }),
+    });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  const PARTS = { base: "persona", project: "project memory", conversation: "this conversation's memory" };
+  const ONE_HOUR = { type: "ephemeral", ttl: "1h" };
+
+  /**
+   * The system messages of an OpenAI-shaped request body.
+   * @param body - The request body.
+   * @returns Its system messages, in order.
+   */
+  function systemMessages(body: Record<string, unknown>): Array<{ content: unknown }> {
+    return (body.messages as Array<{ role: string; content: unknown }>).filter((m) => m.role === "system");
+  }
+
+  it("marks the end of the base prompt and of the project's memory when calling Anthropic directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
+    ]);
+  });
+
+  it("marks the same two ends when reaching Claude through OpenRouter", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect(systemMessages((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body)).toEqual([
+      { role: "system", content: [{ type: "text", text: PARTS.base, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.project, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.conversation }] },
+    ]);
+  });
+
+  it("sends only the base prompt, marked, when there is no memory", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", { base: PARTS.base }, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+    ]);
+  });
+
+  it("goes from the marked base prompt straight to the conversation's memory when the project has none", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    const parts = { base: PARTS.base, conversation: PARTS.conversation };
+    expect((await sendSystem("anthropic/claude-opus-5.5", parts, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
+    ]);
+  });
+
+  const WHOLE = `${PARTS.base}\n\n${PARTS.project}\n\n${PARTS.conversation}`;
+
+  /**
+   * Runs one call whose system prompt is the whole text as one string, the
+   * way calls sent it before the parts were split.
+   * @param model - The model id to route.
+   * @param cache - The cache lifetime asked for, or false for none.
+   * @returns The intercepted request.
+   */
+  async function sendWhole(model: string, cache: LlmModule.CallWants["cache"]): Promise<Seen> {
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({ model: getModel(model), system: WHOLE, prompt: "hi", ...callOptionsFor(model, { thinking: true, cache }) });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  it("sends the prompt whole, as one message, for a model that caches a prefix on its own", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const sent = systemMessages((await sendSystem("deepseek/deepseek-v4-pro", PARTS, "1h")).body);
+    expect(sent).toHaveLength(1);
+    expect(sent).toEqual(systemMessages((await sendWhole("deepseek/deepseek-v4-pro", "1h")).body));
+  });
+
+  it("sends the prompt whole, as one block, when the caller does not ask for caching", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    const sent = (await sendSystem("anthropic/claude-opus-5.5", PARTS, false)).body.system;
+    expect(sent).toHaveLength(1);
+    expect(sent).toEqual((await sendWhole("anthropic/claude-opus-5.5", false)).body.system);
   });
 });
 
@@ -543,6 +661,23 @@ describe("the Anthropic direct route", () => {
   it("passes the dotted id through to OpenRouter unchanged", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     expect((await callWith("anthropic/claude-opus-5.5")).body.model).toBe("anthropic/claude-opus-5.5");
+  });
+});
+
+describe("the DeepSeek direct route", () => {
+  it("sends the name DeepSeek serves Flash 1017 under", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek-flash");
+  });
+
+  it("leaves a name DeepSeek serves as it is", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4-pro")).body.model).toBe("deepseek-v4-pro");
+  });
+
+  it("passes the pinned id through to OpenRouter unchanged", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek/deepseek-v4.1-flash-1017");
   });
 });
 

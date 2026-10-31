@@ -25,7 +25,7 @@ import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-u
 /**
  * The narrowest a menu listing block types is drawn: the handle menu's own
  * floor (`components/ui/dropdown-menu.tsx`'s content) and the bubble bar's
- * (`document-bubble-menu.tsx`), so the menus side by side read as one family.
+ * (`DocumentBubbleMenu.tsx`), so the menus side by side read as one family.
  * A submenu's own floor is 8rem, which user 2026-10-02 found too narrow for
  * these rows. Longer labels still widen it.
  */

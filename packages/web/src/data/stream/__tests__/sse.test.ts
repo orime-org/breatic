@@ -23,6 +23,8 @@ const fetchEventSourceMock = vi.hoisted(() => vi.fn());
 vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: fetchEventSourceMock,
 }));
+const checkStaleRelease = vi.hoisted(() => vi.fn((_reason: unknown) => Promise.resolve(false)));
+vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 
 import { sseStream, StreamDroppedError, StreamRefusedError } from '@web/data/stream/sse';
 import { API_BASE_PATH } from '@web/data/api/base-path';
@@ -246,5 +248,24 @@ describe('when a stream that had opened dies', () => {
     // already ended.
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(StreamDroppedError);
+  });
+});
+
+describe('a refusal that may come from an out-of-date page', () => {
+  it('checks the build with the mark before rejecting', async () => {
+    let decide = (_stale: boolean): void => {};
+    checkStaleRelease.mockImplementationOnce(() => new Promise<boolean>((r) => { decide = r; }));
+    const opts = await optionsPassed();
+    let settled = false;
+    const pending = Promise.resolve(
+      opts.onopen?.(
+        envelopeResponse({ error: { code: 422, message: 'Invalid input', reason: 'request_shape' } }),
+      ),
+    ).catch((err: unknown) => { settled = true; return err; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(checkStaleRelease).toHaveBeenCalledWith('request_shape');
+    expect(settled).toBe(false);
+    decide(true);
+    expect(await pending).toBeInstanceOf(StreamRefusedError);
   });
 });

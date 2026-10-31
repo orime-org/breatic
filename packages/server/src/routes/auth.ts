@@ -18,10 +18,11 @@ import { registerSchema, signupVerifySchema, loginSchema, setupStudioSchema } fr
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, signupCodeService, studioService } from "@server/modules";
-import { env, NotFoundError } from "@breatic/core";
+import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
+import { randomUUID } from "node:crypto";
+import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { emailSchema, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -36,6 +37,15 @@ import { logMailResult } from "@server/utils/log-mail.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
 
 const auth = new Hono<{ Variables: AuthVariables }>();
+
+/** Public registration invitation preview query. */
+const invitationPreviewSchema = z.object({ token: z.string().min(1).max(64) });
+
+auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invitationPreviewSchema), async (c) => {
+  const { token } = c.req.valid("query");
+  const data = await invitationService.getInvitationPreview(token);
+  return c.json({ data });
+});
 
 /**
  * Project a studio row onto the wire shape every `/auth/*` response uses
@@ -112,7 +122,7 @@ auth.get("/options", (c) => {
  * @throws {AppError} `503` when the code mail was not sent
  */
 auth.post("/register", rateLimitFor("register"), validate("json", registerSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
+  const { email, password, attribution } = c.req.valid("json");
 
   if (signupCodeService.emailVerificationEnabled()) {
     const sent = await signupCodeService.startSignup({
@@ -131,7 +141,7 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
     }, 202);
   }
 
-  const { user, recoveryCode } = await authService.register(email, password);
+  const { user, recoveryCode } = await authService.register(email, password, parseAttribution(attribution));
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
   // Audit log moved here from auth.service.ts per
@@ -190,9 +200,14 @@ auth.post(
     if (!signupCodeService.emailVerificationEnabled()) {
       throw new NotFoundError(t("server.error.not_found"));
     }
-    const { code } = c.req.valid("json");
-    const user = await signupCodeService.verifySignupCode(readSignupTicketCookie(c), code);
+    const { code, attribution } = c.req.valid("json");
+    const user = await signupCodeService.verifySignupCode(
+      readSignupTicketCookie(c),
+      code,
+      parseAttribution(attribution),
+    );
     clearSignupTicketCookie(c);
+    if (user.emailVerified) await invitationService.claimEmailInvitations(user);
     setSessionCookie(c, await authService.createSession(user.id));
     logger.info({ userId: user.id, email: user.email }, "user_registered");
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
@@ -252,6 +267,11 @@ auth.post(
     ]);
     // Audit log moved from auth.service.ts (17B mandate).
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method: "email" },
+    });
     return c.json({
       data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
     });
@@ -267,6 +287,7 @@ auth.post(
  */
 const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: z.unknown().optional(),
 });
 
 /**
@@ -301,7 +322,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
   }
 
-  const { credential } = c.req.valid("json");
+  const { credential, attribution } = c.req.valid("json");
 
   let payload: TokenPayload | undefined;
 
@@ -336,10 +357,11 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   }
 
   const email = normalizeEmail(payload.email);
-  const { user, token } = await authService.loginOrCreateGoogle(
+  const { user, token, created } = await authService.loginOrCreateGoogle(
     payload.sub,
     email,
     email.endsWith("@gmail.com") || Boolean(payload.hd),
+    parseAttribution(attribution),
   );
 
   setSessionCookie(c, token);
@@ -349,8 +371,17 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   ]);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
+  // A first Google sign-in is a sign-up, already counted as `signup_completed`.
+  if (!created) {
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method: "google" },
+    });
+  }
+  // `created` tells the page to report the sign-up conversion (inner#1442 §4.9).
   return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
+    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created },
   });
 });
 
@@ -379,11 +410,47 @@ auth.get("/me", requireAuth, async (c) => {
 auth.post("/logout", requireAuth, async (c) => {
   const token = readSessionCookie(c);
   if (token) {
-    await authService.logout(token);
+    const { signalFailure } = await authService.logout(token);
+    logRevocationSignalFailure(signalFailure, c.get("user").id);
   }
   clearSessionCookie(c);
   return c.json({ message: t("server.auth.logout_success") });
 });
+
+/**
+ * `POST /auth/logout-others` — end every session of the caller except this
+ * one (inner#1548). Collab closes the documents the ended sessions opened.
+ * Calling it again only ends what was opened since, so a repeated press is
+ * harmless.
+ * @returns `200` with `{ message }`; `401` without a session; `429` past
+ *   `logout-others-ip` or `logout-others` in `config/rate-limits.yaml`
+ */
+auth.post(
+  "/logout-others",
+  requireAuth,
+  rateLimitForAll([{ action: "logout-others-ip" }, { action: "logout-others", keyBy: "user" }]),
+  async (c) => {
+    const user = c.get("user");
+    const token = readSessionCookie(c);
+    if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
+    const { signalFailure } = await authService.logoutOthers(user.id, token);
+    logRevocationSignalFailure(signalFailure, user.id);
+    logger.info({ userId: user.id }, "logged_out_other_sessions");
+    return c.json({ message: t("server.auth.logout_others_success") });
+  },
+);
+
+/**
+ * Log that ended sessions were not announced to collab. The sessions are gone
+ * either way; collab's periodic recheck closes their connections later.
+ * @param signalFailure - The publish error, when there was one.
+ * @param userId - Whose sessions ended.
+ */
+function logRevocationSignalFailure(signalFailure: unknown, userId: string): void {
+  if (signalFailure !== undefined) {
+    logger.error({ err: signalFailure, userId }, "session_revocation_signal_failed");
+  }
+}
 
 // ── Password Reset ───────────────────────────────────────────────
 
@@ -431,7 +498,10 @@ auth.post(
   validate("json", resetPasswordSchema),
   async (c) => {
     const { token, password } = c.req.valid("json");
-    await authService.resetPassword(token, password);
+    const { signalFailure } = await authService.resetPassword(token, password);
+    if (signalFailure !== undefined) {
+      logger.error({ err: signalFailure, tokenPrefix: token.slice(0, 8) }, "session_revocation_signal_failed");
+    }
     // Audit log moved from auth.service.ts (17B mandate). The
     // service deliberately does not return userId here (token is
     // single-use + already consumed at this point), so we log
@@ -474,12 +544,13 @@ auth.post(
   rateLimitForAll([{ action: "reset-recovery-ip" }, { action: "reset-recovery", keyBy: "ip+email" }]),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
-    const { newRecoveryCode, userId } = await authService.resetPasswordWithRecoveryCode(
+    const { newRecoveryCode, userId, signalFailure } = await authService.resetPasswordWithRecoveryCode(
       email,
       recoveryCode,
       newPassword,
     );
     // Audit log moved from auth.service.ts (17B mandate).
+    logRevocationSignalFailure(signalFailure, userId);
     logger.info({ userId }, "password_reset_via_recovery_code");
     return c.json({
       data: { newRecoveryCode },

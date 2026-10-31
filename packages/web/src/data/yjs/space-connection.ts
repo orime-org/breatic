@@ -51,4 +51,5 @@ export const DOC_NAME_BUILDERS: Partial<
 > = {
   canvas: docName.canvasSpace,
   document: docName.documentSpace,
+  '3d': docName.threeDSpace,
 };

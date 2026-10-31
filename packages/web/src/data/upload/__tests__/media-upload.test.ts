@@ -23,6 +23,16 @@ vi.mock('@web/data/upload/finish-upload', async (importOriginal) => ({
   sendFileAndFinish: vi.fn(),
 }));
 vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: vi.fn() }));
+// W12 runs the real sendFileAndFinish; its two network edges stand in here.
+const { sendBytesToIngest, apiPost } = vi.hoisted(() => ({ sendBytesToIngest: vi.fn(), apiPost: vi.fn() }));
+vi.mock('@breatic/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@breatic/shared')>()),
+  sendBytesToIngest,
+}));
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiPost,
+}));
 
 /** The knob fixture threaded through the upload orchestration tests. */
 const CFG = {
@@ -47,7 +57,8 @@ function apiError(status: number): ApiException {
 
 /** A ticket for a one-part upload. */
 const TICKET = {
-  ticket: 'signed',
+  uploadId: 'upload-1',
+  token: 'token-1',
   storageKey: 'image/2026-08-31/p.png',
   uploadUrl: 'https://ingest.example.com',
   kind: 'image',
@@ -109,6 +120,37 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     });
     expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG);
     expect(deps.onFailure).not.toHaveBeenCalled();
+  });
+
+  // inner#1303 §6.7: the ticket is the server's answer, which ends the
+  // uploader's wait on the node before the bytes move.
+  it('says the server answered once the ticket arrives, before the bytes move', async () => {
+    const order: string[] = [];
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(() => order.push('answered')),
+      sendToIngest: vi.fn(async () => {
+        order.push('sent');
+        return { storageKey: TICKET.storageKey };
+      }),
+    });
+    await runMediaUpload(file, context, deps);
+    expect(order).toEqual(['answered', 'sent']);
+  });
+
+  it('says the server answered when the studio already holds the content', async () => {
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(),
+      requestTicket: vi.fn().mockResolvedValue({ alreadyExists: true, assetId: 'a', fileUrl: 'https://cdn/a.png', kind: 'image' }),
+    });
+    await runMediaUpload(file, context, deps);
+    expect(deps.onAnswered).toHaveBeenCalledOnce();
+  });
+
+  it('does not say the server answered when the ticket request fails', async () => {
+    const deps = makeUploadDeps({ onAnswered: vi.fn(), requestTicket: vi.fn().mockRejectedValue(apiError(400)) });
+    await runMediaUpload(file, context, deps);
+    expect(deps.onAnswered).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
   });
 
   it('reports progress as the share of the file that has landed (inner#1127 A4)', async () => {
@@ -440,5 +482,97 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
     expect(failure).toBeInstanceOf(UploadFailedError);
     expect((failure as UploadFailedError).reason).toBe('storage');
     expect((failure as UploadFailedError).message).toBe('storage');
+  });
+});
+
+// inner#1595 §3.5: the server opens the upload at the ingest Worker itself and,
+// when that fails, answers 200 `{ openFailed: { reason }, taskId }`. It is an
+// answer (the node's wait ends) and the same failure as a transfer that never
+// landed: `'transfer'`, naming the row when there is one.
+describe('runMediaUpload — the server could not open the upload (inner#1595)', () => {
+  const file = new File(['x'], 'photo.png', { type: 'image/png' });
+  const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
+
+  it('W01 hears the answer first, then fails as a transfer naming the row, and sends nothing', async () => {
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(),
+      requestTicket: vi.fn().mockResolvedValue({ openFailed: { reason: 'ingest_no_answer' }, taskId: 't1' }),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.requestTicket).toHaveBeenCalledOnce();
+    expect(deps.onAnswered).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', taskId: 't1' });
+    expect(vi.mocked(deps.onAnswered!).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deps.onFailure).mock.invocationCallOrder[0]!,
+    );
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+  });
+
+  it('W02 with no row: answers first, then fails as a transfer with no taskId key', async () => {
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(),
+      requestTicket: vi.fn().mockResolvedValue({ openFailed: { reason: 'ingest_refused' } }),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onAnswered).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+    expect(vi.mocked(deps.onFailure).mock.calls[0]![0]).toStrictEqual({ reason: 'transfer' });
+    expect(vi.mocked(deps.onAnswered!).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deps.onFailure).mock.invocationCallOrder[0]!,
+    );
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+  });
+
+  // The answer is a 200, so retryTransient (>= 500 only) does not ask again
+  // and open a second grant and task row (design §3.4).
+  it('W03 asks no more after a 5xx is followed by openFailed', async () => {
+    const requestTicket = vi
+      .fn()
+      .mockRejectedValueOnce(apiError(503))
+      .mockResolvedValue({ openFailed: { reason: 'ingest_no_answer' }, taskId: 't1' });
+    const deps = makeUploadDeps({ requestTicket });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(requestTicket).toHaveBeenCalledTimes(2);
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', taskId: 't1' });
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+  });
+
+  // Acceptance 3, the browser's ordinary path: a ticket in the new shape is
+  // sent and finished through the real sendFileAndFinish.
+  it('W12 sends a new-shape ticket through the real finish and returns without waiting for the ending', async () => {
+    const { sendFileAndFinish: realSendFileAndFinish } = await vi.importActual<typeof import('@web/data/upload/finish-upload')>('@web/data/upload/finish-upload');
+    const HELD = { uploadId: 'upload-1', token: 'token-last', parts: [{ partNumber: 1, etag: 'e1' }] };
+    sendBytesToIngest.mockReset().mockResolvedValue(HELD);
+    apiPost.mockReset().mockResolvedValue({ storageKey: TICKET.storageKey });
+    expect(TICKET).not.toHaveProperty('ticket');
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(),
+      sendToIngest: realSendFileAndFinish,
+      waitForEnding: vi.fn(() => new Promise<UploadEnding>(() => undefined)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onAnswered).toHaveBeenCalledOnce();
+    expect(sendBytesToIngest).toHaveBeenCalledOnce();
+    expect(sendBytesToIngest.mock.calls[0]![1]).toMatchObject({
+      uploadUrl: TICKET.uploadUrl,
+      uploadId: TICKET.uploadId,
+      token: TICKET.token,
+      partSize: TICKET.partSize,
+      totalParts: TICKET.totalParts,
+    });
+    expect(sendBytesToIngest.mock.calls[0]![1]).not.toHaveProperty('ticket');
+    const completes = apiPost.mock.calls.filter(([url]) => url === `/assets/uploads/${HELD.uploadId}/complete`);
+    expect(completes).toHaveLength(1);
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).not.toHaveBeenCalled();
   });
 });

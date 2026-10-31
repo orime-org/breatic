@@ -153,7 +153,7 @@ function connectionOf(name: string, provider: HocuspocusProvider | undefined): B
   const refused = (): boolean => readDocFacts(name).authFailure !== null;
   return {
     awareness: provider.awareness as unknown as BodyAwareness,
-    writeAccess: () => (refused() ? 'denied' : readWriteAccess(provider)),
+    writeAccess: () => (refused() ? 'denied' : readWriteAccess(provider, readDocFacts(name).authFailure)),
     refused,
     onChange: (listener) => {
       provider.on('authenticated', listener);

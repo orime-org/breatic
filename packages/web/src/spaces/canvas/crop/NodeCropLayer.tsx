@@ -9,6 +9,7 @@ import { isModelTool, miniToolById, type RectParam } from '@breatic/shared/mini-
 import type { CropRect } from '@web/lib/crop-math';
 import { presetRatio } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { NodeCropFrame } from '@web/spaces/canvas/crop/NodeCropFrame';
@@ -74,11 +75,10 @@ interface NodeCropLayerProps {
 export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
   const focus = useCanvasSession((s) => (s.focusCrop?.nodeId === nodeId ? s.focusCrop : null));
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const rectParam = rectParamOf(draft);
-  const zoom = useStore((s) => s.transform[2]);
+  // Read only while the layer shows, so a zoom does not re-render it on every node.
+  const zoom = useStore((s) => (focus === null && rectParam === undefined ? 1 : s.transform[2]));
   const geometry = useMediaGeometry(wrapper, focus !== null || rectParam !== undefined);
   const focusWrites = useWrittenElsewhere(focus?.rect ?? null);
   const toolWrites = useWrittenElsewhere<unknown>(

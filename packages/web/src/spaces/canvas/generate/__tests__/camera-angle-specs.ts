@@ -51,3 +51,25 @@ export const CAMERA_SPECS: Record<string, ParamDescriptor> = {
     value_labels: { 0: 'Close-up', 1: 'Medium shot', 2: 'Wide shot' },
   },
 };
+
+/** The relight tool's two light params, as the catalog declares them (inner#1304). */
+export const LIGHT_PARAMS = { azimuth: 'light_azimuth', elevation: 'light_elevation' };
+
+export const LIGHT_SPECS: Record<string, ParamDescriptor> = {
+  light_azimuth: {
+    ...CAMERA_SPECS.horizontal_angle!,
+    label: 'Light direction',
+    default: 315,
+    fill: 'tool',
+  },
+  light_elevation: {
+    description: '',
+    label: 'Light height',
+    min: -30,
+    max: 90,
+    step: 30,
+    default: 30,
+    fill: 'tool',
+    value_labels: { '-30': 'Below', 0: 'Level', 30: 'Above', 60: 'High', 90: 'Top' },
+  },
+};

@@ -10,7 +10,7 @@ import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset'
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
-import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 interface VideoNodeProps {

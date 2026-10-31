@@ -21,7 +21,8 @@
  *      Hocuspocus reads when it builds the Connection), so every incoming
  *      Yjs sync-update is rejected at the protocol level — no UI trust.
  *   4. For a Space content doc, the spaceId is still listed in the
- *      project's `meta.spaces` (delegated to `readProjectSpaceIds`); a
+ *      project's `meta.spaces` under that same type (delegated to
+ *      `readListedContentDocNames`); a
  *      Space that has left the list refuses new connections. The meta doc
  *      itself skips this check — it is the list.
  *
@@ -37,13 +38,14 @@
  * role), which drifted from the server's path; both now call the one
  * shared kernel. The Yjs space-existence check reads the meta doc this
  * process holds, and loads one when it holds none — there is no second
- * source and this file issues no SQL for it. See `readProjectSpaceIds` in
+ * source and this file issues no SQL for it. See `readListedContentDocNames` in
  * `@collab/services/project-space-list.js`.
  */
 
 import type { Redis } from "@breatic/core";
+import { readCookie } from "@collab/infra/cookie.js";
 import {
-  readProjectSpaceIds,
+  readListedContentDocNames,
   type DocumentRegistry,
 } from "@collab/services/project-space-list.js";
 import {
@@ -52,6 +54,7 @@ import {
   getSession,
   projectAuthService,
   sessionCookieName,
+  sessionId,
 } from "@breatic/core";
 import type { SeatClaim } from "@collab/services/connection-registry.js";
 import { parseDocName } from "@breatic/shared";
@@ -68,30 +71,6 @@ import type { ProjectRole } from "@breatic/shared";
  * inference.
  */
 const logger = createLogger("auth");
-
-/**
- * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
- * `Cookie:` header string, so we hand-roll instead of pulling a
- * Hono-coupled cookie helper.
- *
- * Returns the value of the named cookie or null if absent.
- * @param header - Raw `Cookie:` header string from the WebSocket upgrade request, or undefined when no cookies were sent.
- * @param name - Name of the cookie to extract.
- * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
- */
-function readCookie(header: string | undefined, name: string): string | null {
-  if (!header) return null;
-  // Cookie header is `name1=val1; name2=val2`. Trim each pair so
-  // leading spaces after `; ` do not break matching.
-  for (const pair of header.split(";")) {
-    const eq = pair.indexOf("=");
-    if (eq < 0) continue;
-    const k = pair.slice(0, eq).trim();
-    if (k !== name) continue;
-    return decodeURIComponent(pair.slice(eq + 1).trim());
-  }
-  return null;
-}
 
 /**
  * Resolved user context returned to Hocuspocus. The return value is
@@ -116,6 +95,12 @@ export interface AuthContext {
    * would leave that person with a read-only tab and nothing in its place.
    */
   handedOverFrom: string | null;
+  /**
+   * The session this connection was opened with: the token, to read it again,
+   * and its id (core `sessionId`), to match announcements of ended sessions
+   * (inner#1548). Held in this process's memory only.
+   */
+  session: { token: string; id: string };
 }
 
 /**
@@ -143,21 +128,18 @@ export interface CreateAuthHookOptions {
   redis: Redis;
   /**
    * How many writable connections one of this project's documents may hold
-   * at once, read from the membership tier of the studio that owns the
-   * project (#88). It is a per-project lookup rather than a constant
-   * because the answer belongs to that studio's current admin, and
-   * adminship transfers.
+   * at once, resolved from its Studio's current admin membership reading.
+   * Configured or negotiated concurrent_editors and expiry are resolved
+   * together for this handshake; an admin transfer changes the source.
    *
    * ZERO IS A REAL ZERO — not one writable connection. Every ceiling in
    * `config/membership.yaml` reads that way (`base.team_studios: 0` is a
    * genuine zero), and there is no sentinel for "unlimited": a deployment
    * that does not want to cap this writes a number nobody reaches.
    *
-   * THROWING IS EXPECTED and does not refuse the connection: the lookup
-   * raises when our own data is wrong (a tier value outside the enum after
-   * a hand-written UPDATE, a missing account, a studio with no live admin).
-   * What it answers is how many may WRITE, and reading does not depend on
-   * it, so the caller degrades the connection to read-only and logs.
+   * An unresolved limit grants read-only access and logs the cause. Reasons
+   * include an unknown tier, an absent live account or admin, invalid saved
+   * information, and legacy enterprise information awaiting completion.
    */
   resolveConnectionLimit: (projectId: string) => Promise<number>;
   /**
@@ -186,8 +168,9 @@ export interface CreateAuthHookOptions {
 /**
  * Create the onAuthenticate hook for Hocuspocus.
  *
- * Returns a function that Hocuspocus calls on every WS handshake.
- * Throwing rejects the connection (4401 / 4403). Returning sets
+ * Hocuspocus calls this for each document's authentication on the shared socket.
+ * Throwing sends a document permission-denied response and clears its pending
+ * authentication state. Returning sets
  * `c.context.user` for the handlers that read it downstream —
  * `onStateless` (the caller's id and role on every `space:*` RPC),
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
@@ -310,18 +293,21 @@ export function createAuthHook({
       }
 
       // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
-      // refuse the connection if the spaceId is no longer in `meta.spaces`.
-      // This is the runtime half of "delete a Space = remove its id from
-      // meta.spaces; PG row stays for recovery but new connections cannot
-      // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
+      // refuse the connection unless `meta.spaces` lists this Space under
+      // this kind. This is the runtime half of "delete a Space = remove its id
+      // from meta.spaces; PG row stays for recovery but new connections cannot
+      // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5). Matching
+      // the kind too keeps a doc of another kind under a listed id from ever
+      // being stored, so the live Space count the cap reads stays equal to the
+      // Spaces in meta.
       if (parsed.kind !== "meta") {
-        const ids = await readProjectSpaceIds(
+        const listed = await readListedContentDocNames(
           parsed.projectId,
           instance,
           request,
           socketId,
         );
-        if (!ids.has(parsed.spaceId)) {
+        if (!listed.has(documentName)) {
           logger.warn(
             {
               userId,
@@ -400,40 +386,12 @@ export function createAuthHook({
           cap = await resolveConnectionLimit(parsed.projectId);
         } catch (err) {
           atCapacity = true;
-          // Carry `err` through verbatim: the structured fields beside it
-          // narrow the search but never name the row, and without the message
-          // the trail says merely "some studio has bad data".
-          //
-          // How much the message narrows it varies, and it is worth knowing
-          // which case you are in before going to look:
-          //
-          //   `Unknown membership tier "X" on account <uid>, the admin of
-          //     studio <sid>`  — the one that names its row outright: that
-          //     `users` row, and the offending value with it.
-          //   `No live admin for studio <sid>`  — narrows to a studio, NOT to
-          //     a table. `readStudioAdmin` joins three of them and any of four
-          //     liveness conditions failing yields this same string, so the bad
-          //     row may be in `studios`, in `studio_members`, or in the admin's
-          //     `users` row. Its own docstring lists all three.
-          //   `No live project <pid>`  — a `projects` row.
-          //   `Cannot resolve ceilings for account <uid>, the admin of studio
-          //     <sid>: it is on the enterprise tier…`  — also names its row,
-          //     and nothing about it is corrupt. Enterprise is a legal tier
-          //     whose ceilings are negotiated per customer and are not in any
-          //     config file, so there is no number to answer with until they
-          //     are stored. Editing `config/membership.yaml` is the one thing
-          //     NOT to do here.
-          //   anything naming no row at all  — the config file.
-          //     `getLimitsForStudio` ends at `getMembershipLimits`, which
-          //     lazily reads and validates `config/membership.yaml` on first
-          //     use. Three different failures surface here and only one of
-          //     them is a ZodError: the file can be unreadable (an fs error),
-          //     unparseable (a YAMLParseError), or valid YAML that the schema
-          //     rejects. Naming no row is what they have in common, and it is
-          //     the useful test — all three are NOT per-studio: they degrade
-          //     every writable connection in the deployment until the file is
-          //     fixed.
-          //   anything else  — unclassified; read the message.
+          // Preserve the error with its Project and Studio context. Membership
+          // reads can identify an unknown stored tier, an absent live admin or
+          // Project, or legacy enterprise information awaiting completion.
+          // Configured tiers also validate membership.yaml lazily. Saved
+          // enterprise records are validated when the snapshot is read, so a
+          // malformed record can also reach this fail-closed path.
           logger.error(
             {
               err,
@@ -521,6 +479,7 @@ export function createAuthHook({
       return {
         user: { id: userId, role },
         handedOverFrom,
+        session: { token, id: sessionId(token) },
       };
     } catch (err) {
       // The walks above log + throw on auth-policy rejections
@@ -530,9 +489,8 @@ export function createAuthHook({
       // infrastructure failure - Redis ping fail, postgres-js
       // connection drop, Yjs lib error. We log with `unexpected`
       // tag so dashboards can split "policy reject" vs "infra
-      // fail" trends and re-throw so Hocuspocus still closes the
-      // socket with 4401 (the client sees the same banner state
-      // either way; only the server-side trail differs).
+      // fail" trends. Re-throwing lets Hocuspocus send the document's
+      // permission-denied response and clear its pending authentication state.
       const e = err as Error;
       const isKnownReject =
         e.message === "Origin not allowed" ||

@@ -23,7 +23,7 @@ export interface DropPoint {
  * wall. The canvas dot grid is 24px, so a gap of one dot keeps the seam on the
  * background the reader already sees.
  */
-const GAP_PX = 24;
+export const GAP_PX = 24;
 
 /**
  * Nodes across before the next row starts.

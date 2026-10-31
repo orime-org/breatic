@@ -42,10 +42,12 @@ import {
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
+  reportCollaboratorFirstAction,
 } from "@breatic/core";
-import { canvasSpaceDocName, t, uprightKeyFor } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
+import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
   UploadGrant,
@@ -140,6 +142,7 @@ export const INGEST_SIDE_EFFECT_EVENTS: Record<
   reclaimQueueFailed: "ingest_report_reclaim_queue_failed",
   activityAppendFailed: "activity_record_failed",
   coverRegisterFailed: "ingest_cover_register_failed",
+  peaksQueueFailed: "audio_peaks_queue_failed",
 };
 
 /**
@@ -166,6 +169,13 @@ export interface IngestSideEffects {
    * so this is the only account anybody gets of the object left behind.
    */
   coverRegisterFailed?: boolean;
+  /**
+   * An audio row's peaks read could not be queued (inner#1305 §4.4). The audio
+   * stands and plays; until the peaks backfill reaches it, its cut band draws
+   * the browser's own decode within the waveform ceilings and stays plain past
+   * them, and this line is what says so.
+   */
+  peaksQueueFailed?: boolean;
 }
 
 /**
@@ -217,9 +227,12 @@ export type IngestReportOutcome = IngestSideEffects &
     } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
+  /** A transfer upload (inner#1006) finished: no row was written for it. */
+  | { status: "transferred" }
   /**
    * Nothing for this report to answer with: a failure for an upload another
-   * delivery already registered, or a repeat whose ledger row is gone.
+   * delivery already registered, a repeat whose ledger row is gone, or a
+   * transfer finish whose grant was already voided.
    */
     | { status: "stale" });
 
@@ -480,6 +493,7 @@ async function fileCover(
   const adapter = await getStorageAdapter();
   try {
     const registered = await assetService.register({
+      originStorageKey: grant.storageKey,
       ownerStudioId: grant.studioId,
       actingUserId: grant.userId,
       contentHash: cover.sha256,
@@ -581,6 +595,10 @@ export async function applyIngestReport(
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
+  // A transfer (inner#1006) never becomes a row: its own finish settles it,
+  // so a completed report for one has nothing to register.
+  if (grant.assetSource === "transfer") return { status: "stale" };
+
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;
 
@@ -610,7 +628,7 @@ export async function applyIngestReport(
       grant,
       resultOf(existing, existingCover?.fileUrl ?? null),
     );
-    return {
+    const repeated: IngestReportOutcome = {
       status: "already_registered",
       assetId: existing.id,
       fileUrl,
@@ -624,6 +642,7 @@ export async function applyIngestReport(
       sizeBytes: existing.sizeBytes,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
+    return withPeaksQueued(repeated);
   }
 
   // The declared size got the ticket issued; this is the first time anyone has
@@ -676,6 +695,7 @@ export async function applyIngestReport(
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
   const { asset, deduped, reclaimQueueFailed } = await assetService.register({
+      originStorageKey: grant.storageKey,
     ...(cover.id !== null && { coverAssetId: cover.id }),
     ownerStudioId: grant.studioId,
     actingUserId: grant.userId,
@@ -751,10 +771,11 @@ export async function applyIngestReport(
   // wants announced.
   let activityAppendFailed = false;
   if (historyIsNew && grant.projectId !== null && grant.derived !== true) {
+    const type = grant.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded";
     const appended = await appendProjectActivity({
       projectId: grant.projectId,
       actorUserId: grant.userId,
-      type: grant.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+      type,
       spaceId: grant.spaceId,
       nodeId: grant.nodeId,
       payload:
@@ -769,6 +790,12 @@ export async function applyIngestReport(
           : { fileUrl: asset.fileUrl, kind: asset.kind },
     });
     activityAppendFailed = !appended.ok;
+    if (appended.ok) {
+      await reportCollaboratorFirstAction(
+        { projectId: grant.projectId, userId: grant.userId, action: type === "asset:uploaded" ? "asset" : "generation" },
+        grant.analyticsConsent ?? NO_CONSENT,
+      );
+    }
   }
 
   const countsPublishFailed = await announceSuccess(grant, result, historyEntryId);
@@ -786,7 +813,7 @@ export async function applyIngestReport(
     userId: grant.userId,
     assetId: asset.id,
   });
-  return {
+  return withPeaksQueued({
     status: "registered",
     assetId: asset.id,
     fileUrl: asset.fileUrl,
@@ -804,5 +831,23 @@ export async function applyIngestReport(
     ...((cover.failed || settled?.failed === true) && {
       coverRegisterFailed: true,
     }),
-  };
+  });
+}
+
+/**
+ * Queue the peaks read of a registered audio row, as the last step of
+ * registering it (inner#1305 §4.4).
+ *
+ * Every lane that registers bytes returns through here, so none of them can
+ * leave its audio without a job. The row stands either way; a job that could
+ * not be queued is a flag for the caller to write down.
+ * @param outcome - What registration answered.
+ * @returns The same outcome, flagged when its job could not be queued.
+ */
+async function withPeaksQueued(outcome: IngestReportOutcome): Promise<IngestReportOutcome> {
+  const queued = await scheduleAudioPeaks(outcome).then(
+    () => true,
+    () => false,
+  );
+  return queued ? outcome : { ...outcome, peaksQueueFailed: true };
 }

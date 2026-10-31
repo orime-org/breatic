@@ -32,7 +32,7 @@ import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
-import { dropFile } from '../helpers/upload';
+import { dropFile, expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
 let context: BrowserContext;
 let page: Page;
@@ -147,6 +147,11 @@ test.afterEach(async () => {
 // A1: the bytes reach R2 through the Worker, and the URL the server wrote is
 // the one the node keeps — which is what a reload proves.
 test('a dropped image lands on a node with a URL that survives a reload @needs-ingest @needs-storage', async () => {
+  // inner#1595: the server opens the upload and the page only sends parts.
+  const sent = recordRequests(page);
+  const ticketAnswer = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && /\/assets\/upload-ticket$/.test(new URL(r.url()).pathname),
+  );
   // Bytes no earlier run has stored. A fixed payload would hit dedup at the
   // ticket from the second run onwards, and the answer to that never reaches
   // the Worker — which is the half this case exists to prove.
@@ -163,6 +168,9 @@ test('a dropped image lands on a node with a URL that survives a reload @needs-i
     .toBeGreaterThan(0);
   const [landed] = await imageSources(page);
   expect(landed).toMatch(/^https?:\/\//);
+  const { data: opened } = (await (await ticketAnswer).json()) as { data: Record<string, unknown> };
+  expectOpenedUpload(opened);
+  expect(expectOnlyPartsTo(sent, String(opened.uploadUrl))).toBeGreaterThan(0);
 
   // A reload reads the node back out of Yjs, so what survives it is what the
   // server wrote rather than anything this session held. Which Space the strip
@@ -329,8 +337,10 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   // Counted, because a route that matches nothing aborts nothing and this case
   // would then pass on an upload that simply succeeded.
   let aborted = 0;
+  const cutRequests: { method: string; url: string }[] = [];
   await page.route('**/uploads**', (route) => {
     aborted += 1;
+    cutRequests.push({ method: route.request().method(), url: route.request().url() });
     return route.abort('connectionfailed');
   });
 
@@ -358,6 +368,12 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
   // The abort first: a route that matched nothing would leave the assertions
   // below describing an upload that simply worked.
   await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
+  // What was cut is a part: the server opened the upload (inner#1595), so the
+  // page sends the Worker nothing else, and the finish is never reached.
+  for (const cut of cutRequests) {
+    expect(cut.method).toBe('PUT');
+    expect(new URL(cut.url).pathname).toMatch(PART_PATH);
+  }
   // The server took the report and settled the row.
   await reported;
 
@@ -397,8 +413,9 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
 // A6: a transfer that dies BEFORE the ticket is answered. Nothing exists on the
 // server — no row, no grant, no timer — so there is no task row to carry the
-// failure and the toast is the whole of what this side can say. The node stays:
-// a node that exists is the reader's to remove, and only theirs (#2177).
+// failure; the uploader's own tab says it on the node, where the placeholder
+// stood (inner#1303 §6.7). The node stays: a node that exists is the reader's
+// to remove, and only theirs (#2177).
 test('a drop that never gets a ticket keeps its node and says so', async () => {
   let aborted = 0;
   await page.route('**/assets/upload-ticket*', (route) => {
@@ -417,7 +434,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
   );
 
   await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
-  await expect(page.locator('[data-sonner-toast]')).toContainText(
+  await expect(visibleSpace(page).locator('.react-flow__node').last()).toContainText(
     'Upload failed.',
     { timeout: 30_000 },
   );

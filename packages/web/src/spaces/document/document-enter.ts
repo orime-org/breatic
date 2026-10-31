@@ -24,9 +24,7 @@
 
 import {
   createExtension,
-  getBlockInfo,
-  getBlockInfoAtNearest,
-  getNearestBlockPos,
+  getBlockInfoNearPos,
 } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
@@ -37,10 +35,12 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
-import { cellAround } from '@tiptap/pm/tables';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import {
   QUOTED,
   splitCarryingQuote,
@@ -75,11 +75,11 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // selection instead reads its ANCHOR — the end the drag started at — so
     // the same highlight named a different block depending on which way it
     // was drawn, and the quote test below answered for the wrong one.
-    const info = getBlockInfoAtNearest(tr, tr.selection.from);
-    if (!info.isBlockContainer) {
+    const info = getBlockInfoNearPos(tr, tr.selection.from);
+    if (!info.hasContent) {
       return false;
     }
-    const { blockContent, bnBlock, childContainer } = info;
+    const { content: blockContent, block: bnBlock, children: childContainer } = info;
     const type = blockContent.node.type.name;
 
     if (OWN_ENTER_TYPES.some((ownType) => ownType === type)) {
@@ -101,7 +101,10 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // opening a block rather than replacing anything, so a selection reaching
     // it would leave what the reader highlighted where it was.
     const blockEmpty = tr.selection.empty && blockContent.node.childCount === 0;
-    const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
+    // Indented means nested under another block; a block at the top of a
+    // table cell is at the top of that cell's own body (inner#1619).
+    const $block = tr.doc.resolve(bnBlock.beforePos);
+    const indented = $block.depth > 1 && $block.parent.type.name === 'blockGroup';
 
     if (blockEmpty) {
       // An empty selection sits in a textblock, so the caret is at offset 0.
@@ -120,6 +123,31 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     tr.deleteSelection();
     tr.scrollIntoView();
     return splitCarryingQuote(tr, tr.selection.from, atBlockStart, atBlockStart);
+  });
+}
+
+/**
+ * Enter's split at the caret a range taken away leaves, where the line before
+ * the caret has words: the new line a paragraph, as the library's Enter over
+ * a range makes it. Left to the library, the caret goes to the input rules
+ * first (BlockNote's Enter sidecar), which a range never reaches: words left
+ * before it that read as a shorthand, `##` or `-`, would turn the line into a
+ * heading or a list item and open no line.
+ *
+ * At the start of a line, on an empty one and on the blocks answering Enter
+ * themselves the input rules have nothing to read, so those stay the
+ * library's.
+ * @param editor - The editor Enter was pressed in.
+ * @returns Whether the line was split here.
+ */
+function splitAfterRange(editor: ListEditor): boolean {
+  return editor.transact((tr) => {
+    const { $from, from } = tr.selection;
+    if (!tr.selection.empty || $from.parentOffset === 0) return false;
+    const info = getBlockInfoNearPos(tr, from);
+    if (!info.hasContent || OWN_ENTER_TYPES.some((type) => type === info.content.node.type.name)) return false;
+    tr.scrollIntoView();
+    return splitCarryingQuote(tr, from, false, false);
   });
 }
 
@@ -179,7 +207,7 @@ function openBlockAt(
  * text untouched — Enter is not a request to replace the document.
  *
  * Answered before anything else looks at the key because BlockNote's own
- * `splitBlock` raises on this selection: `splitBlock.ts:55` hands the
+ * `splitBlock` raises on this selection: `splitBlock.ts:77` hands the
  * selection straight to `tr.split`, and a whole-document selection resolves
  * outside every block, so `prosemirror-transform` reads `copy` off an
  * undefined parent. That throw reaches the keydown handler.
@@ -202,7 +230,7 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  * does.
  *
  * Answered here because BlockNote's own answer raises:
- * `NodeSelectionKeyboard.ts:52` inserts a bare `paragraph`, which a
+ * `NodeSelectionKeyboard.ts:89` inserts a bare `paragraph`, which a
  * `blockGroup` does not accept.
  *
  * The new block goes after the whole CONTAINER. The gesture selects the
@@ -217,15 +245,15 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  */
 function handleWholeBlockEnter(editor: ListEditor): boolean {
   editor.transact((tr) => {
-    const info = getBlockInfo(getNearestBlockPos(tr.doc, tr.selection.from));
-    if (!info.isBlockContainer) {
+    const info = getBlockInfoNearPos(tr, tr.selection.from);
+    if (!info.hasContent) {
       return;
     }
     // The quote rides across, the way it does on every other path into a new
     // block (A7b). It is a prop on each block here, so a block built from the
     // schema's defaults opens outside the quote and cuts the run in two.
-    openBlockAt(tr, info.bnBlock.afterPos, {
-      [QUOTED]: info.blockContent.node.attrs[QUOTED],
+    openBlockAt(tr, info.block.afterPos, {
+      [QUOTED]: info.content.node.attrs[QUOTED],
     });
   });
   return true;
@@ -297,16 +325,24 @@ export const documentEnterExtension = createExtension(() => {
         if (ended.justEnded()) {
           return true;
         }
-        // Inside a table Enter breaks the line in the cell
-        // (`document-table-keys`, which runs after this).
-        if (cellAround(editor.prosemirrorState.selection.$head) !== null) {
+        // Over selected cells, and in a stored table's cell, Enter is
+        // `document-table-keys`'s, which runs after this. In a cell of a
+        // table whose cells hold blocks it is the body's own, below.
+        if (
+          editor.prosemirrorState.selection instanceof CellSelection ||
+          inLegacyCell(editor.prosemirrorState.selection.$head)
+        ) {
           return false;
         }
-        // A range reaching past an end of the body goes as any range does;
-        // what is left is a caret in text, which takes the ordinary Enter
-        // below. Left to the library, the split is placed at the range's
-        // start, which can be the edge, outside any line (#124, A6).
-        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection) {
+        // A range reaching past an end of the body, or one taking a table
+        // whole (inner#1619 T14), goes as any range does; what is left is a
+        // caret in text, which takes the ordinary Enter below, the quote of
+        // the line it is on included. Left to the library, the split is placed
+        // at the range's start, which can be the edge, outside any line
+        // (#124, A6), or in the table it took away.
+        const tookRange =
+          editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null;
+        if (tookRange) {
           editor.transact((tr) => tr.deleteSelection());
         }
         const { selection } = editor.prosemirrorState;
@@ -321,7 +357,7 @@ export const documentEnterExtension = createExtension(() => {
         if (selection instanceof NodeSelection && !selection.node.isInline) {
           return handleWholeBlockEnter(editor);
         }
-        return handleQuotedEnter(editor);
+        return handleQuotedEnter(editor) || (tookRange && splitAfterRange(editor));
       },
       // A line break belongs inside a line. A whole selected block has none to
       // break, and neither has the end of a selection reaching past the first or

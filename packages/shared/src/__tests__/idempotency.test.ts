@@ -26,6 +26,7 @@ describe("idempotency scopes", () => {
         "membership",
         "mini-tool",
         "project",
+        "transcribe",
         "understand",
       ].sort(),
     );

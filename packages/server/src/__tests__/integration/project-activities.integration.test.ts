@@ -404,6 +404,76 @@ describe("GET /projects/:id/activities — keyset feed", () => {
   });
 });
 
+describe("listProjectActivities — the next-page cursor", () => {
+  /**
+   * Add entries to a project's feed, one second apart.
+   * @param projectId - The project.
+   * @param userId - Who did them.
+   * @param n - How many.
+   * @param spaceId - The Space they happened in, if any.
+   * @returns Nothing.
+   */
+  async function seed(projectId: string, userId: string, n: number, spaceId?: string): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      const id = await projectActivitiesRepo.insert({
+        projectId,
+        actorUserId: userId,
+        type: "space:created",
+        ...(spaceId === undefined ? {} : { spaceId }),
+        payload: { spaceName: `e${String(i)}` },
+      });
+      await sql`UPDATE project_activities SET created_at = to_timestamp(1783000000 + ${i}) WHERE id = ${id}`;
+    }
+  }
+
+  it("gives no cursor when the feed holds exactly one page", async () => {
+    const { listProjectActivities } = await import("@server/modules/activity/projectActivity.service.js");
+    const { getActivityFeedPageLimits } = await import("@server/config/limits.js");
+    const size = getActivityFeedPageLimits().default;
+    const { userId } = await insertUserWithStudio("Exact Page");
+    const projectId = await insertProject(userId);
+    await seed(projectId, userId, size);
+
+    const page = await listProjectActivities(projectId, undefined, undefined);
+
+    expect(page.items).toHaveLength(size);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("gives no cursor when a Space's entries fill exactly one page", async () => {
+    const { listProjectActivities } = await import("@server/modules/activity/projectActivity.service.js");
+    const { getActivityFeedPageLimits } = await import("@server/config/limits.js");
+    const size = getActivityFeedPageLimits().default;
+    const { userId } = await insertUserWithStudio("Exact Space Page");
+    const projectId = await insertProject(userId);
+    const spaceId = crypto.randomUUID();
+    await seed(projectId, userId, size, spaceId);
+    await seed(projectId, userId, 3);
+
+    const page = await listProjectActivities(projectId, undefined, undefined, { spaceIds: [spaceId] });
+
+    expect(page.items).toHaveLength(size);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("gives a cursor when one more entry is left, and the next page holds it with no cursor", async () => {
+    const { listProjectActivities } = await import("@server/modules/activity/projectActivity.service.js");
+    const { getActivityFeedPageLimits } = await import("@server/config/limits.js");
+    const size = getActivityFeedPageLimits().default;
+    const { userId } = await insertUserWithStudio("Page And One");
+    const projectId = await insertProject(userId);
+    await seed(projectId, userId, size + 1);
+
+    const first = await listProjectActivities(projectId, undefined, undefined);
+    expect(first.items).toHaveLength(size);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await listProjectActivities(projectId, first.nextCursor ?? undefined, undefined);
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+  });
+});
+
 describe("POST /assets/deleted — report guards", () => {
   it("422 for an over-long file_url (feed-bloat cap)", async () => {
     const { userId } = await insertUserWithStudio("Deleter");

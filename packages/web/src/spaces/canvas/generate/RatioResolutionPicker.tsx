@@ -170,9 +170,9 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
-        // A camera-angle control names four heights and three distances under
-        // its sliders; at w-64 those words overlap in English and Japanese.
-        className={cn('relative p-3 shadow-md', model.camera_angle ? 'w-80' : 'w-64')}
+        // A camera-angle control lays its sphere beside its three sliders, as
+        // wide as a mini-tool's two-column panel (inner#1304).
+        className={cn('relative p-3 shadow-md', model.camera_angle ? 'w-[min(560px,92vw)]' : 'w-64')}
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}

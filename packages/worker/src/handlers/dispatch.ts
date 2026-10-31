@@ -20,21 +20,30 @@ import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
+import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
+import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
+import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
+import { modelCatalog, nodeHistoryService } from "@breatic/domain";
 import {
+  assetRepo,
   assetService,
   createUsageRecorder,
   settleTaskForNode,
   readingLimitsUntil,
   understandMediaAt,
+  understandMediaInBatches,
+  openLongMediaBatchOperation,
+  advanceLongMediaSegmentation,
+  UnderstandRefused,
   UNDERSTAND_PINS,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import {
   AnsweredNothing,
+  CutShort,
+  StoppedPartWay,
+  TranscriptionBlocked,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
@@ -46,13 +55,18 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
-import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
+import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
+import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
+import {
+  isTranscription,
+  transcribeQuestion,
+} from "@worker/handlers/transcribe-question.js";
+import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -78,6 +92,11 @@ export interface TaskJobData {
   taskId: string;
   taskType: string;
   userId: string;
+  /**
+   * The requesting browser's analytics consent when the task was queued
+   * (inner#1442 §4.4.5). Absent on jobs queued before it existed; read as no consent.
+   */
+  analyticsConsent?: ConsentSnapshot;
   /**
    * Project the task is scoped to. Required for any task that writes
    * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
@@ -286,7 +305,7 @@ export async function runTask(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runTaskBody(job, token);
+  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => runTaskBody(job, token));
 }
 
 /**
@@ -389,6 +408,10 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
+    // A crash between marking the task billed and charging it leaves the
+    // run's hold standing, and this job now completes, so nothing after it
+    // releases the hold. Releasing one that is already released does nothing.
+    await releaseRunHold(taskId, userId);
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
@@ -503,7 +526,7 @@ async function runTaskBody(
    * @param feature - Which path this task runs.
    * @returns The recorder.
    */
-  const recorderFor = (feature: "canvas_understand"): UsageRecorder =>
+  const recorderFor = (feature: "canvas_understand" | "canvas_transcribe"): UsageRecorder =>
     createUsageRecorder({
       operationKey: `task:${taskId}`,
       feature,
@@ -559,8 +582,9 @@ async function runTaskBody(
       }
       [providerResult, creditsUsed] = await runUnderstand(
         params,
-        recorderFor("canvas_understand"),
+        recorderFor(isTranscription(params) ? "canvas_transcribe" : "canvas_understand"),
         deadlineAt,
+        { taskId, projectId: projectId ?? undefined, actorUserId: userId },
       );
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
@@ -597,6 +621,7 @@ async function runTaskBody(
       taskType,
       err,
       typeof params.source_url === "string" ? params.source_url : undefined,
+      isTranscription(params) ? "transcribe" : undefined,
     );
     // The error itself, beside what the row will hold. A reading stores a
     // code of ours, and `internal` says only that a part of this broke —
@@ -659,6 +684,7 @@ async function runTaskBody(
       projectId,
       taskId,
       deadlineAt,
+      outputType: declaredOutputType(model, toolId),
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -710,12 +736,17 @@ async function runTaskBody(
     return { failed: true, reason: "job_lock_lost_zombie" };
   }
 
+  // Rounded once, here, so the task row, the node's history, the activity
+  // feed and the charge all carry the same whole-cent figure (inner#1666).
+  creditsUsed = toChargeCredits(creditsUsed);
+
   // ─── Stage 3: Mark completed + charge (atomic via CAS) ────────────
   // markCompletedAndBill uses a WHERE billed_at IS NULL clause so only
   // the first Worker to reach this step wins the charge. Any subsequent
   // retry (shouldn't happen given the re-entry guard above, but defense
   // in depth) reads `wasFirst = false` and skips the deduct step.
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
+  if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
 
   const usedModel = (result.model as string | undefined) ?? model;
   const usedProvider = providerOf(taskType, usedModel);
@@ -739,46 +770,17 @@ async function runTaskBody(
     );
   }
 
-  if (wasFirst && creditsUsed > 0) {
-    try {
-      const outcome = await creditLotService.chargeForGeneration({
-        projectId: projectId ?? null,
-        actorUserId: userId,
-        amount: creditsUsed,
-        description: `Task: ${taskType}`,
-        referenceId: taskId,
-        model: usedModel,
-        provider: usedProvider,
-      });
-      if (outcome.shortfall > 0) {
-        // The studio's pool ran out mid-flight, or its credits were reassigned
-        // while the task ran. The result is already delivered, so what is left
-        // uncharged goes to reconciliation.
-        logger.error(
-          {
-            taskId,
-            userId,
-            studioId: outcome.studioId,
-            charged: outcome.charged,
-            shortfall: outcome.shortfall,
-          },
-          "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-        );
-      }
-    } catch (err) {
-      // Deduct failed AFTER the CAS marked billed_at. The file is
-      // already persisted and the task is completed. Log loudly for
-      // manual reconciliation — do NOT roll back billed_at because
-      // that would allow a double-charge on the next retry. Also do
-      // NOT fail the task — the user is entitled to their result.
-      logger.error(
-        { taskId, userId, creditsUsed, err },
-        "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
-      );
-    }
-  } else if (!wasFirst) {
-    logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
-  }
+  if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
+  await settleRunCharge({
+    taskId,
+    taskType,
+    userId,
+    projectId: projectId ?? null,
+    model: usedModel,
+    provider: usedProvider,
+    wasFirst,
+    creditsUsed,
+  });
 
   // ─── Stage 4: Record history + settle each node's task row ───────
   // No canvas-node lock check here (#1618): the billed result is recorded to
@@ -933,7 +935,10 @@ async function recordGenerationActivity(args: {
       });
       changed = inserted !== null;
     }
-    if (changed) await publishActivityNew(args.projectId);
+    if (changed) {
+      await publishActivityNew(args.projectId);
+      await reportCollaboratorFirstAction({ projectId: args.projectId, userId: args.userId, action: "generation" });
+    }
   } catch (err) {
     logger.warn(
       { err, taskId: args.taskId, projectId: args.projectId },
@@ -1121,6 +1126,93 @@ export interface FailedRunEnd {
   settles: boolean;
 }
 
+/** A finished run, as the charge for it needs it. */
+export interface RunCharge {
+  taskId: string;
+  taskType: string;
+  userId: string;
+  projectId: string | null;
+  model: string | undefined;
+  provider: string | undefined;
+  /** Whether this attempt is the one that marked the task completed. */
+  wasFirst: boolean;
+  /** What the run actually cost. */
+  creditsUsed: number;
+}
+
+/**
+ * Release a run's credit hold. A release that fails is logged and the hold
+ * expires on its own; the run's outcome is written either way.
+ * @param taskId - The run, whose task id keys its hold.
+ * @param userId - Who started it, for the log.
+ */
+export async function releaseRunHold(taskId: string, userId: string): Promise<void> {
+  await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
+    logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
+  );
+}
+
+/**
+ * Charge a completed run what it actually cost, or release what was held for
+ * it (inner#1611).
+ *
+ * The run was admitted by holding its estimate under the task id. The attempt
+ * that marked the task completed charges the actual cost and releases that
+ * hold in the same commit; one that cost nothing, or that lost the completion
+ * to another attempt, only releases it.
+ *
+ * Nothing here throws: the result is already delivered. A charge that fails is
+ * logged for reconciliation and its hold is left to expire (inner#1617).
+ * @param run - The run and what it cost.
+ */
+export async function settleRunCharge(run: RunCharge): Promise<void> {
+  const { taskId, userId } = run;
+  if (!run.wasFirst || run.creditsUsed <= 0) {
+    await releaseRunHold(taskId, userId);
+    return;
+  }
+  try {
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: run.projectId,
+      actorUserId: userId,
+      amount: run.creditsUsed,
+      description: `Task: ${run.taskType}`,
+      referenceId: taskId,
+      model: run.model,
+      provider: run.provider,
+      releaseHold: taskId,
+    });
+    if (outcome.shortfall > 0) {
+      // The studio's pool ran out mid-flight, or its credits were reassigned
+      // while the task ran. The result is already delivered, so what is left
+      // uncharged goes to reconciliation.
+      logger.error(
+        {
+          taskId,
+          userId,
+          studioId: outcome.studioId,
+          charged: outcome.charged,
+          shortfall: outcome.shortfall,
+        },
+        "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+      );
+    }
+    if (outcome.signalFailure) {
+      logger.error({ err: outcome.signalFailure, taskId, userId, projectId: run.projectId }, "credits_signal_failed");
+    }
+  } catch (err) {
+    // Deduct failed AFTER the CAS marked billed_at. The file is already
+    // persisted and the task is completed. Log loudly for manual
+    // reconciliation — do NOT roll back billed_at because that would allow a
+    // double-charge on the next retry. Also do NOT fail the task — the user
+    // is entitled to their result.
+    logger.error(
+      { taskId, userId, creditsUsed: run.creditsUsed, err },
+      "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
+    );
+  }
+}
+
 /**
  * End a run that produced nothing, on every surface that was told it started.
  *
@@ -1149,6 +1241,9 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   await taskService.markFailed(end.taskId, end.errorMessage);
   // A retry resumes from the steps; once the run is over, none will run again.
   if (end.settles) await upstreamStepRepo.failOpenSteps(end.taskId, end.errorMessage);
+  // The run is over, so what was held for it is free again (inner#1611). A
+  // release that fails leaves the hold to expire; the outcome is still written.
+  if (end.settles) await releaseRunHold(end.taskId, end.userId);
   await recordFailureHistory(
     end.taskId,
     end.projectId,
@@ -1314,6 +1409,38 @@ const OUTPUT_CONTENT_TYPES: Record<string, string> = {
   three_d: "model/gltf-binary",
 };
 
+/**
+ * The type a run's model declares it returns, which its result is stored as
+ * (inner#1305 §7.4). A mini-tool's job carries no model, so a model tool's is
+ * the one the registry pins it to.
+ * @param model - The job's model.
+ * @param toolId - The job's mini-tool, when it runs one.
+ * @returns The declared type, or undefined when the model declares none or
+ *   the run has no model.
+ */
+export function declaredOutputType(model: string | undefined, toolId: string | undefined): string | undefined {
+  const spec = toolId === undefined ? undefined : miniToolById(toolId);
+  const runModel = model ?? (spec === undefined ? undefined : modelOf(spec));
+  return runModel === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), runModel)?.output_type;
+}
+
+/**
+ * The extension a result is stored under when its model declares the type it
+ * returns (inner#1305), one per media type an upload may be.
+ */
+const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "audio/mpeg": ".mp3",
+  "audio/wav": ".wav",
+  "audio/mp4": ".m4a",
+  "audio/webm": ".webm",
+};
+
 /** Provider-level result fields that may carry a URL consumers read. */
 const EXTRA_URL_FIELDS = [
   "result_url",
@@ -1348,6 +1475,8 @@ const EXTRA_URL_FIELDS = [
  * @param opts.projectId - Project the assets belong to, if any.
  * @param opts.taskId - Producing task id (asset cost link).
  * @param opts.deadlineAt - When the task runs out; every store is cut there.
+ * @param opts.outputType - The type the run's model declares it returns, which
+ *   names the key's extension and the stored type in place of the task type's.
  * @returns The outputs with temp URLs / buffers replaced by canonical storage URLs.
  * @throws {Error} When an output could not be stored or registered. Registering
  *   is not separable here: the report the Worker sends is what registers, so a
@@ -1356,7 +1485,7 @@ const EXTRA_URL_FIELDS = [
 export async function persistOutputs(
   outputs: PersistedOutput[],
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number; outputType?: string | undefined },
 ): Promise<PersistedOutput[]> {
   const persisted: PersistedOutput[] = [];
   const adapter = await getStorageAdapter();
@@ -1382,9 +1511,12 @@ export async function persistOutputs(
       generationTaskId: opts.taskId,
       deadlineAt: opts.deadlineAt,
       taskType: opts.taskType,
-      ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
+      ext:
+        (opts.outputType === undefined ? undefined : EXTENSION_OF_TYPE[opts.outputType]) ??
+        OUTPUT_EXTENSIONS[opts.taskType] ??
+        ".bin",
       contentType:
-        contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
+        contentType ?? opts.outputType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
     };
   };
 
@@ -1542,8 +1674,7 @@ export async function runMiniTool(
  * from `config/understand.yaml`, sized for one press producing one task —
  * and hands over.
  *
- * Nothing about this run produces an asset, so nothing here reaches for a
- * URL: what comes back is text, and text is what the node gets.
+ * The task reads the node's source URL and returns text to that node.
  *
  * Exported for the same reason {@link runAigcDirect} is: a test that pins
  * what this path sends has to be able to call it.
@@ -1551,20 +1682,35 @@ export async function runMiniTool(
  * @param usage - The task's recorder; the call is recorded on it.
  * @param deadlineAt - When the task runs out; every part of the reading gets
  *   what is left of it (inner#1367).
+ * @param execution - Stable task identity and ownership for long-media processing.
+ * @param execution.taskId - The durable task identifier.
+ * @param execution.projectId - The owning project, when the task has one.
+ * @param execution.actorUserId - The user who initiated the task.
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
- * @throws {StillRunning} when every reading place in this process is taken.
- * @throws {Error} when the answer is empty.
+ * @throws {StillRunning} when the Container is still producing registered segments or every reading place is taken.
+ * @throws {Error} when canonical asset or long-media processing fails.
+ * @throws {AnsweredNothing} when an understanding returns empty text.
+ * @throws {TranscriptionBlocked} when a content filter blocks a transcription.
+ * @throws {CutShort} when a transcription reaches the output ceiling.
+ * @throws {StoppedPartWay} when a transcription ends for another abnormal reason.
  */
 export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
   deadlineAt: number,
+  execution?: { taskId: string; projectId?: string; actorUserId: string },
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
-  const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
+  // A transcription is the same reading with its own question and allowance
+  // (inner#856): a transcript is every word said, and asking for an answer
+  // language makes the model translate.
+  const transcribing = isTranscription(params);
+  const question = transcribing
+    ? transcribeQuestion(sourceType, params.keep_fillers !== false, params.reader_locale)
+    : understandQuestion(params.prompt, sourceType, params.reader_locale);
 
   /**
    * Record the one call this run made.
@@ -1582,24 +1728,92 @@ export async function runUnderstand(
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
-    answer = await withUnderstandSlot(() => understandMediaAt({
-      url: params.source_url as string,
-      // The ledger's judgement outranks what storage declares: the browser's
-      // gate let this run start on it, and storage answers with a type guessed
-      // from a file name.
-      ...(typeof params.source_mime_type === "string"
-        ? { ledgerType: params.source_mime_type }
-        : {}),
-      question,
-      model: UNDERSTAND_PINS.model,
-      backend: UNDERSTAND_PINS.backend,
-      apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
-      baseUrl: UNDERSTAND_PINS.baseUrl,
-      maxBytes: cfg.max_media_bytes,
-      ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
-      maxOutputTokens: cfg.max_output_tokens,
-      onBilled: record,
-    }));
+    const sourceUrl = params.source_url as string;
+    const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
+    const canCheckLongMedia = (sourceType === "audio" || sourceType === "video") &&
+      execution?.projectId !== undefined && execution.taskId !== undefined;
+    const storage = canCheckLongMedia ? await getStorageAdapter() : null;
+    const sourceKey = storage?.keyFromUrl(sourceUrl) ?? null;
+    const studioId = canCheckLongMedia && execution?.projectId
+      ? await assetService.resolveOwnerStudioId(execution.projectId)
+      : null;
+    const sourceAsset = sourceKey && studioId ? await assetRepo.findLiveByKeyInStudio(studioId, sourceKey) : null;
+    const shouldSegment = sourceAsset !== null && sourceAsset.sizeBytes > cfg.max_media_bytes &&
+      (sourceAsset.mimeType.startsWith("audio/") || sourceAsset.mimeType.startsWith("video/"));
+
+    if (shouldSegment && sourceAsset !== null && execution?.projectId && execution.taskId) {
+      const progress = await advanceLongMediaSegmentation({
+        source: {
+          key: sourceAsset.storageKey,
+          sha256: sourceAsset.contentHash,
+          sizeBytes: sourceAsset.sizeBytes,
+          mimeType: sourceAsset.mimeType,
+        },
+        sourceUrl,
+        actorUserId: execution.actorUserId,
+        projectId: execution.projectId,
+        operationId: execution.taskId,
+        deadlineAt,
+        maxSourceBytes: cfg.max_media_bytes,
+      });
+      if (progress.kind === "pending") {
+        throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
+      }
+      const durableOperation = await openLongMediaBatchOperation({
+        actorUserId: execution.actorUserId,
+        projectId: execution.projectId,
+        originKind: "canvas_task",
+        originKey: execution.taskId,
+        userActionKey: execution.taskId,
+        source: {
+          key: sourceAsset.storageKey,
+          sha256: sourceAsset.contentHash,
+          sizeBytes: sourceAsset.sizeBytes,
+          mimeType: sourceAsset.mimeType,
+        },
+        question,
+        model: UNDERSTAND_PINS.model,
+        deadlineAt: new Date(deadlineAt),
+      }, cfg.long_media.operation_lease_ms);
+      try {
+        answer = await withUnderstandSlot(() => understandMediaInBatches({
+          question,
+          maxBytes: cfg.max_media_bytes,
+          maxItems: getAgentConfig().understand_media_max_items,
+          ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
+          model: UNDERSTAND_PINS.model,
+          backend: UNDERSTAND_PINS.backend,
+          apiKey,
+          baseUrl: UNDERSTAND_PINS.baseUrl,
+          maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
+          checkpoint: durableOperation.checkpoint,
+          signal: durableOperation.signal,
+          onBilled: record,
+        }, progress.segments));
+        await durableOperation.complete();
+      } finally {
+        await durableOperation.release();
+      }
+    } else {
+      answer = await withUnderstandSlot(() => understandMediaAt({
+        items: [{
+          url: sourceUrl,
+          // The ledger's judgement outranks storage's filename-based type.
+          ...(typeof params.source_mime_type === "string"
+            ? { ledgerType: params.source_mime_type }
+            : {}),
+        }],
+        question,
+        model: UNDERSTAND_PINS.model,
+        backend: UNDERSTAND_PINS.backend,
+        apiKey,
+        baseUrl: UNDERSTAND_PINS.baseUrl,
+        maxBytes: cfg.max_media_bytes,
+        ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
+        maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
+        onBilled: record,
+      }));
+    }
   } catch (err) {
     // A call the service billed before failing was recorded; its row lands
     // before the failure goes on, and a row that cannot be written is logged
@@ -1607,9 +1821,20 @@ export async function runUnderstand(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
+    // A 403 is a key, a budget or a content block; only the service's own
+    // error type says which. A block was measured once in three sends of the
+    // same audio, so a transcription takes it as one worth asking again.
+    if (
+      transcribing &&
+      err instanceof UnderstandRefused &&
+      (err.errorType === "content_policy_violation" || err.errorType === "refusal")
+    ) {
+      throw new TranscriptionBlocked(err.errorType);
+    }
     throw err;
   }
   const credits = await usage.settle();
+  if (transcribing) return [transcriptOf(answer), credits];
 
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the reader had with an empty node while
@@ -1622,6 +1847,28 @@ export async function runUnderstand(
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
     credits,
   ];
+}
+
+/**
+ * What a transcription puts on its node, or why it puts nothing (inner#856).
+ *
+ * A normal stop preserves the model's text verbatim, including empty text.
+ * Explicit service failures do not write a partial result.
+ * @param answer - What the model wrote and why it stopped.
+ * @param answer.text - What the model wrote.
+ * @param answer.finishReason - Why it stopped, in the service's own words.
+ * @returns One output holding the transcript.
+ * @throws {TranscriptionBlocked} when a content filter stopped the answer.
+ * @throws {CutShort} when the answer reached the output ceiling.
+ * @throws {StoppedPartWay} when it stopped for any other reason.
+ */
+function transcriptOf(
+  answer: { text: string; finishReason: string },
+): Record<string, unknown> {
+  if (answer.finishReason === "content_filter") throw new TranscriptionBlocked("content_filter");
+  if (answer.finishReason === "length") throw new CutShort();
+  if (answer.finishReason !== "stop") throw new StoppedPartWay(answer.finishReason);
+  return { outputs: [{ content: answer.text }], finish_reason: answer.finishReason };
 }
 
 /**

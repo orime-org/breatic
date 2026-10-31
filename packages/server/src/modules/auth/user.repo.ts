@@ -10,8 +10,9 @@
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
-import type { UserEntity } from "@breatic/shared";
+import type { Attribution, UserEntity } from "@breatic/shared";
 import { getLegalConfig } from "@server/config/legal.js";
 
 /**
@@ -41,10 +42,11 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
 /**
  * Find a user by ID (excludes soft-deleted).
  * @param userId - User UUID to look up
+ * @param tx - Optional enclosing transaction.
  * @returns The user entity, or null if not found or soft-deleted
  */
-export async function getUserById(userId: string): Promise<UserEntity | null> {
-  const rows = await db
+export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(users)
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
@@ -73,10 +75,11 @@ export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
 /**
  * Find a user by email (excludes soft-deleted), in any casing.
  * @param email - Email address to look up
+ * @param tx - Optional enclosing transaction.
  * @returns The user entity, or null if not found or soft-deleted
  */
-export async function getUserByEmail(email: string): Promise<UserEntity | null> {
-  const rows = await db
+export async function getUserByEmail(email: string, tx?: DbTx): Promise<UserEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(users)
     .where(and(eq(users.email, normalizeEmail(email)), isNull(users.deletedAt)))
@@ -131,6 +134,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.googleId - Optional linked Google account identifier
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
+ * @param data.attribution - Campaign source to keep, already cleared when the browser gave no consent
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
  *   read on first use and on a fresh server this is often that first use, so
@@ -142,6 +146,7 @@ export async function createUser(data: {
   googleId?: string;
   locale: string;
   emailVerified?: boolean;
+  attribution?: Attribution | null;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -151,6 +156,7 @@ export async function createUser(data: {
       googleId: data.googleId,
       locale: data.locale,
       emailVerified: data.emailVerified ?? false,
+      attribution: data.attribution ?? null,
       membershipTier: getDefaultMembershipTier(),
       // Every account is created by continuing from the sign-in or sign-up
       // card, which carries the terms line (#302).

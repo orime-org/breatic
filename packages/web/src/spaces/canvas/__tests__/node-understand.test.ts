@@ -20,6 +20,7 @@ import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const LIMIT = 20 * 1024 * 1024;
+const LONG_MEDIA_LIMIT = 2 * 1024 * 1024 * 1024;
 /** Where a node's file is stored: its key is what the file goes by. */
 const ASSET = 'https://cdn.invalid/upload/2026-09-20/1758_a1b2.aiff';
 
@@ -36,17 +37,28 @@ describe('what the browser refuses before it builds anything', () => {
     ).toBeNull();
   });
 
-  // The two audio types that upload and play but cannot be understood. They
-  // stay clickable on purpose (user 2026-09-19): a disabled item says nothing
-  // about why, and the reason here is one sentence. That sentence names the
-  // file in hand, which is the thing the reader acts on (user 2026-09-20).
+  // Audio a reading cannot take. The item stays clickable on purpose (user
+  // 2026-09-19): a disabled item says nothing about why, and the reason here
+  // is one sentence. That sentence names the file in hand, which is the
+  // thing the reader acts on (user 2026-09-20).
   it('names the format of the file it refused', () => {
     expect(
-      understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toEqual({ kind: 'format', type: 'M4A', file: '1758_a1b2.aiff' });
+      understandRefusal({ kind: 'audio', mimeType: 'audio/ogg', sizeBytes: 1024, url: ASSET }, LIMIT),
+    ).toEqual({ kind: 'format', type: 'OGG', file: '1758_a1b2.aiff' });
     expect(
-      understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toEqual({ kind: 'format', type: 'WebM', file: '1758_a1b2.aiff' });
+      understandRefusal({ kind: 'audio', mimeType: 'audio/flac', sizeBytes: 1024, url: ASSET }, LIMIT),
+    ).toEqual({ kind: 'format', type: 'FLAC', file: '1758_a1b2.aiff' });
+  });
+
+  // inner#856: phone recordings (m4a) and browser recordings (webm), and the
+  // audio tools' own m4a results, are read.
+  it('lets m4a and webm audio through', () => {
+    for (const mimeType of ['audio/mp4', 'audio/x-m4a', 'audio/webm']) {
+      expect(
+        understandRefusal({ kind: 'audio', mimeType, sizeBytes: 1024, url: ASSET }, LIMIT),
+        mimeType,
+      ).toBeNull();
+    }
   });
 
   // Most of what a refusal is handed has no entry in that table: the types it
@@ -92,12 +104,59 @@ describe('what the browser refuses before it builds anything', () => {
     ).toBeNull();
   });
 
+  it('lets oversized audio and video through up to the long-media source cap', () => {
+    expect(
+      understandRefusal(
+        { kind: 'audio', mimeType: 'audio/wav', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toBeNull();
+    expect(
+      understandRefusal(
+        { kind: 'video', mimeType: 'video/mp4', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps the ordinary image cap when a long-media cap is available', () => {
+    expect(
+      understandRefusal(
+        { kind: 'image', mimeType: 'image/png', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toEqual({
+      kind: 'size',
+      limitBytes: LIMIT,
+      sizeBytes: LIMIT + 1,
+      file: '1758_a1b2.aiff',
+    });
+  });
+
+  it('refuses long audio over the configured source cap', () => {
+    expect(
+      understandRefusal(
+        { kind: 'audio', mimeType: 'audio/wav', sizeBytes: LONG_MEDIA_LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toEqual({
+      kind: 'size',
+      limitBytes: LONG_MEDIA_LIMIT,
+      sizeBytes: LONG_MEDIA_LIMIT + 1,
+      file: '1758_a1b2.aiff',
+    });
+  });
+
   // Format first: a file that is both too large and in a format this endpoint
   // cannot read is not fixed by shrinking it.
   it('answers the format when a file fails both', () => {
     expect(
-      understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: LIMIT + 1, url: ASSET }, LIMIT),
-    ).toMatchObject({ kind: 'format', type: 'WebM' });
+      understandRefusal({ kind: 'audio', mimeType: 'audio/ogg', sizeBytes: LIMIT + 1, url: ASSET }, LIMIT),
+    ).toMatchObject({ kind: 'format', type: 'OGG' });
   });
 
   // A node stored before the ledger reported either. The browser has nothing
@@ -167,7 +226,7 @@ describe('what a missing ceiling does and does not switch off', () => {
   // — and A17 says that press builds nothing and says what the file is in.
   it('still refuses a format the endpoint cannot read', () => {
     expect(
-      understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024, url: ASSET }, null),
+      understandRefusal({ kind: 'audio', mimeType: 'audio/ogg', sizeBytes: 1024, url: ASSET }, null),
     ).toMatchObject({ kind: 'format' });
   });
 

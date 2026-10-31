@@ -6,14 +6,10 @@
  *
  * A browser draws a table whose grid does not add up — a rowspan running past
  * the last row, a row with fewer cells than the others — and the clipboard
- * keeps it as written. BlockNote turns pasted HTML into blocks and back into
- * HTML before ProseMirror sees it (`ExportManager.pasteHTML`), and on the way
- * back it lays every cell out on a grid sized from the rows: a span past the
- * last row writes outside that grid and throws, so nothing is pasted
- * (`api/blockManipulation/tables/tables.ts:197-226`). A short row reaches
- * ProseMirror intact and `fixTables` fills it — at the start of the first row,
- * where it takes the missing cells to be under a span from above, which moves
- * that row's words to the right.
+ * keeps it as written. Read as written, a short row would stay short in the
+ * document: the table plugin's repairs that add cells are held back
+ * (`holdTableRepairs` in `document-table-nodes.tsx`), so it would show
+ * placeholder cells until a command on the table evens it.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
  * its end to the widest row, the shape the reader saw on the page; a table
@@ -73,4 +69,15 @@ export function evenTables(root: Element): boolean {
     if (evenTable(table)) changed = true;
   }
   return changed;
+}
+
+/**
+ * Evens the tables in HTML before a reader parses their blocks.
+ * @param html - The pasted HTML.
+ * @returns The evened HTML, unchanged when its tables were already even.
+ */
+export function evenPastedTables(html: string): string {
+  if (!/<table/i.test(html)) return html;
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  return evenTables(body) ? body.innerHTML : html;
 }

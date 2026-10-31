@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { tool } from "ai";
+import { convertToLanguageModelPrompt, standardizePrompt } from "ai/internal";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 
@@ -17,7 +18,7 @@ import {
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 const PREFIX: RequestPrefix = {
-  instructions: "You are the AI core of Breatic.",
+  instructions: { base: "You are the AI core of Breatic." },
   tools: {
     web_search: tool({ description: "Search the web.", inputSchema: z.object({ query: z.string() }) }),
   },
@@ -158,7 +159,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it.each([
-    ["the system prompt", { ...PREFIX, instructions: "Memory changed." }],
+    ["the system prompt", { ...PREFIX, instructions: { base: "Memory changed." } }],
     ["the model", { ...PREFIX, modelId: "deepseek/deepseek-v4-pro" }],
     ["the tool set", { ...PREFIX, tools: {} }],
   ])("takes a reply's thinking out when %s is no longer what its turn sent", (_, now) => {
@@ -186,7 +187,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it("keeps the first and third replies' thinking after the system prompt goes A, B, A, A", () => {
-    const B: RequestPrefix = { ...PREFIX, instructions: "The reader switched language." };
+    const B: RequestPrefix = { ...PREFIX, instructions: { base: "The reader switched language." } };
     const q1: ModelMessage = { role: "user", content: "one" };
     const q2: ModelMessage = { role: "user", content: "two" };
     const q3: ModelMessage = { role: "user", content: "three" };
@@ -277,6 +278,58 @@ describe("replaying the history as it was sent", () => {
   });
 });
 
+describe("a call left without a result", () => {
+  const ASK_CALL: ModelMessage = {
+    role: "assistant",
+    content: [
+      { type: "text", text: "Two things first." },
+      { type: "tool-call", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] } },
+    ],
+  };
+
+  it("tells the model the user did not answer a questionnaire nobody answered", () => {
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [ASK_CALL])], PREFIX);
+
+    expect(sent.at(-1)).toMatchObject({
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "ask-1", toolName: "ask_user", output: { type: "error-text" } }],
+    });
+    expect(JSON.stringify(sent.at(-1))).toMatch(/did not answer/);
+  });
+
+  it("puts the result right after its call, ahead of what the turn said after it", () => {
+    const note: ModelMessage = { role: "assistant", content: "(The turn was stopped here.)" };
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [ASK_CALL, note])], PREFIX);
+
+    expect(sent.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+  });
+
+  it("leaves a call that has its result alone", () => {
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], ANSWERED)], PREFIX);
+
+    expect(sent).toEqual([ASKED, ...ANSWERED]);
+  });
+
+  it("gives any tool's call a result, so the request is one the SDK will send", async () => {
+    const dangling: ModelMessage = {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: "tc-9", toolName: "web_search", input: { query: "q" } }],
+    };
+    const sent = historyForModel(
+      [userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [dangling]), userRow(2, { messages: [ASKED] })],
+      PREFIX,
+    );
+
+    await expect(
+      convertToLanguageModelPrompt({
+        prompt: await standardizePrompt({ messages: sent }),
+        supportedUrls: {},
+        download: undefined,
+      }),
+    ).resolves.toBeDefined();
+  });
+});
+
 describe("taking the thinking out", () => {
   it("leaves no reasoning, and no provider metadata on any part or message", () => {
     const openRouterShaped: ModelMessage[] = [
@@ -342,8 +395,19 @@ describe("the hash of a request's prefix", () => {
 
     expect(prefixHash(PREFIX, [ASKED])).toBe(base);
     expect(prefixHash(PREFIX, [ASKED, ...ANSWERED])).not.toBe(base);
-    expect(prefixHash({ ...PREFIX, instructions: "x" }, [ASKED])).not.toBe(base);
+    expect(prefixHash({ ...PREFIX, instructions: { base: "x" } }, [ASKED])).not.toBe(base);
     expect(prefixHash(PREFIX, [{ role: "user", content: "time note\n\nfind me references" }])).not.toBe(base);
+  });
+
+  it("depends on the system prompt's text, not on where it is split", () => {
+    // Rows stored when the prompt was one text keep their hash: the split
+    // reads as the same text, so it hashes the same.
+    const split = {
+      ...PREFIX,
+      instructions: { base: "base", project: "## Project Context\np", conversation: "## Conversation Memory\nc" },
+    };
+    const whole = { ...PREFIX, instructions: { base: "base\n\n## Project Context\np\n\n## Conversation Memory\nc" } };
+    expect(prefixHash(split, [ASKED])).toBe(prefixHash(whole, [ASKED]));
   });
 
   it("changes when a tool call's arguments are written in another order", () => {

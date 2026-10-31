@@ -29,13 +29,13 @@ describe("读回一份失败详情", () => {
         errorCarrying({
           kind: "tool_failed",
           forModel: "the site answered 503",
-          readerKey: FAILURE_LINES.upstream,
+          readerKey: FAILURE_LINES.busy,
         }),
       ),
     ).toStrictEqual({
       kind: "tool_failed",
       forModel: "the site answered 503",
-      readerKey: FAILURE_LINES.upstream,
+      readerKey: FAILURE_LINES.busy,
     });
 
     expect(
@@ -62,7 +62,7 @@ describe("读回一份失败详情", () => {
         errorCarrying({
           kind: "user_aborted",
           forModel: "the user stopped this turn",
-          readerKey: FAILURE_LINES.generic,
+          readerKey: FAILURE_LINES.ourFault,
         }),
       ),
     ).toBeUndefined();

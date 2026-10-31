@@ -22,9 +22,14 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
+    listConversations: vi.fn(),
   },
 }));
 
+const toastSpy = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+
+import { t } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import { ApiException } from '@web/data/api/types';
 import {
@@ -723,5 +728,22 @@ describe('telling the reader that something went wrong', () => {
     expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
     // Still offering, because the reader may simply press it again.
     expect(conversation()?.hasMore).toBe(true);
+  });
+});
+
+describe('the next page of the conversation list not arriving (inner#1530)', () => {
+  it('says so in a toast, and keeps the mark that holds the end-of-list watcher back', async () => {
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [{ id: 'c-1', updatedAt: '2026-08-13T00:00:00Z' }],
+      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      hasMoreConversations: true,
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    await conversationRuntime.ensureLoaded('p-1');
+    vi.mocked(chatApi.listConversations).mockRejectedValueOnce(new Error('offline'));
+
+    await conversationRuntime.loadMoreConversations('p-1');
+
+    expect(toastSpy.error).toHaveBeenCalledWith(t('chat.history.moreFailed'));
+    expect(useConversationRuntime.getState().listMoreFailed['p-1']).toBe(true);
   });
 });

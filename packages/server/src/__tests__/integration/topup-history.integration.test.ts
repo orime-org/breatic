@@ -100,6 +100,7 @@ import {
   refundLinesAt,
   REFUND_CREDITS_VERSION,
 } from "@server/modules/payment/legal-text.js";
+import { openPaymentSource } from "./payment-source.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -185,19 +186,14 @@ async function seedPayment(
   } = {},
 ): Promise<string> {
   seq += 1;
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO payments (
       id, user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
       credits_granted, currency, status, metadata, created_at, updated_at
     )
     VALUES (
-      ${source!.id}, ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
+      ${sourceId}, ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
       ${over.taxCents ?? null}, ${over.totalCents ?? null},
       1700, 'usd', ${over.status ?? "pending"},
       ${sql.json(over.metadata ?? {})},

@@ -142,6 +142,18 @@ export const ProjectActivityEntrySchema = z.object({
 export type ProjectActivityEntry = z.infer<typeof ProjectActivityEntrySchema>;
 
 /**
+ * Whether a feed entry is a member leaving of their own accord: a removal
+ * whose actor removed themselves. The activity panel and the Agent's activity
+ * tool both tell a leave this way (inner#1469).
+ * @param entry - The feed entry.
+ * @returns True for a leave.
+ * @throws {never} Never.
+ */
+export function isMemberLeave(entry: ProjectActivityEntry): boolean {
+  return entry.type === "member:removed" && entry.actorUserId !== null && entry.payload["targetUserId"] === entry.actorUserId;
+}
+
+/**
  * Keyset cursor - opaque to clients, encodes (createdAt, id) of the
  * last row of the previous page.
  */
@@ -159,9 +171,19 @@ export type ProjectActivityPage = z.infer<typeof ProjectActivityPageSchema>;
  */
 export const ACTIVITY_NEW_SIGNAL = "activity:new" as const;
 
-export const ActivityNewSignalSchema = z.object({
-  t: z.literal(ACTIVITY_NEW_SIGNAL),
-  projectId: z.string(),
-});
+export interface ActivityNewSignal {
+  t: typeof ACTIVITY_NEW_SIGNAL;
+  projectId: string;
+}
 
-export type ActivityNewSignal = z.infer<typeof ActivityNewSignalSchema>;
+/**
+ * Stateless WS signal broadcast on the project meta doc when a charge made in
+ * that project commits (inner#1611) - clients read the credits again. Other
+ * projects of the same studio are not signalled.
+ */
+export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
+
+export interface CreditsChangedSignal {
+  t: typeof CREDITS_CHANGED_SIGNAL;
+  projectId: string;
+}

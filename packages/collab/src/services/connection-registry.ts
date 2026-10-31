@@ -10,7 +10,7 @@
  * before any instance trips the cap. This registry makes the count
  * authoritative across instances by recording each connection in a Redis
  * sorted set on the collab-coordination DB (`REDIS_COLLAB_URL`, DB3, same
- * connection family as the Hocuspocus pub/sub + the space-delete lock).
+ * connection family as the Hocuspocus pub/sub + the Space count lock).
  *
  * Data model — one sorted set per document:
  *   key    = `{env}:collab:seats:{documentName}`

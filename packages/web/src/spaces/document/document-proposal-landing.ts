@@ -17,8 +17,9 @@
  */
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { deriveId, occurrences, type DocumentProposal } from '@breatic/shared';
+import { occurrences, type DocumentProposal } from '@breatic/shared';
 
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
@@ -27,6 +28,8 @@ import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/space
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
+import { proposalBlocks, writtenBlockId } from '@web/spaces/document/document-proposal-blocks';
+import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import type { LandingAction } from '@web/stores/document-proposals';
 
 
@@ -34,32 +37,28 @@ import type { LandingAction } from '@web/stores/document-proposals';
 type LandingResult =
   | ({ outcome: 'applied'; leftOut?: number } & Landed)
   | { outcome: 'mediaOnly'; leftOut: number }
-  | { outcome: 'readOnly' | 'changed' | 'blockGone' };
+  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' };
+
+/** Current lifecycle and connection permission, read synchronously at commit. */
+export type ProposalAdmission = Readonly<{
+  available: boolean;
+  writeAccess: WriteAccess;
+}>;
 
 /** The editor parts landing uses. */
 type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
 
 /**
- * The id the n-th block a proposal writes takes.
- * @param proposalId - The proposal.
- * @param n - Which block it writes, from 0.
- * @returns The id.
- */
-function writtenBlockId(proposalId: string, n: number): string {
-  return deriveId(`document-proposal:${proposalId}:${String(n)}`);
-}
-
-/**
  * A block anywhere in the body, by id.
  * @param doc - The body.
  * @param id - The block id.
- * @returns The block's `blockContainer` and where it starts, or null.
+ * @returns The block's node (a `blockContainer`, or a table's own node) and where it starts, or null.
  */
 function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
   let found: { node: ProseMirrorNode; pos: number } | null = null;
   doc.descendants((node, pos) => {
     if (found !== null) return false;
-    if (node.type.name === 'blockContainer' && node.attrs.id === id) found = { node, pos };
+    if (node.type.isInGroup('bnBlock') && node.attrs.id === id) found = { node, pos };
     return found === null;
   });
   return found;
@@ -211,23 +210,15 @@ export function commentTextOf(blocks: readonly MarkdownBlock[]): MarkdownBlock[]
 }
 
 /**
- * Puts a proposal on as a comment: its own words for a comment card, the
- * rewritten words one paragraph per block for a rewrite card.
- * @param handle - The document.
+ * Prepares comment words without carrying a document target across an await.
  * @param proposal - The proposal.
- * @returns Nothing; whether it landed is read off the body afterwards.
+ * @returns Its comment body.
+ * @throws {Error} If Markdown parsing fails.
  */
-async function landComment(handle: Landable, proposal: DocumentProposal): Promise<void> {
-  const blockId = proposal.blockId!;
-  const body =
-    proposal.kind === 'comment'
-      ? asCommentBody(proposal.body)
-      : commentTextOf(await markdownBlocks(proposal.body)).flatMap((b) => asCommentBody(b.text) as unknown[]);
-  const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
-  await commentOn(handle.editor as never, body, aim, {
-    thread: { proposalId: proposal.proposalId },
-    comment: { fromAgent: true },
-  });
+async function prepareComment(proposal: DocumentProposal): Promise<unknown> {
+  return proposal.kind === 'comment'
+    ? asCommentBody(proposal.body)
+    : commentTextOf(await markdownBlocks(proposal.body)).flatMap((b) => asCommentBody(b.text) as unknown[]);
 }
 
 /** The deepest heading level the body shows. */
@@ -252,32 +243,69 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
 }
 
 /**
- * Writes a rewrite or an insert into the body as one undo step.
- * @param handle - The document.
+ * Prepares only new payload data, leaving target checks for synchronous commit.
  * @param proposal - The proposal.
- * @returns How many media were left out of what it wrote.
+ * @returns Its filtered blocks and omitted media count.
+ * @throws {Error} If Markdown parsing fails.
  */
-async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<number> {
+async function prepareBlocks(proposal: DocumentProposal): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
   const parsed = await markdownBlocks(proposal.body);
   const { blocks: kept, count } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
-  if (kept.length === 0) return count;
-  const written = withinBodyLevels(kept).map((block, n) => ({ ...block, id: writtenBlockId(proposal.proposalId, n) }));
+  return { blocks: withinBodyLevels(kept), leftOut: count };
+}
+
+/**
+ * Writes prepared output in the target's current context as one undo step.
+ * @param handle - The document.
+ * @param proposal - The proposal.
+ * @param blocks - Its prepared new blocks.
+ * @throws {Error} If schema conversion or the atomic block write fails.
+ */
+function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readonly WrittenBlock[]): void {
   const { editor, undoManager } = handle;
+  const last = editor.document[editor.document.length - 1] as { id: string; type: string; content?: unknown; children?: unknown[] };
+  const targetId = proposal.blockId ?? last.id;
+  const doc = editor.prosemirrorState.doc;
+  const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
+  if (written.length === 0) return;
   undoManager.stopCapturing();
-  if (proposal.kind === 'rewrite') {
-    editor.replaceBlocks([proposal.blockId!], written as never);
-  } else if (proposal.blockId !== null) {
-    editor.insertBlocks(written as never, proposal.blockId, 'after');
-  } else {
-    // An empty last paragraph is where the end of the document is, not a
-    // line to keep above what is added there.
-    const last = editor.document[editor.document.length - 1] as { id: string; type: string; content?: unknown; children?: unknown[] };
-    const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
-    if (empty) editor.replaceBlocks([last.id], written as never);
-    else editor.insertBlocks(written as never, last.id, 'after');
+  try {
+    if (proposal.kind === 'rewrite') {
+      editor.replaceBlocks([targetId], written as never);
+    } else if (proposal.blockId !== null) {
+      editor.insertBlocks(written as never, targetId, 'after');
+    } else {
+      // An empty final paragraph is the end gap, not content to retain above it.
+      const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
+      if (empty) editor.replaceBlocks([targetId], written as never);
+      else editor.insertBlocks(written as never, targetId, 'after');
+    }
+  } finally {
+    undoManager.stopCapturing();
   }
-  undoManager.stopCapturing();
-  return count;
+}
+
+/**
+ * Reads the lifecycle before deduplication, then admission and current target.
+ * @param handle - The current document.
+ * @param proposal - The request being checked.
+ * @param readAdmission - Reads current request, document and connection facts.
+ * @returns An existing landing or refusal, or null when a new write may commit.
+ * @throws {Error} If reading admission or document facts fails.
+ */
+function currentResult(
+  handle: Landable,
+  proposal: DocumentProposal,
+  readAdmission: () => ProposalAdmission,
+): LandingResult | null {
+  const admission = readAdmission();
+  if (!admission.available) return { outcome: 'failed' };
+  const already = landedAt(handle, proposal);
+  if (already !== null) return { outcome: 'applied', ...already };
+  if (admission.writeAccess === 'unknown') return { outcome: 'failed' };
+  if (admission.writeAccess === 'denied' || !handle.editor.isEditable) return { outcome: 'readOnly' };
+  const problem = blockProblem(handle, proposal);
+  return problem === null ? null : { outcome: problem };
 }
 
 /**
@@ -285,23 +313,37 @@ async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise
  * @param handle - The document, mounted.
  * @param proposal - The proposal.
  * @param action - Whether to put it on as a comment or write it into the body.
- * @param writable - Whether this connection may write.
+ * @param readAdmission - Reads current lifecycle and write admission synchronously.
  * @returns How it ended, and the block to show the reader when it landed.
+ * @throws {Error} If preparation, comment creation or an atomic block write fails.
  */
 export async function landProposal(
   handle: Landable,
   proposal: DocumentProposal,
   action: LandingAction,
-  writable: boolean,
+  readAdmission: () => ProposalAdmission,
 ): Promise<LandingResult> {
-  const already = landedAt(handle, proposal);
-  if (already !== null) return { outcome: 'applied', ...already };
-  if (!writable) return { outcome: 'readOnly' };
-  const problem = blockProblem(handle, proposal);
-  if (problem !== null) return { outcome: problem };
-  let leftOut = 0;
-  if (action === 'comment') await landComment(handle, proposal);
-  else leftOut = await landBlocks(handle, proposal);
+  const initial = currentResult(handle, proposal, readAdmission);
+  if (initial !== null) return initial;
+  if (action === 'comment') {
+    const body = await prepareComment(proposal);
+    const ready = currentResult(handle, proposal, readAdmission);
+    if (ready !== null) return ready;
+    const blockId = proposal.blockId!;
+    const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
+    await commentOn(handle.editor as never, body, (state) =>
+      currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
+      thread: { proposalId: proposal.proposalId },
+      comment: { fromAgent: true },
+    });
+    const result = currentResult(handle, proposal, readAdmission);
+    return result ?? { outcome: 'changed' };
+  }
+  const prepared = await prepareBlocks(proposal);
+  const ready = currentResult(handle, proposal, readAdmission);
+  if (ready !== null) return ready;
+  const leftOut = prepared.leftOut;
+  landBlocks(handle, proposal, prepared.blocks);
   const landed = landedAt(handle, proposal);
   if (landed !== null) return leftOut > 0 ? { outcome: 'applied', ...landed, leftOut } : { outcome: 'applied', ...landed };
   return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };

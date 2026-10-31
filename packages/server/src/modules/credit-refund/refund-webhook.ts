@@ -9,7 +9,7 @@
 
 import { db, logger } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
-import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
+import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
 import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -34,16 +34,17 @@ export interface RefundEvent {
  * Handle one refund event.
  * @param event - The verified event.
  * @returns `unreadable` when Stripe could not be read and nothing was
- *   written, so Stripe should redeliver; `handled` otherwise.
+ *   written, `no_target` after the existing missing-target claim, or `synced`
+ *   after applying the current Stripe snapshot.
  */
-export async function handleRefundEvent(event: RefundEvent): Promise<"handled" | "unreadable"> {
+export async function handleRefundEvent(event: RefundEvent): Promise<"synced" | "no_target" | "unreadable"> {
   const intent = event.data.object.payment_intent;
   const paymentIntent = typeof intent === "string" ? intent : (intent?.id ?? null);
   const paymentId = paymentIntent ? await paymentRepo.findIdByPaymentIntent(paymentIntent) : null;
   const lotId = paymentId ? await creditLotRepo.findLotIdByPayment(paymentId) : null;
   if (paymentIntent === null || paymentId === null || lotId === null) {
     await db.transaction((tx) => claimWebhookEvent(event.id, event.type, tx));
-    return "handled";
+    return "no_target";
   }
 
   let listed: StripeRefundObject[];
@@ -65,6 +66,6 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     await claimWebhookEvent(event.id, event.type, tx);
     return applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
-  if (judged !== null) sendOperationMailsLater(judged);
-  return "handled";
+  if (judged !== null) followUpOperationLater(judged);
+  return "synced";
 }

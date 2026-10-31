@@ -24,15 +24,17 @@ import { DeadlinePassed } from "@breatic/shared";
  * @param taskType - What kind of run this was.
  * @param err - Whatever it threw.
  * @param sourceUrl - The address a read was handed, which names its asset.
+ * @param reading - Which reading this was, when it was not an understanding (inner#856).
  * @returns What the row stores.
  */
 export function storedFailure(
   taskType: string,
   err: unknown,
   sourceUrl?: string,
+  reading?: "transcribe",
 ): string {
   // Running out of the two hours means the same thing whatever the task was.
   if (err instanceof DeadlinePassed) return err.message;
-  if (taskType === "understand") return understandFailureMessage(err, sourceUrl);
+  if (taskType === "understand") return understandFailureMessage(err, sourceUrl, reading);
   return err instanceof Error ? err.message : String(err);
 }

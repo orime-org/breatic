@@ -40,7 +40,7 @@ Pass the number of parties you expect: with the default of one, a second call is
 
 Check: with `.for('update')` deleted, does the test fail at the probe ("only fewer than N backend(s) ever blocked …")? Still green → it is not testing concurrency.
 
-**Integration tests run in one process (`singleFork` in `packages/server/vitest.integration.config.ts`).** A test that drops a constraint, writes, and reinstalls it has no concurrent writer inside that window.
+**Integration test files run one at a time (`fileParallelism: false` in `packages/server/vitest.integration.config.ts`).** A test that drops a constraint, writes, and reinstalls it has no concurrent writer from another file inside that window.
 
 **`pg_get_constraintdef` returns `NOT VALID` from the second read onwards.** A helper that reads the definition and appends ` NOT VALID` before reinstalling builds `… NOT VALID NOT VALID`, which PostgreSQL accepts, so the test stays green by accident. Strip the trailing `NOT VALID` before appending it. Reinstalling with `NOT VALID` is required (the test's bad rows are still in the table), and it still checks new writes.
 

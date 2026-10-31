@@ -20,7 +20,7 @@ import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 const STORED_AS: Readonly<Record<MiniToolOutput["modality"], { ext: string; contentType: string }>> = {
   image: { ext: ".png", contentType: "image/png" },
   video: { ext: ".mp4", contentType: "video/mp4" },
-  audio: { ext: ".mp3", contentType: "audio/mpeg" },
+  audio: { ext: ".m4a", contentType: "audio/mp4" },
   text: { ext: ".txt", contentType: "text/plain" },
 };
 

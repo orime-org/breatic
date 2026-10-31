@@ -1355,7 +1355,7 @@ test('the caret goes back into a reply without moving what the reader scrolled t
 });
 
 test('the button on a table cell is on that cell after a switch', async ({ page }) => {
-  // A1: the cell button comes back on the cell the caret is in.
+  // A1: the cell button comes back on the cell the pointer is over (inner#1619 T13).
   const { canvas, doc } = await canvasAndDocument(page);
   await page.keyboard.type('above');
   const row = await page
@@ -1369,12 +1369,21 @@ test('the button on a table cell is on that cell after a switch', async ({ page 
   await page.getByTestId('doc-block-insert-table').hover();
   await page.getByTestId('doc-table-size-2-3').click();
   await page.keyboard.type('c1');
+  /** Moves the pointer onto the middle of the first cell. */
+  const overFirstCell = async (): Promise<void> => {
+    const cell = await page.locator(`${DOCUMENT_EDITOR} td`).first().boundingBox();
+    if (cell === null) throw new Error('the first cell has no box');
+    await page.mouse.move(5, 5);
+    await page.mouse.move(cell.x + cell.width / 2, cell.y + cell.height / 2, { steps: 3 });
+  };
+  await overFirstCell();
   const button = page.getByTestId('doc-table-cell-button');
   await expect(button).toBeVisible();
   const before = await button.boundingBox();
 
   await showSpace(page, canvas);
   await showSpace(page, doc);
+  await overFirstCell();
 
   await expect(button).toBeVisible();
   expect(await button.boundingBox()).toEqual(before);

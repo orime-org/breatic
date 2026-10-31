@@ -22,7 +22,11 @@ The business core shared by server and worker. These rules apply when you change
 
 **A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, and a generation is charged through `chargeOnceForGeneration(refKey, ...)`, which charges each `refKey` at most once.** A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
 
+**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat holds nothing: a turn is admitted on the balance and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
+
 **Every consumption is multiplied by `CREDIT_MULTIPLIER` (default 1).** It is a deployment setting that the model catalog also applies, so a cost computed without it bills a different number than the one shown.
+
+**Every credit figure that is estimated, held, charged or shown settles to 0.01, rounded up, through `ceilToCreditCent` (`packages/shared/src/credit-cent.ts`) and the helpers built on it (`toChargeMicro`, `toChargeCredits`, `formatCredits`); never round a credit figure to cents any other way.** A second rounding drifts from the first, and a run is then held, refused, charged and shown by different numbers. Check: am I writing `toFixed`, `Math.ceil` or `Math.round` to bring credits to two decimals?
 
 ### Losing admin releases credit designations
 
@@ -32,7 +36,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Tools and generation templates
 
-**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed mode, model, parameters and prompt, registered in `packages/shared/src/canvas/generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
+**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed workflow of generate nodes, the files it brings and the inputs the reader supplies, one file each under `packages/shared/src/canvas/templates/`, registered in `generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
 
 Check: is this one external action (a tool) or a fixed way of generating (a template)?
 
@@ -44,13 +48,17 @@ Before changing templates or how the agent proposes them, read the generation te
 
 ### Tool guidance lives in the tool definition
 
-**Everything about a tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's note to the model is its `agentNote` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The system prompt side of this rule is [in server](../server/AGENTS.md#the-system-prompt-names-no-tool); `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
+**Everything about a tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's words to the model are its `agentNote` and `triggers` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The system prompt side of this rule is [in server](../server/AGENTS.md#the-system-prompt-names-no-tool); `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
 
 Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition.
 
 ### One place assembles the agent
 
-**Model, instructions and tools are assembled only by `buildAgentConfig` in `agent/agent-config.ts`.** A second assembly point lets two agents drift apart.
+**Model, picture capability and tools are resolved once per turn by async `buildAgentConfig` in `agent/agent-config.ts`; a consolidation only rebuilds its memory instructions through `instructionsForAgentMemory`.** A second assembly point lets model capability, tools and message preparation disagree.
+
+### Picture requests are projected once
+
+**Use `projectAgentRequest` for the initial request and every SDK step; persist original logical picture facts and project independent copies.** Its selected pictures, expansion order and thinking checks are also the facts used for history hashes and counting. Tool execution prepares pictures once; `toModelOutput` and sending middleware perform no storage IO. Before changing these contracts, read [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 ### Tool errors state the problem
 

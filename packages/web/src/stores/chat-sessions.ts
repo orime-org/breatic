@@ -23,11 +23,13 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
+import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { checkStaleRelease } from '@web/data/deployment/stale-release';
+import { bodyOrTransfer, type TransferReference } from '@web/data/upload/transfer-body';
 
 /** What starting a conversation's state takes. */
 export interface ChatSessionInit {
@@ -88,6 +90,17 @@ const TITLED = 'data-conversation-titled';
 /** The chunk the server says a turn stopped to fold memory on. */
 const CONSOLIDATING = 'data-memory-consolidating';
 
+/** The chunk the server names a questionnaire a message closed on (inner#1542). */
+const ASK_REPLIED = 'data-ask-replied';
+
+/**
+ * The conversations whose running turn is an answer to a questionnaire, and
+ * which call it answers. Such a turn carries on the paused reply rather than
+ * saying anything of the reader's, so the parts of a send that are about the
+ * reader's words leave it alone.
+ */
+const answering = new Map<string, string>();
+
 /** Every conversation whose state is being kept, by conversation id. */
 const sessions = new Map<string, Chat<StoredUiMessage>>();
 
@@ -98,6 +111,24 @@ const sessions = new Map<string, Chat<StoredUiMessage>>();
  * project as well as to a conversation, and the turn is run from here.
  */
 const projectOf = new Map<string, string>();
+
+/**
+ * The stop for each conversation's body upload in flight (inner#1006).
+ *
+ * A body over the request limit is uploaded inside `prepareSendMessagesRequest`,
+ * which the SDK calls without its own abort signal, so the session holds one:
+ * stopping the turn and dropping the session both raise it.
+ */
+const bodyUploads = new Map<string, AbortController>();
+
+/**
+ * Stop a conversation's body upload, if one is running.
+ * @param conversationId - The conversation.
+ */
+function stopBodyUpload(conversationId: string): void {
+  bodyUploads.get(conversationId)?.abort();
+  bodyUploads.delete(conversationId);
+}
 
 /**
  * What a panel subscribes to before it knows which conversation it is showing.
@@ -152,16 +183,48 @@ function sayWhenItOpens(
   onAnswering: () => void,
   onFirstFrame: () => void,
 ): ReadableStream<UIMessageChunk> {
-  let answering = false;
+  let opened = false;
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
         if (isAnswering(chunk)) {
           onAnswering();
-          if (!answering) {
-            answering = true;
+          if (!opened) {
+            opened = true;
             onFirstFrame();
           }
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+/**
+ * Keep every message under the name this end gave it.
+ *
+ * The server names each reply it streams on its `start` frame, and that name
+ * is one this end never gave out. `Chat` replaces the last message only while
+ * the reply's id matches it and pushes a new one otherwise (`ai@7.0.68`
+ * `index.js:17977`), and a frame written before `start` has already stored
+ * the reply under this end's name. So a renamed `start` adds a second message:
+ * after the frames a turn opens with, a copy of the reply so far; on a turn
+ * resumed after a questionnaire, a copy of the paused reply. Without a name
+ * on `start` the SDK keeps the one it has (`index.js:7368`), which is the
+ * paused reply's when a turn resumes, as the SDK's own continuation names it
+ * (`getResponseUIMessageId`, `index.js:6532`). Nothing on either side reads
+ * the server's name.
+ * @param stream - A turn's stream.
+ * @returns The same frames, `start` without a name.
+ */
+function keepOurNames(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk> {
+  return stream.pipeThrough(
+    new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, controller) {
+        if (chunk.type === 'start' && chunk.messageId !== undefined) {
+          const { messageId: _named, ...rest } = chunk;
+          controller.enqueue(rest);
+          return;
         }
         controller.enqueue(chunk);
       },
@@ -207,12 +270,48 @@ function transportFor(
     // default would leave it off in any deployment where the API is not the
     // page's own origin.
     credentials: 'include',
-    prepareSendMessagesRequest: ({ messages, body: carried }) => {
+    prepareSendMessagesRequest: async ({ messages, body: carried }) => {
+      // Read before anything is awaited: the turn this request belongs to.
+      const turn = runningTurn.get(conversationId);
       const last = messages[messages.length - 1];
+      // An answer to a questionnaire says nothing of the reader's: the last
+      // message is the paused reply, whose words and items are not theirs.
+      const isAnswer = answering.has(conversationId);
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
         .join('');
+      const body = {
+        // What the send was handed for this one message: the reader's
+        // Spaces, read when they pressed send (`sendInSession`).
+        ...carried,
+        message: isAnswer ? '' : said,
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: isAnswer ? [] : attachedOn(last),
+        // Read on every send: the agent is told the time where the reader is
+        // now, and a laptop can change zones mid-session.
+        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      // A body over the request limit goes through storage first (inner#1006).
+      // No beat can come before the request goes out, so the watch on this
+      // turn is paused for the upload and counts again from the send.
+      const upload = new AbortController();
+      bodyUploads.set(conversationId, upload);
+      let uploaded = false;
+      let sent: typeof body | TransferReference;
+      try {
+        sent = await bodyOrTransfer(projectId, body, {
+          signal: upload.signal,
+          onTransferStart: () => {
+            uploaded = true;
+            pauseBeatWatch(conversationId, turn);
+          },
+        });
+      } finally {
+        if (bodyUploads.get(conversationId) === upload) bodyUploads.delete(conversationId);
+      }
+      if (uploaded) restartBeatWatch(conversationId, turn);
       return {
         // What the interface is in, which is what the server needs when it
         // has something of its own to show the reader: a message refused for
@@ -226,26 +325,26 @@ function transportFor(
         // of a reply is ours to translate -- so nothing on the agent's side
         // reads this (user 2026-09-07).
         headers: { 'Accept-Language': getLocale() },
-        body: {
-          // What the send was handed for this one message: the reader's
-          // Spaces, read when they pressed send (`sendInSession`).
-          ...carried,
-          message: said,
-          project_id: projectId,
-          conversation_id: conversationId,
-          attached_chips: attachedOn(last),
-          // Read on every send: the agent is told the time where the reader is
-          // now, and a laptop can change zones mid-session.
-          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
+        body: sent,
       };
     },
   });
   return {
     sendMessages: async (options) => {
       const carried = attachedOn(options.messages[options.messages.length - 1]);
+      // An answer leaves the box alone: what is in it is not what was sent.
+      const isAnswer = answering.has(conversationId);
+      let opened: Awaited<ReturnType<typeof wire.sendMessages>>;
+      try {
+        opened = await wire.sendMessages(options);
+      } catch (refused) {
+        // Decided before the turn settles and says anything, so an
+        // out-of-date page has silenced the panel's toast by then.
+        await checkStaleRelease(envelopeInBody(refused)?.reason);
+        throw refused;
+      }
       return sayWhenItOpens(
-        await wire.sendMessages(options),
+        keepOurNames(opened),
         // On every answering frame, because the fold begins after the turn
         // has already opened: the server writes the conversation's name
         // first, every turn, and only then stops to fold. Clearing on the
@@ -265,7 +364,7 @@ function transportFor(
           const turn = runningTurn.get(conversationId);
           if (turn === undefined) return;
           answeredTurn.set(conversationId, turn);
-          onFirstFrame(carried);
+          if (!isAnswer) onFirstFrame(carried);
         },
       );
     },
@@ -297,6 +396,16 @@ function transportFor(
  * @returns The server's own words, or undefined if what answered was not ours.
  */
 function serverSentenceInBody(error: unknown): string | undefined {
+  return envelopeInBody(error)?.message;
+}
+
+/**
+ * Our error envelope, read out of what a refused turn threw.
+ * @param error - Whatever the transport threw; its message is the body.
+ * @returns The envelope's `message` and `reason` that are strings, or
+ * undefined when the body is not our envelope.
+ */
+function envelopeInBody(error: unknown): { message?: string; reason?: string } | undefined {
   const body = error instanceof Error ? error.message : '';
   try {
     const envelope: unknown = JSON.parse(body);
@@ -305,11 +414,13 @@ function serverSentenceInBody(error: unknown): string | undefined {
       envelope !== null &&
       'error' in envelope &&
       typeof envelope.error === 'object' &&
-      envelope.error !== null &&
-      'message' in envelope.error &&
-      typeof envelope.error.message === 'string'
+      envelope.error !== null
     ) {
-      return envelope.error.message;
+      const { message, reason } = envelope.error as { message?: unknown; reason?: unknown };
+      return {
+        message: typeof message === 'string' ? message : undefined,
+        reason: typeof reason === 'string' ? reason : undefined,
+      };
     }
   } catch {
     // Not JSON at all, which is what a gateway or a dropped connection
@@ -420,6 +531,47 @@ function giveUpOn(conversationId: string): void {
 const givenUpOn = new Set<string>();
 
 /**
+ * Write a questionnaire call's result into whichever message holds the call.
+ *
+ * The call is in the reply that asked, which is not the message a turn is
+ * writing when a typed message closes it, nor when the server answers a
+ * second answer with how the call already stands.
+ * @param chat - The session.
+ * @param toolCallId - The call.
+ * @param result - What it ended with.
+ */
+function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskUserResult): void {
+  const at = chat.messages.findIndex((m) =>
+    m.parts.some((p) => (p as { toolCallId?: unknown }).toolCallId === toolCallId),
+  );
+  const message = chat.messages[at];
+  if (message === undefined) return;
+  const parts = message.parts.map((p) =>
+    (p as { toolCallId?: unknown }).toolCallId === toolCallId
+      ? ({ ...p, state: 'output-available', output: result } as unknown as typeof p)
+      : p,
+  );
+  chat.messages = chat.messages.map((m, i) => (i === at ? { ...message, parts } : m));
+}
+
+/**
+ * How a refused answer says the call stands, when the refusal is the server
+ * saying it was already answered (409 with the call in the body).
+ * @param error - Whatever the turn ended with.
+ * @returns The call's result, or undefined for any other refusal.
+ */
+function callAlreadyAnswered(error: unknown): AskUserResult | undefined {
+  try {
+    const body: unknown = JSON.parse(error instanceof Error ? error.message : '');
+    const { error: envelope, call } = body as { error?: { code?: unknown }; call?: { status?: unknown; output?: unknown } };
+    if (envelope?.code !== 409 || call?.status !== 'success') return undefined;
+    return call.output as AskUserResult;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Settle a turn, whichever way it ended.
  *
  * The one place a turn's ending is written down. Every way out arrives here:
@@ -444,8 +596,11 @@ function settleTurn(
   how: { isAbort: boolean; isDisconnect: boolean; isError: boolean },
 ): void {
   const gaveUp = givenUpOn.delete(conversationId);
+  const answeredCall = answering.get(conversationId);
+  answering.delete(conversationId);
   stopWatching(conversationId);
   runningTurn.delete(conversationId);
+  pausedTurn.delete(conversationId);
   // A turn that failed, was stopped, or folded and then said nothing would
   // otherwise leave the line up — and it says something about a turn that is
   // over, still there the next time this conversation is opened.
@@ -461,7 +616,16 @@ function settleTurn(
   answeredTurn.delete(conversationId);
   const last = chat.messages[chat.messages.length - 1];
 
-  if (how.isAbort || how.isError) {
+  // An answer refused before the turn resumed leaves the card waiting, or,
+  // when the card was answered elsewhere, draws it as the store holds it; the
+  // paused reply carries no mark either way, since nothing of it failed.
+  if (answeredCall !== undefined && !beganAnswering && (how.isAbort || how.isError)) {
+    const stands = callAlreadyAnswered(chat.error);
+    if (stands !== undefined) {
+      settleAsk(chat, answeredCall, stands);
+      return;
+    }
+  } else if (how.isAbort || how.isError) {
     if (!beganAnswering && last?.role === 'user') {
       // Take it back, and only here. Nothing of this turn ever began, which
       // means the server refused it before the turn ran -- so there is
@@ -527,7 +691,7 @@ async function expectAnotherBeat(
   // outlives every turn it runs, so arming on that answer puts a timer on an
   // idle conversation, and fifteen seconds later it marks a finished reply as
   // cut off and reports a network problem to a reader with nothing running.
-  if (runningTurn.get(conversationId) !== turn) return;
+  if (runningTurn.get(conversationId) !== turn || pausedTurn.get(conversationId) === turn) return;
   stopWatching(conversationId);
   const spent = Date.now() - pressedAt;
   const left = heartbeatIntervalMs * SSE_HEARTBEAT_MISSES_ALLOWED - spent;
@@ -535,6 +699,67 @@ async function expectAnotherBeat(
     conversationId,
     setTimeout(() => giveUpOn(conversationId), Math.max(left, 0)),
   );
+}
+
+/**
+ * The turn whose watch is paused while its body uploads, by conversation
+ * (inner#1006). A wait that lands meanwhile arms nothing.
+ */
+const pausedTurn = new Map<string, number>();
+
+/**
+ * Stop waiting on a turn's beats while its body uploads: no beat can come
+ * before its request goes out.
+ * @param conversationId - The conversation.
+ * @param turn - The turn uploading; nothing happens once another is running.
+ */
+function pauseBeatWatch(conversationId: string, turn: number | undefined): void {
+  if (turn === undefined || runningTurn.get(conversationId) !== turn) return;
+  stopWatching(conversationId);
+  pausedTurn.set(conversationId, turn);
+}
+
+/**
+ * Wait on a turn's beats again, counting from now, once its body has
+ * uploaded and its request is about to go out.
+ * @param conversationId - The conversation.
+ * @param turn - The turn sending; nothing happens once another is running.
+ */
+function restartBeatWatch(conversationId: string, turn: number | undefined): void {
+  if (turn === undefined || runningTurn.get(conversationId) !== turn) return;
+  pausedTurn.delete(conversationId);
+  void expectAnotherBeat(conversationId, turn, Date.now());
+}
+
+/**
+ * Run one turn in a conversation: number it, watch for its beats, and send.
+ *
+ * What a typed message and an answer to a questionnaire share; each says what
+ * it sends.
+ * @param conversationId - The conversation.
+ * @param chat - Its session.
+ * @param send - Sends the turn's request.
+ * @returns When the turn is over, however it ended.
+ */
+async function runTurn(
+  conversationId: string,
+  chat: Chat<StoredUiMessage>,
+  send: (chat: Chat<StoredUiMessage>) => Promise<void>,
+): Promise<void> {
+  const pressedAt = Date.now();
+  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
+  turnsRun.set(conversationId, turn);
+  runningTurn.set(conversationId, turn);
+  void expectAnotherBeat(conversationId, turn, pressedAt);
+  try {
+    await send(chat);
+  } catch {
+    // Already said. `Chat` hands whatever went wrong to its own `onFinish`
+    // before it rethrows, and that is where the turn was settled -- so what
+    // reaches here is a second copy of news that has been delivered. Letting
+    // it out would make every caller catch a failure they cannot add to, and
+    // the press that started this is a click handler with nothing above it.
+  }
 }
 
 /**
@@ -558,28 +783,38 @@ export async function sendInSession(
 ): Promise<void> {
   const chat = sessions.get(conversationId);
   if (!chat) return;
-  const pressedAt = Date.now();
-  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
-  turnsRun.set(conversationId, turn);
-  runningTurn.set(conversationId, turn);
-  void expectAnotherBeat(conversationId, turn, pressedAt);
-  try {
-    await chat.sendMessage(
-      {
-        parts: [
-          ...attached.map(attachmentPart),
-          { type: 'text', text: said },
-        ],
-      },
-      { body: spaces },
-    );
-  } catch {
-    // Already said. `Chat` hands whatever went wrong to its own `onFinish`
-    // before it rethrows, and that is where the turn was settled -- so what
-    // reaches here is a second copy of news that has been delivered. Letting
-    // it out would make every caller catch a failure they cannot add to, and
-    // the press that started this is a click handler with nothing above it.
-  }
+  await runTurn(conversationId, chat, (session) =>
+    session.sendMessage({ parts: [...attached.map(attachmentPart), { type: 'text', text: said }] }, { body: spaces }),
+  );
+}
+
+/**
+ * Answer the questionnaire a conversation's turn stopped at, and watch the
+ * stream the resumed turn comes back on (inner#1542).
+ *
+ * Sent with no message, the way the SDK's own human-in-the-loop carries on a
+ * paused reply: what the turn says next follows the card in that message, and
+ * nothing of the reader's is added to the list.
+ * @param conversationId - The conversation.
+ * @param toolCallId - The questionnaire call answered.
+ * @param answers - The answers given on the card.
+ * @param spaces - The reader's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+export async function answerInSession(
+  conversationId: string,
+  toolCallId: string,
+  answers: AskUserAnswer['answers'],
+  spaces: ChatSpaceContext = {},
+): Promise<void> {
+  const chat = sessions.get(conversationId);
+  // One request at a time on a conversation: the turn in flight settles the
+  // card one way or the other, and the card's button waits on it meanwhile.
+  if (!chat || runningTurn.has(conversationId)) return;
+  answering.set(conversationId, toolCallId);
+  await runTurn(conversationId, chat, (session) =>
+    session.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } }),
+  );
 }
 
 /**
@@ -592,6 +827,7 @@ export async function sendInSession(
  * @param conversationId - The conversation to stop.
  */
 export function stopChatSession(conversationId: string): void {
+  stopBodyUpload(conversationId);
   const chat = sessions.get(conversationId);
   if (!chat) return;
   void chat.stop();
@@ -622,6 +858,11 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
       }
       if (part.type === CONSOLIDATING) {
         noteConsolidating(conversationId);
+        return;
+      }
+      if (part.type === ASK_REPLIED) {
+        const id = (part.data as { toolCallId?: unknown } | null)?.toolCallId;
+        if (typeof id === 'string') settleAsk(chat, id, { repliedInChat: true });
         return;
       }
       if (part.type !== TITLED) return;
@@ -691,14 +932,17 @@ export function prependHistory(conversationId: string, earlier: StoredUiMessage[
  * @param conversationId - Which one.
  */
 export function evictChatSession(conversationId: string): void {
+  stopBodyUpload(conversationId);
   sessions.get(conversationId)?.stop();
   stopWatching(conversationId);
   sessions.delete(conversationId);
   projectOf.delete(conversationId);
   turnsRun.delete(conversationId);
   runningTurn.delete(conversationId);
+  pausedTurn.delete(conversationId);
   answeredTurn.delete(conversationId);
   givenUpOn.delete(conversationId);
+  answering.delete(conversationId);
 }
 
 /**
@@ -707,6 +951,8 @@ export function evictChatSession(conversationId: string): void {
  * For leaving a project, where what is being left is all of them at once.
  */
 export function evictAllChatSessions(): void {
+  for (const upload of bodyUploads.values()) upload.abort();
+  bodyUploads.clear();
   for (const [id, chat] of sessions) {
     void chat.stop();
     stopWatching(id);
@@ -715,6 +961,8 @@ export function evictAllChatSessions(): void {
   projectOf.clear();
   turnsRun.clear();
   runningTurn.clear();
+  pausedTurn.clear();
   answeredTurn.clear();
   givenUpOn.clear();
+  answering.clear();
 }

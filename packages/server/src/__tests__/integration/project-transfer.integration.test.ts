@@ -200,6 +200,20 @@ async function activityCount(projectId: string, type: string): Promise<number> {
   return rows[0]!.c;
 }
 
+/**
+ * Read a transfer's status and why it failed, if it did.
+ * @param transferId - The transfer.
+ * @returns Its status and failure reason.
+ */
+async function outcomeOf(
+  transferId: string,
+): Promise<{ status: string; failed_reason: string | null }> {
+  const [row] = await sql<{ status: string; failed_reason: string | null }[]>`
+    SELECT status, failed_reason FROM project_transfers WHERE id = ${transferId}
+  `;
+  return row!;
+}
+
 async function expireTransfer(transferId: string): Promise<void> {
   // Both projections move together, exactly as the create path writes them:
   // the decision gate reads the ROW, the bell reads the entry, and a test that
@@ -420,6 +434,7 @@ describe("confirmProjectTransfer", () => {
     await expect(
       projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "expired" });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
@@ -463,6 +478,7 @@ describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
     await expect(
       projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await getProjectRole(projectId, recipientId)).toBe("editor");
@@ -485,9 +501,51 @@ describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
     await expect(
       projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+});
+
+describe("confirmProjectTransfer — an offer whose premise is gone fails as invalidated", () => {
+  it("the recipient left the project but stayed in the studio", async () => {
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+    await sql`UPDATE project_members SET deleted_at = now() WHERE project_id = ${projectId} AND user_id = ${recipientId}`;
+
+    await expect(
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
+  });
+
+  it("the project changed hands after the offer was made", async () => {
+    const { studioId, projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+    const successorId = await insertUser();
+    await insertStudioMember(studioId, successorId, "maintainer");
+    await sql`UPDATE project_members SET role = 'editor' WHERE project_id = ${projectId} AND user_id = ${ownerId}`;
+    await insertProjectMember(projectId, successorId, "owner");
+
+    await expect(
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
+  });
+
+  it("the project was soft-deleted", async () => {
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+    await sql`UPDATE projects SET deleted_at = now() WHERE id = ${projectId}`;
+
+    await expect(
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
   });
 });
 

@@ -34,6 +34,7 @@ import { initCore, env, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import type { ActivityCursor } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-engine-test-driver";
 
@@ -118,15 +119,10 @@ async function seedLot(
   credits: number,
   designateTo: string | null = null,
 ): Promise<string> {
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
+    VALUES (${sourceId}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,
@@ -195,15 +191,10 @@ describe("充值到账", () => {
 
   it("同一笔付款再来一次会被拒，不会发第二次积分", async () => {
     const fx = await seedFixture();
-    // A payment shares its source row's primary key, so the receipt is
-    // opened first and the payment is written under its id (0079, #259).
-    const [source] = await sql<{ id: string }[]>`
-      INSERT INTO credit_sources (id, kind)
-      VALUES (gen_random_uuid(), 'payment') RETURNING id
-    `;
+    const sourceId = await openPaymentSource(sql);
     const [payment] = await sql<{ id: string }[]>`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-      VALUES (${source!.id}, ${fx.userId}, 1000, 'completed', 880) RETURNING id
+      VALUES (${sourceId}, ${fx.userId}, 1000, 'completed', 880) RETURNING id
     `;
     await creditLotService.grantFromPayment({
       paymentId: payment!.id,
@@ -296,6 +287,52 @@ describe("扣费", () => {
     for (const lotId of [first, second]) {
       expect(await ledgerSum(lotId)).toBe((await readLot(lotId)).remaining);
     }
+  });
+
+  it("charges a part-cent amount as the next cent up (inner#1666)", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+
+    for (const [amount, charged] of [[3.075, 3.08], [0.001, 0.01], [12.345678, 12.35]] as const) {
+      const outcome = await creditLotService.chargeForGeneration({
+        projectId: fx.projectId,
+        actorUserId: fx.userId,
+        amount,
+      });
+      expect(outcome.charged).toBe(charged);
+    }
+
+    expect((await readLot(lotId)).remaining).toBe("84.560000");
+    expect(await ledgerSum(lotId)).toBe("84.560000");
+  });
+
+  it("charges exactly 7 for 7 plus floating-point residue (inner#1637)", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 7, fx.studioId);
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 7.000000000000001,
+    });
+
+    expect(outcome).toMatchObject({ charged: 7, shortfall: 0 });
+    expect(await readLot(lotId)).toMatchObject({ remaining: "0.000000", lifecycle: "depleted" });
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("leaves a shortfall in whole cents when a part-cent charge runs short", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 1, fx.studioId);
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 1.234,
+    });
+
+    expect(outcome).toMatchObject({ charged: 1, shortfall: 0.24 });
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0.24);
   });
 
   it("不取未指定的笔——列为 null 的那一条腿", async () => {
@@ -1328,6 +1365,22 @@ describe("studio 流水：一次生成一行", () => {
         model: null,
       }),
     ]);
+  });
+
+  it("leaves out the rows that rounded an old debt up to whole cents (inner#1666)", async () => {
+    const fx = await seedFixture();
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO credit_ledger (studio_id, entry_type, amount, description)
+      VALUES (${fx.studioId}, 'rounding_adjustment', -0.006544, 'rounding adjustment')
+      RETURNING id
+    `;
+    try {
+      expect(await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null)).toEqual([]);
+    } finally {
+      // Suites that replay older migrations re-add the entry-type CHECK as it
+      // was then, which this type would fail.
+      await sql`DELETE FROM credit_ledger WHERE id = ${row!.id}`;
+    }
   });
 
   it("按 studio 取，不按谁付的钱切", async () => {

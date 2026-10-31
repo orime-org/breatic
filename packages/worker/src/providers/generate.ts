@@ -18,6 +18,7 @@ import type { FullModelEntry } from "@breatic/domain";
 import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
+import nanoBananaRelight from "@worker/providers/families/nano-banana-relight.js";
 
 /** The catalog modalities this path serves (3D keeps its own). */
 export type CatalogModality = "image" | "video" | "audio" | "tts";
@@ -33,7 +34,7 @@ export interface GenerationResult {
 
 /** Model name -> family, for the models that have one. */
 export const FAMILIES = new Map<string, ModelFamily>(
-  [minimaxSpeech, nanoBanana].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
+  [minimaxSpeech, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
 /**

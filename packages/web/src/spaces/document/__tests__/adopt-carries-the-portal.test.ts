@@ -4,12 +4,12 @@
 /**
  * inner#1202: the block strip is gone after switching Space tabs and back.
  *
- * BlockNote's floating UI — the block strip among it — portals into
- * `editor.portalElement`, which `mount()` appends to the surface's parent at
- * that moment (`BlockNoteEditor.ts:736-741`). A Space-tab switch hands the
- * surface to a new container without mounting again, so the portal has to
- * travel with it: left behind, it leaves the page with the old container and
- * everything drawn into it is drawn off the page.
+ * BlockNote's floating UI — the block strip among it — portals into the
+ * element wrapping the editor's own DOM (`usePortalElement`,
+ * `PortalElementOverride.tsx`). A Space-tab switch hands the surface to a new
+ * container without mounting again, so that element has to travel with it:
+ * left behind, it leaves the page with the old container and everything drawn
+ * into it is drawn off the page.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -49,13 +49,22 @@ function showable(): {
   return { editor, surface: document.createElement('div') };
 }
 
+/**
+ * Where the editor's floating UI is drawn: the element wrapping its DOM.
+ * @param handle - The editor and its surface.
+ * @returns That element, or null before the editor has mounted.
+ */
+function portalOf(handle: ReturnType<typeof showable>): HTMLElement | null {
+  return handle.editor.domElement?.parentElement ?? null;
+}
+
 describe('handing the editor to another container', () => {
   it('puts the floating UI portal in the first container', () => {
     const handle = showable();
     const first = container();
     adoptDocumentEditor(handle, first);
 
-    expect(first.contains(handle.editor.portalElement)).toBe(true);
+    expect(first.contains(portalOf(handle))).toBe(true);
   });
 
   it('moves the floating UI portal along with the surface', () => {
@@ -67,12 +76,9 @@ describe('handing the editor to another container', () => {
     const second = container();
     adoptDocumentEditor(handle, second);
 
-    expect(handle.editor.portalElement.isConnected).toBe(true);
-    expect(second.contains(handle.editor.portalElement)).toBe(true);
-    expect(Array.from(second.children)).toEqual([
-      handle.surface,
-      handle.editor.portalElement,
-    ]);
+    expect(portalOf(handle)?.isConnected).toBe(true);
+    expect(second.contains(portalOf(handle))).toBe(true);
+    expect(Array.from(second.children)).toEqual([handle.surface]);
   });
 
   it('leaves the container unchanged when adopted into it twice', () => {
@@ -81,10 +87,7 @@ describe('handing the editor to another container', () => {
     adoptDocumentEditor(handle, first);
     adoptDocumentEditor(handle, first);
 
-    expect(Array.from(first.children)).toEqual([
-      handle.surface,
-      handle.editor.portalElement,
-    ]);
+    expect(Array.from(first.children)).toEqual([handle.surface]);
   });
 
   it('does not take the surface off the page when it is already in place', async () => {

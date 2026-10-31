@@ -19,11 +19,8 @@ import * as operationRepo from "@server/modules/credit-refund/operation.repo.js"
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
-import {
-  markStaleRefundMailsUnknown,
-  sendDueRefundMails,
-  sendOperationMailsLater,
-} from "@server/modules/credit-refund/refund-mail.js";
+import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
+import { markStaleRefundMailsUnknown, sendDueRefundMails } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { StripeReadError, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 
@@ -196,7 +193,7 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
     }
     return id;
   });
-  if (judged !== null) sendOperationMailsLater(judged);
+  if (judged !== null) followUpOperationLater(judged);
 }
 
 /**

@@ -48,8 +48,8 @@ import {
   ALIGN_ITEMS,
   alignFaceIcon,
 } from '@web/spaces/document/document-align-items';
-import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
-import { MenuTick } from '@web/spaces/document/document-menu-tick';
+import { DocumentColourPanel } from '@web/spaces/document/DocumentColourPanel';
+import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   TYPE_MENU_WIDTH,
   itemWithin,
@@ -89,22 +89,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-
-/**
- * How far from the menu's edge its submenus sit.
- *
- * A panel that hangs off a surface keeps a visible gap from that surface's
- * edge, and user 2026-08-27 put the width of it at 4px. This menu opens its
- * submenus to the SIDE, so the gap is between the panel's right edge and the
- * submenu's left.
- *
- * `sideOffset` measures from the TRIGGER, and this trigger is a row sitting
- * inside the panel's own 4px padding and 1px border. Those 5px come out of the
- * gap — measured with no offset at all, the submenu stood 4.67px INSIDE the
- * panel — so 9 puts the visible gap at 4. The bubble bar reaches its own 4px
- * the same way (`document-bubble-menu.tsx`).
- */
-const SUBMENU_SIDE_OFFSET = 4 + 5;
+import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -344,7 +329,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
@@ -395,13 +379,13 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
                 <DocumentInsertChoices
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
+                  tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
@@ -426,7 +410,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='flex flex-col gap-1'
               >
                 {ALIGN_ITEMS.map((item) => {
@@ -468,7 +451,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='py-2'
               >
                 <DocumentColourPanel

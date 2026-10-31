@@ -565,7 +565,7 @@ function BubbleBar({
     // An open overlay counts as the focus being where it should. The one that
     // needs this is the link panel: it holds an input and really does take the
     // focus. The menus refuse it in both directions
-    // (`document-bubble-menu.tsx`), so the body keeps it while one is down.
+    // (`DocumentBubbleMenu.tsx`), so the body keeps it while one is down.
     //
     // The reading is OUR OWN STATE rather than the DOM's active element:
     // during a focus change the active element is `<body>` for the length of

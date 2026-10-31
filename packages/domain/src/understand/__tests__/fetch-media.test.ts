@@ -874,11 +874,11 @@ describe("fetchMedia — an image whose address is dead", () => {
 
 describe("fetchMedia — audio this model cannot be sent", () => {
   // Which audio can travel is one fact, and the whole file used to be
-  // downloaded before it was consulted: an iPhone voice memo (.m4a) went up to
-  // 20 MB across the wire and was then refused, with a sentence blaming the
+  // downloaded before it was consulted: a file the model does not take went up
+  // to 20 MB across the wire and was then refused, with a sentence blaming the
   // model for a refusal that happened on this side.
   it.each([
-    ["an m4a", "https://example.com/memo.m4a", "audio/mp4"],
+    ["an aiff", "https://example.com/take.aiff", "audio/aiff"],
     ["an ogg", "https://example.com/talk.ogg", "audio/ogg"],
     ["a flac", "https://example.com/song.flac", "audio/flac"],
   ])("refuses %s before fetching it", async (_name, url, type) => {
@@ -902,6 +902,10 @@ describe("fetchMedia — audio this model cannot be sent", () => {
     ["audio/x-wav", "wav"],
     ["audio/wave", "wav"],
     ["audio/vnd.wave", "wav"],
+    ["audio/mp4", "m4a"],
+    ["audio/x-m4a", "m4a"],
+    ["audio/m4a", "m4a"],
+    ["audio/webm", "webm"],
   ])("carries the format %s travels as", async (type, format) => {
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))

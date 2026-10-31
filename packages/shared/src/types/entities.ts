@@ -144,8 +144,12 @@ export type MessagePart =
        * model needs to see to correct itself.
        */
       input: Record<string, unknown> | string;
-      /** How far this use of the tool got. */
-      status: "pending" | "success" | "error";
+      /**
+       * How far this use of the tool got. `awaiting` is an `ask_user` call
+       * the reader has not answered yet: the turn stopped at it, and the
+       * answer comes back as its result in a later request (inner#1542).
+       */
+      status: "pending" | "awaiting" | "success" | "error";
       /**
        * What the tool returned, as the tool returned it -- what the panel
        * draws from.
@@ -215,7 +219,16 @@ export type MessagePart =
    * three ways a turn ends without finishing, and a reader has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
-  | { type: "failed" }
+  | {
+    type: "failed";
+    /**
+     * Why, when it is not an ordinary failure: `too_long` is a turn whose
+     * request could not be made to fit the model's context window however
+     * much earlier history was folded into memory (inner#1567). The reader is
+     * told to narrow the request rather than to send it again.
+     */
+    reason?: "too_long";
+  }
   /**
    * The turn reached the ceiling on one call's output and stopped mid-sentence.
    *
@@ -480,7 +493,7 @@ export type CreditLotLifecycle =
   | "refunded";
 
 /**
- * The six things that can appear in the credit ledger.
+ * The eight things that can appear in the credit ledger.
  *
  * The last two are the debt a charge could not cover and a designation
  * paying it down. Both carry a negative amount: `debt_incurred` says credits
@@ -490,6 +503,10 @@ export type CreditLotLifecycle =
  * `refund_reversed` puts back what a `refund` row took out, when the buyer
  * takes the credits instead of money after a refund failed (0 when the lot
  * was never booked).
+ *
+ * `rounding_adjustment` records migration 0100 settling a balance written
+ * before charges were rounded to whole cents: a lot cut down, or a studio's
+ * debt raised, to two decimals (inner#1666). Negative like a charge.
  */
 export type CreditLedgerEntryType =
   | "topup"
@@ -498,7 +515,8 @@ export type CreditLedgerEntryType =
   | "refund_rejected"
   | "debt_incurred"
   | "debt_repayment"
-  | "refund_reversed";
+  | "refund_reversed"
+  | "rounding_adjustment";
 
 /**
  * One top-up, tracked for the rest of its life.

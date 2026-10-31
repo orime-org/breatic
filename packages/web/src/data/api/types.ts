@@ -44,6 +44,8 @@ export interface ApiError {
    * running. Absent when something other than `runOnce` answered.
    */
   idempotencyStatus?: 'done' | 'in_progress';
+  /** The server's `error.reason`, when it marked the refusal. */
+  reason?: string;
   /** No answer arrived at all: the request never reached a server, or the reply was lost. */
   network?: boolean;
 }
@@ -61,6 +63,8 @@ export class ApiException extends Error {
   readonly retryAfterSeconds?: number;
   /** The run-once status the server set, when one did. */
   readonly idempotencyStatus?: 'done' | 'in_progress';
+  /** The server's `error.reason`, when it marked the refusal. */
+  readonly reason?: string;
   /** No answer arrived at all. */
   readonly network: boolean;
 
@@ -76,6 +80,7 @@ export class ApiException extends Error {
     this.fromServer = error.fromServer === true;
     this.retryAfterSeconds = error.retryAfterSeconds;
     this.idempotencyStatus = error.idempotencyStatus;
+    this.reason = error.reason;
     this.network = error.network === true;
   }
 }

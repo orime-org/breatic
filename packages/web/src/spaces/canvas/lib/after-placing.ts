@@ -40,7 +40,7 @@ export interface Focus {
  * @returns What to select and what to open.
  * @throws {never} Never.
  */
-export function whatToFocus(proposal: CanvasProposal, placed: PlacedProposal): Focus {
+export function whatToFocus(proposal: CanvasProposal, placed: Pick<PlacedProposal, 'nodeIds' | 'groupId'>): Focus {
   const generates = proposal.nodes
     .map((node, index) => ({ node, index }))
     .filter(({ node }) => node.role === 'generate');

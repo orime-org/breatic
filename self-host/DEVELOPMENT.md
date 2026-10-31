@@ -97,6 +97,8 @@ This guide assumes one local instance. Required free ports are `5432`, `6379`, `
 
 The rule enables browser reads and image cropping. Uploads go to Ingest, which uses a separate `ALLOWED_ORIGINS` setting in section 4. Configure both.
 
+5. Add a lifecycle rule that deletes objects with the prefix `transfer/` after 1 day. The server refuses request bodies over 1 MiB (`request_body_max_bytes` in `config/limits.yaml`); larger pastes, snapshots and Agent messages are uploaded there as temporary transfer files. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
+
 In the root `.env`:
 
 ```dotenv

@@ -171,3 +171,32 @@ describe('the list of uploads still finishing', () => {
     expect(h.scheduled()).toBe(false);
   });
 });
+
+// inner#1006 W10: a transfer upload ends `transferred`, which carries no
+// result. The list hands it over like any other ending and stops asking.
+describe('a transfer upload in the list', () => {
+  it('ends the wait with transferred and asks no more about that key', async () => {
+    let round = 0;
+    const h = harness((keys) => {
+      round += 1;
+      return keys.map((key): UploadStatus =>
+        round === 1 ? { key, state: 'finishing' } : { key, state: 'transferred' },
+      );
+    });
+
+    const ending = h.list.waitFor('transfer/2026-10-24/1_t.transfer');
+    await settle();
+    await h.tick();
+    await h.tick();
+
+    await expect(ending).resolves.toEqual({
+      key: 'transfer/2026-10-24/1_t.transfer',
+      state: 'transferred',
+    });
+    expect(h.asked).toEqual([
+      ['transfer/2026-10-24/1_t.transfer'],
+      ['transfer/2026-10-24/1_t.transfer'],
+    ]);
+    expect(h.scheduled()).toBe(false);
+  });
+});

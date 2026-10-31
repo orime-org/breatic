@@ -22,7 +22,7 @@
  * changed, and the node history is where that is kept.
  */
 
-import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 /**
  * Mocked so this suite can drive both of its answers; whether the alarm was
@@ -39,18 +39,56 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// The ingest Worker's `POST /uploads`, which the server now calls itself
+// before it answers (inner#1595): counted and answered by a double, every
+// other part of the flow real.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
+
+/**
+ * What the app logs, at each level. Core's logger answers through a proxy
+ * that a spy cannot see into, so the app is handed this one instead.
+ */
+const logged = vi.hoisted(() => {
+  const record = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
+  return { ...record, child: () => record };
+});
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  logger: logged,
+}));
+
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
   initCore,
   getRedis,
   getStreamRedis,
+  getNodeTaskConfig,
   setSession,
   sessionCookieName,
   loadLocales,
   taskEventsStreamKey,
 } from "@breatic/core";
-import { verifyUploadTicket, canvasSpaceDocName } from "@breatic/shared";
+import { uploadDeadlineByKey } from "@breatic/domain";
+import {
+  verifyUploadTicket,
+  verifySessionToken,
+  canvasSpaceDocName,
+  UploadHttpError,
+  INGEST_NO_ANSWER,
+  INGEST_REFUSED_UNNAMED,
+} from "@breatic/shared";
+import {
+  onlyOpenOf,
+  openCalls,
+  opensByKey,
+  resetOpenDouble,
+  setOpenMode,
+} from "../helpers/ingest-open-double.js";
+import { workerAnswers } from "@server/__tests__/integration/transfer-grant-fixtures.js";
+import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import type { Hono } from "hono";
 
 try {
@@ -81,7 +119,13 @@ beforeAll(async () => {
   app = createApp();
 });
 
+beforeEach(() => {
+  resetOpenDouble();
+  vi.clearAllMocks();
+});
+
 afterAll(async () => {
+  await closeFinishQueue();
   await sql?.end({ timeout: 1 });
 });
 
@@ -242,6 +286,8 @@ async function eventsFor(docName: string): Promise<
 }
 
 describe("POST /assets/upload-ticket", () => {
+  // The ticket no longer reaches the browser (inner#1595): what is verified
+  // is the one the server handed the Worker's open, as the double received it.
   it("mints a ticket the ingest Worker's own verifier accepts", async () => {
     const { projectId, cookie } = await seedEditor();
 
@@ -249,7 +295,7 @@ describe("POST /assets/upload-ticket", () => {
 
     expect(res.status).toBe(201);
     const payload = (await res.json()) as {
-      data: { ticket: string; storageKey: string; uploadUrl: string };
+      data: { storageKey: string; uploadUrl: string };
     };
     expect(payload.data.storageKey).toMatch(/\.mp4$/);
     expect(payload.data.uploadUrl.startsWith("https://ingest.test.invalid")).toBe(
@@ -257,7 +303,7 @@ describe("POST /assets/upload-ticket", () => {
     );
 
     const verified = await verifyUploadTicket(
-      payload.data.ticket,
+      onlyOpenOf(payload.data.storageKey).ticket,
       INGEST_SECRET,
       Date.now(),
     );
@@ -267,7 +313,7 @@ describe("POST /assets/upload-ticket", () => {
   // What the Worker acts on, and nothing more. The fencing generation is not
   // among it: the Worker never reads one, and every consequence of this upload
   // takes it off the grant row instead.
-  it("signs the storage key, the content type and the expiry into the ticket", async () => {
+  it("T62: signs the storage key, the content type, the expiry and the task's deadline into the ticket", async () => {
     const { projectId, cookie } = await seedEditor();
 
     const res = await requestTicket(
@@ -275,10 +321,10 @@ describe("POST /assets/upload-ticket", () => {
       body({ project_id: projectId }),
     );
     const payload = (await res.json()) as {
-      data: { ticket: string; storageKey: string };
+      data: { storageKey: string };
     };
     const verified = await verifyUploadTicket(
-      payload.data.ticket,
+      onlyOpenOf(payload.data.storageKey).ticket,
       INGEST_SECRET,
       Date.now(),
     );
@@ -288,9 +334,10 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.payload.storageKey).toBe(payload.data.storageKey);
     expect(verified.payload.contentType).toBe("video/mp4");
     expect(verified.payload).not.toHaveProperty("leaseGen");
-    // The expiry is what the Worker checks when the browser asks to start, so
+    // The expiry is what the Worker checks when the server asks to start, so
     // a ticket has to arrive with room left on it.
     expect(verified.payload.expiresAt).toBeGreaterThan(Date.now());
+    expect(verified.payload.deadlineAt).toBe(await uploadDeadlineByKey(payload.data.storageKey));
   });
 
   it("leaves a grant carrying the context the report will need", async () => {
@@ -411,6 +458,7 @@ describe("POST /assets/upload-ticket", () => {
     expect(payload.data.alreadyExists).toBe(true);
     expect(payload.data.fileUrl).toBe(`https://cdn.test.invalid/${hash}.mp4`);
     expect(payload.data.ticket).toBeUndefined();
+    expect(openCalls()).toEqual([]);
 
     const grants = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM upload_grants WHERE studio_id = ${studioId}
@@ -541,6 +589,7 @@ describe("POST /assets/upload-ticket", () => {
     };
     expect(payload.data.alreadyExists).toBe(true);
     expect(payload.data.ticket).toBeUndefined();
+    expect(openCalls()).toEqual([]);
   });
 
   it("dedups against the PROJECT's studio, not the uploader's own", async () => {
@@ -819,9 +868,9 @@ describe("POST /assets/upload-ticket", () => {
     );
 
     expect(res.status).toBe(201);
-    const answer = (await res.json()) as { data: { ticket: string } };
+    const answer = (await res.json()) as { data: { storageKey: string } };
     const verified = await verifyUploadTicket(
-      answer.data.ticket,
+      onlyOpenOf(answer.data.storageKey).ticket,
       INGEST_SECRET,
       Date.now(),
     );
@@ -1051,5 +1100,296 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     const rows = await tasksOn(nodeId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("done");
+  });
+});
+
+/**
+ * The server opens the upload at the Worker itself (inner#1595 test spec §6,
+ * T60–T70, T76, T77). The browser gets the upload id and the first session
+ * token, never the ticket; an open that fails answers 200 `openFailed` with
+ * the task id, the grant voided and the row failed, so the browser neither
+ * asks again nor is left with a row that runs on.
+ */
+describe("POST /assets/upload-ticket — the server opens the upload (inner#1595)", () => {
+  /** An ordinary picture onto one node of one Space. */
+  function picture(projectId: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+    return body({
+      project_id: projectId,
+      filename: "photo.png",
+      content_type: "image/png",
+      size: 4096,
+      node_id: crypto.randomUUID(),
+      space_id: crypto.randomUUID(),
+      ...over,
+    });
+  }
+
+  /** Every grant this user holds, oldest first. */
+  async function grantsOf(userId: string): Promise<{ storage_key: string; voided_at: Date | null }[]> {
+    return sql<{ storage_key: string; voided_at: Date | null }[]>`
+      SELECT storage_key, voided_at FROM upload_grants WHERE user_id = ${userId} ORDER BY created_at
+    `;
+  }
+
+  /** The task rows opened for one key. */
+  async function rowsFor(storageKey: string): Promise<{ id: string; status: string; settled_at: Date | null }[]> {
+    return sql<{ id: string; status: string; settled_at: Date | null }[]>`
+      SELECT id, status, settled_at FROM node_tasks WHERE storage_key = ${storageKey}
+    `;
+  }
+
+  /** Every `upload_open_failed` line logged since the last clear. */
+  function openFailedLines(): Record<string, unknown>[] {
+    return logged.error.mock.calls
+      .filter((call) => call[1] === "upload_open_failed")
+      .map((call) => call[0] as Record<string, unknown>);
+  }
+
+  it("T60: the double is the open the server calls — nothing reaches the network for it", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        urls.push(String(url));
+        return new Response("", { status: 500 });
+      }),
+    );
+    try {
+      const res = await requestTicket(cookie, picture(projectId));
+
+      expect(res.status).toBe(201);
+      const { data } = (await res.json()) as { data: { storageKey: string } };
+      expect([...opensByKey()]).toEqual([[data.storageKey, 1]]);
+      expect(urls.filter((url) => url.endsWith("/uploads"))).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("T61: answers the upload id and first token the Worker gave, and no ticket", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(cookie, picture(projectId));
+
+    expect(res.status).toBe(201);
+    const { data } = (await res.json()) as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual(
+      ["kind", "partSize", "storageKey", "taskId", "token", "totalParts", "uploadId", "uploadUrl"],
+    );
+    const call = onlyOpenOf(data.storageKey as string);
+    expect(data.uploadId).toBe(call.answer?.uploadId);
+    expect(data.token).toBe(call.answer?.token);
+    const session = await verifySessionToken(data.token as string, INGEST_SECRET, Date.now());
+    expect(session?.uploadId).toBe(data.uploadId);
+    expect(session?.storageKey).toBe(data.storageKey);
+    expect((data.uploadUrl as string).startsWith(process.env.INGEST_BASE_URL ?? "https://ingest.test.invalid")).toBe(true);
+  });
+
+  it("T63: opens with the shared secret, bound by the task's deadline", async () => {
+    const { projectId, cookie } = await seedEditor();
+    // The bound is computed before the ticket is signed and the open recorded,
+    // so the moment before the request is its upper limit.
+    const before = Date.now();
+
+    const res = await requestTicket(cookie, picture(projectId));
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+
+    const call = onlyOpenOf(data.storageKey);
+    expect(call.secret).toBe(INGEST_SECRET);
+    // inner#1595 R1: a timeout alone; a deadline signal would outlive the open.
+    expect(call.bound).not.toHaveProperty("signal");
+    const timeoutMs = call.bound?.timeoutMs ?? 0;
+    expect(timeoutMs).toBeGreaterThan(0);
+    expect(timeoutMs).toBeLessThanOrEqual(call.payload.deadlineAt - before);
+    expect(call.payload.deadlineAt - call.at).toBeLessThanOrEqual(getNodeTaskConfig().default_budget_ms);
+  });
+
+  it("T64: finishes the upload with nothing but the upload id and token it answered", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const res = await requestTicket(cookie, picture(projectId));
+    const { data } = (await res.json()) as { data: { storageKey: string; uploadId: string; token: string } };
+
+    const complete = await app.request(`/api/v1/assets/uploads/${data.uploadId}/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "x-upload-token": data.token },
+      body: JSON.stringify({ parts: [{ partNumber: 1, etag: "e1" }] }),
+    });
+    expect(complete.status).toBe(202);
+
+    workerAnswers({ contentType: "image/png", sizeBytes: 4096 });
+    try {
+      const finished = await runQueuedFinish(data.storageKey);
+      expect(finished.outcome.status).toBe("registered");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect((await rowsFor(data.storageKey)).map((row) => row.status)).toEqual(["done"]);
+    // Finishing opens nothing.
+    expect(opensByKey().get(data.storageKey)).toBe(1);
+  });
+
+  it.each([
+    ["T65: the Worker names its refusal", () => new UploadHttpError(502, "store_failed"), "store_failed"],
+    ["T66: nothing answers", () => new TypeError("fetch failed"), INGEST_NO_ANSWER],
+  ])("%s → 200 openFailed with the task id, grant voided, row failed, logged once", async (_label, failure, reason) => {
+    const { userId, projectId, cookie } = await seedEditor();
+    setOpenMode(() => failure());
+    const request = picture(projectId);
+
+    const res = await requestTicket(cookie, request);
+
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual(["openFailed", "taskId"]);
+    expect(data.openFailed).toEqual({ reason });
+    expect(Object.keys(data.openFailed as object)).toEqual(["reason"]);
+
+    const grants = await grantsOf(userId);
+    expect(grants).toHaveLength(1);
+    const key = grants[0]!.storage_key;
+    expect(grants[0]!.voided_at).not.toBeNull();
+    const rows = await rowsFor(key);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("failed");
+    expect(data.taskId).toBe(rows[0]!.id);
+
+    const docName = canvasSpaceDocName(projectId, request.space_id as string);
+    const events = (await eventsFor(docName)).filter((e) => e.nodeId === request.node_id);
+    expect(events.some((e) => e.counts.failed === 1)).toBe(true);
+
+    const lines = openFailedLines();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ key, reason, userId, projectId });
+    expect(lines[0]!.err).toBeDefined();
+    expect(opensByKey().get(key)).toBe(1);
+  });
+
+  it.each([
+    ["a project upload with no node", (seed: Awaited<ReturnType<typeof seedEditor>>) => body({
+      project_id: seed.projectId, filename: "crop.png", content_type: "image/png", size: 4096,
+    })],
+    ["a studio's avatar", (seed: Awaited<ReturnType<typeof seedEditor>>) => body({
+      studio_id: seed.studioId, purpose: "studio_avatar", filename: "me.png", content_type: "image/png", size: 4096,
+    })],
+  ])("T67: an open that fails for %s answers openFailed with no task id", async (_label, make) => {
+    const seed = await seedEditor();
+    setOpenMode(() => new UploadHttpError(500, null));
+
+    const res = await requestTicket(seed.cookie, make(seed));
+
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: Record<string, unknown> };
+    expect(data).toEqual({ openFailed: { reason: INGEST_REFUSED_UNNAMED } });
+    expect(Object.keys(data)).toEqual(["openFailed"]);
+    const grants = await grantsOf(seed.userId);
+    expect(grants).toHaveLength(1);
+    expect(grants[0]!.voided_at).not.toBeNull();
+    expect(await rowsFor(grants[0]!.storage_key)).toEqual([]);
+  });
+
+  it("T68: the browser's failure report after openFailed changes nothing and is logged as late", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    setOpenMode(() => new UploadHttpError(502, "store_failed"));
+    const request = picture(projectId);
+    const res = await requestTicket(cookie, request);
+    const { data } = (await res.json()) as { data: { taskId: string } };
+    const key = (await grantsOf(userId))[0]!.storage_key;
+    const [before] = await rowsFor(key);
+
+    const report = await app.request(`/api/v1/canvas/node-tasks/${data.taskId}/failure`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ reason: "aborted" }),
+    });
+
+    expect(report.status).toBe(200);
+    const after = await rowsFor(key);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.status).toBe("failed");
+    expect(after[0]!.settled_at).toEqual(before!.settled_at);
+    const late = logged.info.mock.calls.filter((call) => call[1] === "upload_transfer_failed_late");
+    expect(late).toHaveLength(1);
+    expect(late[0]![0]).toMatchObject({ taskId: data.taskId, applied: false });
+    const onNode = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM node_tasks WHERE node_id = ${request.node_id as string}
+    `;
+    expect(onNode[0]!.n).toBe(1);
+  });
+
+  it("T69: a retry after a failed open is a new ticket under a new key", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    setOpenMode(() => new UploadHttpError(502, "store_failed"));
+    const request = picture(projectId);
+    await requestTicket(cookie, request);
+    const oldKey = (await grantsOf(userId))[0]!.storage_key;
+
+    setOpenMode(() => "ok");
+    const retry = await requestTicket(cookie, { ...request, client_hash: request.client_hash });
+
+    expect(retry.status).toBe(201);
+    const { data } = (await retry.json()) as { data: { storageKey: string } };
+    expect(data.storageKey).not.toBe(oldKey);
+    expect(opensByKey().get(data.storageKey)).toBe(1);
+    expect(opensByKey().get(oldKey)).toBe(1);
+    const grants = await grantsOf(userId);
+    expect(grants.find((g) => g.storage_key === oldKey)!.voided_at).not.toBeNull();
+    expect(grants.find((g) => g.storage_key === data.storageKey)!.voided_at).toBeNull();
+    expect((await rowsFor(oldKey)).map((row) => row.status)).toEqual(["failed"]);
+    expect((await rowsFor(data.storageKey)).map((row) => row.status)).toEqual(["running"]);
+  });
+
+  it("T70a: a dedup hit opens nothing", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await registerAsset(studioId, userId, hash, 4096);
+
+    const res = await requestTicket(cookie, picture(projectId, { client_hash: hash }));
+
+    expect(res.status).toBe(200);
+    expect(openCalls()).toEqual([]);
+  });
+
+  it("T70b: a file over the cap opens nothing", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(cookie, picture(projectId, { size: 3 * 1024 * 1024 * 1024 }));
+
+    expect(res.status).toBe(413);
+    expect(openCalls()).toEqual([]);
+  });
+
+  it("T70c: a project the caller is not in opens nothing", async () => {
+    const mine = await seedEditor();
+    const theirs = await seedEditor();
+
+    const res = await requestTicket(mine.cookie, picture(theirs.projectId));
+
+    expect(res.status).toBe(404);
+    expect(openCalls()).toEqual([]);
+  });
+
+  it("T76: five tickets asked at once each open their own upload once", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const answers = await Promise.all(Array.from({ length: 5 }, () => requestTicket(cookie, picture(projectId))));
+
+    expect(answers.map((res) => res.status)).toEqual([201, 201, 201, 201, 201]);
+    const keys = await Promise.all(
+      answers.map(async (res) => ((await res.json()) as { data: { storageKey: string } }).data.storageKey),
+    );
+    expect(new Set(keys).size).toBe(5);
+    expect(keys.map((key) => opensByKey().get(key))).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it("T77: logs the upload id it answered with", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(cookie, picture(projectId));
+    const { data } = (await res.json()) as { data: { uploadId: string } };
+
+    const issued = logged.info.mock.calls.filter((call) => call[1] === "upload_ticket_issued");
+    expect(issued).toHaveLength(1);
+    expect(issued[0]![0]).toMatchObject({ uploadId: data.uploadId });
   });
 });

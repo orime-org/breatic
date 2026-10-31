@@ -8,6 +8,8 @@
       "upload_too_large": "파일이 업로드 크기 제한을 초과했습니다.",
       "insufficient_credits": "크레딧이 부족합니다: 필요 {required}, 보유 {available}",
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
+      "payload_too_large": "요청 내용이 {limit}을(를) 초과합니다. 프롬프트나 참조한 텍스트를 줄여 주세요.",
+      "transfer_invalid": "업로드한 내용을 사용할 수 없습니다. 다시 시도해 주세요.",
       "internal": "내부 서버 오류"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "이 Studio는 크레딧 {owed}을 미납했습니다. 다음에 지정하는 크레딧이 먼저 충당됩니다.",
       "unassigned": "지정되지 않은 크레딧이 {available} 있습니다. 사용하려면 Studio에 지정하세요.",
       "none": "크레딧이 부족합니다. 충전해 주세요.",
+      "held_by_running": "크레딧 {held}이 실행 중인 작업에 묶여 있습니다. 지금 사용할 수 있는 크레딧은 {available}입니다.",
       "granted_elsewhere": "보유한 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
       "refund_already_asked": "이 구매는 이미 환불을 신청했습니다.",
       "refund_restored": "환불에 실패한 뒤 크레딧으로 복원된 구매라 더 이상 환불을 신청할 수 없습니다.",
@@ -31,6 +34,7 @@
       "email_taken": "이미 등록된 이메일입니다",
       "token_expired": "세션이 만료되었습니다. 다시 로그인해 주세요",
       "logout_success": "로그아웃되었습니다",
+      "logout_others_success": "다른 기기에서 로그아웃되었습니다",
       "not_authenticated": "인증되지 않았습니다",
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
@@ -60,7 +64,9 @@
       "member_limit_reached_for_invitee": "이 Studio의 멤버 자리가 모두 찼습니다. Admin에게 자리를 비워 달라고 요청하세요.",
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
       "transfer_credits_designated": "이 Studio에 아직 크레딧 팩이 지정되어 있습니다. 아바타 메뉴 →「크레딧」→「지정」에서 해제한 뒤 양도하세요.",
-      "designation_during_transfer": "이 Studio에 대기 중인 양도가 있습니다. 양도를 취소하거나 양도가 끝난 뒤에 다시 팩을 지정할 수 있습니다."
+      "designation_during_transfer": "이 Studio에 대기 중인 양도가 있습니다. 양도를 취소하거나 양도가 끝난 뒤에 다시 팩을 지정할 수 있습니다.",
+      "email_not_registered_no_mail": "등록되지 않은 이메일입니다. 이 배포에서는 이메일이 비활성화되어 있어 미등록 주소를 초대할 수 없습니다.",
+      "invite_mail_failed": "이메일을 보내지 못했습니다. 다시 시도해 주세요."
     },
     "project": {
       "join_already_member": "이미 이 Project의 멤버입니다.",
@@ -79,7 +85,9 @@
       "not_found": "Project를 찾을 수 없습니다",
       "archived": "이 Project는 보관되어 보기만 할 수 있습니다.",
       "copy_name": "사본 - {name}",
-      "leave_owner": "Owner는 소유권을 이전한 후에 나갈 수 있습니다."
+      "leave_owner": "Owner는 소유권을 이전한 후에 나갈 수 있습니다.",
+      "email_not_registered_no_mail": "등록되지 않은 이메일입니다. 이 배포에서는 이메일이 비활성화되어 있어 미등록 주소를 초대할 수 없습니다.",
+      "invite_mail_failed": "이메일을 보내지 못했습니다. 다시 시도해 주세요."
     },
     "text_tool": {
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
@@ -165,7 +173,10 @@
       "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
       "current_space_too_long": "현재 Space의 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
       "spaces_too_many": "목록의 Space가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
-      "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다."
+      "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다.",
+      "ask_not_found": "이 대화에 이 질문 카드가 없습니다.",
+      "ask_already_answered": "이 질문 카드에는 이미 답했습니다.",
+      "answer_mismatch": "이 답변은 카드의 질문과 맞지 않습니다."
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "인증 코드",
         "lead": "가입 페이지에 아래 코드를 입력해 계정 만들기를 완료하세요.",
         "footer": "이 코드는 {minutes, plural, other {#분}} 후에 만료됩니다. 본인이 가입을 시도하지 않았다면 이 메일을 무시해도 됩니다."
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} 님이 {project}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Project <b>{project}</b>에 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "가입하고 참여"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} 님이 {studio}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Studio <b>{studio}</b>에 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "가입하고 참여"
       }
     },
     "mini_tool": {
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
-      "foreignSource": "이 파일은 처리할 수 없습니다."
+      "foreignSource": "이 파일은 처리할 수 없습니다.",
+      "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
+      "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
@@ -284,7 +307,7 @@
   "chat": {
     "composer": {
       "chipsAria": "선택된 칩",
-      "placeholder": "질문하거나 캔버스의 항목을 넘겨주세요…",
+      "placeholder": "질문하거나 Canvas의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
       "send": "전송",
       "sending": "보내는 중",
@@ -308,11 +331,13 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintDirect": "아래에 입력해 보세요 ↓",
+      "capabilities": "소재 찾기, 글과 대본 쓰기, Canvas에 생성 흐름 만들기, Document 수정을 도와드려요",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
-        "writePrompt": "일러스트 생성 프롬프트를 써줘",
-        "refinePrompt": "이 프롬프트를 더 구체적으로 다듬어줘"
+        "writeScript": "3분짜리 단편 영화 대본을 써줘",
+        "buildWorkflow": "Canvas에 캐릭터 삼면도를 생성하는 흐름을 만들어줘",
+        "annotateDocument": "Document 수정안을 제안해줘",
+        "writePrompt": "일러스트 생성 프롬프트를 써줘"
       }
     },
     "history": {
@@ -335,7 +360,8 @@
     },
     "error": {
       "network": "네트워크 오류",
-      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요."
+      "turnFailed": "이 답변을 끝내지 못했습니다. 다시 보내 보세요.",
+      "turnTooLong": "이번에 처리할 내용이 너무 많아 끝내지 못했습니다. 범위를 좁혀 다시 시도해 보세요."
     },
     "message": {
       "interrupted": "중지됨",
@@ -348,22 +374,60 @@
     "tool": {
       "unfinished": "중지됨",
       "failure": {
-        "upstream": "실행 오류",
-        "unreachable": "실행 오류",
-        "generic": "실행 오류"
+        "busy": "서비스에 오류가 발생했습니다. 잠시 후 다시 시도하세요",
+        "noConnection": "서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요",
+        "refused": "서비스가 이 요청을 받지 않았습니다",
+        "unavailable": "지금은 이 기능을 사용할 수 없습니다",
+        "badAnswer": "서비스가 사용할 수 없는 결과를 보냈습니다",
+        "linkUnreachable": "이 주소를 열 수 없습니다. 다른 링크를 사용해 보세요",
+        "fileTooLarge": "파일이 너무 큽니다",
+        "unsupportedType": "지원하지 않는 파일 형식입니다",
+        "emptyFile": "파일이 비어 있습니다",
+        "tooSlow": "파일 다운로드가 너무 느려 완료되지 않았습니다",
+        "storageFull": "Studio 저장 공간이 가득 찼습니다",
+        "noPermission": "이 Project의 편집 권한이 없습니다",
+        "notMember": "더 이상 이 Project의 멤버가 아닙니다",
+        "tooFrequent": "방금 가져온 링크가 너무 많습니다. 1분 후 다시 시도하세요",
+        "declined": "서비스가 이 내용의 처리를 거부했습니다",
+        "ourFault": "서버에 문제가 발생했습니다. 다시 시도하세요"
       },
+      "failedLine": "{step} 실패: {reason}",
+      "failedStep": "{step} 실패",
       "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
-      "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
+      "checkingCanvas": "Canvas로 만들 수 있는 것 확인 중",
       "proposingNodes": "제안을 정리하는 중",
       "proposingDocumentEdit": "수정안을 정리하는 중",
       "savingImage": "이미지 저장 중",
       "checkingModels": "사용할 수 있는 모델 확인 중",
       "readingGuide": "제품 사용법 확인 중",
+      "readingTemplate": "템플릿 확인 중",
       "understanding": "미디어 확인 중",
       "judging": "가늠하는 중",
-      "running": "{tool} 실행 중"
+      "searchingConversations": "대화 검색 중",
+      "readingConversation": "대화 확인 중",
+      "readingNodeHistory": "노드 기록 확인 중",
+      "readingActivity": "Project 활동 확인 중",
+      "running": "{tool} 실행 중",
+      "step": {
+        "webSearch": "“{query}” 검색",
+        "searchImages": "“{query}” 이미지 검색",
+        "understandMedia": "미디어 확인",
+        "saveImage": "이미지 저장",
+        "judge": "판단",
+        "proposeCanvas": "제안 작성",
+        "proposeDocument": "수정안 작성",
+        "listModels": "사용 가능한 모델 확인",
+        "canvasCapabilities": "Canvas 기능 확인",
+        "productGuide": "사용법 확인",
+        "searchConversations": "대화 검색",
+        "readConversation": "대화 확인",
+        "readNodeHistory": "노드 기록 확인",
+        "readActivity": "Project 활동 확인",
+        "other": "{tool} 실행",
+        "readTemplate": "템플릿 확인"
+      }
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {
@@ -409,7 +473,7 @@
       "building": "만드는 중…",
       "failed": "만들지 못했습니다.",
       "expired": "이 제안은 만료되었습니다. Agent에게 새로 제안해 달라고 하세요.",
-      "needCanvas": "먼저 캔버스를 여세요.",
+      "needCanvas": "먼저 Canvas를 여세요.",
       "promptReady": "프롬프트가 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다.",
       "settingsReady": "설정이 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다."
     },
@@ -441,9 +505,22 @@
     "thinkingNow": "생각 중",
     "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다",
     "attachment": {
-      "kind": "{kind, select, canvas {캔버스} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
+      "kind": "{kind, select, canvas {Canvas} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
       "nodes": "노드 {count}개",
       "more": "외 {count}개"
+    },
+    "questionnaire": {
+      "submit": "제출",
+      "hint": "해당하는 것이 없으면 입력창에 바로 답할 수 있습니다",
+      "other": "기타(직접 입력)…",
+      "ownWords": "답변을 입력하세요…",
+      "multi": "여러 개 선택 가능",
+      "skipped": "건너뜀",
+      "yourAnswers": "내 답변",
+      "replied": "대화에서 답했습니다",
+      "show": "펼치기",
+      "hide": "접기",
+      "atLeastOne": "적어도 한 문제에 답해 주세요"
     }
   },
   "canvas": {
@@ -469,8 +546,8 @@
       "nodeAudio": "오디오"
     },
     "emptyState": {
-      "title": "캔버스가 비어 있습니다",
-      "hint": "에셋을 캔버스로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
+      "title": "Canvas가 비어 있습니다",
+      "hint": "에셋을 Canvas로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
     },
     "nodePlaceholder": {
       "text": "더블클릭하여 작성",
@@ -479,7 +556,12 @@
       "audio": "더블클릭하여 업로드",
       "3d": "더블클릭하여 3D 모델 업로드",
       "web": "더블클릭하여 URL 삽입",
-      "rightClickHint": "우클릭으로 생성 등"
+      "rightClickHint": "우클릭으로 생성 등",
+      "peer": {
+        "upload": "{name} 님이 업로드 중",
+        "readText": "{name} 님이 파일을 읽는 중",
+        "tool": "{name} 님이 {tool} 실행 중"
+      }
     },
     "textNode": {
       "editorPlaceholder": "내용을 입력하세요"
@@ -518,12 +600,20 @@
       "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
       "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
     },
+    "transcribe": {
+      "title": "받아쓰기",
+      "keepFillers": "추임새 남기기",
+      "keepFillersOn": "'음', '어', 'um' 같은 말을 말한 그대로 적습니다",
+      "keepFillersOff": "'음', '어', 'um' 같은 말을 뺍니다. 다른 낱말이 조금 바뀔 수 있습니다",
+      "couldNotStart": "받아쓰기를 시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "받아쓰던 노드가 없습니다. 이 받아쓰기에는 연결선이 없습니다."
+    },
     "generatePanel": {
       "focus": "포커스",
       "reference": "참조",
       "focusTip": "노드의 일부 영역을 참조로 지정",
-      "referenceTip": "캔버스에서 이미지를 참조로 선택",
-      "referenceTipAudio": "캔버스에서 텍스트를 참조로 선택",
+      "referenceTip": "Canvas에서 이미지를 참조로 선택",
+      "referenceTipAudio": "Canvas에서 텍스트를 참조로 선택",
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
@@ -552,12 +642,12 @@
       "voiceVolume": "볼륨",
       "sfxDuration": "길이",
       "sfxDurationSeconds": "{n}초",
-      "selectFromCanvas": "캔버스에서 참조 선택",
-      "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
-      "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
-      "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
-      "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
-      "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
+      "selectFromCanvas": "Canvas에서 참조 선택",
+      "selectFirstFrameFromCanvas": "Canvas에서 첫 프레임으로 쓸 이미지 선택",
+      "selectEndFrameFromCanvas": "Canvas에서 마지막 프레임으로 쓸 이미지 선택",
+      "selectCharacterImageFromCanvas": "Canvas에서 캐릭터로 쓸 이미지 선택",
+      "selectDrivingVideoFromCanvas": "Canvas에서 동작을 가져올 영상 선택",
+      "selectDrivingAudioFromCanvas": "Canvas에서 입 모양이 따라갈 음성 선택",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "camera": "카메라",
@@ -573,6 +663,7 @@
       "errorCredits": "크레딧이 부족하여 생성할 수 없습니다.",
       "errorUnavailable": "생성 서비스를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
       "errorFailed": "생성을 시작하지 못했습니다. 다시 시도해 주세요.",
+      "errorTooLargeNoLimit": "요청 내용이 너무 큽니다. 프롬프트나 참조한 텍스트를 줄여 주세요.",
       "errorNoSourceImage": "이 모델에는 원본 이미지가 필요합니다 —— 프롬프트에 @ 를 입력해 연결된 이미지를 선택하세요.",
       "errorTooManyReferences": "이 모델은 참고 {kind, select, video {비디오를 최대 {limit}개} audio {오디오를 최대 {limit}개} other {이미지를 최대 {limit}장}}까지 허용합니다 —— 일부를 제거한 후 생성하세요.",
       "referenceAddFailed": "참조를 추가할 수 없습니다——해당 노드가 존재하지 않습니다.",
@@ -628,17 +719,17 @@
       "sourceVideoTip": "영상을 고르세요",
       "removeSourceVideo": "영상 제거",
       "errorNoSourceVideo": "영상을 고르세요",
-      "selectSourceVideoFromCanvas": "캔버스에서 영상 선택",
+      "selectSourceVideoFromCanvas": "Canvas에서 영상 선택",
       "leftAudio": "왼쪽 음성",
       "leftAudioTip": "왼쪽 화자의 음성을 고르세요",
       "removeLeftAudio": "왼쪽 음성 제거",
       "errorNoLeftAudio": "왼쪽 음성을 고르세요",
-      "selectLeftAudioFromCanvas": "캔버스에서 왼쪽 화자의 음성 선택",
+      "selectLeftAudioFromCanvas": "Canvas에서 왼쪽 화자의 음성 선택",
       "rightAudio": "오른쪽 음성",
       "rightAudioTip": "오른쪽 화자의 음성을 고르세요",
       "removeRightAudio": "오른쪽 음성 제거",
       "errorNoRightAudio": "오른쪽 음성을 고르세요",
-      "selectRightAudioFromCanvas": "캔버스에서 오른쪽 화자의 음성 선택",
+      "selectRightAudioFromCanvas": "Canvas에서 오른쪽 화자의 음성 선택",
       "drivingAudio": "음성",
       "drivingVideoTip": "동작을 가져올 영상을 고르세요",
       "drivingAudioTip": "입 모양이 따라갈 음성을 고르세요",
@@ -730,7 +821,14 @@
         "motion_prompt": "동작 설명",
         "append_duration": "늘릴 길이",
         "ambience": "주변음",
-        "double_output": "두 가지 생성"
+        "double_output": "두 가지 생성",
+        "light_azimuth": "조명 방향",
+        "light_elevation": "조명 높이",
+        "light_color": "조명 색",
+        "light_color_hex": "사용자 지정 조명 색",
+        "light_intensity": "강도",
+        "light_quality": "조명 질감",
+        "strength": "강도"
       },
       "paramField": {
         "speaker": "이름",
@@ -752,7 +850,7 @@
       "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초",
       "style": "스타일",
       "styleTip": "이미지를 최대 3장 스타일 참조로 선택",
-      "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
+      "selectStyleFromCanvas": "Canvas에서 스타일 참조 선택",
       "removeStyle": "스타일 참조 제거",
       "errorNoStyleImage": "먼저 스타일 이미지를 선택하세요",
       "cameraCommands": "카메라 무빙",
@@ -772,7 +870,6 @@
         "reset": "초기화",
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
       },
-      "editMarks": "대괄호와 중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
       "editProposalMarks": "중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
       "notePrefix": "안내: "
     },
@@ -786,7 +883,8 @@
       "history": "기록",
       "snapshot": "스냅샷 저장",
       "download": "다운로드",
-      "understand": "내용 읽기"
+      "understand": "내용 읽기",
+      "transcribe": "받아쓰기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -809,7 +907,7 @@
       "failed": "붙여넣기에 실패했습니다."
     },
     "minimap": {
-      "label": "캔버스 미니맵"
+      "label": "Canvas 미니맵"
     },
     "connection": {
       "rejected": "{source}은(는) {target}에 연결할 수 없습니다",
@@ -899,25 +997,28 @@
       "failure": {
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다.} other {이 파일은 받아쓰기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다({file}).} other {이 파일은 받아쓰기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 받아쓰기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}} other {{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {받아쓸 수 없는 파일 형식입니다.} other {받아쓸 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {받아쓸 수 없는 파일 형식입니다({file}).} other {받아쓸 수 없는 파일 형식입니다({file}, {type}).}}}}} other {{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}}}",
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
         "source_cut_off": "이 주소에서 파일을 끝까지 받지 못했습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다.",
+        "internal": "내부 서버 오류가 발생했습니다.",
         "no_credits": "사용할 수 있는 크레딧이 없습니다.",
+        "credits_held": "크레딧이 실행 중인 작업에 묶여 있습니다.",
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
-        "no_audio_track": "이 동영상에는 오디오 트랙이 없습니다."
+        "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
+        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다."
       },
       "kind": {
         "upload": "업로드",
         "generate": "생성",
-        "understand": "내용 읽기"
+        "understand": "내용 읽기",
+        "transcribe": "받아쓰기"
       }
     },
     "panel": {
@@ -954,6 +1055,42 @@
         },
         "rotate": {
           "label": "회전/뒤집기"
+        },
+        "grid": {
+          "label": "격자 분할"
+        },
+        "adjust": {
+          "label": "색 보정"
+        },
+        "expand": {
+          "label": "확장",
+          "prompt": "채울 내용을 입력하세요. 비워 두면 이미지에 맞게 자연스럽게 넓힙니다"
+        },
+        "mark": {
+          "label": "마크업"
+        },
+        "angle": {
+          "label": "멀티 앵글",
+          "prompt": "덧붙일 내용이 있으면 입력하세요(예: 배경은 선명하게)"
+        },
+        "relight": {
+          "label": "조명 변경",
+          "prompt": "조명에 덧붙일 내용이 있으면 입력하세요(예: 촛불, 뒤에 네온사인)",
+          "slot": {
+            "light_reference": "조명을 가져올 이미지를 고르세요"
+          }
+        },
+        "restyle": {
+          "label": "스타일 변환",
+          "prompt": "덧붙일 내용이 있으면 입력하세요(예: 색을 더 부드럽게)",
+          "slotTitle": "스타일 이미지",
+          "slot": {
+            "style": "스타일을 가져올 이미지를 최대 3개 고르세요"
+          }
+        },
+        "quickEdit": {
+          "label": "빠른 편집",
+          "prompt": "바꿀 내용을 입력하세요(예: 비 오는 밤으로, 셔츠를 검은 재킷으로)"
         }
       },
       "video": {
@@ -1018,6 +1155,40 @@
         "extend": {
           "label": "연장",
           "prompt": "이어질 소리를 설명하세요"
+        },
+        "denoise": {
+          "label": "노이즈 제거"
+        },
+        "normalize": {
+          "label": "라우드니스 정규화",
+          "note": "피크 상한 −1 dBTP"
+        },
+        "speed": {
+          "label": "속도"
+        },
+        "cut": {
+          "label": "자르기"
+        },
+        "eq": {
+          "label": "이퀄라이저"
+        },
+        "compress": {
+          "label": "컴프레서"
+        },
+        "pan": {
+          "label": "스테레오"
+        },
+        "reverb": {
+          "label": "리버브"
+        },
+        "voice": {
+          "label": "음성 강화"
+        },
+        "pitch": {
+          "label": "피치 변경"
+        },
+        "enhance": {
+          "label": "음성 보정"
         }
       },
       "param": {
@@ -1050,6 +1221,42 @@
         },
         "transfer": {
           "label": "전송 특성"
+        },
+        "rows": {
+          "label": "행 수"
+        },
+        "cols": {
+          "label": "열 수"
+        },
+        "target": {
+          "label": "목표 라우드니스"
+        },
+        "keepPitch": {
+          "label": "피치 유지"
+        },
+        "eq": {
+          "label": "프리셋"
+        },
+        "dynamics": {
+          "label": "프리셋"
+        },
+        "pan": {
+          "label": "좌우"
+        },
+        "width": {
+          "label": "폭"
+        },
+        "room": {
+          "label": "공간"
+        },
+        "amount": {
+          "label": "리버브 양"
+        },
+        "semitones": {
+          "label": "반음"
+        },
+        "cents": {
+          "label": "센트"
         }
       },
       "panel": {
@@ -1068,7 +1275,13 @@
         "sourceChanged": "소재가 바뀌었습니다.",
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
         "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
-        "drawingEmpty": "먼저 그림 위에 그려 주세요."
+        "drawingEmpty": "먼저 그림 위에 그려 주세요.",
+        "reset": "초기화",
+        "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다.",
+        "sourceTooLargeToExpand": "이 이미지는 이미 확장할 수 있는 최대 크기입니다.",
+        "ratioTooLarge": "확장할 수 있는 최대 크기를 넘습니다",
+        "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
+        "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다."
       },
       "adjust": {
         "exposure": "노출",
@@ -1087,6 +1300,12 @@
         "grain": "그레인",
         "fade": "페이드"
       },
+      "adjustGroup": {
+        "light": "라이트",
+        "color": "색상",
+        "detail": "세부",
+        "effects": "효과"
+      },
       "draw": {
         "brush": "브러시",
         "rect": "사각형",
@@ -1098,22 +1317,150 @@
         "undo": "실행 취소",
         "redo": "다시 실행",
         "clear": "모두 지우기"
+      },
+      "mark": {
+        "select": "선택",
+        "arrow": "화살표",
+        "rect": "사각형",
+        "ellipse": "타원",
+        "line": "직선",
+        "pen": "펜",
+        "text": "텍스트"
+      },
+      "grid": {
+        "picked": "{picked} / {total}개 선택",
+        "pickAll": "모두 선택",
+        "pickNone": "모두 선택 해제"
+      },
+      "relight": {
+        "lightTitle": "광원",
+        "referenceTitle": "조명 참고 이미지",
+        "optional": "선택",
+        "followsReference": "이 이미지의 조명을 따릅니다",
+        "referenceNote": "조명은 이 이미지에서 가져옵니다. 오른쪽의 색상, 강도, 질감이 이를 덮어씁니다.",
+        "fromReference": "참고 이미지 따름",
+        "sourceFromReference": "참고 이미지를 따름"
+      },
+      "dynamics": {
+        "threshold": "스레숄드",
+        "ratio": "비율",
+        "attack": "어택",
+        "release": "릴리스",
+        "makeup": "메이크업 게인"
       }
     },
     "template": {
       "title": "템플릿",
       "empty": "템플릿 없음",
       "unavailable": "사용할 수 없음",
+      "goal": {
+        "character": "캐릭터 설정과 일관성",
+        "comics-storyboards": "만화와 스토리보드"
+      },
       "storyboard-grid-25": {
         "name": "25칸 스토리보드",
         "description": "한 이야기를 5×5로 담은 연속 장면, 영상 생성용",
-        "prompt": "[📎 캐릭터 또는 장면 참고 이미지] 를 참고로 삼아 이미지 한 장을 만들어 주세요: 정확히 5행 5열, 총 25칸의 시간 순서 스토리보드. 칸 사이는 얇은 흰 선으로 나누고, 왼쪽에서 오른쪽, 위에서 아래로 시간 순서대로 이어집니다. 스토리: {✏️ 스토리}. 모든 칸에서 인물, 의상, 장소, 조명을 참고 이미지와 똑같이 유지하세요. 칸마다 샷 크기와 카메라 앵글을 바꿔 영화 스토리보드처럼 만드세요. 글자와 번호는 넣지 마세요."
+        "prompt": "[📎 캐릭터 또는 장면] 을 참고로 삼아 이미지 한 장을 만들어 주세요: 정확히 5행 5열, 총 25칸의 시간 순서 스토리보드. 칸 사이는 얇은 흰 선으로 나누고, 왼쪽에서 오른쪽, 위에서 아래로 시간 순서대로 이어집니다. 스토리: {✏️ 스토리}. 모든 칸에서 인물, 의상, 장소, 조명을 참고 이미지와 똑같이 유지하세요. 칸마다 샷 크기와 카메라 앵글을 바꿔 영화 스토리보드처럼 만드세요. 글자와 번호는 넣지 마세요.",
+        "input": {
+          "reference": {
+            "name": "캐릭터 또는 장면",
+            "note": "캐릭터 또는 장면 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
       },
       "costume-sheet": {
         "name": "삼면도 캐릭터 시트",
         "description": "정면·측면·후면 삼면도와 부분 클로즈업",
-        "prompt": "[📎 캐릭터 참고 이미지] 를 캐릭터 참고로 삼아 이미지 한 장을 만들어 주세요: 단색 밝은 회색 배경의 캐릭터 의상 설정 시트. 왼쪽에는 같은 캐릭터의 정면, 측면, 후면 전신 삼면도를 나란히 세우고, 오른쪽에는 {✏️ 손 또는 신체 일부} 클로즈업을 작게 배치하세요. 참고 이미지와 같은 사실적인 사진 스타일이며 일러스트가 아닙니다. 모든 뷰에서 얼굴, 헤어스타일, 의상, 색상, 체형을 참고 이미지와 일치시키세요. 균일한 촬영 조명. 글자는 넣지 마세요."
-      }
+        "prompt": "[📎 캐릭터] 를 캐릭터 참고로 삼아 이미지 한 장을 만들어 주세요: 단색 밝은 회색 배경의 캐릭터 의상 설정 시트. 왼쪽에는 같은 캐릭터의 정면, 측면, 후면 전신 삼면도를 나란히 세우고, 오른쪽에는 {✏️ 손 또는 신체 일부} 클로즈업을 작게 배치하세요. 참고 이미지와 같은 사실적인 사진 스타일이며 일러스트가 아닙니다. 모든 뷰에서 얼굴, 헤어스타일, 의상, 색상, 체형을 참고 이미지와 일치시키세요. 균일한 촬영 조명. 글자는 넣지 마세요.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "캐릭터 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "character-bible": {
+        "name": "캐릭터 설정표",
+        "description": "한 캐릭터의 뷰, 표정, 포즈, 디테일",
+        "prompt": "[📎 캐릭터]를 유일한 캐릭터 참고로 사용하고, 새 캐릭터를 만들지 않는다. 이미지 한 장을 생성한다: 이 캐릭터만 그린 캐릭터 설정표, 단색 연회색 배경. 정면, 3/4 측면, 측면, 뒷면 전신 메인 뷰 4개를 가장 크게 배치한다. 그 주위에 순서대로: 머리카락·피부·의상의 컬러 팔레트, 검은 실루엣, 표정 8가지, 미세 표정 5가지, 머리 각도 4개, 포즈 3가지, 강한 감정의 흉상 한 장, 의상 디테일 클로즈업, 손동작. 작은 칸도 모두 메인 뷰와 같은 화풍이며, 얼굴·헤어스타일·의상·색·체형이 참고 이미지와 같다. 화풍: {✏️ 참고 이미지와 같은 화풍}. 균일한 촬영 조명. 글자와 라벨은 넣지 않는다.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "캐릭터 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "expression-sheet": {
+        "name": "표정 시트",
+        "description": "같은 얼굴의 표정, 미세 표정, 머리 각도",
+        "prompt": "[📎 캐릭터]를 캐릭터 참고로 이미지 한 장을 생성한다: 이 캐릭터의 표정 시트, 단색 연회색 배경, 모든 칸은 머리와 어깨. 첫째 줄 표정 8가지: 무표정, 미소, 웃음, 슬픔, 분노, 놀람, 두려움, 혐오. 둘째 줄 미세 표정 5가지: 참는 웃음, 의심, 경멸, 눈물을 참음, 어색함. 셋째 줄은 무표정 얼굴의 머리 각도 4개: 정면, 3/4 측면, 옆얼굴, 고개 숙임. 모든 칸의 얼굴·헤어스타일·피부·조명이 같고 참고 이미지와 일치한다. 화풍: {✏️ 참고 이미지와 같은 화풍}. 글자와 라벨은 넣지 않는다.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "캐릭터 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "character-design-from-text": {
+        "name": "설명으로 캐릭터 디자인",
+        "description": "글로 캐릭터를 디자인한 뒤 설정표까지 만든다",
+        "prompt": "(💡 캐릭터 디자인을 먼저 생성하세요)[📎 캐릭터 디자인]을 유일한 캐릭터 참고로 사용하고, 새 캐릭터를 만들지 않는다. 이미지 한 장을 생성한다: 이 캐릭터만 그린 캐릭터 설정표, 단색 연회색 배경. 정면, 3/4 측면, 측면, 뒷면 전신 메인 뷰 4개를 가장 크게 배치한다. 그 주위에 순서대로: 머리카락·피부·의상의 컬러 팔레트, 검은 실루엣, 표정 8가지, 미세 표정 5가지, 머리 각도 4개, 포즈 3가지, 강한 감정의 흉상 한 장, 의상 디테일 클로즈업, 손동작. 메인 뷰와 작은 칸 모두 참고 이미지의 렌더링 방식을 그대로 유지한다: 3D 렌더면 3D, 손그림이면 손그림. 얼굴·헤어스타일·의상·색·체형도 같다. 균일한 촬영 조명. 글자와 라벨은 넣지 않는다.",
+        "node": {
+          "design": {
+            "name": "캐릭터 디자인",
+            "prompt": "{✏️ 어떤 캐릭터인지: 나이, 체형, 얼굴, 헤어스타일, 의상, 색}의 전신 캐릭터 디자인, 화풍은 {✏️ 한 가지 화풍, 예: 3D 카툰, 애니메이션, 실사}. 카메라를 향한 중립적인 선 자세, 팔은 자연스럽게 내리고, 머리부터 발끝까지 전신이 화면에 들어오며, 단색 연회색 배경. 균일한 촬영 조명. 글자는 넣지 않는다."
+          }
+        }
+      },
+      "single-view-refs-scene": {
+        "name": "캐릭터 장면 영상",
+        "description": "정면·측면·뒷면 세 장으로 같은 사람이 영상 한 편을 연기",
+        "prompt": "(💡 정면을 먼저 생성하세요)(💡 측면을 먼저 생성하세요)(💡 뒷면을 먼저 생성하세요)이 영상의 인물은 [📎 캐릭터]이고, [📎 정면], [📎 측면], [📎 뒷면]은 같은 사람의 정면, 측면, 뒷면이다. 이 이미지들에서 얼굴·헤어스타일·체형·의상 전체만 가져오고, 배경·자세·조명은 가져오지 않는다. 장소: {✏️ 어디에서 일어나는지}. 하나의 연속된 숏에서 {✏️ 그 사람이 하는 한 가지 일}. 카메라: {✏️ 시작점, 방향, 끝점이 있는 카메라 움직임 하나, 예: 인물 뒤의 원경에서 얼굴 클로즈업까지 다가감}. 첫 프레임부터 완성된 화면이며 이미 움직이고 있다. 광원은 처음부터 끝까지 하나. 소리: 현장 환경음과 인물의 발소리, 음악 없음, 대사 없음. 화면에 글자는 넣지 않는다.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "인물 사진을 먼저 넣은 뒤 정면, 측면, 뒷면을 생성하세요"
+          }
+        },
+        "node": {
+          "front": {
+            "name": "정면",
+            "prompt": "[📎 캐릭터]를 캐릭터 참고로, 같은 사람을 정면에서 본 전신, 똑바로 선 자세, 단색 연회색 배경, 균일한 촬영 조명. 참고 이미지에서 얼굴·헤어스타일·체형·의상 전체만 가져오고, 배경·자세·조명은 가져오지 않는다."
+          },
+          "side": {
+            "name": "측면",
+            "prompt": "[📎 캐릭터]를 캐릭터 참고로, 같은 사람을 측면에서 본 전신, 똑바로 선 자세, 단색 연회색 배경, 균일한 촬영 조명. 참고 이미지에서 얼굴·헤어스타일·체형·의상 전체만 가져오고, 배경·자세·조명은 가져오지 않는다."
+          },
+          "back": {
+            "name": "뒷면",
+            "prompt": "[📎 캐릭터]를 캐릭터 참고로, 같은 사람을 뒤에서 본 전신, 똑바로 선 자세, 단색 연회색 배경, 균일한 촬영 조명. 참고 이미지에서 얼굴·헤어스타일·체형·의상 전체만 가져오고, 배경·자세·조명은 가져오지 않는다."
+          }
+        }
+      },
+      "identity-locked-sequence": {
+        "name": "같은 캐릭터 세 숏",
+        "description": "같은 캐릭터의 연속된 세 숏",
+        "prompt": "[📎 캐릭터]가 유일한 캐릭터이며 모든 숏에서 같은 사람이다. 0–3초: 이 캐릭터, {✏️ 특징 4가지, 예: 검은 단발, 동그란 안경, 빨간 목도리, 회색 울 코트}, {✏️ 어디서 무엇을 하는지}. 3–6초: 이 캐릭터, {✏️ 같은 특징 4가지}, {✏️ 이어서 무엇을 하는지}. 6–8초: 이 캐릭터, {✏️ 같은 특징 4가지}, {✏️ 어떻게 끝나는지}. 얼굴은 바뀌지 않고, 의상의 종류와 주된 색도 바뀌지 않는다. 숏마다 카메라 움직임은 하나이고 각각 끝점이 있다. 화면에 글자는 넣지 않는다.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "캐릭터 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "character-showcase-orbit": {
+        "name": "캐릭터 회전 쇼케이스",
+        "description": "카메라가 캐릭터 주위를 돌며 모습을 보여 준다",
+        "prompt": "[📎 캐릭터]가 {✏️ 단색 배경 또는 어떤 장소}의 한가운데에 팔을 자연스럽게 내린 편안한 자세로 제자리에 서 있다. 카메라는 캐릭터 정면, 가슴 높이에서 시작해 주위를 180도 돌아 캐릭터 뒤에서 끝나며, 높이와 거리는 처음부터 끝까지 같다. 캐릭터는 카메라를 따라 돌아서지 않고 제자리를 벗어나지 않으며, 카메라만 움직인다. 카메라가 도는 동안 배경에 뚜렷한 시차가 생긴다. 한쪽에서 오는 부드러운 빛. 화면에 글자는 넣지 않는다.",
+        "input": {
+          "reference": {
+            "name": "캐릭터",
+            "note": "캐릭터 참고 이미지를 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "applyFailed": "템플릿을 적용하지 못했습니다.",
+      "groupLocked": "그룹이 잠겨 있습니다. 노드를 추가하려면 잠금을 해제하세요."
     },
     "promptMark": {
       "reference": "@로 {label} 선택"
@@ -1156,7 +1503,10 @@
         "resendIn": "{seconds}초 후 다시 보내기",
         "changeEmail": "다른 이메일 사용",
         "newCodeSent": "새 코드를 보냈습니다."
-      }
+      },
+      "invitedBanner": "{inviterName} 님이 {targetName}에 초대했습니다",
+      "invitedEmailMismatch": "이 초대는 {email}에 발송되었습니다. 다른 이메일로 가입하면 이 초대를 받을 수 없습니다.",
+      "inviteClosed": "이 초대는 더 이상 유효하지 않습니다."
     },
     "onboarding": {
       "title": "Slug 선택",
@@ -1209,7 +1559,7 @@
     "terms": {
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
-      "privacyLink": "개인정보처리방침"
+      "privacyLink": "개인정보 처리방침"
     }
   },
   "roleTag": {
@@ -1238,7 +1588,11 @@
       "title": "작업 중인데 나가시겠어요?",
       "description": "업로드 또는 편집이 아직 동기화되지 않았습니다. 지금 나가면 손실될 수 있습니다.",
       "stay": "머무르기",
-      "leave": "나가기"
+      "leave": "나가기",
+      "unsyncedDescription": "일부 변경 사항이 아직 동기화되지 않았습니다. 지금 새로고침하거나 나가면 변경 사항이 손실될 수 있습니다.",
+      "combinedDescription": "일부 변경 사항이 동기화되지 않았으며 업로드 또는 편집 작업이 진행 중입니다. 지금 새로고침하거나 나가면 작업이 손실될 수 있습니다.",
+      "completeDescription": "변경 사항 동기화와 작업이 완료되었습니다.",
+      "completeTitle": "계속할 수 있습니다"
     },
     "header": {
       "renameFailed": "Project 이름을 변경하지 못했습니다"
@@ -1252,7 +1606,11 @@
         "create": "Space 생성에 실패했습니다",
         "restore": "Space 복원에 실패했습니다",
         "unreachable": "서버가 응답하지 않습니다 — 연결을 확인한 후 다시 시도하세요",
-        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
+        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요",
+        "limit": "Space는 최대 {max}개까지입니다",
+        "busy": "다른 멤버가 작업 중입니다 — 잠시 후 다시 시도하세요",
+        "alreadyRestored": "이 Space는 이미 복원되었습니다",
+        "gone": "이 Space는 삭제되었습니다"
       },
       "loading": {
         "create": "Space를 생성하는 중…"
@@ -1264,7 +1622,7 @@
       "title": "새 버전을 사용할 수 있습니다",
       "description": "새로고침하면 새 버전을 사용할 수 있습니다.",
       "busy": "업로드 또는 다른 작업이 진행 중입니다. 새로고침하면 중단되므로 완료될 때까지 기다리는 것이 좋습니다.",
-      "later": "나중에",
+      "later": "나중에 업데이트",
       "refresh": "업데이트"
     },
     "archived": {
@@ -1278,6 +1636,11 @@
       "confirm": "나가기",
       "done": "‘{name}’에서 나갔습니다",
       "failed": "나가지 못했습니다"
+    },
+    "refreshGuard": {
+      "title": "진행 중인 작업이 있습니다. 새로고침할까요?",
+      "refresh": "새로고침하기",
+      "failed": "새로고침하지 못했습니다. 다시 시도해 주세요."
     }
   },
   "common": {
@@ -1357,13 +1720,15 @@
         "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. Owner는 Project 메시지 채널에서 복원할 수 있습니다.",
         "lockFail": "잠금에 실패했습니다",
         "unlockFail": "잠금 해제에 실패했습니다",
-        "operationFail": "작업에 실패했습니다",
         "deleteFail": "삭제에 실패했습니다"
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "3D에서 배치 및 공동 편집",
       "canvas": "Canvas",
-      "canvasSub": "무한 캔버스 + 노드",
+      "canvasSub": "무한 Canvas + 노드",
       "document": "Document",
       "documentSub": "리치 텍스트 + 협업",
       "timeline": "Timeline",
@@ -1393,10 +1758,10 @@
     "document": {
       "loading": "편집기를 불러오는 중…",
       "unavailable": {
-        "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
+        "text": "이 Document를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
         "action": "다시 시도"
       },
-      "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
+      "refusedNotice": "이 Document에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
       "placeholder": "작성을 시작하세요…",
       "clearConfirm": {
         "title": "모든 내용을 삭제할까요?",
@@ -1456,7 +1821,7 @@
         "filterOpen": "미해결",
         "filterAll": "전체",
         "closeRail": "댓글 창 닫기",
-        "empty": "이 문서에는 아직 댓글이 없습니다. 본문을 선택하거나 줄 왼쪽에서 댓글을 추가할 수 있습니다.",
+        "empty": "이 Document에는 아직 댓글이 없습니다. 본문을 선택하거나 줄 왼쪽에서 댓글을 추가할 수 있습니다.",
         "nothingUnresolved": "해결되지 않은 댓글이 없습니다.",
         "writeFailed": "이 변경 사항을 저장하지 못했습니다.",
         "unknownAuthor": "알 수 없음",
@@ -1471,7 +1836,7 @@
         "deleteReply": "이 답글 삭제"
       },
       "schemaOutdated": {
-        "headline": "문서 편집기가 업데이트되었습니다",
+        "headline": "Document 편집기가 업데이트되었습니다",
         "body": "이 페이지는 이전 버전으로 실행 중이며, 여기서 편집하면 다른 사람이 작성한 내용이 손상됩니다.",
         "published": "새 버전은 {when}에 배포되었습니다.",
         "risksLead": "새로고침하기 전에 확인하세요:",
@@ -1479,7 +1844,7 @@
         "action": "페이지 새로고침"
       },
       "docMenu": {
-        "label": "문서 전체 명령",
+        "label": "Document 전체 명령",
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
         "notOpenYet": "미제공",
@@ -1531,11 +1896,6 @@
         "uploadingPercent": "업로드 중 {percent}%",
         "retry": "다시 시도",
         "remove": "제거",
-        "notFinished": "업로드가 완료되지 않았습니다",
-        "pendingExport": "{name} (업로드 미완료)",
-        "uploadFailed": "업로드 실패",
-        "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
-        "notWrittenYet": "업로드됨, 아직 추가되지 않음",
         "caption": "캡션",
         "captionPlaceholder": "캡션 추가",
         "fullscreen": "전체 화면으로 보기",
@@ -1543,17 +1903,75 @@
         "download": "다운로드",
         "delete": "삭제",
         "leftOut": "이미지, 동영상, 오디오 {count}개는 붙여넣지 않았습니다. 파일을 직접 끌어다 놓거나 붙여넣으세요.",
+        "captionReadOnly": "읽기 전용입니다. 이 초안을 복사할 수 있습니다.",
+        "captionRetained": "미디어가 삭제되었습니다. Space를 닫기 전에 초안을 복사하세요.",
+        "notFinished": "업로드가 완료되지 않았습니다",
+        "pendingExport": "{name} (업로드 미완료)",
+        "uploadFailed": "업로드 실패",
+        "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
+        "notWrittenYet": "업로드됨, 아직 추가되지 않음",
         "notPasted": "{count}개 항목을 붙여넣지 못했습니다."
       }
     },
-    "readOnlyReconnect": "다시 연결"
+    "readOnlyReconnect": "다시 연결",
+    "threeD": {
+      "loading": "장면 불러오는 중…",
+      "loadFailed": "장면을 불러오지 못했습니다.",
+      "reload": "페이지 새로고침",
+      "valueFailed": "값을 적용하지 못했습니다.",
+      "figure": "인물",
+      "box": "무대 블록",
+      "move": "이동",
+      "rotate": "회전",
+      "scale": "크기 조절",
+      "focus": "선택 항목 보기",
+      "duplicate": "복제",
+      "delete": "삭제",
+      "undo": "실행 취소",
+      "redo": "다시 실행",
+      "objects": "오브젝트",
+      "properties": "속성",
+      "addFigure": "인물 추가",
+      "addBox": "블록 추가",
+      "position": "위치 (m)",
+      "rotation": "회전 (°)",
+      "name": "이름",
+      "lock": "잠금",
+      "unlock": "잠금 해제",
+      "selectedCount": "{count}개 선택됨",
+      "multiTransform": "장면의 기즈모로 선택한 개체들을 중심 주위에서 변환하세요.",
+      "mixed": "여러 값",
+      "selectObject": "속성을 편집할 오브젝트를 선택하세요.",
+      "refused": "이 장면에 대한 연결이 거부되었습니다. 변경 사항은 저장되지 않습니다.",
+      "retry": "재시도",
+      "viewFailed": "개인 시점을 저장하지 못했습니다.",
+      "commandFailed": "작업을 적용하지 못했습니다. 선택, 잠금 및 편집 권한을 확인하세요.",
+      "invalidObject": "읽을 수 없는 오브젝트: {id}",
+      "empty": "인물이나 블록을 추가하여 장면을 구성하세요.",
+      "unsupported": "지원되지 않는 장면 형식입니다. 페이지를 새로고침하세요.",
+      "modelFailed": "모델을 불러오지 못했습니다.",
+      "peerSelection": "{name}: {count}개 선택됨",
+      "add": "추가",
+      "generate": "AI 생성",
+      "annotationsLater": "주석 (추후 제공)",
+      "help": "도움말",
+      "tasks": "생성 작업",
+      "minimap": "장면 미니맵",
+      "generationDev": "3D 모델 생성 기능은 개발 중입니다",
+      "prompt": "생성할 3D 모델을 설명하세요",
+      "reference": "참고 이미지 (선택 사항)",
+      "chooseReference": "참조 이미지 선택",
+      "submit": "생성",
+      "helpBody": "개체를 클릭하여 선택하세요. 빈 공간을 드래그하여 시점을 회전하고 휠로 확대하거나 축소하세요. 선택 후 플로팅 메뉴에서 개체를 이동, 회전하거나 크기를 조절할 수 있습니다.",
+      "closePanel": "닫기"
+    }
   },
   "menu": {
     "createAria": "만들기 메뉴",
     "item": {
       "nodes": "노드 라이브러리",
       "upload": "에셋 업로드 (혼합 파일)",
-      "comment": "캔버스에 주석 달기",
+      "comment": "Canvas에 주석 달기",
       "collection": "Collection (출시 예정)",
       "help": "도움말 (출시 예정)",
       "feedback": "피드백 / 지원 (출시 예정)"
@@ -1598,7 +2016,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email}은 아직 등록되지 않았습니다. 가입을 안내하는 초대 이메일을 보냈습니다.",
+    "awaitingSignup": "가입 대기 중",
+    "pendingTitle": "대기 중인 초대",
+    "pendingBadge": "{role} · 응답 대기",
+    "revoke": "취소",
+    "revokeSuccess": "초대를 취소했습니다.",
+    "revokeFailed": "초대를 취소하지 못했습니다. 다시 시도해 주세요."
   },
   "notifications": {
     "title": "알림",
@@ -1687,6 +2112,11 @@
       "home": "Studio 홈",
       "account": "계정",
       "signOut": "로그아웃",
+      "logoutOthers": "다른 기기에서 로그아웃",
+      "logoutOthersTitle": "다른 기기에서 로그아웃할까요?",
+      "logoutOthersBody": "이 기기는 로그인 상태로 유지됩니다. 다른 모든 기기는 로그아웃되고, 그곳에서 열려 있는 Canvas와 Document는 연결이 바로 끊깁니다.",
+      "logoutOthersDone": "다른 기기에서 로그아웃되었습니다",
+      "logoutOthersFailed": "다른 기기에서 로그아웃하지 못했습니다. 다시 시도해 주세요.",
       "credits": "크레딧",
       "creditsUnavailable": "불러올 수 없음",
       "membership": "멤버십",
@@ -1762,7 +2192,7 @@
         "new": "새 Project",
         "createError": "Project를 만들지 못했습니다",
         "emptyTitle": "아직 Projects가 없습니다",
-        "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
+        "emptyHint": "Project는 무한 Canvas에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
         "new": "새 Collection",
@@ -1775,9 +2205,12 @@
         "spendableHint": "이 Studio의 Project에서 생성하면 여기 크레딧을 씁니다.",
         "noneHint": "이 Studio에 지정된 크레딧이 아직 없습니다.",
         "nonePrompt": "크레딧은 Studio에 지정해야 쓸 수 있습니다. 계정 크레딧에서 지정하세요.",
-        "lotsTitle": "크레딧 내역",
+        "lotsTitle": "크레딧 팩 내역",
         "lotsDebt": "미납",
         "lotsTotal": "합계",
+        "lotsHeld": "실행 중인 작업에 묶임",
+        "lotsHeldNote": "작업이 끝나면 실제 비용만큼 차감되고 남는 부분은 돌아옵니다",
+        "heldHint": "크레딧이 모두 실행 중인 작업이 끝날 때까지 묶여 있습니다.",
         "depletedHint": "이 Studio의 크레딧을 모두 사용했습니다.",
         "debtHint": "다음에 지정하는 크레딧은 미납분에 먼저 충당됩니다.",
         "depletedPrompt": "계정 크레딧에서 새로 지정하세요.",
@@ -1829,7 +2262,9 @@
         "pendingBadge": "{role} · 대기 중",
         "revoke": "취소",
         "revokeSuccess": "초대를 취소했습니다.",
-        "inviteSent": "초대를 보냈습니다."
+        "inviteSent": "초대를 보냈습니다.",
+        "inviteSentPendingSignup": "{email}은 아직 등록되지 않았습니다. 가입을 안내하는 초대 이메일을 보냈습니다.",
+        "awaitingSignup": "가입 대기 중"
       },
       "settings": {
         "basicTitle": "기본 정보",
@@ -1895,10 +2330,9 @@
         "nameLabel": "이름",
         "namePlaceholder": "내 Project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project 주소의 일부로, 브라우저 주소창에 표시됩니다. {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다.",
-        "slugHelperCollection": "Collection 주소의 일부로, 브라우저 주소창에 표시됩니다. {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다.",
-        "descriptionLabel": "설명(선택)",
+        "slugPlaceholder": "비워 두면 이름에 따라 자동으로 만들어집니다",
+        "slugHelperProject": "Project 주소의 일부로, 비워 두면 이름에 따라 자동으로 만들어집니다. {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다.",
+        "slugHelperCollection": "Collection 주소의 일부로, 비워 두면 이름에 따라 자동으로 만들어집니다. {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다.",
         "create": "만들기",
         "cancel": "취소",
         "slugFormat": "소문자로 시작하고 소문자, 숫자, 하이픈만 사용하세요. 하이픈은 연속하거나 끝에 둘 수 없습니다.",
@@ -1911,8 +2345,13 @@
         "namePlaceholderStudio": "내 Studio",
         "namePlaceholderCollection": "내 Collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "이 Studio 웹 주소의 일부입니다(/studio/…). {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다."
+        "slugPlaceholderCollection": "비워 두면 이름에 따라 자동으로 만들어집니다",
+        "slugHelperStudio": "이 Studio 웹 주소의 일부입니다(/studio/…). {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있습니다.",
+        "nameRequired": "이름을 입력해 주세요.",
+        "slugRequired": "Slug를 입력해 주세요.",
+        "emailRequired": "이메일 주소를 입력해 주세요.",
+        "slugUnverified": "지금은 확인할 수 없습니다. 제출할 때 서버가 판단합니다.",
+        "slugLabelOptional": "Slug(선택)"
       },
       "toolbar": {
         "sortLabel": "정렬",
@@ -1992,8 +2431,8 @@
       "notifications": "알림",
       "newSpace": "새 Space",
       "revealActiveTab": "현재 Space 표시",
-      "agentHide": "에이전트 패널 숨기기",
-      "agentShow": "에이전트 패널 표시",
+      "agentHide": "Agent 패널 숨기기",
+      "agentShow": "Agent 패널 표시",
       "openHistory": "대화 기록",
       "newConversation": "새 대화"
     },
@@ -2005,7 +2444,7 @@
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",
       "openSpaces": "열려 있는 Space",
-      "agentColumnWidth": "에이전트 패널 너비 조정",
+      "agentColumnWidth": "Agent 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
     },
@@ -2098,6 +2537,8 @@
     "declinedBody": "여기서 더 할 일은 없습니다.",
     "expiredTitle": "이 요청은 종료되었습니다",
     "expiredBody": "더 이상 답변할 수 없습니다.",
+    "invalidatedTitle": "이 요청은 더 이상 유효하지 않습니다",
+    "invalidatedBody": "더 이상 답변할 수 없습니다.",
     "revokedTitle": "이 요청은 철회되었습니다",
     "revokedBody": "보낸 사람이 다시 거두어 갔습니다.",
     "goneTitle": "대상이 더 이상 없습니다",
@@ -2137,7 +2578,7 @@
       "projectsPerStudio": "Studio당 Project 한도",
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
-      "concurrentEditors": "문서당 동시 편집 수"
+      "concurrentEditors": "Document당 동시 편집 수"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}개",
@@ -2179,7 +2620,7 @@
       "month": "월간",
       "year": "연간"
     },
-    "saveTwoMonths": "12개월을 10개월 가격에",
+    "saveTwoMonths": "두 달 무료",
     "yearSaving": "연간 결제 시 약 {percent}% 절약",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2191,7 +2632,7 @@
     "card": {
       "storage": "저장 공간 {value}",
       "teamStudios": "{count, plural, =0 {팀 Studio 없음} other {팀 Studio #개}}",
-      "connections": "{count, plural, other {문서당 연결 #개}}",
+      "connections": "{count, plural, other {Document당 연결 #개}}",
       "enterpriseScale": "용량은 협의로 결정",
       "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
     },
@@ -2348,5 +2789,43 @@
   "pageLoadError": {
     "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
     "retry": "다시 시도"
+  },
+  "consent": {
+    "link": "쿠키 설정",
+    "banner": {
+      "text": "사이트가 정상적으로 작동하도록 쿠키를 사용합니다. 동의하시면 제품 이용 현황 파악(제품 분석)과 광고 효과 측정(광고)에도 사용합니다. 언제든지 「쿠키 설정」에서 변경할 수 있습니다.",
+      "privacy": "개인정보 처리방침",
+      "acceptAll": "모두 허용",
+      "rejectAll": "모두 거부",
+      "settings": "설정",
+      "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+    },
+    "settings": {
+      "title": "쿠키 설정",
+      "save": "저장",
+      "close": "닫기",
+      "status": {
+        "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+      },
+      "necessary": {
+        "title": "필수",
+        "description": "로그인, 테마와 언어 설정, 그리고 이 선택 자체입니다. 항상 켜져 있습니다."
+      },
+      "analytics": {
+        "title": "제품 분석",
+        "description": "기능 사용 현황을 집계합니다. Project 안의 내용은 포함하지 않습니다."
+      },
+      "ads": {
+        "title": "광고",
+        "description": "어떤 광고가 가입, 구매 등 주요 행동으로 이어졌는지 측정합니다."
+      }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "페이지 버전이 오래되었습니다",
+      "description": "이 페이지는 이전 버전이라 이번 작업이 완료되지 않았습니다. 새로고침하면 계속할 수 있습니다.",
+      "refresh": "업데이트"
+    }
   }
 }

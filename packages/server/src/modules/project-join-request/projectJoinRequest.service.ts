@@ -37,7 +37,7 @@ import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudi
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import type { DecisionGrantRole } from "@breatic/shared";
+import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
@@ -281,7 +281,7 @@ async function openForDecision(
     notificationId: row.notificationId,
   };
   if (row.expired) {
-    await expire(req, tx);
+    await fail(req, "expired", tx);
     return { refusal: "conflict" };
   }
   if ((await projectMembersRepo.getRole(projectId, ownerUserId, tx)) !== "owner") {
@@ -291,19 +291,21 @@ async function openForDecision(
   }
   const onProject = await projectMembersRepo.getRole(projectId, requesterUserId, tx);
   if (inStudio === null || onProject !== null) {
-    await expire(req, tx);
+    await fail(req, "invalidated", tx);
     return { refusal: "conflict" };
   }
   return req;
 }
 
 /**
- * Settle a request as expired and take the owner's bell entry down with it.
+ * End a request nobody can answer any more and take the owner's bell entry
+ * down with it.
  * @param req - The request.
+ * @param reason - Its deadline passed, or what it was about stopped holding.
  * @param tx - The enclosing transaction.
  */
-async function expire(req: OpenRequest, tx: DbTx): Promise<void> {
-  await requestsRepo.settleIfPending(req.id, { status: "expired" }, tx);
+async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Promise<void> {
+  await requestsRepo.failIfPending(req.id, reason, tx);
   if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
 }
 
@@ -340,7 +342,7 @@ export async function approve(input: {
         tx,
       );
       if (!wrote) {
-        await expire(opened, tx);
+        await fail(opened, "invalidated", tx);
         return { refusal: "conflict" };
       }
       await requestsRepo.settleIfPending(
@@ -426,7 +428,7 @@ export async function reject(input: { requestId: string; ownerUserId: string }):
  * @param tx - The transaction that wrote the member row.
  */
 export async function settleOnJoin(projectId: string, userId: string, tx: DbTx): Promise<void> {
-  const settled = await requestsRepo.expirePendingFor(projectId, userId, tx);
+  const settled = await requestsRepo.failPendingFor(projectId, userId, tx);
   if (settled?.notificationId) await notificationRepo.retire(settled.notificationId, tx);
 }
 

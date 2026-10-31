@@ -103,6 +103,7 @@ export function failureMessage(
       // The one sentence reading it selects on this word, so a ceiling that has
       // not arrived yet drops the clause rather than printing a blank.
       limit: ceiling === null ? 'unknown' : formatBytes(ceiling),
+      reading: held.reading ?? 'other',
     },
   };
 }

@@ -145,7 +145,7 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, Usag
       throw toolFailed(
         "Judgement is not available on this deployment: it has no credentials. Tell the " +
           "user, and do not try again.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.unavailable,
       );
     }
 

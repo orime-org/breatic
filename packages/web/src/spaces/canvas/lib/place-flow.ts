@@ -13,13 +13,14 @@
  * so the arrangement can be read by a test with no canvas around it.
  */
 
-import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { TEMPLATE_GUIDE_KEY, layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { getViewportForBounds, type Viewport } from '@xyflow/react';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
-import { EMPTY_NODE_SIZE, type Rect } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
+import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 
 /** A point in flow coordinates. */
@@ -39,6 +40,15 @@ export interface Placed {
 /** How far apart two layers of the flow sit, left to right. */
 export const LAYER_STEP_PX = 360;
 
+/**
+ * How far a template guide text node's column sits left of its anchor's
+ * (inner#1345): the generate panel opens under the anchor, centred on it, and
+ * at 100% zoom ends one column gap short of the guide. The panel keeps its
+ * size on screen, so zoomed out further it reaches further across the canvas.
+ */
+export const GUIDE_STEP_PX =
+  GENERATE_PANEL_WIDTH_PX / 2 + EMPTY_NODE_SIZE.width / 2 + (LAYER_STEP_PX - EMPTY_NODE_SIZE.width);
+
 /** How far apart two nodes of one layer sit, top to bottom. */
 export const ROW_GAP_PX = 48;
 
@@ -52,9 +62,6 @@ const BODY_PADDING_PX = 24;
 const BODY_MIN_PX = 192;
 const BODY_MAX_PX = 576;
 
-// `NodeMediaInset`'s `p-1`: 4px on each side of a picture or a video.
-const MEDIA_INSET_PX = 8;
-
 // How wide one character is on that line. A full-width character is the type
 // size; everything else is taken as half of it, which is the usual reading of
 // East Asian width and close enough for deciding where a node's neighbour
@@ -65,18 +72,6 @@ const HALF_WIDTH_PX = 7;
 /** Codepoint ranges drawn at full width: CJK, kana, hangul and their marks. */
 const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE30}-\u{FE4F}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}]/u;
 
-/**
- * How tall a picture or video node draws at the node's width.
- *
- * The picture fills the node's width inside `NodeMediaInset`'s `p-1`.
- * @param mediaWidth - The file's pixel width.
- * @param mediaHeight - The file's pixel height.
- * @returns The node's height in flow coordinates.
- * @throws {never} Never.
- */
-export function mediaFootprintHeight(mediaWidth: number, mediaHeight: number): number {
-  return ((EMPTY_NODE_SIZE.width - MEDIA_INSET_PX) * mediaHeight) / mediaWidth + MEDIA_INSET_PX;
-}
 
 /**
  * How tall a node carrying these words draws: as tall as they wrap to, between
@@ -111,7 +106,7 @@ export function textFootprintHeight(text: string): number {
 export function estimateHeight(node: ProposalNode): number {
   const media = node.materialMedia;
   if (media?.width && media.height && (node.type === 'image' || node.type === 'video')) {
-    return mediaFootprintHeight(media.width, media.height);
+    return mediaNodeHeight(media.width, media.height);
   }
   if (node.role !== 'written') return EMPTY_NODE_SIZE.height;
   return textFootprintHeight(promptPlainText(node.prompt ?? []));
@@ -135,6 +130,15 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   // of its own there; here it stands in the first column beside whatever else
   // starts the flow, which is what the design asks for (§6.2).
   const layer = layersOf(proposal);
+  const guideColumns = new Set(
+    proposal.nodes.flatMap((node, index) => (node.templateNode?.key === TEMPLATE_GUIDE_KEY ? [layer[index] ?? 0] : [])),
+  );
+  // Each column's left edge: one layer step past the last, or one guide step
+  // past a column holding a guide.
+  const columnX: number[] = [0];
+  for (let at = 1; at <= Math.max(0, ...layer); at += 1) {
+    columnX[at] = (columnX[at - 1] ?? 0) + (guideColumns.has(at - 1) ? GUIDE_STEP_PX : LAYER_STEP_PX);
+  }
 
   const height = proposal.nodes.map((node) => estimateHeight(node));
   const columns = new Map<number, number[]>();
@@ -158,7 +162,7 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
     for (const index of members) {
       const own = height[index] ?? 0;
       placed[index] = {
-        x: at * LAYER_STEP_PX,
+        x: columnX[at] ?? 0,
         y,
         width: EMPTY_NODE_SIZE.width,
         height: own,
@@ -270,7 +274,7 @@ function footprintOf(
     return { width: p.width ?? 0, height: p.height ?? 0 };
   }
   if ((p.type === 'image' || p.type === 'video') && p.mediaWidth && p.mediaHeight) {
-    return { width: EMPTY_NODE_SIZE.width, height: mediaFootprintHeight(p.mediaWidth, p.mediaHeight) };
+    return { width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(p.mediaWidth, p.mediaHeight) };
   }
   const measured = measuredOf(p.id);
   if (p.type === 'text') {

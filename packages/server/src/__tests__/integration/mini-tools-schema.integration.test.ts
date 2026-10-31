@@ -70,7 +70,7 @@ function usageRow(userId: string, operationKey: string, source: string): Promise
 }
 
 describe("node_tasks.action", () => {
-  it("is required and holds one of the four actions", async () => {
+  it("is required and holds one of the five actions", async () => {
     const [column] = await sql<{ is_nullable: string }[]>`
       SELECT is_nullable FROM information_schema.columns
       WHERE table_name = 'node_tasks' AND column_name = 'action'
@@ -79,7 +79,7 @@ describe("node_tasks.action", () => {
     const [check] = await sql<{ def: string }[]>`
       SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'node_tasks_action_check'
     `;
-    for (const action of ["upload", "generate", "understand", "mini_tool"]) {
+    for (const action of ["upload", "generate", "understand", "mini_tool", "transcribe"]) {
       expect(check?.def).toContain(`'${action}'`);
     }
   });

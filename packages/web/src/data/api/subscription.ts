@@ -13,6 +13,11 @@
 import { apiPost, runOnceRequest } from '@web/data/api/request';
 import type { AccountMembership, MembershipOffer } from '@breatic/shared';
 
+/** The membership panel's answer to a returned checkout. */
+export type ConfirmedMembership = AccountMembership & {
+  conversion?: { transactionId: string; amountCents: number; currency: string } | null;
+};
+
 /** Where Stripe's hosted checkout page is. */
 export interface CheckoutStart {
   /** The page to send the browser to. */
@@ -77,12 +82,13 @@ export async function resumeSubscription(): Promise<void> {
  * Confirms the membership checkout the browser just came back from, so the
  * page shows what was bought before the webhook that records it arrives.
  * @param sessionId - The Checkout Session the return address named.
- * @returns The membership panel's answer, after the purchase was stored.
+ * @returns The membership panel's answer, after the purchase was stored, with
+ *   the ad conversion to report once the subscription is active (inner#1442 §4.9).
  */
 export async function confirmMembershipCheckout(
   sessionId: string,
-): Promise<AccountMembership> {
-  return apiPost<AccountMembership>('/account/subscription/confirm', {
+): Promise<ConfirmedMembership> {
+  return apiPost<ConfirmedMembership>('/account/subscription/confirm', {
     session_id: sessionId,
   });
 }

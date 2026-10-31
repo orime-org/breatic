@@ -6,10 +6,10 @@
 # neither belongs to anybody but the deployment that holds them.
 #
 # The server checks this file at startup when PAYMENT_ENABLED=true and
-# refuses to start without it. It is opened once more afterwards, the first
-# time a reading meets a live subscription with a period end, to judge it
-# against `stale_after_days`. A deployment with no subscription rows never
-# reaches that, so an install with payments off needs no copy.
+# refuses to start without it, and server is the only service that reads it,
+# so an install with payments off needs no copy. How long a subscription is
+# honoured past its paid period decides an account's tier, which collab reads
+# as well, so that window is `stale_after_days` in config/membership.yaml.
 #
 # Every `price_cents` below is 0, which the loader's schema rejects
 # (`z.number().int().positive()`). Copying this file without editing it is
@@ -68,17 +68,6 @@ plans:
         stripe_price_id:
           test: ""
           live: ""
-
-# How long a stored subscription may sit past its paid period before its tier
-# stops being honoured.
-#
-# A subscription that is really renewing has its period pushed forward by
-# Stripe, so a row still marked live long after its period ended means the
-# event that ended it never reached us. Fourteen days is Stripe's own Smart
-# Retries window: inside it, a subscription behind on payment is one Stripe is
-# still collecting for, and taking the tier away would punish somebody whose
-# card is about to go through.
-stale_after_days: 14
 
 # The bound a call to Stripe is made under, for callers that pass it.
 #

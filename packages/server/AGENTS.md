@@ -12,7 +12,7 @@ The HTTP service (Hono). These rules apply when you change anything under `packa
 
 ### Internal API is a second listener
 
-**Routes under `routes/internal/` and the `middleware/internal-*` files mount only on the app built by `createInternalApp()` in `internal-app.ts`, never on the public app.** That app is a second listener, started only when `INTERNAL_API_ENABLED=true` and bound to `INTERNAL_API_HOST:INTERNAL_API_PORT` (default `127.0.0.1:3002`), and every request must carry a signature made with `INTERNAL_API_SECRET` (or `INTERNAL_API_SECRET_PREVIOUS` during rotation); a route mounted on the public app is reachable from the internet. With it enabled the process also runs the credit-refund loop, and startup exits when `config/credit-refund.yaml` cannot be read.
+**Routes under `routes/internal/` and the `middleware/internal-*` files mount only on the app built by `createInternalApp()` in `internal-app.ts`, never on the public app.** That app is a second listener, started only when `INTERNAL_API_ENABLED=true` and bound to `INTERNAL_API_HOST:INTERNAL_API_PORT` (default `127.0.0.1:3002`), and every request must carry a signature made with `INTERNAL_API_SECRET` (or `INTERNAL_API_SECRET_PREVIOUS` during rotation); a route mounted on the public app is reachable from the internet. With it enabled the process also runs the credit-refund and explicit maintenance loops, and startup exits when `config/credit-refund.yaml` or `config/maintenance.yaml` cannot be read. Physical maintenance defaults off in its tracked configuration; do not enable it by changing upload behaviour.
 
 Who can reach the port is decided by where it is published. Before changing the listener, its ports or the deployment, read [self-host/DEPLOYMENT-CONNECTIONS.md](../../self-host/DEPLOYMENT-CONNECTIONS.md#back-office-internal-api).
 
@@ -46,13 +46,15 @@ Who can reach the port is decided by where it is published. Before changing the 
 
 Check: will a user read this sentence? Then it must come from `t()`.
 
+**A refusal of the request's own structure carries `error.reason: 'request_shape'` (`REQUEST_SHAPE_REASON`), which the web client reads as "this page predates the release"; a refine or `superRefine` that checks structure rather than a value (which fields a kind of thing must carry) passes `params: REQUEST_SHAPE_PARAMS`.** `validate()` marks structural zod codes on its own, but every refine reports `custom`, the code value rules use too. Check: could a user's own input trip this refine? Then it checks a value and stays unmarked.
+
 ## Streaming and chat
 
 ### SSE streams are private and stop on abort
 
 **SSE is used only by agent chat (`routes/chat.ts`, `/message`) and the text mini-tool (`routes/text-tools.ts`); each request gets its own private stream, and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
 
-**Every SSE entry subscribes to `s.onAbort` and passes that signal down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user.
+**Every SSE entry opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
 
 Check: will this stream's producer stop by itself when nobody is listening? If not, it must receive the signal.
 

@@ -11,7 +11,7 @@ These are public addresses, never secrets. Vite embeds them in the bundle; chang
 
 Set `ALLOWED_ORIGINS` to the frontend's exact origin, for example `https://example.com`. Ordinary API and streaming clients send credentials. With API and WS on the same backend hostname, leave `COOKIE_DOMAIN` empty: the host-only session cookie belongs to that backend, not to the frontend. This arrangement assumes HTTPS frontend/backend hosts on the same site; an unrelated frontend domain has different browser cookie restrictions and is not this deployment contract.
 
-Collab checks any browser-supplied Origin against the same allowlist before session lookup, regardless of throttle settings. Non-browser clients without an Origin still require a valid session and project membership. CORS is not a replacement for business authorization. Password-reset, email-verification, invitation and transfer links select an allowed request origin, falling back to the first configured HTTP origin when absent or untrusted. Google sign-in exchanges an ID token rather than using a backend redirect callback; register the actual frontend origin with Google.
+Collab requires a current session during native WebSocket upgrade, regardless of throttle settings. During each document's authentication, it checks any browser-supplied Origin against the same allowlist before that phase's session lookup and Project membership check. Non-browser clients without an Origin still require a valid session and project membership. CORS is not a replacement for business authorization. Password-reset, email-verification, invitation and transfer links select an allowed request origin, falling back to the first configured HTTP origin when absent or untrusted. Google sign-in exchanges an ID token rather than using a backend redirect callback; register the actual frontend origin with Google.
 
 ## Managed Redis
 
@@ -38,11 +38,42 @@ This is a backend runtime setting: update every email-sending service and recrea
 
 For a versioned production build, set the existing `VITE_APP_VERSION` to a unique release identifier (1–128 letters, digits, dots, underscores or hyphens). Publish `/app-version.json` on the **frontend origin**, with `{"version":"<the same identifier>"}`, atomically with that bundle. Serve the manifest with `Cache-Control: no-store`, keep HTML revalidated, and retain previous hashed assets while old tabs remain open. The internal Cloudflare frontend release scripts already assemble this manifest; a standalone web build does not generate it.
 
-Only Project checks it, initially and approximately every 3–3.5 minutes while visible. Foreground checks are throttled to 30 seconds. Development builds and builds without a valid release identifier do not poll. Missing, invalid or unreachable manifests are ignored. A different identifier, including a rollback, offers a neutral top-bar notice without opening its popover or reloading. Later hides that release for the tab session.
+Only Project checks it, initially and approximately every 3–3.5 minutes while visible. Foreground checks are throttled to 30 seconds. Development builds and builds without a valid release identifier do not poll. Missing, invalid or unreachable manifests are ignored. A different identifier, including a rollback, automatically opens the Project update dialog unless that release was postponed in the tab session. Later postpones it for the tab session; the top-bar trigger stays available to reopen it.
 
-The Update button reloads the page using the existing Project `beforeunload` guard: uploads and other registered browser operations show context in the popover and may trigger the native browser leave confirmation. No CRDT save, flush or persistence acknowledgement is added. Refresh never runs automatically, including after an upload finishes. Connection errors take priority over the notice.
+The Update button reloads the page through the Project `beforeunload` guard. That guard checks the current Project's unconfirmed local Canvas and Document edits together with uploads and other registered browser operations. The update dialog shows its existing operation context; the browser controls the native leave confirmation and its user-interaction requirements. Content synchronization receipts confirm application to the collab document in memory; PostgreSQL persistence follows its own lifecycle. Refresh remains a user action, including after pending work finishes. Connection errors take priority over the notice.
+
+Release the collab service with support for `sync:confirm` and `sync:confirmed` before releasing the web build that uses those messages. The receipt schema and Project confirmation lifecycle are described in [Canvas collaboration](../docs/ARCHITECTURE.md#canvas-collaboration).
+
+Release the collab service that reassembles chunked messages no later than the web build that sends them. That web build sends any collaboration message over 128 KiB as a text declaration followed by binary chunks; a collab service without reassembly reads the declaration as an ordinary message, cannot decode it and closes the connection, so large pastes and offline catch-ups fail until collab is updated. Tabs opened before the web release keep sending such messages whole, and the updated collab closes those connections with code 1009 until the tab reloads.
 
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
+
+## Product analytics (off by default)
+
+A self-hosted instance sends nothing to any analytics or advertising service. With every variable below empty, the backend never starts an analytics client, the ad-conversion queue stays empty, and the web build contains no Amplitude, Google tag or consent-banner code. The hosted service at breatic.ai sets them; you only need this section to measure your own instance with your own accounts.
+
+| Variable | Where it is read | Turns on |
+|---|---|---|
+| `AMPLITUDE_API_KEY` | server, worker, collab at startup | Server-side product events (sign-up, project and Space creation, first generation, invitations, purchases, subscriptions) |
+| `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_CONVERSION_ACTIONS`, `GOOGLE_DATA_MANAGER_CREDENTIALS` | server, worker, collab at startup | Server-side Google Ads conversion upload through the Data Manager API. Set all three or none; a partial or malformed set leaves uploads off and logs `google_ads_config_invalid` |
+| `VITE_AMPLITUDE_API_KEY` | web build | Browser product events; with this or `VITE_GOOGLE_ADS_TAG_ID` set, the build ships the consent banner and Cookie settings |
+| `VITE_GOOGLE_ADS_TAG_ID`, `VITE_GOOGLE_ADS_CONVERSION_LABELS` | web build | The Google tag and browser conversions, deduplicated with the server upload by transaction id |
+| `VITE_CONSENT_COOKIE_DOMAIN` | web build | Where the `breatic_consent` cookie is written; empty means the current host |
+
+The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the parent domain they share (for example `example.com`), so the API and collab read the visitor's choice; the backend `COOKIE_DOMAIN` stays empty.
+
+The consent choice lives in a cookie the banner library writes from script, so browsers apply their own limits to it: Safari and the other browsers on iPhone and iPad delete it after 7 days without interaction on the site (24 hours when it was written on a page reached from an ad link), and Brave 180 days after it was written. The visitor is then asked again, or the rule for their region applies.
+
+What leaves when it is on:
+
+- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China, and visitors whose region cannot be told, are asked first. The region comes from Cloudflare's `/cdn-cgi/trace`, so on an instance not behind Cloudflare every visitor is asked first. Elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off; a visitor who turns advertising on in the banner or Cookie settings is followed. Backend events follow the choice of the browser that caused them.
+- The account keeps the latest report. A signed-in browser sends its choice to `PUT /api/v1/users/me/consent` after sign-in and after each change; the account keeps only the latest one and never sends it back to a browser. Events without a browser (renewals, completed refunds, and the owner's ad conversion when a collaborator first acts in the owner's project) follow that report and are not sent for an account that never reported.
+- Only listed properties. Every event we send passes a per-event allowlist in `@breatic/shared`; the browser SDK also sends Amplitude's own session start and end events and its session number. Prompts, document text, file names, email addresses and sign-in session tokens never leave. URLs are reduced to their path. Session Replay is not installed.
+- Only to the accounts you configure. Events go to your Amplitude project in its US data centre and conversions to your Google Ads customer.
+
+To turn it off again, empty the variables, restart the backend and rebuild the frontend.
+
+When you delete an account on request, soft-delete it first (set `users.deleted_at`), then run `pnpm analytics:delete-users <users.id> …` from the repository root. The command refuses any account that is not soft-deleted and lists those ids. It clears the account's latest consent report and the consent kept on its orders, upload tickets and ad uploads. When `AMPLITUDE_API_KEY` is set, pass `AMPLITUDE_SECRET_KEY=<project secret key>` for that run and the command also asks Amplitude to delete the account's events; the secret key is in the Amplitude project's settings, Amplitude schedules the deletion within 30 days and the command prints the scheduled day. Without `AMPLITUDE_API_KEY` it says there is nothing to delete at Amplitude and stops. How long Amplitude keeps events is set in its organization settings (Time to Live).
 
 ## Back office internal API
 
@@ -63,7 +94,31 @@ Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.upd
 | `STRIPE_SECRET_KEY` | Refunds are created (`refunds.create`) and listed (`refunds.list`); the preview and restoring credits also read `paymentIntents.retrieve` with `expand: ["latest_charge"]` for the charge's `disputed`. A restricted key needs write on Refunds and read on PaymentIntents and Charges. |
 | Operators' and support staff's Stripe Dashboard accounts | No refund permission: a read-only role, or a custom role without "Process refunds". A credit pack is refunded in full or not at all, only through the back office; a refund made in the Dashboard is never booked automatically, and the disposition that meets it stops for a person. |
 
-The back office reads the refund records through its own read-only role: the five tables and the two views migration `0094` adds (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`). That role gets SELECT on new tables and views through `ALTER DEFAULT PRIVILEGES` bound to the role that runs the product's migrations (see the back office's deployment notes). If `0094` ran as a different role, grant SELECT on those five tables and two views to the back office role by hand.
+The back office reads refund records through its own read-only role: the five tables and two views created by migration `0094` (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`), plus `credit_refund_refusals` created by migration `0104`. Migration `0104` creates the refusal table and its constraints; access depends on the database's grants.
+
+Before running the migration, configure default privileges for the role that will actually create the table. Default privileges cover future tables created by that role in the named schema. Use the deployment's actual migration and read-only role names in these statements:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE migration_role IN SCHEMA public
+  GRANT SELECT ON TABLES TO backoffice_ro;
+```
+
+For an existing refusal table, its owner or a database administrator can grant access directly:
+
+```sql
+GRANT SELECT ON TABLE public.credit_refund_refusals TO backoffice_ro;
+```
+
+If migration `0094` used another creating role, also grant SELECT on its five tables and two views to the read-only role. After migration and grants, connect using the actual back office database account. Verify the query succeeds and the privilege check reports SELECT true and INSERT, UPDATE and DELETE false:
+
+```sql
+SELECT id FROM public.credit_refund_refusals LIMIT 0;
+SELECT
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'SELECT') AS can_select,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'INSERT') AS can_insert,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
+```
 
 ## Scope and verification
 

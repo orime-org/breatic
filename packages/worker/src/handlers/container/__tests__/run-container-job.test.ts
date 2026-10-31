@@ -43,6 +43,8 @@ vi.mock("@breatic/core", () => ({
 }));
 
 vi.mock("@breatic/domain", async () => ({
+  // The real names, so a flag's line is the one the worker writes.
+  INGEST_SIDE_EFFECT_EVENTS: (await import("@domain/asset/ingest-report.service.js")).INGEST_SIDE_EFFECT_EVENTS,
   // The billing formula itself, so the charge these cases assert is the real one.
   containerCostUsd: (await import("@domain/credit/container-cost.js")).containerCostUsd,
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
@@ -135,6 +137,21 @@ describe("runContainerJob", () => {
     expect(h.markDone).toHaveBeenCalledWith("s1", { state: "done" });
   });
 
+  // Registering an output can raise flags of its own (a reclaim or a peaks
+  // job that could not be queued); this caller is their only account.
+  it("writes down every side effect an output's registration raised", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
+    h.applyIngestReport.mockResolvedValueOnce({ ...REGISTERED, peaksQueueFailed: true, reclaimQueueFailed: true });
+
+    await runContainerJob(CUT, "cut", INPUT);
+
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ key: MEASURED.storageKey }), "audio_peaks_queue_failed");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ key: MEASURED.storageKey }),
+      "ingest_report_reclaim_queue_failed",
+    );
+  });
+
   // A run billed on its wall time instead of its measured CPU is an estimate ops has to see.
   it("logs an error when the container could not read its CPU usage", async () => {
     h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: { wallMs: 10_000, cpuUsec: null } });
@@ -145,6 +162,27 @@ describe("runContainerJob", () => {
       expect.objectContaining({ taskId: "t1", op: "cut" }),
       "container_cpu_usage_missing",
     );
+  });
+
+  // A tool whose result count follows its params opens one output per result this run makes.
+  it("opens as many outputs as the run's params make for a variable-output tool", async () => {
+    const SPLIT: MiniToolSpec = {
+      ...CUT,
+      id: "video.split",
+      params: [{ kind: "list", key: "cuts", item: { min: 0, max: 600, step: 0.1 }, maxItems: 4 }],
+      outputs: undefined,
+      output: { modality: "video", namePrefix: "PART" },
+      outputCount: { kind: "listLength", param: "cuts", plus: 1 },
+    } as unknown as MiniToolSpec;
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+
+    await expect(runContainerJob(SPLIT, "cut", { ...INPUT, params: { cuts: [5, 12] } })).rejects.toBeInstanceOf(
+      StillRunning,
+    );
+
+    const opened = h.openContainerOutputs.mock.calls[0]![0] as { outputs: unknown[] };
+    expect(opened.outputs).toEqual(Array.from({ length: 3 }, () => ({ modality: "video", namePrefix: "PART" })));
   });
 
   // Every task has one ceiling, the one the run read off its rows on the canvas.

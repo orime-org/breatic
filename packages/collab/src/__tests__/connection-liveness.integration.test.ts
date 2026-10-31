@@ -71,6 +71,7 @@ describe("crossws liveness", () => {
       // then takes the connection and answers 404.
       address: "127.0.0.1",
       quiet: true,
+      stopOnSignals: false,
       // Take this server's OWN liveness check out of the picture: hocuspocus
       // closes a connection that has sent no DATA frame for `timeout`, and a
       // client that only answers pings sends none, so at the default 60s it

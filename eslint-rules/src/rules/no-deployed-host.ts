@@ -22,7 +22,7 @@ const DEPLOYED_HOST = new RegExp(
 );
 
 /**
- * A deployed hostname never appears in a string literal.
+ * Deployed network targets come from configuration.
  *
  * The concrete damage this prevents is the dev proxy: point /api or /ws at
  * the deployed host and every developer's `pnpm dev` sends its
@@ -62,6 +62,11 @@ export const noDeployedHost = createRule<[], "deployedHost">({
      * @param text The string to test.
      */
     function check(node: TSESTree.Node, text: string): void {
+      // Public contact addresses name mail recipients rather than network targets.
+      if (
+        /^[^@\s:/?#]+@[^@\s:/?#]+\.[^@\s:/?#]+$/.test(text) ||
+        (URL.canParse(text) && new URL(text).protocol === "mailto:")
+      ) return;
       // Brand navigation intentionally leaves every deployment for the official
       // website. Only its single named constant is exempt; API/WS targets and
       // other literals in that file remain guarded.

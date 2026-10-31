@@ -301,4 +301,69 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     });
     expect(toast.error).not.toHaveBeenCalled();
   });
+
+  it('a create refused for the Space cap warns with the cap in one line, in the reader language', async () => {
+    sendSpaceRpcMock.mockResolvedValue({
+      id: 'r1',
+      ok: false,
+      error: { code: 'SPACE_LIMIT', message: 'Project already has 200 Spaces' },
+    });
+    setup();
+
+    await createSpace();
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning).mock.calls[0]).toEqual(['Reached the limit of 200 Spaces']);
+  });
+
+  it('a create refused because the Space lock is busy asks to try again in one line', async () => {
+    sendSpaceRpcMock.mockResolvedValue({
+      id: 'r1',
+      ok: false,
+      error: { code: 'BUSY', message: 'Another Space operation is in progress' },
+    });
+    setup();
+
+    await createSpace();
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning).mock.calls[0]).toEqual([
+      'Another member is changing Spaces. Try again in a moment',
+    ]);
+  });
+
+  it('never shows the server message to the reader', async () => {
+    sendSpaceRpcMock.mockResolvedValue({
+      id: 'r1',
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'Role viewer cannot create' },
+    });
+    setup();
+
+    await createSpace();
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    });
+    const [, opts] = vi.mocked(toast.error).mock.calls[0] ?? [];
+    expect((opts as { description?: string } | undefined)?.description).toBeUndefined();
+  });
+
+  it('marks the new-Space button unavailable once the project holds the cap', async () => {
+    meta.spaces = Array.from({ length: 200 }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      name: `Space ${i}`,
+      type: 'document' as const,
+    }));
+    setup();
+
+    const button = await screen.findByTestId('new-space-button');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+  });
 });

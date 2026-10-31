@@ -4,7 +4,7 @@
 > TDD(单测 / 集成的红绿蓝节奏 + anti-pattern 防御)见 [TDD-MANDATE.md](./TDD-MANDATE.md);
 > **本文管 ship 前的端到端验证(smoke / E2E)** —— 即「真的能跑吗」这一关。
 
-## 1. 测试五层(从轻到重)
+## 1. 测试分层(从轻到重)
 
 | 层 | 工具 | 查什么 | 何时 |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 
 | 档 | 判据 | 住哪 |
 |---|---|---|
-| **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/` |
+| **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/`;同意窗口和发往分析、广告服务的请求在 `packages/web/tests/consent/`,它们要按厂商变量分别构建的两份前端 |
 | **visual** | 钉一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | `packages/web/tests/visual/` |
 | **unit** | 不需要真浏览器 | 被测对象同级的 `__tests__/` |
 | **integration**(只测一个包) | 要真依赖(PG / Redis / 回环 socket),被测代码都在一个包里 | 那个包自己的 `src/` 下(server 统一放 `src/__tests__/integration/`) |
@@ -73,6 +73,7 @@
 | `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。任何一台干净机器上都要全绿 |
 | `pnpm test:smoke:all` / `pnpm test:visual:all` | 全部,含带标签的，用 1 个 worker |
 | `playwright test --project=smoke --workers=1 --grep "@needs-<标签>"` | 单个子门 |
+| `pnpm --filter @breatic/web test:consent` | `tests/consent/`:`playwright.consent.config.ts` 把前端按不带和带厂商变量各构建一份、用 `vite preview` 起服务，带 `@no-vendors` 标签的用例跑前一份、其余跑后一份;后端用本地已起的 server,CI 的 `consent-network-audit` 作业由它自己起 |
 
 子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
 
@@ -97,7 +98,7 @@
 **server 的集成测试层用同一套标签**:`packages/server/vitest.integration.config.ts` 的 `testNamePattern` 默认把名字里带 `@needs-` 的用例排除在外,vitest 把每一条记成 skipped,汇总里的 skip 数就是这个绿没盖到的部分。子门有意去跑,加 `-t @needs-<标签>`,它替换掉默认那条排除。现有一个 `@needs-payments` 子门:`credit-refund-real-stripe.integration.test.ts` 对着真实 Stripe 测试模式跑积分包退款处置,`STRIPE_SECRET_KEY` 不是 `sk_test_` 开头就在第一次调用之前拒跑:
 
 ```bash
-STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+pnpm exec turbo run test:integration --filter=@breatic/server -- \
   -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
 ```
 
@@ -128,7 +129,7 @@ STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
 
 **两档都禁 `test.describe.configure({ mode: 'serial' })`**(`breatic/no-serial-tests`)。一条红让同组后面的用例整批不执行——2026-09-19 实测一轮 54 条未执行,其中 44 条出自一个文件。
 
-**超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。
+**超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。另有一层单步上限 `actionTimeout`(15s,同一个文件的顶层 `use` 里):点击、填写这类操作一步卡住就在 15 秒内报错,不会一直等到整条用例超时;`expect` 的等待不受它管,各自写自己的 `timeout`。
 
 **一台机器上一次只跑一轮。** 一轮里的几个 worker 按槽位分账号，两轮之间没有：setup 开局会把每个槽位上一轮留下的 Project 归档(`tests/helpers/project.ts` 的 `archiveOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程，后起的那个会把先起的那个正在用的 Project 归档掉，先起的那一轮从此只能读、写不进去。
 

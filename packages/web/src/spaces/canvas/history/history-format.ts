@@ -9,7 +9,7 @@
  */
 
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
-import { formatCredits } from '@web/lib/format-credits';
+import { asFiniteCredits } from '@web/lib/as-finite-credits';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 
 /**
@@ -61,7 +61,7 @@ export function entryModel(entry: NodeHistoryEntry): string | undefined {
  * The credits to render, or undefined to hide the chip. Guards against an
  * absent or non-finite value (an upload is charged nothing; a failed
  * generation records nothing) so the chip never shows `undefined` / `NaN`.
- * Delegates to the shared {@link formatCredits} gate so this row and the
+ * Delegates to the shared {@link asFiniteCredits} gate so this row and the
  * activity-feed row can never diverge (spec §6.4).
  *
  * Reads `credits`, which is what was charged. A row may also carry `cost` —
@@ -71,7 +71,7 @@ export function entryModel(entry: NodeHistoryEntry): string | undefined {
  * @returns The credits charged, or undefined.
  */
 export function entryCredits(entry: NodeHistoryEntry): number | undefined {
-  return formatCredits(entry.metadata.credits);
+  return asFiniteCredits(entry.metadata.credits);
 }
 
 /**

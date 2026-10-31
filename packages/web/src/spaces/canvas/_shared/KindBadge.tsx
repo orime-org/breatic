@@ -40,7 +40,7 @@ export function KindBadge({
     <span
       data-testid={testId}
       className={
-        'inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight ' +
+        'inline-flex shrink-0 items-center gap-1 rounded-content-xs border border-border px-1.5 py-px text-2xs font-semibold leading-tight ' +
         colorClassName
       }
     >

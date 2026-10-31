@@ -20,7 +20,7 @@ const TOOLS: ReadonlyArray<{ id: DrawTool; Icon: LucideIcon }> = [
   { id: 'eraser', Icon: Eraser },
 ];
 
-const ICON_BUTTON =
+export const ICON_BUTTON =
   'h-[var(--btn-inline)] w-[var(--btn-inline)] border border-transparent p-0 ' +
   'aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong';
 
@@ -28,11 +28,11 @@ const ICON_BUTTON =
 // and the document colour panel mark theirs. The dot's edge is full-strength
 // `muted-foreground` so a white dot on the light panel and a black dot on the
 // dark one stay at 3:1 or more (WCAG 2.2 SC 1.4.11).
-const SWATCH =
+export const SWATCH =
   'flex h-[var(--btn-inline)] w-[var(--btn-inline)] items-center justify-center rounded-chrome p-0 ' +
   'hover:bg-accent aria-pressed:ring-1 aria-pressed:ring-active-border';
 
-const SWATCH_DOT = 'h-5 w-5 rounded-full border border-muted-foreground';
+export const SWATCH_DOT = 'h-5 w-5 rounded-full border border-muted-foreground';
 
 /**
  * An icon button with its name in a hover tip.
@@ -41,7 +41,7 @@ const SWATCH_DOT = 'h-5 w-5 rounded-full border border-muted-foreground';
  * @param root0.children - The button.
  * @returns The wrapped button.
  */
-function Tip({ tip, children }: { tip: string; children: React.ReactElement }): React.JSX.Element {
+export function Tip({ tip, children }: { tip: string; children: React.ReactElement }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>

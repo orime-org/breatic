@@ -7,7 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setLocale, type Locale } from '@breatic/shared';
 import { AppErrorBoundary } from '../AppErrorBoundary';
-import { ApplicationErrorPage } from '../../components/application-error-page';
+import { ApplicationErrorPage } from '../../components/ApplicationErrorPage';
 
 afterEach(async () => {
   await Sentry.close();

@@ -17,7 +17,6 @@ import {
 } from "@core/config/subscription.js";
 
 const validFile = {
-  stale_after_days: 14,
   stripe_call_timeout_ms: 5000,
   plans: {
     pro: {
@@ -72,6 +71,15 @@ describe("subscription config — schema", () => {
   });
 });
 
+describe("subscription config — files written before inner#1636", () => {
+  it("still reads a deployment's file that carries stale_after_days", () => {
+    // Deployed copies were filled from the old template, which had the field;
+    // the window now lives in config/membership.yaml and this one is ignored.
+    const parsed = subscriptionConfigSchema.parse({ ...validFile, stale_after_days: 14 });
+    expect(parsed).not.toHaveProperty("stale_after_days");
+  });
+});
+
 describe("subscription config — resolving plans", () => {
   it("names the tier whose plan is missing", () => {
     // A missing plan must not be discovered at checkout time as an undefined
@@ -79,8 +87,7 @@ describe("subscription config — resolving plans", () => {
     expect(() =>
       resolvePlans(
         {
-          stale_after_days: 14,
-          stripe_call_timeout_ms: 5000,
+                  stripe_call_timeout_ms: 5000,
           plans: { pro: validFile.plans.pro },
         },
         false,

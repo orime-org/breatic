@@ -4,11 +4,11 @@
 /**
  * Rate-limit configuration loader.
  *
- * Loads per-action abuse throttles from `config/rate-limits.yaml`:
- * every route that throttles (auth, studio, assets) reads its
- * `{ max, windowSeconds }` from here instead of hardcoding the numbers.
- * The key DIMENSION (IP vs user id) stays in code per action; only the
- * counts are tuned in yaml.
+ * Loads per-action abuse throttles from `config/rate-limits.yaml`: every
+ * route that throttles reads its `{ max, windowSeconds }` from here instead
+ * of hardcoding the numbers.
+ * The key DIMENSION (see the yaml file's header) stays in code per action;
+ * only the counts are tuned in yaml.
  *
  * Mirrors the `limits.ts` / `pricing.ts` / `text-tools.ts` business-
  * config loaders: a yaml file under `config/` validated by a Zod schema

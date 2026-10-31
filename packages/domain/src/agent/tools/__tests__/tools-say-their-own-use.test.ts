@@ -13,20 +13,10 @@
 import { describe, expect, it } from "vitest";
 
 import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
+import { NO_TOOL_CONTEXT } from "@domain/agent/tools/index.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
-
-/**
- * What one input field of a tool says about itself.
- * @param schema - The tool's input schema, as declared.
- * @param field - The field.
- * @returns Its `.describe()` text on one line, or empty when it has none.
- */
-function fieldSays(schema: unknown, field: string): string {
-  const shape = (schema as { shape?: Record<string, { description?: unknown }> }).shape;
-  return flat(shape?.[field]?.description);
-}
 
 /**
  * A description with its hard wraps folded, so assertions are about wording.
@@ -41,34 +31,37 @@ function flat(description: unknown): string {
 }
 
 describe("ask_user says how to ask", () => {
-  const askUser = makeAskUserTool();
+  const askUser = makeAskUserTool(NO_TOOL_CONTEXT);
   const said = (): string => flat(askUser.description);
 
-  it("says it ends the turn, and when that is worth it", () => {
-    expect(said()).toMatch(/ends your turn/i);
+  it("says the turn waits at the card, and when that is worth it", () => {
+    expect(said()).toMatch(/turn waits at the card/i);
     expect(said()).toMatch(/not to fill a pause/i);
   });
 
-  it("says why the question and the answers go in the call", () => {
-    expect(said()).toMatch(/arrives twice/i);
-    expect(said()).toMatch(/run-on sentence with nothing to pick from/i);
+  it("says what comes back: the answers, or word that the reader wrote a message instead", () => {
+    expect(said()).toMatch(/the user's answers/i);
+    expect(said()).toMatch(/wrote a message instead/i);
+    expect(said()).toMatch(/may answer the card or be about something else/i);
   });
 
-  it("points at the field that tells the reader how to answer", () => {
-    expect(said()).toMatch(/howToAnswer/);
+  it("says to call it once, with one to four questions in the call", () => {
+    expect(said()).toMatch(/one to four questions in a single call/i);
+    expect(said()).toMatch(/call it once/i);
   });
 
-  it("says one question at a time, once a turn, and which one to ask first", () => {
-    expect(said()).toMatch(/one question at a time/i);
-    expect(said()).toMatch(/once a turn/i);
-    expect(said()).toMatch(/most important/i);
+  it("says the questions and options go in the call, and that the card adds the Other line", () => {
+    expect(said()).toMatch(/every question here rather than writing it yourself/i);
+    expect(said()).toMatch(/adds an Other line/i);
   });
 
-  it("says in that field what the line tells the reader, whose words and whose language", () => {
-    const line = fieldSays(askUser.inputSchema, "howToAnswer");
-    expect(line).toMatch(/a number will do/i);
-    expect(line).toMatch(/answer in their own words instead/i);
-    expect(line).toMatch(/in the language you are replying in/i);
+  it("says how the card numbers the questions", () => {
+    expect(said()).toMatch(/numbered from 1/i);
+  });
+
+  it("says when an option earns media, and that a question carries it on all options or none", () => {
+    expect(said()).toMatch(/seen or heard to be understood/i);
+    expect(said()).toMatch(/on every option of that question or on none/i);
   });
 });
 

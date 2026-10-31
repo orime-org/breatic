@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
+  DEFAULT_LIGHT_ANGLE,
+  LIGHT_ANGLE_AXES,
+  LIGHT_ANGLE_GRID,
   nearestCameraAngle,
   stepCameraAngle,
 } from "../camera-angle.js";
@@ -115,5 +118,31 @@ describe("the catalog schema's camera_angle", () => {
   it("drops a malformed declaration rather than the model", () => {
     expect(parse({ azimuth: "horizontal_angle" }).camera_angle).toBeUndefined();
     expect(parse(undefined).camera_angle).toBeUndefined();
+  });
+});
+
+// inner#1304: the relight tool's light sphere shares the camera sphere's code on its own grid.
+describe("the light grid", () => {
+  it("holds the eight azimuths, five heights up to straight overhead, and no distance", () => {
+    expect(LIGHT_ANGLE_GRID.azimuth).toEqual(CAMERA_ANGLE_GRID.azimuth);
+    expect(LIGHT_ANGLE_GRID.elevation).toEqual([-30, 0, 30, 60, 90]);
+    expect(LIGHT_ANGLE_AXES).toEqual(["azimuth", "elevation"]);
+  });
+
+  it("starts the light at the front left, above", () => {
+    expect(DEFAULT_LIGHT_ANGLE).toMatchObject({ azimuth: 315, elevation: 30 });
+  });
+
+  it("snaps to straight overhead on the light grid and stops at 60 on the camera grid", () => {
+    const pose = { azimuth: 90, elevation: 80, distance: 1 };
+    expect(nearestCameraAngle(pose, LIGHT_ANGLE_GRID).elevation).toBe(90);
+    expect(nearestCameraAngle(pose).elevation).toBe(60);
+  });
+
+  it("steps up to overhead and stops there", () => {
+    const at60 = { ...DEFAULT_LIGHT_ANGLE, elevation: 60 };
+    const up = stepCameraAngle(at60, "elevation", 1, LIGHT_ANGLE_GRID);
+    expect(up.elevation).toBe(90);
+    expect(stepCameraAngle(up, "elevation", 1, LIGHT_ANGLE_GRID).elevation).toBe(90);
   });
 });

@@ -61,6 +61,7 @@ import { initCore, loadLocales, db, AppError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t, type CreditLotEntity } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-lot-refund-transitions-test-driver";
 
@@ -105,13 +106,10 @@ async function seedBuyer(): Promise<string> {
 
 /** A settled payment turned into an unassigned `active` lot. */
 async function seedLot(userId: string, credits: number | string): Promise<string> {
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, total_cents, status, credits_granted)
-    VALUES (${source!.id}, ${userId}, 1000, 1080, 'completed', ${Number(credits)}) RETURNING id
+    VALUES (${sourceId}, ${userId}, 1000, 1080, 'completed', ${Number(credits)}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

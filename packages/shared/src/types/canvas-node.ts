@@ -306,6 +306,13 @@ export interface CanvasNodeFields {
      * content. Node state, not content: a copy of the node does not carry it.
      */
     taskResultEventId?: string;
+    /**
+     * The generation template node this node was placed as (inner#1345):
+     * the template, its key, and on the guide text node the id of the anchor
+     * it explains. Content: a copy carries it, with the anchor id rewritten
+     * when the anchor is copied along.
+     */
+    templateNode?: { template: string; key: string; anchor?: string };
 
     // ─── Data node fields ───────────────────────────────────
     /**
@@ -339,7 +346,8 @@ export interface CanvasNodeFields {
     height?: number;
     /**
      * Intrinsic media pixel width, as the ledger measured it at ingest (#209).
-     * Image / video only.
+     * Image / video only. On a node with no content yet it is the size a
+     * tool's result is planned to have, which the landing result replaces.
      *
      * Absent for a row stored before the media container ran, or one it could
      * not answer for — the node then measures what it loaded.

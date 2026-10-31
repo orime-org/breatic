@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import type * as React from 'react';
 import type { RouteObject } from 'react-router-dom';
 
-import { LoadingBoundary } from '@web/app/loading-boundary';
+import { LoadingBoundary } from '@web/app/LoadingBoundary';
 import { router } from '@web/app/routes';
 
 const REACT_LAZY = Symbol.for('react.lazy');

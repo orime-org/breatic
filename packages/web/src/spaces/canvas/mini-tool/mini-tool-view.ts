@@ -7,13 +7,21 @@
  */
 
 import {
+  isAdjustValueNeutral,
+  parseAdjustValue,
   type ModelEntry,
 } from '@breatic/shared';
+import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
+import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,
+  gridShapeOf,
   isModelTool,
+  pickedCellsOf,
   sizeTierOptions,
   tieredParamKeys,
+  type MiniToolSlot,
   type MiniToolSlotValue,
   type MiniToolSpec,
   type SizeTierOption,
@@ -41,6 +49,8 @@ export interface MiniToolSourceInfo {
   duration?: number | undefined;
   /** Where the source plays from. */
   url?: string | undefined;
+  /** What the ledger measured the stored file at, in bytes. */
+  sizeBytes?: number | undefined;
 }
 
 /** A param chosen as an output size: its tiers on the source and the one in use. */
@@ -57,7 +67,15 @@ export type MiniToolRefusal =
   | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
+  | 'sourceTooLong'
+  | 'sourceTooLarge'
   | 'drawingEmpty'
+  | 'adjustNeutral'
+  | 'singleTile'
+  | 'noTilePicked'
+  | 'sourceTooLargeToExpand'
+  | 'frameNotExpanded'
+  | 'markEmpty'
   | 'promptMissing'
   | 'exporting'
   | null;
@@ -66,6 +84,11 @@ export type MiniToolRefusal =
 export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
   'slotMissing',
   'drawingEmpty',
+  'adjustNeutral',
+  'singleTile',
+  'noTilePicked',
+  'frameNotExpanded',
+  'markEmpty',
   'promptMissing',
   'exporting',
 ]);
@@ -109,6 +132,7 @@ export function sizeTierChoices(
  * @param draft - The panel's draft params.
  * @param source - The source as the panel knows it.
  * @param tiers - The size tiers as they fall on the source.
+ * @param slots - The draft slots; a param the panel hides while a slot is filled is not sent.
  * @returns The params by key.
  */
 export function resolvedParams(
@@ -117,6 +141,7 @@ export function resolvedParams(
   draft: Readonly<Record<string, unknown>>,
   source: MiniToolSourceInfo = {},
   tiers: readonly SizeTierChoice[] = sizeTierChoices(spec, entry, draft, source),
+  slots: MiniToolSlots = {},
 ): Record<string, unknown> {
   if (!isModelTool(spec)) {
     const out: Record<string, unknown> = { ...draft };
@@ -128,28 +153,55 @@ export function resolvedParams(
     return out;
   }
   const tierOf = new Map(tiers.map((choice) => [choice.key, choice]));
+  const hidden = new Set(hiddenParams(spec, slots));
   const out: Record<string, unknown> = {};
   for (const param of spec.params) {
+    if (hidden.has(param.key)) continue;
     if (param.sizeTiers !== undefined) {
       const choice = tierOf.get(param.key);
       const tier = choice?.options.find((option) => option.label === choice.selected);
       if (tier !== undefined) out[param.key] = tier.megapixels;
       continue;
     }
-    const value = param.key in draft ? draft[param.key] : entry?.params[param.key]?.default;
+    const value = param.key in draft ? draft[param.key] : (param.default ?? entry?.params[param.key]?.default);
     if (value !== undefined && value !== null) out[param.key] = value;
   }
   return out;
 }
 
+/** The draft slots, by slot key. */
+type MiniToolSlots = Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
+
 /**
- * Whether a slot may stay empty: its yaml param says `optional`.
+ * Whether a slot holds anything.
+ * @param held - What the draft holds for it.
+ * @returns True when it holds a pick.
+ */
+export function slotFilled(held: MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined): boolean {
+  return held !== undefined && !(Array.isArray(held) && held.length === 0);
+}
+
+/**
+ * The params the panel hides, and the run does not send, while the slot the
+ * tool names holds a pick.
+ * @param spec - The tool.
+ * @param slots - The draft slots.
+ * @returns The hidden param keys.
+ */
+export function hiddenParams(spec: MiniToolSpec, slots: MiniToolSlots): readonly string[] {
+  const rule = spec.panel?.whenSlotFilled;
+  return rule !== undefined && slotFilled(slots[rule.slot]) ? rule.hide : [];
+}
+
+/**
+ * Whether a slot may stay empty: the tool does not require it and its yaml
+ * param says `optional`.
+ * @param slot - The slot.
  * @param entry - The pinned model's catalog entry.
- * @param param - The param the slot fills.
  * @returns True when the run goes without it.
  */
-function slotOptional(entry: ModelEntry | undefined, param: string): boolean {
-  return entry?.params[param]?.optional === true;
+export function slotOptional(slot: MiniToolSlot, entry: ModelEntry | undefined): boolean {
+  return slot.required !== true && entry?.params[slot.param]?.optional === true;
 }
 
 /**
@@ -160,7 +212,7 @@ function slotOptional(entry: ModelEntry | undefined, param: string): boolean {
  * @returns True when an empty prompt holds Execute back.
  */
 export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined): boolean {
-  return spec.prompt !== undefined && entry?.takes_prompt === true;
+  return spec.prompt !== undefined && spec.prompt.defaultText === undefined && entry?.takes_prompt === true;
 }
 
 /**
@@ -175,7 +227,7 @@ export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined
 export function slotLengthCap(
   spec: MiniToolSpec,
   entry: ModelEntry | undefined,
-  slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>,
+  slots: MiniToolSlots,
 ): number | null {
   for (const slot of spec.slots) {
     const cap = entry?.params[slot.param]?.max_total_duration;
@@ -185,6 +237,34 @@ export function slotLengthCap(
     if (total > cap) return cap;
   }
   return null;
+}
+
+/**
+ * Whether a tool lays its result out in the source's pixels: the expand's
+ * frame and the grid's tiles. Its size arrives with the source's metadata, or
+ * from the shown picture when the node records none.
+ * @param spec - The tool.
+ * @returns True when the result needs the source's pixel size.
+ */
+export function laysOutInSourcePixels(spec: MiniToolSpec): boolean {
+  return spec.expand !== undefined || spec.outputLayout === 'grid';
+}
+
+/**
+ * Whether the panel reads the size of the picture the node shows when the
+ * node's data does not carry it: the tool measures something on the source,
+ * or the server takes its ratio from the size the request says.
+ * @param spec - The tool.
+ * @returns True when the shown size is read.
+ */
+export function readsShownSize(spec: MiniToolSpec): boolean {
+  return (
+    tieredParamKeys(spec).length > 0 ||
+    spec.drawing !== undefined ||
+    laysOutInSourcePixels(spec) ||
+    keepsSourceSize(spec) ||
+    spec.sourceAspectParam !== undefined
+  );
 }
 
 /**
@@ -200,20 +280,26 @@ export function slotLengthCap(
  * @param input.exporting - Whether a press of this tool is still under way: making its file or
  *   images in the browser, or waiting for the server's answer.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
+ * @param input.params - The draft params.
+ * @param input.expandFrame - An expand tool's frame.
+ * @param input.mark - A markup tool's draft.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
   spec: MiniToolSpec;
   entry: ModelEntry | undefined;
   prompt: string;
-  slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
+  slots: MiniToolSlots;
   sourceShown: boolean;
   source?: MiniToolSourceInfo;
   tiers?: readonly SizeTierChoice[];
   exporting: boolean;
   inked?: boolean;
+  params?: Readonly<Record<string, unknown>>;
+  expandFrame?: ExpandFrame;
+  mark?: MarkDraft | null;
 }): MiniToolRefusal {
-  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
+  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
   if (!sourceShown) return 'sourceMissing';
   // A range is measured on the source's length, which arrives with its metadata.
@@ -226,14 +312,69 @@ export function miniToolRefusal(input: {
     if (choices.some((choice) => choice.selected === undefined)) return 'noUsableTier';
   }
   for (const slot of spec.slots) {
-    const held = slots[slot.key];
-    const empty = held === undefined || (Array.isArray(held) && held.length === 0);
-    if (empty && !slotOptional(entry, slot.param)) return 'slotMissing';
+    if (!slotFilled(slots[slot.key]) && !slotOptional(slot, entry)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
+  const limit = sourceLimitOf(spec, entry, source);
+  if (limit !== null) return limit.kind === 'duration' ? 'sourceTooLong' : 'sourceTooLarge';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
+  if (laysOutInSourcePixels(spec) && (source.width === undefined || source.height === undefined)) return 'sourceMissing';
+  if (spec.expand !== undefined && source.width !== undefined && source.height !== undefined) {
+    const cap = expandCapOf(entry);
+    if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
+    if (input.expandFrame === undefined || !isExpanded(input.expandFrame, { width: source.width, height: source.height })) {
+      return 'frameNotExpanded';
+    }
+  }
+  if (spec.markup === true && (input.mark == null || markEmpty(input.mark))) return 'markEmpty';
+  // Every slider at zero changes nothing.
+  const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
+  if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';
+  // A grid of one cell leaves nothing cut; a grid with no cell picked makes nothing.
+  const shape = gridShapeOf(spec, params);
+  if (shape !== null && shape.rows * shape.cols <= 1) return 'singleTile';
+  if (pickedCellsOf(spec, params)?.length === 0) return 'noTilePicked';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
+}
+
+/**
+ * The pinned model's ceiling a model tool's source is past (inner#1305 §7.3):
+ * the length or the size its source param declares in the catalog. A source
+ * whose length or size is not known is not held back; the model answers for it.
+ * @param spec - The tool.
+ * @param entry - The pinned model's catalog entry, undefined before the catalog is read.
+ * @param source - What the panel knows of the source.
+ * @returns Which ceiling is passed and its value, or null when none is.
+ */
+export function sourceLimitOf(
+  spec: MiniToolSpec,
+  entry: ModelEntry | undefined,
+  source: MiniToolSourceInfo,
+): { kind: 'duration' | 'bytes'; limit: number } | null {
+  if (!isModelTool(spec)) return null;
+  const declared = entry?.params[spec.sourceParam];
+  const maxSeconds = declared?.max_total_duration;
+  if (maxSeconds !== undefined && source.duration !== undefined && source.duration > maxSeconds) {
+    return { kind: 'duration', limit: maxSeconds };
+  }
+  const maxBytes = declared?.max_bytes;
+  if (maxBytes !== undefined && source.sizeBytes !== undefined && source.sizeBytes > maxBytes) {
+    return { kind: 'bytes', limit: maxBytes };
+  }
+  return null;
+}
+
+/**
+ * The expand frame's long-side cap in source pixels, from the pinned model's
+ * catalog entry.
+ * @param entry - The entry, undefined before the catalog is read.
+ * @param entry.max_output_side - The model's longest output side, when it has one.
+ * @returns The cap, unbounded for a model that sets none.
+ * @throws {never} Never.
+ */
+export function expandCapOf(entry: { max_output_side?: number } | undefined): number {
+  return entry?.max_output_side ?? Infinity;
 }
 
 /**
@@ -245,7 +386,7 @@ export function miniToolRefusal(input: {
  * @returns True when the press exports first.
  */
 export function exportsBeforeRun(spec: MiniToolSpec): boolean {
-  return spec.run.kind === 'browser' || spec.drawing !== undefined;
+  return spec.run.kind === 'browser' || spec.drawing !== undefined || spec.expand !== undefined;
 }
 
 /**

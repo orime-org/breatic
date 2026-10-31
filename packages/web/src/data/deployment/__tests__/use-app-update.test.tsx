@@ -37,6 +37,7 @@ describe('Project release detection', () => {
   it('detects a release without refreshing and bypasses caches', async () => {
     const { result } = renderHook(useAppUpdate); await settle();
     expect(result.current.version).toBe('next');
+    expect(result.current.autoOpen).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/app-version.json'), expect.objectContaining({ cache: 'no-store', credentials: 'omit' }));
   });
   it('clears a stale notice when deployment returns to the running bundle', async () => {
@@ -50,21 +51,40 @@ describe('Project release detection', () => {
     const { result } = renderHook(useAppUpdate); await settle();
     expect(result.current.version).toBe('previous');
   });
-  it('remembers Later across Project mounts but permits another release', async () => {
-    fetchMock.mockResolvedValue(manifest('defer-me'));
+  it('keeps a postponed release on show without opening it again, but opens a newer one', async () => {
+    // A fresh Response per call: a second mount reads the body again.
+    fetchMock.mockImplementation(() => Promise.resolve(manifest('defer-me')));
     const first = renderHook(useAppUpdate); await settle();
-    act(() => first.result.current.dismiss()); first.unmount();
+    act(() => first.result.current.dismiss());
+    expect(first.result.current.version).toBe('defer-me');
+    expect(first.result.current.autoOpen).toBe(false);
+    first.unmount();
     const second = renderHook(useAppUpdate); await settle();
-    expect(second.result.current.version).toBeNull();
-    fetchMock.mockResolvedValue(manifest('new-after-defer'));
+    expect(second.result.current.version).toBe('defer-me');
+    expect(second.result.current.autoOpen).toBe(false);
+    fetchMock.mockImplementation(() => Promise.resolve(manifest('new-after-defer')));
     await act(async () => { await vi.advanceTimersByTimeAsync(210_000); });
     expect(second.result.current.version).toBe('new-after-defer');
+    expect(second.result.current.autoOpen).toBe(true);
   });
   it('restores session choices after a page reload', async () => {
     sessionStorage.setItem('breatic.deferredAppVersions', '["from-session"]');
     fetchMock.mockResolvedValue(manifest('from-session'));
     const { result } = renderHook(useAppUpdate); await settle();
+    expect(result.current.version).toBe('from-session');
+    expect(result.current.autoOpen).toBe(false);
+  });
+  it('opens a release that shipped while the tab was hidden once it is shown again', async () => {
+    fetchMock.mockResolvedValue(manifest('current'));
+    const { result } = renderHook(useAppUpdate); await settle();
     expect(result.current.version).toBeNull();
+    act(() => visibility('hidden'));
+    fetchMock.mockResolvedValue(manifest('shipped-while-hidden'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(result.current.version).toBeNull();
+    act(() => visibility('visible')); await settle();
+    expect(result.current.version).toBe('shipped-while-hidden');
+    expect(result.current.autoOpen).toBe(true);
   });
   it.each([new Response('bad JSON'), new Response('error', { status: 503 }), new Response('<html>SPA fallback</html>')])('silently ignores invalid HTTP responses', async response => {
     fetchMock.mockResolvedValue(response);

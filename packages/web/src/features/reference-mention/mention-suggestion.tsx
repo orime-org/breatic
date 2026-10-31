@@ -30,7 +30,7 @@ import {
   MentionList,
   type MentionListProps,
   type MentionListRef,
-} from '@web/features/reference-mention/mention-list';
+} from '@web/features/reference-mention/MentionList';
 import { wasLastChangeLocalUserInput } from '@web/features/reference-mention/reference-mention-local-input';
 
 /**

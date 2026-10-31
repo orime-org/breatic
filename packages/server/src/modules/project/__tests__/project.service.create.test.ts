@@ -59,6 +59,11 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   const actual = await importActual();
   return {
     ...actual,
+    // The account has not claimed its first project yet (inner#1442 §4.8).
+    claimFirstMilestone: vi.fn(async () => true),
+    // The first-project conversion is queued after the create; nothing to upload here.
+    getAccountAttribution: vi.fn(async () => null),
+    enqueueAdsConversion: vi.fn(async () => false),
     db: {
       // Pass-through transaction — runs the callback immediately with a stub tx
       // handle. createProject is mocked, so no real DB is needed.
@@ -120,7 +125,8 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(args?.[4]).toBe("my-cyberpunk-idea");
     expect(args?.[5]).toBe("canvas"); // spaceType threaded to the repo
     expect(args?.[6]).toBe("a description");
-    expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
+    // The account claimed its first-project milestone, so this one is its first (inner#1442 §4.9).
+    expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea", isFirst: true });
   });
 
   it("allows a maintainer to create — the gate admits both studio roles", async () => {

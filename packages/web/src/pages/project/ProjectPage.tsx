@@ -4,17 +4,18 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
+import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { newId, type SpaceRpcResponse } from '@breatic/shared';
+import { MAX_SPACES_PER_PROJECT, newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
 import { ApiException } from '@web/data/api/types';
 import type { ProjectDetail } from '@web/data/api/projects';
-import { NotFoundScreen } from '@web/components/not-found-screen';
-import { ResourceLoadError } from '@web/components/resource-load-error';
+import { NotFoundScreen } from '@web/components/NotFoundScreen';
+import { ResourceLoadError } from '@web/components/ResourceLoadError';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -25,7 +26,9 @@ import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
+import { evictSceneSession } from '@web/data/yjs/scene-session';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -40,14 +43,14 @@ import {
   endAllKeptEditors,
   endSpaceKeptEditors,
 } from '@web/spaces/canvas/kept-editors';
-import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
+import { LeaveProjectGuard, type LeaveProjectGuardHandle } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@breatic/shared';
 
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
-import { LoadingScreen } from '@web/components/loading-screen';
+import { LoadingScreen } from '@web/components/LoadingScreen';
 import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
@@ -328,6 +331,9 @@ function ProjectWorkspace({
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId);
+  // The top bar's credits are read again whenever they may have moved: this
+  // reader's own spend returning, or anyone's generation here ending.
+  useProjectCreditsRefresh(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -410,7 +416,16 @@ function ProjectWorkspace({
         throw err;
       }
       if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
+        // The server's message is a developer string in English; the reader
+        // gets a line in their own language for the codes they can act on.
+        const notice = spaceRpcFailureNotice(req.type, res.error.code);
+        if (notice.level === 'warning') {
+          toast.warning(t(notice.messageKey, { max: MAX_SPACES_PER_PROJECT }));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: notice.descriptionKey ? t(notice.descriptionKey) : undefined,
+          });
+        }
         throw new Error(res.error.message);
       }
       return res;
@@ -492,6 +507,7 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
@@ -501,7 +517,7 @@ function ProjectWorkspace({
     if (departed.length > 0) {
       setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));
     }
-  }, [projectId, tabs.openIds]);
+  }, [projectId, userId, tabs.openIds]);
 
   // Note: NO URL ↔ active-space reconcile. Space is a type/template, not a
   // route segment (a product decision). What survives a reload is the whole strip, and it comes
@@ -558,28 +574,12 @@ function ProjectWorkspace({
     return () => clearTimeout(handle);
   }, [spaceOpInProgress, setSpaceOpInProgress, t]);
 
-  // Warn before a browser tab / window close while any space has an in-flight
-  // front-end operation (#1617). Unlike a space-tab close (which we block), the
-  // browser only allows a generic, non-customizable prompt — it cannot be
-  // blocked — so this is a best-effort guard against losing an upload whose
-  // local Yjs write-back has not synced yet. Reads the registry at event time so
-  // the listener never needs re-attaching.
-  React.useEffect(() => {
-    /**
-     * beforeunload handler: trigger the browser's generic close prompt while any
-     * space has an in-flight front-end operation (#1617).
-     * @param event - The beforeunload event.
-     */
-    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
-      if (!useSpaceOperationsStore.getState().hasAnyOperations()) return;
-      event.preventDefault();
-      // Legacy browsers require a returnValue to trigger the prompt; modern ones
-      // show their own generic message and ignore the string.
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, []);
+  const leaveGuard = React.useRef<LeaveProjectGuardHandle>(null);
+  /**
+   * Requests the Project's refresh confirmation.
+   * @throws {Error} Propagates reload failures.
+   */
+  const requestRefresh = React.useCallback((): void => { leaveGuard.current?.requestRefresh(); }, []);
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
@@ -678,7 +678,7 @@ function ProjectWorkspace({
     // Pin the token BEFORE the RPC await - Yjs sync from collab can race
     // ahead of the RPC ack (collab broadcasts the meta-doc mutation as
     // soon as space-rpc transact runs, which often beats the
-    // broadcastStateless response by a few ms). If we only set the ref
+    // RPC response by a few ms). If we only set the ref
     // after `await callRpc`, the spaces-watching effect re-runs on the
     // Yjs update with the ref still null, misses the match, and the
     // safety timeout (SPACE_OP_TIMEOUT_MS) fires even though everything
@@ -693,12 +693,9 @@ function ProjectWorkspace({
         'project.space.error.create',
       );
     } catch (err) {
+      // callRpc has already told the reader, on every way it fails.
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
-      // toast already raised inside callRpc when the RPC reports !ok
-      if (!(err instanceof Error) || !err.message.length) {
-        toast.error(t('project.space.error.create'));
-      }
       throw err;
     }
   };
@@ -853,13 +850,10 @@ function ProjectWorkspace({
           style={{ minWidth: `${PAGE_MIN_WIDTH}px` }}
           data-testid='project-page'
         >
-          {/* Confirm before an in-app leave (back link / logo / browser back) while
-          a front-end operation is still syncing (#1787) — the in-app companion
-          to the beforeunload guard. Renders nothing while not blocked. */}
-          <LeaveProjectGuard />
+          <LeaveProjectGuard ref={leaveGuard} />
           <ConnectionBanner
             status={connectionStatus}
-            onReload={() => window.location.reload()}
+            onReload={requestRefresh}
             // The connection was refused, which this banner answers with
             // "sign in again": drop the stored account on this device (local
             // only, no server logout) so the sign-in page does not act for it.

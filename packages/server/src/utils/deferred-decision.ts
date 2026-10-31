@@ -8,8 +8,8 @@
  * transfer) all have failure paths that WRITE before they refuse: a request
  * that timed out, or whose premise is gone, is pushed to a terminal status and
  * has its bell entry retired, and only then does the caller hear 409. Nothing
- * else will ever do that write — "expired" is by definition the case where
- * nobody came — so losing it strands the row `pending` forever, holding a
+ * else will ever do that write — a timed-out request is by definition the
+ * case where nobody came — so losing it strands the row `pending` forever, holding a
  * uniqueness slot that for a transfer is the entire container.
  *
  * Throwing an error inside `db.transaction` aborts the transaction, which

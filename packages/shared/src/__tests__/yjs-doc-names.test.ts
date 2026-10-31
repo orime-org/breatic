@@ -22,9 +22,11 @@ import {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  threeDSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
+  spaceContentRowPattern,
   type ParsedDocName,
 } from "../yjs-doc-names.js";
 
@@ -53,6 +55,10 @@ describe("doc name builders", () => {
       `project-${PID}/timeline-${SID}`,
     );
   });
+
+  it("threeDSpaceDocName builds project-{pid}/3d-{sid}", () => {
+    expect(threeDSpaceDocName(PID, SID)).toBe(`project-${PID}/3d-${SID}`);
+  });
 });
 
 // ── Parser ──────────────────────────────────────────────────────────
@@ -76,6 +82,17 @@ describe("parseDocName", () => {
   it("parses timeline space doc name", () => {
     const expected: ParsedDocName = { projectId: PID, kind: "timeline", spaceId: SID };
     expect(parseDocName(`project-${PID}/timeline-${SID}`)).toEqual(expected);
+  });
+
+  it("parses a 3D Space and rejects a missing id or extra path", () => {
+    expect(parseDocName(`project-${PID}/3d-${SID}`)).toEqual({
+      projectId: PID,
+      kind: "3d",
+      spaceId: SID,
+    });
+    expect(parseDocName(`project-${PID}/3d`)).toBeNull();
+    expect(parseDocName(`project-${PID}/3d-`)).toBeNull();
+    expect(parseDocName(`project-${PID}/3d-${SID}/extra`)).toBeNull();
   });
 
   it("round-trips every builder", () => {
@@ -146,6 +163,7 @@ describe("isProjectScopedDocName", () => {
     expect(isProjectScopedDocName(canvasSpaceDocName(PID, SID))).toBe(true);
     expect(isProjectScopedDocName(documentSpaceDocName(PID, SID))).toBe(true);
     expect(isProjectScopedDocName(timelineSpaceDocName(PID, SID))).toBe(true);
+    expect(isProjectScopedDocName(`project-${PID}/3d-${SID}`)).toBe(true);
   });
 
   it("returns false for non-project doc names", () => {
@@ -168,15 +186,38 @@ describe("spaceContentDocName", () => {
     expect(spaceContentDocName(PID, SID, "timeline")).toBe(
       timelineSpaceDocName(PID, SID),
     );
+    expect(spaceContentDocName(PID, SID, "3d")).toBe(`project-${PID}/3d-${SID}`);
   });
 
   it("round-trips through parseDocName with the matching kind + spaceId", () => {
-    for (const kind of ["canvas", "document", "timeline"] as const) {
+    for (const kind of ["canvas", "document", "timeline", "3d"] as const) {
       expect(parseDocName(spaceContentDocName(PID, SID, kind))).toEqual({
         projectId: PID,
         kind,
         spaceId: SID,
       });
     }
+  });
+});
+
+describe("spaceContentRowPattern", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const matches = (name: string): boolean => new RegExp(spaceContentRowPattern(PID)).test(name);
+
+  it("matches every Space content doc name of the project", () => {
+    for (const type of ["canvas", "document", "timeline", "3d"] as const) {
+      expect(matches(spaceContentDocName(PID, "s1", type))).toBe(true);
+    }
+  });
+
+  it("leaves out the meta doc, other projects and the obsolete shapes", () => {
+    expect(matches(projectMetaDocName(PID))).toBe(false);
+    expect(matches(spaceContentDocName("22222222-2222-4222-8222-222222222222", "s1", "canvas"))).toBe(false);
+    expect(matches(`project-${PID}/canvas`)).toBe(false);
+    expect(matches(`project-${PID}/node/n1`)).toBe(false);
+    expect(matches(`project-${PID}/canvas-s1/extra`)).toBe(false);
+    expect(matches(`project-${PID}/3d`)).toBe(false);
+    expect(matches(`project-${PID}/3d-`)).toBe(false);
+    expect(matches(`project-${PID}/3d-s1/extra`)).toBe(false);
   });
 });

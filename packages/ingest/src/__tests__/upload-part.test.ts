@@ -19,6 +19,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { describe, it, expect, vi } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
+import { openForTest } from "./helpers/open-upload.js";
 import {
   signSessionToken,
   verifySessionToken,
@@ -28,7 +29,7 @@ const PART_SIZE = 5 * 1024 * 1024;
 
 let seq = 0;
 
-/** Open an upload the way the browser does, and keep what it needs next. */
+/** Open an upload the way our server does, and keep what the browser needs next. */
 async function openUpload(
   over: Partial<UploadTicketPayload> = {},
 ): Promise<{ storageKey: string; uploadId: string; token: string }> {
@@ -47,17 +48,7 @@ async function openUpload(
     },
     env.INGEST_SHARED_SECRET,
   );
-  const ctx = createExecutionContext();
-  const response = await worker.fetch(
-    new Request("https://ingest.example.com/uploads", {
-      method: "POST",
-      headers: { "x-upload-ticket": ticket },
-    }),
-    env,
-    ctx,
-  );
-  await waitOnExecutionContext(ctx);
-  const body = await response.json<{ uploadId: string; token: string }>();
+  const body = await openForTest(ticket);
   return { storageKey, uploadId: body.uploadId, token: body.token };
 }
 
@@ -124,6 +115,26 @@ describe("a part the Worker will not take", () => {
   // name nothing in particular, and one upload's token would write into
   // another's — which is the whole reason the upload id is inside the
   // signature rather than only in the path.
+  it("T86: refuses a ticket sent as the token, and the upload still takes its real token", async () => {
+    const ticket = await signUploadTicket(
+      {
+        storageKey: `video/2026-10-26/${seq++}_ticket-as-token.mp4`,
+        studioId: "studio-1",
+        userId: "user-1",
+        totalParts: 2,
+        partSize: PART_SIZE,
+        contentType: "video/mp4",
+        expiresAt: Date.now() + 300_000,
+        deadlineAt: Date.now() + 7_200_000,
+      },
+      env.INGEST_SHARED_SECRET,
+    );
+    const { uploadId, token } = await openForTest(ticket);
+
+    expect((await sendPart(uploadId, 1, bytes(PART_SIZE), ticket)).status).toBe(401);
+    expect((await sendPart(uploadId, 1, bytes(PART_SIZE), token)).status).toBe(200);
+  });
+
   it("refuses a token issued for a different upload", async () => {
     const a = await openUpload();
     const b = await openUpload();

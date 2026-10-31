@@ -16,9 +16,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
+import type { CanvasProposal, GenerationTemplate, ModelCatalog, ProposalNode } from '@breatic/shared';
+import { setLocaleMessages, t, templateGuideNode } from '@breatic/shared';
+import en from '@locales/en.json';
 
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useCanvasStore } from '@web/stores/canvas';
 
 const listModels = vi.fn();
@@ -27,8 +30,9 @@ vi.mock('@web/data/api', () => ({
 }));
 
 const warn = vi.fn();
+const fail = vi.fn();
 vi.mock('@web/lib/toast', () => ({
-  toast: { warning: (line: string) => warn(line) },
+  toast: { warning: (line: string) => warn(line), error: (line: string) => fail(line) },
 }));
 
 /** A proposal of an empty node feeding one generation node. */
@@ -122,9 +126,11 @@ function renderCard(listening = true, proposal: CanvasProposal = PAIR): QueryCli
 }
 
 afterEach(() => {
+  setLocaleMessages('en', en as Record<string, unknown>);
   cleanup();
   listModels.mockReset();
   warn.mockReset();
+  fail.mockReset();
 });
 
 describe('what the card says before it is pressed', () => {
@@ -414,17 +420,18 @@ describe('pressing it', () => {
     await waitFor(() =>
       expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false),
     );
-    expect(screen.queryByTestId('proposal-failed')).toBeNull();
+    expect(fail).not.toHaveBeenCalled();
   });
 
-  it('says so in place when the canvas could not build it, and can be pressed again', async () => {
+  it('says so in a toast when the canvas could not build it, and can be pressed again', async () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard();
 
     await userEvent.click(screen.getByTestId('proposal-use'));
     act(() => useCanvasStore.getState().reportProposalOutcome('failed'));
 
-    await waitFor(() => expect(screen.getByTestId('proposal-failed')).toBeTruthy());
+    await waitFor(() => expect(fail).toHaveBeenCalledWith(t('chat.proposal.failed')));
+    expect(screen.queryByTestId('proposal-failed')).toBeNull();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
   });
 
@@ -437,5 +444,99 @@ describe('pressing it', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
+  });
+});
+
+describe('the Use button', () => {
+  it('is the land button a Document proposal card uses, in the same row', () => {
+    renderCard();
+    const use = screen.getByTestId('proposal-use');
+    render(
+      <ProposalActions>
+        <ProposalAction>shared</ProposalAction>
+      </ProposalActions>,
+    );
+    const shared = screen.getByText('shared').closest('button')!;
+    expect(use.className).toBe(shared.className);
+    expect(use.parentElement!.className).toBe(shared.parentElement!.className);
+  });
+});
+
+describe('a proposal made from a template (inner#1345)', () => {
+  /** A template with two follow-up steps, so it carries a guide text node. */
+  const STEPPED: GenerationTemplate = {
+    id: 'fixture-stepped',
+    anchor: 'final',
+    nodes: [{ key: 'final', role: 'generate', type: 'image', mode: 'i2i', model: 'some-model', params: {} }],
+    edges: [],
+    inputs: [],
+    steps: ['split', 'animate'],
+    agentNote: 'a fixture',
+    goal: 'character',
+    triggers: { asks: ['a fixture'], offerWhen: ['a fixture is wanted'] },
+  };
+
+  /** English with the fixture's strings added; no locale file carries them. */
+  const EN_WITH_FIXTURE = {
+    ...en,
+    canvas: {
+      ...en.canvas,
+      template: {
+        ...en.canvas.template,
+        'fixture-stepped': {
+          name: 'Stepped fixture',
+          step: { split: 'Split the grid into panels', animate: 'Turn the panels into a video' },
+        },
+      },
+    },
+  };
+
+  it('draws the guide text node in full, as words already written', () => {
+    setLocaleMessages('en', EN_WITH_FIXTURE as Record<string, unknown>);
+    listModels.mockResolvedValue(CATALOG);
+    const guide = templateGuideNode(STEPPED, 1);
+    if (!guide) throw new Error('a template with steps has a guide');
+    renderCard(true, { ...PAIR, nodes: [...PAIR.nodes, guide], groupName: 'Stepped' });
+
+    expect(screen.getAllByTestId('proposal-words-name').map((el) => el.textContent)).toEqual(['Stepped fixture']);
+    const words = screen.getByTestId('proposal-words').textContent ?? '';
+    expect(words.split('\n')[0]).toBe('Stepped fixture');
+    expect(words).toContain('Split the grid into panels');
+    expect(words).toContain('Turn the panels into a video');
+    expect(words.indexOf('Split the grid into panels')).toBeLessThan(words.indexOf('Turn the panels into a video'));
+  });
+
+  it('draws the guide after what is left to do first, so the card reads in the order the reader acts', () => {
+    setLocaleMessages('en', EN_WITH_FIXTURE as Record<string, unknown>);
+    listModels.mockResolvedValue(CATALOG);
+    const guide = templateGuideNode(STEPPED, 1);
+    if (!guide) throw new Error('a template with steps has a guide');
+    const copy: ProposalNode = { role: 'written', type: 'text', name: 'Your copy', prompt: [{ text: 'Buy it now' }] };
+    renderCard(true, { ...PAIR, nodes: [...PAIR.nodes, copy, guide], groupName: 'Stepped' });
+
+    const todo = screen.getAllByTestId('proposal-todo-group').at(-1)!;
+    const [copyWords, guideWords] = screen.getAllByTestId('proposal-words');
+    // Other written words keep their place ahead of the to-dos.
+    expect(copyWords!.compareDocumentPosition(todo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(todo.compareDocumentPosition(guideWords!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(guideWords!.textContent).toContain('Split the grid into panels');
+  });
+
+  it('draws a resource node’s chip as filled, not as a node the reader fills in', () => {
+    listModels.mockResolvedValue(CATALOG);
+    const resource = {
+      role: 'source',
+      type: 'image',
+      name: 'Style',
+      resource: 'templates/fixture-stepped/style.png',
+    } as ProposalNode;
+    renderCard(true, {
+      ...PAIR,
+      nodes: [resource, PAIR.nodes[1] as ProposalNode],
+    });
+
+    const chips = screen.getAllByTestId('proposal-chip');
+    expect(chips.map((c) => c.textContent)).toEqual(['Style', 'On white']);
+    expect(chips[0]?.className).not.toContain('border-dashed');
   });
 });

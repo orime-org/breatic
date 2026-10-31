@@ -48,24 +48,34 @@ export interface QueuedFinish {
  *
  * Asking again is safe and is the whole recovery for an answer that never
  * arrived: the key is the finish job's id, so a repeat queues nothing more.
- * @param file - What the person picked.
- * @param ticket - What the ticket endpoint issued for it.
+ * @param file - What the person picked, or the bytes a page wrote.
+ * @param ticket - The upload our server opened for it; the parts start from
+ *   its token, and no upload is opened here.
  * @param cfg - The upload knobs, which set the idle window on each part.
  * @param onPartLanded - Told how many bytes have landed, after each part.
+ * @param signal - Raised when the caller no longer wants the upload: handed
+ *   to every part and to the finish, and checked between the two.
  * @returns The key the queued finish runs under.
  * @throws {Error} When any part is refused, or queueing fails every attempt.
+ * @throws {DOMException} `AbortError` when `signal` is raised during the parts
+ *   or before the finish; a stop during the finish request rejects with the
+ *   `ApiException` the cancelled request becomes.
  */
 export async function sendFileAndFinish(
-  file: File,
+  file: Blob,
   ticket: UploadTicket,
   cfg: UploadClientConfig,
   onPartLanded?: (bytesLanded: number) => void,
+  signal?: AbortSignal,
 ): Promise<QueuedFinish> {
-  const held = await sendBytesToIngest(file, ticket, cfg, onPartLanded).catch(
+  const held = await sendBytesToIngest(file, ticket, cfg, onPartLanded, undefined, signal).catch(
     (err: unknown) => {
+      // A stop is the caller's own doing, not a delivery that failed.
+      if (signal?.aborted === true) throw err;
       throw new BytesNotDelivered(err);
     },
   );
+  signal?.throwIfAborted();
 
   // The same budget and the same reading of "transient" the ticket request
   // gets. Both halves matter here: the interval is what lets a connection that
@@ -77,7 +87,10 @@ export async function sendFileAndFinish(
       apiPost<QueuedFinish>(
         `/assets/uploads/${held.uploadId}/complete`,
         { parts: held.parts },
-        { headers: { 'x-upload-token': held.token } },
+        {
+          headers: { 'x-upload-token': held.token },
+          ...(signal !== undefined && { signal }),
+        },
       ),
     {
       attempts: cfg.clientMaxAttempts,

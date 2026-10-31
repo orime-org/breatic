@@ -15,6 +15,7 @@
 import { env, getUsagePricing, type UsagePricing } from "@breatic/core";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
 import { isGenerationId } from "@domain/credit/open-generation.js";
+import { toChargeCredits } from "@domain/credit/credit-math.js";
 import {
   costOfModelCall,
   creditsForUsd,
@@ -30,6 +31,7 @@ export type UsageFeature =
   | "memory_consolidation"
   | "text_tool"
   | "canvas_understand"
+  | "canvas_transcribe"
   | "mini_tool";
 
 /** What inside the operation made the call. */
@@ -114,6 +116,7 @@ export interface UsageRecorder {
   recordLookedUpCall(call: LookedUpCall): void;
   /** The generation ids of the OpenRouter calls to look up, for the caller to queue. */
   awaitingLookup(): readonly string[];
+  /** Wait for every row, then answer what to charge: their credits rounded up to whole cents. Each row keeps its exact figure. */
   settle(): Promise<number>;
 }
 
@@ -260,7 +263,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     async settle() {
       await Promise.all(pending);
       if (failures.length > 0) throw failures[0];
-      return credits;
+      return toChargeCredits(credits);
     },
   };
 }

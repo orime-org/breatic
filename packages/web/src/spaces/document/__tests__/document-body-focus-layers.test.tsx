@@ -22,6 +22,7 @@ import {
 } from './bubble-bar-harness';
 import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { BODY_LAYER, bodyHolds } from '@web/spaces/document/document-body-focus';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   closeShared();
@@ -105,37 +106,32 @@ describe('the link toolbar the caret raises and the body’s focus', () => {
   });
 });
 
-describe('the cell button and the body’s focus', () => {
-  it('goes when a press on blank space lets the body go, and the cell it sat on is no longer published', async () => {
+describe('the cell button as a layer of the body', () => {
+  it('is a layer of the body, and goes with the pointer (inner#1619 T13)', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const editor = openSharedBody('<p>lead</p>');
     act(() => {
       editor.insertBlocks(
-        [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } }] as never,
+        [tableBlock({ rows: [{ cells: ['x', 'y'] }] })] as never,
         (editor.document as { id: string }[])[0]!.id,
         'after',
       );
     });
     mountDocumentEditor(editor);
     const view = editor.prosemirrorView!;
-    let inCell = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (inCell < 0 && node.isText && node.text === 'x') inCell = pos;
-      return inCell < 0;
-    });
+    const words = [...view.dom.querySelectorAll('td *')].find((el) => el.childElementCount === 0 && el.textContent === 'x')!;
     act(() => {
-      focusBody(editor);
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, inCell + 1)));
+      words.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 10 }));
     });
     const button = await screen.findByTestId('doc-table-cell-button');
     expect(button.closest(`[${BODY_LAYER}]`)).not.toBeNull();
-    expect(documentBarsOf(editor).cellButtonCell).not.toBeNull();
 
-    pressBlank(editor);
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
+    });
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
     });
-    expect(documentBarsOf(editor).cellButtonCell).toBeNull();
   });
 });

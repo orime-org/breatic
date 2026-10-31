@@ -44,6 +44,12 @@ interface MagneticHandleProps {
    * live (adversarial round-1). Also gates the spring: a dead handle stays put.
    */
   isConnectable: boolean;
+  /**
+   * Whether a tool drawing on the node's border has the handle give way: it
+   * stays mounted, so the node's edges keep their anchor, but shows no dot and
+   * takes no press.
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -64,12 +70,15 @@ function clamp(v: number, min: number, max: number): number {
  * @param root0 - Component props.
  * @param root0.type - `source` (right) or `target` (left).
  * @param root0.isConnectable - Whether the handle accepts connections.
+ * @param root0.hidden - Whether the handle gives way to a tool on the node's border.
  * @returns The magnetic handle.
  */
 export function MagneticHandle({
   type,
-  isConnectable,
+  isConnectable: connectable,
+  hidden = false,
 }: MagneticHandleProps): React.JSX.Element {
+  const isConnectable = connectable && !hidden;
   const handleRef = React.useRef<HTMLDivElement>(null);
   const dotRef = React.useRef<HTMLSpanElement>(null);
   // Whether ANY connection drag is in progress (boolean selector → this only
@@ -173,15 +182,17 @@ export function MagneticHandle({
       onPointerMove={chase}
       onPointerLeave={rest}
       onPointerDown={rest}
-      className={zoneClass}
+      className={hidden ? `${zoneClass} !invisible` : zoneClass}
     >
       {/* Visible dot: centre straddles the border, springs toward the cursor. */}
-      <span
-        ref={dotRef}
-        data-testid='handle-dot'
-        aria-hidden='true'
-        className={dotClass}
-      />
+      {hidden ? null : (
+        <span
+          ref={dotRef}
+          data-testid='handle-dot'
+          aria-hidden='true'
+          className={dotClass}
+        />
+      )}
     </Handle>
   );
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { NavigationType, useBlocker, type Location } from 'react-router-dom';
+import { NavigationType, useBlocker, useParams, type Location } from 'react-router-dom';
 
 import {
   AlertDialog,
@@ -16,25 +16,30 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { hasProjectUnsyncedEdits, useProjectUnsyncedEdits } from '@web/data/yjs/collab-socket';
+import { projectUuidFromRouteParam } from '@web/lib/project-route';
+import { useReturnFocus } from '@web/lib/overlay-focus';
+import { toast } from '@web/lib/toast';
+
+/** Page-owned access to the same confirmation used for route and browser leaves. */
+export interface LeaveProjectGuardHandle {
+  requestRefresh: () => void;
+}
 
 /**
- * Whether an in-app navigation away from the project must be confirmed first:
- * only when a FRONT-END operation is in flight AND the target route is a
- * different page. Backend AIGC is intentionally excluded (its write-back rides
- * the server-side collab doc and survives leaving), which is exactly what
- * `useSpaceOperationsStore` already tracks. A same-pathname change (never
- * happens on the project route today) is not "leaving".
- * @param hasFrontEndOps - Whether any space has an in-flight front-end op.
+ * Requires confirmation when pending work would be left by a route change.
+ * @param hasPendingWork - Unsynced local content or an in-flight front-end operation.
  * @param currentPath - The current location pathname.
  * @param nextPath - The pathname being navigated to.
  * @returns True when the leave must be confirmed.
+ * @throws {never} Never.
  */
 export function shouldBlockLeave(
-  hasFrontEndOps: boolean,
+  hasPendingWork: boolean,
   currentPath: string,
   nextPath: string,
 ): boolean {
-  return hasFrontEndOps && currentPath !== nextPath;
+  return hasPendingWork && currentPath !== nextPath;
 }
 
 /** Navigation state that marks the landing after leaving the project. */
@@ -63,16 +68,29 @@ export function isLandingAfterLeave(
 }
 
 /**
- * Confirm before leaving a project (in-app navigation — the top-bar "Studio"
- * back link, the logo, browser back) while a front-end operation is still in
- * flight, mirroring the `beforeunload` guard that already covers tab close /
- * reload (#1617). Uses the router's `useBlocker` so ONE guard covers every
- * leave path instead of patching each link. Confirming proceeds; cancelling (or
- * Escape) stays. Renders nothing while not blocked.
- * @returns The confirmation dialog (open only while a leave is blocked).
+ * Confirms refresh and leave actions against this Project's current work.
+ * @param props - Page-owned handle for the connection banner action.
+ * @param props.ref - Receives the refresh action.
+ * @returns The confirmation dialog for a blocked leave or requested refresh.
+ * @throws {Error} When a browser reload fails.
  */
-export function LeaveProjectGuard(): React.JSX.Element {
+export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHandle> }): React.JSX.Element {
   const t = useTranslation();
+  const projectId = projectUuidFromRouteParam(useParams().projectId ?? '');
+  const unsynced = useProjectUnsyncedEdits(projectId);
+  const operations = useSpaceOperationsStore((state) => state.hasAnyOperations());
+  const [refreshRequested, setRefreshRequested] = React.useState(false);
+  const reloadApproved = React.useRef(false);
+  const reloadFailed = t('project.refreshGuard.failed');
+
+  /**
+   * Reads risk at the action's event time.
+   * @returns Whether local work requires confirmation.
+   * @throws {never} Never.
+   */
+  const hasRisk = React.useCallback((): boolean =>
+    hasProjectUnsyncedEdits(projectId) || useSpaceOperationsStore.getState().hasAnyOperations(), [projectId]);
+
   const blocker = useBlocker(
     React.useCallback(
       ({
@@ -86,14 +104,85 @@ export function LeaveProjectGuard(): React.JSX.Element {
       }) =>
         !isLandingAfterLeave(nextLocation, historyAction) &&
         shouldBlockLeave(
-          useSpaceOperationsStore.getState().hasAnyOperations(),
+          hasRisk(),
           currentLocation.pathname,
           nextLocation.pathname,
         ),
-      [],
+      [hasRisk],
     ),
   );
   const blocked = blocker.state === 'blocked';
+  const open = blocked || refreshRequested;
+  const returnFocus = useReturnFocus(open);
+
+  React.useEffect(() => {
+    if (blocked) setRefreshRequested(false);
+  }, [blocked]);
+
+  React.useEffect(() => {
+    /**
+     * Consumes explicit refresh approval or asks the browser to confirm risk.
+     * @param event - Browser navigation event.
+     * @throws {never} Never.
+     */
+    const beforeUnload = (event: BeforeUnloadEvent): void => {
+      if (reloadApproved.current) {
+        reloadApproved.current = false;
+        return;
+      }
+      if (!hasRisk()) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    /**
+     * Clears an unused approval when the user continues working.
+     * @throws {never} Never.
+     */
+    const disarm = (): void => { reloadApproved.current = false; };
+    window.addEventListener('beforeunload', beforeUnload);
+    window.addEventListener('pointerdown', disarm, true);
+    window.addEventListener('keydown', disarm, true);
+    return (): void => {
+      disarm();
+      window.removeEventListener('beforeunload', beforeUnload);
+      window.removeEventListener('pointerdown', disarm, true);
+      window.removeEventListener('keydown', disarm, true);
+    };
+  }, [hasRisk]);
+
+  /**
+   * Reloads after the user has approved the current application action.
+   * @throws {Error} Propagates reload failures after reporting them.
+   */
+  const reload = React.useCallback((): void => {
+    reloadApproved.current = true;
+    try {
+      window.location.reload();
+    } catch (err) {
+      reloadApproved.current = false;
+      toast.error(reloadFailed);
+      throw err;
+    }
+  }, [reloadFailed]);
+
+  /**
+   * Opens a refresh choice for the current risk.
+   * @throws {Error} Propagates reload failures.
+   */
+  const requestRefresh = React.useCallback((): void => {
+    if (blocked) return;
+    if (hasRisk()) setRefreshRequested(true);
+    else reload();
+  }, [blocked, hasRisk, reload]);
+
+  React.useImperativeHandle(ref, () => ({ requestRefresh }), [requestRefresh]);
+
+  const title = unsynced || operations
+    ? blocked ? t('project.leaveGuard.title') : t('project.refreshGuard.title')
+    : t('project.leaveGuard.completeTitle');
+  const description = unsynced
+    ? operations ? t('project.leaveGuard.combinedDescription') : t('project.leaveGuard.unsyncedDescription')
+    : operations ? t('project.leaveGuard.description') : t('project.leaveGuard.completeDescription');
   // Set right before `proceed()` so the dialog's own close event (Radix fires
   // onOpenChange(false) when Action closes it) does not race a `reset()` that
   // would cancel the navigation we just allowed.
@@ -101,7 +190,7 @@ export function LeaveProjectGuard(): React.JSX.Element {
 
   return (
     <AlertDialog
-      open={blocked}
+      open={open}
       onOpenChange={(open) => {
         if (open) return;
         if (proceedingRef.current) {
@@ -109,24 +198,30 @@ export function LeaveProjectGuard(): React.JSX.Element {
           return;
         }
         if (blocker.state === 'blocked') blocker.reset();
+        else setRefreshRequested(false);
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={returnFocus}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t('project.leaveGuard.title')}</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t('project.leaveGuard.description')}
+            {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('project.leaveGuard.stay')}</AlertDialogCancel>
+          <AlertDialogCancel>{blocked ? t('project.leaveGuard.stay') : t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
-              proceedingRef.current = true;
-              if (blocker.state === 'blocked') blocker.proceed();
+              if (blocker.state === 'blocked') {
+                proceedingRef.current = true;
+                blocker.proceed();
+              } else if (refreshRequested && !reloadApproved.current) {
+                setRefreshRequested(false);
+                reload();
+              }
             }}
           >
-            {t('project.leaveGuard.leave')}
+            {blocked ? t('project.leaveGuard.leave') : t('project.refreshGuard.refresh')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

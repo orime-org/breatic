@@ -2,29 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One tool asks the user something, and its arguments are the format.
+ * One tool asks the user something, and its arguments are the card.
  *
- * The question and its options are drawn as a paragraph of markdown, so the
- * shape of that paragraph is decided here rather than requested of the model:
- * a question is one line, an option is one line, and anything the schema lets
- * through is something a reader will see.
+ * The questions and their options are drawn as a questionnaire the reader can
+ * click, so the shape of that card is decided here rather than requested of
+ * the model: one to four questions, each with a short label, up to five
+ * options, and pictures or sounds only from places we can vouch for.
  *
- * The name is checked alongside the shape because a caller is offered tools
- * by name: the registry key, the two lists a caller is handed, and the test
- * that decides whether the turn waits for an answer all read one constant,
- * and this file is where a reader can see what that name is.
+ * The tool has no `execute`: a call to it is a question waiting for the
+ * reader, and the answer comes back as its result in a later request.
  */
 import { describe, it, expect } from "vitest";
 
 import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
-
-/** One turn's tool; the schema is the same on every one. */
-const askUser = makeAskUserTool();
 import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+
+const ALLOWED = "https://cdn.example.test/";
+
+/** One turn's tool, vouching for media under one prefix. */
+const askUser = makeAskUserTool({ mediaUrlAllowed: (url) => url.startsWith(ALLOWED) });
 
 /** The schema, in the one shape a test can call. */
 const schema = askUser.inputSchema as unknown as {
-  safeParse: (value: unknown) => { success: boolean };
+  safeParse: (value: unknown) => { success: boolean; error?: { issues: Array<{ message: string }> } };
 };
 
 /**
@@ -36,142 +36,180 @@ function accepts(value: unknown): boolean {
   return schema.safeParse(value).success;
 }
 
+/**
+ * What the schema says about arguments it refuses.
+ * @param value - What the model would have sent.
+ * @returns Every issue message, joined.
+ */
+function refusal(value: unknown): string {
+  const parsed = schema.safeParse(value);
+  return (parsed.error?.issues ?? []).map((issue) => issue.message).join("\n");
+}
+
+/**
+ * One question with sensible defaults.
+ * @param over - Fields to replace.
+ * @returns A question object.
+ */
+function question(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    header: "Style",
+    question: "Which style should the picture take?",
+    options: [{ label: "Cyberpunk" }, { label: "Warm film" }],
+    ...over,
+  };
+}
+
+/**
+ * An option carrying an image under the given address.
+ * @param label - The option's label.
+ * @param url - Where the image is.
+ * @returns An option object.
+ */
+function imageOption(label: string, url: string): Record<string, unknown> {
+  return { label, media: { kind: "image", url } };
+}
+
 describe("the one name this tool has", () => {
-  it("is ask_user in the registry, and neither of the two it replaces", () => {
+  it("is ask_user in the registry and in the list a chat turn is offered", () => {
     expect(Object.keys(TOOL_MAP)).toContain("ask_user");
-    expect(Object.keys(TOOL_MAP)).not.toContain("ask_user_question");
-    expect(Object.keys(TOOL_MAP)).not.toContain("ask_user_choice");
-  });
-
-  it("is in the list a chat turn is offered", () => {
-    // Missing from it, the model is never handed the tool at all.
     expect(BASELINE_TOOLS).toContain("ask_user");
-  });
-
-  it("leaves no list naming a tool the registry does not hold", () => {
-    const registered = Object.keys(TOOL_MAP);
-    for (const name of BASELINE_TOOLS) {
-      expect(registered).toContain(name);
-    }
   });
 });
 
-describe("the question", () => {
-  it("is required and may not be blank", () => {
-    expect(accepts({})).toBe(false);
-    expect(accepts({ question: "" })).toBe(false);
-    // Whitespace passes a bare `min(1)`, and on screen it is an empty line
-    // above a row saying the turn is waiting for an answer to it.
-    expect(accepts({ question: "   " })).toBe(false);
+describe("the questions", () => {
+  it("are one to four", () => {
+    expect(accepts({ questions: [] })).toBe(false);
+    expect(accepts({ questions: [question()] })).toBe(true);
+    expect(accepts({ questions: [question(), question(), question(), question()] })).toBe(true);
+    expect(accepts({ questions: [question(), question(), question(), question(), question()] })).toBe(false);
   });
 
-  it("is a single line, so a list cannot be folded into it", () => {
-    expect(accepts({ question: "Which pace?\n1. Fast\n2. Slow" })).toBe(false);
+  it("each have a question of one line up to 200 characters", () => {
+    expect(accepts({ questions: [question({ question: "a".repeat(200) })] })).toBe(true);
+    expect(accepts({ questions: [question({ question: "a".repeat(201) })] })).toBe(false);
+    expect(accepts({ questions: [question({ question: "Which?\n1. Fast" })] })).toBe(false);
+    expect(accepts({ questions: [question({ question: "   " })] })).toBe(false);
   });
 
-  it("has a ceiling, so a paragraph cannot arrive as the question", () => {
-    expect(accepts({ question: "a".repeat(200) })).toBe(true);
-    expect(accepts({ question: "a".repeat(201) })).toBe(false);
+  it("each have a label of one line up to 12 characters", () => {
+    expect(accepts({ questions: [question({ header: "a".repeat(12) })] })).toBe(true);
+    expect(accepts({ questions: [question({ header: "a".repeat(13) })] })).toBe(false);
+    expect(accepts({ questions: [question({ header: undefined })] })).toBe(false);
+  });
+
+  it("are single choice unless they say otherwise", () => {
+    const parsed = (askUser.inputSchema as unknown as {
+      parse: (v: unknown) => { questions: Array<{ multiSelect: boolean }> };
+    }).parse({ questions: [question()] });
+    expect(parsed.questions[0]?.multiSelect).toBe(false);
   });
 });
 
 describe("the options", () => {
-  it("may be absent or empty, both meaning an open question", () => {
-    // An empty array is what this tool has always normalised away, and the
-    // rule for fewer than two is to draw no list rather than to refuse.
-    expect(accepts({ question: "Who is it for?" })).toBe(true);
-    expect(accepts({ question: "Who is it for?", options: [] })).toBe(true);
+  it("are zero to five, zero being an open question", () => {
+    expect(accepts({ questions: [question({ options: [] })] })).toBe(true);
+    expect(accepts({ questions: [question({ options: [{ label: "Only one" }] })] })).toBe(true);
+    const six = Array.from({ length: 6 }, (_, i) => ({ label: `Option ${String(i)}` }));
+    expect(accepts({ questions: [question({ options: six })] })).toBe(false);
   });
 
-  it("are at most five, and one is drawn rather than refused", () => {
-    // One option is a question with one thing worth naming, and drawing it is
-    // an answer to it. Refusing it costs a round trip and puts nothing on the
-    // reader's screen.
-    expect(accepts({ question: "Which?", options: ["one"] })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["one", "two"] })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["1", "2", "3", "4", "5"] })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["1", "2", "3", "4", "5", "6"] })).toBe(false);
+  it("are at least two on a question that takes several", () => {
+    expect(accepts({ questions: [question({ multiSelect: true, options: [{ label: "A" }] })] })).toBe(false);
+    expect(accepts({ questions: [question({ multiSelect: true, options: [{ label: "A" }, { label: "B" }] })] })).toBe(
+      true,
+    );
   });
 
-  it("are each one line and not blank", () => {
-    expect(accepts({ question: "Which?", options: ["one", ""] })).toBe(false);
-    expect(accepts({ question: "Which?", options: ["one", "two\nthree"] })).toBe(false);
-    expect(accepts({ question: "Which?", options: ["one", "b".repeat(60)] })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["one", "b".repeat(61)] })).toBe(false);
-  });
-});
-
-describe("what the model says about answering", () => {
-  it("is optional, since a question often speaks for itself", () => {
-    expect(accepts({ question: "Which?", options: ["one", "two"] })).toBe(true);
-  });
-
-  it("is one line and not blank, like everything else the reader will read", () => {
-    expect(accepts({ question: "Which?", howToAnswer: "A number will do." })).toBe(true);
-    expect(accepts({ question: "Which?", howToAnswer: "" })).toBe(false);
-    expect(accepts({ question: "Which?", howToAnswer: "   " })).toBe(false);
-    expect(accepts({ question: "Which?", howToAnswer: "one\ntwo" })).toBe(false);
-    expect(accepts({ question: "Which?", howToAnswer: "c".repeat(120) })).toBe(true);
-    expect(accepts({ question: "Which?", howToAnswer: "c".repeat(121) })).toBe(false);
+  it("each have a label of one line up to 60 characters and an optional line of description up to 120", () => {
+    expect(accepts({ questions: [question({ options: [{ label: "a".repeat(60) }] })] })).toBe(true);
+    expect(accepts({ questions: [question({ options: [{ label: "a".repeat(61) }] })] })).toBe(false);
+    expect(accepts({ questions: [question({ options: [{ label: "A", description: "d".repeat(120) }] })] })).toBe(
+      true,
+    );
+    expect(accepts({ questions: [question({ options: [{ label: "A", description: "d".repeat(121) }] })] })).toBe(
+      false,
+    );
   });
 });
 
-describe("what a line may not hold", () => {
-  it("refuses every line ending, not just the newline", () => {
-    // One option is one line, so a value carrying a line ending is two.
-    expect(accepts({ question: "Which?", options: ["keep it\r3. wipe all", "b"] })).toBe(false);
-    expect(accepts({ question: "a\rb" })).toBe(false);
-    expect(accepts({ question: "a\u2028b" })).toBe(false);
+describe("pictures and sounds on options", () => {
+  it("are on every option of a question or on none", () => {
+    const all = [imageOption("A", `${ALLOWED}a.png`), imageOption("B", `${ALLOWED}b.png`)];
+    const some = [imageOption("A", `${ALLOWED}a.png`), { label: "B" }];
+    expect(accepts({ questions: [question({ options: all })] })).toBe(true);
+    expect(accepts({ questions: [question({ options: some })] })).toBe(false);
   });
 
-  it("takes text that happens to start with markdown punctuation", () => {
-    // What a line renders as is settled where it is drawn: the paragraph is
-    // built as a document and serialised, so a value that would have opened a
-    // block of its own arrives as the characters it is. Refusing these costs
-    // the reader a round trip and buys nothing, and a hex colour or a `#1` is
-    // ordinary text in a product about making things.
-    expect(accepts({ question: "#FF0000 正红还是 #1 方案？" })).toBe(true);
-    expect(accepts({ question: "# 用哪个标签？" })).toBe(true);
-    expect(accepts({ question: "> 引用" })).toBe(true);
-    expect(accepts({ question: "---" })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["1. 快切", "- 慢"] })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["|竖屏|", "16:9 横屏"] })).toBe(true);
-    expect(accepts({ question: "Which?", howToAnswer: "1) 回一个数字" })).toBe(true);
+  it("are an image, an audio clip or a video, a video optionally with a cover", () => {
+    const options = [
+      { label: "Sea", media: { kind: "video", url: `${ALLOWED}sea.mp4`, poster: `${ALLOWED}sea.jpg` } },
+      { label: "Beat", media: { kind: "audio", url: `${ALLOWED}beat.mp3` } },
+    ];
+    expect(accepts({ questions: [question({ options })] })).toBe(true);
+    const wrongKind = [{ label: "Doc", media: { kind: "pdf", url: `${ALLOWED}a.pdf` } }];
+    expect(accepts({ questions: [question({ options: wrongKind })] })).toBe(false);
   });
-});
 
-describe("what the model is shown of all this", () => {
-  it("carries every rule the tool enforces, so none of them is a surprise", async () => {
-    // A call refused over a rule the model was never shown costs the reader a
-    // whole round trip in silence: the refusal produces no result, so the turn
-    // does not stop, and a tool error is not drawn today. Which rules survive
-    // the trip is the SDK's business, so what it emits is pinned here rather
-    // than assumed.
-    //
-    // `.trim()` is a transform rather than a check, so it leaves no trace
-    // here and cannot: the only input it turns away is one that is nothing
-    // but whitespace, which `minLength` counts as a character.
-    const { zodSchema } = await import("ai");
-    const emitted = (await zodSchema(askUser.inputSchema as never)).jsonSchema as {
-      properties?: Record<string, Record<string, unknown>>;
-      required?: string[];
-      additionalProperties?: boolean;
-    };
+  it("come only from an address we vouch for, and a refusal names the address and the sources allowed", () => {
+    const foreign = "https://elsewhere.test/a.png";
+    const options = [imageOption("A", foreign), imageOption("B", `${ALLOWED}b.png`)];
+    expect(accepts({ questions: [question({ options })] })).toBe(false);
+    const said = refusal({ questions: [question({ options })] });
+    expect(said).toContain(foreign);
+    expect(said).toContain("our storage");
+    expect(said).toContain("search_images");
+  });
 
-    expect(emitted.required).toEqual(["question"]);
-    expect(emitted.additionalProperties).toBe(false);
-    expect(emitted.properties?.question).toMatchObject({ minLength: 1, maxLength: 200 });
-    expect(emitted.properties?.question?.pattern).toBeTypeOf("string");
-    expect(emitted.properties?.options).toMatchObject({ maxItems: 5 });
-    expect(emitted.properties?.howToAnswer).toMatchObject({ minLength: 1, maxLength: 120 });
+  it("hold a cover to the same rule as the video itself", () => {
+    const options = [
+      { label: "Sea", media: { kind: "video", url: `${ALLOWED}sea.mp4`, poster: "https://elsewhere.test/c.jpg" } },
+    ];
+    expect(accepts({ questions: [question({ options })] })).toBe(false);
+  });
+
+  it("are checked when the call arrives, so an address vouched for during the turn passes", () => {
+    const vouched = new Set<string>();
+    const tool = makeAskUserTool({ mediaUrlAllowed: (url) => vouched.has(url) });
+    const parse = (tool.inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } }).safeParse;
+    const options = [imageOption("A", "https://found.test/a.png"), imageOption("B", "https://found.test/b.png")];
+    expect(parse({ questions: [question({ options })] }).success).toBe(false);
+    vouched.add("https://found.test/a.png");
+    vouched.add("https://found.test/b.png");
+    expect(parse({ questions: [question({ options })] }).success).toBe(true);
   });
 });
 
 describe("what the model may not send", () => {
   it("is refused rather than dropped when a field is not in the schema", () => {
-    // The default is to strip an unknown key in silence, which loses whatever
-    // the model was trying to say without telling it that anything went.
-    expect(accepts({ question: "Which?", multiSelect: true })).toBe(false);
-    expect(accepts({ question: "Which?", choices: [{ id: "a", label: "A" }] })).toBe(false);
+    expect(accepts({ questions: [question()], howToAnswer: "Pick one" })).toBe(false);
+    expect(accepts({ questions: [question({ choices: ["A"] })] })).toBe(false);
+  });
+
+  it("is the old single-question shape, which this tool no longer takes", () => {
+    expect(accepts({ question: "Which pace?", options: ["Fast", "Slow"] })).toBe(false);
+  });
+});
+
+describe("how the tool runs", () => {
+  it("has no execute, so a call waits for the reader's answer", () => {
+    expect((askUser as { execute?: unknown }).execute).toBeUndefined();
+  });
+
+  it("tells the model the card numbers its questions from one and that a typed reply may point at them", () => {
+    expect(askUser.description).toMatch(/numbered from 1/);
+    expect(askUser.description).toMatch(/by (its|their) number/);
+  });
+
+  it("tells the model the card adds the numbers, so a header and a question carry none", () => {
+    expect(askUser.description).toMatch(/write no number/i);
+    const shape = (askUser.inputSchema as unknown as { shape: { questions: { element: { shape: Record<string, { description?: string }> } } } })
+      .shape.questions.element.shape;
+    expect(shape.header?.description).toMatch(/no number/i);
+    expect(shape.question?.description).toMatch(/no number/i);
+  });
+
+  it("tells the model each answer names its question by an index counting from 0", () => {
+    expect(askUser.description).toMatch(/`index`[^.]*counting from 0/);
   });
 });

@@ -25,6 +25,19 @@ function hint(): HTMLElement {
 }
 
 describe('SlugField hint line', () => {
+  it('shows a reason given at submit in red over whatever the check says (inner#1652)', () => {
+    render(<SlugField {...BASE} check={{ state: 'empty' }} error='Enter a Slug.' />);
+    expect(hint()).toHaveTextContent('Enter a Slug.');
+    expect(hint()).toHaveClass('text-status-error-foreground');
+    expect(screen.getByLabelText('Slug')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('says a check that could not run is left to submit, in a muted line', () => {
+    render(<SlugField {...BASE} value='my-studio' check={{ state: 'unverified' }} />);
+    expect(hint()).toHaveTextContent('Couldn\'t check right now. The server decides when you submit.');
+    expect(hint()).toHaveClass('text-muted-foreground');
+  });
+
   it('shows the muted helper while the field is empty', () => {
     render(<SlugField {...BASE} check={{ state: 'empty' }} />);
     expect(hint()).toHaveTextContent('Part of the URL.');

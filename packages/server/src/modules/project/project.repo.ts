@@ -23,6 +23,7 @@ import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
+import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 import {
   projects,
   studios,
@@ -129,11 +130,24 @@ export async function lockLiveProject(
   return rows.length > 0;
 }
 
+/**
+ * Serialize a decision settlement with project lifecycle changes.
+ * @param id - The immutable project id.
+ * @param tx - The enclosing settlement transaction.
+ * @returns Whether the project row exists and is now locked, including archived rows.
+ * @throws {Error} When persistence fails.
+ */
+export async function lockProject(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.select({ id: projects.id }).from(projects)
+    .where(eq(projects.id, id)).for("update").limit(1);
+  return rows.length > 0;
+}
+
 /** How an archive or restore attempt ended. */
 export type ArchiveOutcome = "done" | "missing" | "unchanged";
 
 /**
- * Archive a project: stamp it, expire every pending request filed against it,
+ * Archive a project: stamp it, fail every pending request filed against it,
  * take their bell entries down, and queue the command that drops its live
  * connections — one transaction.
  *
@@ -144,8 +158,10 @@ export type ArchiveOutcome = "done" | "missing" | "unchanged";
  * finds the project archived (`lockLiveProject` refuses it), so nothing pending
  * survives the sweep.
  *
- * The requests are expired, not deleted: the project comes back on restore,
- * and its history should say these lapsed.
+ * The requests fail rather than being deleted: the project comes back on
+ * restore, and its history should say why they ended. One already past its
+ * deadline ended by time, so it is recorded as `expired`; the rest as
+ * `invalidated`.
  * @param id - Project UUID
  * @param byUserId - The studio admin archiving it
  * @param tx - The enclosing transaction
@@ -166,13 +182,9 @@ export async function archiveProject(
   if (!row) return "missing";
   if (row.archivedAt !== null) return "unchanged";
 
-  const expire = {
-    status: "expired",
-    decidedAt: null,
-  } as const;
   const notificationIds: string[] = [];
   /**
-   * Keep the bell entry ids of the requests a sweep just expired.
+   * Keep the bell entry ids of the requests a sweep just ended.
    * @param rows - The swept rows' notification ids
    */
   const collect = (rows: { notificationId: string | null }[]): void => {
@@ -182,7 +194,7 @@ export async function archiveProject(
   collect(
     await tx
       .update(roleUpgradeRequests)
-      .set({ ...expire, expiresAt: sql`LEAST(${roleUpgradeRequests.expiresAt}, now())` })
+      .set({ status: "failed", failedReason: failedReasonAtNow(roleUpgradeRequests.expiresAt) })
       .where(
         and(
           eq(roleUpgradeRequests.projectId, id),
@@ -195,7 +207,7 @@ export async function archiveProject(
   collect(
     await tx
       .update(projectJoinRequests)
-      .set({ ...expire, expiresAt: sql`LEAST(${projectJoinRequests.expiresAt}, now())` })
+      .set({ status: "failed", failedReason: failedReasonAtNow(projectJoinRequests.expiresAt) })
       .where(
         and(
           eq(projectJoinRequests.projectId, id),
@@ -208,7 +220,7 @@ export async function archiveProject(
   collect(
     await tx
       .update(projectTransfers)
-      .set({ ...expire, expiresAt: sql`LEAST(${projectTransfers.expiresAt}, now())` })
+      .set({ status: "failed", failedReason: failedReasonAtNow(projectTransfers.expiresAt) })
       .where(
         and(
           eq(projectTransfers.projectId, id),
@@ -221,7 +233,7 @@ export async function archiveProject(
   collect(
     await tx
       .update(projectInvitations)
-      .set({ status: "expired", expiresAt: sql`LEAST(${projectInvitations.expiresAt}, now())` })
+      .set({ status: "failed", failedReason: failedReasonAtNow(projectInvitations.expiresAt) })
       .where(
         and(
           eq(projectInvitations.projectId, id),
@@ -712,6 +724,9 @@ export async function duplicateProject(
       slug: `${source.slug}-copy`.slice(0, 120),
       description: source.description,
       thumbnailUrl: source.thumbnailUrl,
+      // A source with no meta document is seeded only after its first open.
+      // Keep its chosen kind so that copying before that open cannot reset it.
+      initialSpaceType: sql`(SELECT ${projects.initialSpaceType} FROM ${projects} WHERE ${projects.id} = ${source.id})`,
     })
     .returning();
   const newProject = inserted[0]!;

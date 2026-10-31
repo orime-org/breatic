@@ -15,6 +15,18 @@ import * as React from 'react';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 
 /**
+ * Whether a key press is an Escape nobody else has a claim on: not taken by an
+ * earlier listener, not a held key's repeat, and not ending an input method's
+ * composition. Which region the press belongs to is a separate question.
+ * @param e - The keyboard event.
+ * @returns True for such a press.
+ * @throws {never} Never.
+ */
+export function isFreeEscape(e: KeyboardEvent): boolean {
+  return e.key === 'Escape' && !e.defaultPrevented && !e.repeat && !e.isComposing && e.keyCode !== 229;
+}
+
+/**
  * Call `onEscape` when Escape is pressed and this canvas is the one it means.
  *
  * `defaultPrevented` is what makes Escape peel one layer at a time: whoever
@@ -34,16 +46,7 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (
-        e.key !== 'Escape' ||
-        e.defaultPrevented ||
-        e.repeat ||
-        e.isComposing ||
-        e.keyCode === 229
-      ) {
-        return;
-      }
-      if (!regionOwnsKeyboard(e.target, 'space')) return;
+      if (!isFreeEscape(e) || !regionOwnsKeyboard(e.target, 'space')) return;
       // Claim it. `defaultPrevented` above is how Escape peels one layer at a
       // time, and a mode that acts without setting it leaves the next listener
       // reading the press as untouched — which is what let one key both disarm

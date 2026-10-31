@@ -11,10 +11,11 @@
  * failure this prevents, and it arrives one new string at a time.
  *
  * Only collision-free forms are listed. A word that also means something
- * ordinary — Canvas's form is also the drawing surface, Timeline's is also
- * the video track, Document's is also "a file", and Space's katakana and
- * hangul forms are substrings of Workspace — cannot be banned outright and
- * is frozen per key by the web package's frozen-product-terms test instead.
+ * ordinary — Timeline's form is also the video track, the Traditional Chinese
+ * form of Document is the Simplified word for "a file", Space's Chinese form
+ * is also storage space, and its katakana and hangul forms are substrings of
+ * Workspace — cannot be banned outright and is frozen per key by the web
+ * package's frozen-product-terms test instead.
  * This list is the blanket half: forms with no legitimate survivor, so every
  * future key is covered without anyone remembering to add it.
  *
@@ -29,6 +30,9 @@ export const TRANSLATED_PRODUCT_NOUNS: ReadonlyMap<string, readonly string[]> =
     ["Work", ["作品", "작품"]],
     ["Studio", ["工作室", "スタジオ", "스튜디오"]],
     ["Space", ["工作面", "作業面"]],
+    ["Canvas", ["画布", "畫布", "キャンバス", "캔버스"]],
+    ["Document", ["文档", "ドキュメント", "문서"]],
+    ["Agent", ["智能体", "智能體", "エージェント", "에이전트"]],
     // Slug had four names on screen — Handle, ハンドル, 핸들, 网址标识 —
     // none matching what it is called in the URL, the API or the schema, so
     // reading any two of them together needed a mental translation step. The

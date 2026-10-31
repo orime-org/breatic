@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MONOREPO_ROOT } from "@breatic/core";
+import { env, MONOREPO_ROOT } from "@breatic/core";
 
 const positiveInt = z.number().int().positive();
 
@@ -36,6 +36,15 @@ export interface SignupCodeConfig {
 }
 
 let _cached: SignupCodeConfig | null = null;
+
+/**
+ * Whether an email sign-up must prove the address with a code. True for the
+ * backends that deliver (smtp) or show (console) the mail.
+ * @returns `true` unless `EMAIL_BACKEND` is `disabled`.
+ */
+export function emailVerificationEnabled(): boolean {
+  return env.EMAIL_BACKEND !== "disabled";
+}
 
 /**
  * Load and cache the sign-up code settings.

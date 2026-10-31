@@ -44,6 +44,16 @@ describe("a parameter declaration", () => {
     ).not.toThrow();
   });
 
+  // inner#1305: a model's own input ceilings, read by the panel and the server.
+  it("passes a media param that caps its length and its size", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "audio",
+        modelWith({ audio: { fill: "tool", accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 } }, "enhance"),
+      ),
+    ).not.toThrow();
+  });
+
   it("is refused when a slot does not say which kind of node it takes", () => {
     expect(() => assertParamDeclarations("video", modelWith({ image: { fill: "canvas" } }))).toThrow(
       /a-model.*image.*accepts/s,

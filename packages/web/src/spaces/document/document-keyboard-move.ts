@@ -5,7 +5,7 @@
  * Shift-Mod-ArrowUp and Shift-Mod-ArrowDown: move the selected rows one place.
  *
  * BlockNote binds both keys to `moveBlocksUp` / `moveBlocksDown`
- * (`KeyboardShortcutsExtension.ts:989-996`), which take the rows out and put
+ * (`KeyboardShortcutsExtension.ts:1039-1046`), which take the rows out and put
  * them back through `removeAndInsertBlocks` and `insertBlocks` — that is,
  * through the rows' JSON (`moveBlocks.ts`). A comment is a mark with no place
  * in that JSON, so every comment on a moved row lost its highlight and its
@@ -38,12 +38,24 @@ import {
 } from '@web/spaces/document/document-body-edge-selection';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
+import {
+  DOC_TABLE,
+  DOC_TABLE_CELL,
+  DOC_TABLE_HEADER,
+  DOC_TABLE_ROW,
+  cellDepthOf,
+  tableAround,
+} from '@web/spaces/document/document-table-nodes';
 
 /** A row as the editor's block calls hand it back. */
 interface BlockLike {
   readonly id: string;
+  readonly type: string;
   readonly children: readonly BlockLike[];
 }
+
+/** The parts of a table that are no block of a body: its rows and cells. */
+const TABLE_PARTS = new Set<string>([DOC_TABLE_ROW, DOC_TABLE_CELL, DOC_TABLE_HEADER]);
 
 /** The editor calls a move reads. */
 interface MoveEditor {
@@ -53,6 +65,7 @@ interface MoveEditor {
   getPrevBlock(block: BlockLike): BlockLike | undefined;
   getNextBlock(block: BlockLike): BlockLike | undefined;
   getParentBlock(block: BlockLike): BlockLike | undefined;
+  getBlock(id: string): BlockLike | undefined;
 }
 
 /** Where the moved rows go: next to this row, on this side of it. */
@@ -62,7 +75,55 @@ interface Placement {
 }
 
 /**
- * Where the rows go on the way up.
+ * The cell and the table a block, a row or a cell stands in.
+ * @param doc - The document.
+ * @param blockId - The block.
+ * @returns The innermost cell's id and the table's id; null where there is none.
+ */
+function cellAndTableOf(doc: PMNode, blockId: string): { cell: string | null; table: string | null } {
+  const row = rowById(doc, blockId);
+  if (row === undefined) return { cell: null, table: null };
+  const $row = doc.resolve(row.from);
+  const cell = cellDepthOf($row);
+  const table = tableAround($row);
+  return {
+    cell: cell < 0 ? null : String($row.node(cell).attrs['id']),
+    table: table === null ? null : String(table.node.attrs['id']),
+  };
+}
+
+/**
+ * What a move carries. Blocks all in one cell move as themselves. Otherwise a
+ * table any of them is in, or any row or cell among them belongs to, is
+ * carried whole, as one block of the body (design 5.3).
+ * @param editor - The editor.
+ * @param blocks - The selected blocks, or the caret's.
+ * @returns The blocks to move, in order.
+ */
+function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] {
+  const doc = editor.prosemirrorView.state.doc;
+  const around = blocks.map((block) => cellAndTableOf(doc, block.id));
+  const firstCell = around[0]?.cell ?? null;
+  const oneCell =
+    firstCell !== null &&
+    blocks.every((block, index) => !TABLE_PARTS.has(block.type) && around[index]!.cell === firstCell);
+  if (oneCell) return [...blocks];
+  const units: BlockLike[] = [];
+  const seen = new Set<string>();
+  blocks.forEach((block, index) => {
+    const tableId = around[index]!.table;
+    const unit = tableId === null ? block : editor.getBlock(tableId);
+    if (unit !== undefined && !seen.has(unit.id)) {
+      seen.add(unit.id);
+      units.push(unit);
+    }
+  });
+  return units;
+}
+
+/**
+ * Where the rows go on the way up. A block at the top of a cell stays; a
+ * table above is passed as one block.
  * @param editor - The editor.
  * @param first - The first row being moved.
  * @returns The place, or null when nothing is above to move past.
@@ -71,18 +132,19 @@ function placementUp(editor: MoveEditor, first: BlockLike): Placement | null {
   const prev = editor.getPrevBlock(first);
   if (prev === undefined) {
     const parent = editor.getParentBlock(first);
-    return parent === undefined
+    return parent === undefined || TABLE_PARTS.has(parent.type)
       ? null
       : { referenceId: parent.id, side: 'before' };
   }
-  const under = prev.children[prev.children.length - 1];
+  const under = prev.type === DOC_TABLE ? undefined : prev.children[prev.children.length - 1];
   return under === undefined
     ? { referenceId: prev.id, side: 'before' }
     : { referenceId: under.id, side: 'after' };
 }
 
 /**
- * Where the rows go on the way down.
+ * Where the rows go on the way down. A block at the bottom of a cell stays; a
+ * table below is passed as one block.
  * @param editor - The editor.
  * @param last - The last row being moved.
  * @returns The place, or null when nothing is below to move past.
@@ -91,11 +153,11 @@ function placementDown(editor: MoveEditor, last: BlockLike): Placement | null {
   const next = editor.getNextBlock(last);
   if (next === undefined) {
     const parent = editor.getParentBlock(last);
-    return parent === undefined
+    return parent === undefined || TABLE_PARTS.has(parent.type)
       ? null
       : { referenceId: parent.id, side: 'after' };
   }
-  const under = next.children[0];
+  const under = next.type === DOC_TABLE ? undefined : next.children[0];
   return under === undefined
     ? { referenceId: next.id, side: 'after' }
     : { referenceId: under.id, side: 'before' };
@@ -173,9 +235,9 @@ export function moveRowsFromKeyboard(
   direction: 'up' | 'down',
 ): void {
   const view = editor.prosemirrorView;
-  const blocks = editor.getSelection()?.blocks ?? [
+  const blocks = unitsOf(editor, editor.getSelection()?.blocks ?? [
     editor.getTextCursorPosition().block,
-  ];
+  ]);
   const first = blocks[0];
   const last = blocks[blocks.length - 1];
   if (first === undefined || last === undefined) return;

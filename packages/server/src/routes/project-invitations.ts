@@ -23,8 +23,9 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
-/** Create-invite body — a registered email + the granted role (never owner). */
+/** Create-invite body — recipient mailbox and granted role (never owner). */
 const inviteCreateSchema = z.object({
   email: emailSchema,
   role: z.enum(["editor", "viewer"]),
@@ -35,33 +36,36 @@ const projectInvites = new Hono<{ Variables: AuthRoleVariables }>();
 projectInvites.use(requireAuth);
 
 /**
- * `POST /api/v1/projects/:pid/invitations` — invite a registered user (by
- * email) to the project. Owner-only; creates a PENDING invite + an actionable
- * bell notification, and (best-effort) sends an email link. The invitee becomes
- * a member only on confirm (invite-confirm handshake). The invitee reaches it
- * through the bell row and the email, which carry the same `/decision?token=`
- * link; the owner's response carries neither the link nor the token.
- * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
- *   `403` caller not owner, `409` already has access or already invited
+ * `POST /api/v1/projects/:pid/invitations` — owner invites an account or mailbox.
+ * Account invitations create a notification and optional best-effort mail;
+ * unregistered mailboxes require enabled mail and a signup-mail enqueue.
+ * Matching verified signup converts the original invitation and creates its
+ * notification. Membership requires explicit confirmation at `/decision?token=`.
+ * The owner's response carries neither the link nor the token.
+ * @returns `201` with `{ data: { ok: true, pendingSignup: boolean } }`;
+ *   `404` target/invitation closed or unregistered mailbox with mail disabled;
+ *   `403` caller not owner; `409` member, duplicate, capacity or mail enqueue
+ *   failure; `429` shared invitation quota exceeded.
  */
 projectInvites.post(
   "/",
   requireRole("owner"),
+  rateLimitFor("invite", "user"),
   validate("json", inviteCreateSchema),
   async (c) => {
     const user = c.get("user");
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
-    // The optional best-effort invite email is sent inside the service (the bell
-    // notification is the always-delivered path); the route only passes the Origin.
-    await projectInviteService.createInvite(
+    // The shared service settles account notifications and signup mail;
+    // the route supplies the trusted frontend origin.
+    const result = await projectInviteService.createInvite(
       projectId,
       user.id,
       body.email,
       body.role,
       frontendOrigin(c.req.header("Origin")),
     );
-    return c.json({ data: { ok: true } }, 201);
+    return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },
 );
 

@@ -45,7 +45,7 @@ vi.mock('@web/pages/project/SpaceOutlet', async () => {
   };
 });
 
-vi.mock('@web/spaces/document/document-intercept-guard', () => ({
+vi.mock('@web/spaces/document/DocumentInterceptGuard', () => ({
   DocumentInterceptGuard: (): null => null,
 }));
 

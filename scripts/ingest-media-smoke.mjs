@@ -13,7 +13,26 @@ const fixture = join(directory, 'video.mp4');
 // The upright cases (inner#1367): the photo is served at /photo, and the
 // container writes the upright picture back to /upright with its pixel size.
 const upright = { photo: null, written: null, headers: null, answer: 200 };
+// The peaks cases (inner#1305): each file at its own path under /media/.
+const served = new Map();
 const origin = createServer(async (req, res) => {
+  if (req.url?.startsWith('/media/') && served.has(req.url)) {
+    // Ranged like the Worker's own object route (src/media-object-route.ts):
+    // an m4a whose index sits at its end is read by seeking there.
+    const bytes = readFileSync(served.get(req.url));
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+    if (range === null) {
+      res.writeHead(200, { 'accept-ranges': 'bytes', 'content-length': bytes.length });
+      res.end(bytes);
+      return;
+    }
+    const start = Number(range[1]);
+    const end = range[2] === '' ? bytes.length - 1 : Math.min(Number(range[2]), bytes.length - 1);
+    res.writeHead(206, { 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${bytes.length}`,
+      'content-length': end - start + 1 });
+    res.end(bytes.subarray(start, end + 1));
+    return;
+  }
   if (req.url === '/photo') {
     res.writeHead(200);
     res.end(upright.photo);
@@ -92,6 +111,47 @@ try {
       assert.deepEqual(Buffer.from(await cover.arrayBuffer()).subarray(0, 8),
         Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     } else assert.equal(cover, null);
+  }
+  // inner#1305 §4.4: audio answers a peaks file, a video with sound does not.
+  // The long one runs past 131 s, so ffmpeg writes more than the 4 MiB a
+  // buffering runner would hold; the mp3 carries album art, which is not a
+  // picture of its own.
+  const art = join(directory, 'art.png');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=32x32', '-frames:v', '1', art], { timeout: 30000 });
+  const sounds = {
+    'long.m4a': ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=140', '-c:a', 'aac'],
+    'art.mp3': ['-f', 'lavfi', '-i', 'sine=frequency=330:duration=5', '-i', art, '-map', '0', '-map', '1',
+      '-c:a', 'libmp3lame', '-c:v', 'mjpeg', '-disposition:v', 'attached_pic'],
+    'clip.mp4': ['-f', 'lavfi', '-i', 'color=c=blue:s=64x48:r=10:d=2', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=2',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest'],
+  };
+  for (const [name, args] of Object.entries(sounds)) {
+    const file = join(directory, name);
+    execFileSync('ffmpeg', ['-v', 'error', ...args, file], { timeout: 60000 });
+    served.set(`/media/${name}`, file);
+  }
+  for (const [name, wantsPeaks, count] of [['long.m4a', true, 1000], ['art.mp3', true, 1000], ['clip.mp4', false, 0]]) {
+    const answer = await fetch('http://127.0.0.1:8080/probe', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/media/${name}`,
+        wantCover: false, wantPeaks: true, deadlineAt: Date.now() + 25000 }), signal: AbortSignal.timeout(25000),
+    });
+    assert.equal(answer.status, 200, `${name}: answered`);
+    const peaks = (await answer.formData()).get('peaks');
+    if (!wantsPeaks) {
+      assert.equal(peaks, null, `${name}: no peaks for a video`);
+      continue;
+    }
+    assert.ok(peaks !== null, `${name}: peaks answered`);
+    assert.equal(peaks.type, 'application/json', `${name}: peaks typed`);
+    const file = JSON.parse(await peaks.text());
+    assert.equal(file.version, 1, `${name}: version`);
+    assert.equal(file.peaks.length, count, `${name}: one value per stretch`);
+    assert.ok(file.peaks.every(value => Number.isInteger(value) && value >= 0 && value <= 255), `${name}: values in range`);
+    // lavfi's sine plays at an eighth of full scale, which reads as 32; the
+    // encoders overshoot near the edges, so the middle value is what is held.
+    const middle = [...file.peaks].sort((a, b) => a - b)[file.peaks.length >> 1];
+    assert.ok(middle >= 28 && middle <= 40, `${name}: the tone reads at its level, got ${middle}`);
   }
   // Stored 64x48 with the top half red. Where that half is shown, per EXIF
   // orientation, is where it has to be once the picture is turned upright.
@@ -173,7 +233,7 @@ try {
     method: 'POST', body: '{}', signal: AbortSignal.timeout(1000),
   });
   assert.equal(invalid.status, 400);
-  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, upright JPEG for orientations 1-8, PNG and WebP at 6, ICC kept, refused write-back and invalid request.');
+  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, audio peaks (long m4a, mp3 with art, none for video), upright JPEG for orientations 1-8, PNG and WebP at 6, ICC kept, refused write-back and invalid request.');
 } finally {
   service?.kill();
   origin.closeAllConnections();

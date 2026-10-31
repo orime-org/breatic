@@ -14,7 +14,8 @@ import { describe, it, expect } from 'vitest';
 import type { CanvasProposal, ProposalNode } from '@breatic/shared';
 
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import { estimateHeight, planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
+import { GUIDE_STEP_PX, LAYER_STEP_PX, estimateHeight, planFlowLayout, type Placed } from '@web/spaces/canvas/lib/place-flow';
+import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width';
 
 const AT = { x: 1000, y: 500 };
 
@@ -162,8 +163,10 @@ describe('how tall a node is taken to be', () => {
     };
     const tall: ProposalNode = { ...photo, type: 'video', materialMedia: { ...photo.materialMedia!, width: 720, height: 1280 } };
 
-    expect(estimateHeight(photo)).toBe(280 * 0.75 + 8);
-    expect(estimateHeight(tall)).toBeCloseTo((280 * 1280) / 720 + 8);
+    // A 400×300 picture's node measures 218.5 in the browser: 1px border and
+    // 4px inset on each side around a 278-wide picture.
+    expect(estimateHeight(photo)).toBe(278 * 0.75 + 10);
+    expect(estimateHeight(tall)).toBeCloseTo((278 * 1280) / 720 + 10);
   });
 
   it('keeps the standard footprint for material it has no numbers for', () => {
@@ -200,5 +203,86 @@ describe('how tall a node is taken to be', () => {
     const latin = written('Copy', 'abc'.repeat(200));
 
     expect(estimateHeight(cjk)).toBeGreaterThan(estimateHeight(latin));
+  });
+});
+
+describe('where a template guide lands (inner#1345)', () => {
+  /**
+   * The guide text node a template places beside its anchor.
+   * @param anchor - The anchor's index in the proposal.
+   * @returns The guide node.
+   */
+  const guide = (anchor: number): ProposalNode =>
+    ({
+      role: 'written',
+      type: 'text',
+      name: 'Fixture template',
+      prompt: [{ text: 'Fixture template\n1. Split the grid\n2. Upscale each cell' }],
+      templateNode: { template: 'fx', key: 'guide', anchor },
+    }) as ProposalNode;
+
+  /**
+   * Whether two footprints share any area.
+   * @param a - One footprint.
+   * @param b - The other.
+   * @returns True when they overlap.
+   */
+  const overlaps = (a: Placed, b: Placed): boolean =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+  it('puts the guide one guide step left of an anchor nothing in the proposal feeds', () => {
+    const placed = planFlowLayout(flow([generates('Anchor'), guide(0)]), AT);
+
+    expect(placed[1]!.x).toBe(placed[0]!.x - GUIDE_STEP_PX);
+  });
+
+  it('puts the guide one guide step left of an anchor one node feeds', () => {
+    const placed = planFlowLayout(flow([empty('Reference'), generates('Anchor'), guide(1)], [[0, 1]]), AT);
+
+    expect(placed[2]!.x).toBe(placed[1]!.x - GUIDE_STEP_PX);
+    expect(overlaps(placed[2]!, placed[0]!)).toBe(false);
+  });
+
+  it('puts the guide one guide step left of an anchor two layers downstream', () => {
+    const placed = planFlowLayout(
+      flow([empty('Reference'), generates('Sketch'), generates('Anchor'), guide(2)], [[0, 1], [1, 2]]),
+      AT,
+    );
+
+    expect(placed[3]!.x).toBe(placed[2]!.x - GUIDE_STEP_PX);
+    expect(placed[3]!.x).toBe(placed[1]!.x);
+    expect(overlaps(placed[3]!, placed[1]!)).toBe(false);
+  });
+
+  it('keeps the guide one guide step left of, and clear of, a 9:16 anchor whose reference is wired already', () => {
+    // The panel hands the anchor and the reference it already has as
+    // placeholders, with no edge between them: the canvas holds that edge.
+    const tall = {
+      ...generates('Anchor'),
+      materialMedia: { mimeType: 'image/png', width: 1080, height: 1920, coverUrl: null, duration: null, size: 1 },
+    } as ProposalNode;
+    const placed = planFlowLayout(flow([tall, empty('Reference'), guide(0)]), AT);
+
+    expect(placed[2]!.x).toBe(placed[0]!.x - GUIDE_STEP_PX);
+    expect(overlaps(placed[2]!, placed[0]!)).toBe(false);
+  });
+
+  it('leaves the column gap between the guide and the generate panel opened on its anchor, at 100% zoom', () => {
+    const placed = planFlowLayout(flow([empty('Reference'), generates('Anchor'), guide(1)], [[0, 1]]), AT);
+    const anchor = placed[1]!;
+    const panelLeft = anchor.x + anchor.width / 2 - GENERATE_PANEL_WIDTH_PX / 2;
+
+    expect(panelLeft - (placed[2]!.x + placed[2]!.width)).toBe(LAYER_STEP_PX - EMPTY_NODE_SIZE.width);
+    // The reference shares the guide's column, so it stays stacked with it.
+    expect(placed[0]!.x).toBe(placed[2]!.x);
+  });
+
+  it('keeps every other column one layer step apart', () => {
+    const placed = planFlowLayout(
+      flow([empty('Reference'), generates('Sketch'), generates('Anchor'), guide(2)], [[0, 1], [1, 2]]),
+      AT,
+    );
+
+    expect(placed[1]!.x - placed[0]!.x).toBe(LAYER_STEP_PX);
   });
 });

@@ -88,6 +88,8 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   handling: 'other',
   taskCounts: 'other',
   taskResultEventId: 'other',
+  // Which template node it was placed as: part of who the node is.
+  templateNode: 'identity',
   width: 'other',
   height: 'other',
   mediaWidth: 'other',

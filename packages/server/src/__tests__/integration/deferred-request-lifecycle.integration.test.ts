@@ -9,8 +9,8 @@
  *
  *   - a request that has genuinely stopped being answerable (timed out, or its
  *     premise gone) must be pushed to a terminal status and have its bell entry
- *     retired — nothing else will ever do it, since "expired" is by definition
- *     the case where nobody came;
+ *     retired — nothing else will ever do it, since a timed-out request is by
+ *     definition the case where nobody came;
  *   - a request refused because the CALLER lacks standing must be left exactly
  *     as it was, because it is still perfectly valid for whoever does.
  *
@@ -129,26 +129,34 @@ async function insertUser(tag: string): Promise<string> {
 }
 
 /**
- * Read a request row's status and whether its bell entry is still unread.
+ * Read a request row's status, why it failed if it did, and whether its bell
+ * entry is still unread.
  * @param table - Request table name.
  * @param id - Request id.
- * @returns The status and the bell entry's read state.
+ * @returns The status, the failure reason when there is one, and the bell
+ *   entry's read state.
  */
 async function stateOf(
   table: string,
   id: string,
-): Promise<{ status: string; bellUnread: boolean }> {
-  const rows = await sql<{ status: string; notification_id: string | null }[]>`
-    SELECT status, notification_id FROM ${sql(table)} WHERE id = ${id}
+): Promise<{ status: string; failedReason?: string; bellUnread: boolean }> {
+  const rows = await sql<
+    { status: string; failed_reason: string | null; notification_id: string | null }[]
+  >`
+    SELECT status, failed_reason, notification_id FROM ${sql(table)} WHERE id = ${id}
   `;
   const row = rows[0]!;
+  const outcome = {
+    status: row.status,
+    ...(row.failed_reason !== null && { failedReason: row.failed_reason }),
+  };
   if (row.notification_id === null) {
-    return { status: row.status, bellUnread: false };
+    return { ...outcome, bellUnread: false };
   }
   const notices = await sql<{ read_at: Date | null }[]>`
     SELECT read_at FROM notifications WHERE id = ${row.notification_id}
   `;
-  return { status: row.status, bellUnread: notices[0]?.read_at == null };
+  return { ...outcome, bellUnread: notices[0]?.read_at == null };
 }
 
 /**
@@ -189,7 +197,7 @@ async function liveRequestId(
 }
 
 describe("a timed-out request is written down by the decision that meets it", () => {
-  it("role upgrade: the row lands `expired` and the bell entry is retired", async () => {
+  it("role upgrade: the row fails as `expired` and the bell entry is retired", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
     await roleUpgradeService.request({
       requesterUserId: memberId,
@@ -210,12 +218,13 @@ describe("a timed-out request is written down by the decision that meets it", ()
     // Nothing else will ever do this. Left `pending`, the row holds this
     // requester's slot for good and the dead bell entry keeps its buttons.
     expect(await stateOf("role_upgrade_requests", requestId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
 
-  it("project transfer: the row lands `expired` and the bell entry is retired", async () => {
+  it("project transfer: the row fails as `expired` and the bell entry is retired", async () => {
     const { ownerId, memberId, projectId } = await seedScene();
     await projectTransferService.requestProjectTransfer(
       projectId,
@@ -236,12 +245,13 @@ describe("a timed-out request is written down by the decision that meets it", ()
     // For a transfer the stranded slot is the whole project: left `pending`,
     // this project could never be transferred again.
     expect(await stateOf("project_transfers", transferId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
 
-  it("studio transfer: the row lands `expired` and the bell entry is retired", async () => {
+  it("studio transfer: the row fails as `expired` and the bell entry is retired", async () => {
     const { ownerId, memberId, studioId, studioSlug } = await seedScene();
     await studioTransferService.requestTransfer(studioSlug, ownerId, memberId);
     const transferId = await liveRequestId(
@@ -256,7 +266,8 @@ describe("a timed-out request is written down by the decision that meets it", ()
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await stateOf("studio_transfers", transferId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
@@ -287,7 +298,8 @@ describe("a request whose premise is gone is written down too", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await stateOf("role_upgrade_requests", requestId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "invalidated",
       bellUnread: false,
     });
   });
@@ -314,7 +326,8 @@ describe("a request whose premise is gone is written down too", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await stateOf("role_upgrade_requests", requestId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "invalidated",
       bellUnread: false,
     });
   });
@@ -343,7 +356,8 @@ describe("a request whose premise is gone is written down too", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await stateOf("project_transfers", transferId)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "invalidated",
       bellUnread: false,
     });
   });
@@ -452,7 +466,8 @@ describe("reaping takes the bell entry down with the row", () => {
     });
 
     expect(await stateOf("role_upgrade_requests", first)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
@@ -470,7 +485,8 @@ describe("reaping takes the bell entry down with the row", () => {
     await studioTransferService.requestTransfer(studioSlug, ownerId, memberId);
 
     expect(await stateOf("studio_transfers", first)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
@@ -496,7 +512,8 @@ describe("reaping takes the bell entry down with the row", () => {
     );
 
     expect(await stateOf("project_transfers", first)).toEqual({
-      status: "expired",
+      status: "failed",
+      failedReason: "expired",
       bellUnread: false,
     });
   });
@@ -737,9 +754,10 @@ describe("one live request at a time, and a dead one never blocks", () => {
         projectName: "Demo",
       }),
     ).resolves.toBeTruthy();
-    expect((await stateOf("role_upgrade_requests", first)).status).toBe(
-      "expired",
-    );
+    expect(await stateOf("role_upgrade_requests", first)).toMatchObject({
+      status: "failed",
+      failedReason: "expired",
+    });
   });
 
   it("project transfer: a second live offer is refused even to another person", async () => {

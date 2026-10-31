@@ -145,7 +145,7 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   }
   // Material reaches a generation only through fills or an edge into the
   // pool; held anywhere else it lands beside the work with nothing using it.
-  const unused = proposal.nodes.find((node) => node.material !== undefined && !sent.has(node));
+  const unused = proposal.nodes.find((node) => (node.material !== undefined || node.resource !== undefined) && !sent.has(node));
   if (unused) {
     return refuse("material-unused", `"${unused.name}" holds material that nothing here uses, and material reaches a generation only through fills or an edge into its pool. ${waysAcrossGroup(proposal, unused)}`);
   }

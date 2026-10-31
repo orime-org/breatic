@@ -4,7 +4,7 @@
 import type * as React from 'react';
 import { configuredErrorEventId } from '@web/lib/error-monitoring';
 import { ErrorBoundary, type FallbackRender, type Scope } from '@sentry/react';
-import { ApplicationErrorPage } from '@web/components/application-error-page';
+import { ApplicationErrorPage } from '@web/components/ApplicationErrorPage';
 
 /**
  * Identify failures outside the route and component-specific boundaries.

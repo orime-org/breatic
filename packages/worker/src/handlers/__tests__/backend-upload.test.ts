@@ -34,6 +34,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 const { storeBytes, storeFromUrl } = await import(
   "@worker/handlers/backend-upload.js"
 );
+const { UploadOpenFailed, INGEST_SIDE_EFFECT_EVENTS } = await import("@breatic/domain");
+const { INGEST_NO_ANSWER, UploadHttpError } = await import("@breatic/shared");
 
 const ctx = {
   projectId: "p-1",
@@ -147,6 +149,83 @@ describe("storing bytes", () => {
     // Four, because the table has four entries. A flag added to the library
     // without a line there would leave this at four while five can fail.
     expect(error).toHaveBeenCalledTimes(4);
+  });
+});
+
+// Lane ② opens its upload at the Worker before sending a byte (inner#1595).
+// When that open fails, the domain has already settled the grant and the task
+// row; whatever settling could not do beside it comes back on the error, and
+// this is the only place the worker writes it down.
+describe("storing bytes whose upload could not be opened", () => {
+  const flags = Object.keys(INGEST_SIDE_EFFECT_EVENTS) as (keyof typeof INGEST_SIDE_EFFECT_EVENTS)[];
+
+  it("T48: records each side effect settling raised, then throws the same error", async () => {
+    expect(flags).toHaveLength(5);
+    // Two of the five raised, three not.
+    const raised = flags.filter((_, i) => i === 0 || i === 3);
+    const settled = {
+      status: "voided" as const,
+      ...Object.fromEntries(flags.map((flag) => [flag, raised.includes(flag)])),
+    };
+    const failed = new UploadOpenFailed({
+      storageKey: "k-1",
+      reason: "store_failed",
+      settled,
+      cause: new UploadHttpError(502, "store_failed"),
+    });
+    uploadBytesToStorage.mockRejectedValue(failed);
+
+    await expect(storeBytes(new Blob(["x"]), ctx)).rejects.toBe(failed);
+
+    expect(error).toHaveBeenCalledTimes(2);
+    expect(error.mock.calls.map((call) => call[1]).sort()).toEqual(
+      raised.map((flag) => INGEST_SIDE_EFFECT_EVENTS[flag]).sort(),
+    );
+  });
+
+  it("T48: records nothing when settling raised nothing, and still throws the same error", async () => {
+    const settled = {
+      status: "voided" as const,
+      ...Object.fromEntries(flags.map((flag) => [flag, false])),
+    };
+    const failed = new UploadOpenFailed({
+      storageKey: "k-1",
+      reason: "store_failed",
+      settled,
+      cause: new UploadHttpError(502, "store_failed"),
+    });
+    uploadBytesToStorage.mockRejectedValue(failed);
+
+    await expect(storeBytes(new Blob(["x"]), ctx)).rejects.toBe(failed);
+
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // The settling error travels on the thrown error to whoever handles it.
+  it("T49: only throws the same error when settling failed too", async () => {
+    const failed = new UploadOpenFailed({
+      storageKey: "k-1",
+      reason: INGEST_NO_ANSWER,
+      settleError: new Error("db down"),
+      cause: new TypeError("fetch failed"),
+    });
+    uploadBytesToStorage.mockRejectedValue(failed);
+
+    await expect(storeBytes(new Blob(["x"]), ctx)).rejects.toBe(failed);
+
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a plain error", () => new Error("boom")],
+    ["a Worker refusal", () => new UploadHttpError(502, "store_failed")],
+  ])("T49: passes %s through untouched", async (_label, make) => {
+    const err = make();
+    uploadBytesToStorage.mockRejectedValue(err);
+
+    await expect(storeBytes(new Blob(["x"]), ctx)).rejects.toBe(err);
+
+    expect(error).not.toHaveBeenCalled();
   });
 });
 

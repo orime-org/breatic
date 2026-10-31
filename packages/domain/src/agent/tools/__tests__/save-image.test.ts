@@ -140,11 +140,13 @@ describe("save_image", () => {
   });
 
   it.each([
-    ["link", "source_unreachable", FAILURE_LINES.unreachable],
-    ["link", "unsupported_type", FAILURE_LINES.generic],
-    ["rate_limited", undefined, FAILURE_LINES.generic],
-    ["storage_full", undefined, FAILURE_LINES.generic],
-    ["no_access", undefined, FAILURE_LINES.generic],
+    ["link", "source_unreachable", FAILURE_LINES.linkUnreachable],
+    ["link", "unsupported_type", FAILURE_LINES.unsupportedType],
+    ["link", "over_cap", FAILURE_LINES.fileTooLarge],
+    ["link", "empty", FAILURE_LINES.emptyFile],
+    ["rate_limited", undefined, FAILURE_LINES.tooFrequent],
+    ["storage_full", undefined, FAILURE_LINES.storageFull],
+    ["no_access", undefined, FAILURE_LINES.noPermission],
   ] as const)("says what a %s refusal (%s) means", async (kind, detail, line) => {
     const save = vi.fn<SaveToStorage>().mockRejectedValue(new SaveRefused(kind, detail));
 
@@ -175,7 +177,7 @@ describe("save_image", () => {
     const failure = toolFailureOf(thrown);
 
     expect(failure?.kind).toBe("tool_failed");
-    expect(failure && "readerKey" in failure ? failure.readerKey : undefined).toBe(FAILURE_LINES.generic);
+    expect(failure && "readerKey" in failure ? failure.readerKey : undefined).toBe(FAILURE_LINES.ourFault);
     expect((thrown as Error).cause, "the turn's log keeps what broke").toBe(down);
   });
 });

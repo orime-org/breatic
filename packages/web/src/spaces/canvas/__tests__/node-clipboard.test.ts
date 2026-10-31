@@ -214,6 +214,15 @@ describe('cloneForPaste', () => {
     expect(typeof nodes[0]?.data.createdAt).toBe('number');
   });
 
+  // A result node still waiting carries the size its picture will have; that
+  // belongs to its run, and the copy has none (copy carries content, not state).
+  it('leaves the media fields of a node that holds nothing behind', () => {
+    const p = payload([node('a', 'image', { x: 0, y: 0 }, { name: 'ADJUST-x', mediaWidth: 1000, mediaHeight: 4000 })]);
+    const [clone] = cloneForPaste(p, 'u-7', { dx: 0, dy: 0 }).nodes;
+    expect(clone?.data).not.toHaveProperty('mediaWidth');
+    expect(clone?.data).not.toHaveProperty('mediaHeight');
+  });
+
   it('keeps a video copy\'s six media fields, so the cut panel can lay frames on it', () => {
     const media = {
       coverUrl: 'clip-cover.jpg',
@@ -463,5 +472,60 @@ describe('stepPastOccupied (inner#1235 A20)', () => {
 
   it('steps the whole batch when any one node would land on a taken spot', () => {
     expect(stepPastOccupied([{ x: 0, y: 0 }, { x: 400, y: 300 }], [{ x: 400, y: 300 }])).toEqual({ dx: 24, dy: 24 });
+  });
+});
+
+describe('cloneForPaste — template node tags (inner#1345)', () => {
+  it('points a copied guide at the copy of its anchor when the anchor is copied too', () => {
+    const out = cloneForPaste(
+      payload([
+        node('a', 'image', { x: 0, y: 0 }, { name: 'Anchor' }),
+        node('g', 'text', { x: -360, y: 0 }, { name: 'Guide', templateNode: { template: 'fx', key: 'guide', anchor: 'a' } }),
+      ]),
+      'u2',
+      { dx: 0, dy: 0 },
+    );
+
+    const guide = out.nodes.find((n) => n.id === out.idMap.get('g'));
+    expect(guide?.data.templateNode).toEqual({ template: 'fx', key: 'guide', anchor: out.idMap.get('a') });
+  });
+
+  it('points the guide of a copied group at the copied anchor inside it', () => {
+    const out = cloneForPaste(
+      payload([
+        node('grp', 'group', { x: 0, y: 0 }, { name: 'G', width: 800, height: 400 }),
+        node('a', 'image', { x: 400, y: 40 }, { name: 'Anchor' }, { parentId: 'grp' }),
+        node('g', 'text', { x: 40, y: 40 }, { name: 'Guide', templateNode: { template: 'fx', key: 'guide', anchor: 'a' } }, { parentId: 'grp' }),
+      ]),
+      'u2',
+      { dx: 10, dy: 10 },
+    );
+
+    const guide = out.nodes.find((n) => n.id === out.idMap.get('g'));
+    expect(guide?.data.templateNode).toEqual({ template: 'fx', key: 'guide', anchor: out.idMap.get('a') });
+  });
+
+  it('keeps the anchor of a guide copied without it', () => {
+    const out = cloneForPaste(
+      payload([node('g', 'text', { x: 0, y: 0 }, { name: 'Guide', templateNode: { template: 'fx', key: 'guide', anchor: 'a' } })]),
+      'u2',
+      { dx: 0, dy: 0 },
+    );
+
+    expect(out.nodes[0]?.data.templateNode).toEqual({ template: 'fx', key: 'guide', anchor: 'a' });
+  });
+
+  it('copies a template node tag that names no anchor as it is', () => {
+    const out = cloneForPaste(
+      payload([
+        node('a', 'image', { x: 0, y: 0 }, { name: 'Anchor' }),
+        node('u', 'image', { x: -360, y: 0 }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } }),
+      ]),
+      'u2',
+      { dx: 0, dy: 0 },
+    );
+
+    const up = out.nodes.find((n) => n.id === out.idMap.get('u'));
+    expect(up?.data.templateNode).toEqual({ template: 'fx', key: 'up' });
   });
 });

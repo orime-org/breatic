@@ -24,6 +24,8 @@
  * direction of charging somebody who asked to stop.
  */
 
+import { takeCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
+import { reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
 import type Stripe from "stripe";
 import {
   AppError,
@@ -38,6 +40,7 @@ import {
   logger,
   subscriptionClock,
   subscriptionSituation,
+  trackServerEvent,
 } from "@breatic/core";
 import type {
   SituationReading,
@@ -124,7 +127,7 @@ async function storeAnswer(input: {
     );
     return null;
   }
-  await writeSnapshot(input.userId, read.write, input.referenceId);
+  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata);
   return read.write;
 }
 
@@ -134,12 +137,14 @@ async function storeAnswer(input: {
  * @param userId - The account.
  * @param write - The snapshot.
  * @param referenceId - Identifies the change in the tier ledger.
+ * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
  * @throws {Error} if the database fails.
  */
 async function writeSnapshot(
   userId: string,
   write: SubscriptionWrite,
   referenceId: string,
+  metadata: Record<string, unknown>,
 ): Promise<void> {
   const applied = await db.transaction((tx) =>
     applySubscriptionWrite({ userId, write, referenceId, tx }),
@@ -147,6 +152,7 @@ async function writeSnapshot(
   // After the commit: an email about a change that then rolled back cannot be
   // recalled.
   if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
+  if (applied.started) reportSubscriptionStarted(write, metadata);
 }
 
 /**
@@ -248,6 +254,7 @@ export async function startCheckout(input: {
   }
 
   const customerId = await ensureCustomer(input.userId);
+  const snapshot = await takeCheckoutSnapshot(input.userId);
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -261,8 +268,9 @@ export async function startCheckout(input: {
       },
     ],
     // Reaches the subscription object, which is what events carry. Top-level
-    // metadata and `client_reference_id` stop at the Session.
-    subscription_data: { metadata: { userId: input.userId } },
+    // metadata and `client_reference_id` stop at the Session. The subscribing
+    // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
+    subscription_data: { metadata: { userId: input.userId, ...toStripeMetadata(snapshot) } },
     client_reference_id: input.userId,
     // The subscription keeps this, so renewals and upgrade invoices are taxed
     // too. Checkout taxes on the address stored on the customer, which starts
@@ -290,6 +298,7 @@ export async function startCheckout(input: {
  * stored `observedAt` keeps from winning.
  * @param userId - The account the buyer is signed in as.
  * @param sessionId - The Checkout Session the return address named.
+ * @returns The subscription as stored.
  * @throws {NotFoundError} if the session is not a membership checkout of this
  *   account's, or Stripe has no such session.
  * @throws {AppError} `503` if the session holds no subscription yet, or holds
@@ -300,7 +309,7 @@ export async function startCheckout(input: {
 export async function confirmCheckout(
   userId: string,
   sessionId: string,
-): Promise<void> {
+): Promise<SubscriptionWrite> {
   // Stamped before the call: the moment that decides which of two writers
   // holds the newer view is when each of them asked.
   const observedAt = new Date();
@@ -338,6 +347,7 @@ export async function confirmCheckout(
     logContext: { sessionId },
   });
   if (stored === null) throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  return stored;
 }
 
 /**
@@ -751,6 +761,15 @@ export async function cancel(userId: string): Promise<Stripe.Subscription> {
     subscription: updated,
     observedAt: askedAt,
     referenceId: `action:cancel:${record.stripeSubscriptionId}`,
+  });
+  const periodEnd = updated.items.data[0]?.current_period_end;
+  trackServerEvent("subscription_cancelled", {
+    userId,
+    insertId: `cancel:${record.stripeSubscriptionId}:${askedAt.toISOString()}`,
+    properties: {
+      tier: record.tier,
+      ends_at: periodEnd ? new Date(periodEnd * 1000).toISOString() : undefined,
+    },
   });
   return updated;
 }

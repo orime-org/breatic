@@ -41,6 +41,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
+import type * as CoreModule from "@breatic/core";
 import type { Redis } from "@breatic/core";
 import * as Y from "yjs";
 
@@ -66,7 +68,9 @@ const {
 //   - createLogger: the unified core logger factory, mocked to expose
 //     the warn/error spies the log-trail assertions below check
 //   - sessionCookieName(): the per-deployment cookie name
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  listedContentDocNames: (await importOriginal<typeof CoreModule>()).listedContentDocNames,
+  sessionId: (await importOriginal<typeof CoreModule>()).sessionId,
   env: { ALLOWED_ORIGINS: "https://app.example.com" },
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
@@ -112,7 +116,8 @@ function watchedDocuments(entries: ReadonlyArray<[string, Y.Doc]>): {
  * Build a live meta doc — the in-memory object Hocuspocus keeps in
  * `instance.documents`, as opposed to the encoded bytes Postgres stores.
  * Used to stage the in-memory route of the space-existence check.
- * @param ids - Space ids to place in `meta.spaces`.
+ * @param ids - Space ids to place in `meta.spaces`; {@link DOC_SID} is a
+ *   document Space, every other id a canvas Space.
  * @returns The meta `Y.Doc`.
  */
 function liveMetaWithSpaces(ids: string[]): Y.Doc {
@@ -122,6 +127,7 @@ function liveMetaWithSpaces(ids: string[]): Y.Doc {
     const entry = new Y.Map();
     spaces.set(id, entry);
     entry.set("id", id);
+    entry.set("type", id === DOC_SID ? "document" : "canvas");
   }
   return doc;
 }
@@ -130,6 +136,7 @@ const mockRedis = {} as unknown as Redis;
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
+const DOC_SID = "33333333-3333-4333-9333-333333333333";
 const PLACEHOLDER_TOKEN = "__cookie_auth__";
 
 describe("createAuthHook", () => {
@@ -207,7 +214,7 @@ describe("createAuthHook", () => {
     const documents =
       overrides?.documents ??
       new Map<string, Y.Doc>([
-        [`project-${PID}/meta`, liveMetaWithSpaces([SID])],
+        [`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])],
       ]);
     const loadable = overrides?.loadable ?? new Map<string, Y.Doc>();
     const registry = {
@@ -373,6 +380,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "owner" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(false);
   });
@@ -412,6 +420,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "editor" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(true);
     // The meta doc never triggers the space-exists read.
@@ -446,7 +455,7 @@ describe("createAuthHook", () => {
 
     await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
       connectionConfig,
     });
@@ -1036,6 +1045,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "viewer" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     // SECURITY INVARIANT (root-caused 2026-06-18). The hook MUST mutate
     // connectionConfig.readOnly: Hocuspocus reads THIS when constructing
@@ -1061,12 +1071,12 @@ describe("createAuthHook", () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook({
-      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])]]),
     });
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
 
@@ -1086,11 +1096,27 @@ describe("createAuthHook", () => {
     await expect(
       hook({
         token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/document-${SID}`,
+        documentName: `project-${PID}/document-${DOC_SID}`,
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
     expect(createDocumentSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a content doc whose kind is not the listed Space's type", async () => {
+    // SID is a canvas Space. A document doc under the same id is a row the
+    // project never listed, so it would add one to the live Space count.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    const hook = buildHook();
+
+    await expect(
+      hook({
+        token: PLACEHOLDER_TOKEN,
+        documentName: `project-${PID}/document-${SID}`,
+        requestHeaders: withCookie("tok"),
+      }),
+    ).rejects.toThrow(/does not exist/);
   });
 
   it("treats a held list with no Spaces as an answer, not as absence", async () => {
@@ -1107,7 +1133,7 @@ describe("createAuthHook", () => {
     await expect(
       hook({
         token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/document-${SID}`,
+        documentName: `project-${PID}/document-${DOC_SID}`,
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
@@ -1119,12 +1145,12 @@ describe("createAuthHook", () => {
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook({
       documents: new Map(),
-      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])]]),
     });
 
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
 
@@ -1146,14 +1172,14 @@ describe("createAuthHook", () => {
     // would let it answer here.
     const hook = buildHook({
       documents: new Map([
-        [`project-${otherPid}/meta`, liveMetaWithSpaces([SID])],
+        [`project-${otherPid}/meta`, liveMetaWithSpaces([SID, DOC_SID])],
       ]),
-      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])]]),
     });
 
     await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
 
@@ -1175,7 +1201,7 @@ describe("createAuthHook", () => {
     await expect(
       hook({
         token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/document-${SID}`,
+        documentName: `project-${PID}/document-${DOC_SID}`,
         requestHeaders: withCookie("tok"),
       }),
     ).rejects.toThrow(/does not exist/);
@@ -1184,7 +1210,7 @@ describe("createAuthHook", () => {
   it("puts back a list it loaded, and only one it loaded", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
-    const loaded = liveMetaWithSpaces([SID]);
+    const loaded = liveMetaWithSpaces([SID, DOC_SID]);
     const hook = buildHook({
       documents: new Map(),
       loadable: new Map([[`project-${PID}/meta`, loaded]]),
@@ -1192,7 +1218,7 @@ describe("createAuthHook", () => {
 
     await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
 
@@ -1205,12 +1231,12 @@ describe("createAuthHook", () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook({
-      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+      documents: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])]]),
     });
 
     await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
 
@@ -1224,14 +1250,14 @@ describe("createAuthHook", () => {
     unloadDocumentSpy.mockRejectedValue(new Error("unload blew up"));
     const hook = buildHook({
       documents: new Map(),
-      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID])]]),
+      loadable: new Map([[`project-${PID}/meta`, liveMetaWithSpaces([SID, DOC_SID])]]),
     });
 
     // The handshake still succeeds: housekeeping failing is not the caller's
     // problem, but it must not disappear either.
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/document-${SID}`,
+      documentName: `project-${PID}/document-${DOC_SID}`,
       requestHeaders: withCookie("tok"),
     });
     expect(ctx.user.id).toBe("user-1");

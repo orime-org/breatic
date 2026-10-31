@@ -12,7 +12,7 @@
  *
  * These promises are invisible to unit tests. A unique index and an FK delete
  * rule are declared in the Drizzle schema, but migrations here are hand-written
- * and `db:generate` is not run, so the declaration is documentation and the
+ * and `drizzle-kit generate` is not run, so the declaration is documentation and the
  * migration is what actually creates them — only a real Postgres can prove they
  * are there. The behaviour they support — turn numbering under concurrency,
  * cascade soft delete, the round trip through parts — lives in

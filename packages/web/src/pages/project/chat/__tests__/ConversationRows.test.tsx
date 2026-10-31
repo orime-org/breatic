@@ -388,56 +388,6 @@ describe('while the next page is on its way', () => {
 });
 
 describe('when the next page cannot be fetched', () => {
-  it('says so in the place the loading was, and offers nothing to press', () => {
-    // 出错就在它该出现的位置说一句,不是给一个按钮。读者接着往下滑就再拉一次。
-    renderSheetFor({ hasMore: true, nextPageFailed: true });
-
-    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /重新|reload|retry/i })).toBeNull();
-  });
-
-  it('takes the line away on its own', async () => {
-    vi.useFakeTimers();
-    try {
-      renderSheetFor({ hasMore: true, nextPageFailed: true });
-      expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
-
-      await act(async () => {
-        vi.advanceTimersByTime(4000);
-      });
-
-      expect(screen.queryByTestId('conversation-list-more-failed')).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
-
-describe('what asks for the page again after one failed', () => {
-  let fire: (() => void) | undefined;
-
-  beforeEach(() => {
-    fire = undefined;
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
-          fire = () => cb([{ isIntersecting: true }]);
-        }
-        observe(): void {
-          // 真的观察者一开始观察就投递一次当前状态。末尾此刻还在视野里,
-          // 所以「重建观察者」本身就等于「再问一次」。
-          fire?.();
-        }
-        disconnect(): void {}
-      },
-    );
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('waits for the reader to reach the end again', () => {
     // 失败之后页面一个像素都没动。要是失败本身就能让观察者重建,重建又立刻
     // 上报「到底了」,请求就会一轮接一轮地打出去,而读者的手指一动没动。
@@ -464,12 +414,11 @@ describe('what asks for the page again after one failed', () => {
     expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);
   });
 
-  it('says so in the list, where the reader is looking', () => {
+  it('draws no line of its own at the foot of the list, since it is told in a toast', () => {
     renderSheetFor({ hasMore: true, onReachEnd: vi.fn(), nextPageFailed: true });
 
-    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-list-more-failed')).toBeNull();
   });
-
 });
 
 describe('when the sheet is taken away mid-confirmation', () => {
@@ -506,87 +455,5 @@ describe('what the list says while it is being fetched', () => {
 
     expect(screen.getByText('No previous conversations')).toBeInTheDocument();
     expect(screen.queryByTestId('conversation-list-loading')).toBeNull();
-  });
-});
-
-describe('a rename or a delete that did not work', () => {
-  it('says so in the list, where the reader is looking', () => {
-    // 这两件事只能从列表里发起,而列表盖住整个 Agent 列 —— 面板底部那条线在
-    // 抽屉底下,说什么读者都看不见。
-    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it', at: 1 } });
-
-    const said = screen.getByTestId('conversation-row-mishap');
-    expect(said).toHaveTextContent('Could not rename it');
-    expect(screen.getByTestId('conversation-c2')).toBeInTheDocument();
-  });
-
-  it('puts it against the row it is about', () => {
-    renderSheet({ rowMishap: { conversationId: 'c2', text: 'Could not rename it', at: 1 } });
-
-    const said = screen.getByTestId('conversation-row-mishap');
-    const row = screen.getByTestId('conversation-c2').closest('li');
-    expect(row?.nextElementSibling).toBe(said);
-  });
-
-  it('says it at the top when that row is not on this page', () => {
-    // 列表只有一页,而顶栏也能改名 —— 读者切到一条较早的会话再改名,那一条
-    // 多半不在这一页里。没有行可贴不等于没话可说:一句读者正等着的回音,不能
-    // 因为贴不到地方就整个消失。
-    renderSheet({
-      rowMishap: { conversationId: 'c-not-on-this-page', text: 'Could not rename it', at: 1 },
-    });
-
-    const said = screen.getByTestId('conversation-list-mishap');
-    expect(said).toHaveTextContent('Could not rename it');
-    const list = screen.getByTestId('conversation-history-list');
-    expect(list.firstElementChild).toBe(said);
-  });
-
-  it('is said again when the same thing fails a second time', async () => {
-    // 第二次说同样的话,React 认得那是同一行、什么都不改 —— DOM 不动,读屏
-    // 不播。读者按了第二次、请求也真的发出去并失败了,而屏幕上的反馈是零,
-    // 跟「按下去什么都没发生」分不开。
-    const props = {
-      open: true,
-      onOpenChange: vi.fn(),
-      conversations: ROWS,
-      activeId: 'c1',
-      onPick: vi.fn(),
-      onRename: vi.fn(),
-      onDelete: vi.fn().mockResolvedValue(undefined),
-      hasMore: false,
-      onReachEnd: vi.fn(),
-      nextPageFailed: false,
-      loadingMore: false,
-    };
-    const { rerender } = render(
-      <ConversationHistorySheet
-        {...props}
-        rowMishap={{ conversationId: 'c2', text: 'Network error', at: 1 }}
-      />,
-    );
-    const first = screen.getByTestId('conversation-row-mishap');
-
-    rerender(
-      <ConversationHistorySheet
-        {...props}
-        rowMishap={{ conversationId: 'c2', text: 'Network error', at: 2 }}
-      />,
-    );
-
-    expect(screen.getByTestId('conversation-row-mishap')).not.toBe(first);
-  });
-});
-
-describe('a failure about the whole list rather than one row', () => {
-  it('is said at the top of it', () => {
-    // 重取整份列表失败,说的不是某一行的事 —— 它没有行可贴,而列表顶部正是
-    // 这句话该在的地方。
-    renderSheet({ rowMishap: { conversationId: null, text: 'Could not fetch the list', at: 1 } });
-
-    const said = screen.getByTestId('conversation-list-mishap');
-    expect(said).toHaveTextContent('Could not fetch the list');
-    const list = screen.getByTestId('conversation-history-list');
-    expect(list.firstElementChild).toBe(said);
   });
 });

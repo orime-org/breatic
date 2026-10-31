@@ -152,14 +152,14 @@ async function runForModel(args: { query: string; count?: number }): Promise<str
  */
 async function failureFrom(
   fn: () => Promise<unknown>,
-): Promise<Exclude<ToolFailure, { kind: "turned_away" }>> {
+): Promise<Exclude<ToolFailure, { kind: "turned_away" | "never_ran" }>> {
   try {
     await fn();
   } catch (err: unknown) {
     const failure = toolFailureOf(err);
     // This tool turns nothing away: every throw is a failure with a line for
     // the reader.
-    if (failure?.kind === "turned_away") throw new Error("turned away rather than failed");
+    if (failure?.kind === "turned_away" || failure?.kind === "never_ran") throw new Error(`${failure.kind} rather than failed`);
     if (failure !== undefined) return failure;
     throw new Error(
       `threw without failure detail: ${err instanceof Error ? err.message : String(err)}`,
@@ -721,14 +721,14 @@ describe("search_images: when it cannot run", () => {
         arrange: () => {
           apiKey = "";
         },
-        line: FAILURE_LINES.generic,
+        line: FAILURE_LINES.unavailable,
       },
       {
         way: "the service refused",
         arrange: () => {
           httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
         },
-        line: FAILURE_LINES.upstream,
+        line: FAILURE_LINES.busy,
       },
       {
         way: "the body stopped arriving",
@@ -745,7 +745,7 @@ describe("search_images: when it cannot run", () => {
               ),
           );
         },
-        line: FAILURE_LINES.upstream,
+        line: FAILURE_LINES.busy,
       },
       {
         way: "what arrived is not JSON",
@@ -758,7 +758,7 @@ describe("search_images: when it cannot run", () => {
               }),
           );
         },
-        line: FAILURE_LINES.upstream,
+        line: FAILURE_LINES.badAnswer,
       },
       {
         way: "results is not a list",
@@ -771,14 +771,14 @@ describe("search_images: when it cannot run", () => {
               }),
           );
         },
-        line: FAILURE_LINES.upstream,
+        line: FAILURE_LINES.badAnswer,
       },
       {
         way: "not one result could be read",
         arrange: () => {
           httpRequestMock.mockImplementation(async () => imagesOk([{ title: "no address" }]));
         },
-        line: FAILURE_LINES.upstream,
+        line: FAILURE_LINES.badAnswer,
       },
       {
         way: "nothing answered",
@@ -787,7 +787,7 @@ describe("search_images: when it cannot run", () => {
             throw new Error("ENOTFOUND");
           });
         },
-        line: FAILURE_LINES.unreachable,
+        line: FAILURE_LINES.noConnection,
       },
     ];
 

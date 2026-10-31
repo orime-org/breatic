@@ -53,7 +53,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 export type StorageWritePurpose = "upload" | "generate";
 
 /** HTTP 507 Insufficient Storage (RFC 4918 §11.5). */
-const INSUFFICIENT_STORAGE = 507;
+export const INSUFFICIENT_STORAGE = 507;
 
 /**
  * Let a write proceed, or refuse it because the owning account's storage is
@@ -95,10 +95,9 @@ export async function assertStudioStorageAllowance(
 ): Promise<void> {
   const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
 
-  // No ceiling to be over: the enterprise tier's capacity is agreed in a
-  // contract rather than configured, so the product does not enforce it.
-  // Returning here also spares the account-wide sum below, which nothing on
-  // this path would then look at.
+  // Effective enterprise membership retains its storage exemption. Its
+  // negotiated storage value is recorded, while the storage gate uses null.
+  // This also preserves the exemption for legacy enterprise information.
   if (storageBytes === null) return;
 
   const usedBytes = await accountStorageUsage(adminUserId);

@@ -18,6 +18,7 @@ import {
   createLogger,
   createRedisClient,
   getRedis,
+  getSession,
   getStreamRedis,
   getCollabRedis,
   closeCollabRedis,
@@ -29,18 +30,22 @@ import {
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
+  flushServerAnalytics,
+  adsConversionState,
+  initServerAnalytics,
   taskEventsStreamKey,
   lifecycleStreamKey,
   listenProjectMemberChanges,
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
-import { getCollabConfig } from "@collab/config.js";
+import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startProjectControlSync } from "@collab/services/project-control-sync.js";
+import { startSessionRevocation, type SessionRevocation } from "@collab/services/session-revocation.js";
 import { startMemberChangeSync } from "@collab/services/member-change-sync.js";
 
 // Initialize the root logger with the collab service name before any child
@@ -54,6 +59,14 @@ initLogger("collab");
 
 const logger = createLogger("main");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 /**
  * Deadline (ms) for the concurrent teardown drains.
@@ -178,7 +191,7 @@ async function main(): Promise<void> {
   let shutdownDeadlineAt: number | undefined;
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, seatHandover, storeLoop, instanceId } =
+  const { server, hocuspocus, seatHandover, storeLoop, instanceId, stopUpgradeSessions } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -248,8 +261,46 @@ async function main(): Promise<void> {
     return;
   }
 
+  // The control-plane client (DB2, the same Redis instance as the streams).
+  // Two consumers each .duplicate() it for a dedicated subscriber: ended
+  // sessions, below, before the port opens; project control sync (activity,
+  // credits, project connection closes), after it. The client uses the core
+  // factory so it inherits the production-safety knobs (keepAlive,
+  // commandTimeout: undefined for the subscribe path's blocking semantics,
+  // READONLY-aware reconnect, error log tagging).
+  const controlRedis = createRedisClient(REDIS_STREAM_URL, {
+    name: "collab-project-control",
+    lazyConnect: false,
+    commandTimeout: undefined,
+  });
+  // Production error logging. The core factory installs a no-op
+  // `error` listener so emitted errors don't crash the process; the
+  // application entry attaches the real logger per the "core and shared must not log" mandate.
+  controlRedis.on("error", (err) => {
+    logger.error(
+      { err, client: "collab-project-control" },
+      "redis_error",
+    );
+  });
+  // Ended sessions (inner#1548). Subscribed before the WebSocket port opens,
+  // so a failed first SUBSCRIBE ends startup with no client connected, like
+  // the member-change listener above.
+  let sessionRevocation: SessionRevocation;
+  try {
+    sessionRevocation = await startSessionRevocation(hocuspocus, {
+      source: controlRedis,
+      readSession: (token) => getSession(getRedis(), token),
+      recheckIntervalMs: getCollabConfig().session_recheck_interval_ms,
+    });
+  } catch (err) {
+    logger.error({ err }, "session_revocation_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
   await server.listen();
-  logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
+  logger.info({ port: env.COLLAB_PORT, ...getReassemblyLimits() }, "Hocuspocus collaboration server started");
 
   // Both cross-service streams are read as consumer groups this instance
   // joins under its instance id (inner#1497 §6.1, §6.2).
@@ -297,26 +348,6 @@ async function main(): Promise<void> {
     settings: consumerSettings,
   });
 
-  // Start the control-plane subscriber (activity, project connection closes).
-  // Same Redis instance as the streams (DB2); it .duplicate()s the connection
-  // for its dedicated subscriber. The client uses the core factory so it
-  // inherits the production-safety knobs (keepAlive,
-  // commandTimeout: undefined for the subscribe path's blocking
-  // semantics, READONLY-aware reconnect, error log tagging).
-  const controlRedis = createRedisClient(REDIS_STREAM_URL, {
-    name: "collab-project-control",
-    lazyConnect: false,
-    commandTimeout: undefined,
-  });
-  // Production error logging. The core factory installs a no-op
-  // `error` listener so emitted errors don't crash the process; the
-  // application entry attaches the real logger per the "core and shared must not log" mandate.
-  controlRedis.on("error", (err) => {
-    logger.error(
-      { err, client: "collab-project-control" },
-      "redis_error",
-    );
-  });
   const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
@@ -372,7 +403,7 @@ async function main(): Promise<void> {
       pingRedisGeneral: () => pingRedis(getRedis()),
       pingRedisStream: () => pingRedis(controlRedis),
       // DB3: collab cross-instance coordination (Hocuspocus pub/sub +
-      // space-delete lock). A drifted connection silently breaks
+      // Space count lock). A drifted connection silently breaks
       // cross-instance sync while everything else looks healthy —
       // healthz must catch it (same class as the DB0-drift gap).
       pingRedisCollab: () => pingRedis(getCollabRedis()),
@@ -405,6 +436,7 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
+    stopUpgradeSessions();
     // Stop starting new store rounds. A round already in flight finishes on
     // its own, and each document gets its own last attempt when the library
     // unloads it — `server.destroy()` is the first drain below, and it closes
@@ -442,9 +474,11 @@ async function main(): Promise<void> {
       releaseListenSocket: () => server.httpServer.close(),
       drains: [
         () => server.destroy(),
+        () => flushServerAnalytics(),
         () => healthServer.stop(),
         () => stopProjectControlSync(),
         () => memberChanges.stop(),
+        () => sessionRevocation.stop(),
         // Stop answering demote requests. This unsubscribes and nothing more
         // — the SUBSCRIBE client it rides on is made inside
         // createCollabServer, is not exposed here, and goes when the process

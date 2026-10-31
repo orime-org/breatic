@@ -43,6 +43,8 @@ export const STORAGE_KEYS = {
    * whether the Agent panel is open. See `project-tabs-storage`.
    */
   projectTabs: 'breatic.projectTabs',
+  /** Per account, Project and Space: the reader's personal 3D observation view. */
+  sceneViews: 'breatic.sceneViews',
   /**
    * Per account: the Agent column width, the Studio rail sections, the canvas
    * minimap and snap. See `user-preferences-storage`.
@@ -57,6 +59,14 @@ export const STORAGE_KEYS = {
   sessionSeen: 'breatic.sessionSeen',
   /** sessionStorage: app versions this tab chose to defer. See `use-app-update`. */
   deferredAppVersions: 'breatic.deferredAppVersions',
+  /** sessionStorage: what an update reload carries to the next page. See `reload-for-update`. */
+  reloadDrafts: 'breatic.reloadDrafts',
+  /**
+   * The campaign source of this browser's first and latest visit, kept only
+   * while a consent category is accepted; the website writes the same key
+   * (inner#1442 §4.5). See `data/analytics/attribution`.
+   */
+  attribution: 'breatic.attribution',
 } as const;
 
 /** Union of every valid persisted key value. */

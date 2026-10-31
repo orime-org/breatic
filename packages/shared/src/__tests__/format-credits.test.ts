@@ -14,6 +14,30 @@ describe("formatCredits", () => {
     expect(formatCredits(47.5, "en-US")).toBe("47.5");
   });
 
+  it("rounds a third decimal up, never down (inner#1666)", () => {
+    expect(formatCredits(3.451, "en-US")).toBe("3.46");
+    expect(formatCredits(3.001, "en-US")).toBe("3.01");
+    expect(formatCredits(7, "en-US")).toBe("7");
+  });
+
+  it("does not show floating-point residue as an extra cent", () => {
+    expect(formatCredits(0.1 + 0.2, "en-US")).toBe("0.3");
+    expect(formatCredits(7.000000000000001, "en-US")).toBe("7");
+  });
+
+  it("rounds a negative amount away from zero, like the charge it records", () => {
+    expect(formatCredits(-3.4512, "en-US")).toBe("-3.46");
+    expect(formatCredits(-0.004, "en-US")).toBe("-0.01");
+  });
+
+  it("writes a fixed number of decimals when a column asks for it, so the points line up (inner#1666)", () => {
+    expect(formatCredits(6.3, "en-US", 2)).toBe("6.30");
+    expect(formatCredits(-0.1, "en-US", 2)).toBe("-0.10");
+    expect(formatCredits(7, "en-US", 2)).toBe("7.00");
+    expect(formatCredits(3.451, "en-US", 2)).toBe("3.46");
+    expect(formatCredits(1234.5, "de-DE", 2)).toBe("1.234,50");
+  });
+
   it("groups digits the way the locale does", () => {
     expect(formatCredits(1234.5, "en-US")).toBe("1,234.5");
     expect(formatCredits(1234.5, "de-DE")).toBe("1.234,5");

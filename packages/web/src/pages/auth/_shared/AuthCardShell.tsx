@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
+import { Button } from '@web/components/ui/button';
+import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';
@@ -31,6 +33,8 @@ interface AuthCardShellProps {
   /** Show the release identity on login and registration cards. */
   showVersion?: boolean;
   subtitle?: React.ReactNode;
+  /** Context shown above the card title, such as an invitation preview. */
+  intro?: React.ReactNode;
   footer?: React.ReactNode;
   /** A line under the footer — the terms line on the sign-in and sign-up cards. */
   notice?: React.ReactNode;
@@ -44,6 +48,7 @@ interface AuthCardShellProps {
  * @param root0.title - heading shown at the top of the card
  * @param root0.showVersion - whether the card shows the product build identity
  * @param root0.subtitle - optional supporting line beneath the title
+ * @param root0.intro - contextual content shown above the title
  * @param root0.footer - optional footer slot for cross-page links
  * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
@@ -54,6 +59,7 @@ export function AuthCardShell({
   title,
   showVersion = false,
   subtitle,
+  intro,
   footer,
   notice,
   children,
@@ -68,6 +74,7 @@ export function AuthCardShell({
       <AuthPageHeader />
       <main className='flex flex-1 items-center justify-center p-6'>
         <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
+          {intro}
           <header className='mb-4 flex flex-col gap-1'>
             <div className='flex items-baseline justify-between gap-3'>
               <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
@@ -126,6 +133,11 @@ function AuthPageFooter(): React.JSX.Element {
       <a href={PRIVACY_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('auth.terms.privacyLink')}
       </a>
+      {COOKIE_SETTINGS_AVAILABLE ? (
+        <Button type='button' variant={null} size={null} onClick={openCookieSettings} className={FOOTER_LINK_CLASS}>
+          {t('consent.link')}
+        </Button>
+      ) : null}
     </footer>
   );
 }
@@ -151,5 +163,29 @@ export function AuthLink({
     >
       {children}
     </Link>
+  );
+}
+
+/**
+ * A card's standalone way onward ("Back to sign in", "Back to your Studio",
+ * "Go there"), drawn as an outline button so it reads as an action. A link
+ * inside a sentence ("Don't have an account? Sign up") stays an
+ * {@link AuthLink}.
+ * @param root0 - component props
+ * @param root0.to - the route path the button navigates to
+ * @param root0.children - the visible button text
+ * @returns a full-width outline button that navigates with the router.
+ */
+export function AuthCardButton({
+  to,
+  children,
+}: {
+  to: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Button asChild variant='outline' className='w-full text-foreground'>
+      <Link to={to}>{children}</Link>
+    </Button>
   );
 }

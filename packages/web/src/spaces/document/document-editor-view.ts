@@ -23,7 +23,7 @@
  * The getter hands back an object in all three, so a `try` around it alone
  * answers "yes" for an editor with nothing on screen. What separates them is
  * `dom`, which reaches tiptap's own accessor and raises there
- * (`@tiptap/core/src/Editor.ts:347`). That property is therefore what gets
+ * (`@tiptap/core/src/Editor.ts:368`). That property is therefore what gets
  * touched, and both states with no view on screen come back null — which is
  * the answer an overlay wants from either: it has nothing to anchor to.
  */

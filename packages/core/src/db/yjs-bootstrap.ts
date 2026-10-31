@@ -11,29 +11,23 @@
  * `/spaces` after the fact.
  *
  * Why a separate module:
- *   - Keeps the Yjs binary format out of `project.repo.ts` and
- *     `project.service.ts` — they receive a `Uint8Array` and don't
- *     know its layout.
+ *   - Keeps Yjs binary encoding in one module; the collab caller hands
+ *     its encoded `Uint8Array` to the persistence repository.
  *   - Pure function (no IO), unit-testable without a database.
- *   - Single canonical place to grow when document/timeline space
- *     kinds become writable.
+ *   - Single canonical place for the initial meta shape and default Space names.
  *
- * Edge case (v10 §collab-runtime-ownership):
- *   This is the ONE write path that bypasses Hocuspocus and writes
- *   `yjs_documents.data` directly from outside the collab process.
- *   It is safe ONLY because the project is being created in this same
- *   transaction — no client can possibly be connected to the meta doc
- *   yet, so there is no in-memory Hocuspocus copy that could overwrite
- *   our bytes on the next debounce flush. Do NOT reuse this pattern
- *   for "edit a Space on a live project" scenarios — those must go
- *   through `Hocuspocus.openDirectConnection` (see
- *   `collab/services/space-rpc.ts`).
+ * The collab lazy-seed caller persists the initial content document before
+ * publishing its Space in meta, using insert-if-absent rows for concurrent
+ * first loads. These encoders only return bytes. Edits to a live project's
+ * meta document go through `Hocuspocus.openDirectConnection` in
+ * `collab/services/space-rpc.ts`.
  */
 
 import * as Y from "yjs";
+import { SpaceTypeSchema, spaceContentDocName, type SpaceType } from "@breatic/shared";
 
 /** The kinds of Space the meta doc tracks. Mirrors `@breatic/shared` SpaceType. */
-export type SpaceKind = "canvas" | "document" | "timeline";
+export type SpaceKind = SpaceType;
 
 export interface EncodeInitialMetaStateArgs {
   spaceId: string;
@@ -105,6 +99,51 @@ export function writeSpaceEntry(
 }
 
 /**
+ * The content doc names a meta doc's Space list names: one per entry, under
+ * the entry's own type. This is the one definition of "a listed Space's
+ * content row" — the collab handshake checks a content doc against it, the
+ * project duplicate copies exactly these rows, and the Space-row repair
+ * soft-deletes live rows outside them that nobody touched for an hour. An entry whose type is not a Space type names
+ * nothing.
+ * @param projectId - Project the meta doc belongs to.
+ * @param spaces - The meta doc's `spaces` Y.Map (keyed by spaceId).
+ * @returns The content doc names the list names.
+ */
+export function listedContentDocNames(
+  projectId: string,
+  spaces: Y.Map<unknown>,
+): Set<string> {
+  const names = new Set<string>();
+  spaces.forEach((entry, spaceId) => {
+    if (!(entry instanceof Y.Map)) return;
+    const type = SpaceTypeSchema.safeParse(entry.get("type"));
+    if (type.success) names.add(spaceContentDocName(projectId, spaceId, type.data));
+  });
+  return names;
+}
+
+/**
+ * {@link listedContentDocNames} for a stored meta doc state. The bytes are
+ * decoded with this package's own Yjs, so a caller that loads Yjs some other
+ * way (a script) still gets entries this module recognizes.
+ * @param projectId - Project the meta doc belongs to.
+ * @param state - The stored meta doc state.
+ * @returns The content doc names the stored list names.
+ */
+export function listedContentDocNamesInState(
+  projectId: string,
+  state: Uint8Array,
+): Set<string> {
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, state);
+    return listedContentDocNames(projectId, doc.getMap("spaces"));
+  } finally {
+    doc.destroy();
+  }
+}
+
+/**
  * Encode an initial Yjs update for `project-{pid}/meta` containing
  * exactly one Space entry.
  *
@@ -157,7 +196,7 @@ export function encodeInitialMetaState(
   // The initial space:created audit entry lives in the PG
   // project_activities table (ADR 2026-07-04 project-activity-feed -
   // the meta-doc projectMessages Y.Array is retired); the caller that
-  // seeds this doc (server project creation / collab lazy-seed) writes
+  // seeds this doc (collab lazy-seed) writes
   // that activity row itself, since only it knows the actor + can
   // reach the business DB at the right transactional moment.
 
@@ -193,7 +232,7 @@ export function encodeInitialMetaState(
  * The seed runs in collab with no i18n context, so it uses the kind's
  * English label; the creating user renames the Space afterwards.
  * @param kind - The Space type being seeded
- * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"`)
+ * @returns The default English Space name.
  */
 export function defaultSpaceName(kind: SpaceKind): string {
   switch (kind) {
@@ -203,5 +242,7 @@ export function defaultSpaceName(kind: SpaceKind): string {
       return "Document";
     case "timeline":
       return "Timeline";
+    case "3d":
+      return "3D";
   }
 }

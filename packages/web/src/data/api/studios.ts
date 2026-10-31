@@ -51,7 +51,7 @@ export interface SlugAvailability {
 /** A studio role an admin may grant by invite or change-role (never admin). */
 export type GrantableStudioRole = 'maintainer' | 'guest';
 
-/** Body for `POST /studio/:slug/members` — a registered email + granted role. */
+/** Body for `POST /studio/:slug/members` — recipient mailbox and granted role. */
 export interface InviteMemberBody {
   email: string;
   role: GrantableStudioRole;
@@ -156,17 +156,15 @@ export const studiosApi = {
     return apiGet<StudioMembersView>(`/studio/${slug}/members`);
   },
   /**
-   * `POST /api/v1/studio/:slug/members` — invite a registered user (by email)
-   * with a `maintainer` / `guest` role. Admin-only; creates a PENDING invite + an
-   * actionable bell notification (and best-effort an email link). The invitee
-   * becomes a member only on confirm. Rejects: `404` unregistered email, `409`
-   * already a member / already invited, `403` personal / not admin, `422` body.
+   * Invite an email address with a Maintainer or Guest role. Registered accounts
+   * receive an ordinary invitation; other recipients receive registration mail.
+   * The recipient becomes a member after confirming their invitation.
    * @param slug the studio's URL handle.
    * @param body the invitee's email + the granted role.
-   * @returns once the invite has been created.
+   * @returns Whether the created invitation is awaiting registration.
    */
-  inviteMember(slug: string, body: InviteMemberBody): Promise<{ ok: true }> {
-    return apiPost<{ ok: true }, InviteMemberBody>(
+  inviteMember(slug: string, body: InviteMemberBody): Promise<{ ok: true; pendingSignup: boolean }> {
+    return apiPost<{ ok: true; pendingSignup: boolean }, InviteMemberBody>(
       `/studio/${slug}/members`,
       body,
     );

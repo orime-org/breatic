@@ -172,6 +172,9 @@ function closure(roots, followDynamic, skip = new Set()) {
 /** three.js, which only the camera-angle sphere's own chunk may carry. */
 const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.test(src) };
 
+/** Fabric, which only the picture adjust and markup tools load when their panel opens. */
+const FABRIC = { label: 'Fabric', holds: (src) => /node_modules\/fabric\//.test(src) };
+
 /**
  * What no entry may download, and the page that is allowed to.
  *
@@ -235,6 +238,8 @@ const HEAVY = [
   // packages any other reader could pull in on its own.
   // The camera-angle sphere's renderer (inner#830), about 185 kB gzipped.
   THREE_JS,
+  // The picture adjust and markup tools' canvas library (inner#1303).
+  FABRIC,
   {
     label: 'mime sniffing',
     holds: (src) =>
@@ -348,8 +353,9 @@ for (const [owner, downloads] of owners) {
 // the same screen; these do not. The camera-angle sphere carries three.js and
 // draws only when the Qwen multiple-angles settings open, so the page's
 // static closure must not reach it: a static import of the sphere, or of
-// three.js anywhere under the canvas, puts it on every project open.
-const LAZY_ON_PROJECT_PAGE = [THREE_JS];
+// three.js anywhere under the canvas, puts it on every project open. Fabric is
+// the same: only an open adjust or markup panel loads it.
+const LAZY_ON_PROJECT_PAGE = [THREE_JS, FABRIC];
 const projectChunk = chunkOf(RENDERS_A_SPACE);
 if (projectChunk !== undefined) {
   try {

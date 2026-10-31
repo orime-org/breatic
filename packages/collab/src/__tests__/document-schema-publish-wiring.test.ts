@@ -13,6 +13,7 @@
  * `afterLoadDocument`，拿一份真的 Yjs 文档去调它。
  */
 
+import type * as HocuspocusServerModule from "@hocuspocus/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import {
@@ -35,7 +36,8 @@ vi.mock("@hocuspocus/extension-redis", () => ({
   },
 }));
 
-vi.mock("@hocuspocus/server", () => ({
+vi.mock("@hocuspocus/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof HocuspocusServerModule>()),
   Server: class {
     hocuspocus = { documents: new Map() };
     constructor(config: unknown) {

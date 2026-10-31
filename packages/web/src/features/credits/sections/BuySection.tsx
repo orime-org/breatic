@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { trackEvent } from '@web/data/analytics';
 import { accountTotal } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   Card,
   Figure,
@@ -50,6 +51,9 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
   const packs = usePaymentTiers(overview.billing);
+  React.useEffect(() => {
+    trackEvent('pricing_viewed', { surface: 'credits' });
+  }, []);
 
   const close = React.useCallback((open: boolean): void => {
     if (!open) setChosen(null);

@@ -57,12 +57,15 @@ export async function recordProjectActivity(
  * @param projectId - Project whose feed to read.
  * @param rawCursor - Opaque cursor from the previous page, if any.
  * @param rawLimit - Requested page size; clamped to [1, 100], default 50.
+ * @param opts - Optional narrowing.
+ * @param opts.spaceIds - Keep to these Spaces' entries.
  * @returns The page items + the next opaque cursor (null at the end).
  */
 export async function listProjectActivities(
   projectId: string,
   rawCursor: string | undefined,
   rawLimit: number | undefined,
+  opts: { spaceIds?: readonly string[] } = {},
 ): Promise<ProjectActivityPage> {
   const pageLimits = getActivityFeedPageLimits();
   const limit = Math.min(
@@ -72,16 +75,25 @@ export async function listProjectActivities(
   // Malformed cursors decode to null = first page (they arrive from
   // the network; a garbage cursor must not 500 the feed).
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
-  const rows = await projectActivitiesRepo.listByProject(
-    projectId,
-    cursor,
-    limit,
-  );
-  const last = rows[rows.length - 1];
-  // A short page means the feed is exhausted; a full page may have more.
+  // One row past the page says whether another page exists, so a feed that
+  // ends exactly at a page boundary gives no cursor to an empty page.
+  const rows = await projectActivitiesRepo.listByProject(projectId, cursor, limit + 1, opts);
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
   const nextCursor =
-    rows.length === limit && last
+    rows.length > limit && last
       ? encodeActivityCursor(last.cursorAt, last.entry.id)
       : null;
-  return { items: rows.map((row) => row.entry), nextCursor };
+  return { items: page.map((row) => row.entry), nextCursor };
+}
+
+/**
+ * How many entries a project's activity feed holds.
+ * @param projectId - Project whose feed to count.
+ * @param opts - Optional narrowing.
+ * @param opts.spaceIds - Count only these Spaces' entries.
+ * @returns The count.
+ */
+export async function countProjectActivities(projectId: string, opts: { spaceIds?: readonly string[] } = {}): Promise<number> {
+  return projectActivitiesRepo.countByProject(projectId, opts);
 }

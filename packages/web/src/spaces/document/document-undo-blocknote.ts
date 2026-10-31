@@ -27,7 +27,7 @@
  * registered ahead of `CollaborationExtension`, so registering this one
  * replaces the built-in. Keeping the key is also what leaves `editor.undo()`
  * working: it looks the extension up by that exact string
- * (`StateManager.ts:216-231`).
+ * (`StateManager.ts:226-240`).
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';

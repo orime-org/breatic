@@ -67,3 +67,11 @@ decision_window_days: 7
 # logged — the bell is for the admin and is deliberately quiet, the log
 # is for whoever is on call and must not be.
 storage_notice_window_seconds: 86400
+
+# ── Request body ───────────────────────────────────
+# request_body_max_bytes: the largest request body any public API route
+#   reads (inner#1006). Larger bodies are refused with 413 before a route
+#   runs. The three routes that can legitimately carry more move the body
+#   through a transfer upload instead (config/storage.yaml `transfer:`).
+#   docker/breatic-locations.conf `client_max_body_size` must equal it.
+request_body_max_bytes: 1048576

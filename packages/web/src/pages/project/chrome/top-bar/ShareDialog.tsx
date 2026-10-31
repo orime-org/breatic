@@ -3,10 +3,15 @@
 
 import { Send, UserPlus } from 'lucide-react';
 import * as React from 'react';
+import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
+import { Badge } from '@web/components/ui/badge';
+import { Separator } from '@web/components/ui/separator';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import {
   Popover,
   PopoverContent,
@@ -23,34 +28,61 @@ import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { ApiException } from '@web/data/api/types';
 import { useUIStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { InvitableProjectRole } from '@breatic/shared';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
+import type { InvitableProjectRole, PendingProjectInvitationSummary, ProjectRole } from '@breatic/shared';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 interface ShareDialogProps {
   projectId: string;
+  currentUserRole: ProjectRole;
 }
 
-const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
- * Share popover — invite-by-email (project invite-confirm handshake,
- * 2026-06-18, #1337). The owner types a registered user's email + picks a role
- * (`editor` / `viewer`); clicking Invite asks the server to create a PENDING
- * project invite, which drops an actionable bell notification in the invitee's
- * inbox (and best-effort an email link to the `/decision` landing page).
- * The invitee becomes a member only after they confirm — no immediate access.
- *
- * Invite address is email-only: usernames are mutable and can't serve as a
- * stable invite identifier, and only already-registered users can be invited.
+ * Project invitation popover. Registered accounts receive a notification;
+ * unregistered recipients receive a registration email and claim the invitation
+ * after verifying that address. The Owner can inspect and revoke live pending
+ * invitations. Membership starts when the recipient confirms.
  * @param root0 - Share dialog props.
  * @param root0.projectId - Id of the project being shared; the invite call targets it.
+ * @param root0.currentUserRole - The acting role read from this Project.
  * @returns the share trigger button and its email-only invite popover.
  */
 export function ShareDialog({
   projectId,
+  currentUserRole,
 }: ShareDialogProps): React.JSX.Element {
   const t = useTranslation();
+  const queryClient = useQueryClient();
   const open = useUIStore((s) => s.shareOpen);
   const setOpen = useUIStore((s) => s.setShareOpen);
+  const isOwner = currentUserRole === 'owner';
+  const invitationsKey = React.useMemo(() => ['project', projectId, 'invitations'], [projectId]);
+  const invitations = useQuery({
+    queryKey: invitationsKey,
+    queryFn: () => projectInvitationsApi.listPending(projectId),
+    enabled: open && isOwner,
+  });
+  const revokeKey = React.useMemo(() => ['project', projectId, 'revoke-invitation'], [projectId]);
+  const revokeMutation = useMutation({
+    mutationKey: revokeKey,
+    mutationFn: (invitationId: string) => projectInvitationsApi.revoke(projectId, invitationId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: invitationsKey });
+      toast.success(t('share.revokeSuccess'));
+    },
+    onError: (err) => toast.error(err instanceof ApiException ? err.message : t('share.revokeFailed')),
+  });
+  const revokingIds = useMutationState({
+    filters: { mutationKey: revokeKey, status: 'pending' },
+    select: (mutation) => mutation.state.variables as string,
+  });
+  const { mutate: revoke } = revokeMutation;
+  const { refetch } = invitations;
+
+  /** Re-read the Owner's pending invitations after a loading failure. */
+  const retryInvitations = React.useCallback((): void => {
+    void refetch();
+  }, [refetch]);
 
   const [invite, setInvite] = React.useState('');
   const [inviteRole, setInviteRole] =
@@ -68,26 +100,28 @@ export function ShareDialog({
 
   /**
    * Validates the address and creates a pending project invite, surfacing
-   * errors inline and keeping the popover open on failure. On success a toast
-   * confirms the invite was sent and the popover closes (the invitee gets a bell
-   * notification + best-effort email).
+   * errors inline and keeping the popover open on failure. Success refreshes
+   * the pending list, reports the delivery path and closes the popover.
    * @returns once the invite has been created (or the error surfaced inline).
    */
   async function handleSendInvite(): Promise<void> {
     if (inviteSubmitting) return;
     const trimmed = invite.trim();
-    if (!EMAIL_RX.test(trimmed)) {
+    if (!looksLikeEmail(trimmed)) {
       setInviteError(t('share.invalidEmail'));
       return;
     }
     setInviteError(null);
     setInviteSubmitting(true);
     try {
-      await projectInvitationsApi.inviteMember(projectId, {
+      const result = await projectInvitationsApi.inviteMember(projectId, {
         email: trimmed,
         role: inviteRole,
       });
-      toast.success(t('share.inviteSent'));
+      await queryClient.invalidateQueries({ queryKey: invitationsKey });
+      toast.success(result?.pendingSignup
+        ? t('share.inviteSentPendingSignup', { email: trimmed })
+        : t('share.inviteSent'));
       setOpen(false);
     } catch (err) {
       const msg =
@@ -111,7 +145,7 @@ export function ShareDialog({
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-80 p-1'
+        className='w-max min-w-80 max-w-[calc(100vw-1rem)] p-1'
         data-testid='share-popover'
       >
         <SectionTitle>{t('share.inviteSection')}</SectionTitle>
@@ -160,10 +194,101 @@ export function ShareDialog({
               : t('share.inviteButton')}
           </Button>
         </div>
+        {isOwner && invitations.isPending ? (
+          <p className='px-2 pb-2 text-xs text-muted-foreground'>{t('common.loading')}</p>
+        ) : null}
+        {isOwner && invitations.isError ? (
+          <div className='flex items-center gap-2 px-2 pb-2'>
+            <p role='alert' className='text-xs text-status-error-foreground'>
+              {invitations.error instanceof ApiException
+                ? invitations.error.message
+                : t('common.pageUnavailable.message')}
+            </p>
+            <Button variant='outline' size='sm' loading={invitations.isFetching} onClick={retryInvitations}>
+              {t('common.pageUnavailable.action')}
+            </Button>
+          </div>
+        ) : null}
+        {isOwner && invitations.data && invitations.data.length > 0 ? (
+          <>
+            <Separator />
+            <SectionTitle>{t('share.pendingTitle')}</SectionTitle>
+            <ScrollArea viewportClassName='max-h-80'>
+              <ul>
+                {invitations.data.map((invitation) => (
+                  <ProjectInvitationRow
+                    key={invitation.invitationId}
+                    invitation={invitation}
+                    revoking={revokingIds.includes(invitation.invitationId)}
+                    onRevoke={revoke}
+                  />
+                ))}
+              </ul>
+            </ScrollArea>
+          </>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
 }
+
+/** A pending recipient and the revoke action tied to that invitation. */
+interface ProjectInvitationRowProps {
+  invitation: PendingProjectInvitationSummary;
+  revoking: boolean;
+  onRevoke: (invitationId: string) => void;
+}
+
+/**
+ * Display a pending invitation using its recipient's current identity.
+ * @param props - The pending invitation and its revoke action.
+ * @param props.invitation - The server's pending-recipient summary.
+ * @param props.revoking - Whether this invitation's revoke is waiting.
+ * @param props.onRevoke - Revoke the specified invitation.
+ * @returns The recipient row, status label and independent revoke button.
+ */
+const ProjectInvitationRow = React.memo(function ProjectInvitationRow({
+  invitation,
+  revoking,
+  onRevoke,
+}: ProjectInvitationRowProps): React.JSX.Element {
+  const t = useTranslation();
+  const name = invitation.awaitingSignup ? invitation.email : invitation.name;
+  const role = invitation.role === 'editor' ? t('share.role.edit') : t('share.role.view');
+  /** Revoke the invitation displayed by this row. */
+  const handleRevoke = React.useCallback((): void => {
+    onRevoke(invitation.invitationId);
+  }, [onRevoke, invitation.invitationId]);
+  return (
+    <li className='flex items-center gap-2 px-2 py-2' data-testid={`share-invitation-${invitation.invitationId}`}>
+      <StudioAvatar name={name} type='personal' avatarUrl={invitation.avatarUrl} size='sm' />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className='min-w-0 max-w-48 flex-1 rounded-chrome-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            // Keyboard focus reveals the full recipient address.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+          >
+            <div className='truncate text-sm font-semibold'>{name}</div>
+            {invitation.awaitingSignup ? null : (
+              <div className='truncate text-xs text-muted-foreground'>{invitation.email}</div>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent portal className='max-w-sm break-all'>{invitation.email}</TooltipContent>
+      </Tooltip>
+      <Badge variant='outline' className='shrink-0 whitespace-nowrap rounded-content-sm border-border bg-background text-2xs text-muted-foreground'>
+        {invitation.awaitingSignup ? (
+          <>{role}{' · '}<span>{t('share.awaitingSignup')}</span></>
+        ) : t('share.pendingBadge', { role })}
+      </Badge>
+      <Button variant='outline' size='sm' loading={revoking} onClick={handleRevoke}>
+        {t('share.revoke')}
+      </Button>
+    </li>
+  );
+});
 
 /**
  * Uppercase section heading for the invite flow.

@@ -24,8 +24,10 @@ vi.mock('@web/data/yjs/canvas-space', () => ({
 vi.mock('@web/data/api/canvas', () => ({
   canvasApi: {
     understand: vi.fn(async () => ({ task_id: 't-1', status: 'pending' })),
+    transcribe: vi.fn(async () => ({ task_id: 't-2', status: 'pending' })),
   },
   getCachedUnderstandMaxBytes: vi.fn(() => 20 * 1024 * 1024),
+  getCachedUnderstandLongMediaMaxBytes: vi.fn(() => 2 * 1024 * 1024 * 1024),
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn() },
@@ -36,11 +38,14 @@ vi.mock('@breatic/shared', async (importOriginal) => ({
 }));
 
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
-import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import {
+  canvasApi,
+  getCachedUnderstandMaxBytes,
+} from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 
-import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
+import { startTranscribeRun, startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { getRunning } from '@web/stores/task-actions-in-flight';
 
 const RUN = {
@@ -144,6 +149,22 @@ describe('one press of Understand', () => {
     );
   });
 
+  it('starts an oversized audio run under the long-media source ceiling', async () => {
+    await startUnderstandRun({
+      ...RUN,
+      source: {
+        ...RUN.source,
+        kind: 'audio',
+        mimeType: 'audio/wav',
+        sizeBytes: 20 * 1024 * 1024 + 1,
+      },
+    });
+
+    expect(addNode).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   // The answer becomes this node's body, and the reader opens it in the
   // language they set. Only this end knows which that is, so it travels with
   // the request; the model, four processes away, is what writes the sentence.
@@ -200,7 +221,7 @@ describe('one press of Understand', () => {
     await startUnderstandRun({
       ...RUN,
       onBuilt,
-      source: { ...RUN.source, kind: 'audio', mimeType: 'audio/webm' },
+      source: { ...RUN.source, kind: 'audio', mimeType: 'audio/ogg' },
     });
 
     expect(onBuilt).not.toHaveBeenCalled();
@@ -209,7 +230,7 @@ describe('one press of Understand', () => {
   it('builds nothing when the file is in a format the endpoint cannot read', async () => {
     await startUnderstandRun({
       ...RUN,
-      source: { ...RUN.source, kind: 'audio', mimeType: 'audio/webm' },
+      source: { ...RUN.source, kind: 'audio', mimeType: 'audio/ogg' },
     });
 
     // The sentence names the file the reader picked and what it is in, not
@@ -218,7 +239,7 @@ describe('one press of Understand', () => {
     // the address, which is the same one the run would read.
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(toast.warning).toHaveBeenCalledWith(
-      'Cannot understand this file type (a.png, WebM).',
+      'Cannot understand this file type (a.png, OGG).',
     );
     expect(addNode).not.toHaveBeenCalled();
     expect(addEdge).not.toHaveBeenCalled();
@@ -364,5 +385,72 @@ describe('when the press cannot reach its end', () => {
     await startUnderstandRun(RUN);
 
     expect(toast.error).toHaveBeenCalledWith('Could not start. Try again.');
+  });
+});
+
+// inner#856: Transcribe is the same press with its own name, its own wait and
+// its own request, carrying the panel's filler switch.
+describe('one press of Transcribe', () => {
+  const AUDIO = {
+    ...RUN.source,
+    name: 'meeting',
+    kind: 'audio' as const,
+    url: 'https://assets.invalid/audio/a.m4a',
+    mimeType: 'audio/mp4',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('names the node after the one it transcribes and sends the switch', async () => {
+    await startTranscribeRun({ ...RUN, source: AUDIO, keepFillers: false });
+
+    expect(addNode).toHaveBeenCalledWith(
+      'p-1',
+      's-1',
+      expect.objectContaining({ data: expect.objectContaining({ name: 'TRANSCRIBE-meeting' }) }),
+    );
+    expect(vi.mocked(canvasApi.understand)).not.toHaveBeenCalled();
+    expect(vi.mocked(canvasApi.transcribe)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_type: 'audio',
+        source_url: AUDIO.url,
+        source_mime_type: 'audio/mp4',
+        keep_fillers: false,
+        reader_locale: 'zh-CN',
+      }),
+      expect.any(String),
+    );
+  });
+
+  it('waits apart from an understanding of the same node', async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(canvasApi.understand).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ task_id: 't-1', status: 'pending' } as never);
+        }),
+    );
+    const reading = startUnderstandRun({ ...RUN, source: AUDIO });
+    await Promise.resolve();
+    await startTranscribeRun({ ...RUN, source: AUDIO, keepFillers: true });
+    finish?.();
+    await reading;
+
+    expect(vi.mocked(canvasApi.transcribe)).toHaveBeenCalledTimes(1);
+    expect(addNode).toHaveBeenCalledTimes(2);
+    expect(getRunning('transcribe:s-1:n-1')).toBeUndefined();
+  });
+
+  it('says transcribe when it refuses the format', async () => {
+    await startTranscribeRun({
+      ...RUN,
+      source: { ...AUDIO, mimeType: 'audio/ogg' },
+      keepFillers: true,
+    });
+
+    expect(toast.warning).toHaveBeenCalledWith('Cannot transcribe this file type (a.m4a, OGG).');
+    expect(addNode).not.toHaveBeenCalled();
   });
 });

@@ -27,7 +27,7 @@ import {
   loadLocales,
   logger,
 } from "@breatic/core";
-import { IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
+import { IDEMPOTENCY_RETENTION_SECONDS, REQUEST_SHAPE_REASON } from "@breatic/shared";
 import { errorHandler } from "@server/middleware/error-handler.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -148,8 +148,10 @@ describe("runOnce", () => {
   it("refuses a request without a key, without running it", async () => {
     const res = await post(app, {});
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = (await res.json()) as { error: { message: string; reason?: string } };
     expect(body.error.message).toBe("This page was updated. Refresh it and try again.");
+    // A page built before keys were sent is the one that omits it.
+    expect(body.error.reason).toBe(REQUEST_SHAPE_REASON);
     expect(runs).toBe(0);
   });
 
@@ -185,8 +187,10 @@ describe("runOnce", () => {
     await post(app, { key, body: { a: 1 } });
     const other = await post(app, { key, body: { a: 2 } });
     expect(other.status).toBe(422);
-    const body = (await other.json()) as { error: { message: string } };
+    const body = (await other.json()) as { error: { message: string; reason?: string } };
     expect(body.error.message).toBe("This request does not match the one sent before.");
+    // Well-formed, just reused: nothing about it says the page is outdated.
+    expect(body.error.reason).toBeUndefined();
     expect(runs).toBe(1);
   });
 

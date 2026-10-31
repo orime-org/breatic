@@ -18,18 +18,27 @@ import type { Redis } from "@breatic/core";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 
 describe("createSharedThrottle when Redis fails", () => {
-  it("allows the connection and reports the error", async () => {
-    const broken = {
-      get: vi.fn(async () => {
-        throw new Error("connection is closed");
-      }),
-    } as unknown as Redis;
-    const onError = vi.fn();
-    const throttle = createSharedThrottle({ redis: broken, maxAttempts: 2, banMinutes: 5, onError });
+  /** A Redis client whose every command fails. */
+  function brokenRedis(): Redis {
+    const fail = vi.fn(async () => {
+      throw new Error("connection is closed");
+    });
+    return { get: fail, set: fail, eval: fail } as unknown as Redis;
+  }
 
-    await expect(
-      throttle("203.0.113.9"),
-    ).resolves.toBeUndefined();
+  it("lets a new connection through and reports the error", async () => {
+    const onError = vi.fn();
+    const throttle = createSharedThrottle({ redis: brokenRedis(), maxAttempts: 2, banMinutes: 5, onError });
+
+    await expect(throttle.count("203.0.113.9")).resolves.toBe(true);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), "203.0.113.9");
+  });
+
+  it("reports an address as not banned and reports the error", async () => {
+    const onError = vi.fn();
+    const throttle = createSharedThrottle({ redis: brokenRedis(), maxAttempts: 2, banMinutes: 5, onError });
+
+    await expect(throttle.isBanned("203.0.113.9")).resolves.toBe(false);
     expect(onError).toHaveBeenCalledWith(expect.any(Error), "203.0.113.9");
   });
 });

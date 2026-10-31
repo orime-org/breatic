@@ -14,7 +14,8 @@
  * hono's `StreamingApi.write` swallows the error, so a loop that only checks
  * whether its own writes landed runs on with nobody listening. PR-3 batch 3
  * (breatic #425) made the route subscribe to the departure itself -- the chat
- * entries call `s.onAbort` and pass that signal down to the loop -- so the
+ * entries open their stream with `streamUntilClientLeaves`, which raises a
+ * signal when the client goes away, and pass it down to the loop -- so the
  * turn now learns about it and arrives here.
  *
  * What belongs here is what the turn's ending waits on. Work the user is not

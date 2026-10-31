@@ -7,7 +7,14 @@
  * worker loads.
  */
 
-import { MINI_TOOLS, modelOf, toolFilledParams, toolParamKeys } from "@breatic/shared/mini-tools";
+import { MINI_TOOLS, isModelTool, modelOf, toolFilledParams, toolParamKeys } from "@breatic/shared/mini-tools";
+import {
+  DEFAULT_LIGHT_ANGLE,
+  LIGHT_ANGLE_GRID,
+  LIGHT_COLORS,
+  LIGHT_INTENSITIES,
+  LIGHT_QUALITIES,
+} from "@breatic/shared";
 import { initCore } from "@breatic/core";
 import { getFullModelConfig } from "@breatic/domain";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -77,6 +84,54 @@ describe("model tools against the catalog", () => {
       expect(tool.prompt !== undefined).toBe(model!.takes_prompt);
     },
   );
+
+  // inner#1304: what a tool declares about a catalog param must hold in the catalog.
+  it.each(modelTools.map((tool) => [tool.id, tool] as const))(
+    "%s declares defaults, layouts and server-filled params the catalog holds",
+    (_id, tool) => {
+      const params = catalog().get(modelOf(tool)!)!.params ?? {};
+      if (!isModelTool(tool)) return;
+      for (const param of tool.params) {
+        if (param.default === undefined) continue;
+        expect(params[param.key]?.values, `${tool.id}.${param.key}`).toContain(param.default);
+      }
+      if (tool.sourceAspectParam !== undefined) {
+        const spec = params[tool.sourceAspectParam];
+        expect(spec?.fill).toBe("none");
+        expect(spec?.values).toContain("auto");
+        expect(spec?.absent_value).toBe("auto");
+      }
+    },
+  );
+
+  it("draws the light sphere on exactly the light grid, from its reset pose", () => {
+    const relight = MINI_TOOLS.find((tool) => tool.id === "image.relight")!;
+    const params = catalog().get(modelOf(relight)!)!.params ?? {};
+    const sphere = isModelTool(relight) ? relight.params.filter((p) => p.display === "lightAngle").map((p) => p.key) : [];
+    expect(sphere).toEqual(["light_azimuth", "light_elevation"]);
+    const walk = (key: string): number[] => {
+      const spec = params[key]!;
+      const steps: number[] = [];
+      for (let v = Number(spec.min); v <= Number(spec.max); v += Number(spec.step)) steps.push(v);
+      return steps;
+    };
+    expect(walk("light_azimuth")).toEqual([...LIGHT_ANGLE_GRID.azimuth]);
+    expect(walk("light_elevation")).toEqual([...LIGHT_ANGLE_GRID.elevation]);
+    expect(params.light_azimuth?.default).toBe(DEFAULT_LIGHT_ANGLE.azimuth);
+    expect(params.light_elevation?.default).toBe(DEFAULT_LIGHT_ANGLE.elevation);
+    for (const key of ["light_azimuth", "light_elevation"]) {
+      expect(Object.keys(params[key]?.value_labels ?? {}).map(Number).sort((a, b) => a - b), key).toEqual(walk(key));
+    }
+  });
+
+  it("has a phrase for every light colour, intensity and quality the catalog offers", () => {
+    const params = catalog().get("nano-banana-2-relight")!.params ?? {};
+    const offered = (key: string): unknown[] => (params[key]?.values ?? []).filter((v) => v !== "auto");
+    expect(offered("light_color")).toEqual([...Object.keys(LIGHT_COLORS), "custom"]);
+    expect(params.light_color_hex).toMatchObject({ type: "text", fill: "tool" });
+    expect(offered("light_intensity")).toEqual(Object.keys(LIGHT_INTENSITIES));
+    expect(offered("light_quality")).toEqual(Object.keys(LIGHT_QUALITIES));
+  });
 
   it("reads only declared params in every pinned model's pricing formula", () => {
     const models = catalog();

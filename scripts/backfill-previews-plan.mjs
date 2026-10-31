@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The decisions the preview backfill makes about one row, apart from the
- * database and the Worker so they run under `node --test` (inner#1320).
+ * The decisions the preview and peaks backfills make about one row, apart
+ * from the database and the Worker so they run under `node --test`
+ * (inner#1320, inner#1305).
  */
 
 /**
@@ -27,15 +28,17 @@ export function sizeCorrection(row, read) {
  * The outcome to count for one read: what the Worker named, or `missing` for a
  * key whose original is no longer in the bucket (the Worker answers 404, and
  * no rerun changes that), or `failed` for any other read that came back
- * without one.
- * @param {{ preview?: string } | null} read - What the read answered, or null when it threw.
+ * without one. The preview backfill counts `preview`, the peaks backfill
+ * (inner#1305) `peaks`; both take the same four outcomes.
+ * @param {{ preview?: string, peaks?: string } | null} read - What the read answered, or null when it threw.
  * @param {unknown} [error] - What the read threw, when it threw.
+ * @param {"preview" | "peaks"} [field] - Which outcome to count.
  * @returns {string} The outcome to count.
  */
-export function outcomeOf(read, error) {
+export function outcomeOf(read, error, field = "preview") {
   if (read === null) {
     const status = typeof error === "object" && error !== null ? error.status : undefined;
     return status === 404 ? "missing" : "failed";
   }
-  return read.preview ?? "failed";
+  return read[field] ?? "failed";
 }

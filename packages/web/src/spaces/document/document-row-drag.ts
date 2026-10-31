@@ -9,6 +9,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import { SideMenuExtension } from '@blocknote/core/extensions';
+import { NodeSelection } from '@tiptap/pm/state';
 
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
@@ -16,6 +17,8 @@ import {
   readerPlace,
   restoreAfterRowDrag,
 } from '@web/spaces/document/document-drag-selection';
+import { rowById } from '@web/spaces/document/document-row-by-id';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /** The editor, as far as moving a row needs it. */
 type RowDragEditor = BlockNoteEditor<never, never, never>;
@@ -48,6 +51,14 @@ export function startRowDrag(
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
   rowIsFlying(blockId, held);
+  // The library drags every block the selection spans, read at the depth of
+  // its shallower end, and draws them from the document's nodes in that
+  // range. A selection taking a table whole has an end in a cell, so that
+  // range can open in a row, which has no block to draw, and the drag throws.
+  // The drop moves the row alone (`rowIsFlying`), so the library is given
+  // that row; the reader's selection comes back when the drag ends.
+  const row = heldTables(view.state.selection) === null ? undefined : rowById(view.state.doc, blockId);
+  if (row !== undefined) view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, row.from)));
   const sideMenu = editor.getExtension(SideMenuExtension)!;
   sideMenu.blockDragStart(event as never, editor.getBlock(blockId) as never);
   const page = view.dom.ownerDocument;

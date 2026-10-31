@@ -17,6 +17,8 @@
  */
 
 import { create } from 'zustand';
+import { t } from '@breatic/shared';
+import { toast } from '@web/lib/toast';
 
 import { chatApi } from '@web/data/api/chat';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
@@ -32,6 +34,7 @@ import { readMishap, tell } from '@web/stores/chat-mishaps';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { forgetAllConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { keepAcrossUpdate } from '@web/stores/reload-for-update';
 
 /**
  * How far along the turn a conversation is running is, if it is running one.
@@ -300,6 +303,53 @@ function currentVisit(projectId: string): AbortController {
   return started;
 }
 
+/** What an update reload carried for conversations; see {@link carriedAcrossUpdate}. */
+interface CarriedConversations {
+  /** The non-empty draft in each conversation's box. */
+  drafts: Record<string, string>;
+  /** The conversation on screen in each project. */
+  current: Record<string, string>;
+}
+
+/**
+ * Keep only the string entries of an untrusted record.
+ * @param value - What storage handed back.
+ * @returns Its string-valued entries.
+ */
+function stringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+
+/**
+ * Register what an update reload carries for conversations and take back what
+ * the page before carried.
+ * @returns The carried drafts and open conversations; empty when none.
+ */
+function carriedAcrossUpdate(): CarriedConversations {
+  const saved = keepAcrossUpdate('conversations', (): CarriedConversations => {
+    const { draftByConversation, currentByProject } = useStore.getState();
+    return {
+      drafts: Object.fromEntries(Object.entries(draftByConversation).filter(([, text]) => text !== '')),
+      current: currentByProject,
+    };
+  });
+  const record = typeof saved === 'object' && saved !== null ? (saved as Record<string, unknown>) : {};
+  return { drafts: stringRecord(record.drafts), current: stringRecord(record.current) };
+}
+
+const carried = carriedAcrossUpdate();
+
+/**
+ * The conversation each project showed before an update reload, to go back to
+ * once the open lands. Kept apart from `currentByProject`: the open replaces
+ * that with the server's most recently used conversation, and a seeded value
+ * would also make `switchTo` think the conversation were already on screen.
+ */
+const wantedAfterUpdate = new Map(Object.entries(carried.current));
+
 const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
   currentByProject: {},
@@ -309,7 +359,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   listLoadingMore: {},
   listLoading: {},
   openFailure: {},
-  draftByConversation: {},
+  draftByConversation: carried.drafts,
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
@@ -411,8 +461,8 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // A chat that could not be read has nothing to take away. Saying loading
     // there is the whole of what a retry looks like: the scrim goes, the wait is
     // shown, and a second failure brings the scrim back. Without it the retry
-    // button changed nothing on screen at all -- the only word about it went to
-    // the notice line, which that same scrim is covering.
+    // button changed nothing in the column at all -- the only word about it was
+    // a toast, and the scrim stayed exactly as it was.
     useStore.setState((s) =>
       s.openStatus[projectId] === 'ready'
         ? s
@@ -437,6 +487,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // before it, must not replace what the reader chose.
       landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
+      const wanted = wantedAfterUpdate.get(projectId);
+      wantedAfterUpdate.delete(projectId);
+      // Back to where the user was before the update reload; their draft is
+      // there. A conversation gone since leaves them on the one just opened.
+      if (landed && wanted !== undefined && wanted !== opened.current.conversation.id) {
+        void switchTo(projectId, wanted);
+      }
       // A page already on its way was asked for from the end of the list this
       // answer is about to settle, and the count is how that page finds out.
       // Both ways out of the setState below bump it, not only the replacing
@@ -874,7 +931,7 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
       ? {
         openStatus: { ...s.openStatus, [projectId]: 'failed' as OpenStatus },
         // Nothing came back to quote: what failed was some request whose own
-        // sentence went to the notice line. A reason still held here is from
+        // sentence was already told in a toast. A reason still held here is from
         // an earlier failure and must not be worn as this one's.
         openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
       }
@@ -1133,10 +1190,6 @@ async function startNew(projectId: string): Promise<void> {
       landed = true;
     } catch (err) {
       if (visit.signal.aborted) return;
-      // Not `aboutRow`: the only way to press this is the header's button,
-      // and pressing it closes the sheet, so there is no list to draw against
-      // by the time this is said. Closing is right -- a reader starting a new
-      // conversation is done with the list of the old ones.
       tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
     }
   } finally {
@@ -1316,10 +1369,9 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     });
   } catch {
     if (visit.signal.aborted) return;
-    // Said at the foot of the list and nowhere else. The panel's own line is
-    // under the sheet while the list is open, and the list is the only place
-    // this can be reached from -- a second copy there would surface later,
-    // when the sheet closes, about something the reader has moved on from.
+    // Said in a toast as it happens (inner#1530). The mark stays: it keeps the
+    // end-of-list watcher off duty until the reader scrolls again.
+    toast.error(t('chat.history.moreFailed'));
     useStore.setState((st) => ({
       listMoreFailed: { ...st.listMoreFailed, [projectId]: true },
     }));
@@ -1375,16 +1427,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
     });
   } catch (err) {
     if (visit.signal.aborted) return;
-    // Said in the list, because this only ever runs while the list is open --
-    // opening it is what asks. A line on the composer's top edge would be
-    // under the sheet, which is the very fault this branch set out to fix.
-    tell({
-      projectId,
-      conversationId: null,
-      deliberate: true,
-      aboutRow: true,
-      ...readMishap(err),
-    });
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
     // Both unconditional, for the reason given where `openAndAdopt` does the
     // same: the flag follows the count, not the visit.
@@ -1430,7 +1473,7 @@ async function rename(
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
     if (!visit.signal.aborted) {
-      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
     }
     throw err;
   }
@@ -1462,7 +1505,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     // server still has is worse than one that failed to lose it, because only
     // the second is something the reader can retry.
     if (!alreadyGone(err)) {
-      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
       return;
     }
   }

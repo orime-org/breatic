@@ -19,10 +19,11 @@
  * what it does not define. They are not transient: a reader who reloads has
  * to still see that a turn was cut off.
  */
-import { TURNED_AWAY } from "@breatic/shared";
+import { LEGACY_FAILURE_LINES, NEVER_RAN, TURNED_AWAY } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
 import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
+import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -32,18 +33,21 @@ import {
 
 describe("what a finished turn writes down", () => {
   it("carries a turn's ending back out the way it came in", () => {
-    // The four marks make the round trip on their own: a reload reads them
+    // The three marks make the round trip on their own: a reload reads them
     // out of storage and the panel draws from what `toUiParts` hands back,
     // so a mark that survives storage and not the way back is invisible.
     for (const [stored, wire] of [
       ["interrupted", "data-interrupted"],
       ["failed", "data-failed"],
       ["truncated", "data-truncated"],
-      ["blocked", "data-blocked"],
     ] as const) {
       expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
       expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);
     }
+  });
+
+  it("reads back the mark a reply stored before inner#1542 carries when it stopped to ask", () => {
+    expect(toUiParts([{ type: "blocked" }])).toEqual([{ type: "data-blocked", data: {} }]);
   });
 
   it("carries how long the turn thought, both ways", () => {
@@ -335,7 +339,7 @@ describe("a message that goes out and comes back", () => {
     expect(back[3]).toMatchObject({
       toolCallId: "call-2",
       status: "error",
-      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.generic" },
+      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.ourFault" },
     });
     expect(back[4]).toEqual(original[4]);
   });
@@ -475,5 +479,75 @@ describe("a call that was turned away, read back", () => {
       errorText: TURNED_AWAY,
       failureKind: "turned_away",
     });
+  });
+});
+
+describe("a call that never ran (inner#1620)", () => {
+  it("reads back with the mark that draws nothing", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "tc-1",
+        toolName: "web_search",
+        input: { query: "q" },
+        status: "error",
+        failure: { kind: "never_ran", forModel: NOTHING_OF_IT_RAN },
+      },
+    ]);
+    expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
+  });
+
+  it("reads a row stored before the mark existed the same way", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "tc-2",
+        toolName: "web_search",
+        input: { query: "q" },
+        status: "error",
+        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: LEGACY_FAILURE_LINES.generic },
+      },
+    ]);
+    expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
+  });
+});
+
+describe("a questionnaire waiting for the reader (inner#1542)", () => {
+  it("reads back as the call, followed by the mark naming it as the card the reader is shown", () => {
+    const parts = toUiParts([
+      { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
+    ]);
+
+    expect(parts).toEqual([
+      { type: "tool-ask_user", toolCallId: "ask-1", input: { questions: [] }, state: "input-available" },
+      { type: "data-ask-awaiting", data: { toolCallId: "ask-1" } },
+    ]);
+  });
+
+  it("puts the mark after everything else the asking segment holds, where the live stream writes it", () => {
+    const parts = toUiParts([
+      { type: "text", text: "Two things first." },
+      { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
+      { type: "thinking-time", ms: 1200 },
+    ]);
+
+    expect(parts.map((p) => p.type)).toEqual(["text", "tool-ask_user", "data-thinking-time", "data-ask-awaiting"]);
+  });
+
+  it("reads back as an answered call once the reader has answered", () => {
+    const parts = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "ask-2",
+        toolName: "ask_user",
+        input: { questions: [] },
+        status: "success",
+        output: { repliedInChat: true },
+      },
+    ]);
+
+    expect(parts).toEqual([
+      { type: "tool-ask_user", toolCallId: "ask-2", input: { questions: [] }, state: "output-available", output: { repliedInChat: true } },
+    ]);
   });
 });

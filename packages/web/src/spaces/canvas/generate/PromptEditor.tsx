@@ -267,6 +267,11 @@ export const PromptEditor = React.forwardRef<
         onAtMentionsChange,
         suggestionRefresh: { current: null },
       };
+      // The editor is built during render, and binding it to a fragment that
+      // already holds a prompt (a template just applied) dispatches an update
+      // before the constructor returns; reporting it then would update the
+      // container mid-render. The effects below report once it is mounted.
+      let constructing = true;
       /**
        * Reports both derived values: the backend-bound prompt text (execute
        * gate — text chips substitute their source content, so "@ a non-empty
@@ -276,6 +281,7 @@ export const PromptEditor = React.forwardRef<
        * @param e - The editor.
        */
       const report = (e: Editor): void => {
+        if (constructing) return;
         wiring.onTextChange(
           serializePromptText(e, wiring.references, wiring.blockSeparator, wiring.mentionTokens),
         );
@@ -342,6 +348,7 @@ export const PromptEditor = React.forwardRef<
           wiring.onFocus?.();
         },
       });
+      constructing = false;
       keptOf.set(built, {
         wiring,
         caretProvider,

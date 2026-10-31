@@ -45,6 +45,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import * as outbox from "@server/modules/payment/purchase-mail.repo.js";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -79,15 +80,10 @@ async function seedRow(status: string): Promise<{
     INSERT INTO users (email, email_verified)
     VALUES (${`outbox-${stamp}@example.test`}, true) RETURNING id
   `;
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status)
-    VALUES (${source!.id}, ${user!.id}, ${`cs_outbox_${stamp}`}, 2000, 1700, 'usd', 'completed')
+    VALUES (${sourceId}, ${user!.id}, ${`cs_outbox_${stamp}`}, 2000, 1700, 'usd', 'completed')
     RETURNING id
   `;
   await sql`

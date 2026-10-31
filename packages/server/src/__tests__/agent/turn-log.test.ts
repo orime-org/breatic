@@ -22,6 +22,11 @@ import { FINISHED, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const logInfo = vi.fn();
+const analytics = vi.hoisted(() => ({
+  claimFirstMilestone: vi.fn(async () => true),
+  serverAnalyticsWanted: vi.fn(() => true),
+  trackServerEvent: vi.fn(),
+}));
 
 /** What the model produces this case. */
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], failsToStart: null as Error | null }));
@@ -43,6 +48,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     logger: { ...logger, child: () => logger },
+    ...analytics,
   };
 });
 
@@ -54,7 +60,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
+    buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
     getModel: () =>
       modelSays.failsToStart
@@ -65,6 +71,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 1),
+  addReaderMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
@@ -72,8 +79,8 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget: vi.fn(async () => false),
+vi.mock("@server/agent/turn-fold.js", () => ({
+  foldIfTooLong: vi.fn(async () => "none"),
 }));
 
 vi.mock("@server/agent/context.js", () => ({
@@ -168,5 +175,39 @@ describe("what a finished turn writes to the log", () => {
     const line = await turnLog(saying("好的"));
     expect(line?.userId).toBe("u1");
     expect(line?.conversationId).toBe("c1");
+  });
+});
+
+describe("the account's first finished turn", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    analytics.claimFirstMilestone.mockResolvedValue(true);
+    analytics.serverAnalyticsWanted.mockReturnValue(true);
+  });
+
+  it("sends first_agent_action_completed once the turn completes", async () => {
+    await turnLog(saying("好的"));
+    expect(analytics.claimFirstMilestone).toHaveBeenCalledWith("first-agent", "u1");
+    expect(analytics.trackServerEvent).toHaveBeenCalledWith(
+      "first_agent_action_completed",
+      expect.objectContaining({
+        userId: "u1",
+        insertId: "first-agent:u1",
+        properties: expect.objectContaining({ project_id: "p1" }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("sends nothing when an earlier turn already claimed it", async () => {
+    analytics.claimFirstMilestone.mockResolvedValue(false);
+    await turnLog(saying("好的"));
+    expect(analytics.trackServerEvent).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the asking browser declined analytics", async () => {
+    analytics.serverAnalyticsWanted.mockReturnValue(false);
+    await turnLog(saying("好的"));
+    expect(analytics.trackServerEvent).not.toHaveBeenCalled();
   });
 });

@@ -14,8 +14,19 @@
 
 import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, studioAssets } from "@breatic/core";
+import { db, studioAssets, maintenanceRepo, type DbTx } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
+
+/**
+ * A retired physical key cannot acquire a new live reference.
+ */
+export class StorageKeyRetiredError extends Error {
+ /**
+  * Construct a typed conflict without exposing object bytes.
+  * @param storageKey - The exact retired key.
+  */
+ constructor(readonly storageKey:string){super("storage_key_retired");this.name="StorageKeyRetiredError";}
+}
 
 /**
  * Map a Drizzle row to a StudioAssetEntity.
@@ -43,10 +54,14 @@ function toEntity(row: typeof studioAssets.$inferSelect): StudioAssetEntity {
   };
 }
 
-/** Fields required to register a physical asset row. */
+/**
+ * Fields required to register a physical asset row.
+ */
 export interface RegisterAssetInput {
   studioId: string;
-  /** Who first brought this content in — see StudioAssetEntity. */
+  /**
+   * Who first brought this content in — see StudioAssetEntity.
+   */
   producedByUserId: string;
   contentHash: string;
   storageKey: string;
@@ -56,7 +71,9 @@ export interface RegisterAssetInput {
   kind: StudioAssetEntity["kind"];
   source: StudioAssetEntity["source"];
   generationTaskId?: string;
-  /** What the media container read; null for anything it had no number for. */
+  /**
+   * What the media container read; null for anything it had no number for.
+   */
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
@@ -201,10 +218,11 @@ export async function fillMediaNumbers(
  * A live asset row stored under a key, from any studio. Storage keys are
  * tenant-neutral, so every row under one key describes the same bytes.
  * @param storageKey - The object's storage key.
+ * @param tx - Optional shared key transaction.
  * @returns One such row, or null when no live asset is stored under it.
  */
-export async function findLiveByStorageKey(storageKey: string): Promise<StudioAssetEntity | null> {
-  const [row] = await db
+export async function findLiveByStorageKey(storageKey: string, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  const [row] = await (tx ?? db)
     .select()
     .from(studioAssets)
     .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
@@ -254,7 +272,15 @@ export async function findKindByStorageKey(storageKey: string): Promise<string |
 export async function registerWithDedup(
   input: RegisterAssetInput,
 ): Promise<{ asset: StudioAssetEntity; deduped: boolean }> {
-  const inserted = await db
+  return db.transaction(async (tx) => {
+  await maintenanceRepo.lockKey(input.storageKey, tx);
+  const retired = await maintenanceRepo.findObject(input.storageKey, tx);
+  if (retired?.retiredAt) {
+    const canonical = await tx.select().from(studioAssets).where(and(eq(studioAssets.studioId,input.studioId),eq(studioAssets.contentHash,input.contentHash),isNull(studioAssets.deletedAt))).limit(1);
+    if (canonical[0] && canonical[0].storageKey !== input.storageKey) return {asset:toEntity(canonical[0]),deduped:true};
+    throw new StorageKeyRetiredError(input.storageKey);
+  }
+  const inserted = await tx
     .insert(studioAssets)
     .values({
       studioId: input.studioId,
@@ -281,13 +307,15 @@ export async function registerWithDedup(
     })
     .returning();
   if (inserted[0]) return { asset: toEntity(inserted[0]), deduped: false };
-  const existing = await findByStudioAndHash(input.studioId, input.contentHash);
+  const rows = await tx.select().from(studioAssets).where(and(eq(studioAssets.studioId,input.studioId),eq(studioAssets.contentHash,input.contentHash),isNull(studioAssets.deletedAt))).limit(1);
+  const existing = rows[0] ? toEntity(rows[0]) : null;
   if (!existing) {
     throw new Error(
       "studio_assets dedup conflict but no existing row (index/predicate drift)",
     );
   }
   return { asset: existing, deduped: true };
+  });
 }
 
 /**
@@ -378,3 +406,18 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
     );
   return Number(rows[0]?.total ?? 0);
 }
+
+/**
+ * Read any global live reference to an exact key using the caller's optional transaction.
+ * @param key - Exact candidate key.
+ * @param tx - Optional caller transaction.
+ * @returns Whether any studio currently references this key.
+ */
+export async function hasLiveStorageKey(key: string, tx?: DbTx): Promise<boolean> { return (await (tx??db).select({id:studioAssets.id}).from(studioAssets).where(and(eq(studioAssets.storageKey,key),isNull(studioAssets.deletedAt))).limit(1)).length>0; }
+/**
+ * Read a live canonical winner by immutable ledger identity.
+ * @param id - Grant's completed canonical asset.
+ * @param tx - Optional transaction.
+ * @returns Canonical live asset or null.
+ */
+export async function findLiveById(id: string, tx?: DbTx): Promise<StudioAssetEntity | null> { const rows=await (tx??db).select().from(studioAssets).where(and(eq(studioAssets.id,id),isNull(studioAssets.deletedAt))).limit(1);return rows[0]?toEntity(rows[0]):null; }

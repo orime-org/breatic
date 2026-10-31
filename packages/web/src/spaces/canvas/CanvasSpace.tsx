@@ -40,9 +40,11 @@ import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import {
   canGenerate,
   newId,
+  type CanvasProposal,
 } from '@breatic/shared';
 import {
   defaultParamsOf,
+  isModelTool,
   miniToolById,
   miniToolsFor,
   servedMiniToolsFor,
@@ -76,16 +78,29 @@ import {
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { FRAME_PAN_MS, PROPOSAL_FRAME_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import { writeGroup } from '@web/spaces/canvas/group-write';
+import {
+  FRAME_PAN_MS,
+  PROPOSAL_FRAME_MS,
+  frameBuiltNode,
+  framedBox,
+  freshNodesBox,
+  viewportForBuilt,
+  viewportToInspect,
+  viewportToShowPlaced,
+} from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
+import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
+import { ANNOTATION_PIN_Z, FOCUS_TARGET_Z, VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
+import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,
   addNodeFocusImage,
   addNode,
   appendNodeSlotItem,
-  createGroup,
   expandGroup,
   removeEdge,
   removeElements,
@@ -131,9 +146,11 @@ import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut
 import {
   brushSizeStep,
   historyAvailability,
+  routeDeleteCommand,
   routeHistoryCommand,
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
+import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
@@ -141,7 +158,9 @@ import {
   checkFileAdmission,
   uploadAcceptFor,
   refusedFormatParams,
+  markedSinks,
   fillNodeFromFile,
+  fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   assetUrlSurvives,
@@ -170,10 +189,10 @@ import { asContentView } from '@web/data/yjs/node-view';
 import type { Modality } from '@web/data/yjs/node-view';
 import {
   planGroupCreation,
-  type GroupCreationPlan,
 } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
+  MEDIA_FRAME_PX,
   GROUP_MIN_SIZE,
   groupRectForMembers,
   GROUP_PADDING,
@@ -198,15 +217,22 @@ import {
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
-import { startUnderstandRun, useUnderstanding } from '@web/spaces/canvas/start-understand-run';
+import {
+  startTranscribeRun,
+  startUnderstandRun,
+  useUnderstanding,
+  type UnderstandRun,
+} from '@web/spaces/canvas/start-understand-run';
 import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   startMiniToolRun,
-  type MiniToolDrawingSnapshot,
+  type MiniToolCapture,
 } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -233,6 +259,9 @@ import {
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { usePeerActivity } from '@web/spaces/canvas/use-peer-activity';
+import { fillActionOf } from '@web/spaces/canvas/node-activity';
+import { PeerActivityContext } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
@@ -295,62 +324,22 @@ import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
 import {
   centerToTopLeft,
   createAnnotationNode,
-  createGroupNode,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import type { CanvasSessionStore } from '@web/stores/canvas-session';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
+import { miniToolOpenOn, type CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
-
-/**
- * Render-layer z for the node a focus crop is open on (#2000), set instead of
- * touching `selected` — that field is the selection set six commands read to
- * pick their range, and this is a purely visual need.
- *
- * The ceiling it has to clear is a group member whose group is selected:
- * xyflow adds SELECTED_NODE_Z (1000) to the group, and `calculateChildXYZ`
- * gives the member `parentZ + 1`. That makes 1001 the highest a node
- * reaches, and 1002 clears it — on two conditions.
- *
- * Groups stay one level deep, which four separate places enforce:
- * `group-toolbar.ts`'s `allLoose` (a group cannot be put inside a new
- * group), `group-drag.ts`'s `draggedMembers` filter (a group dragged over
- * another never reparents), the loose-node filter inside
- * `commitGroupResize` below (a grown group swallows loose nodes only), and
- * `node-clipboard.ts`'s group branch, which drops the parentId it just
- * resolved (a pasted group is always a root — and that payload is parsed
- * out of the clipboard, so it is the one path an outside shape can enter).
- * Nesting two levels would put a member at 1002 and three at 1003.
- *
- * And `zIndexMode` stays `'basic'`, its default, which we never override.
- * Under `'auto'` xyflow adds `rootParentIndex * 10` to a root that has
- * children, counting from 1, on top of whatever `calculateZ` already gave
- * it — so the FIRST selected group with children lands on 1010 and its
- * member on 1011.
- *
- * It does not clear the generate panel, and cannot: NodeToolbar portals into
- * `.react-flow__renderer`, landing as a sibling of the pane that holds every
- * node, and the viewport inside that pane is its own stacking context.
- */
-const FOCUS_TARGET_Z = 1002;
-
-/**
- * Where a pin paints, above every content node and above the +1000 xyflow adds
- * to a selected one. A note points at something, so it stays visible while the
- * thing it points at is being worked on; the focus-crop target still comes out
- * on top of it, since that gesture owns the screen while it runs.
- */
-const ANNOTATION_PIN_Z = 1001;
 
 /** What became of the node a focus crop is open on (#2000). */
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
@@ -521,39 +510,6 @@ function groupMembersLocalBox(
 }
 
 /**
- * Write a planned Group and bind its members to it.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space to write into.
- * @param plan - The Group's stored rect and each member's relative position.
- * @param createdBy - Whoever is making it.
- * @param backgroundColor - Tint token to open with; absent leaves it untinted.
- * @param name - The name to open with; absent takes the default.
- */
-function writeGroup(
-  projectId: string,
-  spaceId: string,
-  plan: GroupCreationPlan,
-  createdBy: string,
-  backgroundColor?: string,
-  name?: string,
-): void {
-  createGroup(
-    projectId,
-    spaceId,
-    createGroupNode(
-      plan.groupId,
-      plan.position,
-      plan.width,
-      plan.height,
-      createdBy,
-      backgroundColor,
-      name,
-    ),
-    plan.members,
-  );
-}
-
-/**
  * Node type → localized display-name key, for the connection-rules rejection
  * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) type
  * falls back to the raw string at the call site.
@@ -653,31 +609,6 @@ function toFlowEdge(edge: CanvasEdge): Edge {
 const NODE_DRAG_THRESHOLD = 3;
 
 /**
- * What xyflow adds to a selected node's z: `SELECTED_NODE_Z`
- * (`@xyflow/system@0.0.79:1547`), applied by `calculateZ` whenever
- * `elevateNodesOnSelect` is on — its default (`@xyflow/react@12.11.2:3324`),
- * which we never override.
- */
-const XYFLOW_SELECTED_NODE_Z = 1000;
-
-/**
- * Stacking for the new-note box inside the viewport portal: above every node
- * on the board, selected or not.
- *
- * Derived rather than picked, because picked is how it went wrong — written as
- * 1000 it sat UNDER an ordinary pin at 1001, and measured on a board, a note
- * already on the canvas painted over the box somebody was typing into. The
- * ceiling is the highest z we hand a node plus what xyflow adds on selection;
- * anything at or below it is a node this box can end up behind.
- *
- * The box and the nodes share one stacking context — `.react-flow__nodes`
- * sets no z of its own, so both resolve against `.react-flow__viewport`, which
- * is where the ViewportPortal puts this. Measured: the node wrapper carries
- * `z-index: 1001` inline and the viewport carries 2.
- */
-const ANNOTATION_COMPOSER_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
-
-/**
  * Canvas body — mounts ReactFlow over the Yjs-backed canvas space.
  *
  * Yjs is the single source of truth: `useCanvasSpace` observes the doc and
@@ -743,6 +674,7 @@ function CanvasSpaceInner({
   const { caretProvider } = useCanvasContext();
   const awareness = caretProvider?.awareness ?? null;
   const occupants = useCanvasOccupants(awareness);
+  const peerActivity = usePeerActivity(awareness);
   const remoteGesture = useRemoteGesture(awareness);
 
   // The nodes as the document has them, in the shape the buffer works in. The
@@ -811,6 +743,9 @@ function CanvasSpaceInner({
   // outlived its panel — leaves focus where it already is; where focus goes
   // after a pick ends is #125.
   const sessionStore = useCanvasSessionStore();
+  // A tool drawing on a node keeps the arrows pressed in it, while that node
+  // is culled too (inner#1303 §6.6).
+  useToolLayerArrows(useCanvasSession(toolLayerOpen));
   const onExitPick = React.useCallback((): void => {
     const { pickSession: session, miniTool } = sessionStore.getState();
     endPick();
@@ -1293,7 +1228,7 @@ function CanvasSpaceInner({
   // While a drawing tool is open the buttons act on the drawing (inner#1302 §6.3).
   React.useEffect(() => {
     const shown = historyAvailability(
-      miniToolDraft?.drawing ?? null,
+      miniToolDraft?.drawing ?? miniToolDraft?.mark ?? null,
       miniToolDraft?.exporting ?? false,
       canUndo,
       canRedo,
@@ -1338,10 +1273,18 @@ function CanvasSpaceInner({
       const session = sessionStore.getState();
       const step = brushSizeStep(event);
       const drawing = session.miniTool?.drawing;
-      if (step !== null && drawing != null) {
+      const mark = session.miniTool?.mark;
+      if (step !== null && (drawing != null || mark != null)) {
         event.preventDefault();
         if (session.miniTool?.exporting) return;
-        session.setDrawingSize(Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, drawing.size + step)));
+        if (drawing != null) {
+          session.setDrawingSize(Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, drawing.size + step)));
+          return;
+        }
+        // Markup shares the brush's size keys (inner#1303 §6.2), stepping a
+        // selected object from its own size.
+        const size = steppedMarkSize(mark!, step);
+        if (size !== null) session.setMarkSize(size);
         return;
       }
       const action = matchHistoryShortcut(event);
@@ -1398,6 +1341,82 @@ function CanvasSpaceInner({
     stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
+
+  // Once nodes just placed and the generate panel opened on one of them,
+  // grown around its prompt, are laid out, the camera moves once so all of
+  // it is in front of the reader, clear of the menu, toolbar and minimap
+  // floating over the canvas, zooming out only as far as that takes
+  // (inner#1345): a template applied in a panel, and a proposal landed with
+  // its panel open. A node off screen is not mounted, so its position comes
+  // from the canvas's own record and its size from the layout until it is
+  // measured. Waits for the panel to hold one height for two frames; past
+  // that many frames it frames what is there.
+  const showPlaced = React.useCallback(
+    (placed: PlacedProposal, panelNodeId: string, duration: number): void => {
+      let tries = 0;
+      let lastHeight = -1;
+      /** One frame of waiting for the panel to be laid out. */
+      const step = (): void => {
+        const container = containerRef.current;
+        if (!container) return;
+        const panel = container.querySelector<HTMLElement>('[data-canvas-panel]')?.getBoundingClientRect();
+        const settled = panel !== undefined && panel.height === lastHeight;
+        lastHeight = panel?.height ?? -1;
+        if (!settled && tries++ < PLACED_SHOW_FRAMES) {
+          requestAnimationFrame(step);
+          return;
+        }
+        const rects = placed.nodeIds.map((id, i): Rect => {
+          const laid = placed.rects[i] ?? { x: 0, y: 0, ...EMPTY_NODE_SIZE };
+          const node = getInternalNode(id);
+          return {
+            ...(node?.internals.positionAbsolute ?? laid),
+            width: node?.measured?.width ?? laid.width,
+            height: node?.measured?.height ?? laid.height,
+          };
+        });
+        const [first, ...rest] = rects;
+        const anchor = rects[placed.nodeIds.indexOf(panelNodeId)] ?? first;
+        if (first === undefined || anchor === undefined) return;
+        const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
+        const origin = container.getBoundingClientRect();
+        // The project page's menu and toolbar float beside the Space outlets.
+        const stage = container.closest('[data-space-outlet]')?.parentElement;
+        const chrome = [
+          ...(stage?.querySelectorAll<HTMLElement>('[data-canvas-chrome]') ?? []),
+          ...container.querySelectorAll<HTMLElement>('.react-flow__minimap'),
+        ].map((el) => {
+          const box = el.getBoundingClientRect();
+          return { x: box.left - origin.left, y: box.top - origin.top, width: box.width, height: box.height };
+        });
+        const view = { nodes: [first, ...rest] as [Rect, ...Rect[]], anchor, panel: { width: panel?.width ?? 0, height: panel?.height ?? 0 } };
+        const next = viewportToShowPlaced(view, { width, height }, { x, y, zoom }, chrome, CANVAS_MIN_ZOOM);
+        if (next === null) return;
+        void setViewport(next, { duration: next.zoom === zoom ? duration : PROPOSAL_FRAME_MS, interpolate: 'linear' });
+      };
+      requestAnimationFrame(step);
+    },
+    [getInternalNode, rfStoreApi, setViewport],
+  );
+
+  // A template picked in a generate panel lands around that panel's node
+  // (inner#1345 6.5): every other node is in the way, and so is every group
+  // but the one the node sits in, which grows around what joins it.
+  const placeTemplate = React.useCallback(
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+      const anchorId = existing.get(0)?.nodeId;
+      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
+      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
+      const occupied = occupiedRects(around, (id) => {
+        const measured = getInternalNode(id)?.measured;
+        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
+      });
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
+      return placed;
+    },
+    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+  );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -2259,19 +2278,24 @@ function CanvasSpaceInner({
     },
     [rfStoreApi, setCenter],
   );
-  // Put a node a press just wrote in front of the reader, together with the
-  // node it was read from. The built node's size is the fresh-node size rather
-  // than a measured one: a node written this instant is not in ReactFlow's
-  // store yet, and a node holding nothing is that size until something lands
-  // in it.
-  const frameNewNode = React.useCallback(
-    (position: { x: number; y: number }, sourceNodeId: string): void => {
+  // Put what a press built to the right of a node in front of the reader
+  // (inner#1303): one rule for a tool's result, a grid's group and an
+  // Understand node — slide at the reader's zoom, and zoom out only when it
+  // does not fit.
+  const frameBuilt = React.useCallback(
+    (built: Rect, sourceNodeId: string): void => {
+      const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
-      panToFrame([{ ...position, ...EMPTY_NODE_SIZE }], measuredRects([sourceNodeId])[0] ?? null);
+      const next = viewportForBuilt(built, measuredRects([sourceNodeId])[0] ?? null, { width, height }, { x, y, zoom });
+      if (next === null) return;
+      void setViewport(next, {
+        duration: next.zoom === zoom ? FRAME_PAN_MS : PROPOSAL_FRAME_MS,
+        interpolate: 'linear',
+      });
     },
-    [measuredRects, panToFrame],
+    [measuredRects, rfStoreApi, setViewport],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -2503,16 +2527,6 @@ function CanvasSpaceInner({
     [projectId, spaceId, t],
   );
 
-  // Text this browser could not extract never reached the server, so no task
-  // row tells of it: the person who picked the file is told, and the node is
-  // left as it was (inner#888 §7.8).
-  const failExtraction = React.useCallback(
-    (file: File): void => {
-      toast.error(t('canvas.upload.extractionFailed', { filename: file.name }));
-    },
-    [t],
-  );
-
   const processFiles = React.useCallback(
     (
       files: File[],
@@ -2628,9 +2642,13 @@ function CanvasSpaceInner({
           if (pasted) selectPasted(selectAfter);
           else setSelectAfterCreate(selectAfter);
         }
-        // The bytes travel once the canvas holds the nodes they belong to.
+        // The bytes travel once the canvas holds the nodes they belong to; the
+        // uploader sees each node wait until the server answers (inner#1303
+        // §6.7).
         for (const { file, spec, node } of jobs) {
           const nodeId = node.id;
+          const marks = useUploadMarksStore.getState();
+          const op = marks.begin(spaceId, nodeId, fillActionOf(spec));
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
@@ -2647,12 +2665,12 @@ function CanvasSpaceInner({
                   requestTicket: assetsApi.requestUploadTicket,
                   sendToIngest: sendFileAndFinish,
                   // The bytes are delivered; the node's content arrives from
-                  // the server through Yjs. All that is left here is to stop
-                  // holding the file for a Retry that is no longer offered.
+                  // the server through Yjs.
                   onSuccess: () => undefined,
-                  // Outcome and all — `failUploadNode` above owns what each
-                  // one means for the Retry stash and the toast.
-                  onFailure: (outcome) => failUploadNode(outcome, file),
+                  // A failure before the answer is said on the node; after it,
+                  // `failUploadNode` owns what each reason means for the Retry
+                  // stash.
+                  ...markedSinks(spaceId, nodeId, op, file, failUploadNode),
                 },
               ),
             );
@@ -2660,10 +2678,16 @@ function CanvasSpaceInner({
             trackOperation(
               nodeId,
               extractText(file)
-                .then((text) =>
-                  setNodeExtractedText(projectId, spaceId, nodeId, text),
-                )
-                .catch(() => failExtraction(file)),
+                .then((text) => {
+                  setNodeExtractedText(projectId, spaceId, nodeId, text);
+                  useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                })
+                .catch(() =>
+                  useUploadMarksStore.getState().fail(spaceId, nodeId, op, {
+                    key: 'canvas.upload.extractionFailed',
+                    params: { filename: file.name },
+                  }),
+                ),
             );
           }
         }
@@ -2676,7 +2700,6 @@ function CanvasSpaceInner({
       spaceId,
       userId,
       failUploadNode,
-      failExtraction,
       createUploadNodeAt,
       stepPaste,
       t,
@@ -2778,12 +2801,18 @@ function CanvasSpaceInner({
             : undefined;
         });
         const placed = placeProposalAt(intent.proposal, center, occupied);
-        // The camera follows what landed: centred on it, zoomed out only as
-        // far as it takes to show all of it (inner#1443 A4).
-        if (placed.bounds) {
-          // A Space opened empty and never framed still has its opening fit
-          // queued for the first nodes to arrive; this framing is that one.
-          rfStoreApi.setState({ fitViewQueued: false });
+        const focus = whatToFocus(intent.proposal, placed);
+        // A Space opened empty and never framed still has its opening fit
+        // queued for the first nodes to arrive; the framing below is that one.
+        if (placed.bounds) rfStoreApi.setState({ fitViewQueued: false });
+        if (focus.panel) {
+          // The panel that opens under one of them is framed with them once
+          // it has landed, in one move.
+          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+        } else if (placed.bounds) {
+          // The camera follows what landed: centred on it, zoomed out only as
+          // far as it takes to show all of it (inner#1443 A4).
           const zoom = rfStoreApi.getState().transform[2];
           void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
             duration: PROPOSAL_FRAME_MS,
@@ -2792,9 +2821,7 @@ function CanvasSpaceInner({
             interpolate: 'linear',
           });
         }
-        const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
         // `placeProposalAt` takes back whatever it wrote before it threw, so
@@ -2823,6 +2850,7 @@ function CanvasSpaceInner({
     getInternalNode,
     rfStoreApi,
     setViewport,
+    showPlaced,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one
@@ -3007,7 +3035,8 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       const text = event.clipboardData?.getData('text/plain') ?? '';
-      if (readOnly) return;
+      // A tool drawing on a node holds the reader's work there (§6.6).
+      if (readOnly || toolLayerOpen(sessionStore.getState())) return;
       if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
@@ -3031,7 +3060,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteFromText, viewCentre, processFiles]);
+  }, [readOnly, pasteFromText, viewCentre, processFiles, sessionStore]);
 
   React.useEffect(() => {
     /**
@@ -3040,7 +3069,7 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      if (readOnly) return;
+      if (readOnly || toolLayerOpen(sessionStore.getState())) return;
       // Words the reader dragged across are the ones they asked for, wherever
       // they sit, so the browser copies those and the nodes stay put. Words
       // left selected in a hidden Space are not on screen to be asked for
@@ -3068,7 +3097,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardFor, buffer]);
+  }, [readOnly, captureClipboardFor, buffer, sessionStore]);
 
   // ---- Grouping (selection → group / ungroup) ----
   // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
@@ -3496,11 +3525,12 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
+      if (toolLayerOpen(sessionStore.getState())) return;
       duplicateSelection();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, duplicateSelection]);
+  }, [readOnly, duplicateSelection, sessionStore]);
 
   // The delete key, taken off the library and answered here so the region gate
   // gets a say (#168). `deleteKeyCode={null}` registers no listener at all
@@ -3531,6 +3561,8 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (event.repeat) return;
+      // Open markup takes the key for its own selected object or text first.
+      if (routeDeleteCommand(sessionStore.getState()) === 'mark') return;
       const { nodes, edges } = rfStoreApi.getState();
       void deleteElements({
         nodes: nodes.filter((node) => node.selected),
@@ -3540,7 +3572,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, deleteElements, rfStoreApi]);
+  }, [readOnly, deleteElements, rfStoreApi, sessionStore]);
 
   // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
   // + every member, via selectionDeletionIds) — the same cascade the single-node
@@ -3676,6 +3708,7 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
       tag?: MiniToolUploadTag,
+      continuing?: string,
     ): Promise<void> | undefined => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
@@ -3688,8 +3721,15 @@ function CanvasSpaceInner({
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
+        if (continuing !== undefined) useUploadMarksStore.getState().answer(spaceId, nodeId, continuing);
         return undefined;
       }
+      // The uploader sees the node wait from this moment until the server
+      // answers (inner#1303 §6.7); a tool's export carries on the operation
+      // its press began.
+      const markOp =
+        continuing ??
+        useUploadMarksStore.getState().begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
       // whole flow the tracked work — otherwise the tab-close guard reads "not
       // busy" during the config round-trip and a close in that window loses the
@@ -3704,12 +3744,10 @@ function CanvasSpaceInner({
         }
         const rejection = checkFileAdmission(file, maxBytes);
         if (rejection !== null) {
-          toast.warning(
-            t(`canvas.upload.${rejection}`, {
-              filename: file.name,
-              ...refusedFormatParams(file),
-            }),
-          );
+          useUploadMarksStore.getState().fail(spaceId, nodeId, markOp, {
+            key: `canvas.upload.${rejection}`,
+            params: { filename: file.name, ...refusedFormatParams(file) },
+          });
           return;
         }
         await fillNodeFromFile(nodeId, file, modality, projectId, {
@@ -3718,30 +3756,47 @@ function CanvasSpaceInner({
           requestTicket: assetsApi.requestUploadTicket,
           sendToIngest: sendFileAndFinish,
           spaceId,
+          markOp,
           ...(tag !== undefined && { tag }),
           extractText,
-          // Type gate: the picker's accept is advisory (macOS lets audio/*
-          // select .mp4) — a file that doesn't classify to the node's modality
-          // is refused with a local toast (user bug 2026-07-03).
-          onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
           // Only the text path reaches this: it reads the content here, so
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
           setContent: (id, content) =>
             setNodeExtractedText(projectId, spaceId, id, content),
-          // Also the text path only, and a text-extraction failure has nothing
-          // to re-upload — every upload failure goes through `onUploadFailure`
-          // below, where the Retry stash is decided per reason.
-          onExtractionFailure: failExtraction,
-          // The same outcome as the drop path, reason for reason: one place
-          // decides the stash and says the remedy in the reader's language.
+          // A failure after the server answered has a task row: the same
+          // outcome as the drop path, reason for reason, where the Retry
+          // stash is decided.
           onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
         });
       })();
       trackOperation(nodeId, work);
       return work;
     },
-    [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
+    [projectId, spaceId, t, failUploadNode, trackOperation],
+  );
+  // Fill a browser tool's result nodes with its export in one batch upload
+  // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,
+  // one ticket request for every file.
+  const fillUploads = React.useCallback(
+    (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag): void => {
+      fillNodesFromFiles(entries, projectId, {
+        getUploadConfig: assetsApi.fetchUploadConfig,
+        hashFile,
+        requestTicketBatch: assetsApi.requestUploadTicketBatch,
+        sendToIngest: sendFileAndFinish,
+        spaceId,
+        tag,
+        isLocked: (nodeId) => isNodeLocked(projectId, spaceId, nodeId),
+        onLocked: () => {
+          const gateBlock = evaluateNodeGate({ locked: true });
+          if (gateBlock) warnNodeGate(t(gateBlock.toastKey));
+        },
+        track: trackOperation,
+        onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
+      });
+    },
+    [projectId, spaceId, t, failUploadNode, trackOperation],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
@@ -3901,6 +3956,59 @@ function CanvasSpaceInner({
     [menuDownloadUrl, nodeMenu.type, menuCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
+  // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening
+  // it the camera comes close enough that the node and its panel fill the
+  // view, no closer than the picture's own pixels, so the node loads its full
+  // picture and the preview is drawn at that size.
+  const inspectNode = React.useCallback(
+    (nodeId: string): void => {
+      let tries = 0;
+      let decoding = false;
+      const opened = sessionStore.getState().panelSession;
+      /**
+       * Whether the adjust this zoom is for is still the open panel; the wait
+       * can outlast it.
+       * @returns True while it is.
+       */
+      const stillInspecting = (): boolean => {
+        const session = sessionStore.getState();
+        return session.panelSession === opened && miniToolOpenOn(nodeId)(session) !== null;
+      };
+      /** One frame of waiting for the node and the panel to be laid out. */
+      const step = (): void => {
+        if (!stillInspecting()) return;
+        const container = containerRef.current;
+        const [node] = measuredRects([nodeId]);
+        const panel = container?.querySelector<HTMLElement>('[data-canvas-panel]') ?? null;
+        const shell = container?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`) ?? null;
+        const picture = container?.querySelector(cropSourceSelector(nodeId)) ?? null;
+        // A picture still decoding is waited for until it has, however long.
+        if (!decoding && whenDecoded(picture, step)) {
+          decoding = true;
+          return;
+        }
+        const own = isCropSource(picture) ? intrinsicSize(picture).width : 0;
+        const media = (node?.width ?? 0) - MEDIA_FRAME_PX;
+        if (node === undefined || panel === null || shell === null || own === 0 || media <= 0) {
+          if (tries++ < 10) requestAnimationFrame(step);
+          return;
+        }
+        const box = panel.getBoundingClientRect();
+        const gap = box.top - shell.getBoundingClientRect().bottom;
+        const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
+        const next = viewportToInspect(
+          node,
+          { height: box.height, gap },
+          { width, height },
+          { x, y, zoom },
+          Math.min(own / media, CANVAS_MAX_ZOOM),
+        );
+        if (next !== null) void setViewport(next, { duration: PROPOSAL_FRAME_MS, interpolate: 'linear' });
+      };
+      requestAnimationFrame(step);
+    },
+    [measuredRects, rfStoreApi, setViewport, sessionStore],
+  );
   const openToolFromMenu = React.useCallback(
     (toolId: string): void => {
       const spec = miniToolById(toolId);
@@ -3911,63 +4019,88 @@ function CanvasSpaceInner({
         params: defaultParamsOf(spec),
       });
       selectOnlyNode(nodeId);
+      if (spec.source === 'image' && !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust')) {
+        inspectNode(nodeId);
+      }
     },
-    [menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
   );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
   // can settle, builds the text node and its edge, and asks for the run.
-  // A press still waiting shows on the menu item (inner#1490).
+  // A press still waiting shows on the menu item (inner#1490). Transcribe
+  // (inner#856) is the same reading behind a panel, so both build their run
+  // here.
   const understandingMenuNode = useUnderstanding(spaceId, nodeMenu.nodeId ?? '');
+  const readingRunOf = React.useCallback(
+    (nodeId: string | null, url: string | null): UnderstandRun | null => {
+      const host = nodes.find((n) => n.id === nodeId);
+      if (
+        url === null ||
+        host === undefined ||
+        (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
+      ) {
+        return null;
+      }
+      // A node inside a group stores its position relative to that group's
+      // origin, and the node this builds is top-level.
+      const group =
+        host.parentId === undefined
+          ? undefined
+          : nodes.find((n) => n.id === host.parentId);
+      return {
+        projectId,
+        spaceId,
+        userId: viewerId ?? '',
+        source: {
+          id: host.id,
+          name: host.data.name,
+          kind: host.type,
+          url,
+          mimeType: host.data.mimeType,
+          sizeBytes: host.data.sizeBytes,
+          position: host.position,
+          groupOrigin: group?.position ?? null,
+        },
+        // The node lands a whole step to the right of the one being read, which
+        // on a canvas scrolled near its right edge is outside the viewport. Two
+        // acts, the way the proposal path does them: selecting says which node
+        // this press is about, and framing is what puts it in front of the
+        // reader — a selection flag moves nothing.
+        onBuilt: ({ id, position }) => {
+          setSelectAfterCreate([id]);
+          frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
+        },
+      };
+    },
+    [frameBuilt, nodes, projectId, spaceId, viewerId],
+  );
   const understandFromMenu = React.useCallback((): void => {
-    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
-    if (
-      menuDownloadUrl === null ||
-      host === undefined ||
-      (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
-    ) {
-      return;
-    }
-    // A node inside a group stores its position relative to that group's
-    // origin, and the node this builds is top-level.
-    const group =
-      host.parentId === undefined
-        ? undefined
-        : nodes.find((n) => n.id === host.parentId);
-    void startUnderstandRun({
-      projectId,
-      spaceId,
-      userId: viewerId ?? '',
-      source: {
-        id: host.id,
-        name: host.data.name,
-        kind: host.type,
-        url: menuDownloadUrl,
-        mimeType: host.data.mimeType,
-        sizeBytes: host.data.sizeBytes,
-        position: host.position,
-        groupOrigin: group?.position ?? null,
-      },
-      // The node lands a whole step to the right of the one being read, which
-      // on a canvas scrolled near its right edge is outside the viewport. Two
-      // acts, the way the proposal path does them: selecting says which node
-      // this press is about, and framing is what puts it in front of the
-      // reader — a selection flag moves nothing.
-      onBuilt: ({ id, position }) => {
-        setSelectAfterCreate([id]);
-        frameNewNode(position, host.id);
-      },
-    });
-  }, [
-    frameNewNode,
-    menuDownloadUrl,
-    nodes,
-    nodeMenu.nodeId,
-    projectId,
-    spaceId,
-    viewerId,
-  ]);
+    const run = readingRunOf(nodeMenu.nodeId, menuDownloadUrl);
+    if (run !== null) void startUnderstandRun(run);
+  }, [readingRunOf, nodeMenu.nodeId, menuDownloadUrl]);
+  const openTranscribePanel = useCanvasSession((s) => s.openTranscribePanel);
+  const transcribeFromMenu = React.useCallback((): void => {
+    if (menuDownloadUrl === null || nodeMenu.nodeId === null) return;
+    openTranscribePanel(nodeMenu.nodeId);
+  }, [menuDownloadUrl, nodeMenu.nodeId, openTranscribePanel]);
+  // The panel's Run reads the asset as the node holds it at the press: the
+  // menu that opened the panel may be long closed.
+  const runTranscribe = React.useCallback(
+    (nodeId: string, keepFillers: boolean): void => {
+      const run = readingRunOf(
+        nodeId,
+        readOnly ? null : downloadableAsset(nodes.find((n) => n.id === nodeId)),
+      );
+      if (run === null) {
+        toast.warning(t('canvas.miniTool.panel.sourceMissing'));
+        return;
+      }
+      void startTranscribeRun({ ...run, keepFillers });
+    },
+    [readingRunOf, readOnly, nodes, t],
+  );
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
   // Whatever the press makes in the browser first (a browser tool's file, a
   // drawing tool's images), the build and the upload are one tracked
@@ -3980,7 +4113,8 @@ function CanvasSpaceInner({
       nodeId: string,
       spec: MiniToolSpec,
       snapshot: MiniToolSnapshot,
-      drawing: MiniToolDrawingSnapshot | undefined,
+      capture: MiniToolCapture | undefined,
+      sourceSize: { width: number; height: number } | undefined,
     ): Promise<unknown> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
@@ -3996,33 +4130,55 @@ function CanvasSpaceInner({
         userId: viewerId ?? '',
         spec,
         snapshot,
-        drawing,
+        capture,
         source: {
           id: host.id,
           name: view.name,
           position: host.position,
           groupOrigin: group?.position ?? null,
           mimeType: view.mimeType,
-          width: 'width' in view ? view.width : undefined,
-          height: 'height' in view ? view.height : undefined,
+          // The panel reads the size off the shown picture when the node
+          // records none.
+          width: ('width' in view ? view.width : undefined) ?? sourceSize?.width,
+          height: ('height' in view ? view.height : undefined) ?? sourceSize?.height,
         },
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
         exportFile: exportMiniToolFile,
         fillUpload,
+        fillUploads,
         exportDrawing,
+        exportExpand,
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
         stillOpen: () => sessionStore.getState().panelSession === session,
-        onBuilt: (built) => {
+        onBuilt: (built, group) => {
+          // A grouped batch is one thing to act on next: the group is what is
+          // selected and what the camera frames.
+          if (group !== undefined) {
+            setSelectAfterCreate([group.id]);
+            frameBuilt({ ...group.position, width: group.width, height: group.height }, nodeId);
+            return;
+          }
           setSelectAfterCreate(built.map((node) => node.id));
-          const [first] = built;
-          if (first !== undefined) frameNewNode(first.position, nodeId);
+          const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
+          if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), nodeId);
         },
       });
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
     },
-    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation, sessionStore],
+    [
+      nodes,
+      projectId,
+      spaceId,
+      viewerId,
+      buffer,
+      fillUpload,
+      fillUploads,
+      frameBuilt,
+      trackOperation,
+      sessionStore,
+    ],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -4482,169 +4638,178 @@ function CanvasSpaceInner({
 
   return (
     <CanvasActionsContext.Provider value={actions}>
-      <div
-        ref={containerRef}
-        data-testid='canvas-space'
-        data-project-id={projectId}
-        data-space-id={spaceId}
-        data-readonly={readOnly ? 'true' : undefined}
-        // Click-focusable, not tab-reachable; where a tab rename hands the
-        // keyboard back.
-        tabIndex={-1}
-        data-space-focus-root=''
-        // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
-        // NodesSelection rect (see index.css) so a marquee mid-pick cannot
-        // create a click-swallowing dead zone. The rect is neutralized at the
-        // RENDER layer on purpose — round-3 adversarial proved that toggling
-        // selectionKeyCode to disable the Shift marquee latches xyflow's
-        // internal key state when the flip happens mid-keyhold (useKeyPress
-        // detaches its listeners without resetting keyPressed), hijacking
-        // every drag until the next Shift press. Keep xyflow's key props
-        // CONSTANT; make the marquee harmless instead.
-        className={`relative h-full w-full bg-canvas outline-none ${pickForNodeId != null ? 'canvas-picking' : ''}`}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-      >
-        {/* Hidden picker the canvas triggers for an empty node's double-click /
-            Upload-menu fill (accept set per modality at trigger time). */}
-        <input
-          ref={uploadInputRef}
-          type='file'
-          className='hidden'
-          aria-hidden='true'
+      <PeerActivityContext.Provider value={peerActivity}>
+        <div
+          ref={containerRef}
+          data-testid='canvas-space'
+          data-project-id={projectId}
+          data-space-id={spaceId}
+          data-readonly={readOnly ? 'true' : undefined}
+          // Click-focusable, not tab-reachable; where a tab rename hands the
+          // keyboard back.
           tabIndex={-1}
-          data-testid='canvas-upload-input'
-          onChange={onUploadInputChange}
-        />
-        <ReactFlow
+          data-space-focus-root=''
+          // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
+          // NodesSelection rect (see index.css) so a marquee mid-pick cannot
+          // create a click-swallowing dead zone. The rect is neutralized at the
+          // RENDER layer on purpose — round-3 adversarial proved that toggling
+          // selectionKeyCode to disable the Shift marquee latches xyflow's
+          // internal key state when the flip happens mid-keyhold (useKeyPress
+          // detaches its listeners without resetting keyPressed), hijacking
+          // every drag until the next Shift press. Keep xyflow's key props
+          // CONSTANT; make the marquee harmless instead.
+          className={`relative h-full w-full bg-canvas outline-none ${pickForNodeId != null ? 'canvas-picking' : ''}`}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+        >
+          {/* Hidden picker the canvas triggers for an empty node's double-click /
+            Upload-menu fill (accept set per modality at trigger time). */}
+          <input
+            ref={uploadInputRef}
+            type='file'
+            className='hidden'
+            aria-hidden='true'
+            tabIndex={-1}
+            data-testid='canvas-upload-input'
+            onChange={onUploadInputChange}
+          />
+          <ReactFlow
           // The ids the library writes into the page (the dot grid's pattern,
           // edge markers) are built from this; every kept canvas needs its own,
           // or the one on screen draws with a hidden canvas's grid.
-          id={`canvas-${spaceId}`}
-          ref={setFlowShell}
-          onKeyDownCapture={nudgeKeys.onKeyDownCapture}
-          onKeyDown={nudgeKeys.onKeyDown}
-          onPointerDownCapture={nudgeKeys.onPointerDownCapture}
-          nodes={pickedNodes}
-          edges={flowEdges}
-          nodeTypes={FLOW_NODE_TYPES}
-          edgeTypes={EDGE_TYPES}
-          // Only mount the nodes / edges intersecting the viewport (#1647 step 5)
-          // so a heavy space stays smooth on pan / zoom. Enabled built-in with NO
-          // custom guard rail: the historic offscreen-edge bug (xyflow #4516) is
-          // fixed in our v12.10.2, so groups + edges are verified in real-browser
-          // smoke rather than pre-guarded (a guard rail is added only if smoke
-          // shows breakage). NOTE: this does not shrink the INITIAL mount (all
-          // nodes render once); it helps pan / zoom after load (xyflow #3883).
-          onlyRenderVisibleElements
-          // Snap-to-grid (#1663): when the toolbar toggle is on, ReactFlow rounds
-          // dragged node positions to SNAP_GRID (aligned to the visible background
-          // dots). Read from the canvas store — single source mirroring the
-          // minimap (#1548); the toggle was previously a dead local useState that
-          // never reached the canvas.
-          snapToGrid={snapToGrid}
-          snapGrid={SNAP_GRID}
-          // Viewer backstop (#1377): a read-only viewer must not move nodes or
-          // draw edges. The real boundary is the collab server (a read-only
-          // connection rejects the viewer's Yjs sync-update), but gating these
-          // here prevents the UI from optimistically moving a node only to have
-          // the server reject it and snap it back. elementsSelectable stays on
-          // so viewers can still click a node to inspect it.
-          nodesDraggable={!readOnly}
-          // A reference pick owns ALL connect gestures (adversarial round-1
-          // HIGH): live handles let two candidate hot-zone clicks arm xyflow
-          // click-connect and silently write a candidate-to-candidate edge
-          // mid-pick. Plain boolean store prop — safe to flip, unlike the
-          // key-code props (see web-frontend-traps).
-          nodesConnectable={!readOnly && pickForNodeId == null}
-          // No node selection during a reference pick (user 2026-07-12 P2c):
-          // clicking a candidate wires a reference (onNodeClick → addEdge), it
-          // must not ALSO xyflow-select the node — a click on a type-incompatible
-          // (dimmed) node still turned its border the selected violet, reading as
-          // if the incompatible pick had taken. onNodeClick still fires with
-          // selection off, so the pick + rejection-toast paths are untouched.
-          // Off pick this stays the default (true) so viewers can click-inspect.
-          elementsSelectable={pickForNodeId == null}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeDragStart={onNodeDragStart}
-          onNodeDrag={onNodeDrag}
-          onNodeDragStop={onNodeDragStop}
-          onDelete={onDelete}
-          onBeforeDelete={onBeforeDelete}
-          onConnect={onConnect}
-          onConnectStart={onConnectDragStart}
-          onConnectEnd={onConnectEnd}
-          onClickConnectStart={onClickConnectStart}
-          onClickConnectEnd={onClickConnectEnd}
-          isValidConnection={isValidConnection}
-          onPaneContextMenu={onPaneContextMenu}
-          onNodeContextMenu={onNodeContextMenu}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          onSelectionContextMenu={onSelectionContextMenu}
-          onEdgeContextMenu={onEdgeContextMenu}
-          // The delete key is handled in the Backspace / Delete effect above,
-          // where the region gate gets a say. `null` registers no listener in
-          // the library at all.
-          deleteKeyCode={null}
-          proOptions={{ hideAttribution: true }}
-          // Two ways in, one at a time: a Space whose camera this account has
-          // aimed opens where they left it, and one they have not opens framing
-          // what is on it. `fitView` wins when both are given, so only one is.
-          defaultViewport={storedViewport ?? undefined}
-          fitView={storedViewport === null}
-          // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
-          // sparse space doesn't zoom in to the 800% global ceiling; the manual
-          // zoom presets still use the full global range below.
-          fitViewOptions={FIT_VIEW_OPTIONS}
-          onMove={noteCameraPlaced}
-          onMoveEnd={rememberViewport}
-          // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
-          // camera are checked against these same two constants, so what the
-          // wheel reaches, what the reader may type, and what comes back from
-          // storage all stop in the same place.
-          minZoom={CANVAS_MIN_ZOOM}
-          maxZoom={CANVAS_MAX_ZOOM}
-          // Two knobs, two halves of one press: what may still be a click on
-          // a node, and what is small enough not to write a position. See
-          // NODE_DRAG_THRESHOLD — both defaults are against opening a note
-          // (#1881 §8.7.3).
-          nodeDragThreshold={NODE_DRAG_THRESHOLD}
-          nodeClickDistance={NODE_DRAG_THRESHOLD}
-          // Figma-like interaction: left-button drag marquee-selects (not
-          // pans); two-finger trackpad scroll pans the canvas freely; pinch
-          // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
-          // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
-          // routes the two automatically, so zoomOnScroll stays at its default.
-          // Drag-marquee is disabled during a reference pick (round-1
-          // adversarial dead zone). The Shift marquee path stays ENABLED on
-          // purpose: gating selectionKeyCode dynamically latches xyflow's
-          // useKeyPress state when the flip happens mid-Shift-hold (round-3
-          // adversarial — listeners detach without resetting keyPressed,
-          // hijacking every drag afterwards). A Shift marquee mid-pick is
-          // harmless instead: the machine holds, and the canvas-picking CSS
-          // hides the NodesSelection rect so no dead zone forms.
-          selectionOnDrag={pickForNodeId == null}
-          panOnDrag={false}
-          panOnScroll
-          panOnScrollMode={PanOnScrollMode.Free}
-          // Double-click on the empty canvas must NOT zoom (#4): an accidental
-          // zoom-in on a misclick is jarring, and the gesture is reserved for a
-          // future use. Zoom stays on the viewport-toolbar buttons / Cmd-+/- /
-          // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
-          zoomOnDoubleClick={false}
-        >
-          {/* Everyone else's pointer. Inside ReactFlow because it portals into
+            id={`canvas-${spaceId}`}
+            ref={setFlowShell}
+            onKeyDownCapture={nudgeKeys.onKeyDownCapture}
+            onKeyDown={nudgeKeys.onKeyDown}
+            onPointerDownCapture={nudgeKeys.onPointerDownCapture}
+            nodes={pickedNodes}
+            edges={flowEdges}
+            nodeTypes={FLOW_NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            // Only mount the nodes / edges intersecting the viewport (#1647 step 5)
+            // so a heavy space stays smooth on pan / zoom. Enabled built-in with NO
+            // custom guard rail: the historic offscreen-edge bug (xyflow #4516) is
+            // fixed in our v12.10.2, so groups + edges are verified in real-browser
+            // smoke rather than pre-guarded (a guard rail is added only if smoke
+            // shows breakage). NOTE: this does not shrink the INITIAL mount (all
+            // nodes render once); it helps pan / zoom after load (xyflow #3883).
+            onlyRenderVisibleElements
+            // Snap-to-grid (#1663): when the toolbar toggle is on, ReactFlow rounds
+            // dragged node positions to SNAP_GRID (aligned to the visible background
+            // dots). Read from the canvas store — single source mirroring the
+            // minimap (#1548); the toggle was previously a dead local useState that
+            // never reached the canvas.
+            snapToGrid={snapToGrid}
+            snapGrid={SNAP_GRID}
+            // Viewer backstop (#1377): a read-only viewer must not move nodes or
+            // draw edges. The real boundary is the collab server (a read-only
+            // connection rejects the viewer's Yjs sync-update), but gating these
+            // here prevents the UI from optimistically moving a node only to have
+            // the server reject it and snap it back. elementsSelectable stays on
+            // so viewers can still click a node to inspect it.
+            nodesDraggable={!readOnly}
+            // A reference pick owns ALL connect gestures (adversarial round-1
+            // HIGH): live handles let two candidate hot-zone clicks arm xyflow
+            // click-connect and silently write a candidate-to-candidate edge
+            // mid-pick. Plain boolean store prop — safe to flip, unlike the
+            // key-code props (see web-frontend-traps).
+            nodesConnectable={!readOnly && pickForNodeId == null}
+            // No node selection during a reference pick (user 2026-07-12 P2c):
+            // clicking a candidate wires a reference (onNodeClick → addEdge), it
+            // must not ALSO xyflow-select the node — a click on a type-incompatible
+            // (dimmed) node still turned its border the selected violet, reading as
+            // if the incompatible pick had taken. onNodeClick still fires with
+            // selection off, so the pick + rejection-toast paths are untouched.
+            // Off pick this stays the default (true) so viewers can click-inspect.
+            elementsSelectable={pickForNodeId == null}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
+            onNodeDragStop={onNodeDragStop}
+            onDelete={onDelete}
+            onBeforeDelete={onBeforeDelete}
+            onConnect={onConnect}
+            onConnectStart={onConnectDragStart}
+            onConnectEnd={onConnectEnd}
+            onClickConnectStart={onClickConnectStart}
+            onClickConnectEnd={onClickConnectEnd}
+            isValidConnection={isValidConnection}
+            onPaneContextMenu={onPaneContextMenu}
+            onNodeContextMenu={onNodeContextMenu}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            onSelectionContextMenu={onSelectionContextMenu}
+            onEdgeContextMenu={onEdgeContextMenu}
+            // The delete key is handled in the Backspace / Delete effect above,
+            // where the region gate gets a say. `null` registers no listener in
+            // the library at all.
+            deleteKeyCode={null}
+            proOptions={{ hideAttribution: true }}
+            // Two ways in, one at a time: a Space whose camera this account has
+            // aimed opens where they left it, and one they have not opens framing
+            // what is on it. `fitView` wins when both are given, so only one is.
+            defaultViewport={storedViewport ?? undefined}
+            fitView={storedViewport === null}
+            // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
+            // sparse space doesn't zoom in to the 800% global ceiling; the manual
+            // zoom presets still use the full global range below.
+            fitViewOptions={FIT_VIEW_OPTIONS}
+            onMove={noteCameraPlaced}
+            onMoveEnd={rememberViewport}
+            // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
+            // camera are checked against these same two constants, so what the
+            // wheel reaches, what the reader may type, and what comes back from
+            // storage all stop in the same place.
+            minZoom={CANVAS_MIN_ZOOM}
+            maxZoom={CANVAS_MAX_ZOOM}
+            // Two knobs, two halves of one press: what may still be a click on
+            // a node, and what is small enough not to write a position. See
+            // NODE_DRAG_THRESHOLD — both defaults are against opening a note
+            // (#1881 §8.7.3).
+            nodeDragThreshold={NODE_DRAG_THRESHOLD}
+            nodeClickDistance={NODE_DRAG_THRESHOLD}
+            // Figma-like interaction: left-button drag marquee-selects (not
+            // pans); two-finger trackpad scroll pans the canvas freely; pinch
+            // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
+            // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
+            // routes the two automatically, so zoomOnScroll stays at its default.
+            // Drag-marquee is disabled during a reference pick (round-1
+            // adversarial dead zone). The Shift marquee path stays ENABLED on
+            // purpose: gating selectionKeyCode dynamically latches xyflow's
+            // useKeyPress state when the flip happens mid-Shift-hold (round-3
+            // adversarial — listeners detach without resetting keyPressed,
+            // hijacking every drag afterwards). A Shift marquee mid-pick is
+            // harmless instead: the machine holds, and the canvas-picking CSS
+            // hides the NodesSelection rect so no dead zone forms.
+            selectionOnDrag={pickForNodeId == null}
+            panOnDrag={false}
+            panOnScroll
+            panOnScrollMode={PanOnScrollMode.Free}
+            // Double-click on the empty canvas must NOT zoom (#4): an accidental
+            // zoom-in on a misclick is jarring, and the gesture is reserved for a
+            // future use. Zoom stays on the viewport-toolbar buttons / Cmd-+/- /
+            // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
+            zoomOnDoubleClick={false}
+          >
+            {/* Everyone else's pointer. Inside ReactFlow because it portals into
               the viewport, so pan and zoom carry it with the nodes. */}
-          {dropLayer}
-          <CanvasCursorLayer awareness={awareness} />
-          {composerAt === null ? null : (
+            {dropLayer}
+            <CanvasCursorLayer awareness={awareness} />
+            {/* The expand frame reaches past its node, which the canvas
+              unmounts while its own box is off screen; drawn here, over every
+              node like the new-note box, it stays while any part is visible. */}
+            <ViewportPortal>
+              <div className='absolute top-0 left-0' style={{ zIndex: VIEWPORT_TOP_Z }}>
+                <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />
+              </div>
+            </ViewportPortal>
+            {composerAt === null ? null : (
             // Portalled into the viewport, so the box stays over the spot that
             // was clicked through any pan or zoom. The node itself does not
             // exist yet — Enter is what creates it (§8.6).
-            <ViewportPortal>
-              {/* `pointer-events-auto` because the viewport does not have it:
+              <ViewportPortal>
+                {/* `pointer-events-auto` because the viewport does not have it:
                   ReactFlow sets `pointer-events: none` on
                   `.react-flow__viewport` and hands it back per node, so a
                   portal into it inherits the none. Measured on a board without
@@ -4652,356 +4817,366 @@ function CanvasSpaceInner({
                   the pane, and one click inside — to place the caret, or to
                   select what had been typed — reached the pane instead and
                   threw the words away. */}
-              <div
-                className='pointer-events-auto absolute top-0 left-0'
-                data-testid='annotation-composer-layer'
-                // Counter-scaled so the box being typed into is the size of
-                // the sticky it becomes (§8.7.4). Without it, somebody writing
-                // at 50% zoom types into a half-size box and watches their
-                // words double in size the moment they press Enter. A
-                // transform is the right tool here and the wrong one on the
-                // pin: nothing measures this box, and xyflow measures that one.
-                style={{
-                  transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / rfZoom})`,
-                  transformOrigin: 'top left',
-                  zIndex: ANNOTATION_COMPOSER_Z,
-                }}
-              >
-                <AnnotationComposer
-                  onCommit={(content) => {
-                    createAnnotationAt(composerAt, content);
+                <div
+                  className='pointer-events-auto absolute top-0 left-0'
+                  data-testid='annotation-composer-layer'
+                  // Counter-scaled so the box being typed into is the size of
+                  // the sticky it becomes (§8.7.4). Without it, somebody writing
+                  // at 50% zoom types into a half-size box and watches their
+                  // words double in size the moment they press Enter. A
+                  // transform is the right tool here and the wrong one on the
+                  // pin: nothing measures this box, and xyflow measures that one.
+                  style={{
+                    transform: `translate(${composerAt.x}px, ${composerAt.y}px) scale(${1 / rfZoom})`,
+                    transformOrigin: 'top left',
+                    zIndex: VIEWPORT_TOP_Z,
                   }}
-                  onClose={() => setComposerAt(null)}
-                />
-              </div>
-            </ViewportPortal>
-          )}
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={DOT_GAP_PX}
-            size={DOT_SIZE_PX}
-            color='var(--color-canvas-grid)'
-          />
-          {/* Bird's-eye minimap (#1548) — toolbar-toggled via the canvas
+                >
+                  <AnnotationComposer
+                    onCommit={(content) => {
+                      createAnnotationAt(composerAt, content);
+                    }}
+                    onClose={() => setComposerAt(null)}
+                  />
+                </div>
+              </ViewportPortal>
+            )}
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={DOT_GAP_PX}
+              size={DOT_SIZE_PX}
+              color='var(--color-canvas-grid)'
+            />
+            {/* Bird's-eye minimap (#1548) — toolbar-toggled via the canvas
               store; safe for read-only viewers (viewport navigation only). */}
-          {minimapVisible ? <CanvasMiniMap /> : null}
-          {/* Floating selection toolbar: group a fresh selection, or ungroup
+            {minimapVisible ? <CanvasMiniMap /> : null}
+            {/* Floating selection toolbar: group a fresh selection, or ungroup
               a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
-          <NodeToolbar
-            nodeId={selectedIds}
-            // Hidden during a reference pick (adversarial round-1): floating
-            // chrome over the pick surface swallows candidate clicks and its
-            // group/ungroup actions mutate mid-session — same concealment
-            // rule as the left menu / viewport toolbar (item 13).
-            isVisible={
-              groupOffer.kind !== 'none' &&
+            <NodeToolbar
+              nodeId={selectedIds}
+              // Hidden during a reference pick (adversarial round-1): floating
+              // chrome over the pick surface swallows candidate clicks and its
+              // group/ungroup actions mutate mid-session — same concealment
+              // rule as the left menu / viewport toolbar (item 13).
+              isVisible={
+                groupOffer.kind !== 'none' &&
               !readOnly &&
               pickForNodeId == null
-            }
-            position={Position.Top}
-          >
-            <GroupSelectionToolbar
-              offer={groupOffer.kind === 'ungroup' ? 'ungroup' : 'group'}
-              onGroup={groupSelection}
-              onUngroup={ungroupSelection}
-              bgOpen={bgMenuOpen}
-              onBgOpenChange={setBgMenuOpen}
-              bgValue={selectedGroupBg}
-              onPickBg={pickGroupBackground}
-            />
-          </NodeToolbar>
-          {/* Generate panel: floats below its node via NodeToolbar (no viewport
+              }
+              position={Position.Top}
+            >
+              <GroupSelectionToolbar
+                offer={groupOffer.kind === 'ungroup' ? 'ungroup' : 'group'}
+                onGroup={groupSelection}
+                onUngroup={ungroupSelection}
+                bgOpen={bgMenuOpen}
+                onBgOpenChange={setBgMenuOpen}
+                bgValue={selectedGroupBg}
+                onPickBg={pickGroupBackground}
+              />
+            </NodeToolbar>
+            {/* Generate panel: floats below its node via NodeToolbar (no viewport
               change on open); shows nothing until a node's panel is opened. */}
-          <GeneratePanelContainer
-            nodes={nodes}
-            edges={edges}
-            projectId={projectId}
-            spaceId={spaceId}
-            getLastWriteWasLocal={getLastWriteWasLocal}
-          />
-          {/* Video Generate panel: its own panel kind, so only one of the two
+            <GeneratePanelContainer
+              nodes={nodes}
+              edges={edges}
+              projectId={projectId}
+              spaceId={spaceId}
+              getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
+            />
+            {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
-          <VideoGeneratePanelContainer
-            nodes={nodes}
-            edges={edges}
-            projectId={projectId}
-            spaceId={spaceId}
-            getLastWriteWasLocal={getLastWriteWasLocal}
-          />
-          {/* Audio Generate panel: its own panel kind, opened by an audio
+            <VideoGeneratePanelContainer
+              nodes={nodes}
+              edges={edges}
+              projectId={projectId}
+              spaceId={spaceId}
+              getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
+            />
+            {/* Audio Generate panel: its own panel kind, opened by an audio
               node. It takes `getLastWriteWasLocal` for the same reason the
               video panel does — voice cloning collects a slot pick (#1960
               PR2), and a mode switch that ends a running pick has to say
               whether it was this reader's switch or a collaborator's. */}
-          <AudioGeneratePanelContainer
-            nodes={nodes}
-            edges={edges}
-            projectId={projectId}
-            spaceId={spaceId}
-            getLastWriteWasLocal={getLastWriteWasLocal}
-          />
-          {/* A mini-tool's parameter panel: the same slot under the node,
+            <AudioGeneratePanelContainer
+              nodes={nodes}
+              edges={edges}
+              projectId={projectId}
+              spaceId={spaceId}
+              getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
+            />
+            {/* A mini-tool's parameter panel: the same slot under the node,
               so it and the Generate panels never show together. */}
-          <MiniToolPanelContainer
-            nodes={nodes}
-            getLastWriteWasLocal={getLastWriteWasLocal}
-            onRun={runMiniTool}
-          />
-          {/* An expanded annotation: the fifth panel in that same host +
+            <MiniToolPanelContainer
+              nodes={nodes}
+              getLastWriteWasLocal={getLastWriteWasLocal}
+              onRun={runMiniTool}
+            />
+            {/* The transcribe panel (inner#856), in the same slot. */}
+            <TranscribePanelContainer nodes={nodes} onRun={runTranscribe} />
+            {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
-          <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
-          {/* Reset-empty-image panel: shares the host + lifecycle with Generate
+            <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
+            {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
-          <EmptyImagePanelContainer
-            nodes={nodes}
-            onReset={resetNodeToEmptyImage}
-          />
-          {/* Node-history panel: shares the host + lifecycle with Generate /
+            <EmptyImagePanelContainer
+              nodes={nodes}
+              onReset={resetNodeToEmptyImage}
+            />
+            {/* Node-history panel: shares the host + lifecycle with Generate /
               reset (panelHostId + panelKind), mutually exclusive, floats below
               its node via NodeToolbar. */}
-          <NodeHistoryPanelContainer
-            nodes={nodes}
-            projectId={projectId}
-            spaceId={spaceId}
-            onRestore={restoreNodeContent}
-          />
-          {/* Node task list: the fourth panel in that same host + lifecycle,
+            <NodeHistoryPanelContainer
+              nodes={nodes}
+              projectId={projectId}
+              spaceId={spaceId}
+              onRestore={restoreNodeContent}
+            />
+            {/* Node task list: the fourth panel in that same host + lifecycle,
               anchored to the node's right beside its counts column. */}
-          <NodeTaskPanelContainer
-            nodes={nodes}
-            projectId={projectId}
-            spaceId={spaceId}
-            readOnly={readOnly}
-            onRetry={retryNodeUpload}
-          />
-          {/* The focus crop's bar under its node; the marquee is drawn inside
+            <NodeTaskPanelContainer
+              nodes={nodes}
+              projectId={projectId}
+              spaceId={spaceId}
+              readOnly={readOnly}
+              onRetry={retryNodeUpload}
+            />
+            {/* The focus crop's bar under its node; the marquee is drawn inside
               the node by the node's own crop box (inner#888 §7.4.1). */}
-          <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} />
-        </ReactFlow>
-        {pickForNodeId ? (
-          <div
-            data-testid='reference-pick-banner'
-            // Focus hand-off target (adversarial 2026-07-17): the crop
-            // overlay focuses the banner on back-to-pick so the keyboard
-            // context survives the overlay's unmount.
-            tabIndex={-1}
-            // Neutral card chrome (user 2026-07-14, reversing the 2026-07-11
-            // item-11 violet tint): the banner reads better in the original
-            // black/white/grey; the violet pick GLOW on candidate nodes stays
-            // the mode indicator.
-            // z-20: the session banner (Exit / Locate) must always win
-            // hit-testing over the z-10 crop capture layer — a zoomed image
-            // extending under the banner made Exit dead (adversarial round-4).
-            // z-20 and HIT-OPAQUE (round-10, reversing round-9's
-            // pointer-events-none): a visually solid card must never let a
-            // click mutate hidden content beneath it (reference picks
-            // silently wired edges through the banner body). The crop
-            // controls bar follows its node (user 2026-07-17) and may pass
-            // beneath the banner like any node chrome — the banner wins the
-            // overlap by design.
-            className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
-          >
-            <span>
-              {t(
-                pickSession
-                  ? pickSessionUi(pickSession, miniToolDraft?.toolId).banner
-                  : 'canvas.generatePanel.selectFromCanvas',
-              )}
-            </span>
-            <Button
-              variant={null}
-              size={null}
-              type='button'
-              data-testid='reference-pick-locate'
-              aria-label={t('canvas.generatePanel.locateSource')}
-              onClick={onLocateSource}
-              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+            <FocusCropControls onConfirm={onFocusCropConfirm} onBackToPick={onFocusBackToPick} />
+          </ReactFlow>
+          {pickForNodeId ? (
+            <div
+              data-testid='reference-pick-banner'
+              // Focus hand-off target (adversarial 2026-07-17): the crop
+              // overlay focuses the banner on back-to-pick so the keyboard
+              // context survives the overlay's unmount.
+              tabIndex={-1}
+              // Neutral card chrome (user 2026-07-14, reversing the 2026-07-11
+              // item-11 violet tint): the banner reads better in the original
+              // black/white/grey; the violet pick GLOW on candidate nodes stays
+              // the mode indicator.
+              // z-20: the session banner (Exit / Locate) must always win
+              // hit-testing over the z-10 crop capture layer — a zoomed image
+              // extending under the banner made Exit dead (adversarial round-4).
+              // z-20 and HIT-OPAQUE (round-10, reversing round-9's
+              // pointer-events-none): a visually solid card must never let a
+              // click mutate hidden content beneath it (reference picks
+              // silently wired edges through the banner body). The crop
+              // controls bar follows its node (user 2026-07-17) and may pass
+              // beneath the banner like any node chrome — the banner wins the
+              // overlap by design.
+              className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
             >
-              <LocateFixed className='h-4 w-4' aria-hidden='true' />
-            </Button>
-            <Button
-              variant={null}
-              size={null}
-              type='button'
-              data-testid='reference-pick-exit'
-              onClick={onExitPick}
-              className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
-            >
-              {t('canvas.generatePanel.exitSelect')}
-            </Button>
-          </div>
-        ) : null}
-        {flowNodes.length === 0 ? (
-          <div
-            data-testid='canvas-empty'
-            className='pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
-          >
-            <div className='max-w-[360px] rounded-sm border border-dashed border-border bg-card px-6 py-4'>
-              <strong className='block text-foreground'>
-                {t('canvas.emptyState.title')}
-              </strong>
-              <span className='text-xs text-muted-foreground'>
-                {t('canvas.emptyState.hint')}
+              <span>
+                {t(
+                  pickSession
+                    ? pickSessionUi(pickSession, miniToolDraft?.toolId).banner
+                    : 'canvas.generatePanel.selectFromCanvas',
+                )}
               </span>
+              <Button
+                variant={null}
+                size={null}
+                type='button'
+                data-testid='reference-pick-locate'
+                aria-label={t('canvas.generatePanel.locateSource')}
+                onClick={onLocateSource}
+                className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+              >
+                <LocateFixed className='h-4 w-4' aria-hidden='true' />
+              </Button>
+              <Button
+                variant={null}
+                size={null}
+                type='button'
+                data-testid='reference-pick-exit'
+                onClick={onExitPick}
+                className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
+              >
+                {t('canvas.generatePanel.exitSelect')}
+              </Button>
             </div>
-          </div>
-        ) : null}
-        <CanvasContextMenu
-          open={contextMenu.open}
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onOpenChange={onContextMenuOpenChange}
-          onPick={onContextMenuPick}
-          onPaste={pasteAtCursor}
-        />
-        <ConnectCreateMenu
-          open={connectCreate.open}
-          x={connectCreate.x}
-          y={connectCreate.y}
-          sourceKind={connectCreate.sourceKind}
-          onOpenChange={onConnectCreateOpenChange}
-          onPick={onConnectCreatePick}
-        />
-        <NodeContextMenu
-          open={nodeMenu.open}
-          x={nodeMenu.x}
-          y={nodeMenu.y}
-          locked={nodeMenu.locked}
-          target={nodeMenu.isGroup ? 'group' : 'node'}
-          onOpenChange={onNodeMenuOpenChange}
-          onToggleLock={onToggleNodeLock}
-          onAddToAgent={addNodeToAgent}
-          addToAgentDisabled={chatNavigating}
-          // Upload fills / replaces the node's content (node-only; its presence
-          // also gates the Generate / Upload / Tools block). The menu only opens
-          // for editors (onNodeContextMenu returns early when read-only), and
-          // activateNodeUpload no-ops for read-only / pickerless modalities.
-          // A sticky holds words, not a file: it is absent from
-          // `UPLOAD_ACCEPT`, so the picker never opens and the press answers
-          // with nothing at all.
-          onUpload={
-            nodeMenu.isGroup || nodeMenu.isAnnotation
-              ? undefined
-              : uploadNodeFromMenu
-          }
-          // Generate opens on any editable node of a modality that generates
-          // (`canGenerate`), the AIGC "generate into
-          // self" flow. Which PANEL opens is the opener's decision, not this
-          // one's: the store maps the node's modality to a panel kind.
-          // INCLUDING a locked or handling node, so the user can open the panel
-          // to view / edit the prompt (bug 2). The panel is a read surface for
-          // the recipe; EXECUTE is what the gate stops — the arrow stays
-          // clickable and `onExecute` answers with a toast saying why, rather
-          // than greying out with no explanation. Groups / non-generating
-          // modalities / read-only get no handler, and the item is left off.
-          onGenerate={(() => {
-            const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
-            // Held in a const so the narrowing survives into the closure below,
-            // which needs the modality to pick which Generate panel opens
-            // (#1896) — image and video have separate panels.
-            const genType = genNode?.type;
-            return !nodeMenu.isGroup &&
+          ) : null}
+          {flowNodes.length === 0 ? (
+            <div
+              data-testid='canvas-empty'
+              className='pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm leading-relaxed text-muted-foreground'
+            >
+              <div className='max-w-[360px] rounded-sm border border-dashed border-border bg-card px-6 py-4'>
+                <strong className='block text-foreground'>
+                  {t('canvas.emptyState.title')}
+                </strong>
+                <span className='text-xs text-muted-foreground'>
+                  {t('canvas.emptyState.hint')}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          <CanvasContextMenu
+            open={contextMenu.open}
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onOpenChange={onContextMenuOpenChange}
+            onPick={onContextMenuPick}
+            onPaste={pasteAtCursor}
+          />
+          <ConnectCreateMenu
+            open={connectCreate.open}
+            x={connectCreate.x}
+            y={connectCreate.y}
+            sourceKind={connectCreate.sourceKind}
+            onOpenChange={onConnectCreateOpenChange}
+            onPick={onConnectCreatePick}
+          />
+          <NodeContextMenu
+            open={nodeMenu.open}
+            x={nodeMenu.x}
+            y={nodeMenu.y}
+            locked={nodeMenu.locked}
+            target={nodeMenu.isGroup ? 'group' : 'node'}
+            onOpenChange={onNodeMenuOpenChange}
+            onToggleLock={onToggleNodeLock}
+            onAddToAgent={addNodeToAgent}
+            addToAgentDisabled={chatNavigating}
+            // Upload fills / replaces the node's content (node-only; its presence
+            // also gates the Generate / Upload / Tools block). The menu only opens
+            // for editors (onNodeContextMenu returns early when read-only), and
+            // activateNodeUpload no-ops for read-only / pickerless modalities.
+            // A sticky holds words, not a file: it is absent from
+            // `UPLOAD_ACCEPT`, so the picker never opens and the press answers
+            // with nothing at all.
+            onUpload={
+              nodeMenu.isGroup || nodeMenu.isAnnotation
+                ? undefined
+                : uploadNodeFromMenu
+            }
+            // Generate opens on any editable node of a modality that generates
+            // (`canGenerate`), the AIGC "generate into
+            // self" flow. Which PANEL opens is the opener's decision, not this
+            // one's: the store maps the node's modality to a panel kind.
+            // INCLUDING a locked or handling node, so the user can open the panel
+            // to view / edit the prompt (bug 2). The panel is a read surface for
+            // the recipe; EXECUTE is what the gate stops — the arrow stays
+            // clickable and `onExecute` answers with a toast saying why, rather
+            // than greying out with no explanation. Groups / non-generating
+            // modalities / read-only get no handler, and the item is left off.
+            onGenerate={(() => {
+              const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+              // Held in a const so the narrowing survives into the closure below,
+              // which needs the modality to pick which Generate panel opens
+              // (#1896) — image and video have separate panels.
+              const genType = genNode?.type;
+              return !nodeMenu.isGroup &&
               !readOnly &&
               genType !== undefined &&
               canGenerate(genType)
-              ? () => {
+                ? () => {
                 // Open + assert in one gesture: the machine's fresh-binding
                 // assert covers id CHANGES, but a same-host reopen (store id
                 // unchanged, e.g. re-choosing Generate with the panel already
                 // open after Cmd-adding a co-selection) is invisible to it —
                 // the action layer asserts unconditionally; both writes are
                 // idempotent.
-                openGeneratePanel(nodeMenu.nodeId, genType);
-                selectOnlyNode(nodeMenu.nodeId);
-              }
-              : undefined;
-          })()}
-          // Reset-to-empty-image opens the blank-image panel for editable image
-          // nodes only (#1623); groups / non-image / read-only get no item.
-          onResetImage={(() => {
-            const imgNode = nodes.find((n) => n.id === nodeMenu.nodeId);
-            return !nodeMenu.isGroup && !readOnly && imgNode?.type === 'image'
-              ? resetImageFromMenu
-              : undefined;
-          })()}
-          // History opens the browse + restore panel for editable content
-          // nodes (#1619); groups / read-only get no item. Which types have a
-          // history is `HISTORY_MODALITIES` — the same set the panel and the
-          // task list's Replace read, so a modality cannot be offered a panel
-          // one of them refuses to act on. Browsing itself is gate-free (only
-          // restore is gated).
-          onOpenHistory={(() => {
-            const contentNode = nodes.find((n) => n.id === nodeMenu.nodeId);
-            return !nodeMenu.isGroup &&
+                  openGeneratePanel(nodeMenu.nodeId, genType);
+                  selectOnlyNode(nodeMenu.nodeId);
+                }
+                : undefined;
+            })()}
+            // Reset-to-empty-image opens the blank-image panel for editable image
+            // nodes only (#1623); groups / non-image / read-only get no item.
+            onResetImage={(() => {
+              const imgNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+              return !nodeMenu.isGroup && !readOnly && imgNode?.type === 'image'
+                ? resetImageFromMenu
+                : undefined;
+            })()}
+            // History opens the browse + restore panel for editable content
+            // nodes (#1619); groups / read-only get no item. Which types have a
+            // history is `HISTORY_MODALITIES` — the same set the panel and the
+            // task list's Replace read, so a modality cannot be offered a panel
+            // one of them refuses to act on. Browsing itself is gate-free (only
+            // restore is gated).
+            onOpenHistory={(() => {
+              const contentNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+              return !nodeMenu.isGroup &&
               !readOnly &&
               HISTORY_MODALITIES.has(contentNode?.type ?? '')
-              ? openHistoryFromMenu
-              : undefined;
-          })()}
-          // Snapshot is on a text node's menu and nowhere else: every other
-          // modality's content is an asset that already has a row of its own.
-          // It is there even with nothing to keep, disabled — a reader looking
-          // for it finds it where it always is, greyed out.
-          snapshotOffered={!readOnly && nodeMenu.isText}
-          onSnapshot={menuHasWords ? snapshotFromMenu : undefined}
-          // Whether this node holds an asset at all, which Download,
-          // Understand and Tools each act on. A text node holds words, so it
-          // gets none of the three (user 2026-09-20).
-          assetActionsOffered={!nodeMenu.isText}
-          // Download is offered exactly when the node's body is showing an
-          // asset (user 2026-09-18). `downloadableAsset` is that judgement:
-          // it says which three modalities carry one and whether the node
-          // holds one.
-          onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
-          // The same answer Download reads: both act on the asset the node's
-          // body is showing, and a node showing none disables both.
-          onUnderstand={
-            menuDownloadUrl === null ? undefined : understandFromMenu
-          }
-          understanding={understandingMenuNode}
-          toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
-          tools={menuTools}
-          onTool={openToolFromMenu}
-          // Rename is frozen on a locked node / group (the name is on-canvas
-          // content); hide it rather than offer a silent no-op. A sticky has
-          // no name header to rename into (`node-name-header.test.tsx` pins
-          // that it renders none), so the item would have nowhere to land.
-          onRename={nodeMenu.isAnnotation ? undefined : onNodeMenuRename}
-          onDelete={deleteNodeFromMenu}
-          // Copy / duplicate work for a node OR a group (R2-D): a group copies /
-          // duplicates with its members (capture / clone are Group-aware).
-          // Both read `CreatableNodeType` to decide what they may carry
-          // (`node-clipboard.ts`), and a sticky is deliberately not one — the
-          // comment tool is its only birth (#1881 A21), so both would return
-          // at their empty guards having written and cloned nothing.
-          onCopy={nodeMenu.isAnnotation ? undefined : onNodeMenuCopy}
-          onDuplicate={nodeMenu.isAnnotation ? undefined : onNodeMenuDuplicate}
-          // Ungroup releases a group's members; a locked group is frozen.
-          onUngroup={onNodeMenuUngroup}
-        />
-        <SelectionContextMenu
-          open={selectionMenu.open}
-          x={selectionMenu.x}
-          y={selectionMenu.y}
-          onOpenChange={onSelectionMenuOpenChange}
-          // Group is offered only for an all-loose 2+ selection (same rule as
-          // the floating toolbar + Cmd/Ctrl+G).
-          onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
-          onCopy={copySelection}
-          onDuplicate={duplicateSelection}
-          onDelete={deleteSelection}
-          onAddToAgent={addSelectionToAgent}
-          addToAgentDisabled={chatNavigating}
-        />
-        <EdgeContextMenu
-          open={edgeMenu.open}
-          x={edgeMenu.x}
-          y={edgeMenu.y}
-          onOpenChange={onEdgeMenuOpenChange}
-          onDelete={deleteEdgeFromMenu}
-        />
-      </div>
+                ? openHistoryFromMenu
+                : undefined;
+            })()}
+            // Snapshot is on a text node's menu and nowhere else: every other
+            // modality's content is an asset that already has a row of its own.
+            // It is there even with nothing to keep, disabled — a reader looking
+            // for it finds it where it always is, greyed out.
+            snapshotOffered={!readOnly && nodeMenu.isText}
+            onSnapshot={menuHasWords ? snapshotFromMenu : undefined}
+            // Whether this node holds an asset at all, which Download,
+            // Understand and Tools each act on. A text node holds words, so it
+            // gets none of the three (user 2026-09-20).
+            assetActionsOffered={!nodeMenu.isText}
+            // Download is offered exactly when the node's body is showing an
+            // asset (user 2026-09-18). `downloadableAsset` is that judgement:
+            // it says which three modalities carry one and whether the node
+            // holds one.
+            onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
+            // The same answer Download reads: both act on the asset the node's
+            // body is showing, and a node showing none disables both.
+            onUnderstand={
+              menuDownloadUrl === null ? undefined : understandFromMenu
+            }
+            understanding={understandingMenuNode}
+            // Transcribe hears speech, which only audio and video carry; it
+            // greys on the same answer the two above read.
+            transcribeOffered={nodeMenu.type === 'audio' || nodeMenu.type === 'video'}
+            onTranscribe={menuDownloadUrl === null ? undefined : transcribeFromMenu}
+            toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
+            tools={menuTools}
+            onTool={openToolFromMenu}
+            // Rename is frozen on a locked node / group (the name is on-canvas
+            // content); hide it rather than offer a silent no-op. A sticky has
+            // no name header to rename into (`node-name-header.test.tsx` pins
+            // that it renders none), so the item would have nowhere to land.
+            onRename={nodeMenu.isAnnotation ? undefined : onNodeMenuRename}
+            onDelete={deleteNodeFromMenu}
+            // Copy / duplicate work for a node OR a group (R2-D): a group copies /
+            // duplicates with its members (capture / clone are Group-aware).
+            // Both read `CreatableNodeType` to decide what they may carry
+            // (`node-clipboard.ts`), and a sticky is deliberately not one — the
+            // comment tool is its only birth (#1881 A21), so both would return
+            // at their empty guards having written and cloned nothing.
+            onCopy={nodeMenu.isAnnotation ? undefined : onNodeMenuCopy}
+            onDuplicate={nodeMenu.isAnnotation ? undefined : onNodeMenuDuplicate}
+            // Ungroup releases a group's members; a locked group is frozen.
+            onUngroup={onNodeMenuUngroup}
+          />
+          <SelectionContextMenu
+            open={selectionMenu.open}
+            x={selectionMenu.x}
+            y={selectionMenu.y}
+            onOpenChange={onSelectionMenuOpenChange}
+            // Group is offered only for an all-loose 2+ selection (same rule as
+            // the floating toolbar + Cmd/Ctrl+G).
+            onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
+            onCopy={copySelection}
+            onDuplicate={duplicateSelection}
+            onDelete={deleteSelection}
+            onAddToAgent={addSelectionToAgent}
+            addToAgentDisabled={chatNavigating}
+          />
+          <EdgeContextMenu
+            open={edgeMenu.open}
+            x={edgeMenu.x}
+            y={edgeMenu.y}
+            onOpenChange={onEdgeMenuOpenChange}
+            onDelete={deleteEdgeFromMenu}
+          />
+        </div>
+      </PeerActivityContext.Provider>
     </CanvasActionsContext.Provider>
   );
 }
@@ -5020,6 +5195,15 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }
+
+/**
+ * Where a template picked in a panel is aimed. Unused while the panel's node
+ * is on the canvas: the template lines up on that node.
+ */
+const TEMPLATE_AIM = { x: 0, y: 0 };
+
+/** How many frames placing nodes waits for them and their panel to be laid out before framing them. */
+const PLACED_SHOW_FRAMES = 30;
 
 /**
  * Canvas space body. Wraps `CanvasSpaceInner` in a

@@ -9,6 +9,9 @@
  * transport 解析流、真的 `Chat` 状态机、真的 hook 订阅——只有网络本身是替身。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const toastSpy = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: toastSpy.warning, success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
 
 vi.mock('@web/data/api/chat', () => ({
@@ -87,7 +90,7 @@ function openChatAnswers(messages: Array<Record<string, unknown>>): void {
  * @returns renderHook 的结果。
  */
 function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1', false, () => ({ spaces: [] })));
+  return renderHook(() => useChatSession('p-1', () => ({ spaces: [] })));
 }
 
 beforeEach(() => {
@@ -273,7 +276,7 @@ describe('发不出去的时候', () => {
     });
 
     await waitFor(() => {
-      expect(panel.result.current.mishap).not.toBeNull();
+      expect(toastSpy.error).toHaveBeenCalled();
     });
     // 一次请求，不是两次：第二次就是那个「重开一条再发一遍」。
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);

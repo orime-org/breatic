@@ -112,6 +112,7 @@ function persistedMetaState(): Buffer {
   const doc = new Y.Doc();
   const entry = new Y.Map<unknown>();
   entry.set("id", SID);
+  entry.set("type", "canvas");
   entry.set("name", "Main");
   doc.getMap("spaces").set(SID, entry);
   return Buffer.from(Y.encodeStateAsUpdate(doc));
@@ -578,6 +579,7 @@ describe("meta doc — read-only does not close our own paths", () => {
     await seedMetaDoc((live: Y.Doc) => {
       const entry = new Y.Map<unknown>();
       entry.set("id", SID);
+      entry.set("type", "canvas");
       entry.set("name", "Before");
       live.getMap("spaces").set(SID, entry);
     });

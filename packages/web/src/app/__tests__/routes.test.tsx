@@ -40,7 +40,7 @@ vi.mock('@web/data/api', async original => {
 });
 
 import { AppRouter } from '@web/app/AppRouter';
-import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { behindLoadingScreen } from '@web/app/LoadingBoundary';
 import { baseRoutes } from '@web/app/routes';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
@@ -148,7 +148,11 @@ describe('routes', () => {
   });
 
   it('/register renders the auth page', async () => {
-    render(<AppRouter router={makeRouter('/register')} />);
+    render(
+      <QueryClientProvider>
+        <AppRouter router={makeRouter('/register')} />
+      </QueryClientProvider>,
+    );
     expect(
       await screen.findByRole('heading', { name: 'Create an account' }),
     ).toBeInTheDocument();

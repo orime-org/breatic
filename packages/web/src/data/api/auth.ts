@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
+import type { Attribution, MembershipTier, PersonalStudioRef, SignupInvitationPreview } from '@breatic/shared';
 
 import { apiGet, apiPost } from '@web/data/api/request';
 
@@ -104,6 +104,11 @@ interface LoginResponse {
   user: AuthUser;
 }
 
+/** A Google sign-in's answer: `created` when it made the account (inner#1442 §4.9). */
+interface GoogleLoginResponse extends LoginResponse {
+  created: boolean;
+}
+
 /**
  * `POST /auth/setup-studio` response — the personal studio created by
  * the onboarding slug step. Returned so the caller can populate the
@@ -120,16 +125,25 @@ interface ResetWithRecoveryCodeResponse {
 }
 
 export const authApi = {
+  /**
+   * Read the registration preview identified by an invitation's share token.
+   * @param token - The token carried by the invitation email.
+   * @returns The registration preview for that invitation.
+   * @throws {ApiException} When the token is missing or the request fails.
+   */
+  invitation(token: string): Promise<SignupInvitationPreview> {
+    return apiGet<SignupInvitationPreview>('/auth/invitation', { params: { token } });
+  },
   options() {
     return apiGet<AuthOptions>('/auth/options');
   },
-  register(body: { email: string; password: string }) {
+  register(body: { email: string; password: string; attribution?: Attribution | null }) {
     return apiPost<RegisterResponse>('/auth/register', body);
   },
   resendSignupCode() {
     return apiPost<SignupCodeSent>('/auth/register/resend');
   },
-  verifySignupCode(body: { code: string }) {
+  verifySignupCode(body: { code: string; attribution?: Attribution | null }) {
     return apiPost<LoginResponse>('/auth/register/verify', body);
   },
   setupStudio(body: { slug: string }) {
@@ -138,14 +152,18 @@ export const authApi = {
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
   },
-  google(body: { credential: string }) {
-    return apiPost<LoginResponse>('/auth/google', body);
+  google(body: { credential: string; attribution?: Attribution | null }) {
+    return apiPost<GoogleLoginResponse>('/auth/google', body);
   },
   me() {
     return apiGet<AuthUser>('/auth/me');
   },
   logout() {
     return apiPost<void>('/auth/logout');
+  },
+  // Ends every other session of this account; this one stays (inner#1548).
+  logoutOthers() {
+    return apiPost<void>('/auth/logout-others');
   },
   forgotPassword(body: { email: string }) {
     return apiPost<{ message: string }>('/auth/forgot-password', body);

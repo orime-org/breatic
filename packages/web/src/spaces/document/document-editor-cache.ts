@@ -87,6 +87,7 @@ import { insertAtGapTr, type FilesArrival } from '@web/spaces/document/document-
 import { putBlocks } from '@web/spaces/document/document-put';
 import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
+import { captionDraftsFor, type CaptionDrafts } from '@web/spaces/document/document-caption-drafts';
 
 /** The editor plus what is handed out alongside it. */
 export interface DocumentEditorHandle {
@@ -107,6 +108,8 @@ export interface DocumentEditorHandle {
    * the local it is built in.
    */
   undoManager: Y.UndoManager;
+  /** Local caption edits with the same lifetime as this open document. */
+  captionDrafts: CaptionDrafts;
   /**
    * Subscribe to the guarded whole-document delete asking for confirmation.
    *
@@ -276,6 +279,7 @@ function createDocumentEditor(
   return {
     editor,
     undoManager,
+    captionDrafts: captionDraftsFor(editor),
     surface,
     files,
     pending: uploads?.pending ?? null,
@@ -295,6 +299,7 @@ const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
     handle.closeUploads();
+    handle.captionDrafts.dispose();
     handle.editor.unmount();
     handle.surface.remove();
   },
@@ -330,10 +335,10 @@ export function adoptDocumentEditor(
   if (viewOf(handle.editor) === null) {
     handle.editor.mount(handle.surface);
   }
-  // `mount()` appended the floating UI portal to the container it found the
-  // surface in, and nothing moves it after that. The block strip renders into
-  // it, so a portal left in a previous container leaves the page with it.
-  container.appendChild(handle.editor.portalElement);
+  // The floating UI, the block strip among it, portals into the element
+  // wrapping the editor's DOM (`usePortalElement`, BlockNote
+  // `PortalElementOverride.tsx`), which sits inside the surface and so moves
+  // with it.
 }
 
 /**

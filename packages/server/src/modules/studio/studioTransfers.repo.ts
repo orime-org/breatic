@@ -18,8 +18,8 @@
  *
  * REAPING. A partial index predicate must be immutable, so it cannot mention
  * `now()` — which means a timed-out offer keeps `status = 'pending'` and holds
- * the studio's slot until something flips it. Nothing would, since "expired" is
- * by definition the case where nobody acted, and here the cost is the whole
+ * the studio's slot until something flips it. Nothing would, since a timed-out
+ * offer is by definition the case where nobody acted, and here the cost is the whole
  * studio: no further transfer could ever be started. So {@link createPending}
  * reaps stale pendings in the same transaction that takes the slot, exactly as
  * the invite tables learned to (#1769).
@@ -37,13 +37,14 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, studioTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { mintShareToken } from "@server/utils/share-token.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
 export type StudioTransferStatus =
   | "pending"
   | "accepted"
   | "declined"
-  | "expired"
+  | "failed"
   | "cancelled";
 
 /** A locked transfer, with everything the decision path needs to judge it. */
@@ -70,7 +71,7 @@ export interface LiveStudioTransfer {
 }
 
 /**
- * Flip a timed-out pending on one studio to `expired`, freeing its slot.
+ * Fail a timed-out pending on one studio as `expired`, freeing its slot.
  *
  * Only ever touches EXPIRED pendings: a live one must still trip the index,
  * because a second simultaneous offer for the same studio is a real duplicate
@@ -94,7 +95,7 @@ export async function expireStalePending(
 ): Promise<string[]> {
   const rows = await tx
     .update(studioTransfers)
-    .set({ status: "expired" })
+    .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
         eq(studioTransfers.studioId, studioId),
@@ -230,38 +231,24 @@ export async function lockRequest(
 }
 
 /**
- * Move a still-pending transfer to a terminal status.
+ * Move a still-pending transfer to the recipient's answer.
  *
  * The `status = 'pending'` predicate is the serialisation point: of two
  * concurrent decisions exactly one UPDATE matches, and the other is told it
  * lost rather than quietly overwriting the winner.
- *
- * `decided_at` is set for every status but `expired`, and that split is the
- * whole meaning of the column: it marks that a person ended this offer. Deriving
- * it from the status rather than from a caller-supplied flag is deliberate —
- * a caller cannot get it wrong by forgetting.
  * @param id - Transfer id.
- * @param status - Terminal status to settle on.
+ * @param status - The recipient's answer.
  * @param tx - The deciding transaction.
  * @returns True when this call is the one that settled it.
  */
 export async function settleIfPending(
   id: string,
-  status: Exclude<StudioTransferStatus, "pending">,
+  status: "accepted" | "declined",
   tx: DbTx,
 ): Promise<boolean> {
   const rows = await tx
     .update(studioTransfers)
-    .set({
-      status,
-      decidedAt: status === "expired" ? null : new Date(),
-      // See roleUpgradeRequests.settleIfPending: a request that ended before
-      // its deadline ends its window with it, so the landing page cannot say
-      // "this has ended" over "you had seven days" on day two.
-      ...(status === "expired"
-        ? { expiresAt: sql`LEAST(${studioTransfers.expiresAt}, now())` }
-        : {}),
-    })
+    .set({ status, decidedAt: new Date() })
     .where(
       and(
         eq(studioTransfers.id, id),
@@ -269,7 +256,37 @@ export async function settleIfPending(
         isNull(studioTransfers.deletedAt),
       ),
     )
-    .returning({ id: studioTransfers.id, shareToken: studioTransfers.shareToken });
+    .returning({ id: studioTransfers.id });
+  return rows.length > 0;
+}
+
+/**
+ * End a still-pending offer nobody can answer any more, and record why.
+ *
+ * Nobody decided it, so no `decided_at` is written; the deadline
+ * stays the one it was filed with.
+ * @param id - Transfer id.
+ * @param reason - Why it ended: its deadline passed, or what it was about
+ *   stopped holding.
+ * @param tx - The enclosing transaction.
+ * @returns True when this call is the one that ended it.
+ */
+export async function failIfPending(
+  id: string,
+  reason: RequestFailedReason,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
+    .update(studioTransfers)
+    .set({ status: "failed", failedReason: reason })
+    .where(
+      and(
+        eq(studioTransfers.id, id),
+        eq(studioTransfers.status, "pending"),
+        isNull(studioTransfers.deletedAt),
+      ),
+    )
+    .returning({ id: studioTransfers.id });
   return rows.length > 0;
 }
 

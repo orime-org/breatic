@@ -23,10 +23,9 @@
  * pays for it are things the entrance knows and this does not.
  */
 
-import { storageKey } from "@breatic/core";
-import type { StudioAssetEntity } from "@breatic/shared";
+import { currentConsent, storageKey } from "@breatic/core";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { issueGrant } from "@domain/asset/upload-grant.repo.js";
+import { issueGrant, type GrantAssetSource } from "@domain/asset/upload-grant.repo.js";
 
 /** Where an upload lands: a project, or a studio that has no project in it. */
 export type UploadTarget =
@@ -79,7 +78,7 @@ export async function issueUploadGrant(params: UploadTarget & {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
-    assetSource?: StudioAssetEntity["source"] | null;
+    assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
   };
 }): Promise<{ key: string; studioId: string }> {
@@ -95,6 +94,8 @@ export async function issueUploadGrant(params: UploadTarget & {
     declaredSize: params.declaredSize,
     expiresAt: params.expiresAt,
     context: { ...params.context, projectId: params.projectId ?? null },
+    // Read by the finishing paths, which run without the browser's cookie.
+    analyticsConsent: currentConsent(),
   });
   return { key, studioId };
 }

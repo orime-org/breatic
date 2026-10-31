@@ -167,10 +167,10 @@ describe("one live pending per key, and a terminal status frees it", () => {
       INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token)
       VALUES (${projectId}, ${owner}, ${first}, 'pending', now() - interval '1 day', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     `;
-    // What the create-path reaper does: a timed-out pending is flipped to
-    // 'expired', which leaves the index predicate.
+    // What the create-path reaper does: a timed-out pending fails as
+    // expired, which leaves the index predicate.
     await sql`
-      UPDATE project_transfers SET status = 'expired'
+      UPDATE project_transfers SET status = 'failed', failed_reason = 'expired'
       WHERE project_id = ${projectId} AND status = 'pending' AND expires_at <= now()
     `;
 
@@ -184,7 +184,7 @@ describe("one live pending per key, and a terminal status frees it", () => {
       WHERE project_id = ${projectId} GROUP BY status ORDER BY status
     `;
     expect(rows).toEqual([
-      { status: "expired", c: 1 },
+      { status: "failed", c: 1 },
       { status: "pending", c: 1 },
     ]);
   });

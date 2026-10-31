@@ -14,6 +14,10 @@ models:
     input_cache_hit_per_mtok: 0.044
     input_cache_miss_per_mtok: 1.32
     output_per_mtok: 3.96
+  deepseek/deepseek-v4.1-flash-1017:
+    input_cache_hit_per_mtok: 0.006
+    input_cache_miss_per_mtok: 0.3
+    output_per_mtok: 1.2
   # https://platform.claude.com/docs/en/about-claude/pricing (the same rate
   # across the full context window)
   anthropic/claude-opus-5.5:
