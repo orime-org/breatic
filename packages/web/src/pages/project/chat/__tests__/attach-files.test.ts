@@ -17,7 +17,9 @@ beforeEach(() => {
 });
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
-import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
+import { uploadableFormatList, uploadableSpellings } from '@breatic/shared';
+import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
+import { pickExtractor } from '@web/spaces/canvas/text-extract';
 import { chatAttachments } from '@web/stores/chat-attachments';
 
 const CONV = 'c1';
@@ -83,7 +85,91 @@ beforeEach(() => {
   ids = 0;
 });
 
+describe('attachment picker formats', () => {
+  it.each([
+    ['notes.txt', 'text/plain'], ['notes.md', 'text/markdown'], ['rows.csv', 'text/csv'],
+    ['data.json', 'application/json'], ['data.xml', 'application/xml'],
+    ['code.js', 'application/javascript'], ['code.es', 'application/ecmascript'],
+    ['data.yaml', 'application/x-yaml'], ['data.yml', 'application/yaml'],
+    ['document.pdf', 'application/pdf'],
+    ['document.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['sheet.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['sheet.xls', 'application/vnd.ms-excel'],
+  ])('offers the existing extractor capability for %s', (name, mime) => {
+    expect(pickExtractor(mime)).not.toBeNull();
+    const tokens = attachAccept().split(',');
+    const extension = name.slice(name.lastIndexOf('.'));
+    expect(tokens.includes(extension) || tokens.includes(mime) || (mime.startsWith('text/') && tokens.includes('text/*'))).toBe(true);
+  });
+
+  it('retains supported media aliases and document extensions', () => {
+    const tokens = attachAccept().split(',');
+    expect(tokens).toEqual(expect.arrayContaining([...uploadableSpellings(), '.pdf', '.docx', '.xlsx', '.xls', '.txt']));
+    for (const unsupported of ['.doc', 'application/zip', 'image/*', 'video/*', 'audio/*']) {
+      expect(tokens).not.toContain(unsupported);
+    }
+  });
+});
+
 describe('attaching picked files', () => {
+  it.each([
+    ['vector.svg', 'image/svg+xml', 'image', 'Images'],
+    ['clip.ogv', 'video/ogg', 'video', 'Video'],
+    ['sound.aiff', 'audio/aiff', 'audio', 'Audio'],
+  ] as const)('explains the supported formats when refusing %s before upload', async (name, type, kind, label) => {
+    const upload = vi.fn(async () => 'https://cdn.example/unused');
+    const extract = vi.fn(async () => 'unused');
+    const say = vi.spyOn(chatAttachments, 'say');
+    try {
+      await pick([file(name, type)], deps({ upload, extract }));
+      expect(upload).not.toHaveBeenCalled();
+      expect(extract).not.toHaveBeenCalled();
+      expect(chatAttachments.trayOf(CONV)).toEqual([]);
+      expect(say).toHaveBeenCalledWith({
+        key: 'unsupportedMedia', filename: name, kind, formats: uploadableFormatList(kind),
+      });
+      expect(notice()).toBe(`${name} isn’t a supported format. ${label} take${kind === 'image' ? '' : 's'} ${uploadableFormatList(kind)}.`);
+    } finally {
+      say.mockRestore();
+    }
+  });
+
+  it('explains an upload format refusal and retains the failed attachment until removed', async () => {
+    const say = vi.spyOn(chatAttachments, 'say');
+    try {
+      await pick([file('photo.png', 'image/png')], deps({
+        upload: async () => { throw new UploadFailedError('unsupportedType'); },
+      }));
+      expect(say).toHaveBeenCalledWith({
+        key: 'unsupportedMedia', filename: 'photo.png', kind: 'image', formats: uploadableFormatList('image'),
+      });
+      expect(notice()).toBe(`photo.png isn’t a supported format. Images take ${uploadableFormatList('image')}.`);
+      expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'upload' });
+      expect(chatAttachments.sendable(CONV)).toBeNull();
+      chatAttachments.remove(CONV, 'f1');
+      await pick([file('retry.png', 'image/png')]);
+      expect(chatAttachments.sendable(CONV)).toEqual([{
+        id: 'f2', type: 'image', name: 'retry.png', data_snapshot: { url: 'https://cdn.example/retry.png' },
+      }]);
+    } finally {
+      say.mockRestore();
+    }
+  });
+
+  it.each(['image/png', 'image/svg+xml'])('keeps a zero-byte %s refusal separate from format errors', async (type) => {
+    const upload = vi.fn(async () => 'https://cdn.example/unused');
+    await pick([file('empty', type, 0)], deps({ upload }));
+    expect(upload).not.toHaveBeenCalled();
+    expect(chatAttachments.trayOf(CONV)).toEqual([]);
+    expect(notice()).toBe('empty can’t be attached');
+  });
+
+  it('reports an unsupported format before considering its upload size', async () => {
+    await pick([file('huge.svg', 'image/svg+xml', 2_000_000)]);
+    expect(notice()).toBe(`huge.svg isn’t a supported format. Images take ${uploadableFormatList('image')}.`);
+    expect(chatAttachments.trayOf(CONV)).toEqual([]);
+  });
+
   it('sends an image as the address it was filed under', async () => {
     await pick([file('cover.png', 'image/png')]);
 
@@ -139,6 +225,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'upload' });
+    expect(notice()).toBeNull();
   });
 
   it('marks an upload turned away for uploading too often as that', async () => {
@@ -152,6 +239,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'rate_limited' });
+    expect(notice()).toBeNull();
   });
 
   it('marks a document that could not be read', async () => {
@@ -165,6 +253,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'extract' });
+    expect(notice()).toBeNull();
   });
 
   it('marks a document with no words in it, such as a scanned pdf, as not read', async () => {

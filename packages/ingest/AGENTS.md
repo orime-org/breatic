@@ -12,19 +12,20 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 ## Endpoints
 
-`src/index.ts` routes seven endpoints and CORS:
+`src/index.ts` routes uploads, media reads and container jobs, plus CORS:
 
 | Endpoint | Who calls it |
 |---|---|
 | `POST /uploads`, `POST /fetch`, `PUT` part, `POST` finish | The upload path: our services open an upload, pull a source URL (`/fetch`) and finish; the browser only sends parts |
 | `POST /media` | Our services: read stored media numbers, audio peaks, display previews or the Agent's static JPEG |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
+| `/long-media/*` | Our worker: submit, inspect, plan, run and cancel durable long-media jobs, and acknowledge segment registration |
 
 **`POST /media` writes only derivatives of its authorized source: `wantPreview` requests the display WebP, `wantPeaks` requests audio peaks, and `agentPicture` requests a separately versioned static JPEG.** Agent JPEG creation is conditional: an existing object is never overwritten, and both a cache hit and a lost creation race return the stored winner's actual size and MIME. Reads of standing peaks alone or a standing Agent JPEG alone omit the container. The contracts and key ownership are described in [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 
-**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** `POST /uploads`, finish, `/fetch`, `/media` and both `/jobs` endpoints require the shared secret (401 otherwise); the browser never holds it, so only our services can call them, and CORS allows a page nothing but `PUT` parts. A ticket that verifies on `POST /uploads` without the secret is reported as `ingest_open_without_secret`, one event per request. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
+**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** `POST /uploads`, finish, `/fetch`, `/media`, both `/jobs` endpoints and the long-media job endpoints in `src/index.ts` require the shared secret (401 otherwise); the browser never holds it, so only our services can call them, and CORS allows a page nothing but `PUT` parts. A ticket that verifies on `POST /uploads` without the secret is reported as `ingest_open_without_secret`, one event per request. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
 
 ## The only outbound request
 
@@ -34,7 +35,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **The upload path keeps no state between requests: the R2 `uploadId` and each part's etag travel with the caller and come back on every request.** This package also does not judge whether an upload is dead (the server computes task deadlines when a node's task list is read) or whether a key is already being finished (the server takes that grant from the ledger before calling).
 
-**It binds three Durable Object classes, all containers: `MediaContainer` (one per storage key, idles after answering) and `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline).** `config/mini-tools.yaml` names the class each operation runs in.
+**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), and `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
 
 **A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).**
 

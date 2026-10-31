@@ -16,7 +16,7 @@ This guide is for changing source code, debugging and contributing. To install a
 | Node.js | Use 24.15 or later in the 24 line, the `engines` range in `package.json` |
 | pnpm | **9.15.0**, as specified by the root `packageManager`; do not use an arbitrary global version |
 | Docker | Running Engine/Desktop with Compose v2 |
-| FFmpeg | Both `ffmpeg` and `ffprobe` must be available on the host for background video tools; the copy inside the media container does not replace them |
+| FFmpeg | Host `ffmpeg` and `ffprobe` are used by media verification and voice-sample development tools; application media processing runs in Ingest containers |
 | Cloudflare | R2 enabled, with a dedicated development bucket and read/write credentials |
 | AI providers | A text provider such as OpenRouter, plus credentials for media models you need |
 
@@ -147,13 +147,13 @@ Replace **every angle-bracket placeholder** in `packages/ingest/wrangler.toml`. 
 | --- | --- |
 | Top-level `[[r2_buckets]].bucket_name` | Exactly the root `.env`'s `R2_BUCKET` |
 | Top-level `[[r2_buckets]].remote` | Keep `true` |
-| Top-level `[[containers]].max_instances` | Integer `5`, unquoted |
-| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in all three blocks; when several copies of the repository run on one machine, give each its own name |
+| Top-level `[[containers]].max_instances` | Keep each block's template value; replace remaining placeholders with unquoted integers |
+| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in every top-level container block; when several copies of the repository run on one machine, give each its own name |
 | `[dev].port` | Integer `8787` |
 | `[vars].ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars].ALLOWED_ORIGINS` | For this local-only setup, fill with `"http://localhost:8000"` to complete the template |
 | `[[env.production.r2_buckets]].bucket_name` | For this local-only setup, use the same development bucket |
-| `[[env.production.containers]].max_instances` | Integer `5` |
+| `[[env.production.containers]].max_instances` | Keep each block's template value; replace remaining placeholders with unquoted integers |
 
 Keep every `image_build_context = "../.."` line and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
 
@@ -314,14 +314,14 @@ ZIP users should download the new source and preserve their `.env`, Ingest confi
 | Missing `core/dist/index.js` | Run the dependency build in section 6 |
 | Missing `breatic_yjs`, tables or columns | Check both database URLs and run both migrations and the watermark check |
 | Database password mismatch | Existing volumes keep their original password; editing the template does not change it |
-| Wrangler cannot parse configuration | Replace all placeholders, especially both `max_instances` values and `[dev].port`; numbers are unquoted |
+| Wrangler cannot parse configuration | Replace all placeholders, especially container `max_instances` values and `[dev].port`; numbers are unquoted |
 | Wrangler cannot access R2 | Check `wrangler whoami`, account ID and bucket ownership; S3 credentials do not replace Wrangler authorization |
 | Upload returns 401 | Match the two shared secrets and restart |
 | Upload CORS error | Match Ingest's origin to the page exactly, with no trailing slash |
 | Uploaded file returns 404 | Check `remote=true`, matching buckets, public access and `UPLOAD_BASE_URL` |
 | Images display but cropping fails | Configure GET CORS on the R2 public endpoint, not just upload CORS |
 | Video has no cover or media image build fails | Inspect Ingest output, Docker, downloads and build context; do not disable the container |
-| ffmpeg/ffprobe not found | Verify both commands in the same terminal used for `pnpm dev` |
+| ffmpeg/ffprobe not found during media verification or voice-sample work | Verify both host commands in the same terminal used for development checks |
 | Model credentials/quota errors | Check the selected provider, clear unused fake keys and inspect API/Worker logs |
 | Login returns to the sign-in screen | Keep `ENV=dev`, empty `COOKIE_DOMAIN` and consistent `localhost:8000` access |
 | No email arrives | Console mode only prints logs; delivery needs SMTP |

@@ -16,7 +16,7 @@
 | Node.js | 使用 24（24.15 或更新），即 `package.json` 里 `engines` 的范围 |
 | pnpm | **9.15.0**，与根目录 `packageManager` 一致；不要直接使用其他全局版本 |
 | Docker | Docker Engine / Docker Desktop，并带 Compose v2；必须已启动 |
-| FFmpeg | 本机需能运行 `ffmpeg` 和 `ffprobe`；后台视频工具使用它们，媒体容器内的 FFmpeg 不能代替本机安装 |
+| FFmpeg | 宿主机的 `ffmpeg`、`ffprobe` 用于媒体验证和语音样本开发工具；应用中的媒体处理在 Ingest 容器运行 |
 | Cloudflare | 开通 R2，准备一个专用于本地试用的 bucket 和该 bucket 的读写凭据 |
 | AI 供应商 | 文本聊天可配置 OpenRouter；图片、视频等需要所选模型对应供应商的密钥 |
 
@@ -147,13 +147,13 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 | --- | --- |
 | 顶层 `[[r2_buckets]]` 的 `bucket_name` | 与根目录 `.env` 的 `R2_BUCKET` 完全相同 |
 | 顶层 `[[r2_buckets]]` 的 `remote` | 保留 `true` |
-| 顶层 `[[containers]]` 的 `max_instances` | 整数 `5`，不加引号 |
-| 顶层 `[[containers]]` 的 `image_vars` | 三个块都填 `{ DEV_COPY = "breatic" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
+| 顶层 `[[containers]]` 的 `max_instances` | 保留各块的模板值；其余占位符替换为不加引号的整数 |
+| 顶层 `[[containers]]` 的 `image_vars` | 每个顶层容器块都填 `{ DEV_COPY = "breatic" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
 | `[dev]` 的 `port` | 整数 `8787` |
 | `[vars]` 的 `ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars]` 的 `ALLOWED_ORIGINS` | 此次可先填 `"http://localhost:8000"`，使模板值完整 |
 | `[[env.production.r2_buckets]]` 的 `bucket_name` | 此次可先填同一本地试用 bucket 名 |
-| `[[env.production.containers]]` 的 `max_instances` | 整数 `5` |
+| `[[env.production.containers]]` 的 `max_instances` | 保留各块的模板值；其余占位符替换为不加引号的整数 |
 
 保留每一行 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
 
@@ -314,14 +314,14 @@ ZIP 用户需下载新版本并保留自己的 `.env`、Ingest 配置与密钥�
 | `core/dist/index.js` 不存在 | 先执行第 6 节共享包构建命令 |
 | `breatic_yjs` 不存在 / 表或列不存在 | 核对两个数据库地址，按第 6 节建缺失库、执行两套迁移和水位检查 |
 | 数据库密码不匹配 | 已有数据卷保留创建时的密码；修改模板不会修改已有数据库用户密码 |
-| Wrangler 配置解析失败 | 清除所有尖括号占位，尤其两处 `max_instances` 和 `[dev].port`；数字不加引号 |
+| Wrangler 配置解析失败 | 清除所有尖括号占位，尤其各容器的 `max_instances` 和 `[dev].port`；数字不加引号 |
 | Wrangler 无权访问 R2 | 检查 `wrangler whoami`、账户 ID、bucket 名与登录账户；R2 S3 token 不能代替 Wrangler 授权 |
 | 上传返回 401 | 两处 `INGEST_SHARED_SECRET` 必须相同；修改后重启 |
 | 上传跨域失败 | Ingest `[vars].ALLOWED_ORIGINS` 精确匹配网页来源，无末尾 `/` |
 | 文件上传后 404 / 图片不显示 | 检查 `remote=true`、两处 bucket 名一致、公开访问已启用以及 `UPLOAD_BASE_URL` 正确 |
 | 图片显示但裁剪失败 | 检查 R2 公开读取的 GET CORS，不能只配置 Ingest 上传 CORS |
 | 视频无封面 / 媒体容器构建失败 | 查看 `pnpm dev` 的 Ingest 输出，检查 Docker、镜像下载和 `image_build_context`，不能禁用容器 |
-| 视频工具提示找不到 ffmpeg / ffprobe | 在运行 `pnpm dev` 的同一终端检查二者可执行 |
+| 媒体验证或语音样本开发提示找不到 ffmpeg / ffprobe | 在运行开发检查的同一终端核对两个宿主机命令 |
 | AI 功能报密钥、余额或权限错误 | 检查所选模型对应 provider、真实额度，清空未使用的假密钥；查看 API / Worker 日志 |
 | 登录后又回到登录页 | 保持 `ENV=dev`、`COOKIE_DOMAIN` 为空，统一使用 `localhost:8000` |
 | 收不到邮件 | `console` 模式只打印日志；真实投递需配置 `EMAIL_BACKEND=smtp` 和 SMTP 参数 |

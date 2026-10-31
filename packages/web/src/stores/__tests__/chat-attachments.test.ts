@@ -16,7 +16,7 @@ beforeEach(() => {
   toastSpy.warning.mockClear();
 });
 
-import { attachmentSection, setLocale } from '@breatic/shared';
+import { attachmentSection, setLocale, uploadableFormatList } from '@breatic/shared';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
@@ -58,6 +58,21 @@ function uploading(id: string): TrayItem {
 
 beforeEach(() => {
   chatAttachments.forget(['c1', 'c2']);
+});
+
+describe('media format refusal notices', () => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as const)('renders the filename and supported formats in %s', (locale) => {
+    setLocale(locale);
+    try {
+      const formats = uploadableFormatList('image');
+      const message = trayNoticeText({ key: 'unsupportedMedia', filename: 'vector.svg', kind: 'image', formats });
+      expect(message).toContain('vector.svg');
+      expect(message).toContain(formats);
+      expect(message).not.toMatch(/\{(?:filename|formats|kind)\}|undefined|canvas\.upload/);
+    } finally {
+      setLocale('en');
+    }
+  });
 });
 
 describe('adding a batch', () => {

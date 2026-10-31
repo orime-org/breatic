@@ -434,8 +434,8 @@ export function renderProductGuide(): string {
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
     "- Drop files onto the canvas, or paste one. Pictures, videos and sounds become nodes of their kind; one in " +
-      "a format that is not supported, or over the size limit, makes no node, and a message names it. A file " +
-      "whose contents turn out to be another format than its name says is refused after its node appears, and " +
+      "a format that is not supported, or over the size limit, makes no node, and a message names it. A media file " +
+      "whose stored bytes turn out to be an unsupported format is refused after its node appears, and " +
       "the node shows the failure. Any other file becomes a text node holding its text: plain text, PDF, Word " +
       "(.docx) and Excel (.xlsx, .xls) files work; other kinds, older .doc files included, show an error in the " +
       "node. An empty file makes no node, and a message names it. Several files at once arrive four to a row " +
@@ -443,7 +443,7 @@ export function renderProductGuide(): string {
       "alone. Files dropped on top of a node, or pasted while a node is selected, still make new nodes: to fill " +
       "a node that exists, use double-click or its right-click menu (next section).",
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
-      "that lists pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
+      "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
