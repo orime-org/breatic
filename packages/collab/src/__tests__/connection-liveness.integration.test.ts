@@ -137,17 +137,18 @@ describe("crossws liveness", () => {
 });
 
 describe("seat liveness follows the transport's", () => {
-  it("keeps the seat of a socket that sends messages and never answers a ping", async () => {
-    // crossws counts any message as a sign of life and never closes such a
-    // socket, so its seat must not expire either: a newcomer taking it would
-    // leave one more writable connection than the cap allows.
+  it("keeps the seat of a socket on its messages alone", async () => {
+    // Messages alone must refresh the seat within one seat expiry: crossws
+    // counts any message as a sign of life, and a seat that expired under a
+    // socket it keeps open would let a newcomer exceed the cap.
     initCore(process.env);
     const redis = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-liveness-seat" });
     teardown.push(() => void redis.quit());
     const ns = `t1034-liveness:${randomUUID()}`;
     const doc = "seat-doc";
     // Far shorter than the transport's own ping interval, so no ping reaches
-    // the socket while this runs and only its messages can refresh the seat.
+    // the socket while this runs and only its messages can refresh the seat
+    // before it expires.
     const registry = createConnectionRegistry({
       redis,
       instanceId: "i-1",
@@ -183,7 +184,7 @@ describe("seat liveness follows the transport's", () => {
       server as unknown as { httpServer: { address(): { port: number } } }
     ).httpServer.address();
 
-    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/`, { autoPong: false });
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/`);
     teardown.push(() => ws.terminate());
     await new Promise<void>((resolve, reject) => {
       ws.once("open", () => resolve());
