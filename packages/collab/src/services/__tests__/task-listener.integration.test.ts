@@ -265,6 +265,36 @@ async function pending(c: Case): Promise<number> {
   return Number(summary[0]);
 }
 
+/**
+ * The entries among `ids` the group has handled: delivered to a consumer and
+ * acknowledged. An empty pending list alone proves nothing, because it is also
+ * empty before the listener has read a single entry.
+ * @param streamKey - The stream.
+ * @param ids - Entry ids.
+ * @returns The handled ones.
+ */
+async function handledOf(streamKey: string, ids: readonly string[]): Promise<Set<string>> {
+  const groups = (await stream.xinfo("GROUPS", streamKey)) as unknown[][];
+  const row = groups.find((g) => g[1] === "collab-task-events");
+  if (!row) return new Set();
+  const delivered = String(row[row.indexOf("last-delivered-id") + 1]);
+  const rows = (await stream.xpending(streamKey, "collab-task-events", "-", "+", 1000)) as Array<
+    [string, string, number, number]
+  >;
+  const pendingIds = new Set(rows.map((r) => r[0]));
+  return new Set(ids.filter((id) => !pendingIds.has(id) && !isNewerStreamId(id, delivered)));
+}
+
+/**
+ * Whether the group has handled every one of `ids` (see {@link handledOf}).
+ * @param streamKey - The stream.
+ * @param ids - Entry ids.
+ * @returns True once all of them are.
+ */
+async function handled(streamKey: string, ids: readonly string[]): Promise<boolean> {
+  return (await handledOf(streamKey, ids)).size === ids.length;
+}
+
 const RUNNING = { running: 1, done: 0, failed: 0, expired: 0 };
 const DONE = { running: 0, done: 1, failed: 0, expired: 0 };
 const MEDIA = { coverUrl: null, width: null, height: null, duration: null, mimeType: null, size: null };
@@ -275,18 +305,20 @@ describe("task events across two collab instances", () => {
     const c = await newCase(Object.fromEntries(nodeIds.map((n) => [n, "text"])));
     const opensA = vi.spyOn(instanceA, "openDirectConnection");
     const opensB = vi.spyOn(instanceB, "openDirectConnection");
-    await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: RUNNING })));
-    await publish(
-      c,
-      nodeIds.map((nodeId, i) => ({ nodeId, counts: DONE, result: { ...MEDIA, content: `tile ${i}` } })),
-    );
+    const ids = [
+      ...(await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: RUNNING })))),
+      ...(await publish(
+        c,
+        nodeIds.map((nodeId, i) => ({ nodeId, counts: DONE, result: { ...MEDIA, content: `tile ${i}` } })),
+      )),
+    ];
     // Fewer entries held than the grid has, so both instances take part in the
     // same document; the other event_* values are config/collab.yaml's.
     const settings = { maxHeld: 64, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffPollMs: 50, handoffWaitMs: 5000 };
     const startedAt = Date.now();
     listen(c, instanceA, "a", settings);
     listen(c, instanceB, "b", settings);
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128, 15_000);
+    await until(() => handled(c.streamKey, ids), 15_000);
     expect(Date.now() - startedAt).toBeLessThan(10_000);
     const listenerOpens = opensA.mock.calls.length + opensB.mock.calls.length;
     expect(opensA.mock.calls.length).toBeGreaterThan(0);
@@ -303,11 +335,11 @@ describe("task events across two collab instances", () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
     const [olderId] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "old.png" } }]);
-    await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "new.png" } }]);
+    const [newerId] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "new.png" } }]);
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0 && (await readNode(c, nodeId)).content === "new.png");
-    await publish(c, [{ nodeId, counts: RUNNING, result: { ...MEDIA, content: "old.png" } }], ["originId", olderId!]);
-    await until(async () => (await stream.xlen(c.streamKey)) === 3 && (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [olderId!, newerId!]));
+    const replayed = await publish(c, [{ nodeId, counts: RUNNING, result: { ...MEDIA, content: "old.png" } }], ["originId", olderId!]);
+    await until(() => handled(c.streamKey, replayed));
     const node = await readNode(c, nodeId);
     expect(node.content).toBe("new.png");
     expect(node.taskCounts).toEqual(DONE);
@@ -318,7 +350,7 @@ describe("task events across two collab instances", () => {
     const c = await newCase({ [nodeId]: "image" });
     const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [id!]));
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-counts-version:${c.docName}`, nodeId)).toBe(id);
     expect(await coordination.ttl(`${c.keyPrefix}:collab:task-counts-version:${c.docName}`)).toBeGreaterThan(0);
   });
@@ -326,9 +358,9 @@ describe("task events across two collab instances", () => {
   it("leaves a hand-over record after writing", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
-    await publish(c, [{ nodeId, counts: RUNNING }]);
+    const ids = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, ids));
     const record = await coordination.get(`${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`);
     expect(record).toBeTypeOf("string");
     expect(await coordination.pttl(`${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`)).toBeGreaterThan(0);
@@ -348,7 +380,7 @@ describe("task events across two collab instances", () => {
     expect(await pending(c)).toBe(1);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
     await coordination.del(handoffKey);
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [id!]));
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
   });
 
@@ -365,7 +397,7 @@ describe("task events across two collab instances", () => {
     expect((await readNode(c, nodeId)).taskCounts).toBeUndefined();
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
     await coordination.del(leaseKey);
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [id!]));
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
   });
 
@@ -392,7 +424,7 @@ describe("task events across two collab instances", () => {
     const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
     // One failure would send the event straight to the dead-letter stream.
     listen(c, instanceA, "a", { maxFailures: 1 });
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [id!]));
     expect(refused).toBe(1);
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
@@ -416,7 +448,7 @@ describe("task events across two collab instances", () => {
     const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
     // One failure would send the event straight to the dead-letter stream.
     listen(c, instanceA, "a", { maxFailures: 1 });
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, [id!]));
     expect(refused).toBe(1);
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
@@ -431,7 +463,7 @@ describe("task events across two collab instances", () => {
     for (let i = 0; i < 5; i++) peer.getMap("itest-peer").set(`k${i}`, i);
     const handoffKey = `${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`;
     await coordination.set(handoffKey, Buffer.from(Y.encodeStateVector(peer)).toString("base64"), "PX", 60_000);
-    await publish(c, [{ nodeId, counts: RUNNING }]);
+    const ids = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a", { handoffWaitMs: 10_000 });
     await new Promise((r) => setTimeout(r, 1000));
     expect((await readNode(c, nodeId)).taskCounts).toBeUndefined();
@@ -439,7 +471,7 @@ describe("task events across two collab instances", () => {
     // The peer's update reaches instance A only through the Redis extension.
     const onB = await instanceB.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
     await onB.transact((doc) => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer)));
-    await until(async () => (await pending(c)) === 0);
+    await until(() => handled(c.streamKey, ids));
     await onB.disconnect();
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
   });
@@ -501,10 +533,10 @@ describe("task events across two collab instances", () => {
   it("acknowledges an entry missing its document name on its own and still writes the next event", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
-    await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", nodeId }));
+    const badId = await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", nodeId }));
     const [goodId] = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    await until(() => handled(c.streamKey, [badId!, goodId!]));
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, goodId!)).toBeNull();
   });
@@ -512,11 +544,13 @@ describe("task events across two collab instances", () => {
   it("writes 128 events of one document within seconds with a single consumer", async () => {
     const nodeIds = Array.from({ length: 64 }, () => randomUUID());
     const c = await newCase(Object.fromEntries(nodeIds.map((n) => [n, "image"])));
-    await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: RUNNING })));
-    await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: DONE })));
+    const ids = [
+      ...(await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: RUNNING })))),
+      ...(await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: DONE })))),
+    ];
     const startedAt = Date.now();
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128);
+    await until(() => handled(c.streamKey, ids));
     expect(Date.now() - startedAt).toBeLessThan(10_000);
     for (const node of await readNodes(c, nodeIds)) expect(node.taskCounts).toEqual(DONE);
   });
@@ -524,14 +558,15 @@ describe("task events across two collab instances", () => {
   it("writes several documents side by side", async () => {
     const cases = await Promise.all(Array.from({ length: 8 }, () => newCase({ n: "image" })));
     const streamKey = cases[0]!.streamKey;
+    const ids: string[] = [];
     for (const c of cases) {
       for (const counts of [RUNNING, DONE]) {
-        await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts }));
+        ids.push((await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts })))!);
       }
     }
     const startedAt = Date.now();
     listen(cases[0]!, instanceA, "a", { keyConcurrency: 4 });
-    await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 16, 30_000);
+    await until(() => handled(streamKey, ids), 30_000);
     // One document batch takes about two seconds (store plus the two one-second
     // waits), so eight in a row would take sixteen.
     expect(Date.now() - startedAt).toBeLessThan(10_000);
@@ -549,14 +584,15 @@ describe("task events across two collab instances", () => {
     async function timeBurst(instances: Hocuspocus[]): Promise<number> {
       const cases = await Promise.all(Array.from({ length: 32 }, () => newCase({ n: "image" })));
       const streamKey = cases[0]!.streamKey;
+      const ids: string[] = [];
       for (const c of cases) {
-        await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts: DONE }));
+        ids.push((await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts: DONE })))!);
       }
       const startedAt = Date.now();
       // The event_* values of config/collab.yaml.
       const production = { maxHeld: 128, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
       instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, production));
-      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 32, 60_000);
+      await until(() => handled(streamKey, ids), 60_000);
       const elapsed = Date.now() - startedAt;
       await Promise.all(listeners.splice(0).map((l) => l.stop()));
       return elapsed;
@@ -581,18 +617,9 @@ describe("task events across two collab instances", () => {
     let publishing = true;
     const watch = (async () => {
       while (publishing || acked.size < published.size) {
-        // An entry is acknowledged once it was delivered and left the pending list.
-        const groups = (await stream.xinfo("GROUPS", c.streamKey)) as unknown[][];
-        const row = groups.find((g) => g[1] === "collab-task-events")!;
-        const delivered = String(row[row.indexOf("last-delivered-id") + 1]);
-        const rows = (await stream.xpending(c.streamKey, "collab-task-events", "-", "+", 1000)) as Array<
-          [string, string, number, number]
-        >;
+        const done = await handledOf(c.streamKey, [...published.keys()]);
         const now = Date.now();
-        const pendingIds = new Set(rows.map((r) => r[0]));
-        for (const id of published.keys()) {
-          if (!acked.has(id) && !pendingIds.has(id) && !isNewerStreamId(id, delivered)) acked.set(id, now);
-        }
+        for (const id of done) if (!acked.has(id)) acked.set(id, now);
         await new Promise((r) => setTimeout(r, 30));
       }
     })();
@@ -612,10 +639,12 @@ describe("task events across two collab instances", () => {
   it("writes an older result that arrives after newer counts, and leaves the counts alone", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
-    await publish(c, [{ nodeId, counts: RUNNING }]);
-    await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "late.png" } }], ["originId", "1-0"]);
+    const ids = [
+      ...(await publish(c, [{ nodeId, counts: RUNNING }])),
+      ...(await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "late.png" } }], ["originId", "1-0"])),
+    ];
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    await until(() => handled(c.streamKey, ids));
     const node = await readNode(c, nodeId);
     expect(node.content).toBe("late.png");
     expect(node.taskCounts).toEqual(RUNNING);
@@ -625,12 +654,12 @@ describe("task events across two collab instances", () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "text" });
     const [id] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }]);
-    await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }], ["originId", id!]);
+    const [again] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }], ["originId", id!]);
     const opensA = vi.spyOn(instanceA, "openDirectConnection");
     const opensB = vi.spyOn(instanceB, "openDirectConnection");
     listen(c, instanceA, "a", { maxHeld: 1 });
     listen(c, instanceB, "b", { maxHeld: 1 });
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    await until(() => handled(c.streamKey, [id!, again!]));
     expect(opensA.mock.calls.length).toBeGreaterThan(0);
     expect(opensB.mock.calls.length).toBeGreaterThan(0);
     expect((await readNode(c, nodeId)).text).toBe("once");
@@ -657,15 +686,15 @@ describe("task events across two collab instances", () => {
 
   it("acknowledges and skips an event for a document that is not a canvas Space", async () => {
     const c = await newCase({});
-    await stream.xadd(
+    const metaId = await stream.xadd(
       c.streamKey,
       "*",
       "payload",
       JSON.stringify({ type: "node-task-counts", docName: `project-${PID}/meta`, nodeId: randomUUID(), counts: RUNNING }),
     );
-    await stream.xadd(c.streamKey, "*", "payload", "{not json");
+    const brokenId = await stream.xadd(c.streamKey, "*", "payload", "{not json");
     listen(c, instanceA, "a");
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    await until(() => handled(c.streamKey, [metaId!, brokenId!]));
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 });
