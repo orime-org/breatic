@@ -52,6 +52,8 @@ import {
   isPurchased,
   addCreditMicro,
   subtractCreditMicro,
+  minCreditMicro,
+  negateCreditMicro,
   parseCreditDecimal,
   serializeCreditMicro,
 } from "@breatic/shared";
@@ -541,7 +543,7 @@ export async function designateLot(input: {
     // `studio_members` → `studio_credit_debts` → `credit_lots`.
     const owedMicro =
       input.studioId === null
-        ? 0n
+        ? parseCreditDecimal("0")
         : toMicroCredits(await creditLotRepo.lockDebt(input.studioId, tx));
 
     const lot = await creditLotRepo.lockLot(input.lotId, tx);
@@ -1110,21 +1112,21 @@ export async function hasActiveDesignationsTo(
 export async function repayDesignatedLot(input: {
   lot: CreditLotEntity;
   studioId: string;
-  owedMicro: bigint;
+  owedMicro: CreditMicro;
   actorUserId: string | null;
 }, tx: DbTx): Promise<{ lot: CreditLotEntity; repaidCredits: CreditDecimal; debtAfter: CreditDecimal }> {
   const remainingMicro = parseCreditDecimal(input.lot.remainingCredits);
-  const repaidMicro = input.owedMicro < remainingMicro ? input.owedMicro : remainingMicro;
+  const repaidMicro = minCreditMicro(input.owedMicro, remainingMicro);
   if (repaidMicro <= 0n) return { lot: input.lot, repaidCredits: serializeCreditMicro(0n), debtAfter: serializeCreditMicro(input.owedMicro) };
   const repaid = serializeCreditMicro(repaidMicro);
   const charged = await creditLotRepo.applyCharge(input.lot.id, repaid, tx);
-  const debtAfter = await creditLotRepo.adjustDebt(input.studioId, serializeCreditMicro(-repaidMicro), tx);
+  const debtAfter = await creditLotRepo.adjustDebt(input.studioId, serializeCreditMicro(negateCreditMicro(repaidMicro)), tx);
   await creditLotRepo.appendLedgerEntry({
     payerUserId: input.lot.userId,
     actorUserId: input.actorUserId,
     entryType: "debt_repayment",
     studioId: input.studioId,
-    amount: serializeCreditMicro(-repaidMicro),
+    amount: serializeCreditMicro(negateCreditMicro(repaidMicro)),
     lotId: input.lot.id,
   }, tx);
   return { lot: { ...input.lot, remainingCredits: charged.remainingCredits, lifecycle: charged.lifecycle }, repaidCredits: repaid, debtAfter: serializeCreditMicro(parseCreditDecimal(debtAfter)) };
