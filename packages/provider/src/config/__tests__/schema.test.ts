@@ -16,10 +16,11 @@ import { createProvider } from "../../provider.js";
 
 const pricing = { kind: "formula", base_price: 0.1, formula: "", discount_rate: 100 };
 
+// Three upstreams of the one media kind provider speaks to today, under different names.
 const upstreams = {
-  bytedance: { kind: "bytedance", base_url: "https://ark.example", key_env: "BYTEPLUS_ARK_API_KEY" },
+  bytedance: { kind: "wavespeed", base_url: "https://ark.example", key_env: "BYTEPLUS_ARK_API_KEY" },
   wavespeed: { kind: "wavespeed", base_url: "https://api.wavespeed.ai/api/v3", key_env: "WAVESPEED_API_KEY" },
-  fal: { kind: "fal", base_url: "https://queue.fal.run", key_env: "FAL_KEY" },
+  fal: { kind: "wavespeed", base_url: "https://queue.fal.run", key_env: "FAL_KEY" },
 };
 
 /**
@@ -97,6 +98,14 @@ describe("parseProviderConfig", () => {
   it("refuses a misspelled key in a pricing rule, naming it", () => {
     const problems = problemsOf(input([bind("wavespeed", 1, { pricing: { ...pricing, discount_rat: 50 } })]));
     expect(problems.join("\n")).toContain("discount_rat");
+  });
+
+  it.each(["fal", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
+    const raw: ProviderConfigInput = {
+      upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },
+      media: { models: { seedance: { upstreams: [bind("typo", 1)] } } },
+    };
+    expect(problemsOf(raw).join("\n")).toContain("typo");
   });
 
   it.each(["openroutr", "wavespeed", "toString"])("refuses an LLM route on an upstream of kind %s, which no LLM adapter speaks to", (kind) => {
