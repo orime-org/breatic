@@ -10,6 +10,7 @@ import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
+import * as miniTools from "@breatic/shared/mini-tools";
 import { hashMiniToolValue, miniToolExecutionRecordSchema, planVideoFrames, planVideoSplit, type VideoPresentationTable } from "@breatic/shared/mini-tools";
 import {
   claimMiniToolSettlement, completeMiniToolConsumptionSet, confirmMiniToolConsumption, containerCostUsd,
@@ -340,6 +341,19 @@ describe("S5 fresh frame and split execution admission", () => {
     operation.max_outputs = f.body.outputs.length;
     await control(f); operation.max_outputs -= 1;
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it("S5-A05 supplies the configured budget to the real shared frame planner before accepting or refusing the complete plan", async () => {
+    const f = await seed("video.extract-frames");
+    const operation = Reflect.get(settings.executions, "video.extract-frames") as { max_outputs: number };
+    const planner = vi.spyOn(miniTools, "planVideoFrames");
+    try {
+      operation.max_outputs = 4; await control(f);
+      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 4]]);
+      operation.max_outputs = 3; f.body.outputs.pop();
+      expect((await post(f)).status).toBe(422);
+      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 4], [TABLE, f.body.draft.params, 3]]);
+      expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    } finally { planner.mockRestore(); }
   });
   it("S5-A06 replays the original complete immutable plan before consulting changed source, presentation, draft or pricing", async () => {
     const f = await seed(); const original = structuredClone(f.body); const key = randomUUID(); await accept(f, original, key);
