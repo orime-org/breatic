@@ -40,7 +40,7 @@ const png = (res: ServerResponse, bytes: Uint8Array): void => {
 
 const limits = (): { maxBytes: number; deadlineAt: number } => ({ maxBytes: 1_000, deadlineAt: Date.now() + 10_000 });
 
-describe("fetchMedia (design 3.1, Z5)", () => {
+describe("fetchMedia", () => {
   it("answers the bytes and the declared type", async () => {
     const { url } = await serve((_req, res) => png(res, new Uint8Array([1, 2, 3])));
     const media = await fetchMedia({ url: `${url}/a.png`, ...limits() });
@@ -102,7 +102,7 @@ describe("fetchMedia (design 3.1, Z5)", () => {
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
-  it("refuses an address that answers an empty body, before any model is paid to read it (DD 33)", async () => {
+  it("refuses an address that answers an empty body, before any model is paid to read it", async () => {
     const { url } = await serve((_req, res) => png(res, new Uint8Array()));
     await expect(fetchMedia({ url: `${url}/a.png`, ...limits() })).rejects.toMatchObject({ kind: "empty" });
   });

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_REPLY, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
 // Every model call an upstream billed reaches the caller once: on its finish as costRef or a
-// reported cost, or in pendingCosts() (design 3.5, 5.5, DD 33).
+// reported cost, or in pendingCosts().
 
 let fakes: LlmFakes;
 
@@ -52,7 +52,7 @@ const finished = (id: string): string =>
 
 const pending = (generationId: string): unknown => ({ state: "pending", lookup: { upstream: "openrouter", generationId } });
 
-describe("a stream whose first chunk is an in-band error (DD 33)", () => {
+describe("a stream whose first chunk is an in-band error", () => {
   it("hands the errored generation to pendingCosts, beside the one that served", async () => {
     let n = 0;
     fakes.openrouter.answer(() => ({
@@ -84,7 +84,7 @@ describe("a stream that named its generation and then failed before content", ()
   });
 });
 
-describe("a whole answer of 200 whose body is an error (DD 33)", () => {
+describe("a whole answer of 200 whose body is an error", () => {
   it("hands the generation it names to pendingCosts when the call moves past it", async () => {
     let n = 0;
     fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: { id: "gen-whole", error: { code: 502, message: "Provider returned error" } } } : { status: 200, body: CHAT_REPLY }));
@@ -102,7 +102,7 @@ describe("a whole answer of 200 whose body is an error (DD 33)", () => {
   });
 });
 
-describe("a whole 2xx answer that cannot be read (DD 34)", () => {
+describe("a whole 2xx answer that cannot be read", () => {
   it.each([
     ["OpenRouter, cut mid-body", "openrouter", "meta/llama-x", OR, '{"id":"gen-cut","choices":[{"message":{"content":"o', { state: "missing" }],
     ["DeepSeek, cut mid-body", "deepseek", "deepseek/deepseek-v4-pro", { DEEPSEEK_API_KEY: "ds" }, '{"id":"ds-cut","choices":[{"message":{"content":"o', { state: "missing" }],
@@ -122,7 +122,7 @@ describe("a whole 2xx answer that cannot be read (DD 34)", () => {
   });
 });
 
-describe("a whole 2xx answer the caller stops while it arrives (DD 35)", () => {
+describe("a whole 2xx answer the caller stops while it arrives", () => {
   it.each([
     ["OpenRouter", "openrouter", "meta/llama-x", OR],
     ["DeepSeek", "deepseek", "deepseek/deepseek-v4-pro", { DEEPSEEK_API_KEY: "ds" }],
@@ -146,7 +146,7 @@ describe("a whole 2xx answer the caller stops while it arrives (DD 35)", () => {
   });
 });
 
-describe("a direct vendor's stream cut before its finish (DD 33)", () => {
+describe("a direct vendor's stream cut before its finish", () => {
   const opening = chunk("ds-1", { role: "assistant", content: "he" });
 
   it("hands one missing cost to pendingCosts", async () => {
@@ -171,7 +171,7 @@ describe("a direct vendor's stream cut before its finish (DD 33)", () => {
   });
 });
 
-describe("an OpenRouter stream stopped before its first data chunk (DD 37)", () => {
+describe("an OpenRouter stream stopped before its first data chunk", () => {
   it("hands one cost to pendingCosts: its 200 was billed", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: ": OPENROUTER PROCESSING\n\n", contentType: "text/event-stream", hold: true }));
     const prepared = llmProvider(fakes, OR, { llmMaxRetries: 0 }).llm.prepare("meta/llama-x", THINK);
@@ -184,7 +184,7 @@ describe("an OpenRouter stream stopped before its first data chunk (DD 37)", () 
   });
 });
 
-describe("a stop that lands around the finish (DD 33)", () => {
+describe("a stop that lands around the finish", () => {
   it.each(["text-delta", "finish-step", "finish"])("hands the generation over exactly once when the caller stops at its %s", async (at) => {
     fakes.openrouter.answer(() => ({ status: 200, raw: finished("gen-1"), contentType: "text/event-stream" }));
     const prepared = llmProvider(fakes, OR).llm.prepare("meta/llama-x", THINK);

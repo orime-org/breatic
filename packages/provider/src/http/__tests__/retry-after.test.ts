@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retryAfterOf } from "../request.js";
 
-// The cases of shared's parseRetryAfter (shared/src/http/__tests__/decide-retry.test.ts), which provider follows (DD 33).
+// The cases of shared's parseRetryAfter (shared/src/http/__tests__/decide-retry.test.ts), which provider follows.
 const NOW = Date.UTC(2026, 6, 30, 12, 0, 0);
 const inFiveSeconds = new Date(NOW + 5_000).toUTCString();
 

@@ -8,7 +8,7 @@ import { createProvider } from "../../provider.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
 
-describe("the shipped provider configuration (design 4.1)", () => {
+describe("the shipped provider configuration", () => {
   it("loads, and binds every catalog model and param", () => {
     const config = parseProviderConfig(shipped());
     expect(() => assertBindsCatalog(config, catalog())).not.toThrow();
@@ -54,7 +54,7 @@ describe("the shipped provider configuration (design 4.1)", () => {
     expect(shipped().llm?.vendor_ids?.["deepseek/deepseek-v4.1-flash-1017"]).toEqual({ deepseek: "deepseek-flash" });
   });
 
-  it("routes each direct vendor first and OpenRouter after it, and reads understanding through Google first, OpenRouter after it (DD 26)", () => {
+  it("routes each direct vendor first and OpenRouter after it, and reads understanding through Google first, OpenRouter after it", () => {
     const { llm } = shipped();
     for (const prefix of ["anthropic/", "deepseek/", "google/", "openai/"]) {
       const route = llm?.routes.find((r) => r.prefix === prefix);

@@ -3,8 +3,7 @@
 
 /**
  * Where an LLM call goes and how each vendor is asked to reason, cache and
- * sample, read off the requests that reach each fake vendor (moved from
- * domain's `agent/__tests__/llm.test.ts`, design 13.1). Asserting on the
+ * sample, read off the requests that reach each fake vendor. Asserting on the
  * request body is the only way to tell "asked for" from "meant to ask for".
  */
 

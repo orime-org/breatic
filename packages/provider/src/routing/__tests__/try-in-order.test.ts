@@ -166,7 +166,7 @@ function named(step: string | Failure, upstream: string): string | Failure {
 /**
  * Whether a failure is one that must not move to another upstream.
  * @param failure - The failure.
- * @returns True for 4xx other than 429, no_answer and aborted.
+ * @returns True for no_answer, aborted and the 4xx statuses stepArb draws other than 429.
  */
 function isStop(failure: Failure): boolean {
   if (failure.kind === "no_answer" || failure.kind === "aborted") return true;

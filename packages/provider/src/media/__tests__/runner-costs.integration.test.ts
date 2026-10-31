@@ -12,7 +12,7 @@ import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
-// Every billed answer reaches the caller once, whatever way the run ends (DD 33).
+// Every billed answer reaches the caller once, whatever way the run ends.
 
 const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
 const DEFAULT: Route = { mode: "default" };
@@ -110,7 +110,7 @@ async function submitVideo(r: MediaRunner): Promise<MediaAnswer | unknown> {
 
 const lookupOf = (predictionId: string, upstream = "ws_a"): unknown => ({ state: "pending", lookup: { upstream, predictionId } });
 
-describe("a submit answered 2xx whose answer cannot be read is sent with its outcome unknown (DD 33)", () => {
+describe("a submit answered 2xx whose answer cannot be read is sent with its outcome unknown", () => {
   it.each([
     ["not JSON", (): void => a.answer(() => ({ status: 200, raw: "<html>ok</html>", contentType: "text/html" }))],
     ["no id and no outputs", (): void => a.answer(() => ({ status: 200, body: { code: 200, data: { status: "created" } } }))],
@@ -138,7 +138,7 @@ describe("a submit answered 2xx whose answer cannot be read is sent with its out
   });
 });
 
-describe("a submit that finished at once without a prediction id to bill (DD 33)", () => {
+describe("a submit that finished at once without a prediction id to bill", () => {
   it("answers done with one missing cost", async () => {
     a.answer(({ path }) => (path === "/billings/search" ? billing([]) : { status: 200, body: { code: 200, data: { status: "completed", outputs: ["https://out.example/v.mp4"] } } }));
     const done = expectState(await submitVideo(runner()) as MediaAnswer, "done");
@@ -147,7 +147,7 @@ describe("a submit that finished at once without a prediction id to bill (DD 33)
   });
 });
 
-describe("a failed run hands back a lookup for every prediction an upstream accepted (DD 33)", () => {
+describe("a failed run hands back a lookup for every prediction an upstream accepted", () => {
   it("when the upstream fails the prediction", async () => {
     a.answer(({ method }) => (method === "POST" ? accepted("p1") : result("p1", "failed", [], "boom")));
     const r = runner();
@@ -186,7 +186,7 @@ describe("a failed run hands back a lookup for every prediction an upstream acce
   });
 });
 
-describe("abandon: what a ticket cost when its task ends on a throw (design 3.4, DD 33)", () => {
+describe("abandon: what a ticket cost when its task ends on a throw", () => {
   it("hands back a lookup for the accepted prediction of a running ticket", async () => {
     a.answer(() => accepted("p1"));
     const r = runner();
@@ -212,7 +212,7 @@ describe("abandon: what a ticket cost when its task ends on a throw (design 3.4,
   });
 });
 
-describe("an asynchronously accepted step pins the run to its upstream (design 5.2)", () => {
+describe("an asynchronously accepted step pins the run to its upstream", () => {
   it("a later step's 503 is retried on the same upstream, not moved", async () => {
     a.answer(({ method, path }) => {
       if (method === "POST") return path === "/minimax/voice-clone" ? accepted("p-voice") : { status: 503, body: {} };
@@ -228,7 +228,7 @@ describe("an asynchronously accepted step pins the run to its upstream (design 5
   });
 });
 
-describe("a submit refused for now is delivered three times before the run moves (DD 24)", () => {
+describe("a submit refused for now is delivered three times before the run moves", () => {
   it.each([408, 429])("%i", async (status) => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     a.answer(() => ({ status, body: {} }));
@@ -239,7 +239,7 @@ describe("a submit refused for now is delivered three times before the run moves
 });
 
 describe("billing", () => {
-  it("asks again within the lookup when the billing search answers 503, as a replay-safe read (design 2.2)", async () => {
+  it("asks again within the lookup when the billing search answers 503, as a replay-safe read", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     let searches = 0;
     a.answer(({ path }) => {
@@ -250,7 +250,9 @@ describe("billing", () => {
     expect(done.costs).toEqual([{ state: "known", usd: 0.2, source: "billing" }]);
     expect(searches).toBe(2);
   });
+});
 
+describe("a failed prediction's words", () => {
   it("carries the words of a failure whose error is not a string", async () => {
     a.answer(({ method }) => (method === "POST" ? accepted("p1") : { status: 200, body: { code: 200, data: { id: "p1", status: "failed", outputs: [], error: 42 } } }));
     const r = runner();
@@ -260,7 +262,7 @@ describe("billing", () => {
   });
 });
 
-describe("a legacy step's inline cost (design 3.4)", () => {
+describe("a legacy step's inline cost", () => {
   it("is carried as a reported cost beside the billing of the predictions", async () => {
     a.answer(({ method, path }) => {
       if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
@@ -309,7 +311,7 @@ describe("pacing and the deadline", () => {
   });
 });
 
-describe("a run's billed predictions reach the caller once, however it ends (design 13.1, DD 33, critical path)", () => {
+describe("a run's billed predictions reach the caller once, however it ends (critical path)", () => {
   const SUBMITS = ["accept", "finishNow", "busy", "refused", "unreadable"] as const;
   const POLLS = ["processing", "completed", "failed"] as const;
 
@@ -369,7 +371,7 @@ describe("a run's billed predictions reach the caller once, however it ends (des
   });
 });
 
-describe("a refusal whose body cannot be read is still its status (DD 34)", () => {
+describe("a refusal whose body cannot be read is still its status", () => {
   const oversized = (status: number): ReturnType<typeof accepted> => ({ status, raw: "x".repeat(11 * 1024 * 1024), contentType: "text/plain" });
 
   it("a submit answered 503 with a body over the limit moves to the next upstream", async () => {

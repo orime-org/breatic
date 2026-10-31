@@ -66,7 +66,7 @@ describe("send — failure classes", () => {
   });
 });
 
-describe("resending (design 2.2)", () => {
+describe("resending", () => {
   it("replaySafe false never sends twice, even on a 503", async () => {
     const { url, count } = await serve((_req, res) => json(res, 503, {}));
     const error = await fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read }).catch((e: unknown) => e);
@@ -225,7 +225,7 @@ describe("aiSdkFetch", () => {
   });
 });
 
-describe("a deadline beyond what a timer can hold (design 2.2)", () => {
+describe("a deadline beyond what a timer can hold", () => {
   it.each([
     ["thirty days away", (): number => Date.now() + 30 * 24 * 60 * 60 * 1000],
     ["endless", (): number => Number.POSITIVE_INFINITY],
@@ -246,7 +246,7 @@ function refuseEveryConnection(): () => number {
   return () => fetch.mock.calls.length;
 }
 
-describe("resending what never left or got no answer, as shared's decideRetry does (DD 33)", () => {
+describe("resending what never left or got no answer, as shared's decideRetry does", () => {
   it("replaySafe true resends a request that was never sent, three deliveries in all", async () => {
     const deliveries = refuseEveryConnection();
     await expect(send({ url: "http://127.0.0.1:9/x", method: "GET" }, { replaySafe: true })).rejects.toBeInstanceOf(NotSent);
@@ -274,7 +274,7 @@ describe("resending what never left or got no answer, as shared's decideRetry do
   });
 });
 
-describe("a status above 599 is not a server error (DD 33)", () => {
+describe("a status above 599 is not a server error", () => {
   it("comes back as HttpStatus and is not resent", async () => {
     const { url, count } = await serve((_req, res) => {
       res.writeHead(600, { "content-type": "application/json" });
@@ -287,7 +287,7 @@ describe("a status above 599 is not a server error (DD 33)", () => {
   });
 });
 
-describe("error messages name the address without its query (DD 33)", () => {
+describe("error messages name the address without its query", () => {
   it.each([
     ["NotSent", async (): Promise<unknown> => send({ url: `${await closedPort()}/upload?upload_id=secret-session#part`, method: "POST" }, { replaySafe: false }).catch((e: unknown) => e)],
     ["NoAnswer", async (): Promise<unknown> => {

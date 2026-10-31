@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { decide, type Failure } from "../decide.js";
 
-describe("decide — media submit (design 5.3, media column)", () => {
+describe("decide — media submit", () => {
   it.each<[string, Failure, "switch" | "stop"]>([
     ["request never left (DNS, refused)", { kind: "not_sent" }, "switch"],
     ["408", { kind: "http_status", status: 408 }, "switch"],
@@ -33,7 +33,7 @@ describe("decide — media submit (design 5.3, media column)", () => {
   });
 });
 
-describe("decide — LLM before the first content part (design 5.3, LLM column)", () => {
+describe("decide — LLM before the first content part", () => {
   it.each<[string, Failure, "switch" | "stop"]>([
     ["request never left", { kind: "not_sent" }, "switch"],
     ["upstream has no such model", { kind: "model_not_found" }, "switch"],

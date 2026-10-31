@@ -90,7 +90,7 @@ export async function stopFakes(fakes: LlmFakes): Promise<void> {
 }
 
 /**
- * The LLM configuration of design 4.3 over the fakes; OpenRouter's base keeps
+ * The shipped LLM routes over the fakes; OpenRouter's base keeps
  * its `/api/v1` so the decisions endpoint sits beside it.
  * @param fakes - The fakes.
  * @param understandOpenRouterFirst - Put OpenRouter before Google in the understand route, for cases about OpenRouter's answers.

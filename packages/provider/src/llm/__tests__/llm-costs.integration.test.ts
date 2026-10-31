@@ -33,7 +33,7 @@ const usage: LanguageModelUsage = {
   totalTokens: 14,
 };
 
-describe("costOf (design 3.6)", () => {
+describe("costOf", () => {
   it("takes the cost OpenRouter reported", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
       model: "deepseek/deepseek-v4-pro",
@@ -99,7 +99,7 @@ describe("costOf (design 3.6)", () => {
   });
 });
 
-describe("costOf by the price table, to the cent (design 3.6, critical path)", () => {
+describe("costOf by the price table, to the cent (critical path)", () => {
   /**
    * The cost of one direct Anthropic call with cache reads and writes, at these prices per million tokens:
    * miss 3, hit 0.3, a 5-minute write 3.75, a one-hour write 6, output 15.
@@ -138,7 +138,7 @@ describe("costOf by the price table, to the cent (design 3.6, critical path)", (
   });
 });
 
-describe("cost.lookup of numbers JSON cannot hold (design 3.6)", () => {
+describe("cost.lookup of answers it cannot read", () => {
   const lookup = { upstream: "openrouter", generationId: "gen-9" };
   const raw = (body: string): Reply => ({ status: 200, raw: body, contentType: "application/json" });
 
@@ -163,7 +163,7 @@ describe("cost.lookup of numbers JSON cannot hold (design 3.6)", () => {
   });
 });
 
-describe("cost.lookup (design 3.6)", () => {
+describe("cost.lookup", () => {
   it("reads the generation's total cost from OpenRouter", async () => {
     fakes.openrouter.answer(({ path }) => (path === "/api/v1/generation" ? { status: 200, body: { data: { id: "gen-9", total_cost: 0.0002 } } } : undefined));
     const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "gen-9" }, { lastAttempt: false });
@@ -209,7 +209,7 @@ describe("cost.lookup (design 3.6)", () => {
   });
 });
 
-describe("cost.lookup on its last attempt (design 13.1, critical path)", () => {
+describe("cost.lookup on its last attempt (critical path)", () => {
   it("property: answers known or missing, never pending, whatever OpenRouter says", async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -226,8 +226,8 @@ describe("cost.lookup on its last attempt (design 13.1, critical path)", () => {
   });
 });
 
-describe("understand (design 6.5)", () => {
-  it("answers its finish reason in AI SDK's unified words, the same for every upstream (DD 24)", () => {
+describe("understand", () => {
+  it("answers its finish reason in AI SDK's unified words, the same for every upstream", () => {
     expectTypeOf<UnderstandAnswer["finishReason"]>().toEqualTypeOf<FinishReason>();
   });
 
@@ -235,7 +235,7 @@ describe("understand (design 6.5)", () => {
 
   const b64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
 
-  it("asks Google first, through its own generateContent, with each item inline (design 6.5, DD 26)", async () => {
+  it("asks Google first, through its own generateContent, with each item inline", async () => {
     const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }).llm.understand({
       model: "google/gemini-3.8-flash",
       question: "What is in it?",
@@ -270,7 +270,7 @@ describe("understand (design 6.5)", () => {
     expect(answer.finishReason).toBe(finishReason);
   });
 
-  it("asks OpenRouter when Google has no key, each item inline in OpenRouter's own form, with the pinned backend (DD 26)", async () => {
+  it("asks OpenRouter when Google has no key, each item inline in OpenRouter's own form, with the pinned backend", async () => {
     const video = { bytes: new Uint8Array([0, 0, 0, 24]), contentType: "video/mp4" };
     const webm = { bytes: new Uint8Array([26, 69, 223, 163]), contentType: "audio/webm" };
     const wave = { bytes: new Uint8Array([82, 73, 70, 70]), contentType: "audio/vnd.wave" };
@@ -325,7 +325,7 @@ describe("understand (design 6.5)", () => {
       deadlineAt: Date.now() + 60_000,
     });
     expect(answer.text).toBe("ok");
-    // The delete runs after the answer, without holding it (DD 27).
+    // The delete runs after the answer, without holding it.
     await vi.waitFor(() => expect(fakes.google.seen.some((r) => r.method === "DELETE")).toBe(true));
     const order = fakes.google.seen.map((r) => `${r.method} ${r.path}`);
     const generate = order.findIndex((o) => o.endsWith(":generateContent"));
@@ -365,7 +365,7 @@ describe("understand (design 6.5)", () => {
     expect(answer.upstream).toBe("openrouter");
   });
 
-  it("moves on to OpenRouter for a not-found answer longer than a log snippet (DD 32)", async () => {
+  it("moves on to OpenRouter for a not-found answer longer than a log snippet", async () => {
     const details = Array.from({ length: 6 }, (_, i) => ({ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: `MODEL_NOT_FOUND_${i}`, domain: "generativelanguage.googleapis.com" }));
     const body = { error: { code: 404, message: "models/gemini-3.8-flash is not found for API version v1beta", status: "NOT_FOUND", details } };
     expect(JSON.stringify(body).length).toBeGreaterThan(500);
@@ -438,19 +438,19 @@ describe("judge (JEV)", () => {
     expect(posted(fakes.openrouter)).toHaveLength(1);
   });
 
-  it("carries no cost for a refusal, which was not billed (DD 33)", async () => {
+  it("carries no cost for a refusal, which was not billed", async () => {
     fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "bad question" } } }));
     expect((await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request)).cost).toBeUndefined();
   });
 
-  it("hands back the refusal's status with no words when its body stops part way (DD 34)", async () => {
+  it("hands back the refusal's status with no words when its body stops part way", async () => {
     fakes.openrouter.answer(() => ({ status: 400, raw: "{\"error\":", contentType: "application/json", hold: true }));
     const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 });
     expect(answer).toEqual({ status: 400, body: "" });
     fakes.openrouter.release();
   });
 
-  it("throws carrying one missing cost when a 2xx answer stops part way, since it was billed (DD 33)", async () => {
+  it("throws carrying one missing cost when a 2xx answer stops part way, since it was billed", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: "{\"likely\":", contentType: "application/json", hold: true }));
     const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
@@ -474,7 +474,7 @@ describe("judge (JEV)", () => {
   });
 });
 
-describe("capabilities (design 3.5, U6)", () => {
+describe("capabilities", () => {
   const policy: CapabilityPolicy = { override: "auto", timeoutMs: 2_000, ttlMs: 60_000, retryMs: 200 };
   const models = {
     data: [
@@ -554,7 +554,7 @@ describe("capabilities (design 3.5, U6)", () => {
   });
 });
 
-describe("assertModelsPriced (design 10)", () => {
+describe("assertModelsPriced", () => {
   it("refuses a model this deployment reaches directly without a token price", () => {
     const llm = llmProvider(fakes, { ANTHROPIC_API_KEY: "k", OPENROUTER_API_KEY: "or" }).llm;
     expect(() => llm.assertModelsPriced(["anthropic/claude-unpriced", "deepseek/deepseek-v4-pro"])).toThrow(ProviderConfigError);
@@ -575,7 +575,7 @@ describe("assertModelsPriced (design 10)", () => {
   });
 });
 
-describe("a refused understand call (design 3.5, 5.4)", () => {
+describe("a refused understand call", () => {
   const picture = { bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
   /**
    * Ask through the harness and catch what it throws.
@@ -616,14 +616,14 @@ describe("a refused understand call (design 3.5, 5.4)", () => {
   });
 });
 
-describe("OpenRouter's backend pin (design 4.3, DD 35)", () => {
+describe("OpenRouter's backend pin", () => {
   it("is not sent on a prepared call: only understand pins the backend, as today", () => {
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false });
     expect(prepared.options.providerOptions.openrouter).not.toHaveProperty("provider");
   });
 });
 
-describe("cheapest mode for LLM calls (design 5.1)", () => {
+describe("cheapest mode for LLM calls", () => {
   it("serves a priced direct upstream before OpenRouter, whatever their weights", async () => {
     const config = llmConfig(fakes);
     config.llm!.routes = [{ prefix: "deepseek/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "deepseek", weight: 1 }] }, ...config.llm!.routes.filter((r) => r.prefix !== "deepseek/")];
@@ -644,7 +644,7 @@ describe("cheapest mode for LLM calls (design 5.1)", () => {
   });
 });
 
-describe("llm.availability (design 3.5, DD 25)", () => {
+describe("llm.availability", () => {
   it("answers the upstreams of an understand call in its own route's order, naming each missing key", () => {
     const availability = llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.availability("google/gemini-3.8-flash", "understand");
     expect(availability.upstreams).toEqual([
@@ -686,8 +686,8 @@ describe("judge routing (JEV)", () => {
   });
 });
 
-describe("capabilities with a stop signal (design 3.5, U6)", () => {
-  it("lets a caller leave a pending refresh when its signal ends, without cancelling it for others", async () => {
+describe("capabilities with a stop signal", () => {
+  it("lets a caller leave a pending refresh when its signal ends", async () => {
     const policy: CapabilityPolicy = { override: "auto", timeoutMs: 2_000, ttlMs: 60_000, retryMs: 200 };
     fakes.openrouter.answer(() => "hang");
     const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;

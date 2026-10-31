@@ -17,7 +17,7 @@ const fixture = JSON.parse(
   readFileSync(resolve(__dirname, "../../../test/fixtures/upstream-price.json"), "utf8"),
 ) as PriceFixture;
 
-describe("priceUsd — equal to today's evaluator on every catalog contract (design 13.2)", () => {
+describe("priceUsd — equal to today's evaluator on every catalog contract", () => {
   it("has cases to compare", () => {
     expect(fixture.cases.length).toBeGreaterThan(500);
   });

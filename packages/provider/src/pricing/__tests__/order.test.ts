@@ -41,7 +41,7 @@ function priced(prices: readonly number[], configured: readonly boolean[] = [tru
 const pricesArb = fc.array(fc.integer({ min: 0, max: 1_000_000 }), { minLength: 3, maxLength: 3 });
 const configuredArb = fc.array(fc.boolean(), { minLength: 3, maxLength: 3 });
 
-describe("orderByPrice and estimateCost (design 3.3, 5.1, 13.1)", () => {
+describe("orderByPrice and estimateCost", () => {
   it("property: the order is by estimate, equal estimates by weight, and no estimate is negative", async () => {
     await fc.assert(fc.asyncProperty(pricesArb, configuredArb, async (prices, configured) => {
       const p = priced(prices, configured);
@@ -97,7 +97,7 @@ describe("orderByPrice and estimateCost (design 3.3, 5.1, 13.1)", () => {
     ["for_param", { for_param: 7 }],
     ["per_item", { per_item: "yes" }],
     ["reused", { reused: "true" }],
-  ])("refuses a step whose %s is of the wrong type, which estimateCost would misread (DD 37)", (_field, step) => {
+  ])("refuses a step whose %s is of the wrong type, which estimateCost would misread", (_field, step) => {
     const wire = JSON.parse(JSON.stringify(priced([1, 2, 3]).pricingRules("m"))) as { upstreams: { steps: unknown[] }[] };
     wire.upstreams[0]!.steps = [{ ...step }];
     expect(() => parsePricingRules(wire)).toThrow();

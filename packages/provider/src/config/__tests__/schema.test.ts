@@ -78,7 +78,7 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("replicate");
   });
 
-  it("refuses a model bound to one upstream twice, naming the model and the upstream (DD 33)", () => {
+  it("refuses a model bound to one upstream twice, naming the model and the upstream", () => {
     const problems = problemsOf(input([bind("wavespeed", 1), bind("wavespeed", 2)]));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("seedance");
@@ -89,17 +89,17 @@ describe("parseProviderConfig", () => {
     ["a routing section", (): ProviderConfigInput => ({ ...input([bind("wavespeed", 1)]), routing: { model: { seedance: { weights: { wavespeed: 0 } } } } as unknown as ProviderConfigInput["routing"] }), "model"],
     ["a binding option", (): ProviderConfigInput => input([{ ...bind("wavespeed", 1), send_empty_promt: true } as unknown as MediaBinding]), "send_empty_promt"],
     ["an upstream field", (): ProviderConfigInput => ({ ...input([bind("wavespeed", 1)]), upstreams: { ...upstreams, wavespeed: { ...upstreams.wavespeed, keyenv: "X" } as unknown as typeof upstreams.wavespeed } }), "keyenv"],
-  ])("refuses a misspelled key in %s, naming it (DD 35)", (_where, raw, key) => {
+  ])("refuses a misspelled key in %s, naming it", (_where, raw, key) => {
     const problems = problemsOf(raw());
     expect(problems.join("\n")).toContain(key);
   });
 
-  it("refuses a misspelled key in a pricing rule, naming it (DD 36)", () => {
+  it("refuses a misspelled key in a pricing rule, naming it", () => {
     const problems = problemsOf(input([bind("wavespeed", 1, { pricing: { ...pricing, discount_rat: 50 } })]));
     expect(problems.join("\n")).toContain("discount_rat");
   });
 
-  it.each(["openroutr", "wavespeed", "toString"])("refuses an LLM route on an upstream of kind %s, which no LLM adapter speaks to (DD 36)", (kind) => {
+  it.each(["openroutr", "wavespeed", "toString"])("refuses an LLM route on an upstream of kind %s, which no LLM adapter speaks to", (kind) => {
     const raw: ProviderConfigInput = {
       upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },
       media: { models: {} },
@@ -230,7 +230,7 @@ describe("assertBindsCatalog", () => {
   });
 });
 
-describe("provider.assertBindsCatalog (design 4.2)", () => {
+describe("provider.assertBindsCatalog", () => {
   /**
    * The problems the instance's catalog check reports.
    * @param bindings - The model's bindings.
@@ -263,7 +263,7 @@ describe("provider.assertBindsCatalog (design 4.2)", () => {
   });
 });
 
-describe("deployment overrides of LLM routes (design 4.4)", () => {
+describe("deployment overrides of LLM routes", () => {
   const llm = {
     routes: [{ prefix: "google/", upstreams: [{ upstream: "google", weight: 0 }, { upstream: "openrouter", weight: 1 }] }],
     understand_routes: [{ prefix: "google/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }] }],

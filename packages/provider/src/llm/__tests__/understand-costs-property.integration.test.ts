@@ -8,7 +8,7 @@ import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
-// Property (design 13.1, DD 33, critical path): whatever OpenRouter and Google answer, and
+// Property (critical path): whatever OpenRouter and Google answer, and
 // whether the deadline or the caller's stop ends the call, every answer an upstream billed
 // reaches the caller exactly once, on the answer or on the error.
 

@@ -140,7 +140,7 @@ function expectState<S extends MediaAnswer["state"]>(answer: MediaAnswer, state:
 
 const live = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 60_000 });
 
-describe("the element step's description (design 3.4, Y4, Z2)", () => {
+describe("the element step's description", () => {
   it("is a public describe step; its send reads the image and asks the understand model, and nothing goes to the media upstream", async () => {
     const r = runner();
     const planned = expectState(
@@ -211,7 +211,7 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
   });
 });
 
-describe("the element image's type (design 3.1, DD 28)", () => {
+describe("the element image's type", () => {
   /**
    * Plan and send the describe step of one element image.
    * @returns The answer of the send.
@@ -329,7 +329,7 @@ describe("cached elements", () => {
 });
 
 
-describe("a describe step followed by a switch (design 3.4, 5.3)", () => {
+describe("a describe step followed by a switch", () => {
   it("keeps the paid description in the moved ticket's costs", async () => {
     const second = await fakeUpstream(({ method }) => (method === "POST" ? accepted("p-el") : result("p-el", "processing")));
     try {
@@ -353,7 +353,7 @@ describe("a describe step followed by a switch (design 3.4, 5.3)", () => {
   });
 });
 
-describe("a describe step that cannot read its image (design 3.2)", () => {
+describe("a describe step that cannot read its image", () => {
   /**
    * Plan the model over one image and send its describe step.
    * @param image - The image url.
@@ -410,18 +410,18 @@ describe("a describe step that cannot read its image (design 3.2)", () => {
     }
   }
 
-  it.each([408, 429, 500, 503])("throws SendNotAccepted when the image host answers %i, which may pass (DD 33)", async (status) => {
+  it.each([408, 429, 500, 503])("throws SendNotAccepted when the image host answers %i, which may pass", async (status) => {
     expect(await hostAnswering(status)).toBeInstanceOf(SendNotAccepted);
     expect(openrouter.seen).toHaveLength(0);
   });
 
-  it.each([403, 404])("answers failed with MediaRefused when the image host answers %i (DD 33)", async (status) => {
+  it.each([403, 404])("answers failed with MediaRefused when the image host answers %i", async (status) => {
     const failed = expectState(await hostAnswering(status) as MediaAnswer, "failed");
     expect(failed.reason).toBeInstanceOf(MediaRefused);
     expect(openrouter.seen).toHaveLength(0);
   });
 
-  it("answers failed with MediaRefused when the image is empty, asking no model (DD 33)", async () => {
+  it("answers failed with MediaRefused when the image is empty, asking no model", async () => {
     const host = createServer((_req, res) => {
       res.writeHead(200, { "content-type": "image/png" });
       res.end();
@@ -437,7 +437,7 @@ describe("a describe step that cannot read its image (design 3.2)", () => {
   });
 });
 
-describe("a describe step whose understand call reaches no upstream (design 3.2, 5.3, 9)", () => {
+describe("a describe step whose understand call reaches no upstream", () => {
   /**
    * Plan the model and send its describe step with the given keys.
    * @param keys - The environment keys.
@@ -472,7 +472,7 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(wavespeed.seen).toHaveLength(0);
   });
 
-  it("throws SendNotAccepted whose cause carries the cost OpenRouter billed for the answer it could not use (DD 25)", async () => {
+  it("throws SendNotAccepted whose cause carries the cost OpenRouter billed for the answer it could not use", async () => {
     openrouter.answer(() => ({
       status: 200,
       body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] },
@@ -483,7 +483,7 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(wavespeed.seen).toHaveLength(0);
   });
 
-  it("throws DeadlinePassed from whose cause chain costsOf reads the billed answer the deadline cut short (DD 26)", async () => {
+  it("throws DeadlinePassed from whose cause chain costsOf reads the billed answer the deadline cut short", async () => {
     let n = 0;
     openrouter.answer(() =>
       ++n === 1
@@ -528,7 +528,7 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
   });
 });
 
-describe("a describe step and the understand model's answer (design 3.5, 5.4)", () => {
+describe("a describe step and the understand model's answer", () => {
   /**
    * Plan the model over the image and send its describe step.
    * @param image - The image url.
@@ -594,7 +594,7 @@ describe("a describe step and the understand model's answer (design 3.5, 5.4)", 
   });
 });
 
-describe("ticketFromLegacy for an element step not yet sent (design 3.4, X3)", () => {
+describe("ticketFromLegacy for an element step not yet sent", () => {
   it("describes the image first, as a fresh plan does", async () => {
     const legacy = {
       steps: [
@@ -610,7 +610,7 @@ describe("ticketFromLegacy for an element step not yet sent (design 3.4, X3)", (
   });
 });
 
-describe("a run with describe steps: every billed answer reaches the caller once (design 13.1, DD 33, critical path)", () => {
+describe("a run with describe steps: every billed answer reaches the caller once (critical path)", () => {
   /**
    * The understand answers a describe step may get on its n-th request, and whether each was billed.
    * @param n - The request's place in the run.

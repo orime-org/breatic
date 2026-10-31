@@ -18,7 +18,7 @@ vi.mock("node:dns/promises", () => ({
   },
 }));
 
-describe("reachable (design 3.1, Z5)", () => {
+describe("reachable", () => {
   it.each([
     ["loopback", "http://127.0.0.1:5432/x.png"],
     ["loopback by name", "http://localhost:8080/x.png"],
@@ -56,7 +56,7 @@ describe("reachable (design 3.1, Z5)", () => {
     ["a file address", "file:///etc/passwd"],
     ["an ftp address", "ftp://93.184.216.34/x.png"],
     ["a blob address", "blob:https://cdn.example.com/1234"],
-  ])("refuses %s: only http and https are fetched (DD 33)", async (_name, url) => {
+  ])("refuses %s: only http and https are fetched", async (_name, url) => {
     await expect(reachable(url)).resolves.toBe(false);
   });
 

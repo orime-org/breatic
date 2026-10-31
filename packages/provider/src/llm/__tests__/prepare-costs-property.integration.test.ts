@@ -9,7 +9,7 @@ import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
-// Property (design 13.1, DD 33, critical path): whatever each upstream answers on each attempt of a
+// Property (critical path): whatever each upstream answers on each attempt of a
 // prepared call, and however the call ends, every answer an upstream billed reaches the caller
 // exactly once: on the finish (costOf), in pendingCosts(), or on the error (costsOf).
 
@@ -179,7 +179,7 @@ function expected(billed: readonly Billed[]): Tally {
   };
 }
 
-describe("prepare: every billed answer reaches the caller once (critical path, DD 33)", () => {
+describe("prepare: every billed answer reaches the caller once (critical path)", () => {
   it("property, streamed: whatever each upstream answers, and whether the caller stops at the first text", async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -250,7 +250,7 @@ describe("prepare: every billed answer reaches the caller once (critical path, D
   });
 });
 
-describe("judge: every billed answer reaches the caller once (critical path, DD 33)", () => {
+describe("judge: every billed answer reaches the caller once (critical path)", () => {
   /** The decisions endpoint's answers, each with whether it was billed. */
   const JUDGE: Record<string, { reply: Reply; billed: boolean }> = {
     costed: { reply: { status: 200, body: { likely: { p: 0.7 }, usage: { cost: 0.002 } } }, billed: true },

@@ -12,7 +12,7 @@ const lineArb = fc.record({
   order: fc.record({ price: fc.double({ min: 0, max: 10, noNaN: true }) }),
 });
 
-describe("readBilling (design 6.2, 13.1 actual cost)", () => {
+describe("readBilling", () => {
   it("property: with a deduction, the total is deductions less refunds, never below zero", () => {
     fc.assert(fc.property(fc.array(lineArb, { maxLength: 8 }), (lines) => {
       const read = readBilling(answer(lines));
@@ -39,7 +39,7 @@ describe("readBilling (design 6.2, 13.1 actual cost)", () => {
     expect(readBilling(body).kind).toBe("none");
   });
 
-  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])("leaves out a line of type %s, which names no sign of its own (DD 33)", (type) => {
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])("leaves out a line of type %s, which names no sign of its own", (type) => {
     const read = readBilling(answer([{ billing_type: "deduct", order: { price: 0.1 } }, { billing_type: type, order: { price: 0.1 } }]));
     expect(read).toMatchObject({ kind: "total", usd: 0.1 });
   });

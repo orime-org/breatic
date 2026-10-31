@@ -240,7 +240,7 @@ describe("send", () => {
     expect(submits(b.seen)).toHaveLength(1);
   });
 
-  // Measured 2026-10-26: WaveSpeed answers an unknown model id with this 400 (design 13.3).
+  // Measured 2026-10-26: WaveSpeed answers an unknown model id with this 400.
   const MODEL_NOT_FOUND = { status: 400, body: { code: 400, message: "Model not found." } };
 
   it("moves to the next upstream when this one says it has no such model, without sending there yet", async () => {
@@ -253,7 +253,7 @@ describe("send", () => {
     expect(b.seen).toHaveLength(0);
   });
 
-  it("moves on for a model-not-found answer longer than a log snippet (DD 32)", async () => {
+  it("moves on for a model-not-found answer longer than a log snippet", async () => {
     const trace = Array.from({ length: 12 }, (_, i) => `upstream trace line ${i} for request ws-req-0000000000`);
     a.answer(() => ({ status: 400, body: { ...MODEL_NOT_FOUND.body, data: { trace } } }));
     b.answer(() => accepted("p1"));
@@ -286,7 +286,7 @@ describe("send", () => {
     ]);
   });
 
-  it("names the status of a refused submit on UpstreamRequestRejected (DD 26)", async () => {
+  it("names the status of a refused submit on UpstreamRequestRejected", async () => {
     a.answer(() => ({ status: 422, body: { code: 422, message: "Invalid duration" } }));
     const r = runner({ WS_A_KEY: "key-a" });
     const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
@@ -566,7 +566,7 @@ describe("poll — answers that are not the task's ending", () => {
     ["data that is null", { code: 200, data: null }],
     ["a status that is not a string", { code: 200, data: { status: 5 } }],
     ["no status", { code: 200, data: { outputs: [] } }],
-  ])("answers running, as today's poll does, when a 200 answer carries %s (DD 33)", async (_name, body) => {
+  ])("answers running, as today's poll does, when a 200 answer carries %s", async (_name, body) => {
     const r = runner();
     const ticket = await sentThen(r, () => ({ status: 200, body }));
     expectState(await r.poll(ticket, live()), "running");
@@ -617,7 +617,7 @@ describe("the outputs of a finished run", () => {
 
 });
 
-describe("WaveSpeed billing (design 6.2)", () => {
+describe("WaveSpeed billing", () => {
   /**
    * Run the video model to its end with the billing search answering as given.
    * @param answer - The billing answer.
@@ -789,7 +789,7 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
 });
 
 
-describe("cost.lookup on WaveSpeed (design 3.6, critical path)", () => {
+describe("cost.lookup on WaveSpeed (critical path)", () => {
   const lookup = { upstream: "ws_a", predictionId: "p1" };
   const provider = (): ReturnType<typeof createProvider> =>
     createProvider({ config: config(), keyOf: (name) => ({ WS_A_KEY: "key-a" })[name], llmMaxRetries: 0, cleanText: (t) => t });
@@ -808,7 +808,7 @@ describe("cost.lookup on WaveSpeed (design 3.6, critical path)", () => {
   });
 });
 
-describe("a run never leaves the upstream that accepted one of its steps (design 5.2, 13.1, critical path)", () => {
+describe("a run never leaves the upstream that accepted one of its steps (critical path)", () => {
   const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
   const answers = { accept: null, "503": { status: 503, body: {} }, "429": { status: 429, body: {} }, missing: { status: 400, body: { code: 400, message: "Model not found." } } } as const;
 
@@ -848,7 +848,7 @@ describe("a run never leaves the upstream that accepted one of its steps (design
   });
 });
 
-describe("send — what the upstream answers back (design 6.2)", () => {
+describe("send — what the upstream answers back", () => {
   it("answers failed when a submit that finished at once carries no output url", async () => {
     a.answer(({ path }) => (path === "/billings/search" ? billing([]) : finishedAtOnce("p1", [{ not: "a url" }])));
     const r = runner();
@@ -865,7 +865,7 @@ describe("send — what the upstream answers back (design 6.2)", () => {
   });
 });
 
-describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurrency)", () => {
+describe("the per-upstream concurrency cap", () => {
   it("holds a second submit to a capped upstream until the first one has its answer", async () => {
     const body = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
     a.answer(() => ({ status: 200, raw: body, contentType: "application/json", hold: true }));
@@ -930,7 +930,7 @@ describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurren
     expect(order.filter((o) => o !== "billing")).toEqual(["A", "B", "C"]);
   });
 
-  it("hands back a submit that finished at once though every slot is taken, reading its billing outside the cap (DD 25)", async () => {
+  it("hands back a submit that finished at once though every slot is taken, reading its billing outside the cap", async () => {
     const finished = JSON.stringify({ code: 200, data: { id: "pY", status: "completed", outputs: ["https://out.example/y.mp4"] } });
     let n = 0;
     a.answer(({ path }) => {

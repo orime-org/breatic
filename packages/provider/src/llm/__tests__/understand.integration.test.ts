@@ -73,7 +73,7 @@ const activeFile: Reply = { status: 200, body: { file: { name: "files/abc", uri:
  */
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-describe("understand retries (design 6.5, DD 27)", () => {
+describe("understand retries", () => {
   it("leaves Google at once when it asks for more than a minute", async () => {
     fakes.google.answer(() => ({ status: 429, body: { error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } }, headers: { "retry-after": "3600" } }));
     const answer = await llmProvider(fakes, keys, { llmMaxRetries: 2 }).llm.understand(question());
@@ -100,7 +100,7 @@ describe("understand retries (design 6.5, DD 27)", () => {
   });
 });
 
-describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
+describe("understand answers that cannot be read", () => {
   it.each([
     ["the file ends FAILED", (r: { method: string; path: string }): Reply | undefined =>
       r.method === "GET" ? { status: 200, body: { name: "files/abc", state: "FAILED" } } : r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } } : undefined],
@@ -110,13 +110,13 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
       r.path === "/upload-session/1" ? { status: 200, body: {} } : undefined],
     ["the file has no uri", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "ACTIVE" } } } : undefined],
-    ["the upload start names a session that is not an address (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+    ["the upload start names a session that is not an address", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload/v1beta/files" ? { status: 200, body: {}, headers: { "x-goog-upload-url": "abc" } } : undefined],
-    ["the upload start names an empty session (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+    ["the upload start names an empty session", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload/v1beta/files" ? { status: 200, body: {}, headers: { "x-goog-upload-url": "" } } : undefined],
-    ["the upload answers a file with an empty name (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+    ["the upload answers a file with an empty name", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "", state: "ACTIVE", uri: "https://files.example/abc" } } } : undefined],
-    ["the upload answers a file name outside files/ (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+    ["the upload answers a file name outside files/", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "../models", state: "ACTIVE", uri: "https://files.example/abc" } } } : undefined],
   ])("rejects without a status or a cost when %s, sending no question", async (_name, special) => {
     const provider = throughFiles((r) => special(r) ?? (r.path === "/upload/v1beta/files" ? uploadSession() : r.method === "DELETE" ? { status: 200, body: {} } : activeFile));
@@ -178,7 +178,7 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
   });
 });
 
-describe("understand through Gemini's Files API (design 6.5, DD 27)", () => {
+describe("understand through Gemini's Files API", () => {
   it("uploads once per call and reuses the file on retries, deleting it once", async () => {
     let asked = 0;
     const provider = throughFiles(({ method, path }) => {
@@ -226,7 +226,7 @@ describe("understand through Gemini's Files API (design 6.5, DD 27)", () => {
   });
 });
 
-describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () => {
+describe("understand through Gemini's Files API steps", () => {
   /**
    * Google's Files API answering as it should, unless a case answers first.
    * @param special - The case's own answer, or undefined to answer as usual.
@@ -325,7 +325,7 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
   });
 });
 
-describe("understand video types (design 6.5, DD 29)", () => {
+describe("understand video types", () => {
   const mov = { bytes: new Uint8Array([0, 0, 0, 20]), contentType: "video/quicktime" };
 
   it("sends a QuickTime video to Google as video/mov", async () => {
@@ -341,7 +341,7 @@ describe("understand video types (design 6.5, DD 29)", () => {
   });
 });
 
-describe("understand routes (design 6.5, DD 27)", () => {
+describe("understand routes", () => {
   it("rejects a model no understand route matches, sending nothing", async () => {
     const provider = llmProvider(fakes, { ANTHROPIC_API_KEY: "a", OPENROUTER_API_KEY: "or" });
     const error = await provider.llm.understand({ ...question(), model: "anthropic/claude-opus-5.5" }).catch((e: unknown) => e);
@@ -358,7 +358,7 @@ describe("understand routes (design 6.5, DD 27)", () => {
   });
 });
 
-describe("a Files API step answered not found (DD 33)", () => {
+describe("a Files API step answered not found", () => {
   it("is a refusal of that step, never a missing model, so the call does not move on", async () => {
     const provider = throughFiles((r) => {
       if (r.path === "/upload/v1beta/files") return uploadSession();
@@ -383,7 +383,7 @@ async function googleAnswering(body: unknown): Promise<unknown> {
   return llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.understand(question()).catch((e: unknown) => e);
 }
 
-describe("reading Gemini's answer against one typed structure (DD 33)", () => {
+describe("reading Gemini's answer against one typed structure", () => {
   it("refuses a text part that is not a string, billed as an unreadable answer", async () => {
     const error = await googleAnswering({ ...GENERATE_CONTENT_REPLY, candidates: [{ content: { parts: [{ text: 5 }] }, finishReason: "STOP" }] });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
@@ -425,7 +425,7 @@ async function openRouterAnswering(reply: Reply, media = [picture]): Promise<unk
   return llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand({ ...question(), media }).catch((e: unknown) => e);
 }
 
-describe("reading OpenRouter's understand answer against one typed structure (DD 33)", () => {
+describe("reading OpenRouter's understand answer against one typed structure", () => {
   const completion = { id: "gen-u", choices: [{ index: 0, message: { role: "assistant", content: "a fox" }, finish_reason: "stop" }], usage: { cost: 0.001 } };
 
   it.each(["constructor", "__proto__", "toString"])("reads the finish reason %s as other", async (reason) => {
@@ -463,7 +463,7 @@ describe("reading OpenRouter's understand answer against one typed structure (DD
   });
 });
 
-describe("a refused understand answer whose body cannot be read is still its status (DD 34)", () => {
+describe("a refused understand answer whose body cannot be read is still its status", () => {
   it("moves on from an OpenRouter 503 whose body is over the limit, as from any 503", async () => {
     fakes.openrouter.answer(() => ({ status: 503, raw: "x".repeat(11 * 1024 * 1024), contentType: "text/plain" }));
     const answer = await llmProvider(fakes, keys, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand(question());

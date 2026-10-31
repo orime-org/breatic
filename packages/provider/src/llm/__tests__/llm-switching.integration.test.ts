@@ -56,7 +56,7 @@ function sse(finish: boolean): string {
   })}\n\n`}data: [DONE]\n\n`;
 }
 
-describe("switching before the first content (design 5.5)", () => {
+describe("switching before the first content", () => {
   it.each([500, 503])("moves to the next upstream on a %i once this one's retries are spent", async (status) => {
     fakes.deepseek.answer(() => ({ status, body: { error: { message: "busy" } } }));
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
@@ -78,7 +78,7 @@ describe("switching before the first content (design 5.5)", () => {
     expect(result.providerMetadata?.breatic?.upstream).toBe("deepseek");
   });
 
-  it.each([408, 409])("retries the same upstream on a %i and keeps it when a retry succeeds, as the AI SDK did (DD 25)", async (status) => {
+  it.each([408, 409])("retries the same upstream on a %i and keeps it when a retry succeeds, as the AI SDK did", async (status) => {
     let n = 0;
     fakes.deepseek.answer(({ path }) => (++n === 1 ? { status, body: { error: { message: "try again" } } } : vendorReply(path)));
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
@@ -110,7 +110,7 @@ describe("switching before the first content (design 5.5)", () => {
     expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 
-  // Measured 2026-10-26: OpenRouter answers an unknown model id with this 400 (design 13.3).
+  // Measured 2026-10-26: OpenRouter answers an unknown model id with this 400.
   it("reports a model OpenRouter does not have as model_not_found, not as a refused request", async () => {
     fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "no/such-model is not a valid model ID", code: 400 } } }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("no/such-model", THINK);
@@ -138,7 +138,7 @@ describe("switching before the first content (design 5.5)", () => {
   });
 });
 
-describe("one call stays on the upstream that first served it (design 5.5)", () => {
+describe("one call stays on the upstream that first served it", () => {
   /**
    * A two-step tool call whose first step DeepSeek refuses with a 503.
    * @param second - How OpenRouter answers the second step.
@@ -166,7 +166,7 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
     expect(posted(fakes.openrouter)[1]).toMatchObject({ reasoning: { effort: "max" } });
   });
 
-  it("retries the fixed upstream on a 408 at the second step and finishes there (DD 25)", async () => {
+  it("retries the fixed upstream on a 408 at the second step and finishes there", async () => {
     let n = 0;
     fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: TOOL_CALL_REPLY } : n === 2 ? { status: 408, body: {} } : { status: 200, body: CHAT_REPLY }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 1 }).llm.prepare("meta/llama-x", THINK);
@@ -201,7 +201,7 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
     expect(posted(fakes.openrouter)).toHaveLength(1 + 3);
   });
 
-  it("retries the fixed upstream when its connection is refused at the second step, and never moves (design 12.4)", async () => {
+  it("retries the fixed upstream when its connection is refused at the second step, and never moves", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     let deepseekCalls = 0;
     fakes.deepseek.answer(() => (deepseekCalls++, { status: 503, body: {} }));
@@ -229,7 +229,7 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
   });
 });
 
-describe("what a call reports about its cost (design 3.5, S4)", () => {
+describe("what a call reports about its cost", () => {
   it("names the upstream that served it and no lookup when the answer carried its cost", async () => {
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
     const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
@@ -246,7 +246,7 @@ describe("what a call reports about its cost (design 3.5, S4)", () => {
     expect(result.providerMetadata?.breatic?.costRef).toMatchObject({ upstream: "openrouter", generationId: "gen-test" });
   });
 
-  it("hands the generation of a stream stopped before its end over exactly once, on the call end or in pendingCosts (DD 33)", async () => {
+  it("hands the generation of a stream stopped before its end over exactly once, on the call end or in pendingCosts", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
     const stop = new AbortController();
@@ -295,8 +295,8 @@ async function run(keys: Record<string, string>, model: string, maxRetries = 2):
  */
 const servedBy = (outcome: unknown): unknown => (outcome as { providerMetadata?: { breatic?: { upstream?: unknown } } }).providerMetadata?.breatic?.upstream;
 
-// Each vendor's own answers, measured 2026-10-27 except Anthropic's missing model, read from its error docs (design 5.3).
-describe("a direct vendor's answer that it has no such model moves the call on (design 5.3)", () => {
+// Each vendor's own answers, measured 2026-10-27 except Anthropic's missing model, read from its error docs.
+describe("a direct vendor's answer that it has no such model moves the call on", () => {
   it.each([
     {
       vendor: "google" as const,
@@ -333,7 +333,7 @@ describe("a direct vendor's answer that it has no such model moves the call on (
   });
 });
 
-describe("a direct vendor's refusal of the params stays a refusal (design 5.3)", () => {
+describe("a direct vendor's refusal of the params stays a refusal", () => {
   it.each([
     {
       vendor: "google" as const,
@@ -374,7 +374,7 @@ describe("a direct vendor's refusal of the params stays a refusal (design 5.3)",
   });
 });
 
-describe("an upstream's answer that the account has no balance moves the call on (design 5.3)", () => {
+describe("an upstream's answer that the account has no balance moves the call on", () => {
   it.each([
     {
       vendor: "anthropic" as const,
@@ -420,7 +420,7 @@ describe("an upstream's answer that the account has no balance moves the call on
  */
 const inBandError = (code: number): string => `data: ${JSON.stringify({ error: { code, message: "Provider returned error" } })}\n\n`;
 
-describe("an error part before the first content is judged like a status (design 5.5)", () => {
+describe("an error part before the first content is judged like a status", () => {
   beforeEach(() => {
     vi.spyOn(Math, "random").mockReturnValue(0);
   });
@@ -460,7 +460,7 @@ describe("an error part before the first content is judged like a status (design
  */
 const wholeError = (code: number): Reply => ({ status: 200, body: { error: { code, message: "Provider returned error" } } });
 
-describe("OpenRouter's 200 whose body is an error is judged by its code, as in a stream (design 5.3, 5.5)", () => {
+describe("OpenRouter's 200 whose body is an error is judged by its code, as in a stream", () => {
   beforeEach(() => {
     vi.spyOn(Math, "random").mockReturnValue(0);
   });
@@ -517,7 +517,7 @@ const choiceError = (code: number, content = ""): Reply => ({
   body: { ...CHAT_REPLY, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "error", error: { code, message: "Upstream died" } }] },
 });
 
-describe("an understand answer whose choice carries an error (design 3.5, DD 24)", () => {
+describe("an understand answer whose choice carries an error", () => {
   /**
    * Ask the understand model through the harness.
    * @param keys - The environment keys.
@@ -539,7 +539,7 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
     expect(posted(fakes.openrouter)).toHaveLength(1);
   });
 
-  it("keeps the cost OpenRouter billed for the answer it moved past, before Google's (DD 25)", async () => {
+  it("keeps the cost OpenRouter billed for the answer it moved past, before Google's", async () => {
     fakes.openrouter.answer(() => choiceError(502));
     const answer = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
     expect((answer as { costs?: unknown }).costs).toEqual([
@@ -548,14 +548,14 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
     ]);
   });
 
-  it("carries the costs of every billed answer on the NoUpstreamAvailable it ends with (DD 25)", async () => {
+  it("carries the costs of every billed answer on the NoUpstreamAvailable it ends with", async () => {
     fakes.openrouter.answer(() => choiceError(502));
     const error = await ask({ OPENROUTER_API_KEY: "or" });
     expect(error).toBeInstanceOf(NoUpstreamAvailable);
     expect((error as NoUpstreamAvailable).costs).toEqual([expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost })]);
   });
 
-  it("carries the earlier billed answer and the refused one on UpstreamRequestRejected (DD 25)", async () => {
+  it("carries the earlier billed answer and the refused one on UpstreamRequestRejected", async () => {
     let n = 0;
     fakes.openrouter.answer(() => choiceError(++n === 1 ? 502 : 400));
     const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 1 }).llm.understand({
@@ -585,7 +585,7 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
   });
 });
 
-describe("every exit of an understand call carries what was billed (design 3.5, DD 26)", () => {
+describe("every exit of an understand call carries what was billed", () => {
   /**
    * Ask the understand model through the harness.
    * @param keys - The environment keys.
@@ -626,7 +626,7 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
     expect(costsOf(error)).toEqual((error as UnderstandInterrupted).costs);
   });
 
-  it("refuses with the answer's status 200, carrying its cost, an error whose code is not a number, without moving on (DD 33)", async () => {
+  it("refuses with the answer's status 200, carrying its cost, an error whose code is not a number, without moving on", async () => {
     fakes.openrouter.answer(() => billedChoiceError("upstream_error"));
     const error = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, 0);
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
@@ -635,7 +635,7 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
     expect(posted(fakes.google)).toHaveLength(0);
   });
 
-  it("keeps the cost a retried non-2xx answer carried, before the answer that served (DD 33)", async () => {
+  it("keeps the cost a retried non-2xx answer carried, before the answer that served", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     let n = 0;
     fakes.openrouter.answer(() => (++n === 1 ? { status: 503, body: { error: { code: 503, message: "busy" }, usage: { cost: 0.01 } } } : { status: 200, body: CHAT_REPLY }));
@@ -646,7 +646,7 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
     ]);
   });
 
-  it("keeps a pending lookup for a retried non-2xx answer that names its generation (DD 33)", async () => {
+  it("keeps a pending lookup for a retried non-2xx answer that names its generation", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     let n = 0;
     fakes.openrouter.answer(() => (++n === 1 ? { status: 502, body: { id: "gen-503", error: { code: 502, message: "busy" } } } : { status: 200, body: CHAT_REPLY }));
@@ -672,7 +672,7 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
   });
 });
 
-describe("the reasons of a call no upstream served (design 5.4, DD 24)", () => {
+describe("the reasons of a call no upstream served", () => {
   it("names the status of each upstream's last failure", async () => {
     fakes.deepseek.answer(() => ({ status: 503, body: {} }));
     fakes.openrouter.answer(() => ({ status: 429, body: {} }));
@@ -685,7 +685,7 @@ describe("the reasons of a call no upstream served (design 5.4, DD 24)", () => {
   });
 });
 
-describe("waiting before a retry on the same upstream (design 5.3)", () => {
+describe("waiting before a retry on the same upstream", () => {
   /**
    * The gaps between the requests a fake received, in milliseconds.
    * @param times - Arrival times.
@@ -742,7 +742,7 @@ describe("waiting before a retry on the same upstream (design 5.3)", () => {
   });
 });
 
-describe("a stream stopped before its first content (design 3.5, S4)", () => {
+describe("a stream stopped before its first content", () => {
   it("still hands the generation it was given to pendingCosts", async () => {
     const opening = `data: ${JSON.stringify({ id: "gen-early", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] })}\n\n`;
     fakes.openrouter.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream", hold: true }));
@@ -762,7 +762,7 @@ describe("a stream stopped before its first content (design 3.5, S4)", () => {
  */
 const event = (body: unknown): string => `data: ${JSON.stringify(body)}\n\n`;
 
-describe("a stream that reports an error and then finishes (design 3.5, 5.5)", () => {
+describe("a stream that reports an error and then finishes", () => {
   it("hands its generation over once, on the finish, and keeps none in pendingCosts", async () => {
     const raw = event({ id: "gen-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "he" }, finish_reason: null }] })
       + event({ id: "gen-1", error: { code: 502, message: "Provider returned error" } })
@@ -777,7 +777,7 @@ describe("a stream that reports an error and then finishes (design 3.5, 5.5)", (
   });
 });
 
-describe("a pinned step whose stream reports an error before its content (design 12.4)", () => {
+describe("a pinned step whose stream reports an error before its content", () => {
   it("is retried on the same upstream", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     const toolCall = event({
@@ -815,7 +815,7 @@ describe("a pinned step whose stream reports an error before its content (design
  */
 const anthropicEvent = (name: string, body: unknown): string => `event: ${name}\ndata: ${JSON.stringify(body)}\n\n`;
 
-describe("each vendor's own in-band error form before the first content (design 5.5, DD 22)", () => {
+describe("each vendor's own in-band error form before the first content", () => {
   beforeEach(() => {
     vi.spyOn(Math, "random").mockReturnValue(0);
   });
@@ -843,7 +843,7 @@ describe("each vendor's own in-band error form before the first content (design 
   });
 });
 
-describe("a pinned step on an answer a retry cannot fix (design 5.3, 12.4)", () => {
+describe("a pinned step on an answer a retry cannot fix", () => {
   /**
    * A two-step call through OpenRouter whose second step gets this answer.
    * @param second - The second step's answer.
@@ -883,7 +883,7 @@ describe("a pinned step on an answer a retry cannot fix (design 5.3, 12.4)", () 
   });
 });
 
-describe("streams cut or left early (design 5.3, 3.5)", () => {
+describe("streams cut or left early", () => {
   it("stops on an answer the vendor's SDK cannot read, without moving on", async () => {
     fakes.deepseek.answer(() => ({ status: 200, raw: "not json", contentType: "application/json" }));
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
@@ -948,7 +948,7 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
     expect(handed.filter((id) => id === "gen-1")).toHaveLength(1);
   });
 
-  it("keeps the lookup of a model stream its reader cancels, and closes the upstream stream", async () => {
+  it("keeps the lookup of a model stream its reader cancels", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("meta/llama-x", THINK);
     const model = prepared.model as unknown as { doStream: (o: unknown) => Promise<{ stream: ReadableStream<{ type: string }> }> };
@@ -972,7 +972,7 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
   });
 });
 
-describe("reasoning is content: a call that streamed it stays where it is (design 5.5)", () => {
+describe("reasoning is content: a call that streamed it stays where it is", () => {
   it("surfaces an error after reasoning and asks no other upstream", async () => {
     const raw = event({ id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] })
       + event({ error: { code: "server_error", message: "busy" } });

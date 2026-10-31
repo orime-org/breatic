@@ -17,7 +17,7 @@ const ROOT = resolve(__dirname, "../../../../../..");
 /** What today's worker sends for each case (scripts/provider-fixtures.ts). */
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../../../test/fixtures/upstream-body.json"), "utf8")) as BodyFixture;
 
-/** Every model's WaveSpeed binding, from the binding files the configuration migration writes (design 4.5). */
+/** Every model's WaveSpeed binding, from the binding files the configuration migration writes. */
 const bindings = new Map<string, MediaBinding>();
 for (const modality of ["image", "video", "audio", "tts", "three_d"]) {
   const file = parse(readFileSync(resolve(ROOT, `config/provider/media/${modality}.yaml`), "utf8")) as {
@@ -29,7 +29,7 @@ for (const modality of ["image", "video", "audio", "tts", "three_d"]) {
   }
 }
 
-describe("buildBody — equal to today's WaveSpeed body on every case (design 13.2)", () => {
+describe("buildBody — equal to today's WaveSpeed body on every case", () => {
   it("has a WaveSpeed binding for every model in the fixture", () => {
     expect([...new Set(fixture.cases.map((c) => c.model))].filter((m) => !bindings.has(m))).toEqual([]);
   });
@@ -49,7 +49,7 @@ function carried(value: unknown, absent: unknown): boolean {
   return value !== undefined && value !== null && value !== "" && value !== absent && !(Array.isArray(value) && value.length === 0);
 }
 
-describe("the body fixture samples every input the bindings read (DD 32)", () => {
+describe("the body fixture samples every input the bindings read", () => {
   it("carries every bound param with a value in some case of its model, except those an extra step serves", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
@@ -74,7 +74,7 @@ describe("the body fixture samples every input the bindings read (DD 32)", () =>
   });
 });
 
-/** WaveSpeed model ids delisted in the 2026-07-15 catalog audit (moved from the worker's model-config-liveness test). */
+/** WaveSpeed model ids known to be delisted; a binding to any of them fails at submit. */
 const DELISTED_WAVESPEED_IDS: ReadonlySet<string> = new Set([
   "midjourney/image-to-image",
   "midjourney/image-to-video",
