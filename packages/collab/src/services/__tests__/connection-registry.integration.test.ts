@@ -648,6 +648,29 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s9"), m("u2", 1000, "i2", "x2")].sort());
   });
 
+  it("A24b judges a retried arrival's silent line at the time the script runs, not the time its socket was heard", async () => {
+    // One person, two seats on a full document: sa answered 10 s ago, sb
+    // last answered 40 s ago, past the silent line. The retry was heard 15 s
+    // before its script runs; judged from that moment, sb would still look
+    // live and the handover would take sa, the tab in use.
+    const { reg, w } = build();
+    await seed(DOC, T, m("u1", 1000, "i2", "sa"));
+    await seed(DOC, T, m("u1", 1500, "i2", "sb"));
+    w.fail("eval", "reject-before-send");
+    expect(await reg.takeSeat(DOC, H("s9", "u1", 2000), 2)).toEqual({ outcome: "unknown" });
+
+    clock = T + 60_000;
+    await seed(DOC, clock - 10_000, m("u1", 1000, "i2", "sa"));
+    await seed(DOC, clock - 40_000, m("u1", 1500, "i2", "sb"));
+    expect(await reg.refreshSocket("s9", clock - 15_000)).toEqual([
+      { documentName: DOC, outcome: "replaced", replaced: m("u1", 1500, "i2", "sb") },
+    ]);
+    expect(await members(DOC)).toEqual({
+      [m("u1", 1000, "i2", "sa")]: clock - 10_000,
+      [m("u1", 2000, "i1", "s9")]: clock - 15_000,
+    });
+  });
+
   it("A25 keeps an arrival whose script ran but whose reply timed out, and settles it on the next sign of life", async () => {
     const { reg, w } = build();
     const mine = m("u1", 5000, "i1", "s1");
