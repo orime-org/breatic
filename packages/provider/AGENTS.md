@@ -4,11 +4,11 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### It stands alone
 
-**The package imports no `@breatic/*` package and no other package's source (`provider-no-internal-import` in `.dependency-cruiser.cjs`); key reading, configuration, deadlines and text cleaning come in through `createProvider`'s options.** It is a routing layer meant to be able to leave this repository, so it never reads `process.env`, never logs and never writes the application's database. Check: about to import a helper from `@breatic/shared` or `@breatic/core`? Write or move it inside the package, or take it as an option.
+**The package imports no `@breatic/*` package and no other package's source (`provider-no-internal-import` in `.dependency-cruiser.cjs`); key reading, configuration and text cleaning come in through `createProvider`'s options, and each call's deadline comes in on that call.** It is a routing layer meant to be able to leave this repository, so it never reads `process.env`, never logs and never writes the application's database. Check: about to import a helper from `@breatic/shared` or `@breatic/core`? Write or move it inside the package, or take it as an option.
 
 ### Its own HTTP module
 
-**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one place in the repository besides `@breatic/shared`'s transport allowed to call the platform `fetch` (the `breatic/no-naked-fetch` exemption in `eslint.config.ts`). A submit is sent with `replaySafe: false`; only reads (polls, result and billing queries, file status) are replay-safe.
+**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one place in the repository besides `@breatic/shared`'s transport allowed to call the platform `fetch` (the `breatic/no-naked-fetch` exemption in `eslint.config.ts`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
 
 ### Three entry points
 
@@ -24,7 +24,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Moving to the next upstream
 
-**Weight 0 is the model's official API and smaller weights are tried first; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** A 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
+**Weight 0 is the model's official API where it has one (a model reached only through a reseller, such as the catch-all LLM route, has the reseller at 0), and smaller weights are tried first; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** A 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
 
 ### Every billed answer reaches the caller once
 
@@ -32,7 +32,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### One reader per answer shape
 
-**Each upstream answer shape is read through one zod schema (`costedOf` for OpenRouter's id and usage, the schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); never cast a parsed body with `as` to pick a field.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded.
+**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/vendors.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
 
 ### The ticket carries the state
 
