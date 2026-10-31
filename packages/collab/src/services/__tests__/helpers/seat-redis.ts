@@ -5,10 +5,10 @@
  * A real ioredis client with a thin layer in front of it, for the seat
  * registry's integration tests (inner#1034).
  *
- * The registry is handed the wrapped client. Every command it sends still
- * reaches the real Redis, in the order it was called: the layer only records
- * the call and, when a test asks for it, changes what comes BACK. It never
- * delays a command before it is sent. Holding a command back would let a
+ * The registry is handed the wrapped client. Every command that is sent
+ * reaches the real Redis in the order it was called: the layer records each
+ * call and, when a test asks for it, refuses to send it or changes what comes
+ * BACK. It never delays a command before it is sent. Holding a command back would let a
  * later ZREM reach Redis ahead of an earlier EVAL, an order production can
  * never produce, because one client executes its commands in sending order.
  *

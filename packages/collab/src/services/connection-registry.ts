@@ -73,8 +73,9 @@ const SILENT_SEAT_JITTER_MS = 3_000;
  * The score below which a seat counts as one that stopped answering.
  *
  * It has to land between two measured quantities. Above it is the live
- * ceiling: a seat's score is rewritten once per ping period, so immediately
- * before each refresh a perfectly healthy seat is one full period stale.
+ * ceiling: a seat's score is rewritten at least once per ping period (the
+ * pong guarantees that much), so just before a pong's refresh a healthy seat
+ * can be one full period stale.
  * Below it is the reconnect floor: a seat the transport has not terminated
  * yet and whose client is coming back cannot be fresher than that client's
  * own reconnect delay, measured at 36991 ms with `@hocuspocus/provider` 4.6.0

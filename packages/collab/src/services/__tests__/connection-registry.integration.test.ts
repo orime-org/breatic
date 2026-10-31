@@ -5,8 +5,9 @@
  * The cross-instance seat registry against a real Redis (inner#1034).
  *
  * Every new seat goes through one Lua script, in one of two modes: `arrive`
- * (the `connected` hook taking a seat) and `refresh` (a sign of life
- * renewing one, scored at the time the socket was last heard).
+ * (the `connected` hook taking a seat, and a sign of life retrying an arrival
+ * Redis could not answer) and `refresh` (a sign of life renewing a held seat,
+ * scored at the time the socket was last heard).
  * The script prunes, counts against the cap and, when the document is full,
  * may replace one of the arriving person's own EARLIER connections — all in
  * one step, so two handshakes can no longer both read "one seat left".
@@ -86,7 +87,6 @@ function H(socketId: string, userId: string, arrivedAtMs: number): { socketId: s
  * A registry over a dedicated, wrapped client.
  * @param instanceId - The instance it speaks for.
  * @param options - Overrides.
- * @param options.keyFor - Key builder; omit to use the case's own.
  * @param options.useDefaultKey - Leave the key builder out entirely.
  * @returns The registry and its wrapper.
  */
@@ -919,8 +919,9 @@ describe("A · what the registry kept doing before inner#1034", () => {
   });
 
   // What the silent line has to separate, as two numbers. Above it: a live
-  // seat's score is rewritten once per ping period, so just before each
-  // refresh a healthy seat is one full period stale. Below it: a seat whose
+  // seat's score is rewritten at least once per ping period (the pong
+  // guarantees that much), so just before a pong's refresh a healthy seat can
+  // be one full period stale. Below it: a seat whose
   // client is reconnecting cannot be fresher than that client's own reconnect
   // delay, measured at 36991 ms with @hocuspocus/provider 4.6.0. How far above
   // the ceiling is deliberately not pinned.

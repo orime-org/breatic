@@ -12,10 +12,6 @@
  * missing without anything noticing: the module it belongs to keeps passing
  * its own tests, because those call it directly.
  *
- * That is not hypothetical. Presence went a whole change without being wired
- * to the socket's signs of life while its expiry was cut to two ping periods,
- * and every test in the package stayed green.
- *
  * Both refreshes record the time the socket was last heard, which the
  * per-socket table hands over, not the time they run.
  *

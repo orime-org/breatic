@@ -8,8 +8,9 @@
  * A session-aware client (`documentName\0sessionId`) can open the same
  * document twice on one socket, and both connections arrive with the same
  * document name and socket id. Every per-connection record the server keeps
- * is keyed by that pair, so the second one overwrote the first's, and closing
- * it took the first one's seat away while that connection went on writing.
+ * is keyed by that pair, so a second one let in would overwrite the first's,
+ * and closing it would take the first one's seat away while that connection
+ * went on writing.
  *
  * Production hooks from `createCollabServer`, the real seat registry on real
  * Redis and the real demote channel; only the transport is a stand-in, which

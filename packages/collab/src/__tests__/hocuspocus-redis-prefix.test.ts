@@ -954,10 +954,9 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
   }
 
   // One pong, two facts, through the wiring that carries them. Cutting
-  // `onAlive` out of the options — or either half out of the handler it is
-  // built from — left all 523 cases in this package green, which is the
-  // same shape the presence defect shipped in one round earlier: the module
-  // was correct and nothing called it.
+  // `onAlive` out of the options, or either half out of the handler it is
+  // built from, leaves every module's own tests green, because those call the
+  // functions directly; only this case sees it.
   it("moves both the seats and the presence record when a socket answers", async () => {
     const doc = metaDocWithTwoSpaces();
     const pong = await fireConnectedFor({

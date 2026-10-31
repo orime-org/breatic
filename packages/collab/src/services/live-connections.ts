@@ -76,7 +76,8 @@ export interface LiveConnectionsOptions {
   /**
    * How often the transport pings each connection. A sign of life less than
    * half of this after the last one handled on its socket waits until half a
-   * period has passed, and further early ones while one waits are dropped: a
+   * period has passed; further early ones while one waits start no call of
+   * their own, and the waiting call records the latest one's time. A
    * client sends messages as often as it likes and RFC 6455 lets it send
    * pongs unasked, and each handled one runs a seat script per document on
    * the Redis every tenant shares. The waiting one is not dropped, because it

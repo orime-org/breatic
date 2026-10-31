@@ -195,9 +195,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connectionRegistry.forgetSeat(documentName, member),
   });
   // Subscribing is part of starting: an instance that silently failed to
-  // subscribe would keep taking seats and never demote the connections it
-  // replaced, so those people would hold a seat and a writable connection at
-  // once until that connection's next sign of life.
+  // subscribe would never demote its own connections when any instance
+  // replaced their seats, so those people would hold a seat and a writable
+  // connection at once until that connection's next sign of life.
   await seatHandover.start();
 
   // Native upgrade admission and document authentication share the
@@ -539,8 +539,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean
-      // disconnect, so the count drops immediately (a crash instead lets it
-      // expire via the registry TTL). onDisconnect fires for every connection
+      // disconnect, so the count drops immediately (a crash instead leaves its
+      // score to age past the seat expiry, and the next seat script or count
+      // prunes it). onDisconnect fires for every connection
       // the `connected` hook saw, both being bound to the Connection object's
       // lifecycle. Meta / non-project docs were never tracked.
       //

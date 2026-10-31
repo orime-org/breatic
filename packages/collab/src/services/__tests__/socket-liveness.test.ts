@@ -6,10 +6,7 @@
  *
  * Both facts already have their own tests, and both of those pass when the
  * sign of life never reaches them — they call the functions directly. What is
- * asserted here is the wiring, which is what actually went missing: presence
- * spent a whole change unconnected to the socket's signs of life while its
- * expiry was cut to two ping periods, and every test in the package stayed
- * green. Both facts are written at the time the socket was last heard.
+ * asserted here is the wiring. Both facts are written at the time the socket was last heard.
  *
  * A renewal can also answer back, and the handler acts on it: `replaced`
  * asks for the other connection to be demoted, while `full` (an arrival
@@ -96,8 +93,8 @@ describe("a sign of life refreshes everything it proves", () => {
 
   it("does both from one sign of life, not one or the other", () => {
     // The two are independent calls, so a change that keeps one can drop the
-    // other and leave both of their own suites green. This is the only case
-    // that reads them together.
+    // other and leave both of their own suites green. This case and E-P04
+    // read them together.
     const refreshSeats = vi.fn(nothingToReport);
     const doc = metaDocWith(1_000);
     const handler = createLivenessHandler({
@@ -170,7 +167,7 @@ function warnedWith(tag: string, fields: Record<string, unknown> = {}): boolean 
  * land.
  * @param answers - What the renewal reports.
  * @param connections - What the socket carries.
- * @returns The demote spy and the presence document, if any.
+ * @returns The demote spy.
  */
 async function aliveWith(
   answers: SeatAnswer[],
