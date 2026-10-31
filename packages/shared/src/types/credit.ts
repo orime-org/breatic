@@ -96,6 +96,8 @@ export interface PurchaseRow {
   rowId: string;
   /** Where these credits came from. */
   sourceKind: CreditSourceKind;
+  /** The gift receipt provenance; absent for other source kinds. */
+  giftOrigin?: "registration" | "operator" | null;
   /** The payment behind this row; null when nobody paid. */
   paymentId: string | null;
   /** The listed price, before tax. Null on a row nobody paid for. */
@@ -198,6 +200,8 @@ export interface CreditLotView {
    * it asks: what the row says instead of a price.
    */
   sourceKind: CreditSourceKind;
+  /** The gift receipt provenance; absent for other source kinds. */
+  giftOrigin?: "registration" | "operator" | null;
   purchasedCredits: CreditDecimal;
   remainingCredits: CreditDecimal;
   /**
@@ -296,7 +300,7 @@ export interface CreditLedgerView {
   model: string | null;
   provider: string | null;
   /**
-   * What this run came to, as a negative number.
+   * What this run came to, as a negative exact amount.
    *
    * On a `generation` or a `debt_repayment` it is what left this account's
    * purchases. On an `unbilled` line nothing left them: the figure is what
@@ -420,12 +424,12 @@ const cash = z.number().int().nonnegative().nullable();
 const amount = nonnegativeCreditDecimalSchema;
 
 export const purchaseRowSchema = z.object({
-  rowId: id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), paymentId: id.nullable(), amountCents: cash, totalCents: cash, taxCents: cash,
+  rowId: id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), paymentId: id.nullable(), amountCents: cash, totalCents: cash, taxCents: cash,
   currency: z.string(), creditsGranted: amount, remainingCredits: amount.nullable(), lifecycle: lifecycle.nullable(),
   designatedStudioId: id.nullable(), designatedStudioName: nullableText, status: nullableText, createdAt: z.string(), canResend: z.boolean(),
 });
 export const creditLotViewSchema = z.object({
-  id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), purchasedCredits: amount, remainingCredits: amount,
+  id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), purchasedCredits: amount, remainingCredits: amount,
   designatedStudioId: id.nullable(), designatedStudioName: nullableText, designated: z.boolean(), paidCents: cash, currency: nullableText,
   lifecycle, refundAttempts: z.number().int().nonnegative(), everSpent: z.boolean(), everRestored: z.boolean(), createdAt: z.string(),
 });

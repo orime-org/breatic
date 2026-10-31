@@ -20,7 +20,11 @@ const {
 describe('the four account-level reads and writes', () => {
   beforeEach(() => {
     apiGet.mockReset().mockImplementation(async (url: string) => url.endsWith('/overview') ? { assignedCredits: '0.000000', unassignedCredits: '0.000000', underRefundCredits: '0.000000', billing: true, studios: [] } : { items: [], nextCursor: null });
-    apiPatch.mockReset().mockResolvedValue({});
+    apiPatch.mockReset().mockResolvedValue({
+      id: 'lot-1', sourceKind: 'payment', purchasedCredits: '100.000000', remainingCredits: '100.000000',
+      designatedStudioId: null, designatedStudioName: null, designated: false, paidCents: 1000, currency: 'usd',
+      lifecycle: 'active', refundAttempts: 0, everSpent: false, everRestored: false, createdAt: '2026-10-31T00:00:00.000Z',
+    });
   });
 
   it('asks /credits/overview for the overview, with no parameters', async () => {

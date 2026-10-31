@@ -9,9 +9,9 @@
  * their full precision through the shared serialization boundary.
  */
 
-import { assetService, creditHoldService, creditLotRepo, creditLotService } from "@breatic/domain";
+import { assetService, creditHoldService, creditSourceRepo, creditLotRepo, creditLotService } from "@breatic/domain";
 import type { LotContext, PayerLedgerRow } from "@breatic/domain";
-import { decodeActivityCursor } from "@breatic/core";
+import { decodeActivityCursor, NotFoundError } from "@breatic/core";
 import { toPage } from "@server/utils/keyset-page.js";
 import type { ActivityCursor } from "@breatic/core";
 import type {
@@ -25,7 +25,7 @@ import type {
   StudioLedgerView,
   StudioLotView,
 } from "@breatic/shared";
-import { parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
+import { t, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
 
 /**
@@ -61,12 +61,14 @@ function toDecimal(value: string): CreditDecimal {
 /**
  * Map a lot to its display shape.
  * @param lot - The stored lot.
+ * @param giftOrigin - The immutable gift receipt origin, when applicable.
  * @returns The view.
  */
-function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
+function toLotView(lot: CreditLotEntity & LotContext, giftOrigin?: "registration" | "operator"): CreditLotView {
   return {
     id: lot.id,
     sourceKind: lot.sourceKind,
+    ...(giftOrigin === undefined ? {} : { giftOrigin }),
     purchasedCredits: toDecimal(lot.purchasedCredits),
     remainingCredits: toDecimal(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
@@ -132,6 +134,24 @@ export async function getOverview(
 }
 
 /**
+ * Read one account-owned lot through the same projection as its purchase list.
+ * @param userId - The holder whose ownership narrows the query.
+ * @param lotId - The just-designated lot.
+ * @returns Its complete exact-decimal view.
+ * @throws {NotFoundError} When the lot is no longer available to the holder.
+ * @throws {Error} When its receipt or database reading fails.
+ */
+export async function getLot(userId: string, lotId: string): Promise<CreditLotView> {
+  const [lot] = await creditLotRepo.listLotsByUser(userId, 1, null, undefined, lotId);
+  if (!lot) throw new NotFoundError(t("server.error.not_found"));
+  if (lot.sourceKind !== "gift") return toLotView(lot);
+  const origins = await creditSourceRepo.readGiftOrigins([lot.sourceId]);
+  const origin = origins.get(lot.sourceId);
+  if (origin === undefined) throw new Error("Gift receipt origin missing");
+  return toLotView(lot, origin);
+}
+
+/**
  * This account's purchases, newest first.
  * @param userId - The signed-in account.
  * @param rawLimit - The client's `?limit`, if any.
@@ -148,7 +168,11 @@ export async function listLots(
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor, lifecycle);
-  return toPage(rows, size, toLotView, (row) => ({
+  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId));
+  for (const row of rows) {
+    if (row.sourceKind === "gift" && !origins.has(row.sourceId)) throw new Error("Gift receipt origin missing");
+  }
+  return toPage(rows, size, (row) => toLotView(row, origins.get(row.sourceId)), (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,
   }));

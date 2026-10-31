@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "Purchase",
       "gift": "Trial credits",
+      "operatorGift": "Gift credits",
       "compensation": "Compensation",
       "discount": "Discount"
     },

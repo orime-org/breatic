@@ -135,12 +135,12 @@ credits.patch(
     const lotId = c.req.valid("param").id;
     const studioId = c.req.valid("json").studioId;
     try {
-      const data = await studioCreditDesignation.designateLot({
+      await studioCreditDesignation.designateLot({
         lotId,
         requestingUserId: user.id,
         studioId,
       });
-      return c.json({ data });
+      return c.json({ data: await creditViewService.getLot(user.id, lotId) });
     } catch (err) {
       // Moving granted credits somewhere else is the one refusal here that
       // answers an attempt rather than a mistake, so it leaves a trace that

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { CREDIT_AMOUNT_FORMAT, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, projectCreditsViewSchema, studioCreditsViewSchema } from '@breatic/shared';
+import { CREDIT_AMOUNT_FORMAT, creditLotViewSchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, projectCreditsViewSchema, studioCreditsViewSchema } from '@breatic/shared';
 
 import type {
   CreditLedgerView,
@@ -76,10 +76,10 @@ export async function designateCreditLot(
   lotId: string,
   studioId: string | null,
 ): Promise<void> {
-  await apiPatch<unknown>(
+  creditLotViewSchema.parse(await apiPatch<unknown>(
     `/credits/lots/${encodeURIComponent(lotId)}/designation`,
     { studioId },
-  );
+  ));
 }
 
 /**

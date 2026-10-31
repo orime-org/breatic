@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+
 import { parseCreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
@@ -281,7 +283,7 @@ const LotRow = React.memo(function LotRow({
     <Row
       main={`${
         lot.paidCents === null
-          ? t(`credits.source.${lot.sourceKind}`)
+          ? t(creditSourceLabelKey(lot))
           : formatMoney(lot.paidCents, lot.currency ?? 'usd')
       } · ${formatLocalDay(lot.createdAt)}`}
       sub={

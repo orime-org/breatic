@@ -384,7 +384,7 @@ describe("a consolidation that works", () => {
 
   it("logs a charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
-      billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+      billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
     });
     await consolidate();
 

@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "충전",
       "gift": "체험 크레딧",
+      "operatorGift": "선물 크레딧",
       "compensation": "보상",
       "discount": "할인"
     },

@@ -16,7 +16,7 @@
  * be tested without one.
  */
 
-import { ceilToCreditCent, ceilCreditMicroToCent, quantizeQuotedCredits, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
+import { ceilToCreditCent, ceilCreditMicroToCent, quantizeQuotedCredits, parseCreditDecimal, serializeCreditMicro, type CreditDecimal, type CreditMicro, subtractCreditMicro, minCreditMicro, maxCreditMicro, negateCreditMicro } from "@breatic/shared";
 
 /** The smallest credit amount a studio can spend. */
 export const SMALLEST_CREDIT = 0.01;
@@ -27,8 +27,10 @@ export const SMALLEST_CREDIT = 0.01;
  * @throws {RangeError} When the amount is not a valid decimal or finite quote.
  * @returns The converted or computed exact amount.
  */
-export function toMicroCredits(value: number | string): bigint {
-  return typeof value === "string" ? parseCreditDecimal(value) : quantizeQuotedCredits(Math.abs(value)) * (value < 0 ? -1n : 1n);
+export function toMicroCredits(value: number | string): CreditMicro {
+  if (typeof value === "string") return parseCreditDecimal(value);
+  const magnitude = quantizeQuotedCredits(Math.abs(value));
+  return value < 0 ? negateCreditMicro(magnitude) : magnitude;
 }
 
 /**
@@ -37,7 +39,7 @@ export function toMicroCredits(value: number | string): bigint {
  * @throws {RangeError} When the quote is negative or non-finite.
  * @returns The converted or computed exact amount.
  */
-export function toChargeMicro(credits: number): bigint {
+export function toChargeMicro(credits: number): CreditMicro {
   return ceilCreditMicroToCent(quantizeQuotedCredits(credits));
 }
 
@@ -65,7 +67,7 @@ export interface ChargeableLot {
   /** The lot's id. */
   id: string;
   /** What is left on it, in micro-credits. */
-  remaining: bigint;
+  remaining: CreditMicro;
 }
 
 /** How much of a charge one lot carries. */
@@ -73,7 +75,7 @@ export interface LotAllocation {
   /** The lot being drawn down. */
   lotId: string;
   /** How much comes out of it, in micro-credits. Always above zero. */
-  amount: bigint;
+  amount: CreditMicro;
 }
 
 /** The result of planning one charge across several lots. */
@@ -81,7 +83,7 @@ export interface ChargePlan {
   /** One entry per lot that contributes, in the order they were given. */
   allocations: readonly LotAllocation[];
   /** What could not be covered, in micro-credits. Zero when fully covered. */
-  shortfall: bigint;
+  shortfall: CreditMicro;
 }
 
 /**
@@ -105,7 +107,7 @@ export interface ChargePlan {
  */
 export function planCharge(
   lots: readonly ChargeableLot[],
-  amount: bigint,
+  amount: CreditMicro,
 ): ChargePlan {
   const allocations: LotAllocation[] = [];
   let owed = amount;
@@ -113,46 +115,34 @@ export function planCharge(
   for (const lot of lots) {
     if (owed <= 0n) break;
     if (lot.remaining <= 0n) continue;
-    const taken = lot.remaining < owed ? lot.remaining : owed;
+    const taken = minCreditMicro(lot.remaining, owed);
     allocations.push({ lotId: lot.id, amount: taken });
-    owed -= taken;
+    owed = subtractCreditMicro(owed, taken);
   }
 
   return { allocations, shortfall: owed };
 }
 
-/**
- * A studio's balance, holds and what is left, from the three sums, so the
- * admission, its refusal and every screen that shows them compute them the
- * same way (inner#1611).
- *
- * What is left is never below zero unless the studio owes. A run charged
- * above its estimate can leave the others' holds larger than the balance;
- * nothing is left then, and a figure below zero would read as debt.
- * @param lots - What its designated lots have left, as a decimal string.
- * @param debt - What it owes, as a decimal string.
- * @param held - What counted holds add up to, as a decimal string.
- * @returns The three figures, in credits.
- * @throws {Error} If a sum is not a plain decimal number.
- */
+/** The internal exact position used by admission and charge planning. */
 export interface CreditPositionMicro {
-  spendable: bigint;
-  held: bigint;
-  available: bigint;
+  spendable: CreditMicro;
+  held: CreditMicro;
+  available: CreditMicro;
 }
 
 /**
  * Derive the exact position used by admission.
+ * @returns The exact spendable, held and available millionths.
  * @param lots - The designated lot total.
  * @param debt - The current studio debt.
  * @param held - The counted hold total.
  * @throws {RangeError} When a stored sum is not a valid decimal.
  */
 export function positionFrom(lots: string, debt: string, held: string): CreditPositionMicro {
-  const spendable = toMicroCredits(lots) - toMicroCredits(debt);
+  const spendable = subtractCreditMicro(toMicroCredits(lots), toMicroCredits(debt));
   const heldMicro = toMicroCredits(held);
-  const afterHolds = spendable - heldMicro;
-  const available = spendable < 0n ? spendable : afterHolds > 0n ? afterHolds : 0n;
+  const afterHolds = subtractCreditMicro(spendable, heldMicro);
+  const available = spendable < 0n ? spendable : maxCreditMicro(toMicroCredits("0"), afterHolds);
   return { spendable, held: heldMicro, available };
 }
 

@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "充值",
       "gift": "体验积分",
+      "operatorGift": "赠送积分",
       "compensation": "补偿",
       "discount": "优惠"
     },

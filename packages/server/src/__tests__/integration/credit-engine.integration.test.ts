@@ -316,7 +316,7 @@ describe("扣费", () => {
       amount: 7.000000000000001,
     });
 
-    expect(outcome).toMatchObject({ charged: 7, shortfall: 0 });
+    expect(outcome).toMatchObject({ charged: "7.000000", shortfall: "0.000000" });
     expect(await readLot(lotId)).toMatchObject({ remaining: "0.000000", lifecycle: "depleted" });
     expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
   });
@@ -331,7 +331,7 @@ describe("扣费", () => {
       amount: 1.234,
     });
 
-    expect(outcome).toMatchObject({ charged: 1, shortfall: 0.24 });
+    expect(outcome).toMatchObject({ charged: "1.000000", shortfall: "0.240000" });
     expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0.24);
   });
 
@@ -438,7 +438,7 @@ describe("扣不到笔时的记账", () => {
       referenceId: `gone-${Date.now()}`,
     });
 
-    expect(outcome).toMatchObject({ billed: false, charged: 0, shortfall: 10 });
+    expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "10.000000" });
     const [row] = await sql<{ lot_id: string | null; studio_id: string | null }[]>`
       SELECT lot_id, studio_id FROM credit_ledger
       WHERE payer_user_id = ${fx.userId} AND entry_type = 'spend'

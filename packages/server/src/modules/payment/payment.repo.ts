@@ -311,6 +311,7 @@ export async function touchReconciled(ids: readonly string[]): Promise<void> {
 export interface AcquisitionHistoryRow {
   rowId: string;
   sourceKind: string;
+  sourceId: string | null;
   paymentId: string | null;
   amountCents: number | null;
   taxCents: number | null;
@@ -390,6 +391,7 @@ export async function listAcquisitionHistory(
     .select({
       rowId: sql<string>`${rowId}`,
       sourceKind: sql<string>`COALESCE(${myLots.sourceKind}, ${myPayments.sourceKind})`,
+      sourceId: myLots.sourceId,
       paymentId: myPayments.id,
       amountCents: myPayments.amountCents,
       taxCents: myPayments.taxCents,

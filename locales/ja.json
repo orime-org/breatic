@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "購入",
       "gift": "体験クレジット",
+      "operatorGift": "ギフトクレジット",
       "compensation": "補償",
       "discount": "割引"
     },

@@ -279,7 +279,7 @@ async function history(
   query = "",
 ): Promise<CreditPage<PurchaseRow>> {
   const res = await app.request(
-    `/api/v1/payment/history${query === "" ? "" : `?${query}`}`,
+    `/api/v1/payment/history?amountFormat=decimal-v1${query === "" ? "" : `&${query}`}`,
     { headers: { cookie: buyer.cookie } },
   );
   expect(res.status).toBe(200);
@@ -338,7 +338,7 @@ describe("GET /payment/history — every purchase, landed or not", () => {
       const [row] = (await history(buyer)).items;
       expect(row!.totalCents).toBe(2240);
       expect(row!.taxCents).toBe(240);
-      expect(row!.remainingCredits).toBe(1700);
+      expect(row!.remainingCredits).toBe("1700.000000");
       expect(row!.lifecycle).toBe("active");
       expect(row!.designatedStudioId).toBe(buyer.studioId);
       expect(row!.designatedStudioName).not.toBeNull();
@@ -621,7 +621,7 @@ describe("what the confirmation calls the balance", () => {
         WHERE source_id = ${paymentId}
       `;
       const view = await getConfirmationView(paymentId);
-      expect(view?.balanceCredits).toBe(500);
+      expect(view?.balanceCredits).toBe("500.000000");
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -640,7 +640,7 @@ describe("what the confirmation calls the balance", () => {
         WHERE source_id = ${waiting}
       `;
       const view = await getConfirmationView(live);
-      expect(view?.balanceCredits).toBe(3400);
+      expect(view?.balanceCredits).toBe("3400.000000");
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -657,7 +657,7 @@ describe("what the confirmation calls the balance", () => {
       `;
       const view = await getConfirmationView(live);
       // Only the live lot's 1700 counts; the refunded one's does not.
-      expect(view?.balanceCredits).toBe(1700);
+      expect(view?.balanceCredits).toBe("1700.000000");
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -669,7 +669,7 @@ describe("what the confirmation calls the balance", () => {
       const first = await seedLanded(buyer.userId);
       await seedLanded(buyer.userId);
       const view = await getConfirmationView(first);
-      expect(view?.balanceCredits).toBe(3400);
+      expect(view?.balanceCredits).toBe("3400.000000");
     } finally {
       await dropBuyer(buyer.userId);
     }

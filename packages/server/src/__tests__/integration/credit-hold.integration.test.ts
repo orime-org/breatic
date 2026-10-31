@@ -167,11 +167,11 @@ describe("reserveCredits", () => {
     expect(await creditHoldService.reserveCredits(req(fx, ref("b"), 30))).toEqual({
       ok: false,
       studioId: fx.studioId,
-      spendable: 100,
-      held: 80,
-      available: 20,
+      spendable: "100.000000",
+      held: "80.000000",
+      available: "20.000000",
     });
-    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 100, held: 80, available: 20 });
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "100.000000", held: "80.000000", available: "20.000000" });
   });
 
   it("lets exactly one of two concurrent admissions through when only one fits", async () => {
@@ -184,7 +184,7 @@ describe("reserveCredits", () => {
     await open();
     const outcomes = await Promise.all([first, second]);
     expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
-    expect((await creditHoldService.getCreditPosition(fx.studioId)).held).toBe(60);
+    expect((await creditHoldService.getCreditPosition(fx.studioId)).held).toBe("60.000000");
   });
 
   it("admits a run whose estimate is the balance plus floating-point residue (inner#1637)", async () => {
@@ -207,9 +207,9 @@ describe("reserveCredits", () => {
     expect(await creditHoldService.reserveCredits(req(fx, ref("debt"), 1))).toEqual({
       ok: false,
       studioId: fx.studioId,
-      spendable: -30,
-      held: 0,
-      available: -30,
+      spendable: "-30.000000",
+      held: "0.000000",
+      available: "-30.000000",
     });
   });
 
@@ -219,13 +219,13 @@ describe("reserveCredits", () => {
     await creditHoldService.reserveCredits(req(fx, a, 50));
     await creditHoldService.reserveCredits(req(fx, ref("over-b"), 45));
     await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 60, releaseHold: a });
-    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 40, held: 45, available: 0 });
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "40.000000", held: "45.000000", available: "0.000000" });
     expect(await creditHoldService.reserveCredits(req(fx, ref("over-c"), 1))).toEqual({
       ok: false,
       studioId: fx.studioId,
-      spendable: 40,
-      held: 45,
-      available: 0,
+      spendable: "40.000000",
+      held: "45.000000",
+      available: "0.000000",
     });
   });
 
@@ -249,7 +249,7 @@ describe("reserveCredits", () => {
     const reference = ref("ttl");
     await creditHoldService.reserveCredits(req(fx, reference, 90));
     await sql`UPDATE credit_holds SET expires_at = now() - interval '1 second' WHERE reference_id = ${reference}`;
-    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 100, held: 0, available: 100 });
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "100.000000", held: "0.000000", available: "100.000000" });
     expect(await creditHoldService.reserveCredits(req(fx, ref("after"), 90))).toEqual({ ok: true });
   });
 
@@ -292,7 +292,7 @@ describe("chargeForGeneration with a hold", () => {
     });
     expect(Number(outcome.charged)).toBe(70);
     expect(await holdRows(reference)).toEqual([{ status: "released", amount: "50.000000" }]);
-    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 30, held: 0, available: 30 });
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "30.000000", held: "0.000000", available: "30.000000" });
   });
 
   it("tells the project's readers once the charge has committed", async () => {

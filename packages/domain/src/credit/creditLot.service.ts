@@ -50,12 +50,15 @@ import {
   REFUND_LIFECYCLES,
   refundRefusal,
   isPurchased,
+  addCreditMicro,
+  subtractCreditMicro,
   parseCreditDecimal,
   serializeCreditMicro,
 } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditDecimal,
+  CreditMicro,
   CreditOverview,
   RefundRefusal,
   StudioCreditSummary,
@@ -358,8 +361,8 @@ export async function chargeForGeneration(
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
-    const locked: { id: string; remaining: bigint }[] = [];
-    let available = 0n;
+    const locked: { id: string; remaining: CreditMicro }[] = [];
+    let available = toMicroCredits("0");
     for (const candidate of candidates) {
       if (available >= amountMicro) break;
       const row = await creditLotRepo.lockLot(candidate.id, tx);
@@ -369,7 +372,7 @@ export async function chargeForGeneration(
       const remaining = toMicroCredits(row.remainingCredits);
       if (remaining <= 0n) continue;
       locked.push({ id: row.id, remaining });
-      available += remaining;
+      available = addCreditMicro(available, remaining);
     }
 
     const plan = planCharge(locked, amountMicro);
@@ -417,7 +420,7 @@ export async function chargeForGeneration(
       );
     }
 
-    const charged = amountMicro - plan.shortfall;
+    const charged = subtractCreditMicro(amountMicro, plan.shortfall);
     return {
       billed: charged > 0n,
       charged: fromMicroCredits(charged),
