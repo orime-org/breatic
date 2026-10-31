@@ -39,9 +39,28 @@ function parse(
   nodes: Record<string, string[]>,
   marks: Record<string, string[]> = {},
   publishedAt = "2026-08-14T00:00:00Z",
+  content: Record<string, string> = {},
 ): DocumentSchema {
-  return { publishedAt, nodes, marks };
+  return { publishedAt, nodes, marks, content };
 }
+
+/**
+ * The vocabulary's version as last released, with the release time that went
+ * with it. Whoever changes the vocabulary moves `publishedAt` forward and
+ * writes both here: the publisher writes a version only when its own
+ * `publishedAt` is not earlier than the published one, so a change released
+ * under an old date would be refused wherever a newer one is published.
+ */
+const RELEASED = { version: "073b3fad62d34da9", publishedAt: "2026-10-18T09:00:00Z" };
+
+describe("the released vocabulary", () => {
+  it("is pinned with its release time: a changed vocabulary needs a later publishedAt", () => {
+    expect(
+      { version: DOCUMENT_SCHEMA_VERSION, publishedAt: DOCUMENT_SCHEMA.publishedAt },
+      "The vocabulary changed. Move DOCUMENT_SCHEMA.publishedAt to this release's time and pin both here.",
+    ).toEqual(RELEASED);
+  });
+});
 
 describe("这一份词表本身", () => {
   it("键名就是 meta 文档里那个顶层键", () => {
@@ -132,6 +151,15 @@ describe("版本号从清单算出来", () => {
     const early = documentSchemaVersion(parse(lists, {}, "2026-01-01T00:00:00Z"));
     const late = documentSchemaVersion(parse(lists, {}, "2026-08-14T00:00:00Z"));
     expect(late).toBe(early);
+  });
+
+  it("changes the version when only a node's content rule changes (inner#1619)", () => {
+    // A rule change leaves no attribute behind, and a tab on the old rule
+    // deletes what it cannot hold: the rule has to stop it like a name does.
+    const lists = { docTableCell: ["id"] };
+    const blocks = documentSchemaVersion(parse(lists, {}, undefined, { docTableCell: "blockContainer+" }));
+    const words = documentSchemaVersion(parse(lists, {}, undefined, { docTableCell: "tableContent+" }));
+    expect(blocks).not.toBe(words);
   });
 
   it("名字里带分隔符也分得开", () => {

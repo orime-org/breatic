@@ -152,13 +152,26 @@ function drawsAHeadingNumber(block: Block): boolean {
 }
 
 /**
- * Walks one `blockGroup` and everything nested under it, in reading order.
- * @param group - The group to walk.
+ * Walks one `blockGroup` and everything nested under it, in reading order,
+ * the cells of a table in it included.
+ * @param group - The group to walk, or a table cell.
  * @param parentKey - Identifies the list this group's blocks share.
  * @param walk - The running state, advanced in place.
  */
 function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
   group.forEach((container) => {
+    if (container.type.name !== 'blockContainer') {
+      // A table: a block that is no list item, so it cuts the line it stands
+      // on. Each of its cells is a body of its own, its lists keyed by it.
+      const run = walk.runOf.get(String(container.attrs['id']));
+      walk.runs.delete(`${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`);
+      container.forEach((row) => {
+        row.forEach((cell) => {
+          walkGroup(cell, String(cell.attrs['id']), walk);
+        });
+      });
+      return;
+    }
     const block = describe(container);
     const run = walk.runOf.get(block.id);
     const key = `${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`;

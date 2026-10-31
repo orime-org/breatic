@@ -27,6 +27,7 @@ import {
   dragSelection,
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 /**
  * Presses a key through the editor's key handlers.
@@ -1053,7 +1054,9 @@ describe('an empty line a selection holds', () => {
       { type: 'bulletListItem', content: '' },
       { type: 'numberedListItem', content: '' },
       { type: 'checkListItem', content: '' },
-      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['', 'x'] }] } },
+      tableBlock({ rows: [{ cells: ['', 'x'] }] }),
+      // A stored table from before cells held blocks.
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['', 'y'] }] } },
     ]);
     view.focus();
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -1069,7 +1072,7 @@ describe('an empty line a selection holds', () => {
     );
 
     expect(textblocks.map((type) => type.name).filter((name) => !kinds.has(name))).toEqual([]);
-    expect(view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)).toHaveLength(7);
+    expect(view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)).toHaveLength(8);
     expect(undrawn.map((el) => el.outerHTML)).toEqual([]);
   });
 

@@ -54,6 +54,8 @@ pnpm --filter @breatic/web test:smoke tests/smoke/a.spec.ts:12      # right
 
 **The suite makes its own accounts, studios and Projects (docs §2.1); never register an account for a spec or point a spec at a personal one.**
 
+**Run one smoke run at a time per worktree.** Runs share the slot accounts and their projects (docs §2.1), so a second run started beside the first sees the first's teardown archive projects it still has open: its remaining cases time out on clicks and both teardowns report Spaces they did not make. Check: is another `playwright test` of this worktree still running?
+
 **For hand-driven checks, register accounts through the UI and reuse them.** Multi-member flows (invites, transfers, members joining and leaving) need several: register a batch at once. Leave these accounts in the local dev database; they exist to be reused.
 
 **Remove every Space you create outside the suite.** The suite's own are checked by teardown (docs §3), but a probe or one-off script does not run a spec's `afterEach`: call `deleteSpace` from `tests/helpers/space.ts` itself. Spaces made by hand are at least closed with the tab's close button (`space-tab-close-<id>`), which releases the document; deleting through the drawer also keeps the Project's Space count down. Collab caps writable connections per document (`packages/collab/src/services/connection-registry.ts`) and downgrades the excess to read-only, so leftovers make later cases fail on the read-only notice.

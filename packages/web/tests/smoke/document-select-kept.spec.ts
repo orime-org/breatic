@@ -274,7 +274,7 @@ async function shot(p: Page): Promise<Shot> {
         marks.push('paint');
       }
       const cells = [...own.querySelectorAll('td, th')]
-        .map((cell, at) => (cell.classList.contains('selectedCell') ? at : -1))
+        .map((cell, at) => (cell.classList.contains('selectedCell') || cell.classList.contains('doc-table-in-selection') ? at : -1))
         .filter((at) => at >= 0);
       if (cells.length > 0) marks.push(`cells${cells.join('.')}`);
       if (range !== null) {
@@ -283,6 +283,11 @@ async function shot(p: Page): Promise<Shot> {
         for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
           const text = n.textContent ?? '';
           if (text.trim() === '' || n.parentElement?.closest('style, [contenteditable="false"]') || !range.intersectsNode(n)) continue;
+          // Text the page selection covers but whose `::selection` paints no
+          // colour is not drawn as selected: what the body draws itself there
+          // (a whole table's cells) is read from its own marks.
+          const paint = getComputedStyle(n.parentElement!, '::selection').backgroundColor;
+          if (paint === 'transparent' || paint === 'rgba(0, 0, 0, 0)') continue;
           const from = n === range.startContainer ? range.startOffset : 0;
           const to = n === range.endContainer ? range.endOffset : text.length;
           chars += Math.max(0, to - from);

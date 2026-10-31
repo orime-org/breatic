@@ -68,6 +68,8 @@ export const SHEET: GenerationTemplate = {
   ],
   steps: ["split", "pick"],
   agentNote: "a fixture character sheet drawn over a generated sketch",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
 /** A one-node fixture with one input and no steps, the shape the two migrated templates take. */
@@ -79,6 +81,8 @@ export const SOLO: GenerationTemplate = {
   inputs: [{ key: "reference", type: "image" }],
   steps: [],
   agentNote: "a fixture watercolour of one picture",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
 /** A one-node fixture with no input and one step. */
@@ -90,6 +94,8 @@ export const STEPPED: GenerationTemplate = {
   inputs: [],
   steps: ["upscale"],
   agentNote: "a fixture picture to upscale afterwards",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
 /** A fixture whose anchor runs in the multi_shot mode, with a generated still in its pool. */
@@ -104,6 +110,8 @@ export const SHOTS: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote: "a fixture clip of a generated still",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
 /** Every fixture, as a registry. */

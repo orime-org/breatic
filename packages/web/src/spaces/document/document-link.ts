@@ -277,7 +277,7 @@ export type LinkWritingEditor = Pick<
 /**
  * The meta the vendored autolink plugin looks for before it acts.
  *
- * `Link/helpers/autolink.ts:52-57` leaves a transaction carrying this alone.
+ * `Link/helpers/autolink.ts:49-55` leaves a transaction carrying this alone.
  * Both writes here set it: a link mark is a document change, the text under it
  * often scans as an address, and autolink would otherwise answer a removal by
  * putting the mark straight back with its protocol downgraded.
@@ -288,7 +288,7 @@ const PREVENT_AUTOLINK = 'preventAutolink';
  * Put a link on the given range.
  *
  * The href is checked here rather than left to the mark: BlockNote's own
- * `createLink` adds the mark with no check at all (`StyleManager.ts:197-210`),
+ * `createLink` adds the mark with no check at all (`StyleManager.ts:208-224`),
  * and a `javascript:` href reaching the document reaches every peer.
  * @param editor - The editor to write to.
  * @param range - The span to link, from {@link resolveLinkSelection}.

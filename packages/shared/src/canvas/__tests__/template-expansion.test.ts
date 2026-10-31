@@ -63,6 +63,8 @@ const FIXTURE: GenerationTemplate = {
   ],
   steps: ['split', 'animate'],
   agentNote: 'a fixture flow',
+  goal: 'character',
+  triggers: { asks: ['a fixture'], offerWhen: ['a fixture is wanted'] },
 };
 
 /** The fixture's strings; input names equal their keys so an appended input node names itself. */
@@ -964,6 +966,8 @@ function templateOf(draw: TemplateDraw): GenerationTemplate {
     })),
     steps: Array.from({ length: draw.steps }, (_, i) => `s${String(i)}`),
     agentNote: 'random',
+    goal: 'character',
+    triggers: { asks: ['a fixture'], offerWhen: ['a fixture is wanted'] },
   };
 }
 

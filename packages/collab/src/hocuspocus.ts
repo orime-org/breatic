@@ -69,7 +69,7 @@ import {
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
 import { createLivenessHandler } from "@collab/services/socket-liveness.js";
-import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
 import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
@@ -398,12 +398,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         // already means "do not intercept" — the safe side. So the load
         // continues.
         try {
-          if (publishDocumentSchema(document)) {
-            logger.info(
-              { documentName, reason: "document_schema_published" },
-              "document_schema_published",
-            );
-          }
+          keepDocumentSchemaPublished(
+            document,
+            { force: getCollabConfig().document_schema.force_publish },
+            () => {
+              logger.info(
+                { documentName, reason: "document_schema_published" },
+                "document_schema_published",
+              );
+            },
+          );
         } catch (err) {
           logger.error(
             { err, documentName, reason: "document_schema_publish_failed" },
@@ -412,7 +416,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
         return;
       }
-
     },
 
     // Take this connection's seat in the cross-instance registry for the

@@ -16,19 +16,33 @@
  * from the SURVIVING row's canonical (§0 rule 2), so nothing live points at it.
  */
 
-import { sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { db, storageReclaimQueue, type DbTx } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 
-/** One redundant object to hand to the offline reclaim job. */
+/**
+ * One redundant object to hand to the offline reclaim job.
+ */
 export interface ReclaimEntry {
-  /** The redundant object (the copy this request just stored). */
+  /**
+   * The redundant object (the copy this request just stored).
+   */
   storageKey: string;
-  /** Its content fingerprint — identical to the surviving row's. */
+  /**
+   * Original issued grant key, never inferred from derived suffixes.
+   */
+  originStorageKey?: string;
+  /**
+   * Its content fingerprint — identical to the surviving row's.
+   */
   contentHash: string;
-  /** Owning studio (quota / reconciliation audits). */
+  /**
+   * Owning studio (quota / reconciliation audits).
+   */
   studioId: string;
-  /** The key that WON dedup and stays live (the offline job's safety rail). */
+  /**
+   * The key that WON dedup and stays live (the offline job's safety rail).
+   */
   keptStorageKey: string;
   /**
    * The asset's own source — mirrors `studio_assets.source` (see
@@ -71,9 +85,9 @@ export async function queueForReclaim(entry: ReclaimEntry): Promise<void> {
   if (entry.storageKey === entry.keptStorageKey) return;
   await db.execute(sql`
     INSERT INTO storage_reclaim_queue
-      (storage_key, content_hash, studio_id, kept_storage_key, source)
+      (storage_key, content_hash, studio_id, kept_storage_key, source, origin_storage_key)
     SELECT ${entry.storageKey}, ${entry.contentHash}, ${entry.studioId}::uuid,
-           ${entry.keptStorageKey}, ${entry.source}
+           ${entry.keptStorageKey}, ${entry.source}, ${entry.originStorageKey ?? null}
     WHERE NOT EXISTS (
       SELECT 1 FROM studio_assets
       WHERE storage_key = ${entry.storageKey} AND deleted_at IS NULL
@@ -81,3 +95,29 @@ export async function queueForReclaim(entry: ReclaimEntry): Promise<void> {
     ON CONFLICT (storage_key) DO NOTHING
   `);
 }
+
+/**
+ * Explicit candidate identity and its proven original upload association.
+ */
+export interface ReclaimCandidate { id: string; storageKey: string; keptStorageKey: string; originStorageKey: string | null; studioId: string; contentHash: string; source: string; createdAt: Date; reclaimedAt: Date | null }
+/**
+ * Read bounded candidates by immutable cursor (includes previously reclaimed approvals).
+ * @param limit - Page bound.
+ * @param cursor - Last immutable UUID.
+ * @returns One extra row permits a precise next cursor.
+ */
+export async function listCandidates(limit: number, cursor?: string): Promise<ReclaimCandidate[]> { return db.select().from(storageReclaimQueue).where(cursor ? gt(storageReclaimQueue.id,cursor) : undefined).orderBy(storageReclaimQueue.id).limit(limit); }
+/**
+ * Read only explicitly requested candidates.
+ * @param ids - Exact owner-selected identities.
+ * @param tx - Optional caller transaction.
+ * @returns Existing queue rows.
+ */
+export async function findCandidates(ids: string[], tx?: DbTx): Promise<ReclaimCandidate[]> { if(ids.length===0)return [];return (tx??db).select().from(storageReclaimQueue).where(inArray(storageReclaimQueue.id,ids)); }
+/**
+ * Mark an observation of absence without removing the work or its approval.
+ * @param id - Candidate UUID.
+ * @param at - Observation timestamp.
+ * @param tx - Caller transaction.
+ */
+export async function markReclaimed(id: string, at: Date, tx: DbTx): Promise<void> { await tx.update(storageReclaimQueue).set({reclaimedAt:at}).where(and(eq(storageReclaimQueue.id,id))); }

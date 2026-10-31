@@ -15,6 +15,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -43,10 +44,7 @@ function open(cells: readonly [string, string, string, string]): { editor: Edito
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'above' },
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }] },
-    },
+    tableBlock({ rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }] }),
   ] as never);
   manager.stopCapturing();
   return { editor, manager };
@@ -60,7 +58,7 @@ function open(cells: readonly [string, string, string, string]): { editor: Edito
 function selectCells(editor: Editor, all: boolean): void {
   const cells: number[] = [];
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (node.type.name === 'tableCell') cells.push(pos);
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') cells.push(pos);
     return true;
   });
   const view = editor.prosemirrorView!;
@@ -98,13 +96,42 @@ function types(editor: Editor): string[] {
 function texts(editor: Editor): string[] {
   const out: string[] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name === 'tableCell') out.push(node.textContent);
+    if (node.type.name === 'docTableCell') out.push(node.textContent);
     return true;
   });
   return out;
 }
 
 describe('deleting over selected cells (A15)', () => {
+  for (const type of ['heading', 'bulletListItem', 'numberedListItem', 'checkListItem', 'codeBlock']) {
+    for (const header of [false, true]) {
+      it.each(['Backspace', 'Delete'])(`%s clears an empty ${type} in ${header ? 'header' : 'ordinary'} cells and undo restores its type`, (key) => {
+        const { editor, manager } = open(['', '', '', '']);
+        editor.replaceBlocks(editor.document, [
+          { type: 'paragraph', content: 'above' },
+          tableBlock({ headerRows: header ? 2 : 0, rows: [0, 1].map(() => ({ cells: [0, 1].map(() => ({
+            blocks: [{ type, content: '', props: { level: 2, checked: true, language: 'typescript' } }],
+          })) })) }),
+        ] as never);
+        manager.stopCapturing();
+        const original = editor.prosemirrorState.doc.toJSON();
+        selectCells(editor, true);
+
+        press(editor, key);
+
+        expect(types(editor)).toEqual(['paragraph', 'docTable']);
+        const table = editor.prosemirrorState.doc.firstChild!.child(1);
+        table.forEach((row) => row.forEach((cell) => {
+          expect(cell.childCount).toBe(1);
+          expect(cell.firstChild!.firstChild!.type.name).toBe('paragraph');
+          expect(cell.textContent).toBe('');
+        }));
+        manager.undo();
+        expect(editor.prosemirrorState.doc.toJSON()).toEqual(original);
+      });
+    }
+  }
+
   it.each(['Backspace', 'Delete'])('%s empties the selected cells', (key) => {
     const { editor } = open(['a1', 'b1', 'a2', 'b2']);
     selectCells(editor, false);
@@ -122,7 +149,7 @@ describe('deleting over selected cells (A15)', () => {
     expect(types(editor)).toEqual(['paragraph']);
 
     manager.undo();
-    expect(types(editor)).toEqual(['paragraph', 'table']);
+    expect(types(editor)).toEqual(['paragraph', 'docTable']);
   });
 
   it('keeps a table whose cells are not all selected', () => {
@@ -131,6 +158,6 @@ describe('deleting over selected cells (A15)', () => {
 
     press(editor, 'Delete');
 
-    expect(types(editor)).toEqual(['paragraph', 'table']);
+    expect(types(editor)).toEqual(['paragraph', 'docTable']);
   });
 });

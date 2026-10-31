@@ -9,6 +9,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -25,6 +26,7 @@ import {
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { QUOTE_RUN_ATTRIBUTES } from '@web/spaces/document/document-decorations';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -42,11 +44,17 @@ afterEach(() => {
  */
 function open(blocks: unknown[]): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  // The surface sits inside a container, as the Space page puts it
+  // (`adoptDocumentEditor`); the preview goes on the page body, outside it.
+  const container = document.createElement('div');
   const host = document.createElement('div');
-  document.body.appendChild(host);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, blocks as never);
+  container.appendChild(host);
+  document.body.appendChild(container);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+  });
   return editor;
 }
 
@@ -59,7 +67,7 @@ function open(blocks: unknown[]): Editor {
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'tableCell' && node.textContent === text) at = pos;
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === text) at = pos;
     return at < 0;
   });
   return at;
@@ -459,20 +467,16 @@ describe('blockPreviewContent', () => {
 
   it('leaves out the columns its frame has scrolled wholly out of view on the left, nothing to the left of the preview', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }, 'c2'] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: [{ type: 'docTableCell', content: 'ab', props: { colspan: 2 } }, 'c2'] }],
+      }),
     ]);
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     // a1 is scrolled off whole; b1 is cut by the frame's left edge and is drawn
     // whole; c1 is in view.
     layOut(editor, { a1: [-30, 90], b1: [90, 230], c1: [230, 380], ab: [-30, 230], c2: [230, 380] });
-    const row = view.dom.querySelector('.bn-block-outer')!;
+    const row = view.dom.querySelector('[data-node-type="docTable"]')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
     // Taken out, not hidden by a style: WebKit draws a column set to
     // `visibility: collapse`. A cell merged across a column left out loses it.
@@ -484,18 +488,14 @@ describe('blockPreviewContent', () => {
 
   it('finds a column scrolled off whose edge only a later row draws, under a cell merged across it in the first', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }, 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: [{ type: 'docTableCell', content: 'ab', props: { colspan: 2 } }, 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
+      }),
     ]);
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { ab: [-30, 230], c1: [230, 380], a2: [-30, 90], b2: [90, 230], c2: [230, 380] });
-    const row = view.dom.querySelector('.bn-block-outer')!;
+    const row = view.dom.querySelector('[data-node-type="docTable"]')!;
     const contentPlaced = blockPreviewContent(view, [row.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['ab', 'c1'], ['b2', 'c2']]);
@@ -503,32 +503,28 @@ describe('blockPreviewContent', () => {
   });
 
   it('holds a whole table at the widths and heights the body draws, whatever width the library wrote on it', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] } }]);
+    const editor = open([tableBlock({ rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] })]);
     const view = editor.prosemirrorView!;
     layOut(editor, { a1: [0, 100], b1: [100, 220], c1: [220, 360], a2: [0, 100], b2: [100, 220], c2: [220, 360] }, [30, 50]);
     // prosemirror-tables writes the whole table's width on it
     // (`updateColumnsOnResize`), which the copy would carry past the columns
     // it keeps.
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
-    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('[data-node-type="docTable"]')!.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     expect(heldTable(content)).toEqual({ cols: ['100px', '120px', '140px'], table: ['360px', '0px', 'fixed'], rows: ['30px', '50px'] });
   });
 
   it('holds every row at the height the body draws it, one the columns taken out leave empty included', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: ['a1', { type: 'tableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: ['a1', { type: 'docTableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
+      }),
     ]);
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { a1: [-30, 90], a2: [-30, 90], merged: [90, 230] }, [30, 90]);
-    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('[data-node-type="docTable"]')!.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     // The merged cell spans an empty row, at its height, as in the body.
     expect(cellTexts(content)).toEqual([['merged'], []]);
@@ -587,20 +583,20 @@ describe('tableLinePreviewContent', () => {
   ];
 
   it('keeps the whole dragged row, inside the table block and its colgroup', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
+    const editor = open([tableBlock({ columnWidths: [100, 200, 300], rows })]);
     const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row')!;
     const content = contentPlaced.content;
-    const tableBlock = '[data-content-type="table"]';
-    expect(content.querySelector(tableBlock) ?? content.matches(tableBlock)).toBeTruthy();
+    const tableElement = '[data-node-type="docTable"]';
+    expect(content.querySelector(tableElement) ?? content.matches(tableElement)).toBeTruthy();
     expect(cellTexts(content)).toEqual([['a2', 'b2', 'c2']]);
     expect([...content.querySelectorAll<HTMLElement>('colgroup col')].map((col) => col.style.width)).toEqual(['100px', '200px', '300px']);
   });
 
   it('leaves a quoted table\'s rule off a column, which is not the block it stands beside', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
-    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
-    QUOTE_RUN_ATTRIBUTES.forEach((name) => tableBlock.setAttribute(name, ''));
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
+    QUOTE_RUN_ATTRIBUTES.forEach((name) => tableElement.setAttribute(name, ''));
     const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!.content;
     expect(QUOTE_RUN_ATTRIBUTES.filter((name) => column.hasAttribute(name))).toEqual([]);
     const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!.content;
@@ -608,7 +604,7 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('keeps only the dragged column, and only its col', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
+    const editor = open([tableBlock({ columnWidths: [100, 200, 300], rows })]);
     const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c1'), 'column')!;
     const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['c1'], ['c2'], ['c3']]);
@@ -618,7 +614,7 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('draws a line at the column widths and row heights the body draws, the table at their sum', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
     // Measured on the cells: WebKit gives a `col` no box (its rect is all 0).
     view.dom.querySelectorAll('col').forEach((col) => {
@@ -631,9 +627,9 @@ describe('tableLinePreviewContent', () => {
     );
     // The block's own box carries what its quote's indent adds; the
     // `.bn-block` it sits in does not.
-    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
-    tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
-    tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
+    tableElement.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
+    tableElement.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
     const rowPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     const row = rowPlaced.content;
     const columnPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
@@ -660,13 +656,9 @@ describe('tableLinePreviewContent', () => {
 
   it('keeps a column\'s row a merged cell covers, at its height, under the merged cell', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: ['a1', { type: 'tableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: ['a1', { type: 'docTableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
+      }),
     ]);
     const view = editor.prosemirrorView!;
     layOut(editor, { a1: [0, 100], a2: [0, 100], merged: [100, 220] }, [30, 90]);
@@ -677,7 +669,7 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('holds a table row at the widths of the columns in view, the table at their sum', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { a1: [-30, 90], b1: [90, 220], c1: [220, 360], a2: [-30, 90], b2: [90, 220], c2: [220, 360], a3: [-30, 90], b3: [90, 220], c3: [220, 360] });
@@ -689,10 +681,10 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('lets a line\'s styles reach it inside the block its table sits in', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
     const sheet = document.createElement('style');
-    sheet.textContent = '.bn-block-outer > .bn-block > [data-content-type="table"] { letter-spacing: 3px; }';
+    sheet.textContent = '.bn-block-group > [data-node-type="docTable"] { letter-spacing: 3px; }';
     document.head.append(sheet);
     try {
       const contentPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
@@ -706,7 +698,7 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('holds a row in the frame its table scrolls in, and a column as its table alone', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
     const rowPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     const row = rowPlaced.content;
@@ -724,16 +716,12 @@ describe('tableLinePreviewContent', () => {
 
   it('finds the column by the table map when a merged cell shifts the cells', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [
-            { cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }, 'c1'] },
-            { cells: ['a2', 'b2', 'c2'] },
-          ],
-        },
-      },
+      tableBlock({
+        rows: [
+          { cells: [{ type: 'docTableCell', content: 'ab', props: { colspan: 2 } }, 'c1'] },
+          { cells: ['a2', 'b2', 'c2'] },
+        ],
+      }),
     ]);
     const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c2'), 'column')!;
     const content = contentPlaced.content;
@@ -744,10 +732,7 @@ describe('tableLinePreviewContent', () => {
 describe('tableRowsPreviewContent', () => {
   it('holds the rows of a cell selection at the widths and heights the body draws, its block at the body\'s width', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }] },
-      },
+      tableBlock({ rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }] }),
     ]);
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
@@ -759,9 +744,9 @@ describe('tableRowsPreviewContent', () => {
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
     // The block's own box carries what its quote's indent adds; the
     // `.bn-block` it sits in does not.
-    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
-    tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
-    tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
+    tableElement.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
+    tableElement.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
     const contentPlaced = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;
     const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['b2', 'c2'], ['b3', 'c3']]);
@@ -780,7 +765,7 @@ describe('a table line or cell selection in its frame', () => {
    */
   function scrolledTable(firstLeft: number): Editor {
     const editor = open([
-      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] } },
+      tableBlock({ rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] }),
     ]);
     scrollFrame(editor, 20);
     const a = firstLeft + 120;

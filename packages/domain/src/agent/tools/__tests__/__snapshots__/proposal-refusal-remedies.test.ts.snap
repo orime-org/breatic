@@ -234,7 +234,7 @@ exports[`every refusal states its fault, its rule and its facts > template-no-pr
 
 exports[`every refusal states its fault, its rule and its facts > template-resource-material (0): is met and says what is wrong 1`] = `""Pic" is template "fixture-sheet"'s "palette", which lands holding the template's own file, so it takes no material."`;
 
-exports[`every refusal states its fault, its rule and its facts > template-unknown (0): is met and says what is wrong 1`] = `"No template "no-such-template". Templates: storyboard-grid-25, costume-sheet."`;
+exports[`every refusal states its fault, its rule and its facts > template-unknown (0): is met and says what is wrong 1`] = `"No template "no-such-template". Templates: costume-sheet, character-bible, expression-sheet, character-design-from-text, single-view-refs-scene, identity-locked-sequence, character-showcase-orbit, storyboard-grid-25."`;
 
 exports[`every refusal states its fault, its rule and its facts > template-unknown (1): is met and says what is wrong 1`] = `"No template "no-such-template". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots."`;
 

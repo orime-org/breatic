@@ -110,6 +110,9 @@ function sameIds(a: Set<BlockTypeId>, b: Set<BlockTypeId>): boolean {
   return a.size === b.size && [...a].every((id) => b.has(id));
 }
 
+/** Every row of the block type menu. */
+const ALL_ROWS: Set<BlockTypeId> = new Set(BLOCK_TYPE_ITEMS.map((item) => item.id));
+
 /** What every slot receives from the bar. */
 interface SlotProps {
   editor: SlotEditor;
@@ -286,24 +289,20 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     (e) => tickedOver(e.prosemirrorState.doc, e.prosemirrorState.selection),
     sameIds,
   );
-  // Whether any row can act at all. On the flat model every block can become
-  // any of the nine, so the rows are live together; what greys them is a
-  // selection that covers no text block — a stand-in for content this build
-  // cannot read is the reachable case.
+  // Which rows can act. On the flat model every block with words can become
+  // any of the nine, so those rows are live together; what greys a row is a
+  // selection holding no block it acts on — a stand-in for content this build
+  // cannot read greys them all, tables taken whole all but the quote.
   //
   // Asked on every change the menu is down for, and on none of the ones it is
   // shut for. The press reads the state it is given at the moment of the
   // press, so an answer from when the menu opened could draw a row greyed
   // while the press behind it goes through.
   const open = openId === id;
-  const reachable = useEditorSnapshot(editor, (e) =>
-    open ? canRunBlockType(e) : true,
-  );
-  // A cell's line is not a block of its own, so none of the rows reaches it
-  // and the slot steps back as a whole (inner#1126 A9).
-  const inCells = useEditorSnapshot(
+  const reachable = useEditorSnapshot(
     editor,
-    (e) => cellsUnder(e.prosemirrorState.doc, e.prosemirrorState.selection).length > 0,
+    (e) => (open ? new Set(BLOCK_TYPE_ITEMS.filter((item) => canRunBlockType(e, item.id)).map((item) => item.id)) : ALL_ROWS),
+    sameIds,
   );
   const CurrentIcon = blockTypeItem(current).Icon;
 
@@ -312,7 +311,6 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       id={id}
       label={t('spaces.document.commands.blockType')}
       face={<CurrentIcon className='h-4 w-4' />}
-      appliesHere={!inCells}
       openerProps={{ 'data-block-type': current }}
       contentClassName={ROWS}
       container={container}
@@ -332,8 +330,8 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               // mark here, and it says something a single-valued fill cannot:
               // an ordered heading ticks Ordered AND its heading level at
               // once (A5), while `item.id === current` names one row.
-              aria-disabled={reachable ? undefined : 'true'}
-              className={cn(!reachable && UNAVAILABLE)}
+              aria-disabled={reachable.has(item.id) ? undefined : 'true'}
+              className={cn(!reachable.has(item.id) && UNAVAILABLE)}
               onSelect={() => {
                 runBlockType(editor, item.id);
               }}

@@ -24,6 +24,8 @@ import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { DOC_TABLE, tableAround } from '@web/spaces/document/document-table-nodes';
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /** The table block's content node. */
 const TABLE = 'table';
@@ -237,12 +239,14 @@ export function blocksUnderFor(
 /**
  * The walk both readings share.
  *
- * A table is one block: the walk never goes into it, so the lines in its cells
- * are never blocks of their own. Block types cannot be written into a cell,
- * and a cell's line handed to `updateBlockTr` throws.
+ * A stored table (`table`) is one block: its cells hold a line each, never a
+ * block of its own. A table whose cells hold blocks is one block where the
+ * range takes it in whole, and its cells' blocks are blocks where the range
+ * goes into it. A selection over cells walks each cell on its own
+ * (`selection.ranges`), so cells between the selected ones are not reached.
  * @param doc - The document.
  * @param selection - The selection over it.
- * @param withWordless - Whether dividers and tables count.
+ * @param withWordless - Whether dividers and whole tables count.
  * @returns The blocks, in document order.
  */
 function blocksOf(
@@ -251,14 +255,21 @@ function blocksOf(
   withWordless: boolean,
 ): BlockUnder[] {
   const found: BlockUnder[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    const wordless = node.type.name === DIVIDER || node.type.name === TABLE;
-    if (node.isTextblock || (withWordless && wordless)) {
-      found.push({ node, pos });
-      return false;
-    }
-    return node.type.name !== TABLE;
-  });
+  // A selection taking a table whole acts on the whole table (inner#1619 T14).
+  const held = heldRange(selection);
+  const ranges = held === null ? selection.ranges.map(({ $from, $to }) => ({ from: $from.pos, to: $to.pos })) : [held];
+  for (const { from, to } of ranges) {
+    doc.nodesBetween(from, to, (node, pos) => {
+      const whole =
+        node.type.name === TABLE ||
+        (node.type.name === DOC_TABLE && from <= pos && pos + node.nodeSize <= to);
+      if (node.isTextblock || (withWordless && (whole || node.type.name === DIVIDER))) {
+        found.push({ node, pos });
+        return false;
+      }
+      return !whole;
+    });
+  }
   return found;
 }
 
@@ -300,13 +311,15 @@ export function rowOf(content: PMNode): BlockTypeId | undefined {
  * The end the reader anchored on, so the face answers "what am I in" rather
  * than going blank over a selection spanning two types (user 2026-08-27). An
  * anchor that resolves outside any block — a select-all, a node selection —
- * falls to the first block the selection covers.
+ * falls to the first block the selection covers, and so does one in a table
+ * the selection takes whole, whose cells' blocks no row acts on.
  * @param doc - The document.
  * @param selection - The selection over it.
  * @returns That row, `paragraph` when the selection covers no block at all.
  */
 export function faceOf(doc: PMNode, selection: Selection): BlockTypeId {
-  const anchored = contentAt(doc, selection.anchor);
+  const inHeld = heldRange(selection) !== null && tableAround(doc.resolve(selection.anchor)) !== null;
+  const anchored = inHeld ? null : contentAt(doc, selection.anchor);
   const content = anchored ?? blocksUnder(doc, selection)[0]?.node;
   if (content === undefined) {
     return 'paragraph';
