@@ -8,6 +8,7 @@
  * against the rules of §5.4.3.
  */
 
+import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
@@ -37,7 +38,7 @@ function ownBlocks(pieces: readonly Piece[]): unknown[] {
     p === 'P'
       ? { type: 'image', props: { url: NEW } }
       : p === 'T'
-        ? { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell']] }] } }
+        ? tableBlock({ rows: [{ cells: ['cell'] }] })
         : { type: 'paragraph', content: p },
   );
 }

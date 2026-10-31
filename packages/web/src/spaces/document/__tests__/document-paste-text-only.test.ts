@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Content holding media pasted into a block that takes only text, a table
- * cell or a code block (inner#1351 + inner#1390 design §5.4.3, A7): the words
- * go in first, the media beside the target block afterwards, found again by
- * its id; a code block takes plain text raw.
+ * Content holding media pasted into cells or code (inner#1351 + inner#1390
+ * design §5.4.3, §5.4.7): a cell holds ordinary blocks; a code block takes
+ * words raw and keeps media beside it.
  */
 
+import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CellSelection } from '@tiptap/pm/tables';
 
@@ -20,7 +20,7 @@ afterEach(unmountAll);
 type Block = { id: string; type: string; props: Record<string, unknown>; content?: unknown; children?: Block[] };
 
 const PIC = `${OURS}p.png`;
-const TABLE = (words: string): unknown => ({ type: 'table', content: { type: 'tableContent', rows: [{ cells: [[words], ['y']] }] } });
+const TABLE = (words: string): unknown => tableBlock({ rows: [{ cells: [words, 'y'] }] });
 
 /**
  * Opens a body that also takes canvas pastes.
@@ -43,13 +43,30 @@ function lines(editor: Editor): string[] {
       const pending = block.props['uploadId'] !== '' && block.props['uploadId'] !== undefined;
       return `image(${pending ? 'pending' : String(block.props['url'])})${quoted}`;
     }
-    if (block.type === 'table') return `table${quoted}`;
+    if (block.type === 'table' || block.type === 'docTable') return `table${quoted}`;
     const words = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
     return `${block.type}${quoted}:${words}`;
   };
   const walk = (blocks: Block[], depth: number): string[] =>
-    blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
+    blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.type === 'docTable' ? [] : block.children ?? [], depth + 1)]);
   return walk(editor.document, 0);
+}
+
+/**
+ * The ordinary blocks in a new table's cell, with nested blocks retained.
+ * @param editor - The editor.
+ * @param index - The cell in row order.
+ * @returns Its block labels.
+ */
+function cellLines(editor: Editor, index = 0): string[] {
+  const table = (editor.document as Block[]).find((block) => block.type === 'docTable')!;
+  const cells = table.children!.flatMap((row) => row.children!);
+  const walk = (blocks: readonly Block[], depth: number): string[] => blocks.flatMap((block) => {
+    const text = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((part) => part.text ?? '').join('') : '';
+    const label = block.type === 'image' ? `image(${block.props['uploadId'] ? 'pending' : String(block.props['url'])})` : `${block.type}:${text}`;
+    return [`${'  '.repeat(depth)}${label}`, ...walk(block.children ?? [], depth + 1)];
+  });
+  return walk(cells[index]!.children ?? [], 0);
 }
 
 /**
@@ -81,14 +98,16 @@ describe('content with words and a picture, the caret in a table cell', () => {
         pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'w' });
       },
     ],
-  ])('from %s: the words go into the cell, the picture under the table, the caret after it', async (_name, put) => {
+  ])('from %s keeps the words, picture and following caret in the cell', async (_name, put) => {
     const { editor, manager } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    await settled();
     caretIn(editor, 0);
     put(editor);
     await settled();
     expect(firstCell(editor, 0)).toBe('xw');
-    expect(lines(editor)).toEqual(['table', `image(${PIC})`, 'paragraph:tail']);
-    expect(caret(editor)).toBe('tail@0');
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(cellLines(editor)).toEqual(['paragraph:xw', `image(${PIC})`, 'paragraph:']);
+    expect(caret(editor)).toBe('@0');
     manager.undo();
     expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
     expect(firstCell(editor, 0)).toBe('x');
@@ -100,62 +119,72 @@ describe('a picture alone, the caret in a table cell', () => {
   it.each([
     ['web content', (editor: Editor): void => paste(editor, `<img src="${PIC}">`, '')],
     ['a canvas node', (editor: Editor): void => pasteFormats(editor, { 'text/plain': canvasPicture() })],
-  ])('from %s lands under the table, the cell as it was', async (_name, put) => {
+  ])('from %s lands after the cell text within the same cell', async (_name, put) => {
     const { editor } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    await settled();
     caretIn(editor, 0);
     put(editor);
     await settled();
     expect(firstCell(editor, 0)).toBe('x');
-    expect(lines(editor).slice(0, 1)).toEqual(['table']);
-    expect(lines(editor)[1]).toMatch(/^image\(/);
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(cellLines(editor)[0]).toBe('paragraph:x');
+    expect(cellLines(editor)[1]).toMatch(/^image\(/);
+    expect(cellLines(editor)[2]).toBe('paragraph:');
   });
 });
 
-describe('the table the media land beside', () => {
-  it('holding children: the media land after them', async () => {
+describe('the table whose cells take the media', () => {
+  it('keeps nested blocks before media inserted at the end of their parent line', async () => {
     const { editor } = open([
-      { ...(TABLE('x') as object), children: [{ type: 'paragraph', content: 'kid' }] },
+      tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'paragraph', content: 'x', children: [{ type: 'paragraph', content: 'kid' }] }] }, 'y'] }] }),
       { type: 'paragraph', content: 'tail' },
     ]);
+    await settled();
     caretIn(editor, 0);
     paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
     await settled();
-    expect(lines(editor)).toEqual(['table', '  paragraph:kid', `image(${PIC})`, 'paragraph:tail']);
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(cellLines(editor)).toEqual(['paragraph:xw', '  paragraph:kid', `image(${PIC})`, 'paragraph:']);
   });
 
-  it('quoted: the media land quoted', async () => {
+  it('retains the table quote while the media stay in its cell', async () => {
     const { editor } = open([{ ...(TABLE('x') as object), props: { quoted: true } }, { type: 'paragraph', content: 'tail' }]);
+    await settled();
     caretIn(editor, 0);
     paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
     await settled();
-    expect(lines(editor)).toEqual(['table[q]', `image(${PIC})[q]`, 'paragraph:tail']);
+    expect(lines(editor)).toEqual(['table[q]', 'paragraph:tail']);
+    expect(cellLines(editor)).toEqual(['paragraph:xw', `image(${PIC})`, 'paragraph:']);
   });
 
-  it('with several cells selected: the media land under it, none lost', async () => {
+  it('fills each selected cell with its own media blocks', async () => {
     const { editor } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    await settled();
     const view = editor.prosemirrorView;
     const cells: number[] = [];
     view.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'tableCell') cells.push(pos);
+      if (node.type.name === 'docTableCell') cells.push(pos);
       return true;
     });
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0], cells[1])));
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
     view.focus();
     paste(editor, `<p>w</p><img src="${PIC}"><img src="${OURS}q.png">`, 'w');
     await settled();
-    expect(lines(editor).filter((l) => l.startsWith('image'))).toEqual([`image(${PIC})`, `image(${OURS}q.png)`]);
-    expect(lines(editor)[0]).toBe('table');
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(cellLines(editor, 0)).toEqual(['paragraph:w', `image(${PIC})`, `image(${OURS}q.png)`, 'paragraph:']);
+    expect(cellLines(editor, 1)).toEqual(['paragraph:w', `image(${PIC})`, `image(${OURS}q.png)`]);
   });
 
-  it('across two tables: the media land beside the table the caret is left in', async () => {
-    const { editor } = open([TABLE('ab'), TABLE('cd'), { type: 'paragraph', content: 'tail' }]);
+  it('replaces both whole tables when a selection runs from one into the other', async () => {
+    const { editor, manager } = open([TABLE('ab'), TABLE('cd'), { type: 'paragraph', content: 'tail' }]);
+    await settled();
     select(editor, positionOf(editor, 'ab', 1), positionOf(editor, 'cd', 1));
+    const before = editor.prosemirrorView.state.doc;
     paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
     await settled();
-    const shown = lines(editor);
-    const at = shown.indexOf(`image(${PIC})`);
-    expect(shown.filter((l) => l.startsWith('image'))).toEqual([`image(${PIC})`]);
-    expect(shown[at - 1]).toBe('table');
+    expect(lines(editor)).toEqual(['paragraph:w', `image(${PIC})`, 'paragraph:tail']);
+    manager.undo();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before.toJSON());
   });
 });
 
@@ -245,13 +274,16 @@ describe('words selected in a table cell, a picture alone pasted', () => {
   it.each([
     ['web content', (editor: Editor): void => paste(editor, `<img src="${PIC}">`, '')],
     ['a canvas node', (editor: Editor): void => pasteFormats(editor, { 'text/plain': canvasPicture() })],
-  ])('from %s: the words go, the picture lands under the table', async (_name, put) => {
+  ])('from %s replaces only the selected words inside the cell', async (_name, put) => {
     const { editor } = open([TABLE('xyz'), { type: 'paragraph', content: 'tail' }]);
+    await settled();
     select(editor, positionOf(editor, 'xyz', 1), positionOf(editor, 'xyz', 2));
     put(editor);
     await settled();
     expect(firstCell(editor, 0)).toBe('xz');
-    expect(lines(editor)[0]).toBe('table');
-    expect(lines(editor)[1]).toMatch(/^image\(/);
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(cellLines(editor)[0]).toBe('paragraph:x');
+    expect(cellLines(editor)[1]).toMatch(/^image\(/);
+    expect(cellLines(editor)[2]).toBe('paragraph:z');
   });
 });

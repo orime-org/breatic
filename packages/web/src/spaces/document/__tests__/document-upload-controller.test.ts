@@ -407,11 +407,11 @@ describe('undo and redo around the upload (A6)', () => {
 });
 
 describe('write access', () => {
-  it('without write access the result waits, and is written when access comes back', async () => {
+  it.each(['denied', 'unknown'] as const)('with %s access the result waits until access is granted', async (access) => {
     const world = open();
     pastePending(world, 'u1');
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    world.access.value = 'denied';
+    world.access.value = access;
     await finish(world, 'u1');
     expectEverywhere(world, [PENDING('u1')]);
     expect(world.controller.entry('u1')?.phase).toBe('done');
@@ -425,6 +425,23 @@ describe('write access', () => {
 });
 
 describe('attaching a body', () => {
+  it('keeps a finished result pending when a body attaches before authentication settles', async () => {
+    const world = open(false);
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await finish(world, 'u1');
+    world.access.value = 'unknown';
+    cleanups.push(world.controller.attach(world.body));
+    await settle();
+    expectEverywhere(world, [PENDING('u1')]);
+    expect(world.controller.entry('u1')?.phase).toBe('done');
+
+    world.access.value = 'granted';
+    world.access.listeners.forEach((listener) => { listener(); });
+    await settle();
+    expectEverywhere(world, [WRITTEN()]);
+  });
+
   it('a body attached after the upload finished is scanned and written', async () => {
     const world = open(false);
     pastePending(world, 'u1');

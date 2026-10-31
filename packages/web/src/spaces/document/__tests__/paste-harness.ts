@@ -14,6 +14,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { tableBlock } from './table-fixtures';
 
 /** The editor these cases open. */
 export type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -22,10 +23,10 @@ export type Editor = ReturnType<typeof buildDocumentEditor>;
 export const OURS = 'https://cdn.example/';
 
 /** A one-cell table. */
-export const TABLE = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } };
+export const TABLE = tableBlock({ rows: [{ cells: ['cell '] }] });
 
 /** A one-row table of two cells. */
-export const TWO_CELLS = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } };
+export const TWO_CELLS = tableBlock({ rows: [{ cells: ['c1', 'c2'] }] });
 
 /** Where the body hands pasted media. */
 export interface Sink {
@@ -200,7 +201,7 @@ export function shape(editor: Editor): string[] {
     if (b.type === 'image' || b.type === 'video' || b.type === 'audio') {
       return `${b.type}[${b.props['uploadId'] !== '' ? 'pending' : String(b.props['url'])}|${String(b.props['caption'])}]`;
     }
-    if (b.type === 'table') return 'table';
+    if (b.type === 'table' || b.type === 'docTable') return 'table';
     return `${b.type}:${Array.isArray(b.content) ? (b.content as { text?: string }[]).map((c) => c.text ?? '').join('') : ''}`;
   });
 }
@@ -227,8 +228,8 @@ export function blockOrder(editor: Editor): string[] {
  * @returns Its text.
  */
 export function firstCell(editor: Editor, index: number): string {
-  const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[index]!;
-  return table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '').join('');
+  const table = editor.prosemirrorView.state.doc.firstChild!.child(index);
+  return table.firstChild!.firstChild!.textContent;
 }
 
 /**

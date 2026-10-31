@@ -12,6 +12,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { OURS, positionOf, type Editor } from './paste-harness';
+import { tableBlock } from './table-fixtures';
 
 export type Block = { type: string; props: Record<string, unknown>; content?: unknown; children?: Block[] };
 
@@ -44,6 +45,13 @@ function label(block: Block): string {
   if (block.type === 'image') {
     const url = String(block.props['url'] ?? '');
     own = `img(${url === '' ? 'new' : (url.split('/').pop() ?? '').replace(/\.png$/, '')})`;
+  } else if (block.type === 'docTable') {
+    const cellLabel = (cell: Block): string => {
+      const blocks = cell.children ?? [];
+      return blocks.length === 1 && blocks[0]!.type === 'paragraph' ? words(blocks[0]!.content) : blocks.map(label).join('|');
+    };
+    own = `T(${(block.children ?? []).map((row) => (row.children ?? []).map(cellLabel).join('/')).join(';')})`;
+    return `${quote}${own}`;
   } else if (block.type === 'table') {
     const rows = (block.content as { rows: { cells: unknown[] }[] }).rows;
     own = `T(${rows.map((row) => row.cells.map((cell) => words(Array.isArray(cell) ? cell : (cell as { content?: unknown }).content)).join('/')).join(';')})`;
@@ -67,7 +75,7 @@ export function where(editor: Editor): string {
   const $at = selection.$head;
   const path: number[] = [];
   for (let depth = 1; depth <= $at.depth; depth += 1) {
-    if ($at.node(depth).type.name === 'blockContainer') path.push($at.index(depth - 1));
+    if (['blockContainer', 'docTable', 'docTableRow', 'docTableCell', 'docTableHeader'].includes($at.node(depth).type.name)) path.push($at.index(depth - 1));
   }
   if (selection instanceof NodeSelection) return `node@${path.join('.')}`;
   if (selection.constructor.name === 'GapCursor') return 'gap';
@@ -133,7 +141,7 @@ export interface Target {
 const LEAD = { type: 'paragraph', content: 'lead' };
 const TAIL = { type: 'paragraph', content: 'tail' };
 const LINE = { type: 'paragraph', content: 'abcd' };
-const TWO_CELLS = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } };
+const TWO_CELLS = tableBlock({ rows: [{ cells: ['c1', 'c2'] }] });
 
 /**
  * A caret target at an offset into some words.
@@ -185,7 +193,7 @@ export const TARGETS: Record<string, Target> = {
     blocks: [LEAD, TWO_CELLS, TAIL],
     select: (editor) => {
       const view = editor.prosemirrorView;
-      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, nodeAt(editor, 'tableCell', 0), nodeAt(editor, 'tableCell', 1))));
+      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, nodeAt(editor, 'docTableCell', 0), nodeAt(editor, 'docTableCell', 1))));
       view.focus();
     },
   },
@@ -323,18 +331,18 @@ export const EXPECTED: Record<string, Record<string, [string, string]>> = {
     TP: ['p:lead|p:ab|T(cell)|img(new)|p:cd[p:kid]|p:tail', '@4:0'],
   },
   cell: {
-    WPV: ['p:lead|T(c1w\nv/c2)|img(new)|p:tail', '@3:0'],
-    PV: ['p:lead|T(c1v/c2)|img(new)|p:tail', '@3:0'],
-    WP: ['p:lead|T(c1w/c2)|img(new)|p:tail', '@3:0'],
-    P: ['p:lead|T(c1/c2)|img(new)|p:tail', '@3:0'],
-    TP: ['p:lead|T(cell/c2)|img(new)|p:tail', '@3:0'],
+    WPV: ['p:lead|T(p:c1w|img(new)|p:v/c2)|p:tail', '@1.0.0.2:1'],
+    PV: ['p:lead|T(p:c1|img(new)|p:v/c2)|p:tail', '@1.0.0.2:1'],
+    WP: ['p:lead|T(p:c1w|img(new)|p:/c2)|p:tail', '@1.0.0.2:0'],
+    P: ['p:lead|T(p:c1|img(new)|p:/c2)|p:tail', '@1.0.0.2:0'],
+    TP: ['p:lead|T(c1/c2)|p:tail', '@1.0.0.0:2'],
   },
   cellSel: {
-    WPV: ['p:lead|T(w\nv/w\nv)|img(new)|p:tail', '@3:0'],
-    PV: ['p:lead|T(v/v)|img(new)|p:tail', '@3:0'],
-    WP: ['p:lead|T(w/w)|img(new)|p:tail', '@3:0'],
-    P: ['p:lead|T(c1/c2)|img(new)|p:tail', '@3:0'],
-    TP: ['p:lead|T(cell/cell)|img(new)|p:tail', '@3:0'],
+    WPV: ['p:lead|T(p:w|img(new)|p:v/p:w|img(new)|p:v)|p:tail', '@1.0.0.2:1'],
+    PV: ['p:lead|T(img(new)|p:v/img(new)|p:v)|p:tail', '@1.0.0.1:1'],
+    WP: ['p:lead|T(p:w|img(new)|p:/p:w|img(new))|p:tail', '@1.0.0.2:0'],
+    P: ['p:lead|T(img(new)|p:/img(new))|p:tail', '@1.0.0.1:0'],
+    TP: ['p:lead|T(c1/c2)|p:tail', 'cells'],
   },
   code: {
     WPV: ['p:lead|code:xw\nvy|img(new)|p:tail', '@3:0'],
@@ -376,12 +384,6 @@ EXPECTED['inlineSel'] = EXPECTED['mid']!;
 
 /** Blocks that take words: canvas content and files go beside them whole (A7). */
 export const BESIDE_TEXT_ONLY: Record<string, Record<string, [string, string]>> = {
-  cell: {
-    WPV: ['p:lead|T(c1/c2)|p:w|img(new)|p:v|p:tail', '@4:1'],
-    PV: ['p:lead|T(c1/c2)|img(new)|p:v|p:tail', '@3:1'],
-    WP: ['p:lead|T(c1/c2)|p:w|img(new)|p:tail', '@4:0'],
-    P: ['p:lead|T(c1/c2)|img(new)|p:tail', '@3:0'],
-  },
   code: {
     WPV: ['p:lead|code:xy|p:w|img(new)|p:v|p:tail', '@4:1'],
     PV: ['p:lead|code:xy|img(new)|p:v|p:tail', '@3:1'],
@@ -395,7 +397,6 @@ export const BESIDE_TEXT_ONLY: Record<string, Record<string, [string, string]>> 
     P: ['p:lead|img(new)|code:|p:tail', '@2:0'],
   },
 };
-BESIDE_TEXT_ONLY['cellSel'] = BESIDE_TEXT_ONLY['cell']!;
 
 
 /**

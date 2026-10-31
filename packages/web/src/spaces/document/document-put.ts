@@ -274,7 +274,7 @@ function finishCaret(tr: Transaction, nodes: readonly PMNode[], start: number): 
     if (next?.type.name === 'blockContainer' && next.firstChild?.isTextblock === true) {
       tr.setSelection(TextSelection.create(tr.doc, end + 2));
     } else {
-      tr.insert(end, blockToNode({ id: newId(), type: 'paragraph' } as never, tr.doc.type.schema));
+      tr.insert(end, blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: last.attrs[QUOTED] === true } } as never, tr.doc.type.schema));
       tr.setSelection(TextSelection.create(tr.doc, end + 2));
     }
     return;
@@ -556,14 +556,14 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
   const words = !holdsBlocks(content.blocks);
-  if (selection instanceof NodeSelection) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
+  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
   if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);
   const replaced = !selection.empty || opened;
   if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
   const $caret = view.state.selection.$from;
   const target = textOnlyAt($caret);
   if (target !== null) return putInTextOnly(editor, content, target, wordsIntoTarget);
-  if (!$caret.parent.isTextblock) return putInGap(view, content.blocks, $caret.pos);
+  if (!$caret.parent.isTextblock) return putInGap(view, content.blocks, $caret.parent.type.name === 'blockContainer' ? $caret.before() : $caret.pos);
   return putInLine(view, content.blocks, $caret, replaced);
 }
 

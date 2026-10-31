@@ -384,3 +384,61 @@ describe('plain text pasted into a code block inside a docTable cell (A7)', () =
     expect(sink.onLeftOut).not.toHaveBeenCalled();
   });
 });
+
+describe('cell paste over a short table', () => {
+  it('evens the target before filling cells and restores the short row in one undo', async () => {
+    const { editor, manager } = await openReady([
+      tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['target'] }] }),
+    ]);
+    expect(gridsOf(editor)).toEqual([[['a', 'b'], ['target']]]);
+    select(editor, positionOf(editor, 'target', 3));
+    const before = editor.prosemirrorView.state.doc;
+
+    paste(editor, '<table><tr><td>only</td></tr></table>', 'only');
+    await settled();
+
+    expect(gridsOf(editor)).toEqual([[['a', 'b'], ['only', '']]]);
+    expect(manager.undoStack).toHaveLength(1);
+    manager.undo();
+    await settled();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before.toJSON());
+  });
+
+  it('leaves a short row unchanged when mixed content is refused', async () => {
+    const { editor, manager, sink } = await openReady([
+      tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['target'] }] }),
+    ]);
+    select(editor, positionOf(editor, 'target', 3));
+    const before = editor.prosemirrorView.state;
+
+    paste(editor, `${SOURCE_TABLE}<p>mixed</p>`, 'mixed');
+    await settled();
+
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before.doc.toJSON());
+    expect(editor.prosemirrorView.state.selection.toJSON()).toEqual(before.selection.toJSON());
+    expect(manager.undoStack).toHaveLength(0);
+    expect(sink.start).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+});
+
+it('shares one pending upload id across repeated cell content while keeping block ids unique', async () => {
+  const { editor, sink } = await openReady([
+    tableBlock({ rows: [{ cells: ['a', 'b'] }] }),
+  ]);
+  selectCells(editor, 0, 1);
+  const html = editor.blocksToFullHTML([
+    { type: 'image', props: { uploadId: 'shared-upload', url: '', name: 'Pending', caption: 'Caption' } },
+  ] as never);
+
+  pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'Pending' });
+  await settled();
+
+  const images = nodesOf(editor, 'image');
+  expect(images.map(({ node }) => [node.attrs['uploadId'], node.attrs['url'], node.attrs['caption']])).toEqual([
+    ['shared-upload', '', 'Caption'], ['shared-upload', '', 'Caption'],
+  ]);
+  const mediaBlocks = nodesOf(editor, 'blockContainer').filter(({ node }) => node.firstChild?.type.name === 'image');
+  expect(new Set(mediaBlocks.map(({ node }) => node.attrs['id'])).size).toBe(2);
+  expect(sink.start).not.toHaveBeenCalled();
+});

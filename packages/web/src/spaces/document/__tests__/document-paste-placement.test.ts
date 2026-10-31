@@ -8,6 +8,7 @@
  * alike, and the caret after what was put.
  */
 
+import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection } from '@tiptap/pm/state';
@@ -41,7 +42,7 @@ function lines(editor: Editor): string[] {
       const pending = block.props['uploadId'] !== '' && block.props['uploadId'] !== undefined;
       return `${block.type}(${pending ? 'pending' : String(block.props['url'])})${quoted}`;
     }
-    if (block.type === 'table') return `table${quoted}`;
+    if (block.type === 'table' || block.type === 'docTable') return `table${quoted}`;
     const level = block.type === 'heading' ? `#${String(block.props['level'])}` : '';
     const text = (items: readonly { text?: string; content?: unknown }[]): string =>
       items.map((c) => c.text ?? (Array.isArray(c.content) ? text(c.content as { text?: string }[]) : '')).join('');
@@ -49,7 +50,7 @@ function lines(editor: Editor): string[] {
     return `${block.type}${level}${quoted}:${words}`;
   };
   const walk = (blocks: Block[], depth: number): string[] =>
-    blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
+    blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.type === 'docTable' ? [] : block.children ?? [], depth + 1)]);
   return walk(editor.document, 0);
 }
 
@@ -246,7 +247,7 @@ describe.each(SOURCES)('%s with media, a picture selected', (_source, put, img) 
   it.each([
     ['between two lines', [{ type: 'paragraph', content: 'lead' }, 'SELECTED', { type: 'paragraph', content: 'tail' }], ['paragraph:lead', 'paragraph:w', 'NEW', 'paragraph:tail']],
     ['last in the body', [{ type: 'paragraph', content: 'lead' }, 'SELECTED'], ['paragraph:lead', 'paragraph:w', 'NEW', 'paragraph:']],
-    ['above a table', ['SELECTED', { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['x']] }] } }], ['paragraph:w', 'NEW', 'paragraph:', 'table']],
+    ['above a table', ['SELECTED', tableBlock({ rows: [{ cells: ['x'] }] })], ['paragraph:w', 'NEW', 'paragraph:', 'table']],
     ['above another picture', ['SELECTED', { type: 'image', props: { url: OTHER } }], ['paragraph:w', 'NEW', 'paragraph:', `image(${OTHER})`]],
   ])('%s is replaced in place, its neighbours taking none of the words', async (_name, blocks, expected) => {
     const editor = open(blocks.map((b) => (b === 'SELECTED' ? { type: 'image', props: { url: OLD } } : b)));
@@ -581,14 +582,31 @@ describe('the caret after content, with nested blocks about', () => {
     });
   });
 
-  it('stays after canvas words put beside a table', async () => {
+  it('keeps canvas media and the following caret inside the target cell', async () => {
     const editor = open([TABLE, { type: 'paragraph', content: 'tail' }]);
+    await settled();
     caretIn(editor, 0);
     pasteFormats(editor, { 'text/plain': canvasClipboard([P, W]) });
     await settled();
     expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
-      lines: ['table', 'image(pending)', 'paragraph:w', 'paragraph:tail'],
+      lines: ['table', 'paragraph:tail'],
       caret: 'w@1',
     });
+    const cell = (editor.document as Block[])[0]!.children![0]!.children![0]!;
+    expect(cell.children!.map((block) => block.type)).toEqual(['paragraph', 'image', 'paragraph']);
+    expect(cell.children![1]!.props['url']).toBe('');
+    expect(cell.children![1]!.props['uploadId']).not.toBe('');
+    expect(editor.prosemirrorView.state.selection.$head.node(-2).type.name).toBe('docTableCell');
   });
+});
+
+it('keeps the caret paragraph quoted after a table pasted at the end of a quote', () => {
+  const editor = open([{ type: 'paragraph', props: { quoted: true }, content: 'a' }]);
+  select(editor, positionOf(editor, 'a', 1));
+
+  paste(editor, '<table><tr><td>n</td></tr></table>', 'n');
+
+  expect((editor.document as Block[]).map((block) => [block.type, block.props['quoted']])).toEqual([
+    ['paragraph', true], ['docTable', true], ['paragraph', true],
+  ]);
 });

@@ -9,12 +9,14 @@
  * lands, and a drop lands as a paste at its point.
  */
 
+import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
 import { NodeSelection, TextSelection, type Selection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
 import { OURS, open, pasteFormats, unmountAll, type Editor } from './paste-harness';
@@ -41,7 +43,7 @@ const bodyBlock: fc.Arbitrary<BodyBlock> = fc.oneof(
   fc.constant({ type: 'paragraph', props: { quoted: true } }),
   fc.tuple(readerWords, readerWords).map(([content, kid]) => ({ type: 'paragraph', content, children: [{ type: 'paragraph', content: kid }] })),
   fc.nat(99).map((n) => ({ type: 'image', props: { url: `${OURS}old${n}.png` } })),
-  fc.tuple(readerWords, readerWords).map(([a, b]) => ({ type: 'table', content: { type: 'tableContent', rows: [{ cells: [[a], [b]] }] } })),
+  fc.tuple(readerWords, readerWords).map(([a, b]) => tableBlock({ rows: [{ cells: [a, b] }] })),
   readerWords.map((content) => ({ type: 'codeBlock', content })),
 );
 
@@ -118,7 +120,7 @@ function select(editor: Editor, chosen: Aim): void {
     // A drag from one cell into another of the same table selects the cells (prosemirror-tables' mouse handling).
     const cellOf = (pos: number): number | null => {
       const $pos = doc.resolve(pos);
-      for (let d = $pos.depth; d > 0; d -= 1) if ($pos.node(d).type.name === 'tableCell') return $pos.before(d);
+      for (let d = $pos.depth; d > 0; d -= 1) if ($pos.node(d).type.name === 'docTableCell') return $pos.before(d);
       return null;
     };
     const [a, b] = [cellOf(selection.from), cellOf(selection.to)];
@@ -127,9 +129,9 @@ function select(editor: Editor, chosen: Aim): void {
   const blocks = starts(doc, ['image']);
   if ((chosen.kind === 'block' || chosen.kind === 'gap') && blocks.length > 0) selection = NodeSelection.create(doc, pick(blocks, chosen.at));
   // Two neighbouring cells of one table, as a drag across them selects.
-  const pairs = starts(doc, ['tableCell']).flatMap((cell) => {
+  const pairs = starts(doc, ['docTableCell']).flatMap((cell) => {
     const next = cell + doc.nodeAt(cell)!.nodeSize;
-    return doc.nodeAt(next)?.type.name === 'tableCell' ? [[cell, next] as const] : [];
+    return doc.nodeAt(next)?.type.name === 'docTableCell' ? [[cell, next] as const] : [];
   });
   if (chosen.kind === 'cells' && pairs.length > 0) {
     const [a, b] = pick(pairs, chosen.at);
@@ -171,7 +173,7 @@ function paste(editor: Editor, pieces: readonly Piece[], source: Source): void {
     p.kind === 'medium'
       ? { type: 'image', props: { url: media() } }
       : p.kind === 'table'
-        ? { type: 'table', content: { type: 'tableContent', rows: [{ cells: [[p.words]] }] } }
+        ? tableBlock({ rows: [{ cells: [p.words] }] })
         : p.kind === 'divider'
           ? { type: 'divider' }
           : { type: 'paragraph', content: p.words },
@@ -188,7 +190,7 @@ function paste(editor: Editor, pieces: readonly Piece[], source: Source): void {
 function containers(doc: PMNode): { id: string; depth: number; node: PMNode }[] {
   const out: { id: string; depth: number; node: PMNode }[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.name === 'blockContainer') out.push({ id: String(node.attrs['id']), depth: doc.resolve(pos).depth, node });
+    if (node.type.name === 'blockContainer' || node.type.name === 'docTable') out.push({ id: String(node.attrs['id']), depth: doc.resolve(pos).depth, node });
     return true;
   });
   return out;
@@ -206,32 +208,19 @@ function aimed(selection: Selection): { depth: number; quoted: boolean; textOnly
   let textOnly = false;
   for (let d = $at.depth; d > 0; d -= 1) {
     const node = $at.node(d);
-    if (node.type.name === 'table' || node.type.name === 'codeBlock') textOnly = true;
+    if (node.type.name === 'codeBlock') textOnly = true;
     if (node.type.name === 'blockContainer' && depth < 0) {
       depth = d - 1;
       quoted = node.firstChild?.attrs['quoted'] === true;
     }
   }
   if (selection instanceof NodeSelection && selection.node.type.name !== 'blockContainer') quoted = selection.node.attrs['quoted'] === true;
+  if (selection instanceof CellSelection) depth = selection.$anchorCell.depth + 1;
   return { depth, quoted, textOnly };
 }
 
 /** A body with at least one line a click can put the caret in. */
 const body = fc.array(bodyBlock, { minLength: 1, maxLength: 5 }).filter((blocks) => blocks.some((b) => b['type'] !== 'image'));
-
-/**
- * Whether a selection reaches into a table.
- * @param selection - The selection.
- * @returns True in a cell, over cells, or with an end in one.
- */
-function aimedAtTable(selection: Selection): boolean {
-  if (selection instanceof CellSelection) return true;
-  // Deleting a selection that ends in a table leaves the caret there.
-  return [selection.$from, selection.$to].some(($at) => {
-    for (let d = $at.depth; d > 0; d -= 1) if ($at.node(d).type.name === 'table') return true;
-    return false;
-  });
-}
 
 const property = fc.record({
   body,
@@ -257,14 +246,15 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
 
   const content = source === 'canvas' ? pieces.filter((p) => p.kind === 'words' || p.kind === 'medium') : pieces;
   if (!content.some((p) => p.kind !== 'words')) return;
-  const { editor } = open(body, { onCanvasPaste: { start: vi.fn(), notPasted: vi.fn() } });
+  const { editor, manager, sink } = open(body, { onCanvasPaste: { start: vi.fn(), notPasted: vi.fn() } });
   const view = editor.prosemirrorView;
   select(editor, chosen);
   const before = view.state;
   const { selection } = before;
   const target = aimed(selection);
   // A cell selection is one range per cell: what lies outside every range is what stays.
-  const ranges = [...selection.ranges].sort((x, y) => x.$from.pos - y.$from.pos);
+  const held = heldRange(selection);
+  const ranges = held === null ? [...selection.ranges].sort((x, y) => x.$from.pos - y.$from.pos) : [{ $from: before.doc.resolve(held.from), $to: before.doc.resolve(held.to) }];
   let outsideText = '';
   let at = 0;
   for (const range of ranges) {
@@ -275,31 +265,53 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
   const outside = outsideText.match(READER)?.join('') ?? '';
   const all = before.doc.textContent.match(READER)?.join('') ?? '';
   const oldIds = new Set(containers(before.doc).map((c) => c.id));
+  const tableCount = content.filter((p) => p.kind === 'table').length;
+  const targetAfterDelete = selection instanceof CellSelection ? selection.$anchorCell : before.tr.deleteSelection().selection.$from;
+  let inCell = selection instanceof CellSelection;
+  for (let d = targetAfterDelete.depth; d > 0; d -= 1) {
+    if (['docTableCell', 'docTableHeader'].includes(targetAfterDelete.node(d).type.name)) inCell = true;
+  }
+  const rejected = inCell && tableCount > 0 && (tableCount > 1 || content.length > 1);
+  const stackSize = manager.undoStack.length;
   paste(editor, content, source);
   const after = view.state;
   const where = `${source} ${JSON.stringify(body)} ${JSON.stringify(content)} ${selection.constructor.name}@${selection.from}-${selection.to} → ${shape(editor)}`;
 
+  if (rejected) {
+    expect(after.doc.toJSON(), where).toEqual(before.doc.toJSON());
+    expect(after.selection.toJSON(), where).toEqual(selection.toJSON());
+    expect(manager.undoStack, where).toHaveLength(stackSize);
+    expect(sink.start, where).not.toHaveBeenCalled();
+    unmountAll();
+    return;
+  }
+
   const kept = after.doc.textContent.match(READER)?.join('') ?? '';
   // A table pasted into a table fills its cells over what they held, as prosemirror-tables pastes cells (design §5.4.3).
-  const fillsCells = content.some((p) => p.kind === 'table') && aimedAtTable(selection);
+  const fillsCells = tableCount === 1 && inCell;
   if (!fillsCells) expect([outside, all], `reader's words: ${where}`).toContain(kept);
 
   const placed = containers(after.doc).filter((c) => !oldIds.has(c.id));
   const ids = containers(after.doc).map((c) => c.id);
   expect(new Set(ids).size, `ids: ${where}`).toBe(ids.length);
 
-  const media = placed.filter((c) => ['image', 'table', 'divider'].includes(c.node.firstChild!.type.name));
+  const media = placed.filter((c) => ['image', 'docTable', 'divider'].includes(c.node.type.name === 'docTable' ? c.node.type.name : c.node.firstChild!.type.name));
   // Across lines the target is the line left once the selection is deleted; the matrix covers that.
   const oneLine = !(selection instanceof TextSelection) || selection.$from.sameParent(selection.$to);
   if (!target.textOnly && oneLine) for (const c of media) expect(c.depth, `nested: ${where}`).toBe(target.depth);
   if (target.quoted && !target.textOnly && oneLine && !(selection instanceof NodeSelection)) {
-    for (const c of placed) expect(c.node.firstChild!.attrs['quoted'], `quote: ${where}`).toBe(true);
+    for (const c of placed) expect((c.node.type.name === 'docTable' ? c.node : c.node.firstChild!).attrs['quoted'], `quote: ${where}`).toBe(true);
   }
 
   const sel = after.selection;
   expect(sel instanceof CellSelection || (sel instanceof TextSelection && sel.$head.parent.isTextblock), `caret: ${where}`).toBe(true);
 
-  const pasted = content.filter((p) => p.kind === 'medium').length;
+  let copies = 1;
+  if (selection instanceof CellSelection && tableCount === 0) {
+    copies = 0;
+    selection.forEachCell(() => { copies += 1; });
+  }
+  const pasted = content.filter((p) => p.kind === 'medium').length * copies;
   const landed = containers(after.doc).filter((c) => {
     const own = c.node.firstChild!;
     return own.type.name === 'image' && (/\/m\d+\.png$/.test(String(own.attrs['url'])) || String(own.attrs['uploadId'] ?? '') !== '');
@@ -341,7 +353,7 @@ describe('a drop', () => {
               p.kind === 'medium'
                 ? { type: 'image', props: { url: `${OURS}m${n++}.png` } }
                 : p.kind === 'table'
-                  ? { type: 'table', content: { type: 'tableContent', rows: [{ cells: [[p.words]] }] } }
+                  ? tableBlock({ rows: [{ cells: [p.words] }] })
                   : p.kind === 'divider'
                     ? { type: 'divider' }
                     : { type: 'paragraph', content: p.words },
