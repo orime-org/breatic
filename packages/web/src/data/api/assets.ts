@@ -78,13 +78,13 @@ export const assetsApi = {
    * @param params.toolName - The mini-tool's name when `source` says so.
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
-   * @param params.purpose - What the picture is uploaded to become, filed as
-   *   the asset's source; a studio uploads only its avatar.
+   * @param params.purpose - Upload use context; models retain the ordinary upload source.
+   * @param signal - Cancellation belonging to this authorization request.
    * @returns The opened upload, the existing asset to reuse, or the open
    *   that failed.
    * @throws {ApiException} When the request fails.
    */
-  requestUploadTicket(params: UploadTicketRequest): Promise<UploadTicketResponse> {
+  requestUploadTicket(params: UploadTicketRequest, signal?: AbortSignal): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,
       content_type: params.contentType,
@@ -98,7 +98,7 @@ export const assetsApi = {
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
-    }, NO_CLIENT_TIMEOUT);
+    }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
   },
 
   /**

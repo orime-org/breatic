@@ -61,15 +61,13 @@ describe('retryTransient cancellation', () => {
       .mockRejectedValueOnce(new ApiException({ status: 503, message: 'unavailable' }))
       .mockResolvedValue('retry result');
     const sleep = vi.fn(() => { entered.resolve(); return waiting.promise; });
-    let ending = 'pending';
+    let ending: unknown = 'pending';
     const running = retryTransient(operation, { attempts: 3, baseDelayMs: 100, signal: controller.signal, sleep });
-    const observed = running.then(() => { ending = 'resolved'; }, (error: unknown) => {
-      ending = error instanceof Error ? error.name : String(error);
-    });
+    const observed = running.then(() => { ending = 'resolved'; }, (error: unknown) => { ending = error; });
     await entered.promise;
     controller.abort();
     try {
-      await vi.waitFor(() => expect(ending).toBe('AbortError'), { timeout: 1000 });
+      await vi.waitFor(() => expect(ending).toMatchObject({ name: 'AbortError' }), { timeout: 1000 });
       expect(operation).toHaveBeenCalledTimes(1);
     } finally {
       waiting.resolve();

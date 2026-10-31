@@ -48,7 +48,7 @@ export interface UploadTicket {
  * studio, which uploads nothing but its avatar.
  */
 export type UploadTargetParams =
-  | { projectId: string; studioId?: never; purpose?: 'project_cover' }
+  | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' }
   | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
 
 /**
