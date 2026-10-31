@@ -19,9 +19,8 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { db, uploadGrants } from "@breatic/core";
-import type { DbTx } from "@breatic/core";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { db, uploadGrants, type DbTx } from "@breatic/core";
 import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
 
 /**
@@ -79,6 +78,20 @@ export interface UploadGrant {
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
+}
+
+/**
+ * Read consumed grants in immutable-id order for explicit media backfill.
+ * @param cursor - The last emitted grant identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Consumed grant provenance after the cursor.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanConsumedMediaGrants(cursor: string | null, limit: number): Promise<UploadGrant[]> {
+  const rows = await db.select().from(uploadGrants).where(and(
+    isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
+  )).orderBy(uploadGrants.id).limit(limit);
+  return rows.map(toEntity);
 }
 
 /**
@@ -275,14 +288,16 @@ export async function claimFinalize(params: {
  * @param params.storageKey - The key being registered.
  * @param params.userId - The authenticated caller.
  * @param params.assetId - The ledger row the bytes registered as.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call consumed the grant; false otherwise.
+ * @throws {Error} When the database write fails.
  */
 export async function consumeGrant(params: {
   storageKey: string;
   userId: string;
   assetId: string;
-}): Promise<boolean> {
-  const rows = await db
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ consumedAt: sql`now()`, assetId: params.assetId })
     .where(
@@ -335,8 +350,9 @@ export async function completeTransferGrant(storageKey: string): Promise<boolean
  * which proves nothing but that it holds the shared secret — every fact about
  * who this upload belongs to comes off the row itself.
  * @param storageKey - The key the report names.
- * @param tx - Optional transaction retained through maintenance admission.
+ * @param tx - An enclosing business transaction.
  * @returns The grant, or null when no such key was ever issued.
+ * @throws {Error} When the database read fails.
  */
 export async function findGrantByKey(
   storageKey: string,
@@ -348,6 +364,21 @@ export async function findGrantByKey(
     .where(eq(uploadGrants.storageKey, storageKey))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Lock the immutable grant identity before choosing or replaying its terminal.
+ * @param storageKey - The unique key issued with the grant.
+ * @param tx - The transaction that will commit the terminal decision.
+ * @returns The current grant after any earlier writer commits.
+ * @throws {Error} When the row lock or database read fails.
+ */
+export async function lockGrantByKey(storageKey: string, tx: DbTx): Promise<UploadGrant | null> {
+  const [row] = await tx.select().from(uploadGrants)
+    .where(eq(uploadGrants.storageKey, storageKey))
+    .for("update")
+    .limit(1);
+  return row === undefined ? null : toEntity(row);
 }
 
 /**
@@ -383,11 +414,13 @@ export async function findOwnGrants(
  * this row is what tells the operations-side cleanup that it has no owner.
  * @param storageKey - The key being written off.
  * @param reason - Why, as the upload status query will answer it.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call voided the grant; false when it was already
  *   consumed or already voided.
+ * @throws {Error} When the database write fails.
  */
-export async function voidGrant(storageKey: string, reason: string): Promise<boolean> {
-  const rows = await db
+export async function voidGrant(storageKey: string, reason: string, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ voidedAt: sql`now()`, failureReason: reason })
     .where(

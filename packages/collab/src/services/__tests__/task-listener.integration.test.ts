@@ -18,7 +18,8 @@ import * as Y from "yjs";
 import * as encoding from "lib0/encoding";
 import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/redlock";
 
-import { createRedisClient, initCore, type Redis } from "@breatic/core";
+import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
+import { eq } from "drizzle-orm";
 import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
@@ -34,6 +35,8 @@ import { startTaskListener, type TaskListenerSettings } from "@collab/services/t
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 const PID = "77777777-7777-4777-8777-777777777777";
+const OWNER_ID = randomUUID();
+const STUDIO_ID = randomUUID();
 
 const SETTINGS: TaskListenerSettings = {
   maxHeld: 128,
@@ -112,6 +115,18 @@ async function startInstance(name: string): Promise<Hocuspocus> {
 
 beforeAll(async () => {
   initCore(process.env);
+  // Media persistence resolves the Project's live Studio before accepting a snapshot.
+  await db.insert(schema.users).values({
+    id: OWNER_ID, email: `task-listener-${OWNER_ID}@example.com`, emailVerified: true,
+  });
+  await db.insert(schema.studios).values({
+    id: STUDIO_ID, createdByUserId: OWNER_ID, slug: `tl-${STUDIO_ID}`,
+    type: "personal", name: "Task listener Studio",
+  });
+  await db.insert(schema.projects).values({
+    id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID,
+    name: "Task listener Project", slug: `tl-${PID}`,
+  });
   stream = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "itest-task-stream" });
   coordination = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-task-coord" });
   instanceA = await startInstance("itest-task-a");
@@ -127,6 +142,9 @@ afterAll(async () => {
   await Promise.all(servers.map((s) => s.destroy()));
   await stream.quit();
   await coordination.quit();
+  await db.update(schema.projects).set({ deletedAt: new Date() }).where(eq(schema.projects.id, PID));
+  await db.update(schema.studios).set({ deletedAt: new Date() }).where(eq(schema.studios.id, STUDIO_ID));
+  await db.update(schema.users).set({ deletedAt: new Date() }).where(eq(schema.users.id, OWNER_ID));
 });
 
 /** Names for one case. */

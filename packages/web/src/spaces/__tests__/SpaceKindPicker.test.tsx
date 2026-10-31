@@ -53,15 +53,19 @@ describe('SpaceKindPicker', () => {
     expect(within(screen.getByTestId('space-kind-3d')).getByText('3D', { exact: true })).toBeInTheDocument();
   });
 
-  it.each(LOCALE_CATALOGS)('shows one visible DEV marker while keeping type names in %s', (locale) => {
+  it.each(LOCALE_CATALOGS)('shows DEV on 3D and Timeline while keeping type names in %s', (locale) => {
     setLocale(locale);
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
     const markers = within(screen.getByRole('radiogroup')).getAllByText('DEV', { exact: true });
-    expect(markers).toHaveLength(1);
-    expect(markers[0]).toBeVisible();
-    expect(within(screen.getByTestId('space-kind-3d')).getByText('3D', { exact: true })).toBeVisible();
-    for (const type of ['canvas', 'document', 'timeline']) {
-      expect(within(screen.getByTestId(`space-kind-${type}`)).queryByText('DEV', { exact: true })).not.toBeInTheDocument();
+    expect(markers).toHaveLength(2);
+    for (const [type, name] of [['3d', '3D'], ['timeline', 'Timeline']]) {
+      const card = screen.getByTestId(`space-kind-${type}`);
+      expect(within(card).getByText(name, { exact: true })).toBeVisible();
+      expect(within(card.parentElement!).getByText('DEV', { exact: true })).toBeVisible();
+    }
+    for (const type of ['canvas', 'document']) {
+      const card = screen.getByTestId(`space-kind-${type}`);
+      expect(within(card.parentElement!).queryByText('DEV', { exact: true })).not.toBeInTheDocument();
     }
   });
 
@@ -77,7 +81,7 @@ describe('SpaceKindPicker', () => {
     await user.hover(card);
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent(description);
-    if (type === 'timeline') expect(tooltip).toHaveTextContent('Not available');
+    expect(tooltip).not.toHaveTextContent('Not available');
   });
 
   it.each([
@@ -92,7 +96,7 @@ describe('SpaceKindPicker', () => {
     expect(screen.getByTestId(`space-kind-${type}`)).toHaveFocus();
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent(description);
-    if (type === 'timeline') expect(tooltip).toHaveTextContent('Not available');
+    expect(tooltip).not.toHaveTextContent('Not available');
   });
 
   it('marks the active type checked and the others unchecked', () => {
@@ -105,20 +109,27 @@ describe('SpaceKindPicker', () => {
       'aria-checked',
       'false',
     );
+    expect(screen.getByRole('radio', { name: /Timeline/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('fills the picked card past the fill the others take under the pointer', () => {
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
     expectChosenFill(screen.getByRole('radio', { name: /Canvas/ }));
     expectHoverableSiblingFill(screen.getByRole('radio', { name: /Document/ }));
+    expectHoverableSiblingFill(screen.getByRole('radio', { name: /Timeline/ }));
   });
 
-  it('offers canvas, document and 3D, and marks only timeline unavailable', () => {
+  it('offers Canvas, Document, 3D and Timeline as selectable Space types', () => {
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
-    expect(screen.getByRole('radio', { name: /Canvas/ })).not.toBeDisabled();
-    expect(screen.getByRole('radio', { name: /Document/ })).not.toBeDisabled();
-    expect(screen.getByTestId('space-kind-3d')).not.toBeDisabled();
-    expect(screen.getByRole('radio', { name: /Timeline/ })).toHaveAttribute('aria-disabled', 'true');
+    for (const name of [/Canvas/, /Document/, /3D/, /Timeline/]) {
+      const card = screen.getByRole('radio', { name });
+      expect(card).not.toBeDisabled();
+      expect(card).not.toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(screen.queryByText('Not available')).toBe(null);
   });
 
   it('reports a click on the document card', async () => {
@@ -146,32 +157,41 @@ describe('SpaceKindPicker', () => {
     expect(onChange).toHaveBeenCalledWith('3d');
   });
 
-  it('keeps the unavailable Timeline unselected when clicked', async () => {
+  it('reports a click on Timeline and reflects the controlled selection', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<SpaceKindPicker value='canvas' onChange={onChange} />);
+    const { rerender } = render(<SpaceKindPicker value='canvas' onChange={onChange} />);
     await user.click(screen.getByRole('radio', { name: /Timeline/ }));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByTestId('space-kind-timeline')).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByTestId('space-kind-canvas')).toHaveAttribute('aria-checked', 'true');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('timeline');
+    rerender(<SpaceKindPicker value='timeline' onChange={onChange} />);
+    expect(screen.getByRole('radio', { name: /Timeline/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Canvas/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('radio', { name: /Document/ })).toHaveAttribute('aria-checked', 'false');
   });
 
-  it.each([
-    ['Enter', '{Enter}'],
-    ['Space', ' '],
-  ])('keeps the unavailable Timeline unselected on %s', async (_name, key) => {
+  it.each(['{Enter}', ' '])('selects Timeline with %s after keyboard navigation', async (key) => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     render(<SpaceKindPicker value='canvas' onChange={onChange} />);
-    for (let step = 0; step < 3; step += 1) await user.tab();
+    await user.tab();
+    expect(screen.getByRole('radio', { name: /Canvas/ })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('radio', { name: /Document/ })).toHaveFocus();
+    await user.tab();
     expect(screen.getByTestId('space-kind-3d')).toHaveFocus();
     await user.tab();
-    const timeline = screen.getByTestId('space-kind-timeline');
-    expect(timeline).toHaveFocus();
+    expect(screen.getByRole('radio', { name: /Timeline/ })).toHaveFocus();
     await user.keyboard(key);
-    expect(onChange).not.toHaveBeenCalled();
-    expect(timeline).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByTestId('space-kind-canvas')).toHaveAttribute('aria-checked', 'true');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('timeline');
+  });
+
+  it('keeps the selected Timeline fill distinct from its hoverable siblings', () => {
+    render(<SpaceKindPicker value='timeline' onChange={() => {}} />);
+    expectChosenFill(screen.getByRole('radio', { name: /Timeline/ }));
+    expectHoverableSiblingFill(screen.getByRole('radio', { name: /Canvas/ }));
+    expectHoverableSiblingFill(screen.getByRole('radio', { name: /Document/ }));
   });
 
   it('has no a11y violations', async () => {

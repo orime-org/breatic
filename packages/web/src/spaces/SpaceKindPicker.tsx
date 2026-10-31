@@ -57,7 +57,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
     icon: Clock,
     titleKey: 'spaces.kind.timeline',
     descriptionKey: 'spaces.kind.timelineSub',
-    available: false,
+    available: true,
   },
 ];
 
@@ -108,8 +108,8 @@ export function SpaceKindPicker({
                   ? 'border-active-border bg-accent-strong text-foreground'
                   : 'border-border bg-transparent text-foreground',
                 // The picked card keeps its own fill under the pointer: plain
-                // hover outranks it and would drop it to the fill the other
-                // two take, leaving the three reading alike.
+                // hover outranks it and would drop it to the fill of the
+                // hoverable sibling cards.
                 card.available
                   ? selected
                     ? 'hover:bg-accent-strong'
@@ -130,7 +130,7 @@ export function SpaceKindPicker({
             <Tooltip key={card.type}>
               <div className='relative min-w-0'>
                 <TooltipTrigger asChild>{option}</TooltipTrigger>
-                {card.type === '3d' ? (
+                {card.type === '3d' || card.type === 'timeline' ? (
                   <Badge variant='secondary' className='pointer-events-none absolute right-1 top-1 px-1 py-0 text-2xs font-medium'>
                     {t('spaces.kind.developmentBadge')}
                   </Badge>

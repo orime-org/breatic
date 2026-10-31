@@ -254,13 +254,11 @@ export function renderProductGuide(): string {
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
-      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))} or ` +
-      `${quoted(t("spaces.kind.threeD"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
+      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
       `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
       `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
-      `The ${quoted(t("spaces.kind.threeD"))} card has a ${quoted(t("spaces.kind.developmentBadge"))} badge at its top right to mark it as in development. ` +
-      `The fourth card, ${quoted(t("spaces.kind.timeline"))}, ` +
-      `stays greyed; hovering it shows ${quoted(t("spaces.create.notAvailable"))}. ` +
+      `The ${quoted(t("spaces.kind.threeD"))} and ${quoted(t("spaces.kind.timeline"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
       `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
@@ -1212,6 +1210,27 @@ export function renderProductGuide(): string {
       "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
+    "## Timeline spaces",
+    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
+      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+      `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
+      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
+      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
+      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+    `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
+      `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
+      `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
+      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A permission change requires another confirmation after editing is available. ` +
+      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
+      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
+    `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
+      `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
       "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +

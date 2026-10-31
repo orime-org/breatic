@@ -618,6 +618,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.9.0
       lib0:
         specifier: 'catalog:'
         version: 0.2.117

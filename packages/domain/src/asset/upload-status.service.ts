@@ -15,6 +15,7 @@ import * as assetRepo from "@domain/asset/asset.repo.js";
 import { findOwnGrants, type UploadGrant } from "@domain/asset/upload-grant.repo.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
+import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
 
 /**
  * Where one of the caller's grants stands.
@@ -24,6 +25,7 @@ import { failureOutcome } from "@domain/node-task/failure-outcome.js";
  * it ends.
  * @param grant - The grant.
  * @returns Its status.
+ * @throws {Error} When the current asset or its Project association cannot be read or accepted.
  */
 async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
   const key = grant.storageKey;
@@ -33,10 +35,11 @@ async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
   if (grant.consumedAt !== null) {
     // A transfer (inner#1006) finishes without a row; it is referenced by key.
     if (grant.assetSource === "transfer") return { key, state: "transferred" };
-    const asset = grant.assetId === null ? null : await assetRepo.findById(grant.assetId);
+    const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
     // A consumed grant always names its row; one that does not, or names a row
     // since deleted, has nothing to hand over.
     if (asset === null || asset.deletedAt !== null) return { key, state: "unknown" };
+    await referenceUploadAsset(grant, asset.id);
     return {
       key,
       state: "completed",

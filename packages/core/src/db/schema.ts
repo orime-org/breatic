@@ -281,11 +281,8 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // Initial Space type seeded on first open (B.2). varchar with NO check
-    // constraint — same pattern as studio_members.role, so adding 3d/plan
-    // later is a zero-migration change. Canvas is the only editable type
-    // today; document/timeline are stored + seeded but disabled in the
-    // create picker until their editors ship.
+    // Initial Space type seeded on first open. Stored as a varchar;
+    // accepted Space types are validated by the shared schema.
     initialSpaceType: varchar("initial_space_type", { length: 16 })
       .default("canvas")
       .notNull(),
@@ -2869,6 +2866,23 @@ export const studioAssets = pgTable(
     // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's
     // builder does not emit partial unique indexes (same note as
     // project_activities / project_invitations).
+  ],
+);
+
+/** Long-lived Project media membership, separate from upload credentials. */
+export const projectAssetRefs = pgTable(
+  "project_asset_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    assetId: uuid("asset_id").notNull().references(() => studioAssets.id, { onDelete: "restrict" }),
+    displayName: text("display_name"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("project_asset_refs_live_key").on(table.projectId, table.assetId).where(sql`${table.deletedAt} IS NULL`),
+    index("project_asset_refs_page_idx").on(table.projectId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 

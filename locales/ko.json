@@ -2822,5 +2822,62 @@
       "description": "이 페이지는 이전 버전이라 이번 작업이 완료되지 않았습니다. 새로고침하면 계속할 수 있습니다.",
       "refresh": "업데이트"
     }
+  },
+  "timeline": {
+    "loading": "Timeline 불러오는 중…",
+    "unavailable": "Timeline을 사용할 수 없습니다.",
+    "incompatible": "이 Timeline 콘텐츠를 열 수 없습니다.",
+    "empty": "동영상을 추가하여 Timeline 편집을 시작하세요.",
+    "video": "동영상",
+    "conflict": "충돌",
+    "conflictHelp": "클립이 겹칩니다. 클립을 선택하고 시작 프레임을 변경하세요.",
+    "loadingMedia": "동영상 불러오는 중…",
+    "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",
+    "retry": "다시 시도",
+    "play": "재생",
+    "pause": "일시 정지",
+    "seek": "미리보기 프레임",
+    "framePosition": "프레임 {frame} / {total}",
+    "tracks": "트랙",
+    "addMedia": "미디어 추가",
+    "visualTrack": "화면 1",
+    "selectClip": "클립을 선택하여 속성을 확인하세요.",
+    "clipFrames": "시작 {start} · 길이 {duration} 프레임",
+    "editStart": "시작 프레임 변경",
+    "startFrame": "시작 프레임",
+    "apply": "적용",
+    "cancel": "취소",
+    "transport": {
+      "paused": "일시 정지됨",
+      "playing": "재생 중",
+      "waiting": "버퍼링 중…",
+      "failed": "재생 실패"
+    },
+    "material": {
+      "description": "동영상을 선택하고 추가할 위치를 확인하세요.",
+      "project": "Project 동영상",
+      "local": "로컬 업로드",
+      "duration": "{seconds}초",
+      "durationPending": "길이 확인 대기 중",
+      "loading": "Project 동영상 불러오는 중…",
+      "listError": "Project 동영상을 불러오지 못했습니다.",
+      "empty": "이 Project에는 아직 동영상이 없습니다.",
+      "more": "더 불러오기",
+      "chooseFile": "동영상 선택",
+      "fileEmpty": "로컬 동영상 파일을 선택하세요.",
+      "preparing": "동영상 준비 중…",
+      "progress": "업로드 중 {progress}%",
+      "confirm": "Timeline에 추가"
+    },
+    "errors": {
+      "readonly": "현재 역할로는 편집할 수 없습니다.",
+      "source_unavailable": "이 동영상을 사용할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
+      "metadata_unavailable": "동영상 길이를 확인할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
+      "invalid_range": "유효한 시작 프레임을 입력하세요.",
+      "overlap": "다른 클립과 겹치는 위치입니다. 시작 프레임을 변경하세요.",
+      "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
+      "upload": "업로드에 실패했습니다. 선택한 파일로 다시 시도할 수 있습니다.",
+      "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요."
+    }
   }
 }

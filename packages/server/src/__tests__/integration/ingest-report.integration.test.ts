@@ -50,6 +50,7 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import fc from "fast-check";
 import {
   initCore,
   getRedis,
@@ -60,11 +61,13 @@ import {
   taskEventsStreamKey,
   getStorageConfig,
   createQueue,
+  createPgClient,
 } from "@breatic/core";
 import {
   backendUploadService,
   ingestReportService,
   uploadGrantService,
+  uploadStatusService,
   UPLOAD_FINISH_QUEUE,
   AUDIO_PEAKS_QUEUE,
   type UploadFinishResult,
@@ -79,6 +82,7 @@ import {
   UPLOAD_STATUS_MAX_KEYS,
 } from "@breatic/shared";
 import type { Hono } from "hono";
+import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
   initCore(process.env);
@@ -1141,22 +1145,23 @@ describe("a finish this server drove — an event that could not be published", 
     expect(outcome.countsPublishFailed).toBe(true);
   });
 
-  // The feed row is written before the grant is consumed, and the grant is
-  // what tells a repeat finish from a first one. Were the order the other way
-  // round, an interruption landing between them would leave a consumed grant:
-  // the retry takes the early exit and that feed row is gone for good. Broken
-  // here at the step that sits between the two, which is the only interruption
-  // this suite can place there.
-  it("has already written the feed row when a later step fails, and holds the grant", async () => {
+  // SQL registration, history, activity, and the grant terminal precede the
+  // content publication. A lost publication is recovered from that terminal.
+  it("keeps the committed grant, history, and feed when content publication fails", async () => {
     const seed = await seedEditor();
-    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const body = completed(key);
 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
     // The job throws, and the queue delivers it again.
-    await expect(report(completed(key))).rejects.toThrow("unreachable");
-    xadd.mockRestore();
+    try {
+      await expect(report(body)).rejects.toThrow("unreachable");
+    } finally {
+      xadd.mockRestore();
+    }
 
     const feed = (await sql`
       SELECT type FROM project_activities WHERE project_id = ${seed.projectId}
@@ -1165,7 +1170,24 @@ describe("a finish this server drove — an event that could not be published", 
     const grants = (await sql`
       SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
     `) as unknown as { consumed_at: Date | null }[];
-    expect(grants[0]!.consumed_at).toBeNull();
+    expect(grants[0]!.consumed_at).toBeInstanceOf(Date);
+    const history = await sql<{ id: string }[]>`
+      SELECT id FROM node_history WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(history).toHaveLength(1);
+    expect((await report(body)).outcome.status).toBe("already_registered");
+    const tasks = await sql<{ node_history_id: string | null }[]>`
+      SELECT node_history_id FROM node_tasks WHERE storage_key = ${key}
+    `;
+    expect(tasks).toEqual([{ node_history_id: history[0]!.id }]);
+    expect(await sql<{ id: string }[]>`
+      SELECT id FROM node_history WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `).toEqual(history);
+    const feedAfterRetry = await sql<{ type: string }[]>`
+      SELECT type FROM project_activities
+      WHERE project_id = ${seed.projectId} AND type = 'asset:uploaded'
+    `;
+    expect(feedAfterRetry).toEqual([{ type: "asset:uploaded" }]);
   });
 
   it("finishes on the report that follows", async () => {
@@ -1237,19 +1259,19 @@ describe("a finish the Worker could not complete", () => {
       outcome: "aborted",
     });
 
-    expect(res.refused).toBeDefined();
+    expect(res.refused).toBeUndefined();
+    expect(res.outcome.status).toBe("already_registered");
     const tasks = await sql<{ status: string }[]>`
       SELECT status FROM node_tasks WHERE node_id = ${nodeId}
     `;
     expect(tasks[0]!.status).toBe("done");
 
-    // Two events: the one the ticket sent, and the one that settled the task.
-    // A third would mean this report announced something — and it has no hash
-    // to look the registered asset up by, so anything it announced would name
-    // a URL built from the key rather than the one in the ledger.
+    // Replaying an abort uses the asset identity already fixed on the grant.
+    // It republishes the canonical success without a new Worker hash.
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(3);
+    expect(events[2]!.result).toEqual(events[1]!.result);
   });
 
   // A grant with no node has no task row to say why it failed, so the grant
@@ -1370,11 +1392,9 @@ describe("a finish this server drove — the same report twice", () => {
     expect(events[2]!.result?.content).toBe(a.fileUrl);
   });
 
-  // The grant is what tells a repeat report apart from a first one, so it is
-  // consumed only once everything a first one owes has been written. Consuming
-  // it earlier would make the retry take a half-finished upload for a finished
-  // one, and the rows the first attempt never got to write would have nobody
-  // left to write them.
+  // History and activity precede the grant terminal. Their failed SQL work
+  // leaves the grant pending, so the retry completes those original rows
+  // before committing the terminal and publishing the canonical result.
   it("writes the history and feed rows the interrupted attempt never got to", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -2037,11 +2057,8 @@ describe("a finish this server drove — the task it settles", () => {
   });
 
   it("answers a repeat whose ledger row is gone without minting a url", async () => {
-    // The grant says this key registered, so a repeat looks the row up by the
-    // hash the Worker sent. A studio that no longer holds a row for that
-    // content has no canonical url to answer with, and the key on the grant is
-    // not one: within a studio the same content dedups to a single row, so
-    // that key may be the loser the reclaim job is about to remove.
+    // A replay resolves the stable asset id on the grant. A deleted asset
+    // cannot be replaced by another row sharing the Worker's reported hash.
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
     const sha = crypto.randomBytes(32).toString("hex");
@@ -2059,17 +2076,20 @@ describe("a finish this server drove — the task it settles", () => {
 
   // A queued finish that ran again after the first one registered, and failed
   // this time: what the first one wrote stands (inner#1367 §4.2a).
-  it("answers an abort that arrives after the upload registered as stale, and keeps it done", async () => {
+  it("restores a consumed upload success when a later report carries an abort", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
     await report(completed(key));
+    const before = await tasksOn(nodeId);
 
     const res = await report({ storage_key: key, outcome: "aborted" });
 
-    expect(res.outcome.status).toBe("stale");
+    expect(res.outcome.status).toBe("already_registered");
+    expect(res.refused).toBeUndefined();
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("done");
+    expect(rows[0]!.node_history_id).toBe(before[0]!.node_history_id);
     const grants = await sql<{ voided_at: Date | null }[]>`
       SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
     `;
@@ -2695,5 +2715,297 @@ describe("the upload status query (inner#1367)", () => {
   it("requires a signed-in caller", async () => {
     const res = await app.request("/api/v1/assets/upload-status?key=a");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Project association and upload terminal arbitration", () => {
+  type CompletedIntent = Extract<Parameters<typeof ingestReportService.applyIngestReport>[0], { outcome: "completed" }>;
+  type TerminalIntent = "completed" | "aborted" | "over_cap" | "empty";
+
+  /**
+   * Build an internal report for a ticket already issued through the real API.
+   * @returns The measured completion input without another Worker request.
+   * @throws {Error} When the runtime cannot obtain the fixture's random hash.
+   */
+  function measuredCompletion(key: string, sha = crypto.randomBytes(32).toString("hex")): CompletedIntent {
+    return { storageKey: key, outcome: "completed", sha256: sha, sizeBytes: 4096, contentType: "image/png" };
+  }
+
+  /**
+   * Select one of the four real terminal report paths.
+   * @returns The report passed to the registration service.
+   */
+  function terminalReport(base: CompletedIntent, intent: TerminalIntent): Parameters<typeof ingestReportService.applyIngestReport>[0] {
+    if (intent === "aborted") return { storageKey: base.storageKey, outcome: "aborted", reason: "store_failed" };
+    if (intent === "empty") return { ...base, sizeBytes: 0 };
+    if (intent === "over_cap") return { ...base, sizeBytes: getStorageConfig().upload.max_upload_bytes + 1 };
+    return base;
+  }
+
+  /**
+   * Read the grant's durable terminal without reducing it to one status field.
+   * @returns The grant's canonical identity and mutually exclusive terminals.
+   * @throws {Error} When the database cannot return the issued grant.
+   */
+  async function terminalOn(key: string): Promise<{ consumed: boolean; voided: boolean; asset_id: string | null }> {
+    const rows = await sql<{ consumed: boolean; voided: boolean; asset_id: string | null }[]>`
+      SELECT consumed_at IS NOT NULL AS consumed, voided_at IS NOT NULL AS voided, asset_id
+      FROM upload_grants WHERE storage_key = ${key}
+    `;
+    if (rows.length !== 1) throw new Error("issued upload grant missing");
+    return rows[0]!;
+  }
+
+  /**
+   * Read live Project associations for one upload's Project.
+   * @returns The actual canonical asset identities in the Project directory.
+   * @throws {Error} When the association query fails.
+   */
+  async function associatedAssets(projectId: string): Promise<string[]> {
+    const rows = await sql<{ asset_id: string }[]>`
+      SELECT asset_id FROM project_asset_refs
+      WHERE project_id = ${projectId} AND deleted_at IS NULL ORDER BY asset_id
+    `;
+    return rows.map((row) => row.asset_id);
+  }
+
+  /**
+   * Refuse association writes in PostgreSQL for only the current Project.
+   * @returns Once the supplied operation and trigger cleanup finish.
+   * @throws {Error} When setup, the operation, or database cleanup fails.
+   */
+  async function withAssociationFailure(projectId: string, run: () => Promise<void>): Promise<void> {
+    const suffix = crypto.randomBytes(8).toString("hex");
+    const name = `timeline_ingest_ref_fault_${suffix}`;
+    await sql.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.project_id = '${projectId}'::uuid THEN
+          RAISE EXCEPTION 'injected Project association failure';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`);
+    try {
+      await sql.unsafe(`CREATE TRIGGER ${name} BEFORE INSERT OR UPDATE ON project_asset_refs
+        FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+      try {
+        await run();
+      } finally {
+        await sql.unsafe(`DROP TRIGGER IF EXISTS ${name} ON project_asset_refs`);
+      }
+    } finally {
+      await sql.unsafe(`DROP FUNCTION IF EXISTS ${name}()`);
+    }
+  }
+
+  it("returns a nodeless registration only after its canonical Project association exists", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
+    const result = await ingestReportService.applyIngestReport(measuredCompletion(key));
+    expect(result.status).toBe("registered");
+    const terminal = await terminalOn(key);
+    expect(terminal).toEqual({ consumed: true, voided: false, asset_id: expect.any(String) });
+    expect(await associatedAssets(seed.projectId)).toEqual([terminal.asset_id]);
+    expect(await sql`SELECT id FROM node_tasks WHERE storage_key = ${key}`).toEqual([]);
+  });
+
+  it("associates a backend dedup hit with the surviving asset in both Projects", async () => {
+    const seed = await seedEditor();
+    const firstKey = await mintTicket(seed, { node_id: undefined, space_id: undefined });
+    const firstInput = measuredCompletion(firstKey);
+    const first = await ingestReportService.applyIngestReport(firstInput);
+    expect(first.status).toBe("registered");
+    const canonical = (await terminalOn(firstKey)).asset_id;
+    const projectId = crypto.randomUUID();
+    await sql`INSERT INTO projects (id, studio_id, created_by_user_id, name, slug)
+      VALUES (${projectId}, ${seed.studioId}, ${seed.userId}, 'Dedup target', ${projectId})`;
+    await sql`INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${projectId}, ${seed.userId}, 'owner', null)`;
+    const target = { ...seed, projectId, spaceId: crypto.randomUUID() };
+    const secondKey = await mintTicket(target, { node_id: undefined, space_id: undefined });
+    const second = await ingestReportService.applyIngestReport(measuredCompletion(secondKey, firstInput.sha256));
+    expect(second).toMatchObject({ status: "registered", assetId: canonical, ownRow: false });
+    expect(await associatedAssets(seed.projectId)).toEqual([canonical]);
+    expect(await associatedAssets(projectId)).toEqual([canonical]);
+    expect(await terminalOn(secondKey)).toEqual({ consumed: true, voided: false, asset_id: canonical });
+  });
+
+  it("requires the Project association before the browser hash-dedup endpoint returns alreadyExists", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
+    const input = measuredCompletion(key);
+    await ingestReportService.applyIngestReport(input);
+    const canonical = (await terminalOn(key)).asset_id;
+    await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE project_id = ${seed.projectId}`;
+    const request = {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "dedup.png", content_type: "image/png", size: 4096,
+        client_hash: input.sha256, project_id: seed.projectId,
+      }),
+    };
+    await withAssociationFailure(seed.projectId, async () => {
+      const refused = await app.request("/api/v1/assets/upload-ticket", request);
+      expect(refused.status).toBe(500);
+    });
+    expect(await associatedAssets(seed.projectId)).toEqual([]);
+    const accepted = await app.request("/api/v1/assets/upload-ticket", request);
+    expect(accepted.status).toBe(200);
+    const payload = await accepted.json() as { data: Record<string, unknown> };
+    expect(payload.data).toMatchObject({ alreadyExists: true, assetId: canonical });
+    expect(await associatedAssets(seed.projectId)).toEqual([canonical]);
+  });
+
+  it.each(["registered", "already_registered", "completed"] as const)(
+    "cannot return %s while the actual association write fails",
+    async (successShape) => {
+      const seed = await seedEditor();
+      const nodeId = crypto.randomUUID();
+      const key = await mintTicket(seed, { node_id: nodeId });
+      const input = measuredCompletion(key);
+      if (successShape !== "registered") {
+        await ingestReportService.applyIngestReport(input);
+        await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE project_id = ${seed.projectId}`;
+      }
+      const eventsBefore = await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId));
+      await withAssociationFailure(seed.projectId, async () => {
+        const operation = successShape === "completed"
+          ? uploadStatusService.statusOf(seed.userId, [key])
+          : ingestReportService.applyIngestReport(input);
+        await expect(operation).rejects.toBeInstanceOf(Error);
+      });
+      expect(await associatedAssets(seed.projectId)).toEqual([]);
+      expect(await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual(eventsBefore);
+      if (successShape === "registered") {
+        expect(await terminalOn(key)).toEqual({ consumed: false, voided: false, asset_id: null });
+        expect(await sql`SELECT id FROM node_history WHERE node_id = ${nodeId}`).toEqual([]);
+      }
+    },
+  );
+
+  it.each(["report", "status"] as const)("repairs a legacy consumed grant through %s before answering success", async (path) => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const input = measuredCompletion(key);
+    await ingestReportService.applyIngestReport(input);
+    const canonical = (await terminalOn(key)).asset_id;
+    await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE project_id = ${seed.projectId}`;
+    expect(await associatedAssets(seed.projectId)).toEqual([]);
+    const before = await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    if (path === "report") {
+      expect(await ingestReportService.applyIngestReport(input)).toMatchObject({ status: "already_registered", assetId: canonical });
+    } else {
+      expect(await uploadStatusService.statusOf(seed.userId, [key])).toEqual([{
+        key, state: "completed", result: {
+          assetId: canonical, fileUrl: expect.any(String), kind: "image", width: null, height: null,
+        },
+      }]);
+      expect(await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual(before);
+    }
+    expect(await associatedAssets(seed.projectId)).toEqual([canonical]);
+    expect(await terminalOn(key)).toEqual({ consumed: true, voided: false, asset_id: canonical });
+  });
+
+  it("keeps the consumed asset identity when the same hash is registered again after deletion", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+    const input = measuredCompletion(key);
+    await ingestReportService.applyIngestReport(input);
+    const original = (await terminalOn(key)).asset_id;
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${original}`;
+    const replacementKey = await mintTicket(seed, { node_id: undefined, space_id: undefined });
+    await ingestReportService.applyIngestReport(measuredCompletion(replacementKey, input.sha256));
+    const replacement = (await terminalOn(replacementKey)).asset_id;
+    expect(replacement).not.toBe(original);
+    const before = await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    const replay = await ingestReportService.applyIngestReport(input);
+    expect(replay.status).toBe("stale");
+    expect(replay).not.toHaveProperty("fileUrl");
+    expect((await terminalOn(key)).asset_id).toBe(original);
+    expect(await uploadStatusService.statusOf(seed.userId, [key])).toEqual([{ key, state: "unknown" }]);
+    expect(await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual(before);
+  });
+
+  it.each([
+    ["aborted", "completed"], ["aborted", "void"],
+    ["over_cap", "completed"], ["over_cap", "void"],
+    ["empty", "completed"], ["empty", "void"],
+  ] as const)("arbitrates completed against %s when %s reaches the grant lock first", async (otherIntent, firstIntent) => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const input = measuredCompletion(key);
+    const reports = firstIntent === "completed"
+      ? [input, terminalReport(input, otherIntent)]
+      : [terminalReport(input, otherIntent), input];
+    const gate = createPgClient(inject("DATABASE_URL"), {
+      name: "upload-terminal-arbitration-gate", max: 1, prepare: false,
+    });
+    try {
+      await gate`BEGIN`;
+      await gate`SELECT id FROM upload_grants WHERE storage_key = ${key} FOR UPDATE`;
+      let interleavingError: unknown;
+      const first = ingestReportService.applyIngestReport(reports[0]!);
+      const observedFirst = Promise.allSettled([first]);
+      let observedSecond: ReturnType<typeof Promise.allSettled> | undefined;
+      try {
+        await waitUntilBlockedOn(sql, ["upload_grants", "for update"], 1);
+        const second = ingestReportService.applyIngestReport(reports[1]!);
+        observedSecond = Promise.allSettled([second]);
+        await waitUntilBlockedOn(sql, ["upload_grants", "for update"], 2);
+        const before = (await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).filter((event) => event.nodeId === nodeId);
+        expect(before).toHaveLength(1);
+        expect(before[0]!.counts).toMatchObject({ running: 1, failed: 0 });
+        expect(before[0]!.result).toBeUndefined();
+      } catch (error) {
+        interleavingError = error;
+      } finally {
+        await gate`ROLLBACK`;
+      }
+      const settled = [...await observedFirst, ...await (observedSecond ?? Promise.resolve([]))];
+      if (interleavingError !== undefined) throw interleavingError;
+      expect(settled.map((entry) => entry.status)).toEqual(["fulfilled", "fulfilled"]);
+      const terminal = await terminalOn(key);
+      expect([terminal.consumed, terminal.voided]).toEqual(firstIntent === "completed" ? [true, false] : [false, true]);
+      const tasks = await sql<{ status: string }[]>`SELECT status FROM node_tasks WHERE storage_key = ${key}`;
+      expect(tasks).toEqual([{ status: terminal.consumed ? "done" : "failed" }]);
+      const ended = (await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).filter((event) => event.nodeId === nodeId).slice(1);
+      expect(ended.some((event) => event.counts.running === 0)).toBe(true);
+      expect(ended.every((event) => terminal.consumed
+        ? typeof event.result?.content === "string" && event.counts.failed === 0
+        : event.result === undefined && event.counts.failed === 1)).toBe(true);
+    } finally {
+      await gate.end({ timeout: 1 });
+    }
+  });
+
+  it("preserves the first committed terminal over generated report and replay sequences", async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.array(fc.constantFrom(...(["completed", "aborted", "over_cap", "empty"] as const)), { minLength: 1, maxLength: 5 }),
+      async (intents) => {
+        const seed = await seedEditor();
+        const nodeId = crypto.randomUUID();
+        const key = await mintTicket(seed, { node_id: nodeId });
+        const input = measuredCompletion(key);
+        const consumed = intents[0] === "completed";
+        let originalAssetId: string | null = null;
+        for (const intent of intents) {
+          const outcome = await ingestReportService.applyIngestReport(terminalReport(input, intent));
+          const terminal = await terminalOn(key);
+          expect([terminal.consumed, terminal.voided]).toEqual([consumed, !consumed]);
+          if (consumed) {
+            expect(["registered", "already_registered"]).toContain(outcome.status);
+            originalAssetId ??= terminal.asset_id;
+            expect(terminal.asset_id).toBe(originalAssetId);
+            expect(await associatedAssets(seed.projectId)).toEqual([originalAssetId]);
+          } else {
+            expect(outcome).not.toHaveProperty("fileUrl");
+          }
+        }
+        const tasks = await sql<{ status: string }[]>`SELECT status FROM node_tasks WHERE storage_key = ${key}`;
+        expect(tasks).toEqual([{ status: consumed ? "done" : "failed" }]);
+      },
+    ), { numRuns: 12 });
   });
 });

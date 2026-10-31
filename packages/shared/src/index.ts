@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
@@ -37,6 +38,9 @@ export type {
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,
+  ProjectAssetReferenceEntity,
+  ProjectRegisteredAsset,
+  ProjectAssetPage,
   ConversationAttachmentEntity,
   AssetKind,
   PaymentEntity,
@@ -409,6 +413,32 @@ export {
   documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
+
+export {
+  TimelineRateSchema,
+  TimelineSettingsSchema,
+  TimelineTrackSchema,
+  TimelineVideoSourceSchema,
+  TimelineVideoClipSchema,
+  TimelineEditCommandSchema,
+  TimelineDocumentV1Schema,
+} from "@shared/timeline/schema.js";
+export type {
+  TimelineRate,
+  TimelineSettings,
+  TimelineTrack,
+  TimelineVideoSource,
+  TimelineVideoClip,
+  TimelineEditCommand,
+  TimelineDocumentV1,
+} from "@shared/timeline/schema.js";
+export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
+export type { TimelineRangeValidation } from "@shared/timeline/time.js";
+
+export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
+export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
+export type { TimelineClientLimits } from "@shared/timeline/api.js";
 
 export {
   DOCUMENT_SCHEMA,

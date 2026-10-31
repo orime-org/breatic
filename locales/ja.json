@@ -2822,5 +2822,62 @@
       "description": "このページは古いバージョンのため、今回の操作は完了していません。再読み込みすると続行できます。",
       "refresh": "更新"
     }
+  },
+  "timeline": {
+    "loading": "Timeline を読み込み中…",
+    "unavailable": "Timeline を利用できません。",
+    "incompatible": "この Timeline の内容を開けません。",
+    "empty": "動画を追加して Timeline の編集を始めましょう。",
+    "video": "動画",
+    "conflict": "競合",
+    "conflictHelp": "クリップが重複しています。クリップを選択して開始フレームを変更してください。",
+    "loadingMedia": "動画を読み込み中…",
+    "mediaUnavailable": "この動画を利用できません。",
+    "retry": "再試行",
+    "play": "再生",
+    "pause": "一時停止",
+    "seek": "プレビューフレーム",
+    "framePosition": "フレーム {frame} / {total}",
+    "tracks": "トラック",
+    "addMedia": "素材を追加",
+    "visualTrack": "映像 1",
+    "selectClip": "クリップを選択してプロパティを表示します。",
+    "clipFrames": "開始 {start} · 長さ {duration} フレーム",
+    "editStart": "開始フレームを変更",
+    "startFrame": "開始フレーム",
+    "apply": "適用",
+    "cancel": "キャンセル",
+    "transport": {
+      "paused": "一時停止中",
+      "playing": "再生中",
+      "waiting": "バッファリング中…",
+      "failed": "再生に失敗しました"
+    },
+    "material": {
+      "description": "動画を選択して追加位置を確認してください。",
+      "project": "Project の動画",
+      "local": "ローカルからアップロード",
+      "duration": "{seconds} 秒",
+      "durationPending": "長さを取得待ち",
+      "loading": "Project の動画を読み込み中…",
+      "listError": "Project の動画を読み込めませんでした。",
+      "empty": "この Project にはまだ動画がありません。",
+      "more": "さらに読み込む",
+      "chooseFile": "動画を選択",
+      "fileEmpty": "ローカルの動画ファイルを選択してください。",
+      "preparing": "動画を準備中…",
+      "progress": "アップロード中 {progress}%",
+      "confirm": "Timeline に追加"
+    },
+    "errors": {
+      "readonly": "現在の役割では編集できません。",
+      "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
+      "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
+      "invalid_range": "有効な開始フレームを入力してください。",
+      "overlap": "この位置は別のクリップと重複しています。開始フレームを変更してください。",
+      "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
+      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
+      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。"
+    }
   }
 }

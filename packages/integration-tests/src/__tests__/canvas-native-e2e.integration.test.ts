@@ -155,24 +155,25 @@ const keyToUrl = new Map<string, string>();
 let keySeq = 0;
 
 vi.mock("@breatic/core", async (importOriginal) => {
-  const orig = await importOriginal<Record<string, unknown>>();
+  const orig = await importOriginal<typeof coreModule>();
   return {
     ...orig,
-    getStorageAdapter: async () => ({
-      upload: async (key: string, _data: Buffer, _contentType: string) => {
-        const url = `https://oss/uploaded/${key}`;
-        keyToUrl.set(key, url);
-        return url;
-      },
-      // Our-own URLs = whatever upload() produced, and the key comes back out
-      // of one. Provider temp URLs ("https://oss/result-*.png" etc.) are
-      // external → re-hosted by Case 2.
-      keyFromUrl: (url: string) =>
-        url.startsWith("https://oss/uploaded/")
-          ? url.slice("https://oss/uploaded/".length)
-          : null,
-      publicUrl: (key: string) => keyToUrl.get(key) ?? `https://oss/${key}`,
-    }),
+    getStorageAdapter: async () => {
+      const adapter = await orig.getStorageAdapter();
+      return {
+        upload: async (key: string, _data: Buffer, _contentType: string) => {
+          const url = `https://oss/uploaded/${key}`;
+          keyToUrl.set(key, url);
+          return url;
+        },
+        // Registered-output fixtures use the real adapter's URL format.
+        keyFromUrl: (url: string) =>
+          url.startsWith("https://oss/uploaded/")
+            ? url.slice("https://oss/uploaded/".length)
+            : adapter.keyFromUrl(url),
+        publicUrl: (key: string) => keyToUrl.get(key) ?? `https://oss/${key}`,
+      };
+    },
     storageKey: () => `test/key-${++keySeq}.png`,
   };
 });
@@ -291,11 +292,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 // the `db` Proxy in waitForCondition). That is why initCore lives here and
 // not in the shared setupFile.
 
+import type * as coreModule from "@breatic/core";
 import type * as domain from "@breatic/domain";
 import { runTask } from "@worker/handlers/dispatch.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, taskEventsStreamKey, type Redis } from "@breatic/core";
-import { creditLotService, taskService } from "@breatic/domain";
+import { assetService, creditLotService, taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 import { openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
@@ -1412,16 +1414,27 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     const nodeId = crypto.randomUUID();
 
-    // Simulate a local mini-tool (video cut/crop) that uploaded its output
-    // to our storage and returned an OUR-OWN url. failDownload makes any
-    // Case-2 re-download throw. Pre-round-3 the '/uploads/' guard did not
-    // recognize our S3/OSS URL, so Case 2 fired and the failing re-download
-    // failed the task; a key stripped off it means ours, so the re-host is
-    // skipped → the task completes and the node keeps the stored URL.
+    // Local handlers return the URL of a registered upload; its ledger row
+    // supplies the canonical identity when the task accepts the stored output.
+    const core = await vi.importActual<typeof coreModule>("@breatic/core");
+    const adapter = await core.getStorageAdapter();
+    const fileUrl = adapter.publicUrl("cut-1.mp4");
+    keyToUrl.set("cut-1.mp4", fileUrl);
+    await assetService.register({
+      ownerStudioId: FIXTURE_STUDIO_ID,
+      actingUserId: FIXTURE_USER_ID,
+      contentHash: crypto.createHash("sha256").update("registered-cut-1").digest("hex"),
+      storageKey: "cut-1.mp4",
+      fileUrl,
+      sizeBytes: 12345,
+      mimeType: "video/mp4",
+      kind: "video",
+      source: "upload",
+    });
     storageCtrl.failDownload = true;
     const taskId = await runGeneration({
       nodeId,
-      url: "https://oss/uploaded/cut-1.mp4",
+      url: fileUrl,
     });
 
     await waitForCondition(
@@ -1437,7 +1450,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       10_000,
       `node ${nodeId} idle (own-url output)`,
     );
-    expect(data["content"]).toBe("https://oss/uploaded/cut-1.mp4");
+    expect(data["content"]).toBe(fileUrl);
   });
 });
 

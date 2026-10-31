@@ -37,6 +37,7 @@ import {
   encodeInitialMetaState,
   getRedis,
   getSession,
+  getTimelineConfig,
   loadInitialSpaceType,
   projectActivitiesRepo,
   runWithConsent,
@@ -68,6 +69,7 @@ const SYSTEM_ACTOR = "system";
  * @param documentName - Full Yjs doc name being loaded
  * @param opener - The connection whose load triggered this, when there is one
  * @returns The seeded meta bytes, or null when no seed applies
+ * @throws {Error} When configuration, initialization or database acceptance fails.
  */
 export async function lazySeedMeta(
   documentName: string,
@@ -93,7 +95,7 @@ export async function lazySeedMeta(
   // deterministically named, so concurrent first-loads converge.
   await yjsDocumentsRepo.seedInitialState(
     spaceContentDocName(projectId, spaceId, kind),
-    encodeInitialSpaceContent(kind),
+    encodeInitialSpaceContent(kind, kind === "timeline" ? getTimelineConfig().defaults : undefined),
   );
 
   const bytes = encodeInitialMetaState({

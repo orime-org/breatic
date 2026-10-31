@@ -9,10 +9,24 @@
  * ordered by created_at desc.
  */
 
-import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, studios } from "@breatic/core";
 import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
+
+/**
+ * Read successful history provenance in immutable-id order for backfill.
+ * @param cursor - The last emitted history identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Live successful rows, retaining text rows for provenance reporting.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanSuccessfulMediaHistory(cursor: string | null, limit: number): Promise<NodeHistoryEntity[]> {
+  const rows = await db.select().from(nodeHistory).where(and(
+    eq(nodeHistory.status, "success"), isNull(nodeHistory.deletedAt), cursor === null ? undefined : gt(nodeHistory.id, cursor),
+  )).orderBy(nodeHistory.id).limit(limit);
+  return rows.map((row) => toEntity(row));
+}
 
 /**
  * Convert a Drizzle row to a NodeHistoryEntity.
