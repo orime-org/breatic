@@ -179,30 +179,6 @@ describe("live connections — a socket outlives the documents on it (inner#1034
   });
 });
 
-describe("live connections — pongs are handled at most twice per ping period (inner#1034)", () => {
-  const PING = 30_000;
-
-  it("handles one pong of a flood that arrives within half a period, and the next one after it", () => {
-    let clock = 1_000_000;
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING, now: () => clock });
-    const connection = fakeConnection();
-    table.remember("s-1", "doc-a", connection);
-
-    // RFC 6455 lets a client send unsolicited pongs; each handled one runs a
-    // script per seat on the shared Redis.
-    for (let i = 0; i < 50; i++) {
-      fire(connection, "pong");
-      clock += 100;
-    }
-    expect(onPong).toHaveBeenCalledTimes(1);
-
-    clock = 1_000_000 + PING / 2;
-    fire(connection, "pong");
-    expect(onPong).toHaveBeenCalledTimes(2);
-  });
-});
-
 describe("live connections — an early pong is deferred, not dropped (inner#1034)", () => {
   const PING = 30_000;
 
@@ -227,6 +203,33 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
     expect(handled).toEqual([20_000, 35_000, 85_000, 100_000]);
     const gaps = handled.slice(1).map((t, i) => t - handled[i]!);
     expect(Math.max(...gaps)).toBeLessThanOrEqual(2 * PING);
+  });
+
+  it("handles one pong of a flood that arrives within half a period, and the next one after it", () => {
+    vi.useFakeTimers({ now: 0 });
+    let clock = 1_000_000;
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING, now: () => clock });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    // RFC 6455 lets a client send unsolicited pongs; each handled one runs a
+    // script per seat on the shared Redis.
+    for (let i = 0; i < 50; i++) {
+      fire(connection, "pong");
+      clock += 100;
+    }
+    expect(onPong).toHaveBeenCalledTimes(1);
+
+    // The clock reaches half a period before the deferred timer runs, so this
+    // pong is on time and takes the deferred one's place.
+    clock = 1_000_000 + PING / 2;
+    fire(connection, "pong");
+    expect(onPong).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(PING);
+    expect(onPong).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("handles a flood within half a period once at once and once deferred", () => {
