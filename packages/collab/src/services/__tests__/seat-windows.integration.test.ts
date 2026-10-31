@@ -120,7 +120,7 @@ async function rig(real = false): Promise<Rig> {
   });
   if (real) await handover.start();
   const onAlive = createLivenessHandler({
-    refreshSeats: (socketId: string) => reg.refreshSocket(socketId),
+    refreshSeats: (socketId: string, heardAt: number) => reg.refreshSocket(socketId, heardAt),
     requestDemote: (documentName: string, member: string) => handover.requestDemote(documentName, member),
     presencePolicy: { now: () => clock, staleAfterMs: 60_000 },
   });
@@ -132,7 +132,7 @@ async function rig(real = false): Promise<Rig> {
     sockets,
     async alive(socketId: string): Promise<void> {
       const carried: ReadonlyMap<string, unknown> = sockets.get(socketId) ?? new Map();
-      onAlive(socketId, carried as LiveSocketConnections);
+      onAlive(socketId, carried as LiveSocketConnections, clock);
       await w.flush();
       for (let i = 0; i < 3; i++) await new Promise<void>((resolve) => setImmediate(resolve));
       await w.flush();
@@ -229,7 +229,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(ca.webSocket.send.mock.calls[0]![0]).toEqual(READ_ONLY_FRAME);
     expect(r.writable()).toBe(2);
     const mark = r.w.log.length;
-    await r.reg.refreshSocket("sa");
+    await r.reg.refreshSocket("sa", clock);
     expect(evalsOn(r.w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
     expect(c9.readOnly).toBe(false);
   });

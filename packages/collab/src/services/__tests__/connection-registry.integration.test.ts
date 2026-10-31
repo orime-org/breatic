@@ -159,7 +159,7 @@ async function probeMode(reg: ConnectionRegistry, socketId: string, member: stri
   await R.zadd(key, clock, earlier);
   const card = await R.zcard(key);
   for (let i = card; i < 2; i++) await R.zadd(key, clock, m(`probe-other-${i}`, 1, "i-probe", `s-other-${i}`));
-  const result = await reg.refreshSocket(socketId);
+  const result = await reg.refreshSocket(socketId, clock);
   const item = result.find((r) => r.documentName === DOC);
   if (item?.outcome === "replaced" && item.replaced === earlier) return "arriving";
   if (item?.outcome === "lost" && (await R.zscore(key, earlier)) !== null) return "held";
@@ -224,7 +224,7 @@ describe("A · the script's branches", () => {
 
     await R.zrem(keyFor(DOC), m("u2", 1000, "i2", "x2"));
     const mark = w.log.length;
-    expect(await reg.refreshSocket("s9")).toEqual([]);
+    expect(await reg.refreshSocket("s9", clock)).toEqual([]);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
     expect(await has(DOC, mine)).toBe(false);
   });
@@ -339,7 +339,7 @@ describe("A · the script's branches", () => {
     await R.expire(keyFor(DOC), 10);
 
     clock = T + 10_000;
-    expect(await reg.refreshSocket("s9")).toEqual([]);
+    expect(await reg.refreshSocket("s9", clock)).toEqual([]);
     expect(await members(DOC)).toEqual({ [mine]: T + 10_000 });
     expect(await R.ttl(keyFor(DOC))).toBeGreaterThan(118);
   });
@@ -352,7 +352,7 @@ describe("A · the script's branches", () => {
     await seed(DOC, T, m("u3", 1000, "i2", "x3"));
 
     clock = T + 5_000;
-    expect(await reg.refreshSocket("s9")).toEqual([]);
+    expect(await reg.refreshSocket("s9", clock)).toEqual([]);
     const after = await members(DOC);
     expect(Object.keys(after)).toHaveLength(3);
     expect(after[mine]).toBe(T + 5_000);
@@ -365,9 +365,50 @@ describe("A · the script's branches", () => {
     await R.expire(keyFor(DOC), 10);
 
     clock = T + 30_000;
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     expect(await members(DOC)).toEqual({ [mine]: T + 30_000 });
     expect(await R.ttl(keyFor(DOC))).toBeGreaterThan(118);
+  });
+
+  it("A12b scores a renewal at the time its socket was last heard, not the time the script runs", async () => {
+    const { reg } = build();
+    const mine = m("u1", 5000, "i1", "s1");
+    await reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
+
+    clock = T + 30_000;
+    expect(await reg.refreshSocket("s1", T + 15_050)).toEqual([]);
+    expect(await members(DOC)).toEqual({ [mine]: T + 15_050 });
+  });
+
+  it("A12c lets a reconnect replace its own dead seat, not the live tab, when that seat's last renewal ran late", async () => {
+    // One person, two tabs on a full document of three: A on the laptop,
+    // arrived first and in use; B on another machine, arrived later. B was
+    // last heard at L, a message held back behind a pong, and that renewal
+    // ran at L + 14 950 ms; then B's network died. Its provider reconnects at
+    // L + 37 s, the measured reconnect floor.
+    const L = T;
+    const laptop = build("i1").reg;
+    const machineB = build("i2").reg;
+    const someoneElse = build("i3").reg;
+    const deadSeat = m("u1", L - 300_000, "i2", "sB");
+    clock = L - 1_000;
+    await laptop.takeSeat(DOC, H("sA", "u1", L - 600_000), 3);
+    await machineB.takeSeat(DOC, H("sB", "u1", L - 300_000), 3);
+    await someoneElse.takeSeat(DOC, H("sV", "u2", L - 900_000), 3);
+
+    clock = L + 14_950;
+    await machineB.refreshSocket("sB", L);
+    clock = L + 35_000;
+    await laptop.refreshSocket("sA", clock);
+    clock = L + 36_000;
+    await someoneElse.refreshSocket("sV", clock);
+
+    clock = L + 37_000;
+    expect(await machineB.takeSeat(DOC, H("sB2", "u1", clock), 3)).toEqual({
+      outcome: "replaced",
+      replaced: deadSeat,
+    });
+    expect(await has(DOC, m("u1", L - 600_000, "i1", "sA"))).toBe(true);
   });
 
   it("A13 takes the seat back on a pong when the key has gone and there is room", async () => {
@@ -376,7 +417,7 @@ describe("A · the script's branches", () => {
     await reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
     await R.del(keyFor(DOC));
 
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     expect(Object.keys(await members(DOC))).toEqual([mine]);
   });
 
@@ -389,7 +430,7 @@ describe("A · the script's branches", () => {
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
 
     const mark = w.log.length;
-    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(await has(DOC, m("u1", 1000, "i2", "sa"))).toBe(true);
     await w.flush();
     const slice = w.log.slice(mark);
@@ -397,7 +438,7 @@ describe("A · the script's branches", () => {
     expect(zremsOf(slice.slice(evalAt + 1), keyFor(DOC), mine)).toHaveLength(1);
 
     const again = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     expect(evalsOn(w.log.slice(again), keyFor(DOC))).toHaveLength(0);
   });
 
@@ -408,7 +449,7 @@ describe("A · the script's branches", () => {
     await seed(DOC, T + 61_000, m("u2", 1000, "i2", "x2"));
     await seed(DOC, T + 61_000, m("u3", 1000, "i2", "x3"));
 
-    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u2", 1000, "i2", "x2"), m("u3", 1000, "i2", "x3")].sort());
   });
 });
@@ -468,7 +509,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     expect(await p).toEqual({ outcome: "gone" });
     expect(await R.zcard(keyFor(DOC))).toBe(0);
     const mark = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
   });
 
@@ -499,7 +540,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     held.release();
 
     expect(await p).toEqual({ outcome: "gone" });
-    expect(await reg.refreshSocket("sa")).toEqual([]);
+    expect(await reg.refreshSocket("sa", clock)).toEqual([]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 1000, "i1", "sa"), m("u2", 1000, "i2", "x2")].sort());
   });
 
@@ -520,7 +561,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     await w.flush();
     expect(await has(DOC, newer)).toBe(true);
     clock = T + 1_000;
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     expect((await members(DOC))[newer]).toBe(T + 1_000);
   });
 
@@ -532,7 +573,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     expect(await reg.takeSeat("docB", H("s1", "u1", 5000), 2)).toEqual({ outcome: "seated" });
 
     const mark = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     const slice = w.log.slice(mark);
     expect(evalsOn(slice, keyFor("docB"))).toHaveLength(1);
     expect(evalsOn(slice, keyFor("docA"))).toHaveLength(0);
@@ -545,11 +586,11 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     const { reg, w } = build();
     await reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
     const held = w.hold("eval");
-    const r1 = reg.refreshSocket("s1");
+    const r1 = reg.refreshSocket("s1", clock);
     await held.executed;
 
     const mark = w.log.length;
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
     held.release();
     expect(await r1).toEqual([]);
@@ -560,7 +601,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     const mine = m("u1", 5000, "i1", "s1");
     await reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
     const held = w.hold("eval");
-    const r = reg.refreshSocket("s1");
+    const r = reg.refreshSocket("s1", clock);
     await held.executed;
     await reg.unregister(DOC, "s1");
     held.release();
@@ -577,7 +618,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
     await seed(DOC, T, m("u3", 1000, "i2", "x3"));
     const held = w.hold("eval");
-    const r = reg.refreshSocket("s1");
+    const r = reg.refreshSocket("s1", clock);
     await held.executed;
     await reg.forgetSeat(DOC, mine);
     held.release();
@@ -600,7 +641,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(warned("conn_registry_take_failed")).toBe(true);
 
     clock = T + 30_000;
-    expect(await reg.refreshSocket("s9")).toEqual([
+    expect(await reg.refreshSocket("s9", clock)).toEqual([
       { documentName: DOC, outcome: "replaced", replaced: m("u1", 1000, "i1", "sa") },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s9"), m("u2", 1000, "i2", "x2")].sort());
@@ -613,7 +654,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(await reg.takeSeat(DOC, H("s1", "u1", 5000), 2)).toEqual({ outcome: "unknown" });
     expect(await has(DOC, mine)).toBe(true);
 
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     expect(await R.zcard(keyFor(DOC))).toBe(1);
     expect(await probeMode(reg, "s1", mine, "u1")).toBe("held");
   });
@@ -629,7 +670,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
       replaced: m("u1", 1000, "i1", "s1"),
     });
 
-    expect(await reg.refreshSocket("s2")).toEqual([
+    expect(await reg.refreshSocket("s2", clock)).toEqual([
       { documentName: DOC, outcome: "full", liveCount: 2, cap: 2 },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 3000, "i1", "s3"), m("u2", 500, "i1", "sb")].sort());
@@ -645,12 +686,12 @@ describe("A · Redis errors, client timeouts and retries", () => {
       replaced: m("u1", 1000, "i1", "s1"),
     });
 
-    expect(await reg.refreshSocket("s1")).toEqual([
+    expect(await reg.refreshSocket("s1", clock)).toEqual([
       { documentName: DOC, outcome: "full", liveCount: 2, cap: 2 },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s2"), m("u2", 500, "i1", "sb")].sort());
     const mark = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
   });
 
@@ -662,7 +703,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(await reg.takeSeat(DOC, H("s9", "u1", 5000), 2)).toEqual({ outcome: "unknown" });
     await R.zrem(keyFor(DOC), m("u2", 1000, "i2", "x2"));
 
-    expect(await reg.refreshSocket("s9")).toEqual([]);
+    expect(await reg.refreshSocket("s9", clock)).toEqual([]);
     expect(await has(DOC, m("u1", 5000, "i1", "s9"))).toBe(true);
   });
 
@@ -671,12 +712,12 @@ describe("A · Redis errors, client timeouts and retries", () => {
     const mine = m("u1", 5000, "i1", "s1");
     await reg.takeSeat(DOC, H("s1", "u1", 5000), 2);
     w.fail("eval", "reject-before-send");
-    await expect(reg.refreshSocket("s1")).resolves.toEqual([]);
+    await expect(reg.refreshSocket("s1", clock)).resolves.toEqual([]);
     expect(await has(DOC, mine)).toBe(true);
     expect(warned("conn_registry_refresh_failed")).toBe(true);
 
     const mark = w.log.length;
-    expect(await reg.refreshSocket("s1")).toEqual([]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
     const renewals = evalsOn(w.log.slice(mark), keyFor(DOC));
     expect(renewals).toHaveLength(1);
     expect(renewals[0]!.args).toContain("refresh");
@@ -746,7 +787,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     await reg.forgetSeat(DOC, mine);
     expect(await has(DOC, mine)).toBe(false);
     const mark = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
 
     await reg.forgetSeat(DOC, foreign);
@@ -764,7 +805,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     await reg.forgetSeat(DOC, mine);
     expect(await has(DOC, mine)).toBe(false);
     const mark = w.log.length;
-    await reg.refreshSocket("s1");
+    await reg.refreshSocket("s1", clock);
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
   });
 
@@ -784,9 +825,9 @@ describe("A · Redis errors, client timeouts and retries", () => {
     await reg.takeSeat(DOC, H("s3", "u3", 3000), 2);
     await R.del(keyFor(DOC));
 
-    expect(await reg.refreshSocket("s1")).toEqual([]);
-    expect(await reg.refreshSocket("s2")).toEqual([]);
-    expect(await reg.refreshSocket("s3")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s1", clock)).toEqual([]);
+    expect(await reg.refreshSocket("s2", clock)).toEqual([]);
+    expect(await reg.refreshSocket("s3", clock)).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 1000, "i1", "s1"), m("u2", 2000, "i1", "s2")].sort());
   });
 });
@@ -821,7 +862,7 @@ describe("A · what the registry kept doing before inner#1034", () => {
     const { reg } = build();
     await reg.takeSeat(DOC, H("sock-1", "user-a", 1000), 5);
     clock = T + 30_000;
-    await reg.refreshSocket("sock-1");
+    await reg.refreshSocket("sock-1", clock);
     clock = T + 60_000;
     expect(await reg.count(DOC)).toBe(1);
   });
@@ -831,14 +872,14 @@ describe("A · what the registry kept doing before inner#1034", () => {
     await reg.takeSeat("doc-1", H("sock-1", "user-a", 1000), 5);
     await reg.takeSeat("doc-2", H("sock-1", "user-a", 1000), 5);
     clock = T + 30_000;
-    expect(await reg.refreshSocket("sock-1")).toEqual([]);
+    expect(await reg.refreshSocket("sock-1", clock)).toEqual([]);
     expect(Object.values(await members("doc-1"))).toEqual([T + 30_000]);
     expect(Object.values(await members("doc-2"))).toEqual([T + 30_000]);
   });
 
   it("leaves a socket that holds no seats alone", async () => {
     const { reg, w } = build();
-    expect(await reg.refreshSocket("sock-viewer")).toEqual([]);
+    expect(await reg.refreshSocket("sock-viewer", clock)).toEqual([]);
     expect(w.log).toEqual([]);
   });
 
@@ -848,7 +889,7 @@ describe("A · what the registry kept doing before inner#1034", () => {
     await reg.takeSeat("doc-kept", H("sock-1", "user-a", 1000), 5);
     await reg.forgetSeat("doc-demoted", m("user-a", 1000, "i1", "sock-1"));
     clock = T + 30_000;
-    await reg.refreshSocket("sock-1");
+    await reg.refreshSocket("sock-1", clock);
     expect(await R.zcard(keyFor("doc-demoted"))).toBe(0);
     expect(Object.values(await members("doc-kept"))).toEqual([T + 30_000]);
   });
@@ -1132,7 +1173,7 @@ class World {
    * @param conn - The connection.
    */
   alive(conn: ModelConn): void {
-    void this.regs[conn.inst].refreshSocket(conn.socketId).then((items) => this.onAlive(conn, items));
+    void this.regs[conn.inst].refreshSocket(conn.socketId, clock).then((items) => this.onAlive(conn, items));
   }
 
   /**
@@ -1281,7 +1322,7 @@ describe("D · any interleaving keeps the cap and leaves no stray seat", () => {
         expect(writable.length).toBeLessThanOrEqual(cap);
         for (const conn of writable) {
           const mark = world.ws[conn.inst].log.length;
-          expect(await world.regs[conn.inst].refreshSocket(conn.socketId)).toEqual([]);
+          expect(await world.regs[conn.inst].refreshSocket(conn.socketId, clock)).toEqual([]);
           expect(evalsOn(world.ws[conn.inst].log.slice(mark), world.key)).toHaveLength(1);
           expect(set).toContain(conn.member);
         }

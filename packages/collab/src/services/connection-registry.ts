@@ -144,7 +144,8 @@ export function parseSeatMember(member: string): SeatMember | null {
 /**
  * The one place a member is added to a seat set (see module doc).
  *
- * KEYS[1] the seat key. ARGV: prune line, cap, member, score (now), key TTL
+ * KEYS[1] the seat key. ARGV: prune line, cap, member, score (when the
+ * connection was last heard), key TTL
  * in seconds, mode (`arrive` | `refresh`), the person's member prefix
  * (`{userId}:`), the not-answering line ({@link silentSeatCutoff}), and this
  * connection's `arrivedAtMs`.
@@ -272,12 +273,17 @@ export interface ConnectionRegistry {
   unregister(documentName: string, socketId: string): Promise<void>;
   /**
    * Run the seat script for every entry of this socket that has none in
-   * flight, because it just answered a ping: `arrive` for an arrival Redis
-   * could not answer, `refresh` for a held seat.
-   * @param socketId - The socket that answered.
+   * flight, because it just showed a sign of life (a pong, a ping or any
+   * message): `arrive` for an arrival Redis could not answer, `refresh` for
+   * a held seat. The score written is `heardAt`, the time the socket was
+   * last heard, not the time the script runs: the refresh may have been held
+   * back, and a dead socket's seat must not look fresher than its last sign
+   * of life when a reconnect asks which seat stopped answering.
+   * @param socketId - The socket that showed a sign of life.
+   * @param heardAt - When it was last heard, in epoch ms.
    * @returns What the caller has to act on; empty when nothing changed.
    */
-  refreshSocket(socketId: string): Promise<SeatRefreshResult[]>;
+  refreshSocket(socketId: string, heardAt: number): Promise<SeatRefreshResult[]>;
   /**
    * Whether `userId` holds an unexpired seat on `documentName`.
    * @param documentName - Document that is at capacity.
@@ -398,9 +404,17 @@ export function createConnectionRegistry(
    * @param documentName - The document.
    * @param entry - The entry.
    * @param mode - Which mode to run.
+   * @param score - The score to write: when the connection was last heard.
    * @returns The raw reply.
    */
-  function sendScript(documentName: string, entry: SeatEntry, mode: ScriptMode): Promise<unknown> {
+  function sendScript(
+    documentName: string,
+    entry: SeatEntry,
+    mode: ScriptMode,
+    score: number,
+  ): Promise<unknown> {
+    // Pruning and the silent line are judged at the time the script runs;
+    // only the score is when the socket was heard.
     const t = now();
     return redis.eval(
       SEAT_SCRIPT,
@@ -409,7 +423,7 @@ export function createConnectionRegistry(
       t - seatExpiryMs,
       entry.cap,
       entry.member,
-      t,
+      score,
       ttlSeconds,
       mode,
       seatPrefix(entry.userId),
@@ -429,6 +443,7 @@ export function createConnectionRegistry(
    * @param documentName - The document.
    * @param entry - The entry, already marked in flight.
    * @param mode - Which mode to run.
+   * @param score - The score to write: when the connection was last heard.
    * @returns What came of it.
    */
   async function run(
@@ -436,10 +451,11 @@ export function createConnectionRegistry(
     documentName: string,
     entry: SeatEntry,
     mode: ScriptMode,
+    score: number,
   ): Promise<TakeSeatResult> {
     let reply: unknown;
     try {
-      reply = await sendScript(documentName, entry, mode);
+      reply = await sendScript(documentName, entry, mode, score);
     } catch (err) {
       if (!isCurrent(socketId, documentName, entry)) return { outcome: "gone" };
       entry.inFlight = false;
@@ -486,7 +502,7 @@ export function createConnectionRegistry(
       bySocket.set(holder.socketId, seats);
     }
     seats.set(documentName, entry);
-    return run(holder.socketId, documentName, entry, "arrive");
+    return run(holder.socketId, documentName, entry, "arrive", now());
   }
 
   /**
@@ -507,10 +523,11 @@ export function createConnectionRegistry(
   /**
    * Renew, or retry, every seat this socket holds (see
    * {@link ConnectionRegistry.refreshSocket}).
-   * @param socketId - The socket that answered.
+   * @param socketId - The socket that showed a sign of life.
+   * @param heardAt - When it was last heard, in epoch ms.
    * @returns What the caller has to act on.
    */
-  async function refreshSocket(socketId: string): Promise<SeatRefreshResult[]> {
+  async function refreshSocket(socketId: string, heardAt: number): Promise<SeatRefreshResult[]> {
     const seats = bySocket.get(socketId);
     if (!seats) return [];
     const pending: Promise<SeatRefreshResult | null>[] = [];
@@ -520,7 +537,7 @@ export function createConnectionRegistry(
       const mode: ScriptMode = entry.state === "arriving" ? "arrive" : "refresh";
       const { cap } = entry;
       pending.push(
-        run(socketId, documentName, entry, mode).then((result): SeatRefreshResult | null => {
+        run(socketId, documentName, entry, mode, heardAt).then((result): SeatRefreshResult | null => {
           if (result.outcome === "replaced") {
             return { documentName, outcome: "replaced", replaced: result.replaced };
           }

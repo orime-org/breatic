@@ -59,21 +59,21 @@ function metaDocWith(lastSeenAt: number): Y.Doc {
 /** A seat renewal that has nothing to report. */
 const nothingToReport = (): ReturnType<Deps["refreshSeats"]> => Promise.resolve([]);
 
-describe("a pong refreshes everything it proves", () => {
-  it("moves the socket's seats forward", () => {
+describe("a sign of life refreshes everything it proves", () => {
+  it("moves the socket's seats forward to the time it was heard", () => {
     const refreshSeats = vi.fn(nothingToReport);
     const handler = createLivenessHandler({
       refreshSeats,
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
     });
 
-    handler("sock-1", new Map());
+    handler("sock-1", new Map(), 25_000);
 
-    expect(refreshSeats).toHaveBeenCalledWith("sock-1");
+    expect(refreshSeats).toHaveBeenCalledWith("sock-1", 25_000);
   });
 
-  it("moves the owner of the socket's meta connection forward", () => {
+  it("moves the owner of the socket's meta connection forward to the time it was heard", () => {
     const doc = metaDocWith(1_000);
     const handler = createLivenessHandler({
       refreshSeats: vi.fn(nothingToReport),
@@ -86,13 +86,14 @@ describe("a pong refreshes everything it proves", () => {
       new Map<string, unknown>([
         [META_DOC, { context: { user: { id: ALICE } }, document: doc }],
       ]) as Connections,
+      25_000,
     );
 
-    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(31_000);
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(25_000);
     doc.destroy();
   });
 
-  it("does both from one pong, not one or the other", () => {
+  it("does both from one sign of life, not one or the other", () => {
     // The two are independent calls, so a change that keeps one can drop the
     // other and leave both of their own suites green. This is the only case
     // that reads them together.
@@ -109,6 +110,7 @@ describe("a pong refreshes everything it proves", () => {
       new Map<string, unknown>([
         [META_DOC, { context: { user: { id: ALICE } }, document: doc }],
       ]) as Connections,
+      31_000,
     );
 
     expect(refreshSeats).toHaveBeenCalledTimes(1);
@@ -178,7 +180,7 @@ async function aliveWith(
     requestDemote,
     presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
   });
-  expect(() => handler("sock-1", connections as Connections)).not.toThrow();
+  expect(() => handler("sock-1", connections as Connections, 31_000)).not.toThrow();
   for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0));
   return { requestDemote };
 }

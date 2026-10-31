@@ -162,7 +162,13 @@ export interface SocketConnection {
 
 /**
  * A socket showed a sign of life (a pong, a ping or any message), so whoever
- * owns it is still here: push their timestamp forward, and sweep.
+ * owns it is still here: push their timestamp forward to the time the socket
+ * was last heard, and sweep.
+ *
+ * The stamp is `heardAt`, not the time this runs: a refresh held back behind
+ * an earlier one runs up to half a ping period later, and stamping that
+ * moment would keep someone whose network just died online that much longer.
+ * The sweep still judges every record against `policy.now()`.
  *
  * Arrival stamps a record once, through `recordPresenceOnConnect`; from then
  * on this is what moves it, and it is deliberately the only refresh this
@@ -189,20 +195,21 @@ export interface SocketConnection {
  * chance, and costs one walk of a per-project map per refresh per person.
  * @param connections - Everything this socket carries, by document name.
  * @param policy - Clock and presence threshold.
+ * @param heardAt - Wall-clock time the socket was last heard, in ms.
  */
 export function refreshPresenceForSocket(
   connections: ReadonlyMap<string, SocketConnection>,
   policy: PresencePolicy,
+  heardAt: number,
 ): void {
   for (const [documentName, connection] of connections) {
     if (!isMetaDoc(documentName)) continue;
     const userId = userIdOf({ context: connection.context });
     if (!userId) return;
-    const now = policy.now();
-    if (!touchLastSeen({ document: connection.document, userId, now })) return;
+    if (!touchLastSeen({ document: connection.document, userId, now: heardAt })) return;
     sweepStalePresence({
       document: connection.document,
-      now,
+      now: policy.now(),
       staleAfterMs: policy.staleAfterMs,
     });
     return;

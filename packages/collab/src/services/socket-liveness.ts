@@ -40,8 +40,11 @@ const logger = createLogger("socket-liveness");
 
 /** What refreshing a socket's facts needs. */
 export interface SocketLivenessDeps {
-  /** Renew every seat this socket holds; returns what needs acting on. */
-  refreshSeats: (socketId: string) => Promise<SeatRefreshResult[]>;
+  /**
+   * Renew every seat this socket holds, scored at `heardAt`; returns what
+   * needs acting on.
+   */
+  refreshSeats: (socketId: string, heardAt: number) => Promise<SeatRefreshResult[]>;
   /**
    * Ask whichever instance holds it to demote a replaced connection. Bound
    * late by the caller: the demote channel is built after the table this
@@ -59,27 +62,31 @@ type LiveSocketConnection = SocketConnection & DemotableConnection;
  * Build the callback the per-socket table calls on each sign of life it
  * handles.
  * @param deps - See {@link SocketLivenessDeps}.
- * @returns The callback, taking the socket and what it carries.
+ * @returns The callback, taking the socket, what it carries and the
+ * wall-clock time it was last heard, which both refreshes record.
  */
 export function createLivenessHandler(
   deps: SocketLivenessDeps,
 ): (
   socketId: string,
   connections: ReadonlyMap<string, LiveSocketConnection>,
+  heardAt: number,
 ) => void {
   const { refreshSeats, requestDemote, presencePolicy } = deps;
 
   /**
    * Act on what the seat renewal answered.
-   * @param socketId - The socket that answered.
+   * @param socketId - The socket that showed a sign of life.
    * @param connections - What it carries.
+   * @param heardAt - When it was last heard.
    * @returns once every demote request has been attempted.
    */
   async function settleSeats(
     socketId: string,
     connections: ReadonlyMap<string, LiveSocketConnection>,
+    heardAt: number,
   ): Promise<void> {
-    const answers = await refreshSeats(socketId);
+    const answers = await refreshSeats(socketId, heardAt);
     for (const answer of answers) {
       const { documentName } = answer;
       if (answer.outcome === "replaced") {
@@ -100,10 +107,10 @@ export function createLivenessHandler(
     }
   }
 
-  return (socketId, connections): void => {
-    settleSeats(socketId, connections).catch((err: unknown) => {
+  return (socketId, connections, heardAt): void => {
+    settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
       logger.error({ err, socketId }, "seat_refresh_failed");
     });
-    refreshPresenceForSocket(connections, presencePolicy);
+    refreshPresenceForSocket(connections, presencePolicy, heardAt);
   };
 }

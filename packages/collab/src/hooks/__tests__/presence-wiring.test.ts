@@ -190,12 +190,13 @@ async function beat(client: LiveClient, clientId: number): Promise<void> {
  * @param options - What that socket carries.
  * @param options.document - The meta document on it, defaulting to the live one.
  * @param options.extraDocs - Further documents on the same socket.
+ * @param options.heardAt - When the socket was heard, defaulting to now.
  */
 function alive(
   userId: string,
-  options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][] } = {},
+  options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][]; heardAt?: number } = {},
 ): void {
-  const { document = metaDoc(), extraDocs = [] } = options;
+  const { document = metaDoc(), extraDocs = [], heardAt = clock } = options;
   const connections = new Map(
     [
       ...extraDocs,
@@ -205,7 +206,7 @@ function alive(
       { context: { user: { id: userId } }, document: doc },
     ]),
   );
-  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY });
+  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY }, heardAt);
 }
 
 /**
@@ -297,6 +298,24 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
   });
 
+  it("stamps the time the socket was last heard, and sweeps by the time the refresh runs", async () => {
+    // A refresh held back behind an earlier one runs up to half a ping period
+    // after the socket was heard. Stamping the run time would keep a person
+    // whose network just died online that much longer.
+    await connect("alice");
+    await waitFor(
+      () => readPresence(metaDoc(), ALICE)?.online === true,
+      "alice recorded online",
+    );
+    seedGhost(metaDoc(), "u-ghost", clock + BEAT_MS - POLICY.staleAfterMs);
+
+    clock += BEAT_MS;
+    alive(ALICE, { heardAt: clock - 14_950 });
+
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock - 14_950);
+    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
+  });
+
   it("refreshes from the meta connection even when the socket carries space documents too", async () => {
     // A socket carries the meta document plus whatever Spaces the member has
     // open. Presence hangs off the meta one, so the others must not decide
@@ -327,6 +346,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
         ],
       ]),
       { now: () => clock, ...POLICY },
+      clock,
     );
 
     expect(readPresence(space, ALICE)).toBeNull();

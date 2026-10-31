@@ -806,7 +806,7 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
       await running;
       registryStub.refreshSocket.mockResolvedValueOnce([{ documentName: DOC, member: "u1:4242:i1:sock-1", ...answer }]);
       connection.webSocket.emit("pong");
-      await vi.waitFor(() => expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1"));
+      await vi.waitFor(() => expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1", expect.any(Number)));
       for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0));
       return connection;
     }
@@ -974,10 +974,12 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
 
     pong();
 
-    expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1");
+    expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1", expect.any(Number));
+    const heardAt = registryStub.refreshSocket.mock.calls[0]![1] as number;
+    expect(heardAt).toBeGreaterThan(0);
     const after = readPresence(doc, "u-1");
     expect(after?.online).toBe(true);
-    expect(after?.lastSeenAt).toBeGreaterThan(0);
+    expect(after?.lastSeenAt).toBe(heardAt);
   });
 
   // `pingIntervalMs` and `seatExpiryMs` are adjacent options of the same

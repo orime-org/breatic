@@ -162,8 +162,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // is built below, from this table, so the handler reaches it late.
   const liveConnections = createLiveConnections({
     onAlive: createLivenessHandler({
-      refreshSeats: (socketId: string): Promise<SeatRefreshResult[]> =>
-        connectionRegistry.refreshSocket(socketId),
+      refreshSeats: (socketId: string, heardAt: number): Promise<SeatRefreshResult[]> =>
+        connectionRegistry.refreshSocket(socketId, heardAt),
       requestDemote: (documentName: string, member: string): Promise<void> =>
         seatHandover.requestDemote(documentName, member),
       presencePolicy: {

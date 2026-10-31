@@ -288,6 +288,48 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
   });
 });
 
+describe("live connections — a refresh carries the time its socket was last heard (inner#1034)", () => {
+  const PING = 30_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("hands a deferred refresh the time of the last sign of life before it fires, not the time it fires", () => {
+    vi.useFakeTimers({ now: 0 });
+    const calls: [number, number][] = [];
+    const table = createLiveConnections({
+      onAlive: (_socketId: string, _held: unknown, heardAt: number) => calls.push([Date.now(), heardAt]),
+      pingIntervalMs: PING,
+    });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    // A pong, a message 50 ms later held back behind it, then nothing: the
+    // socket was last heard at 50 ms, whenever the held-back refresh runs.
+    fire(connection, "pong");
+    vi.advanceTimersByTime(50);
+    fire(connection, "message");
+    vi.advanceTimersByTime(PING);
+
+    expect(calls).toEqual([[0, 0], [PING / 2, 50]]);
+  });
+
+  it("hands an immediate refresh the wall-clock time it was heard, whatever the gate's clock reads", () => {
+    vi.useFakeTimers({ now: 1_700_000_000_000 });
+    const heard: number[] = [];
+    const table = createLiveConnections({
+      onAlive: (_socketId: string, _held: unknown, heardAt: number) => heard.push(heardAt),
+      pingIntervalMs: PING,
+      now: () => 5,
+    });
+    table.remember("s-1", "doc-a", fakeConnection());
+    fire(table.find("doc-a", "s-1") as ReturnType<typeof fakeConnection>, "ping");
+
+    expect(heard).toEqual([1_700_000_000_000]);
+  });
+});
+
 describe("live connections — a message or a ping counts as a pong, as the transport counts it", () => {
   const PING = 30_000;
 

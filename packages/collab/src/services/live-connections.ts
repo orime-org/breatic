@@ -59,15 +59,19 @@ export interface HeldConnection {
 export interface LiveConnectionsOptions {
   /**
    * Called when the socket shows a sign of life (a pong, a ping or any
-   * message), as often as `pingIntervalMs` allows, with the socket and
-   * everything it carries. This is the evidence a connection is still there,
-   * the same the transport keeps the socket open on: every seat that socket
-   * holds rides on it, and so does the presence record of whoever owns its
-   * meta connection.
+   * message), as often as `pingIntervalMs` allows, with the socket,
+   * everything it carries and the wall-clock time it was last heard. This is
+   * the evidence a connection is still there, the same the transport keeps
+   * the socket open on: every seat that socket holds rides on it, and so does
+   * the presence record of whoever owns its meta connection. A call held back
+   * by `pingIntervalMs` runs up to half a period after the socket was last
+   * heard, so what it records is `heardAt`, not the time it runs: a seat whose
+   * socket died must not look that much fresher when a reconnect weighs it.
    */
   onAlive: (
     socketId: string,
     connections: ReadonlyMap<string, HeldConnection>,
+    heardAt: number,
   ) => void;
   /**
    * How often the transport pings each connection. A sign of life less than
@@ -86,6 +90,12 @@ export interface LiveConnectionsOptions {
    * cannot hold back the next one.
    */
   now?: () => number;
+  /**
+   * Clock `heardAt` is read from, injectable for tests (default `Date.now`).
+   * Wall-clock, because the time is stored as a seat score and a presence
+   * stamp that other instances compare with their own `Date.now`.
+   */
+  wallNow?: () => number;
 }
 
 /** This instance's connections, indexed by socket (see module doc). */
@@ -129,7 +139,12 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onAlive, pingIntervalMs, now = (): number => performance.now() } = options;
+  const {
+    onAlive,
+    pingIntervalMs,
+    now = (): number => performance.now(),
+    wallNow = (): number => Date.now(),
+  } = options;
   const minGapMs = pingIntervalMs / 2;
 
   const bySocket = new Map<string, Map<string, HeldConnection>>();
@@ -151,18 +166,20 @@ export function createLiveConnections(
         // fires. No extra frames on the wire; the only timer is the one
         // holding back an early sign of life.
         let lastHandledAt = -Infinity;
+        let lastHeardAt = 0;
         let deferred: ReturnType<typeof setTimeout> | undefined;
         /** Refresh what this socket holds, because it is still there. */
         const handle = (): void => {
           deferred = undefined;
           lastHandledAt = now();
-          onAlive(socketId, held);
+          onAlive(socketId, held, lastHeardAt);
         };
         /**
          * Handle a sign of life now, or, within half a period of the last one
          * handled, once half a period has passed (see `pingIntervalMs`).
          */
         const alive = (): void => {
+          lastHeardAt = wallNow();
           const wait = lastHandledAt + minGapMs - now();
           if (wait <= 0) {
             clearTimeout(deferred);
