@@ -393,3 +393,26 @@ describe("a turn the user stopped", () => {
     }
   });
 });
+
+
+describe("decimal shortfall consumption", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
+  });
+
+  it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
+      [expect.objectContaining({ userId: "u1", conversationId: "c1", studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
+    ]);
+  });
+});
