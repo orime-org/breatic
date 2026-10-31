@@ -407,8 +407,8 @@ export function renderProductGuide(): string {
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
     "- Drop files onto the canvas, or paste one. Pictures, videos and sounds become nodes of their kind; one in " +
-      "a format that is not supported, or over the size limit, makes no node, and a message names it. A file " +
-      "whose contents turn out to be another format than its name says is refused after its node appears, and " +
+      "a format that is not supported, or over the size limit, makes no node, and a message names it. A media file " +
+      "whose stored bytes turn out to be an unsupported format is refused after its node appears, and " +
       "the node shows the failure. Any other file becomes a text node holding its text: plain text, PDF, Word " +
       "(.docx) and Excel (.xlsx, .xls) files work; other kinds, older .doc files included, show an error in the " +
       "node. An empty file makes no node, and a message names it. Several files at once arrive four to a row " +

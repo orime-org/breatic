@@ -26,7 +26,8 @@ import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-
  * file's MIME type to the canvas node it becomes. Media files (image / audio / video)
  * become a media node whose content the server writes through Yjs; every
  * non-media file becomes a text node whose content is read or extracted
- * locally (see `text-extract`), so no file is ever rejected.
+ * locally (see `text-extract`). Admission is checked separately by
+ * `checkFileAdmission`.
  */
 
 /** How an uploaded file maps onto the canvas. */
