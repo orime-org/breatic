@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { creditSources, type DbTx } from "@breatic/core";
+import { creditSources, creditGifts, creditCompensations, type DbTx } from "@breatic/core";
 import type { CreditSourceKind } from "@breatic/shared";
 
 // Re-exported rather than declared here: the browser decides what a row
@@ -63,4 +63,36 @@ export async function claimSource(
     .onConflictDoNothing({ target: creditSources.id })
     .returning({ id: creditSources.id });
   return rows.length > 0;
+}
+
+
+/**
+ * Store the registration claim details in the source claim's transaction.
+ * @throws {Error} When the receipt cannot be persisted.
+ */
+export async function createRegistrationGift(input: { userId: string; studioId: string; credits: string }, tx: DbTx): Promise<void> {
+  await tx.insert(creditGifts).values({ id: input.userId, sourceKind: "gift", origin: "registration", targetUserId: input.userId, personalStudioId: input.studioId, credits: input.credits });
+}
+
+/** The independently identified evidence of an operator's funding instruction. */
+export interface OperatorReceipt {
+  id: string;
+  kind: "compensation" | "gift";
+  userId: string;
+  studioId: string;
+  credits: string;
+  reason: string;
+  operationKey: string;
+  adminId: string;
+}
+
+/**
+ * Create a parent source and its matching operator receipt atomically.
+ * @throws {Error} When a source or child constraint rejects the receipt.
+ */
+export async function createOperatorSource(input: OperatorReceipt, tx: DbTx): Promise<void> {
+  await createSource({ id: input.id, kind: input.kind }, tx);
+  const values = { id: input.id, sourceKind: input.kind, targetUserId: input.userId, personalStudioId: input.studioId, credits: input.credits, reason: input.reason, operationKey: input.operationKey, requestedBy: input.adminId };
+  if (input.kind === "gift") await tx.insert(creditGifts).values({ ...values, origin: "operator" });
+  else await tx.insert(creditCompensations).values(values);
 }

@@ -21,6 +21,7 @@
  * task and the user, writes the reconciliation line.
  */
 
+import { randomUUID } from "node:crypto";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
@@ -49,6 +50,8 @@ import {
   REFUND_LIFECYCLES,
   refundRefusal,
   isPurchased,
+  parseCreditDecimal,
+  serializeCreditMicro,
 } from "@breatic/shared";
 import type {
   CreditLotEntity,
@@ -239,6 +242,7 @@ export async function grantTrialCredits(
   );
   if (!opened) return null;
 
+  await creditSourceRepo.createRegistrationGift({ userId: input.userId, studioId: input.studioId, credits: fromMicroCredits(toMicroCredits(input.credits)) }, tx);
   return creditLotRepo.createLot(
     {
       sourceId: input.userId,
@@ -558,31 +562,9 @@ export async function designateLot(input: {
       tx,
     );
 
-    if (input.studioId === null || owedMicro <= 0n) return designated;
-
-    const remainingMicro = toMicroCredits(designated.remainingCredits);
-    const repaidMicro = owedMicro < remainingMicro ? owedMicro : remainingMicro;
-    if (repaidMicro <= 0n) return designated;
-
-    const repaid = fromMicroCredits(repaidMicro);
-    const charged = await creditLotRepo.applyCharge(input.lotId, repaid, tx);
-    await creditLotRepo.adjustDebt(input.studioId, `-${repaid}`, tx);
-    await creditLotRepo.appendLedgerEntry(
-      {
-        payerUserId: designated.userId,
-        actorUserId: input.requestingUserId,
-        entryType: "debt_repayment",
-        studioId: input.studioId,
-        amount: fromMicroCredits(-repaidMicro),
-        lotId: input.lotId,
-      },
-      tx,
-    );
-    return {
-      ...designated,
-      remainingCredits: charged.remainingCredits,
-      lifecycle: charged.lifecycle,
-    };
+    if (input.studioId === null) return designated;
+    const repayment = await repayDesignatedLot({ lot: designated, studioId: input.studioId, owedMicro, actorUserId: input.requestingUserId }, tx);
+    return repayment.lot;
   });
 }
 
@@ -1107,4 +1089,61 @@ export async function hasActiveDesignationsTo(
   tx: DbTx,
 ): Promise<boolean> {
   return creditLotRepo.hasActiveDesignatedToStudio(studioId, tx);
+}
+
+
+/**
+ * Repay a locked Studio debt from a locked or newly created designated lot.
+ * The caller owns both locks and the transaction; the payer is always the lot owner.
+ * @returns The updated lot and exact debt repayment facts.
+ * @throws {Error} When any funding write fails; the caller's transaction rolls back.
+ */
+export async function repayDesignatedLot(input: {
+  lot: CreditLotEntity;
+  studioId: string;
+  owedMicro: bigint;
+  actorUserId: string | null;
+}, tx: DbTx): Promise<{ lot: CreditLotEntity; repaidCredits: string; debtAfter: string }> {
+  const remainingMicro = parseCreditDecimal(input.lot.remainingCredits);
+  const repaidMicro = input.owedMicro < remainingMicro ? input.owedMicro : remainingMicro;
+  if (repaidMicro <= 0n) return { lot: input.lot, repaidCredits: "0.000000", debtAfter: serializeCreditMicro(input.owedMicro) };
+  const repaid = serializeCreditMicro(repaidMicro);
+  const charged = await creditLotRepo.applyCharge(input.lot.id, repaid, tx);
+  const debtAfter = await creditLotRepo.adjustDebt(input.studioId, serializeCreditMicro(-repaidMicro), tx);
+  await creditLotRepo.appendLedgerEntry({
+    payerUserId: input.lot.userId,
+    actorUserId: input.actorUserId,
+    entryType: "debt_repayment",
+    studioId: input.studioId,
+    amount: serializeCreditMicro(-repaidMicro),
+    lotId: input.lot.id,
+  }, tx);
+  return { lot: { ...input.lot, remainingCredits: charged.remainingCredits, lifecycle: charged.lifecycle }, repaidCredits: repaid, debtAfter: serializeCreditMicro(parseCreditDecimal(debtAfter)) };
+}
+
+/**
+ * Grant operator funding to the personal identity already locked by the server.
+ * @returns Immutable funding and repayment facts from this transaction.
+ * @throws {Error} When any source, receipt, lot or ledger write fails.
+ */
+export async function grantOperatorCredits(input: {
+  userId: string;
+  studioId: string;
+  kind: "compensation" | "gift";
+  credits: string;
+  reason: string;
+  operationKey: string;
+  adminId: string;
+}, tx: DbTx): Promise<{
+  sourceId: string; sourceKind: "compensation" | "gift"; lotId: string; personalStudioId: string;
+  grantedCredits: string; repaidCredits: string; remainingCredits: string; debtBefore: string; debtAfter: string;
+}> {
+  const debtBefore = serializeCreditMicro(parseCreditDecimal(await creditLotRepo.lockDebt(input.studioId, tx)));
+  const sourceId = randomUUID();
+  const grantedCredits = serializeCreditMicro(parseCreditDecimal(input.credits));
+  await creditSourceRepo.createOperatorSource({ ...input, id: sourceId, credits: grantedCredits }, tx);
+  const lot = await creditLotRepo.createLot({ sourceId, sourceKind: input.kind, userId: input.userId, purchasedCredits: grantedCredits, designatedStudioId: input.studioId }, tx);
+  const repaid = await repayDesignatedLot({ lot, studioId: input.studioId, owedMicro: parseCreditDecimal(debtBefore), actorUserId: null }, tx);
+  return { sourceId, sourceKind: input.kind, lotId: lot.id, personalStudioId: input.studioId, grantedCredits,
+    repaidCredits: repaid.repaidCredits, remainingCredits: serializeCreditMicro(parseCreditDecimal(repaid.lot.remainingCredits)), debtBefore, debtAfter: repaid.debtAfter };
 }
