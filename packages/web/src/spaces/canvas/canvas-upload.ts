@@ -17,7 +17,6 @@ import {
   type UploadFailure,
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
@@ -388,7 +387,7 @@ export interface AssetNodeLike {
 function slotUrls(data: unknown): string[] {
   const bag = data as Record<string, unknown> | undefined;
   const urls: string[] = [];
-  for (const spec of allSlotSpecs() as SlotSpec[]) {
+  for (const spec of allSlotSpecs()) {
     for (const pick of readSlotPicks(spec, bag?.[spec.field])) {
       urls.push(pick.url);
       if (pick.thumbnail && pick.thumbnail !== pick.url) urls.push(pick.thumbnail);
