@@ -1,11 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/** Micro-credits in one credit: the ledger's `numeric(20, 6)` scale. */
-const MICRO_PER_CREDIT = 1_000_000;
-
-/** Micro-credits in one hundredth of a credit, the smallest amount settled. */
-const MICRO_PER_CENT = 10_000;
+import { ceilCreditMicroToCent, quantizeQuotedCredits } from "@shared/credit-amount.js";
 
 /**
  * A credit amount as it is settled: at most two decimals, any third raising
@@ -18,9 +14,5 @@ const MICRO_PER_CENT = 10_000;
  * @throws {RangeError} When the amount is negative or not a finite number.
  */
 export function ceilToCreditCent(credits: number): number {
-  const micro = Math.round(credits * MICRO_PER_CREDIT);
-  if (!Number.isFinite(micro) || micro < 0) {
-    throw new RangeError(`ceilToCreditCent: not a credit amount (got ${credits})`);
-  }
-  return Math.ceil(Math.max(0, micro) / MICRO_PER_CENT) / 100;
+  return Number(ceilCreditMicroToCent(quantizeQuotedCredits(credits))) / 1_000_000;
 }

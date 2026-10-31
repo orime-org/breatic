@@ -1012,3 +1012,6 @@ export {
 export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
+
+export * from "@shared/credit-amount.js";
+export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedgerViewSchema, studioLedgerViewSchema, projectCreditsViewSchema, studioCreditsViewSchema, studioCreditSummarySchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, purchasePageSchema } from "@shared/types/credit.js";

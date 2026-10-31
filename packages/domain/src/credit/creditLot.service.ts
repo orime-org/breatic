@@ -32,6 +32,7 @@ import {
   fromMicroCredits,
   planCharge,
   positionFrom,
+  serializeCreditPosition,
 } from "@domain/credit/credit-math.js";
 import {
   db,
@@ -51,6 +52,7 @@ import {
 } from "@breatic/shared";
 import type {
   CreditLotEntity,
+  CreditDecimal,
   CreditOverview,
   RefundRefusal,
   StudioCreditSummary,
@@ -118,13 +120,13 @@ export interface ChargeOutcome {
   /** Whether any credits were taken. False when payments are off, or nothing could be charged. */
   billed: boolean;
   /** Credits actually taken. */
-  charged: number;
+  charged: CreditDecimal;
   /**
    * Credits that could not be taken. Above zero means the account is short
    * and the caller should log it for reconciliation — the task is not failed
    * and nothing is rolled back: the user already has their result.
    */
-  shortfall: number;
+  shortfall: CreditDecimal;
   /** The studio that paid, when one could be resolved. */
   studioId: string | null;
   /** The lots drawn down, oldest first. */
@@ -316,7 +318,7 @@ export async function chargeForGeneration(
       amount: fromMicroCredits(-amountMicro),
     });
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
-    return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
+    return { billed: false, charged: fromMicroCredits(0n), shortfall: fromMicroCredits(0n), studioId, lotIds: [] };
   }
 
   // No studio means no pool. Two ways to get here: the text tools, whose route
@@ -332,8 +334,8 @@ export async function chargeForGeneration(
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return {
       billed: false,
-      charged: 0,
-      shortfall: amountMicro / 1_000_000,
+      charged: fromMicroCredits(0n),
+      shortfall: fromMicroCredits(amountMicro),
       studioId: null,
       lotIds: [],
     };
@@ -352,8 +354,8 @@ export async function chargeForGeneration(
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
-    const locked: { id: string; remaining: number }[] = [];
-    let available = 0;
+    const locked: { id: string; remaining: bigint }[] = [];
+    let available = 0n;
     for (const candidate of candidates) {
       if (available >= amountMicro) break;
       const row = await creditLotRepo.lockLot(candidate.id, tx);
@@ -361,7 +363,7 @@ export async function chargeForGeneration(
       if (row.lifecycle !== "active") continue;
       if (row.designatedStudioId !== studioId) continue;
       const remaining = toMicroCredits(row.remainingCredits);
-      if (remaining <= 0) continue;
+      if (remaining <= 0n) continue;
       locked.push({ id: row.id, remaining });
       available += remaining;
     }
@@ -390,7 +392,7 @@ export async function chargeForGeneration(
     // same event seen from the pool, and it carries the full context because
     // a charge that took nothing wrote no `spend` row to carry it — the
     // project and the model on the credits page come from here.
-    if (plan.shortfall > 0) {
+    if (plan.shortfall > 0n) {
       await creditLotRepo.adjustDebt(
         studioId,
         fromMicroCredits(plan.shortfall),
@@ -413,9 +415,9 @@ export async function chargeForGeneration(
 
     const charged = amountMicro - plan.shortfall;
     return {
-      billed: charged > 0,
-      charged: charged / 1_000_000,
-      shortfall: plan.shortfall / 1_000_000,
+      billed: charged > 0n,
+      charged: fromMicroCredits(charged),
+      shortfall: fromMicroCredits(plan.shortfall),
       studioId,
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
@@ -532,7 +534,7 @@ export async function designateLot(input: {
     // `studio_members` → `studio_credit_debts` → `credit_lots`.
     const owedMicro =
       input.studioId === null
-        ? 0
+        ? 0n
         : toMicroCredits(await creditLotRepo.lockDebt(input.studioId, tx));
 
     const lot = await creditLotRepo.lockLot(input.lotId, tx);
@@ -556,13 +558,11 @@ export async function designateLot(input: {
       tx,
     );
 
-    if (input.studioId === null || owedMicro <= 0) return designated;
+    if (input.studioId === null || owedMicro <= 0n) return designated;
 
-    const repaidMicro = Math.min(
-      owedMicro,
-      toMicroCredits(designated.remainingCredits),
-    );
-    if (repaidMicro <= 0) return designated;
+    const remainingMicro = toMicroCredits(designated.remainingCredits);
+    const repaidMicro = owedMicro < remainingMicro ? owedMicro : remainingMicro;
+    if (repaidMicro <= 0n) return designated;
 
     const repaid = fromMicroCredits(repaidMicro);
     const charged = await creditLotRepo.applyCharge(input.lotId, repaid, tx);
@@ -855,15 +855,15 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
       studioName: row.studioName,
       studioSlug: row.studioSlug,
       deleted: false,
-      spendable: toMicroCredits(row.spendable) / 1_000_000,
-      debt: 0,
-      spent: 0,
+      spendable: fromMicroCredits(toMicroCredits(row.spendable)),
+      debt: fromMicroCredits(0n),
+      spent: fromMicroCredits(0n),
       lotCount: row.lotCount,
     });
   }
   for (const row of spentRows) {
     const existing = byStudio.get(row.studioId);
-    const spent = toMicroCredits(row.spent) / 1_000_000;
+    const spent = fromMicroCredits(toMicroCredits(row.spent));
     if (existing) existing.spent = spent;
     // A studio reaches this side and not the other one whenever no purchase
     // of this account points at it: they were pointed elsewhere, or the
@@ -877,8 +877,8 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
         studioName: row.studioName,
         studioSlug: row.studioSlug,
         deleted: row.deleted,
-        spendable: 0,
-        debt: 0,
+        spendable: fromMicroCredits(0n),
+        debt: fromMicroCredits(0n),
         spent,
         lotCount: 0,
       });
@@ -906,15 +906,15 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   for (const row of owingRows) {
     if (byStudio.has(row.studioId)) continue;
     if (!administered.has(row.studioId)) continue;
-    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0) continue;
+    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0n) continue;
     byStudio.set(row.studioId, {
       studioId: row.studioId,
       studioName: row.studioName,
       studioSlug: row.studioSlug,
       deleted: row.deleted,
-      spendable: 0,
-      debt: 0,
-      spent: 0,
+      spendable: fromMicroCredits(0n),
+      debt: fromMicroCredits(0n),
+      spent: fromMicroCredits(0n),
       lotCount: 0,
     });
   }
@@ -922,14 +922,14 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   const studios = [...byStudio.values()];
   for (const studio of studios) {
     studio.debt = administered.has(studio.studioId)
-      ? toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000
+      ? fromMicroCredits(toMicroCredits(debts.get(studio.studioId) ?? "0"))
       : null;
   }
 
   return {
-    assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
+    assignedCredits: fromMicroCredits(studios.reduce((sum, s) => sum + toMicroCredits(s.spendable), 0n)),
     unassignedCredits: unassigned,
-    underRefundCredits: toMicroCredits(underRefund) / 1_000_000,
+    underRefundCredits: fromMicroCredits(toMicroCredits(underRefund)),
     billing: env.PAYMENT_ENABLED,
     studios,
   };
@@ -950,14 +950,14 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * @param studioId - The studio to total.
  * @returns The total in credits, below zero when the studio owes.
  */
-export async function getSpendableCredits(studioId: string): Promise<number> {
+export async function getSpendableCredits(studioId: string): Promise<CreditDecimal> {
   return db.transaction(
     async (tx) => {
       const [lots, debt] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
       ]);
-      return positionFrom(lots, debt, "0").spendable;
+      return fromMicroCredits(positionFrom(lots, debt, "0").spendable);
     },
     { isolationLevel: "repeatable read" },
   );
@@ -967,12 +967,12 @@ export async function getSpendableCredits(studioId: string): Promise<number> {
 
 /** Everything one studio's credits page reads, as of one instant. */
 export interface StudioCreditsSnapshot {
-  spendable: number;
-  debt: number;
+  spendable: CreditDecimal;
+  debt: CreditDecimal;
   /** What running work holds (inner#1611). */
-  held: number;
+  held: CreditDecimal;
   /** What the next run is admitted against: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
-  available: number;
+  available: CreditDecimal;
   lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];
 }
@@ -1005,8 +1005,8 @@ export async function readStudioCredits(
         creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {
-        ...positionFrom(lots, debt, held),
-        debt: toMicroCredits(debt) / 1_000_000,
+        ...serializeCreditPosition(positionFrom(lots, debt, held)),
+        debt: fromMicroCredits(toMicroCredits(debt)),
         lots: designated,
         ledger,
       };
@@ -1023,8 +1023,8 @@ export async function readStudioCredits(
  * @param studioId - The studio to read.
  * @returns The debt in credits; zero when it owes nothing.
  */
-export async function getStudioDebt(studioId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.readDebt(studioId)) / 1_000_000;
+export async function getStudioDebt(studioId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.readDebt(studioId)));
 }
 
 /**
@@ -1032,8 +1032,8 @@ export async function getStudioDebt(studioId: string): Promise<number> {
  * @param userId - The account to total.
  * @returns The total in credits.
  */
-export async function getUnassignedCredits(userId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)) / 1_000_000;
+export async function getUnassignedCredits(userId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)));
 }
 
 /**
@@ -1044,8 +1044,8 @@ export async function getUnassignedCredits(userId: string): Promise<number> {
  * @param userId - The account to total.
  * @returns The total in credits.
  */
-export async function getGrantedCredits(userId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)) / 1_000_000;
+export async function getGrantedCredits(userId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)));
 }
 
 /**

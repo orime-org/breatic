@@ -9,100 +9,55 @@
  * floating point leaves a residue on a lot that can neither be spent nor
  * refunded, so every calculation here runs on integer micro-credits — one
  * millionth of a credit, exactly the column's scale — and converts back only
- * at the database boundary. The largest pack is 45,660 credits, so even an
- * account's whole history stays far inside the safe integer range.
+ * at the database boundary. BigInt also preserves aggregates wider than one stored row.
  *
  * A charge is planned rather than applied here: this module holds no database
  * access, which is what lets the ordering and the "spend what is there" rule
  * be tested without one.
  */
 
-import { ceilToCreditCent, type ProjectCreditsView } from "@breatic/shared";
+import { ceilToCreditCent, ceilCreditMicroToCent, quantizeQuotedCredits, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 
-/** How many micro-credits make one credit — `numeric(20, 6)`'s scale. */
-const MICRO_PER_CREDIT = 1_000_000;
-
-/** The column's scale, i.e. how many digits follow the decimal point. */
-const SCALE = 6;
-
-/**
- * The smallest amount a charge settles to (inner#1666). A balance at least
- * this large can pay for something.
- */
+/** The smallest credit amount a studio can spend. */
 export const SMALLEST_CREDIT = 0.01;
 
 /**
- * Convert credits to integer micro-credits.
- *
- * Strings arrive from Postgres and are matched against a plain-decimal pattern
- * before anything is read out of them: the column is wide enough to hold text
- * this code cannot represent, and a silent `NaN` would spread through a charge
- * as an amount nobody can account for. Numbers come from callers that computed
- * a cost in floating point and are rounded to the column's scale, which is the
- * last point at which a residue can still be discarded safely.
- *
- * The result is a JS number, so amounts stay exact up to about nine billion
- * credits — five orders of magnitude above the largest pack. Past that the
- * conversion loses digits, which is why the pattern above is a guard on the
- * shape of the input rather than a claim about its size.
- * @param value - A credit amount, as a numeric string or a number.
- * @returns The same amount in micro-credits.
- * @throws {Error} If a string is not a plain decimal number.
+ * Parse stored credits or quantize a quoted number to exact millionths.
+ * @param value - The amount to convert.
+ * @throws {RangeError} When the amount is not a valid decimal or finite quote.
+ * @returns The converted or computed exact amount.
  */
-export function toMicroCredits(value: number | string): number {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new Error(`toMicroCredits: not a finite number (got ${value})`);
-    }
-    return Math.round(value * MICRO_PER_CREDIT);
-  }
-
-  const match = /^(-?)(\d*)(?:\.(\d*))?$/.exec(value.trim());
-  if (!match || (match[2] === "" && (match[3] ?? "") === "")) {
-    throw new Error(
-      `toMicroCredits: not a decimal number (got ${JSON.stringify(value)})`,
-    );
-  }
-  const [, sign, whole, fraction = ""] = match;
-  const padded = fraction.padEnd(SCALE, "0").slice(0, SCALE);
-  const magnitude = Number(`${whole === "" ? "0" : whole}${padded}`);
-  return sign === "-" ? -magnitude : magnitude;
+export function toMicroCredits(value: number | string): bigint {
+  return typeof value === "string" ? parseCreditDecimal(value) : quantizeQuotedCredits(Math.abs(value)) * (value < 0 ? -1n : 1n);
 }
 
 /**
- * What a charge or a hold of this amount takes, in micro-credits: the amount
- * rounded up to whole cents (`ceilToCreditCent`, inner#1666).
- * @param credits - A credit amount, zero or more.
- * @returns The amount charged, in micro-credits.
- * @throws {RangeError} When the amount is negative or not a finite number.
+ * Settle a non-negative quote to whole credit cents.
+ * @param credits - The vendor quote in credits.
+ * @throws {RangeError} When the quote is negative or non-finite.
+ * @returns The converted or computed exact amount.
  */
-export function toChargeMicro(credits: number): number {
-  return Math.round(ceilToCreditCent(credits) * 100) * (MICRO_PER_CREDIT / 100);
+export function toChargeMicro(credits: number): bigint {
+  return ceilCreditMicroToCent(quantizeQuotedCredits(credits));
 }
 
 /**
- * The credits a finished run records and is charged: rounded up to whole
- * cents. It runs after the vendor has returned, where a throw would rerun the
- * task and pay the vendor twice, so a figure that is not a positive number
- * passes through unchanged for the charge to skip or log, as it did before.
- * @param credits - What the run cost.
- * @returns The amount to record and charge.
+ * Keep post-vendor invalid values available to existing skip and log paths.
+ * @param credits - The vendor quote in credits.
+ * @throws {RangeError} When a positive quote cannot be quantized.
+ * @returns The converted or computed exact amount.
  */
 export function toChargeCredits(credits: number): number {
   return Number.isFinite(credits) && credits > 0 ? ceilToCreditCent(credits) : credits;
 }
 
 /**
- * Convert micro-credits back to the string form the column takes.
- * @param micro - An amount in micro-credits.
- * @returns The amount as a decimal string with exactly six fractional digits.
+ * Serialize exact millionths at the database or HTTP boundary.
+ * @param micro - The exact amount in millionths.
+ * @returns The converted or computed exact amount.
  */
-export function fromMicroCredits(micro: number): string {
-  const sign = micro < 0 ? "-" : "";
-  const magnitude = Math.abs(micro);
-  const whole = Math.trunc(magnitude / MICRO_PER_CREDIT);
-  const fraction = magnitude % MICRO_PER_CREDIT;
-  return `${sign}${whole}.${String(fraction).padStart(SCALE, "0")}`;
+export function fromMicroCredits(micro: bigint): CreditDecimal {
+  return serializeCreditMicro(micro);
 }
 
 /** A lot as the planner needs to see it: which one, and how much is left. */
@@ -110,7 +65,7 @@ export interface ChargeableLot {
   /** The lot's id. */
   id: string;
   /** What is left on it, in micro-credits. */
-  remaining: number;
+  remaining: bigint;
 }
 
 /** How much of a charge one lot carries. */
@@ -118,7 +73,7 @@ export interface LotAllocation {
   /** The lot being drawn down. */
   lotId: string;
   /** How much comes out of it, in micro-credits. Always above zero. */
-  amount: number;
+  amount: bigint;
 }
 
 /** The result of planning one charge across several lots. */
@@ -126,7 +81,7 @@ export interface ChargePlan {
   /** One entry per lot that contributes, in the order they were given. */
   allocations: readonly LotAllocation[];
   /** What could not be covered, in micro-credits. Zero when fully covered. */
-  shortfall: number;
+  shortfall: bigint;
 }
 
 /**
@@ -150,15 +105,15 @@ export interface ChargePlan {
  */
 export function planCharge(
   lots: readonly ChargeableLot[],
-  amount: number,
+  amount: bigint,
 ): ChargePlan {
   const allocations: LotAllocation[] = [];
   let owed = amount;
 
   for (const lot of lots) {
-    if (owed <= 0) break;
-    if (lot.remaining <= 0) continue;
-    const taken = Math.min(lot.remaining, owed);
+    if (owed <= 0n) break;
+    if (lot.remaining <= 0n) continue;
+    const taken = lot.remaining < owed ? lot.remaining : owed;
     allocations.push({ lotId: lot.id, amount: taken });
     owed -= taken;
   }
@@ -180,13 +135,32 @@ export function planCharge(
  * @returns The three figures, in credits.
  * @throws {Error} If a sum is not a plain decimal number.
  */
-export function positionFrom(lots: string, debt: string, held: string): ProjectCreditsView {
+export interface CreditPositionMicro {
+  spendable: bigint;
+  held: bigint;
+  available: bigint;
+}
+
+/**
+ * Derive the exact position used by admission.
+ * @param lots - The designated lot total.
+ * @param debt - The current studio debt.
+ * @param held - The counted hold total.
+ * @throws {RangeError} When a stored sum is not a valid decimal.
+ */
+export function positionFrom(lots: string, debt: string, held: string): CreditPositionMicro {
   const spendable = toMicroCredits(lots) - toMicroCredits(debt);
   const heldMicro = toMicroCredits(held);
-  const available = spendable < 0 ? spendable : Math.max(0, spendable - heldMicro);
-  return {
-    spendable: spendable / MICRO_PER_CREDIT,
-    held: heldMicro / MICRO_PER_CREDIT,
-    available: available / MICRO_PER_CREDIT,
-  };
+  const afterHolds = spendable - heldMicro;
+  const available = spendable < 0n ? spendable : afterHolds > 0n ? afterHolds : 0n;
+  return { spendable, held: heldMicro, available };
+}
+
+/**
+ * Serialize a position once it leaves internal exact arithmetic.
+ * @param position - The exact internal position.
+ * @returns The converted or computed exact amount.
+ */
+export function serializeCreditPosition(position: CreditPositionMicro): { spendable: CreditDecimal; held: CreditDecimal; available: CreditDecimal } {
+  return { spendable: fromMicroCredits(position.spendable), held: fromMicroCredits(position.held), available: fromMicroCredits(position.available) };
 }
