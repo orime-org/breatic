@@ -18,6 +18,18 @@ import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/r
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 
+/** The upstream kinds a media run speaks to: the runner submits, polls and bills through this adapter alone. */
+const MEDIA_KINDS: Readonly<Record<string, true>> = { wavespeed: true };
+
+/**
+ * Whether a media run can speak to upstreams of a kind.
+ * @param kind - The upstream kind, as the configuration names it.
+ * @returns True when one can.
+ */
+export function hasMediaAdapter(kind: string): boolean {
+  return Object.hasOwn(MEDIA_KINDS, kind);
+}
+
 /** One upstream as a call reaches it. */
 export interface Reach {
   name: string;

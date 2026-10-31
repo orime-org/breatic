@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
+import { hasMediaAdapter } from "@provider/media/wavespeed/adapter.js";
 import { pricingRuleSchema } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
@@ -238,6 +239,11 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
+    for (const { upstream } of bindings) {
+      // An undeclared upstream is already reported by checkList.
+      const kind = raw.upstreams[upstream]?.kind;
+      if (kind !== undefined && !hasMediaAdapter(kind)) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+    }
     models[model] = [...bindings].sort((a, b) => a.weight - b.weight);
   }
   for (const name of Object.keys(raw.routing?.models ?? {})) {
