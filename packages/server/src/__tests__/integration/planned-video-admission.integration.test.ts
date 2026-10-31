@@ -1,0 +1,493 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/** S5: real admission/authorization/PG/Redis/holds/queue/settlement; only external presentation delivery is controlled. */
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { Hono } from "hono";
+import type { Queue } from "bullmq";
+import fc from "fast-check";
+import { z } from "zod";
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
+import * as core from "@breatic/core";
+import * as shared from "@breatic/shared";
+import { hashMiniToolValue, miniToolExecutionRecordSchema, planVideoFrames, planVideoSplit, type VideoPresentationTable } from "@breatic/shared/mini-tools";
+import {
+  claimMiniToolSettlement, completeMiniToolConsumptionSet, confirmMiniToolConsumption, containerCostUsd,
+  creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, openMiniToolConsumption, readMiniToolExecutionPlan,
+  recordMiniToolConsumption, settleMiniToolCharge, upstreamStepRepo,
+} from "@breatic/domain";
+import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
+import { waitUntilBlockedOn } from "./lock-probe.js";
+
+type Tool = "video.extract-frames" | "video.split";
+type Recipe = { kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } };
+interface Output { outputIndex: number; nodeId: string; recipe: Recipe }
+interface Body {
+  tool: Tool; project_id: string; space_id: string; run_id: string;
+  draft: { version: 1; draftId: string; revision: string; source: { nodeId: string; canonicalURL: string; mediaInfo: { width: number; height: number; duration: number; mimeType: string } }; inputs: []; params: Record<string, unknown> };
+  analysis_refs: []; source_ledger: shared.VideoSourceLedgerReceiptV2; outputs: Output[];
+}
+interface Fixture extends StudioFixture { body: Body; sourceId: string; sourceKey: string; hash: string; viewerId: string; otherId: string }
+interface Plan extends Record<string, unknown> {
+  taskId: string; binding: { assetId: string; contentHash: string; mediaInfo: { width: number; height: number; duration: number } };
+  sourceKey: string; sourceLedger: shared.VideoSourceLedgerReceiptV2; outputs: Output[]; credits: number;
+  targetNodeIds: string[]; requestFingerprint: string; planFingerprint: string;
+  container: { containerClass: string; precheckSeconds: number; size: { vcpu: number; memory_gib: number; disk_gb: number }; prices: core.MiniToolsConfig["prices"]; limits: core.MiniToolsConfig["plan_limits"] };
+}
+interface Parent { id: string; user_id: string; status: string; params: { miniToolExecution: Plan }; result: Record<string, unknown>; billed_at: string | null; created_at: string; updated_at: string }
+
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn() }));
+vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
+vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
+const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [
+  { start: 20, count: 2, step: 2, duration: 2 }, { start: 40, count: 2, step: 2, duration: 2 },
+] };
+let pg: ReturnType<typeof core.createPgClient>;
+let queue: Queue;
+let app: Hono;
+let base: core.MiniToolsConfig;
+let settings: core.MiniToolsConfig;
+let publicUrl: (key: string) => string;
+const tokens: string[] = [];
+
+/** Hash actual delivered bytes, independently from the production reader. @throws {never} Never. */
+function digest(body: string): string { return createHash("sha256").update(body).digest("hex"); }
+
+/** Configure a real paid admission without any provider key or external call. @throws {Error} On invalid deployment configuration. */
+function configure(multiplier = 1): void {
+  core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: String(multiplier), STRIPE_SECRET_KEY: "sk_test_unused_s5",
+    STRIPE_WEBHOOK_SECRET: "whsec_unused_s5", UPLOAD_BASE_URL: "https://assets.example.test" });
+}
+
+beforeAll(async () => {
+  configure(); core.loadLocales(); core.initLogger("s5-admission-test");
+  const actual = await vi.importActual<typeof core>("@breatic/core");
+  base = structuredClone(actual.getMiniToolsConfig());
+  pg = core.createPgClient(inject("DATABASE_URL"), { name: "s5-admission-fixtures", max: 8 });
+  publicUrl = (await core.getStorageAdapter()).publicUrl.bind(await core.getStorageAdapter());
+  queue = core.createQueue("tasks");
+  app = (await import("@server/app.js")).createApp();
+});
+beforeEach(() => {
+  configure();
+  settings = Object.assign(structuredClone(base), { executions: { ...base.executions,
+    "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 12 },
+    "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 12 } } });
+  outside.config.mockImplementation(() => settings);
+  outside.snapshots.clear(); outside.bodies.clear(); outside.reads.length = 0;
+  outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
+    if (input.action !== "read") throw new Error(`Unexpected presentation admission ${input.action}`);
+    const snapshot = outside.snapshots.get(input.storageKey);
+    if (!snapshot) throw new Error("Unseeded external presentation snapshot");
+    return structuredClone(snapshot);
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+    outside.reads.push(url);
+    const body = outside.bodies.get(url);
+    if (body === undefined) throw new Error(`Admission must not fetch full ledger or unregistered URL: ${url}`);
+    return new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
+});
+afterAll(async () => {
+  for (const token of tokens) await core.revokeSession(core.getRedis(), token);
+  await pg.end(); core.initCore(process.env); vi.unstubAllGlobals();
+});
+
+/** Insert actual project roles rather than mocking authorization answers. @throws {Error} On fixture SQL failure. */
+async function member(projectId: string, role: "viewer" | "editor"): Promise<string> {
+  const id = randomUUID();
+  await pg`INSERT INTO users (id,email,email_verified) VALUES (${id},${`s5-${id}@example.test`},true)`;
+  await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${projectId},${id},${role})`;
+  return id;
+}
+
+/** Declare a source-scoped ready snapshot with only compact bytes available. @throws {never} Never. */
+function present(f: Fixture, table = TABLE): void {
+  const json = JSON.stringify(table);
+  const receipt: shared.VideoSourceLedgerReceiptV2 = { schemaVersion: 2, producerVersion: 2, sourceFingerprint: f.hash,
+    attempt: { jobId: `source-${f.sourceId}`, deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms },
+    url: publicUrl(shared.videoSourceLedgerKeyFor(f.sourceKey)), etag: "full-etag", size: 512, sha256: "b".repeat(64), contentType: "application/json",
+    table: { url: publicUrl(shared.videoSourceLedgerTableKeyFor(f.sourceKey)), sha256: digest(json), size: Buffer.byteLength(json), frameCount: table.runs.reduce((n, run) => n + run.count, 0) } };
+  f.body.source_ledger = receipt;
+  outside.bodies.set(receipt.table.url, json);
+  outside.snapshots.set(f.sourceKey, { presentation: { schemaVersion: 1, sourceFingerprint: f.hash,
+    original: { width: 960, height: 540, duration: 4.4 }, state: "native" }, attempt: null, sourceLedger: { state: "ready", receipt } });
+}
+
+/** Register measured video facts and fund the real target Studio, not the source Studio. @throws {Error} On fixture SQL failure. */
+async function seed(tool: Tool = "video.split"): Promise<Fixture> {
+  const target = await seedStudioFixture(pg, "s5-t"); const source = await seedStudioFixture(pg, "s5-s");
+  await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
+  await seedDesignatedLot(pg, target, 1000);
+  const sourceId = randomUUID(); const sourceKey = `video/s5/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
+  await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
+    VALUES (${sourceId},${source.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${source.userId},960,540,4.4)`;
+  const body: Body = { tool, project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
+    draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
+      mediaInfo: { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" } }, inputs: [],
+    params: tool === "video.split" ? { cuts: [4.19, 2.21, 4.19, 0, 2, 4.4] } : { mode: "interval", currentTime: 2.3, interval: 0.1 } },
+    analysis_refs: [], outputs: [], source_ledger: {} as shared.VideoSourceLedgerReceiptV2 };
+  const f: Fixture = { ...target, body, sourceId, sourceKey, hash, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor") };
+  present(f);
+  body.outputs = tool === "video.split"
+    ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 2.2 } } },
+      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2.2, end: 4 } } },
+      { outputIndex: 2, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } }]
+    : [2, 2.2, 4, 4.2].map((pts, i) => ({ outputIndex: i, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: i, pts } }));
+  return f;
+}
+
+/** Drive existing HTTP auth, idempotency, validation and planned startup. @throws {Error} On session storage or client failure. */
+async function post(f: Fixture, body: unknown = f.body, key = randomUUID(), actor: string | null = f.userId): Promise<Response> {
+  let cookie = "";
+  if (actor !== null) {
+    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, actor);
+    cookie = `${core.sessionCookieName()}=${token}`;
+  }
+  return app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key, Cookie: cookie }, body: JSON.stringify(body) });
+}
+
+/** Require a real success before later financial, permission or negative assertions. @throws {Error} On assertion failure. */
+async function accept(f: Fixture, body: unknown = f.body, key = randomUUID()): Promise<void> {
+  const response = await post(f, body, key);
+  expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: (body as { run_id: string }).run_id, status: "pending" } } });
+}
+
+/** Read the full physical parent independently, preserving SQL instant precision. @throws {Error} On missing task or SQL failure. */
+async function parent(id: string): Promise<Parent> {
+  const [row] = await pg<Parent[]>`SELECT id,user_id,status,params,result,billed_at::text,created_at::text,updated_at::text FROM tasks WHERE id=${id}`;
+  if (!row) throw new Error("Missing accepted S5 parent");
+  return row;
+}
+
+/** Count only this run's original owners, not neighboring fixtures. @throws {Error} On SQL or queue failure. */
+async function effects(id: string): Promise<{ tasks: number; rows: number; holds: number; jobs: number }> {
+  const [count] = await pg<{ tasks: number; rows: number; holds: number }[]>`SELECT
+    (SELECT count(*)::int FROM tasks WHERE id=${id}) AS tasks,
+    (SELECT count(*)::int FROM node_tasks WHERE task_id=${id}) AS rows,
+    (SELECT count(*)::int FROM credit_holds WHERE reference_id=${id}) AS holds`;
+  if (!count) throw new Error("Missing count projection");
+  return { ...count, jobs: await queue.getJob(id) ? 1 : 0 };
+}
+
+/** Prove matching input is accepted on independent destination nodes before testing a refusal. @throws {Error} On invalid control. */
+async function control(f: Fixture): Promise<void> {
+  const body = structuredClone(f.body); body.run_id = randomUUID();
+  body.outputs.forEach((output) => { output.nodeId = randomUUID(); });
+  await accept(f, body);
+}
+
+/** The same container floor/rounding path used by existing analysis admission. @throws {Error} On invalid price configuration. */
+function estimate(tool: Tool, multiplier = 1): number {
+  const operation = Reflect.get(settings.executions, tool) as { container_class: string; precheck_seconds: number };
+  return Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: operation.precheck_seconds * 1000, cpuUsec: null }, settings.classes[operation.container_class]!, settings.prices), multiplier)), MIN_TASK_CREDIT_COST);
+}
+
+/** Create a supplied terminal outcome through SQL; S5 does not execute a worker or nonterminal commit. @throws {Error} On invalid record or fixture SQL. */
+async function failedOriginal(f: Fixture): Promise<Parent> {
+  await accept(f);
+  const original = await parent(f.body.run_id); const plan = original.params.miniToolExecution;
+  const assetId = randomUUID(); const key = `video/s5-result/${assetId}.mp4`; const url = publicUrl(key);
+  await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
+    VALUES (${assetId},${f.studioId},${"d".repeat(64)},${key},${url},1234,'video/mp4','video','upload',${f.userId},960,540,0.2)`;
+  const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
+    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output, i) => ({ ...output, late: false,
+      result: i === 0 ? { status: "registered", assetId, canonicalURL: url, contentHash: "d".repeat(64), kind: "video", mimeType: "video/mp4", size: 1234, width: 960, height: 540, duration: 0.2, cover: null }
+        : { status: "failed", error: { code: "output_failed" } } })), usage: [], billingState: "idle", error: { code: "output_failed" } });
+  await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...original.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+  await pg`UPDATE node_tasks SET status=CASE WHEN node_id=${plan.outputs[0]!.nodeId} THEN 'done' ELSE 'failed' END,settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
+  await creditHoldService.releaseHold(f.body.run_id);
+  return parent(f.body.run_id);
+}
+
+/** Use original stable output indices; no fresh draft, receipt or recipe can override a retry. @throws {never} Never. */
+function retry(f: Fixture, ids = [2], run = randomUUID()): { tool: Tool; project_id: string; space_id: string; run_id: string; retry: { runId: string; outputIndexes: number[] } } {
+  return { tool: f.body.tool, project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: ids } };
+}
+
+/** Block real immutable-parent row locks, observe both contenders, then release and drain. @throws {Error} On failed lock probe or caller error. */
+async function contending<T>(id: string, calls: (() => Promise<T>)[]): Promise<T[]> {
+  let release!: () => void; let entered!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
+  const owner = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${id} FOR UPDATE`; entered(); await gate; });
+  await ready;
+  const pending = calls.map((call) => call()); pending.forEach((promise) => { void promise.catch(() => undefined); });
+  try { await waitUntilBlockedOn(pg, ["tasks", "for update"], calls.length); release(); await owner; return await Promise.all(pending); }
+  finally { release(); await owner; await Promise.allSettled(pending); }
+}
+
+describe("S5 fresh frame and split execution admission", () => {
+  it("S5-A00 proves registered snapshot, compact receipt, reader and independent planner literals are valid", async () => {
+    const f = await seed();
+    expect(shared.videoSourceLedgerReceiptV2Schema.parse(f.body.source_ledger)).toEqual(f.body.source_ledger);
+    expect(await shared.readVideoPresentationTable(f.body.source_ledger.table, { maxBytes: base.presentation.source_ledger.max_bytes }, { deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms })).toEqual(TABLE);
+    expect(planVideoSplit(TABLE, f.body.draft.params.cuts as number[])).toEqual([
+      { outputIndex: 0, start: 2, end: 2.2 }, { outputIndex: 1, start: 2.2, end: 4 }, { outputIndex: 2, start: 4, end: 4.4 },
+    ]);
+    expect(planVideoFrames(TABLE, { mode: "interval", interval: 0.1 })).toEqual([2, 2.2, 4, 4.2].map((pts, i) => ({ outputIndex: i, frameIndex: i, pts })));
+  });
+  it.each(["video.extract-frames", "video.split"] as const)("S5-A01 freezes every %s output, measured source, receipt and Std4 policy before the real hold and queue", async (tool) => {
+    const f = await seed(tool); const original = structuredClone(f.body);
+    const reader = vi.spyOn(shared, "readVideoPresentationTable");
+    try {
+      await accept(f);
+      expect(reader).toHaveBeenCalledTimes(1);
+      expect(reader.mock.calls[0]?.[0]).toEqual(original.source_ledger.table);
+      expect(reader.mock.calls[0]?.[1]).toEqual({ maxBytes: settings.presentation.source_ledger.max_bytes });
+      const deadline = reader.mock.calls[0]?.[2].deadlineAt;
+      expect(deadline).toBeGreaterThan(Date.now());
+      expect(deadline).toBeLessThanOrEqual(Date.now() + 7200000);
+    } finally { reader.mockRestore(); }
+    const stored = await parent(f.body.run_id); const plan = stored.params.miniToolExecution;
+    expect(plan).toMatchObject({ tool, taskId: f.body.run_id, sourceKey: f.sourceKey, sourceLedger: original.source_ledger,
+      binding: { assetId: f.sourceId, contentHash: f.hash, mediaInfo: { width: 960, height: 540, duration: 4.4 } },
+      outputs: original.outputs, targetNodeIds: original.outputs.map((o) => o.nodeId), credits: estimate(tool),
+      container: { containerClass: "MiniToolContainerStd4", precheckSeconds: tool === "video.split" ? 23 : 17,
+        size: settings.classes.MiniToolContainerStd4, prices: settings.prices, limits: settings.plan_limits } });
+    const { requestFingerprint, planFingerprint, ...projection } = plan;
+    expect(requestFingerprint).toBe(await hashMiniToolValue(original)); expect(planFingerprint).toBe(await hashMiniToolValue(projection));
+    const rows = await pg`SELECT node_id,budget_ms,action FROM node_tasks WHERE task_id=${f.body.run_id} ORDER BY node_id`;
+    expect([...rows]).toEqual(original.outputs.map((o) => ({ node_id: o.nodeId, budget_ms: 7200000, action: "mini_tool" })).sort((a, b) => a.node_id.localeCompare(b.node_id)));
+    const [hold] = await pg`SELECT studio_id,amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`;
+    expect(hold).toEqual({ studio_id: f.studioId, amount: estimate(tool), status: "held" });
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: original.outputs.length, holds: 1, jobs: 1 });
+    expect(await queue.getJob(f.body.run_id)).toMatchObject({ id: f.body.run_id, name: "execute-mini-tool", data: { taskId: f.body.run_id, executionKind: "planned" } });
+    expect(outside.reads).toEqual([original.source_ledger.table.url]);
+  });
+  it.each([
+    ["first", 0, 2], ["last", 3, 4.2], ["current", 1, 2.2],
+  ] as const)("S5-A01 resolves %s through the compact timeline rather than zero-based source time", async (mode, frameIndex, pts) => {
+    const f = await seed("video.extract-frames"); f.body.draft.params = { mode, currentTime: 3, interval: 1 };
+    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex, pts } }];
+    await accept(f); expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
+  });
+  it.each(["frameIndex", "pts", "omission", "addition", "order"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
+    const f = await seed("video.extract-frames"); await control(f);
+    if (bad === "frameIndex") Object.assign(f.body.outputs[0]!.recipe, { frameIndex: 1 });
+    else if (bad === "pts") Object.assign(f.body.outputs[0]!.recipe, { pts: 2.000001 });
+    else if (bad === "omission") f.body.outputs.pop();
+    else if (bad === "addition") f.body.outputs.push({ outputIndex: 4, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 3, pts: 4.2 } });
+    else f.body.outputs.reverse();
+    expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it.each(["start", "end", "omission", "addition", "order"])("S5-A02 refuses a segment plan %s after a valid nonzero-origin gap/duplicate-cut control", async (bad) => {
+    const f = await seed(); await control(f);
+    if (bad === "start") Object.assign(f.body.outputs[0]!.recipe, { range: { start: 0, end: 2.2 } });
+    else if (bad === "end") Object.assign(f.body.outputs[1]!.recipe, { range: { start: 2.2, end: 4.1 } });
+    else if (bad === "omission") f.body.outputs.pop();
+    else if (bad === "addition") f.body.outputs.push({ outputIndex: 3, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } });
+    else f.body.outputs.reverse();
+    expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it.each(["source deleted", "source hash", "receipt fingerprint", "receipt digest", "receipt attempt", "table digest", "table URL", "table size", "table frameCount", "presentation pending", "presentation failed", "ledger pending", "ledger failed", "ledger absent"])("S5-A03 refuses current source/receipt mismatch: %s", async (bad) => {
+    const f = await seed(); await control(f);
+    const snapshot = structuredClone(outside.snapshots.get(f.sourceKey)) as { presentation: Record<string, unknown>; sourceLedger?: Record<string, unknown> };
+    if (bad === "source deleted") await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceId}`;
+    else if (bad === "source hash") await pg`UPDATE studio_assets SET content_hash=${"e".repeat(64)} WHERE id=${f.sourceId}`;
+    else if (bad === "receipt fingerprint") f.body.source_ledger.sourceFingerprint = "e".repeat(64);
+    else if (bad === "receipt digest") f.body.source_ledger.sha256 = "e".repeat(64);
+    else if (bad === "receipt attempt") f.body.source_ledger.attempt.jobId = "another-attempt";
+    else if (bad === "table digest") f.body.source_ledger.table.sha256 = "e".repeat(64);
+    else if (bad === "table URL") f.body.source_ledger.table.url = "https://other.example.test/table.json";
+    else if (bad === "table size") f.body.source_ledger.table.size += 1;
+    else if (bad === "table frameCount") f.body.source_ledger.table.frameCount += 1;
+    else if (bad === "presentation pending") snapshot.presentation.state = "classifying";
+    else if (bad === "presentation failed") snapshot.presentation = { ...snapshot.presentation, state: "failed", error: "presentation_failed" };
+    else if (bad === "ledger pending") snapshot.sourceLedger = { state: "pending", schemaVersion: 2, producerVersion: 2, attempt: f.body.source_ledger.attempt };
+    else if (bad === "ledger failed") snapshot.sourceLedger = { state: "failed", schemaVersion: 2, producerVersion: 2, errorCode: "expired" };
+    else Reflect.deleteProperty(snapshot, "sourceLedger");
+    outside.snapshots.set(f.sourceKey, snapshot);
+    expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it.each(["digest", "size", "invalid table", "byte budget"])("S5-A04 validates the whole compact body and configured byte budget: %s", async (bad) => {
+    const f = await seed(); await control(f);
+    if (bad === "digest") outside.bodies.set(f.body.source_ledger.table.url, JSON.stringify({ ...TABLE, timescale: 11 }));
+    else if (bad === "size") outside.bodies.set(f.body.source_ledger.table.url, `${JSON.stringify(TABLE)} `);
+    else if (bad === "invalid table") {
+      const body = JSON.stringify({ schemaVersion: 1, timescale: 10, runs: [] });
+      f.body.source_ledger.table = { ...f.body.source_ledger.table, size: Buffer.byteLength(body), sha256: digest(body) };
+      const snapshot = outside.snapshots.get(f.sourceKey) as { sourceLedger: { receipt: shared.VideoSourceLedgerReceiptV2 } };
+      snapshot.sourceLedger.receipt = structuredClone(f.body.source_ledger); outside.bodies.set(f.body.source_ledger.table.url, body);
+    } else settings.presentation.source_ledger.max_bytes = f.body.source_ledger.table.size - 1;
+    // Stored-object corruption is not necessarily a client validation error; the contract fixes refusal and zero durable effects, not an HTTP error class.
+    expect((await post(f)).ok).toBe(false); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it("S5-A04 accepts a byte-bounded billion-frame table for a single last-frame output without fetching a full ledger", async () => {
+    const f = await seed("video.extract-frames");
+    present(f, { schemaVersion: 1, timescale: 10, runs: [{ start: 20, count: 1000000000, step: 1, duration: 1 }] });
+    await pg`UPDATE studio_assets SET duration_seconds=100000002 WHERE id=${f.sourceId}`;
+    const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: { original: { duration: number } } };
+    snapshot.presentation.original.duration = 100000002;
+    f.body.draft.params = { mode: "last", currentTime: 0, interval: 1 };
+    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 999999999, pts: 100000001.9 } }];
+    await accept(f); expect(outside.reads).toEqual([f.body.source_ledger.table.url]);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
+  });
+  it.each([1, 2.5])("S5-A05 holds the configured Std4 estimate once with multiplier %s and leaves every deadline at two hours", async (multiplier) => {
+    const f = await seed(); configure(multiplier);
+    const operation = Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }; operation.precheck_seconds = 137;
+    settings.prices.vcpu_second_usd *= 3; settings.plan_limits.analysisStdoutBytes = 8192;
+    await accept(f); const plan = (await parent(f.body.run_id)).params.miniToolExecution;
+    expect(plan.credits).toBe(estimate("video.split", multiplier));
+    expect(plan.container).toMatchObject({ precheckSeconds: 137, size: { vcpu: 4, memory_gib: 12 }, prices: settings.prices, limits: settings.plan_limits });
+    const held = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`;
+    expect([...held]).toEqual([{ amount: estimate("video.split", multiplier), status: "held" }]);
+    expect([...(await pg`SELECT DISTINCT budget_ms FROM node_tasks WHERE task_id=${f.body.run_id}`)]).toEqual([{ budget_ms: 7200000 }]);
+  });
+  it.each(["video.extract-frames", "video.split"] as const)("S5-A05 enforces the configured %s output limit without claiming measured production capacity", async (tool) => {
+    const f = await seed(tool); const operation = Reflect.get(settings.executions, tool) as { max_outputs: number };
+    operation.max_outputs = f.body.outputs.length;
+    await control(f); operation.max_outputs -= 1;
+    expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+  it("S5-A06 replays the original complete immutable plan before consulting changed source, presentation, draft or pricing", async () => {
+    const f = await seed(); const original = structuredClone(f.body); const key = randomUUID(); await accept(f, original, key);
+    const before = await parent(f.body.run_id); outside.ingest.mockClear(); outside.reads.length = 0;
+    await pg`UPDATE studio_assets SET content_hash=${"e".repeat(64)},duration_seconds=99 WHERE id=${f.sourceId}`;
+    settings.prices.vcpu_second_usd *= 9; settings.presentation.source_ledger.max_bytes = 1;
+    f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
+    await accept(f, original, key); await accept(f, original);
+    expect(await parent(original.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
+    expect((await readMiniToolExecutionPlan(original.run_id)).execution).toEqual(before.params.miniToolExecution);
+    expect((await post(f)).status).toBe(409); expect(await parent(original.run_id)).toEqual(before);
+    expect(await effects(original.run_id)).toEqual({ tasks: 1, rows: 3, holds: 1, jobs: 1 });
+  });
+  it("S5-A06 rejects same-key changed body without disturbing the original money or queue", async () => {
+    const f = await seed(); const key = randomUUID(); await accept(f, f.body, key); const before = await parent(f.body.run_id);
+    const changed = structuredClone(f.body); changed.draft.revision = randomUUID();
+    expect((await post(f, changed, key)).status).toBe(422); expect(await parent(f.body.run_id)).toEqual(before);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: 3, holds: 1, jobs: 1 });
+  });
+  it("S5-A07 observes two real claim INSERT contenders and only one full-output hold/job", async () => {
+    const f = await seed(); await control(f);
+    let release!: () => void; let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const owner = pg.begin(async (tx) => { await tx`LOCK TABLE tasks IN SHARE MODE`; entered(); await gate; }); await ready;
+    const first = post(f); const second = post(f); void first.catch(() => undefined); void second.catch(() => undefined);
+    try { await waitUntilBlockedOn(pg, ["insert into", "tasks"], 2); release(); await owner;
+      expect((await Promise.all([first, second])).map((r) => r.status)).toEqual([201, 201]);
+      expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: 3, holds: 1, jobs: 1 });
+    } finally { release(); await owner; await Promise.allSettled([first, second]); }
+  });
+  it.each(["viewer", "removed", "outsider", "unauthenticated"])("S5-A08 enforces current %s authority with no admission side effects", async (bad) => {
+    const f = await seed(); await control(f); let actor: string | null = f.userId;
+    if (bad === "viewer") actor = f.viewerId;
+    else if (bad === "removed") await pg`UPDATE project_members SET deleted_at=clock_timestamp() WHERE project_id=${f.projectId} AND user_id=${f.userId}`;
+    else if (bad === "outsider") actor = (await seedStudioFixture(pg, "s5-out")).userId;
+    else actor = null;
+    expect((await post(f, f.body, randomUUID(), actor)).status).toBe(bad === "viewer" ? 403 : bad === "unauthenticated" ? 401 : 404);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+});
+
+describe("S5 independent failed-output retry admission", () => {
+  it("S5-R01 reuses only the selected failed original node/recipe/receipt, never today's draft or table", async () => {
+    const f = await seed(); const before = await failedOriginal(f); const body = retry(f);
+    f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
+    await pg`UPDATE studio_assets SET duration_seconds=99 WHERE id=${f.sourceId}`;
+    outside.ingest.mockClear(); outside.reads.length = 0; outside.snapshots.clear(); outside.bodies.clear();
+    await accept(f, body); const plan = (await parent(body.run_id)).params.miniToolExecution;
+    expect(plan.outputs).toEqual([before.params.miniToolExecution.outputs[2]]); expect(plan.targetNodeIds).toEqual([f.body.outputs[2]!.nodeId]);
+    expect(plan.binding).toEqual(before.params.miniToolExecution.binding); expect(plan.sourceLedger).toEqual(before.params.miniToolExecution.sourceLedger);
+    expect(await parent(f.body.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
+    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    const [hold] = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`;
+    expect(hold).toEqual({ amount: estimate("video.split"), status: "held" });
+    expect((await readMiniToolExecutionPlan(body.run_id)).execution.outputs).toEqual([before.params.miniToolExecution.outputs[2]]);
+  });
+  it.each(["successful", "late registered", "pending", "unknown", "foreign output", "foreign project", "viewer", "removed", "different actor"])("S5-R02 refuses retry of %s without changing the original outcome or funds", async (bad) => {
+    const f = await seed(); let before = await failedOriginal(f);
+    const valid = retry(f, [1]); await accept(f, valid);
+    const body = retry(f); let actor = f.userId;
+    if (bad === "successful") body.retry.outputIndexes = [0];
+    else if (bad === "late registered") {
+      const record = miniToolExecutionRecordSchema.parse(before.result.miniToolExecution);
+      record.outputs[2]!.result = structuredClone(record.outputs[0]!.result); record.outputs[2]!.late = true;
+      expect(miniToolExecutionRecordSchema.parse(record)).toEqual(record);
+      await pg`UPDATE tasks SET result=${pg.json(z.json().parse({ ...before.result, miniToolExecution: record }))} WHERE id=${f.body.run_id}`;
+      before = await parent(f.body.run_id);
+    } else if (bad === "unknown") body.retry.outputIndexes = [999];
+    else if (bad === "pending") {
+      const record = structuredClone(before.result.miniToolExecution) as { status: string; outputs: { result: unknown }[]; resultVersion: number; error: unknown };
+      record.status = "running"; record.resultVersion = 0; record.error = null; record.outputs.forEach((o) => { o.result = null; });
+      await pg`UPDATE tasks SET status='running',result=${pg.json(z.json().parse({ ...before.result, miniToolExecution: record }))},completed_at=null WHERE id=${f.body.run_id}`;
+      before = await parent(f.body.run_id);
+    } else if (bad === "foreign output") {
+      const other = await seed(); await failedOriginal(other); body.retry.runId = other.body.run_id;
+    } else if (bad === "foreign project") {
+      const other = await seedStudioFixture(pg, "s5-rp"); body.project_id = other.projectId;
+      await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${other.projectId},${f.userId},'editor')`;
+    } else if (bad === "viewer") actor = f.viewerId;
+    else if (bad === "removed") await pg`UPDATE project_members SET deleted_at=clock_timestamp() WHERE project_id=${f.projectId} AND user_id=${f.userId}`;
+    else actor = f.otherId;
+    const response = await post(f, body, randomUUID(), actor);
+    expect(response.status).toBe(bad === "viewer" ? 403 : bad === "removed" || bad === "foreign project" || bad === "foreign output" ? 404 : bad === "different actor" ? 409 : 422);
+    expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 }); expect(await parent(f.body.run_id)).toEqual(before);
+  });
+  it("S5-R03 replays a retry under either press key but refuses a changed selected subset", async () => {
+    const f = await seed(); const original = await failedOriginal(f); const body = retry(f); const key = randomUUID();
+    await accept(f, body, key); const before = await parent(body.run_id);
+    await accept(f, body, key); await accept(f, body);
+    expect(await parent(body.run_id)).toEqual(before); expect(await parent(f.body.run_id)).toEqual(original);
+    expect((await post(f, { ...body, retry: { ...body.retry, outputIndexes: [1] } })).status).toBe(409);
+    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+  });
+  it.each([false, true])("S5-R03 serializes concurrent retries on the original task with one active execution per output node (different IDs=%s)", async (different) => {
+    const f = await seed(); const before = await failedOriginal(f); const a = retry(f); const b = different ? retry(f) : structuredClone(a);
+    const responses = await contending(f.body.run_id, [() => post(f, a), () => post(f, b)]);
+    expect(responses.map((r) => r.status).sort()).toEqual(different ? [201, 409] : [201, 201]);
+    const counts = await Promise.all([...new Set([a.run_id, b.run_id])].map((id) => effects(id)));
+    expect(counts.reduce((n, c) => n + c.rows, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.holds, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.jobs, 0)).toBe(1);
+    expect(await parent(f.body.run_id)).toEqual(before);
+    const rows = await pg`SELECT node_id,count(*)::int AS n FROM node_tasks WHERE node_id=${f.body.outputs[2]!.nodeId} AND status='running' GROUP BY node_id`;
+    expect([...rows]).toEqual([{ node_id: f.body.outputs[2]!.nodeId, n: 1 }]);
+  });
+  it("S5-R03 admits disjoint failed-node retries independently instead of excluding the whole original execution", async () => {
+    const f = await seed(); const original = await failedOriginal(f); const a = retry(f, [1]); const b = retry(f, [2]);
+    await accept(f, a); await accept(f, b);
+    expect((await parent(a.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[1]]);
+    expect((await parent(b.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
+    expect(await effects(a.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect(await effects(b.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect(await parent(f.body.run_id)).toEqual(original);
+  });
+  it("S5-R04 keeps arbitrary failed subsets and repeated requests exactly once under real PG", async () => {
+    await fc.assert(fc.asyncProperty(fc.shuffledSubarray([1, 2], { minLength: 1, maxLength: 2 }), fc.integer({ min: 1, max: 3 }), async (ids, repeats) => {
+      const f = await seed(); const before = await failedOriginal(f); const body = retry(f, [...ids].sort());
+      for (let n = 0; n < repeats; n += 1) await accept(f, body);
+      const selected = before.params.miniToolExecution.outputs.filter((o) => ids.includes(o.outputIndex));
+      expect((await parent(body.run_id)).params.miniToolExecution.outputs).toEqual(selected);
+      expect(await parent(f.body.run_id)).toEqual(before); expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: selected.length, holds: 1, jobs: 1 });
+      expect([...(await pg`SELECT reference_id,amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`)])
+        .toEqual([{ reference_id: body.run_id, amount: estimate("video.split"), status: "held" }]);
+      expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${body.run_id}`)]).toEqual([]);
+    }), { seed: 130605, numRuns: 8 });
+  });
+  it("S5-R05 settles a retry's actual container consumption and own hold once without charging or rewriting the original", async () => {
+    const f = await seed(); const original = await failedOriginal(f); const body = retry(f); await accept(f, body);
+    const [step] = await upstreamStepRepo.ensureSteps(body.run_id, [{ kind: "container_job", endpoint: "video.split", itemIndex: 0 }]);
+    if (!step) throw new Error("Missing retry consumption fixture step");
+    const identity = { kind: "container" as const, containerClass: "MiniToolContainerStd4", jobId: `retry-${body.run_id}`, chunkIndex: 0 };
+    const pricing = { configVersion: "s5-supplied-usage", size: settings.classes.MiniToolContainerStd4!, prices: settings.prices };
+    await openMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity, chargeTo: "user", creditMultiplier: 1, containerPricing: pricing });
+    const usage = { wallMs: 1000, cpuUsec: 100000 }; const usd = containerCostUsd(usage, pricing.size, pricing.prices);
+    const computing = await parent(body.run_id);
+    const active = miniToolExecutionRecordSchema.parse(computing.result.miniToolExecution);
+    const terminal = miniToolExecutionRecordSchema.parse({ ...active, status: "failed", resultVersion: 1, error: { code: "supplied_terminal_failure" },
+      outputs: active.outputs.map((output) => ({ ...output, result: { status: "failed", error: { code: "supplied_terminal_failure" } } })) });
+    await pg`UPDATE tasks SET status='failed',completed_at=clock_timestamp(),result=${pg.json(z.json().parse({ ...computing.result, miniToolExecution: terminal }))} WHERE id=${body.run_id}`;
+    const period = await completeMiniToolConsumptionSet(body.run_id);
+    const claimed = await claimMiniToolSettlement({ taskId: body.run_id, settlementVersion: period.version });
+    expect(claimed?.nextConsumption?.stepId).toBe(step.id);
+    if (!claimed) throw new Error("Retry settlement was not claimed");
+    await confirmMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity, claim: claimed.claim, costUsd: usd, costSource: "computed", raw: usage });
+    await recordMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity });
+    await settleMiniToolCharge(body.run_id); const once = await parent(body.run_id); await settleMiniToolCharge(body.run_id);
+    expect(await parent(body.run_id)).toEqual(once); expect(await parent(f.body.run_id)).toEqual(original);
+    const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${body.run_id}`; expect(hold).toEqual({ status: "released" });
+    const ledger = await pg`SELECT reference_id,amount::float8 FROM credit_ledger WHERE reference_id=${body.run_id}`;
+    expect([...ledger]).toEqual([{ reference_id: body.run_id, amount: -shared.ceilToCreditCent(creditsForUsd(usd, 1)) }]);
+    expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${f.body.run_id}`)]).toEqual([]);
+  });
+});
