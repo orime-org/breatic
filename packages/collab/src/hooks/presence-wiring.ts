@@ -207,7 +207,7 @@ export function refreshPresenceForSocket(
     if (!isMetaDoc(documentName)) continue;
     const userId = userIdOf({ context: connection.context });
     if (!userId) return;
-    if (!touchLastSeen({ document: connection.document, userId, now: heardAt })) return;
+    if (!touchLastSeen({ document: connection.document, userId, heardAt })) return;
     sweepStalePresence({
       document: connection.document,
       now: policy.now(),

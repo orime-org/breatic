@@ -150,21 +150,24 @@ export function markOnline(args: {
  * @param args - Whose connection answered, and when.
  * @param args.document - The meta document to write into.
  * @param args.userId - The user whose connection this refresh came from.
- * @param args.now - When the connection was last heard, in ms.
+ * @param args.heardAt - When the connection was last heard, in ms.
  * @returns True when the record was written, false when there is none to write.
  */
 export function touchLastSeen(args: {
   document: YDoc;
   userId: string;
-  now: number;
+  heardAt: number;
 }): boolean {
   const users = args.document.getMap(USERS_KEY);
   const existing = users.get(args.userId);
   if (!(existing instanceof Y.Map)) return false;
 
+  // One user holds a socket per tab, and a refresh held back on one of them
+  // can land after another has written a later time.
+  const previous = existing.get("lastSeenAt");
   args.document.transact(() => {
     existing.set("online", true);
-    existing.set("lastSeenAt", args.now);
+    existing.set("lastSeenAt", typeof previous === "number" ? Math.max(previous, args.heardAt) : args.heardAt);
   });
   return true;
 }
