@@ -16,6 +16,7 @@ import { toast } from '@web/lib/toast';
 import { tableBlock } from './table-fixtures';
 import {
   OURS,
+  caretIn,
   open,
   paste,
   pasteFormats,
@@ -457,4 +458,45 @@ it.each([
   expect(blocksOf(cellsOf(editor)[0]!.node)).toEqual([`image:${PICTURE}`, `${type}:${text}`]);
   expect(blocksOf(cellsOf(editor)[1]!.node)).toEqual(['paragraph:neighbour']);
   expect(editor.prosemirrorView.state.selection.$head.parent.type.name).toBe(type);
+});
+
+/**
+ * Labels the body's top-level blocks by type and words or media address.
+ * @param editor - The mounted editor.
+ * @returns One label per top-level block.
+ */
+function bodyBlocks(editor: Editor): string[] {
+  const out: string[] = [];
+  editor.prosemirrorView.state.doc.firstChild!.forEach((container) => {
+    const block = container.firstChild!;
+    out.push(`${block.type.name}:${block.type.name === 'image' ? String(block.attrs['url']) : block.textContent}`);
+  });
+  return out;
+}
+
+it.each([
+  ['heading', '<h2>Title</h2>', 'Title'],
+  ['bulletListItem', '<ul><li>Item</li></ul>', 'Item'],
+  ['numberedListItem', '<ol><li>Step</li></ol>', 'Step'],
+] as const)('preserves a trailing %s after media pasted into an empty body paragraph', async (type, html, text) => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }]);
+  const lineId = (editor.document as { id: string }[])[1]!.id;
+  caretIn(editor, 1);
+
+  paste(editor, `<img src="${PICTURE}">${html}`, text);
+  await settled();
+
+  expect(bodyBlocks(editor)).toEqual(['paragraph:lead', `image:${PICTURE}`, `${type}:${text}`]);
+  expect((editor.document as { id: string }[])[2]!.id).toBe(lineId);
+  expect(editor.prosemirrorView.state.selection.$head.parent.type.name).toBe(type);
+});
+
+it('keeps an empty heading line its own type when media and words land on it', async () => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'heading', props: { level: 2 } }]);
+  caretIn(editor, 1);
+
+  paste(editor, `<img src="${PICTURE}"><ul><li>Item</li></ul>`, 'Item');
+  await settled();
+
+  expect(bodyBlocks(editor)).toEqual(['paragraph:lead', `image:${PICTURE}`, 'heading:Item']);
 });
