@@ -141,10 +141,10 @@ async function has(documentName: string, member: string): Promise<boolean> {
 }
 
 /**
- * Tell an `arriving` entry from a `held` one by what the script does with it
- * (specification 0.4). Removes the entry's member, seats an earlier fresh
- * member of the same user, fills the rest of a cap of 2 with someone else,
- * and pongs: `arrive` mode replaces the earlier member, `refresh` mode never
+ * Tell an `arriving` entry from a `held` one by what the script does with
+ * it. Removes the entry's member, seats an earlier fresh member of the same
+ * user, fills the rest of a cap of 2 with someone else, and pongs:
+ * `arrive` mode replaces the earlier member, `refresh` mode never
  * replaces and reports the seat lost.
  * @param reg - The registry.
  * @param socketId - The entry's socket.

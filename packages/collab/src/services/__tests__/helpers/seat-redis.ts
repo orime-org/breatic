@@ -49,8 +49,6 @@ export type ReplyGate = (reply: Promise<unknown>, call: LoggedCall) => Promise<u
 export interface WrappedRedis {
   /** Hand this to the registry. */
   client: Redis;
-  /** The client underneath, for PING and for reading state on the same connection. */
-  real: Redis;
   /** Every intercepted call, in calling order. */
   log: LoggedCall[];
   /**
@@ -180,7 +178,6 @@ export function wrapRedis(real: Redis): WrappedRedis {
 
   return {
     client,
-    real,
     log,
     fail(name: string, fault: Fault, times = 1): void {
       for (let i = 0; i < times; i++) push(name, { kind: fault });
