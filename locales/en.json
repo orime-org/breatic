@@ -1888,6 +1888,9 @@
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight"
       },
+      "paste": {
+        "unsupportedInCell": "This format cannot be pasted here"
+      },
       "media": {
         "image": "Image",
         "audio": "Audio",

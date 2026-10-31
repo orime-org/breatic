@@ -12,17 +12,21 @@
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
-import { Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
+import { __insertCells as insertCells, __pastedCells as pastedCells, cellAround, CellSelection, selectedRect } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { newId } from '@breatic/shared';
+import { newId, t } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
 
 import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -122,7 +126,7 @@ function lineAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
 }
 
 /**
- * The table or code block a position is in, as the block container holding it.
+ * The legacy table or code block a position is in, as its block container.
  * @param $at - The position.
  * @returns It, or null when the position is in neither.
  */
@@ -198,7 +202,12 @@ function holdsContent(blocks: readonly ReadBlock[]): boolean {
  * @returns The text.
  */
 function wordsOf(blocks: readonly ReadBlock[]): string {
-  return blocks.flatMap((block) => [contentWords(block.content), ...(block.children ?? []).map((child) => wordsOf([child]))]).join('\n');
+  return blocks.map((block) => {
+    if (block.type === DOC_TABLE) {
+      return (block.children ?? []).map((row) => (row.children ?? []).map((cell) => wordsOf(cell.children ?? [])).join('\t')).join('\n');
+    }
+    return [contentWords(block.content), ...(block.children ?? []).map((child) => wordsOf([child]))].join('\n');
+  }).join('\n');
 }
 
 /**
@@ -233,7 +242,7 @@ function caretAfter(tr: Transaction, end: number): void {
   const slot = $end.nodeAfter === null ? $end.after() : end + 1;
   let $next = tr.doc.resolve(slot);
   // Past the end of a nested group, the line that follows is the next one after its parent.
-  while ($next.nodeAfter === null && $next.depth > 1) $next = tr.doc.resolve($next.after($next.depth - 1));
+  while ($next.nodeAfter === null && $next.depth > 1 && !isTableCell($next.parent)) $next = tr.doc.resolve($next.after($next.depth - 1));
   const after = $next.nodeAfter;
   if (after?.type.name === 'blockContainer' && after.firstChild?.isTextblock === true) {
     tr.setSelection(TextSelection.create(tr.doc, $next.pos + 2));
@@ -254,10 +263,21 @@ function caretAfter(tr: Transaction, end: number): void {
 function finishCaret(tr: Transaction, nodes: readonly PMNode[], start: number): void {
   let pos = start + nodes.slice(0, -1).reduce((sum, node) => sum + node.nodeSize, 0);
   let last = nodes[nodes.length - 1]!;
-  while (last.childCount > 1) {
+  while (last.type.name === 'blockContainer' && last.childCount > 1) {
     const group = last.lastChild!;
     pos += 2 + last.firstChild!.nodeSize + group.content.size - group.lastChild!.nodeSize;
     last = group.lastChild!;
+  }
+  if (last.type.name === DOC_TABLE) {
+    const end = pos + last.nodeSize;
+    const next = tr.doc.resolve(end).nodeAfter;
+    if (next?.type.name === 'blockContainer' && next.firstChild?.isTextblock === true) {
+      tr.setSelection(TextSelection.create(tr.doc, end + 2));
+    } else {
+      tr.insert(end, blockToNode({ id: newId(), type: 'paragraph' } as never, tr.doc.type.schema));
+      tr.setSelection(TextSelection.create(tr.doc, end + 2));
+    }
+    return;
   }
   const own = last.firstChild!;
   if (own.isTextblock) tr.setSelection(TextSelection.create(tr.doc, pos + 2 + own.content.size));
@@ -301,6 +321,7 @@ function retyped(container: PMNode, line: PMNode): PMNode {
 function nestLast(nodes: PMNode[], line: PMNode): PMNode[] {
   if (line.childCount < 2 || nodes.length === 0) return nodes;
   const last = nodes[nodes.length - 1]!;
+  if (last.type.name === DOC_TABLE) return [...nodes, ...Array.from({ length: line.lastChild!.childCount }, (_, i) => line.lastChild!.child(i))];
   const group = last.childCount > 1 ? last.lastChild!.content.append(line.lastChild!.content) : line.lastChild!.content;
   const content = Fragment.from([last.firstChild!, line.lastChild!.type.create(null, group)]);
   return [...nodes.slice(0, -1), last.type.create(last.attrs, content)];
@@ -403,6 +424,66 @@ function aim(view: EditorView, $drop: ResolvedPos, opened: boolean): void {
 }
 
 /**
+ * Whether any block, including a nested one, is a table.
+ * @param blocks - The content read.
+ * @returns True when it includes a table.
+ */
+function includesTable(blocks: readonly ReadBlock[]): boolean {
+  return blocks.some((block) => block.type === DOC_TABLE || includesTable(block.children ?? []));
+}
+
+/**
+ * The one table alone, ignoring empty paragraphs surrounding it.
+ * @param blocks - The content read.
+ * @returns Its table, or null for mixed content.
+ */
+function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
+  const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content) === '' && (block.children ?? []).length === 0));
+  return kept.length === 1 && kept[0]!.type === DOC_TABLE ? kept[0]! : null;
+}
+
+/**
+ * Puts one source grid once from the target cell, growing the table as needed.
+ * @param view - The editor view, with its target cell selected.
+ * @param block - The source table.
+ * @returns The rectangle written.
+ */
+function putTableInCells(view: EditorView, block: ReadBlock): Placed | null {
+  squareSelectedTable(view);
+  const rect = selectedRect(view.state);
+  const cells = pastedCells(new Slice(Fragment.from(containers([block], view.state)), 0, 0));
+  if (cells === null) return null;
+  insertCells(view.state, (tr) => view.dispatch(tr.scrollIntoView()), rect.tableStart, rect, cells);
+  return cellsOf(view.state.selection as CellSelection);
+}
+
+/**
+ * Repeats ordinary blocks through a cell selection, retaining the cells' own
+ * types and attributes. Each copy has its own block ids and the same upload ids.
+ * @param view - The view with a cell selection.
+ * @param blocks - The content to put in each selected cell.
+ * @returns The content written to the top-left cell.
+ */
+function putBlocksInCells(view: EditorView, blocks: readonly ReadBlock[]): Placed {
+  squareSelectedTable(view);
+  const selection = view.state.selection as CellSelection;
+  const rect = selectedRect(view.state);
+  const top = rect.tableStart + rect.map.positionAt(rect.top, rect.left, rect.table);
+  const cells: { node: PMNode; pos: number }[] = [];
+  selection.forEachCell((node, pos) => cells.push({ node, pos }));
+  const tr = view.state.tr;
+  let first: PMNode[] = [];
+  for (const { node, pos } of cells.sort((a, b) => b.pos - a.pos)) {
+    const made = containers(blocks, view.state);
+    tr.replaceWith(pos + 1, pos + node.nodeSize - 1, made);
+    if (pos === top) first = made;
+  }
+  finishCaret(tr, first, top + 1);
+  view.dispatch(tr.scrollIntoView());
+  return { kind: 'range', from: top + 1, to: top + 1 + first.reduce((size, node) => size + node.nodeSize, 0) };
+}
+
+/**
  * Puts content at the selection, or at a drop's point (§5.4.3). In a code
  * block plain text goes in as it is; otherwise every medium is judged once,
  * and content that puts nothing in changes nothing. Then the selection
@@ -421,7 +502,9 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const { doc, selection } = view.state;
   const $drop = options.dropAt === undefined ? null : doc.resolve(options.dropAt);
   const opened = $drop !== null && !$drop.parent.isTextblock;
-  const $at = $drop ?? (selection instanceof CellSelection ? null : selection instanceof NodeSelection ? null : selection.$from);
+  const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : view.state.tr.deleteSelection().selection.$from);
+  const cell = selection instanceof CellSelection && $drop === null ? selection.$anchorCell : cellAround($at);
+  const inCell = cell !== null && ($drop !== null || heldTables(selection) === null);
   /**
    * Places content, a drop's point aimed first and its hold on the selection
    * from before the drop let go once the content is in.
@@ -443,6 +526,10 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
       return { kind: 'range', from, to: view.state.selection.head };
     });
   }
+  if (inCell && includesTable(content.blocks) && onlyTable(content.blocks) === null) {
+    toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return null;
+  }
   options.leaveOut?.(content.lost);
   const blocks = judged(content.blocks, options.judge);
   if (!holdsContent(blocks)) return null;
@@ -462,7 +549,12 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
 function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boolean, opened: boolean): Placed | null {
   const view = editor.prosemirrorView!;
   const { selection } = view.state;
-  if (selection instanceof CellSelection) return putInTextOnly(editor, content, textOnlyAt(selection.$anchorCell)!, wordsIntoTarget);
+  const table = onlyTable(content.blocks);
+  const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$from);
+  if ($cell !== null && heldTables(selection) === null) {
+    if (table !== null) return putTableInCells(view, table);
+    if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
+  }
   const words = !holdsBlocks(content.blocks);
   if (selection instanceof NodeSelection) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
   if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);

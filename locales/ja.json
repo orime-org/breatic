@@ -1888,6 +1888,9 @@
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）"
       },
+      "paste": {
+        "unsupportedInCell": "この形式は貼り付けできません"
+      },
       "media": {
         "image": "画像",
         "audio": "音声",

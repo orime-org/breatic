@@ -1888,6 +1888,9 @@
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）"
       },
+      "paste": {
+        "unsupportedInCell": "目前格式不支援貼上"
+      },
       "media": {
         "image": "圖片",
         "audio": "音訊",

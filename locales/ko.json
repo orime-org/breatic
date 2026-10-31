@@ -1888,6 +1888,9 @@
         "mergeCells": "셀 병합",
         "textHighlight": "배경(텍스트 강조)"
       },
+      "paste": {
+        "unsupportedInCell": "이 형식은 붙여넣을 수 없습니다"
+      },
       "media": {
         "image": "이미지",
         "audio": "오디오",

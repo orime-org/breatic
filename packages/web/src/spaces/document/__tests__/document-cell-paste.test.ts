@@ -6,6 +6,7 @@
  * Real paste events exercise clipboard reading and placement together.
  */
 
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
@@ -37,6 +38,17 @@ afterEach(() => {
   unmountAll();
   vi.restoreAllMocks();
 });
+
+/**
+ * Opens a body and lets fixture DOM updates settle before a user selection.
+ * @param blocks - The initial body.
+ * @returns The mounted body, undo manager and upload sink.
+ */
+async function openReady(blocks: Parameters<typeof open>[0]): Promise<ReturnType<typeof open>> {
+  const opened = open(blocks);
+  await act(async () => { await settled(); });
+  return opened;
+}
 
 /** A node and its position before the node. */
 type LocatedNode = { node: PMNode; pos: number };
@@ -128,7 +140,7 @@ function selectPicture(editor: Editor, url: string): void {
 
 describe('ordinary blocks pasted into a docTable cell (A13)', () => {
   it('keeps words, an image and words in order between the two halves of the cell text', async () => {
-    const { editor } = open([
+    const { editor } = await openReady([
       { type: 'paragraph', content: 'outside before' },
       tableBlock({ rows: [{ cells: ['abcd', 'neighbour'] }, { cells: ['lower left', 'lower right'] }] }),
       { type: 'paragraph', content: 'outside after' },
@@ -156,7 +168,7 @@ describe('ordinary blocks pasted into a docTable cell (A13)', () => {
   });
 
   it('opens the caret paragraph inside the cell when an image ends its last line', async () => {
-    const { editor } = open([
+    const { editor } = await openReady([
       tableBlock({ rows: [{ cells: ['abcd', 'neighbour'] }] }),
       { type: 'paragraph', content: 'outside after' },
     ]);
@@ -180,7 +192,7 @@ describe('ordinary blocks pasted into a docTable cell (A13)', () => {
   });
 
   it('preserves headings, list items and dividers as sibling blocks in the cell', async () => {
-    const { editor } = open([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
     const cell = cellsOf(editor)[0]!;
     // Cell -> blockContainer -> paragraph -> its text position.
     select(editor, cell.pos + 3);
@@ -199,7 +211,7 @@ describe('ordinary blocks pasted into a docTable cell (A13)', () => {
   });
 
   it('replaces a selected cell image without joining the surrounding paragraphs', async () => {
-    const { editor } = open([
+    const { editor } = await openReady([
       tableBlock({ rows: [{ cells: [
         { blocks: [
           { type: 'paragraph', content: 'before' },
@@ -226,7 +238,7 @@ describe('ordinary blocks pasted into a docTable cell (A13)', () => {
   });
 
   it('gives every repeated block a unique id when ordinary content fills a CellSelection', async () => {
-    const { editor } = open([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
     selectCells(editor, 0, 3);
     const html = editor.blocksToFullHTML([
       { id: 'source-heading', type: 'heading', props: { level: 2 }, content: 'Title' },
@@ -264,7 +276,7 @@ describe('a single table pasted into a docTable cell (A12)', () => {
   it.each(['caret', 'smaller CellSelection'] as const)(
     'fills the source rectangle once and adds both rows and columns from a %s',
     async (selection) => {
-      const { editor } = open([
+      const { editor } = await openReady([
         { type: 'paragraph', content: 'before' },
         tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'target'] }] }),
         { type: 'paragraph', content: 'after' },
@@ -288,7 +300,7 @@ describe('a single table pasted into a docTable cell (A12)', () => {
   );
 
   it('fills only once from the top-left of a larger reversed CellSelection', async () => {
-    const { editor } = open([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
     selectCells(editor, 3, 0);
 
     paste(editor, '<p></p><table><tr><td>only</td></tr></table><p></p>', 'only');
@@ -313,7 +325,7 @@ describe.each(['caret', 'text selection', 'media NodeSelection', 'CellSelection'
   'unsupported cell content over a %s (A14)',
   (selection) => {
     it.each(MIXED_CONTENT)('rejects %s without changing the document, selection or undo stack and warns once', async (_name, html) => {
-      const { editor, manager, sink } = open([
+      const { editor, manager, sink } = await openReady([
         tableBlock({ rows: [
           { cells: [{ blocks: [
             { type: 'paragraph', content: 'abcd' },
@@ -350,7 +362,7 @@ describe('plain text pasted into a code block inside a docTable cell (A7)', () =
     ['a pipe table', PIPE_TABLE],
     ['a pipe table with surrounding prose', `Introduction\n\n${PIPE_TABLE}\n\nConclusion`],
   ] as const)('inserts %s verbatim without changing the outer table', async (_name, text) => {
-    const { editor, sink } = open([
+    const { editor, sink } = await openReady([
       { type: 'paragraph', content: 'before' },
       tableBlock({ rows: [
         { cells: [{ blocks: [{ type: 'codeBlock', props: { language: 'text' }, content: 'startend' }] }, 'neighbour'] },
