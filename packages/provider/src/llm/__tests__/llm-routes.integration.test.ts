@@ -82,7 +82,17 @@ describe("routing", () => {
   });
 
   it("throws NoUpstreamAvailable naming every missing key when no route upstream has one", () => {
-    expect(() => llmProvider(fakes, {}).llm.prepare("deepseek/deepseek-v4-pro", OFF)).toThrow(NoUpstreamAvailable);
+    let thrown: unknown;
+    try {
+      llmProvider(fakes, {}).llm.prepare("deepseek/deepseek-v4-pro", OFF);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(NoUpstreamAvailable);
+    expect((thrown as NoUpstreamAvailable).reasons).toEqual([
+      { upstream: "deepseek", kind: "missing_key", envVar: "DEEPSEEK_API_KEY" },
+      { upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" },
+    ]);
   });
 
   it("goes only to the named upstream in upstream mode", async () => {

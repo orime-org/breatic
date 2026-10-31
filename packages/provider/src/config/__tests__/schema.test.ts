@@ -276,8 +276,8 @@ describe("deployment overrides of LLM routes (design 4.4)", () => {
   const order = (list: readonly { upstreams: readonly { upstream: string }[] }[]): string[] => list[0]!.upstreams.map((u) => u.upstream);
 
   it("applies an llm override to the chat routes only", () => {
-    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 0, openrouter: 1 } } } } });
-    expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
+    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
+    expect(order(config.llm.routes)).toEqual(["openrouter", "google"]);
     expect(order(config.llm.understand_routes)).toEqual(["openrouter", "google"]);
   });
 
@@ -285,6 +285,8 @@ describe("deployment overrides of LLM routes (design 4.4)", () => {
     const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 0, openrouter: 1 } } } } });
     expect(order(config.llm.understand_routes)).toEqual(["google", "openrouter"]);
     expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
+    const leaked = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
+    expect(order(leaked.llm.routes)).toEqual(["google", "openrouter"]);
   });
 
   it("refuses an understand override naming a prefix no understand route has", () => {

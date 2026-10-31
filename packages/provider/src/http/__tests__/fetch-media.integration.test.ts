@@ -74,11 +74,12 @@ describe("fetchMedia (design 3.1, Z5)", () => {
   });
 
   it("gives up after ten redirects", async () => {
-    const { url } = await serve((req, res) => {
+    const { url, count } = await serve((req, res) => {
       res.writeHead(302, { location: `/${Number(req.url?.slice(1) ?? 0) + 1}` });
       res.end();
     });
     await expect(fetchMedia({ url: `${url}/0`, ...limits() })).rejects.toMatchObject({ kind: "unreachable" });
+    expect(count()).toBe(11);
   });
 
   it("refuses a body over the byte limit", async () => {

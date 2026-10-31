@@ -388,6 +388,7 @@ describe("reading Gemini's answer against one typed structure (DD 33)", () => {
     const error = await googleAnswering({ ...GENERATE_CONTENT_REPLY, candidates: [{ content: { parts: [{ text: 5 }] }, finishReason: "STOP" }] });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).status).toBeUndefined();
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "missing" })]);
   });
 
   it("reads a block reason of null as no block", async () => {
