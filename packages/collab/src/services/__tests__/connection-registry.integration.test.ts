@@ -530,7 +530,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
     expect(zremsOf(w.log, keyFor(DOC), mine)).toHaveLength(1);
   });
 
-  it("A19 drops a replaced reply after the disconnect; the replaced connection takes a seat back on its next pong", async () => {
+  it("A19 drops a replaced reply after the disconnect; the replaced connection takes a seat back on its next sign of life", async () => {
     const { reg, w } = build();
     await reg.takeSeat(DOC, H("sa", "u1", 1000), 2);
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
@@ -631,7 +631,7 @@ describe("A · a reply whose entry has gone, and the in-flight script", () => {
 });
 
 describe("A · Redis errors, client timeouts and retries", () => {
-  it("A24 retries an errored arrival on the next pong as an arrival, with its original arrival moment", async () => {
+  it("A24 retries an errored arrival on the next sign of life as an arrival, with its original arrival moment", async () => {
     const { reg, w } = build();
     await reg.takeSeat(DOC, H("sa", "u1", 1000), 2);
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
@@ -648,7 +648,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s9"), m("u2", 1000, "i2", "x2")].sort());
   });
 
-  it("A25 keeps an arrival whose script ran but whose reply timed out, and settles it on the next pong", async () => {
+  it("A25 keeps an arrival whose script ran but whose reply timed out, and settles it on the next sign of life", async () => {
     const { reg, w } = build();
     const mine = m("u1", 5000, "i1", "s1");
     w.fail("eval", "send-then-reject");
@@ -696,7 +696,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(evalsOn(w.log.slice(mark), keyFor(DOC))).toHaveLength(0);
   });
 
-  it("A28 seats an errored arrival on the next pong once there is room", async () => {
+  it("A28 seats an errored arrival on the next sign of life once there is room", async () => {
     const { reg, w } = build();
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
     await seed(DOC, T, m("u3", 1000, "i2", "x3"));

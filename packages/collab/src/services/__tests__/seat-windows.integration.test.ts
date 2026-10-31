@@ -191,7 +191,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(await p).toEqual({ outcome: "full", liveCount: 2 });
   });
 
-  it("B02 window 2: an arrival Redis could not answer is corrected on its next pong", async () => {
+  it("B02 window 2: an arrival Redis could not answer is corrected on its next sign of life", async () => {
     const r = await rig();
     await r.reg.takeSeat(DOC, { socketId: "s2", userId: "u2", arrivedAtMs: 1000 }, 2);
     await r.reg.takeSeat(DOC, { socketId: "s3", userId: "u3", arrivedAtMs: 1000 }, 2);
@@ -211,7 +211,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(await R.zscore(keyFor(DOC), m("u1", 5000, "i1", "s1"))).toBeNull();
   });
 
-  it("B03 window 3: a replaced connection whose demote was lost goes read-only on its next pong", async () => {
+  it("B03 window 3: a replaced connection whose demote was lost goes read-only on its next sign of life", async () => {
     const r = await rig();
     const ca = r.hold("sa", conn());
     r.hold("sb", conn());
@@ -236,7 +236,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(c9.readOnly).toBe(false);
   });
 
-  it("B04 a delivered demote is the only demote: the next pong neither demotes again nor renews", async () => {
+  it("B04 a delivered demote is the only demote: the next sign of life neither demotes again nor renews", async () => {
     const r = await rig(true);
     const ca = r.hold("sa", conn());
     r.hold("sb", conn());
