@@ -277,6 +277,13 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
     expect((error as UpstreamRequestRejected).status).toBe(400);
   });
 
+  it("falls back to the error's own words when Google's message is empty", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload/v1beta/files" ? { status: 400, body: { error: { code: 400, message: "", status: "INVALID_ARGUMENT" } } } : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).message).not.toBe("");
+  });
+
   it("names Google's own reason from a refusal longer than a log snippet", async () => {
     // Google's answer to an upload start with a key it does not take, as measured (2026-10-28).
     const refusal = JSON.stringify({
