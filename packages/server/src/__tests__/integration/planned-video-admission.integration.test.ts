@@ -396,7 +396,23 @@ describe("S5 independent failed-output retry admission", () => {
     expect(hold).toEqual({ amount: estimate("video.split"), status: "held" });
     expect((await readMiniToolExecutionPlan(body.run_id)).execution.outputs).toEqual([before.params.miniToolExecution.outputs[2]]);
   });
-  it.each(["successful", "late registered", "pending", "unknown", "foreign output", "foreign project", "viewer", "removed", "different actor"])("S5-R02 refuses retry of %s without changing the original outcome or funds", async (bad) => {
+  it("S5-R02 admits another current editor's new retry with its own actor and hold while preserving the original run", async () => {
+    const f = await seed(); const original = await failedOriginal(f); const body = retry(f);
+    expect((await post(f, f.body, randomUUID(), f.otherId)).status).toBe(409);
+    const response = await post(f, body, randomUUID(), f.otherId);
+    expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: body.run_id, status: "pending" } } });
+    const accepted = await parent(body.run_id);
+    expect(accepted.user_id).toBe(f.otherId);
+    expect(accepted.params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
+    expect([...(await pg`SELECT node_id,started_by_user_id FROM node_tasks WHERE task_id=${body.run_id}`)])
+      .toEqual([{ node_id: f.body.outputs[2]!.nodeId, started_by_user_id: f.otherId }]);
+    expect([...(await pg`SELECT studio_id,actor_user_id,amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`)])
+      .toEqual([{ studio_id: f.studioId, actor_user_id: f.otherId, amount: estimate("video.split"), status: "held" }]);
+    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect((await post(f, body)).status).toBe(409);
+    expect(await parent(body.run_id)).toEqual(accepted); expect(await parent(f.body.run_id)).toEqual(original);
+  });
+  it.each(["successful", "late registered", "pending", "unknown", "foreign output", "foreign project", "viewer", "removed"])("S5-R02 refuses retry of %s without changing the original outcome or funds", async (bad) => {
     const f = await seed(); let before = await failedOriginal(f);
     const valid = retry(f, [1]); await accept(f, valid);
     const body = retry(f); let actor = f.userId;
@@ -420,9 +436,8 @@ describe("S5 independent failed-output retry admission", () => {
       await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${other.projectId},${f.userId},'editor')`;
     } else if (bad === "viewer") actor = f.viewerId;
     else if (bad === "removed") await pg`UPDATE project_members SET deleted_at=clock_timestamp() WHERE project_id=${f.projectId} AND user_id=${f.userId}`;
-    else actor = f.otherId;
     const response = await post(f, body, randomUUID(), actor);
-    expect(response.status).toBe(bad === "viewer" ? 403 : bad === "removed" || bad === "foreign project" || bad === "foreign output" ? 404 : bad === "different actor" ? 409 : 422);
+    expect(response.status).toBe(bad === "viewer" ? 403 : bad === "removed" || bad === "foreign project" || bad === "foreign output" ? 404 : 422);
     expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 }); expect(await parent(f.body.run_id)).toEqual(before);
   });
   it("S5-R03 replays a retry under either press key but refuses a changed selected subset", async () => {
