@@ -53,10 +53,11 @@ function firstSampleFrom(start: number, interval: number): number | null {
  * Every frame covering a sample k·interval inside the video, jumping from frame to frame instead of sample to sample.
  * @param table - A validated presentation table.
  * @param interval - The sampling period in seconds.
+ * @param maxOutputs - Optional caller-configured output ceiling, checked before allocating oversized plans.
  * @returns Ascending distinct covering frame indices.
- * @throws {never} Never.
+ * @throws {RangeError} When the complete output count exceeds the caller's ceiling.
  */
-function intervalFrames(table: VideoPresentationTable, interval: number): number[] {
+function intervalFrames(table: VideoPresentationTable, interval: number, maxOutputs?: number): number[] {
   const count = presentationFrameCount(table);
   const videoEnd = presentationVideoEnd(table);
   const picked: number[] = [];
@@ -64,11 +65,13 @@ function intervalFrames(table: VideoPresentationTable, interval: number): number
     const k = firstSampleFrom(presentationFrameAt(table, from).pts, interval);
     if (k === null) {
       // The period is shorter than one tick here, so every remaining frame holds a sample.
+      if (maxOutputs !== undefined && count - from > maxOutputs - picked.length) throw new RangeError("Frame outputs exceed configured capacity");
       for (let frame = from; frame < count; frame += 1) picked.push(frame);
       break;
     }
     if (k * interval >= videoEnd) break;
     const frame = presentationCoveringFrame(table, k * interval);
+    if (maxOutputs !== undefined && picked.length >= maxOutputs) throw new RangeError("Frame outputs exceed configured capacity");
     picked.push(frame);
     from = frame + 1;
   }
@@ -79,10 +82,13 @@ function intervalFrames(table: VideoPresentationTable, interval: number): number
  * Builds every selected displayed-frame output, in source order, without expanding frames.
  * @param source - The compact presentation table.
  * @param request - The selected frame mode and source-clock parameters.
+ * @param maxOutputs - Optional caller-configured admission ceiling; no implicit frame limit.
  * @returns Complete deduplicated frame outputs with stable indices.
+ * @throws {RangeError} When the complete output count exceeds the caller's ceiling.
  * @throws {z.ZodError} When the table or selection parameters are invalid.
  */
-export function planVideoFrames(source: VideoPresentationTable, request: VideoFrameRequest): VideoFrameOutput[] {
+export function planVideoFrames(source: VideoPresentationTable, request: VideoFrameRequest, maxOutputs?: number): VideoFrameOutput[] {
+  if (maxOutputs !== undefined) z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(maxOutputs);
   const table = presentationTableSchema.parse(source);
   const selection = frameRequestSchema.parse(request);
   let picked: number[];
@@ -90,7 +96,7 @@ export function planVideoFrames(source: VideoPresentationTable, request: VideoFr
     case "first": picked = [0]; break;
     case "last": picked = [presentationFrameCount(table) - 1]; break;
     case "current": picked = [presentationCoveringFrame(table, selection.currentTime!)]; break;
-    case "interval": picked = intervalFrames(table, selection.interval!); break;
+    case "interval": picked = intervalFrames(table, selection.interval!, maxOutputs); break;
   }
   return picked.map((frameIndex, outputIndex) => ({ outputIndex, frameIndex, pts: presentationFrameAt(table, frameIndex).pts }));
 }
