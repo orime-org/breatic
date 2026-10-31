@@ -7,7 +7,7 @@ import { ApiException } from '@web/data/api/types';
 import { repairVideoPresentation, videoPresentationQuery, type VideoPresentationQueryInput } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /** Recovery distinguishes platform source work from a local renderer restart. */
-export type VideoPresentationRecoveryReason = 'source' | 'renderer';
+export type VideoPresentationRecoveryReason = 'source' | 'renderer' | 'table';
 /** One existing Retry action, whose concurrent invocations share a press. */
 export interface VideoPresentationRecovery {
   recover: (reason: VideoPresentationRecoveryReason) => Promise<void>;
@@ -47,7 +47,7 @@ export function createVideoPresentationRecovery(client: QueryClient, input: Vide
   async function execute(reason: VideoPresentationRecoveryReason): Promise<void> {
     if (reason === 'renderer') return;
     const data = client.getQueryData<VideoPresentationResponse>(queryKey);
-    if (data?.preparation?.status === 'failed' || data?.presentation?.state === 'failed') {
+    if (data !== undefined && (reason === 'table' || data.preparation?.status === 'failed' || data.presentation?.state === 'failed')) {
       try {
         await repairVideoPresentation({ projectId: input.projectId, canonicalURL: input.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash }, newId());
       } catch (error) {

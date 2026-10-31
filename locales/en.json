@@ -1380,6 +1380,7 @@
         "interval": "By interval",
         "last": "Last frame",
         "later": "Later",
+        "ledgerUnsupported": "This video is unsupported by this tool",
         "loadingFrames": "Reading video frames…",
         "mediaError": "Media unavailable",
         "outPoint": "Out point",

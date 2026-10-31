@@ -68,7 +68,7 @@ import {
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
@@ -232,6 +232,9 @@ import { CanonicalTimelineDecoder } from '@web/spaces/canvas/video-presentation/
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { CanvasVideoExpandBridge } from '@web/spaces/canvas/video-presentation/CanvasVideoExpandBridge';
 import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
+import { sourceLedgerQuery } from '@web/spaces/canvas/video-presentation/source-ledger-query';
+import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
+import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { startPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
@@ -4185,7 +4188,31 @@ function CanvasSpaceInner({
   const videoNode = nodes.find((node) => node.id === videoHost);
   const videoSource = videoNode && 'content' in videoNode.data ? videoNode.data.content : null;
   const videoExpansion = miniToolDraft?.toolId === 'video.expand' && videoHost !== null && typeof videoSource === 'string';
-  const videoRuntime = useCanvasVideoBindings(videoHost, typeof videoSource === 'string' ? videoSource : null);
+  const videoURL = videoNode?.type === 'video' && typeof videoSource === 'string' ? videoSource : '';
+  const videoResolved = useResolvedVideoPresentation(projectId, videoURL, videoURL !== '');
+  const tableOptions = sourceLedgerQuery({ projectId, response: videoResolved.query.data, active: videoURL !== '' });
+  const videoTable = useQuery(tableOptions);
+  const frameTable = React.useMemo(() => videoTable.data === undefined || videoResolved.query.data === undefined ? null : {
+    sourceKey: JSON.stringify([videoResolved.query.data.sourceBinding.canonicalURL, videoResolved.query.data.sourceBinding.contentHash]), table: videoTable.data,
+  }, [videoTable.data, videoResolved.query.data]);
+  const videoRecovery = React.useMemo(() => createVideoPresentationRecovery(queryClient, { projectId, canonicalURL: videoURL, active: true }), [queryClient, projectId, videoURL]);
+  const repairKey = React.useMemo(() => ['video-table-repair', projectId, videoURL], [projectId, videoURL]);
+  const { mutate: retryTable } = useMutation({ mutationKey: repairKey, mutationFn: async (): Promise<void> => {
+    await videoRecovery.recover('table');
+    // A failed bounded read has no producer failure to clear. Reread its exact
+    // current receipt as well, without letting the previous error/data win.
+    await queryClient.resetQueries({ queryKey: tableOptions.queryKey, exact: true });
+  }, onError: () => toast.error(t('canvas.task.couldNotStart')) });
+  const pendingRepairs = useMutationState({ filters: { mutationKey: repairKey, exact: true, status: 'pending' }, select: (mutation) => mutation.state.status });
+  /**
+   * Joins the current source recovery press; closing the tool never cancels it.
+   * @throws {never} The mutation reports failures through the existing toast.
+   */
+  const retryVideoTable = React.useCallback((): void => { retryTable(); }, [retryTable]);
+  const videoFacts = React.useMemo(() => ({
+    response: videoResolved.query.data, tableStatus: videoTable.status, retrying: pendingRepairs.length > 0, onRetry: retryVideoTable, previewSource: videoResolved.source,
+  }), [videoResolved.query.data, videoResolved.source, videoTable.status, pendingRepairs.length, retryVideoTable]);
+  const videoRuntime = useCanvasVideoBindings(videoHost, videoURL || null, frameTable, videoFacts);
 
   /**
    * Uses the same canonical presentation owner for both composition decode slots.

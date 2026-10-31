@@ -1380,6 +1380,7 @@
         "interval": "按间隔",
         "last": "尾帧",
         "later": "后移",
+        "ledgerUnsupported": "该视频暂不支持此工具",
         "loadingFrames": "正在读取视频帧…",
         "mediaError": "媒体不可用",
         "outPoint": "出点",

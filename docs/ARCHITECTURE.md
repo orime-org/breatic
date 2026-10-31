@@ -505,7 +505,14 @@ while a duration supplied by the node remains authoritative for the scrubber.
 Current-frame actions read only the owner's actual presented frame and check
 source and seek epochs. Missing frame notifications remain unknown; native
 `currentTime`, metadata and `seeked` are transport facts rather than presented
-frames. Frame counts and sampling use the independently resolved source table.
+frames. Frame counts and sampling use the independently resolved compact
+presentation table, read from the current v2 source-ledger receipt with exact
+byte, digest and run validation on the account query client. All video tools
+except background removal wait for that table; transient failures offer a
+source-bound repair and authoritative refresh, while unsupported content does
+not offer Retry. Preview cards seek the panel's native or packed-alpha source
+to the selected display interval's midpoint and capture the renderer's actual
+surface, retaining alpha rather than capturing opaque packed pixels.
 The video expansion background leaves the original display and controls live;
 its geometry reads the canonical display box, independently of packed dimensions.
 

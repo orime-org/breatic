@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { classifyVideoSourceLedgerFailure, type VideoPresentationResponse } from '@breatic/shared';
+import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
 import type { VideoToolPresentation } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -9,6 +11,45 @@ import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/
 
 /** Optional authoritative table supplied by the source-frame owner. */
 export interface CanonicalVideoFrameTable { sourceKey: string; table: VideoPresentationTable }
+/** A panel is a projection of current source authority, never a second ledger. */
+export type VideoToolPanelState = 'waiting-presentation' | 'waiting-table' | 'usable' | 'retryable' | 'unsupported';
+/** Current response, bounded read and user press facts. */
+export interface VideoToolPanelStateInput {
+  sourceURL: string;
+  presentationStatus: 'loading' | 'ready' | 'failed';
+  response: VideoPresentationResponse | undefined;
+  table: CanonicalVideoFrameTable | null;
+  tableStatus: 'pending' | 'success' | 'error';
+  retrying: boolean;
+}
+/** Current authorized source facts passed by the Canvas query owner. */
+export interface CanvasVideoSourceFacts {
+  response: VideoPresentationResponse | undefined;
+  tableStatus: VideoToolPanelStateInput['tableStatus'];
+  retrying: boolean;
+  onRetry: () => void;
+  previewSource: VideoPresentationSource | null;
+}
+
+/**
+ * Derive the panel's five states solely from current source authority.
+ * @param input - Current node, response, validated table and press facts.
+ * @returns The one display state for this source.
+ * @throws {never} Never.
+ */
+export function deriveVideoToolPanelState(input: VideoToolPanelStateInput): VideoToolPanelState {
+  const binding = input.response?.sourceBinding;
+  const descriptor = input.response?.presentation;
+  if (input.presentationStatus !== 'ready' || binding?.canonicalURL !== input.sourceURL ||
+    descriptor?.sourceFingerprint !== binding.contentHash || (descriptor.state !== 'native' && descriptor.state !== 'alpha_ready')) return 'waiting-presentation';
+  if (input.retrying) return 'waiting-table';
+  const ledger = input.response?.sourceLedger;
+  if (ledger?.state === 'failed' && ledger.sourceFingerprint === binding.contentHash) return classifyVideoSourceLedgerFailure(ledger.errorCode) === 'content' ? 'unsupported' : 'retryable';
+  if (ledger?.state !== 'ready' || ledger.receipt.schemaVersion !== 2 || ledger.receipt.sourceFingerprint !== binding.contentHash) return 'waiting-table';
+  if (input.tableStatus === 'error') return 'retryable';
+  return input.tableStatus === 'success' && input.table?.sourceKey === JSON.stringify([binding.canonicalURL, binding.contentHash]) ? 'usable' : 'waiting-table';
+}
+
 /** Existing node notifications and the active tool's current runtime attachment. */
 export interface CanvasVideoBindings {
   bindings: ReadonlyMap<string, MediaPlayerVideoSnapshot>;
@@ -22,10 +63,11 @@ export interface CanvasVideoBindings {
  * @param hostId - The current mini-tool host, if any.
  * @param canonicalURL - Its persisted canonical content URL.
  * @param frameTable - The independently resolved authoritative source table, otherwise null.
+ * @param facts - The current authorized compact query and retry operation.
  * @returns Current node ownership and direct, epoch-checked Current frame access.
  * @throws {never} Never.
  */
-export function useCanvasVideoBindings(hostId: string | null, canonicalURL: string | null, frameTable: CanonicalVideoFrameTable | null = null): CanvasVideoBindings {
+export function useCanvasVideoBindings(hostId: string | null, canonicalURL: string | null, frameTable: CanonicalVideoFrameTable | null = null, facts?: CanvasVideoSourceFacts): CanvasVideoBindings {
   const records = React.useRef(new Map<string, { url: string; snapshot: MediaPlayerVideoSnapshot }>());
   const current = React.useRef({ hostId, canonicalURL });
   current.current = { hostId, canonicalURL };
@@ -92,8 +134,11 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         return frame && frame.sourceKey === binding!.sourceKey && frame.sourceEpoch === binding!.sourceEpoch && frame.seekEpoch === binding!.getSeekEpoch() ? frame : null;
       }
       const frame = actualFrame();
-      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable?.sourceKey === binding.sourceKey ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek });
+      const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, table: frameTable?.sourceKey === binding.sourceKey ? frameTable : null, tableStatus: facts.tableStatus, retrying: facts.retrying });
+      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable?.sourceKey === binding.sourceKey && (panelState === undefined || panelState === 'usable') ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
+        ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
+      });
     }
     return { bindings, presentations, onVideoBinding, onVideoFrame };
-  }, [hostId, canonicalURL, snapshot, binding, frameTable, onVideoBinding, onVideoFrame, revision]);
+  }, [hostId, canonicalURL, snapshot, binding, frameTable, facts, onVideoBinding, onVideoFrame, revision]);
 }

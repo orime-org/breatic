@@ -2,80 +2,119 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { ALL_FORMATS, CanvasSink, Input, UrlSource } from 'mediabunny';
-import { httpRequest } from '@breatic/shared';
+import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
+import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 
 export interface VideoThumbnail { frameIndex: number; pts: number; url: string }
 export interface VideoThumbnailState { status: 'loading' | 'ready' | 'failed'; frames: readonly VideoThumbnail[] }
-type SourceFrame = { frameIndex: number; pts: number };
+type SourceFrame = { frameIndex: number; pts: number; displayEnd: number };
 
 /**
- * Decodes exact selected presentation timestamps using an independently owned reader.
- * @param url - The registered canonical source address.
- * @param frames - The complete selected source-frame identities.
+ * Capture selected display intervals using the same native/alpha renderer as playback.
+ * @param source - The panel's current playback source.
+ * @param frames - Selected frame identities and display intervals, in requested order.
  * @param signal - This attachment's cancellation lifetime.
- * @returns Real PNG thumbnails preserving the selected source identities.
- * @throws {Error} When decoding, pixel access or authoritative frame matching fails.
+ * @returns PNG captures of the actual composited surfaces.
+ * @throws {Error} When rendering, pixel access or cancellation fails.
  */
-async function readThumbnails(url: string, frames: readonly SourceFrame[], signal: AbortSignal): Promise<VideoThumbnail[]> {
-  const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url, {
-    getRetryDelay: () => null,
-    fetchFn: async (address, init = {}): Promise<Response> => httpRequest(address instanceof Request ? address.url : String(address), init, { replaySafe: true, signal: signal.aborted ? signal : init.signal ?? signal }),
-  }) });
-  let disposed = false;
+async function readThumbnails(source: VideoPresentationSource, frames: readonly SourceFrame[], signal: AbortSignal): Promise<VideoThumbnail[]> {
+  const host = document.createElement('div');
+  let video: HTMLVideoElement | null = null;
+  let surface: HTMLVideoElement | HTMLCanvasElement | null = null;
+  let seekEpoch = 0;
+  let target: SourceFrame | null = null;
+  let capture: (() => void) | null = null;
+  let rejectReady!: (error: unknown) => void;
+  let resolveReady!: () => void;
+  let rejectCapture: ((error: unknown) => void) | null = null;
+  const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   /**
-   * Releases the same decoder exactly once on completion or cancellation.
+   * Reject all current waits; cleanup releases the renderer in the same lifetime.
+   * @param error - The renderer failure or caller's cancellation reason.
    * @throws {never} Never.
    */
-  function dispose(): void { if (disposed) return; disposed = true; input.dispose(); }
-  signal.addEventListener('abort', dispose, { once: true });
+  function fail(error: unknown): void { rejectReady(error); rejectCapture?.(error); }
+  /**
+   * Cancel readiness or a seek immediately when this attachment ends.
+   * @throws {never} Never.
+   */
+  function abort(): void { fail(signal.reason); }
+  /**
+   * Capture a seeked surface on platforms without presented-frame callbacks.
+   * @throws {never} Capture errors reject the current wait.
+   */
+  function seeked(): void { if (typeof video?.requestVideoFrameCallback !== 'function') capture?.(); }
+  signal.throwIfAborted();
+  signal.addEventListener('abort', abort, { once: true });
+  const renderer = createVideoRenderer(host, source, {
+    ready: (element, rendered) => {
+      if (video === null) { video = element; surface = rendered; video.muted = true; video.addEventListener('seeked', seeked); resolveReady(); }
+    },
+    frame: (time, epoch) => { if (epoch === seekEpoch && !video?.seeking && target !== null && time >= target.pts && time < target.displayEnd) capture?.(); },
+    getSeekEpoch: () => seekEpoch,
+    error: (code) => fail(new Error(code)),
+    contextLost: () => fail(new Error('Thumbnail renderer lost its context')),
+    contextRestored: () => undefined,
+  });
   try {
-    if (signal.aborted) throw new DOMException('Thumbnail reading cancelled', 'AbortError');
-    const track = await input.getPrimaryVideoTrack();
-    if (track === null || !await track.canDecode()) throw new Error('Source video cannot be decoded for thumbnails');
-    const sink = new CanvasSink(track, { width: 480, alpha: true });
+    await ready;
+    signal.throwIfAborted();
+    const element = video! as HTMLVideoElement;
+    const image = surface! as HTMLVideoElement | HTMLCanvasElement;
+    const canvas = document.createElement('canvas');
+    canvas.width = source.presentation.original.width;
+    canvas.height = source.presentation.original.height;
+    const context = canvas.getContext('2d');
+    if (context === null) throw new Error('Thumbnail canvas unavailable');
     const result: VideoThumbnail[] = [];
-    for await (const decoded of sink.canvasesAtTimestamps(frames.map((frame) => frame.pts))) {
-      if (signal.aborted) throw new DOMException('Thumbnail reading cancelled', 'AbortError');
-      const requested = frames[result.length];
-      if (decoded === null || requested === undefined || Math.abs(decoded.timestamp - requested.pts) > Math.max(1, Math.abs(requested.pts)) * Number.EPSILON * 16) throw new Error('Decoded thumbnail does not match the authoritative source frame');
-      let canvas: HTMLCanvasElement;
-      if (decoded.canvas instanceof HTMLCanvasElement) canvas = decoded.canvas;
-      else {
-        canvas = document.createElement('canvas'); canvas.width = decoded.canvas.width; canvas.height = decoded.canvas.height;
-        const context = canvas.getContext('2d');
-        if (context === null) throw new Error('Thumbnail canvas unavailable');
-        context.drawImage(decoded.canvas, 0, 0);
-      }
-      result.push({ ...requested, url: canvas.toDataURL('image/png') });
+    for (const selected of frames) {
+      signal.throwIfAborted();
+      await new Promise<void>((resolve, reject) => {
+        rejectCapture = reject;
+        capture = (): void => {
+          if (signal.aborted || element.seeking) return;
+          try {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            result.push({ frameIndex: selected.frameIndex, pts: selected.pts, url: canvas.toDataURL('image/png') });
+            capture = null; rejectCapture = null; resolve();
+          } catch (error) { reject(error); }
+        };
+        target = selected;
+        seekEpoch += 1;
+        element.currentTime = (selected.pts + selected.displayEnd) / 2;
+      });
     }
-    if (result.length !== frames.length) throw new Error('Thumbnail decoding ended before every selected frame');
+    signal.throwIfAborted();
     return result;
   } finally {
-    signal.removeEventListener('abort', dispose);
-    dispose();
+    signal.removeEventListener('abort', abort);
+    (video as HTMLVideoElement | null)?.removeEventListener('seeked', seeked);
+    renderer.dispose();
   }
 }
 
 /**
- * Decodes selected authoritative source frames during this attachment lifetime.
- * @param url - Registered canonical source address.
- * @param frames - The selected source frames in presentation order.
- * @param retry - The current retry value.
- * @returns The current decoder state and real frame images.
- * @throws {never} Decode failures are returned as a visible state.
+ * Capture selected frames while owning and releasing the playback renderer in one effect.
+ * @param source - Current validated presentation, or none while waiting for it.
+ * @param frames - The selected source frames with their display interval ends.
+ * @param retry - Explicit preview retry revision.
+ * @returns Current captures, immediately empty when source or selection changes.
+ * @throws {never} Rendering failures are returned as a visible state.
  */
-export function useVideoFrameThumbnails(url: string, frames: readonly SourceFrame[], retry = 0): VideoThumbnailState {
-  const frameKey = JSON.stringify(frames.map(({ frameIndex, pts }) => ({ frameIndex, pts })));
-  const key = JSON.stringify([url, frameKey, retry]);
+export function useVideoFrameThumbnails(source: VideoPresentationSource | null, frames: readonly SourceFrame[], retry = 0): VideoThumbnailState {
+  const sourceKey = JSON.stringify(source);
+  const frameKey = JSON.stringify(frames);
+  const key = JSON.stringify([sourceKey, frameKey, retry]);
   const [state, setState] = React.useState<VideoThumbnailState & { key: string }>({ key: '', status: 'loading', frames: [] });
   React.useEffect(() => {
     const controller = new AbortController();
     const selected = JSON.parse(frameKey) as SourceFrame[];
+    const playback = JSON.parse(sourceKey) as VideoPresentationSource | null;
     setState({ key, status: selected.length === 0 ? 'ready' : 'loading', frames: [] });
-    if (selected.length === 0) return () => controller.abort();
-    void readThumbnails(url, selected, controller.signal).then((images) => { if (!controller.signal.aborted) setState({ key, status: 'ready', frames: images }); }, () => { if (!controller.signal.aborted) setState({ key, status: 'failed', frames: [] }); });
+    if (selected.length === 0 || playback === null) return () => controller.abort();
+    void readThumbnails(playback, selected, controller.signal).then((images) => { if (!controller.signal.aborted) setState({ key, status: 'ready', frames: images }); }, () => { if (!controller.signal.aborted) setState({ key, status: 'failed', frames: [] }); });
     return () => controller.abort();
-  }, [url, frameKey, key]);
+  }, [sourceKey, frameKey, key]);
   return state.key === key ? state : { status: 'loading', frames: [] };
 }

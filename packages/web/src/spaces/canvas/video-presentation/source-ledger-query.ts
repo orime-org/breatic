@@ -13,23 +13,23 @@
 import { queryOptions, type UseQueryOptions } from '@tanstack/react-query';
 import {
   DEFAULT_TIMEOUT_MS,
-  readVideoSourceLedger,
+  readVideoPresentationTable,
   type VideoPresentationResponse,
-  type VideoSourceLedgerCompanion,
-  type VideoSourceLedgerReadLimits,
-  type VideoSourceLedgerReceipt,
+  type VideoPresentationTableReadLimits,
+  type VideoSourceLedgerReceiptV2,
 } from '@breatic/shared';
+import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
 
 /** The parsed presentation response and whether its Space is active. */
 export interface SourceLedgerQueryInput { projectId: string; response: VideoPresentationResponse | undefined; active: boolean }
 
 /** The query key: the project, the bound source, the whole small receipt and the captured read policy. */
 type SourceLedgerQueryKey = readonly [
-  'video-source-ledger', 1, string, string, string, VideoSourceLedgerReceipt | null, VideoSourceLedgerReadLimits | null,
+  'video-source-ledger', 1, string, string, string, VideoSourceLedgerReceiptV2 | null, VideoPresentationTableReadLimits | null,
 ];
 
 /** Options for the existing account-scoped QueryClient. */
-export type SourceLedgerQueryOptions = UseQueryOptions<VideoSourceLedgerCompanion, Error, VideoSourceLedgerCompanion, SourceLedgerQueryKey>;
+export type SourceLedgerQueryOptions = UseQueryOptions<VideoPresentationTable, Error, VideoPresentationTable, SourceLedgerQueryKey>;
 
 /**
  * Describe the read of one stored source frame table.
@@ -40,19 +40,21 @@ export type SourceLedgerQueryOptions = UseQueryOptions<VideoSourceLedgerCompanio
 export function sourceLedgerQuery(input: SourceLedgerQueryInput): SourceLedgerQueryOptions {
   const binding = input.response?.sourceBinding;
   const state = input.response?.sourceLedger;
-  // Only a version 1 receipt names a companion this reader parses; a version 2 receipt waits for the v2 reader.
-  const receipt = state?.state === 'ready' && state.receipt.schemaVersion === 1 && state.receipt.sourceFingerprint === binding?.contentHash ? state.receipt : null;
+  // Legacy full-ledger receipts are not compact tables and are never converted here.
+  const receipt = state?.state === 'ready' && state.receipt.schemaVersion === 2 && state.receipt.sourceFingerprint === binding?.contentHash ? state.receipt : null;
   const limits = input.response?.sourceLedgerReadLimits ?? null;
   return queryOptions({
     queryKey: ['video-source-ledger', 1, input.projectId, binding?.canonicalURL ?? '', binding?.contentHash ?? '', receipt, limits] as const,
     enabled: input.active && receipt !== null && limits !== null,
     retry: false,
-    queryFn: ({ signal }): Promise<VideoSourceLedgerCompanion> => {
+    // A measured immutable object cannot become newer under the same receipt.
+    staleTime: Infinity,
+    queryFn: ({ signal }): Promise<VideoPresentationTable> => {
       // `enabled` keeps both present; a direct fetch of disabled options refuses.
       if (receipt === null || limits === null) return Promise.reject(new Error('No ready source ledger to read'));
       // An ordinary page read has no task deadline: it takes the existing
       // default delivery budget once, and the GET and the body share it.
-      return readVideoSourceLedger(receipt, limits, { deadlineAt: Date.now() + DEFAULT_TIMEOUT_MS, signal });
+      return readVideoPresentationTable(receipt.table, limits, { deadlineAt: Date.now() + DEFAULT_TIMEOUT_MS, signal });
     },
   });
 }

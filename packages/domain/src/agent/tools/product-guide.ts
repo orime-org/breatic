@@ -870,6 +870,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
       "review the settings after switching to the current source. A source that cannot be read shows " +
       `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}.`,
+    `Except for background removal, video tools wait for ${quoted(t("canvas.miniTool.videoUI.loadingFrames"))} ` +
+      "before they can run; playback does not wait for this table. A temporary frame-table failure shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      "Retry stays busy until current source facts have refreshed; closing the panel does not cancel accepted work. " +
+      `Unsupported content shows ${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without Retry.`,
     `In ${quoted(t("canvas.miniTool.video.erase.label"))}, choose ${quoted(t("canvas.miniTool.videoUI.rectangle"))} or ` +
       `${quoted(t("canvas.miniTool.videoUI.point"))} under ${quoted(t("canvas.miniTool.videoUI.selection"))} and mark ` +
       "the target on the video itself. Set the range with " +

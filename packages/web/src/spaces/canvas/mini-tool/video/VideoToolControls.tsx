@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails';
+import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { AudioLines, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { newId } from '@breatic/shared';
@@ -28,6 +29,7 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   draft: VideoToolDraftById[K];
   onChange: (draft: VideoToolDraftById[K]) => void;
   analyses: readonly MiniToolAnalysisRecord[];
+  previewSource?: VideoPresentationSource | null;
   frameTable: VideoPresentationTable | null;
   presentedTime: number | null;
   disabled: boolean;
@@ -159,6 +161,13 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
  */
 export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Element {
   const t = useTranslation();
+  const previewFrames = React.useMemo(() => {
+    if (props.toolId !== 'video.extract-frames' || props.frameTable === null) return [];
+    const draft = props.draft as VideoToolDraftById['video.extract-frames'];
+    if (draft.params.mode === 'current' && props.presentedTime === null) return [];
+    const request = draft.params.mode === 'current' && props.presentedTime !== null ? { ...draft.params, currentTime: props.presentedTime } : draft.params;
+    return planVideoFrames(props.frameTable, request).map((frame) => presentationFrameAt(props.frameTable!, frame.frameIndex));
+  }, [props.toolId, props.frameTable, props.draft, props.presentedTime]);
   switch (props.toolId) {
     case 'video.expand': {
       const draft = props.draft as VideoToolDraftById['video.expand'];
@@ -172,8 +181,8 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     case 'video.remove-bg': return <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>;
     case 'video.extract-frames': {
       const draft = props.draft as VideoToolDraftById['video.extract-frames'];
-      const planned = props.frameTable === null || draft.params.mode === 'current' && props.presentedTime === null ? [] : planVideoFrames(props.frameTable, draft.params.mode === 'current' && props.presentedTime !== null ? { ...draft.params, currentTime: props.presentedTime } : draft.params);
-      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.frameMode')} value={draft.params.mode} options={[{ value: 'first', label: t('canvas.miniTool.videoUI.first') }, { value: 'last', label: t('canvas.miniTool.videoUI.last') }, { value: 'current', label: t('canvas.miniTool.videoUI.current') }, { value: 'interval', label: t('canvas.miniTool.videoUI.interval') }].map((option) => ({ ...option, disabled: props.disabled || option.value === 'current' && props.presentedTime === null }))} testIdPrefix='video-frame-mode' onSelect={(mode) => { if (mode === 'current' && props.presentedTime === null) return; props.onChange({ ...draft, params: { ...draft.params, mode: mode as typeof draft.params.mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } }); }} />{draft.params.mode === 'interval' ? <label className='flex items-center gap-2 text-xs'>{t('canvas.miniTool.videoUI.interval')}<VideoNumericInput value={draft.params.interval} label={t('canvas.miniTool.videoUI.interval')} testId='video-frame-interval' min={Number.MIN_VALUE} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(interval) => props.onChange({ ...draft, params: { ...draft.params, interval } })} /><span>s</span></label> : null}<p className='text-center text-xs tabular-nums text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreviewCards url={draft.source.canonicalURL} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>;
+      const planned = previewFrames;
+      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.frameMode')} value={draft.params.mode} options={[{ value: 'first', label: t('canvas.miniTool.videoUI.first') }, { value: 'last', label: t('canvas.miniTool.videoUI.last') }, { value: 'current', label: t('canvas.miniTool.videoUI.current') }, { value: 'interval', label: t('canvas.miniTool.videoUI.interval') }].map((option) => ({ ...option, disabled: props.disabled || option.value === 'current' && props.presentedTime === null }))} testIdPrefix='video-frame-mode' onSelect={(mode) => { if (mode === 'current' && props.presentedTime === null) return; props.onChange({ ...draft, params: { ...draft.params, mode: mode as typeof draft.params.mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } }); }} />{draft.params.mode === 'interval' ? <label className='flex items-center gap-2 text-xs'>{t('canvas.miniTool.videoUI.interval')}<VideoNumericInput value={draft.params.interval} label={t('canvas.miniTool.videoUI.interval')} testId='video-frame-interval' min={Number.MIN_VALUE} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(interval) => props.onChange({ ...draft, params: { ...draft.params, interval } })} /><span>s</span></label> : null}<p className='text-center text-xs tabular-nums text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreviewCards source={props.previewSource ?? null} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>;
     }
     case 'video.transitions': {
       const draft = props.draft as VideoToolDraftById['video.transitions'];
@@ -234,7 +243,7 @@ function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
   </div>;
 }
 
-interface FrameCardsProps { url: string; frames: readonly { frameIndex: number; pts: number }[]; aspect: number; onSeek?: (time: number) => void }
+interface FrameCardsProps { source: VideoPresentationSource | null; frames: readonly { frameIndex: number; pts: number; displayEnd: number }[]; aspect: number; onSeek?: (time: number) => void }
 
 /**
  * Decodes only one visible two-card row while retaining real source frame identities.
@@ -244,7 +253,7 @@ interface FrameCardsProps { url: string; frames: readonly { frameIndex: number; 
  */
 function VideoFrameCardRow(props: FrameCardsProps): React.JSX.Element {
   const [retry, setRetry] = React.useState(0);
-  const decoded = useVideoFrameThumbnails(props.url, props.frames, retry);
+  const decoded = useVideoFrameThumbnails(props.source, props.frames, retry);
   const t = useTranslation();
   return <div className='grid gap-2'><div className='flex justify-center gap-2'>{props.frames.map((frame) => {
     const image = decoded.frames.find((item) => item.frameIndex === frame.frameIndex);

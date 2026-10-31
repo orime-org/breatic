@@ -1380,6 +1380,7 @@
         "interval": "間隔指定",
         "last": "最後",
         "later": "後へ",
+        "ledgerUnsupported": "この動画はまだこのツールで使えません",
         "loadingFrames": "動画フレームを読み込み中…",
         "mediaError": "動画を読み込めません",
         "outPoint": "アウト点",

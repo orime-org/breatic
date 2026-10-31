@@ -1380,6 +1380,7 @@
         "interval": "간격 지정",
         "last": "마지막 프레임",
         "later": "뒤로",
+        "ledgerUnsupported": "이 동영상은 아직 이 도구를 사용할 수 없습니다",
         "loadingFrames": "비디오 프레임 읽는 중…",
         "mediaError": "미디어를 사용할 수 없음",
         "outPoint": "끝 지점",
