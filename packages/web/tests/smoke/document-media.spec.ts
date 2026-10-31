@@ -919,9 +919,9 @@ async function holdFetches(p: Page): Promise<void> {
   await p.route('**/api/v1/assets/ingest-url', () => new Promise<void>(() => undefined));
 }
 
-// inner#1351 + inner#1390 A7: web content pasted or dropped into a table cell
-// puts its words in the cell and its media under the table.
-test('web content pasted into a table cell puts its words in the cell and its picture under the table (inner#1351 A7)', async () => {
+// inner#1312 A13, A14: content without a table goes into the cell, media
+// included; a table mixed with other content is refused and nothing changes.
+test('web content mixing a table with other content is refused in a table cell, and the cell stays as it was (inner#1312 A14)', async () => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openFreshDocument(page);
@@ -939,14 +939,13 @@ test('web content pasted into a table cell puts its words in the cell and its pi
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
   }, OUTSIDE_PICTURE);
 
-  await expect(page.locator(PENDING)).toBeVisible();
-  await expect(page.locator(`${EDITOR} table td`).first()).toContainText('words');
-  const kinds = await types(page);
-  expect(kinds[kinds.indexOf('table') + 1]).toBe('image');
+  await expect(page.getByText('This format cannot be pasted here')).toBeVisible();
+  await expect(page.locator(`${EDITOR} table td`)).toHaveText(['', '']);
+  await expect(page.locator(PENDING)).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test('web content dropped into a table cell puts its words in the cell and its picture under the table (inner#1351 A5, A7)', async () => {
+test('web content dropped into a table cell puts its words and its picture in the cell (inner#1312 A13)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('Lead');
   await holdFetches(page);
@@ -966,9 +965,10 @@ test('web content dropped into a table cell puts its words in the cell and its p
     [OUTSIDE_PICTURE, cell.x + cell.width / 2, cell.y + cell.height / 2] as const,
   );
 
-  await expect(page.locator(PENDING)).toBeVisible();
-  await expect(page.locator(`${EDITOR} table td`).first()).toContainText('dropped');
-  expect(await types(page)).toEqual(['paragraph', 'table', 'image', 'paragraph']);
+  const first = page.locator(`${EDITOR} table td`).first();
+  await expect(first).toContainText('dropped');
+  await expect(first.locator(PENDING)).toHaveCount(1);
+  await expect(page.locator(PENDING)).toHaveCount(1);
 });
 
 test('words typed just before a paste stay when the paste is undone (inner#1351 A6)', async () => {
@@ -1022,8 +1022,9 @@ test('a table pasted into a cell with the keyboard is undone apart from the word
 });
 
 // The browser's own copy keeps a cell's picture and a picture given by
-// srcset alone; both are read in the reader's browser and come in pending.
-test('a web table with a picture in a cell and a srcset picture paste in with both pictures pending (inner#1351 A5, A7)', async () => {
+// srcset alone; both are read in the user's browser and come in pending,
+// the cell's picture staying in its cell.
+test('a web table with a picture in a cell and a srcset picture paste in with both pictures pending, the cell keeping its picture (inner#1351 A5, inner#1312)', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);
   await holdFetches(page);
@@ -1042,10 +1043,9 @@ test('a web table with a picture in a cell and a srcset picture paste in with bo
   await page.keyboard.press('ControlOrMeta+v');
 
   await expect(page.locator(PENDING)).toHaveCount(2);
-  await expect(page.locator(`${EDITOR} table td`).first()).toHaveText('words');
-  const kinds = await types(page);
-  expect(kinds[kinds.indexOf('table') + 1]).toBe('image');
-  expect(kinds.filter((kind) => kind === 'image')).toHaveLength(2);
+  const cell = page.locator(`${EDITOR} table td`).first();
+  await expect(cell).toContainText('words');
+  await expect(cell.locator(PENDING)).toHaveCount(1);
 });
 
 // A picture in the middle of a sentence and two pictures in one figure are
