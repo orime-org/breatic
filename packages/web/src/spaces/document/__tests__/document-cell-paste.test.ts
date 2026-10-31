@@ -442,3 +442,19 @@ it('shares one pending upload id across repeated cell content while keeping bloc
   expect(new Set(mediaBlocks.map(({ node }) => node.attrs['id'])).size).toBe(2);
   expect(sink.start).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['heading', '<h2>Title</h2>', 'Title'],
+  ['bulletListItem', '<ul><li>Item</li></ul>', 'Item'],
+  ['numberedListItem', '<ol><li>Step</li></ol>', 'Step'],
+] as const)('preserves a trailing %s after media pasted into an empty cell', async (type, html, text) => {
+  const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
+  select(editor, cellsOf(editor)[0]!.pos + 3);
+
+  paste(editor, `<img src="${PICTURE}">${html}`, text);
+  await settled();
+
+  expect(blocksOf(cellsOf(editor)[0]!.node)).toEqual([`image:${PICTURE}`, `${type}:${text}`]);
+  expect(blocksOf(cellsOf(editor)[1]!.node)).toEqual(['paragraph:neighbour']);
+  expect(editor.prosemirrorView.state.selection.$head.parent.type.name).toBe(type);
+});
