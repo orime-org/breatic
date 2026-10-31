@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * provider's own HTTP (design 2.2): the one place that calls the platform
+ * provider's own HTTP: the one place that calls the platform
  * `fetch`. It decides whether a request may be sent again, keeps every
  * delivery inside the caller's signal and deadline, reads bodies within
  * limits, and hands failures over in three classes: NotSent, NoAnswer and
@@ -20,7 +20,7 @@ export interface OutgoingRequest {
   body?: string | Uint8Array;
 }
 
-/** What the caller decides about one request (design 2.2). */
+/** What the caller decides about one request. */
 export interface SendOptions {
   /** True only when sending again has no second side effect (queries, billing reads). Submits are false. A 408 or 429 is resent either way: the server did not process it. */
   replaySafe: boolean;
@@ -442,7 +442,7 @@ export async function tapAnswers<T>(tap: (copy: Response) => void, run: () => Pr
 /**
  * The `fetch` handed to AI SDK providers: every response is returned as is, and only
  * NotSent and NoAnswer are thrown, so they survive on the `cause` chain of AI SDK's
- * own error (design 2.2, S2). An abort is rethrown as the platform raised it, so the
+ * own error. An abort is rethrown as the platform raised it, so the
  * SDK reads it as an abort.
  * @param input - The request target.
  * @param init - The request options.

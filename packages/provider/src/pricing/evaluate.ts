@@ -12,7 +12,8 @@ const GET_DURATION = /get_duration\(\s*(\w+)\s*(?:,\s*min=([\d.]+)\s*,\s*max=([\
 
 /**
  * One upstream contract: `basePrice` in millionths of a USD, a JSONata `formula`
- * (empty means a flat `basePrice` per call), `discountRate` in percent.
+ * (empty means a flat `basePrice` per call), `discountRate` the percentage of the
+ * price charged (100 is full price).
  */
 export interface PriceContract {
   readonly basePrice: number;

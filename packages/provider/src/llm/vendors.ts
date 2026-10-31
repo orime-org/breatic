@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * How each LLM upstream kind is reached and spoken to, ported from domain's
- * `agent/llm.ts`. Each vendor takes reasoning, caching and a sticky session
+ * How each LLM upstream kind is reached and spoken to. Each vendor takes reasoning, caching and a sticky session
  * its own way, under the key its AI SDK provider reads `providerOptions` by.
  * Reasoning is stated in both directions because leaving it out means
  * something different to each vendor; Claude, on either route, gets nothing
@@ -26,7 +25,7 @@ export type ModelV4 = Extract<LanguageModel, { specificationVersion: "v4" }>;
 /** What one vendor's slot in `providerOptions` holds. */
 export type VendorOptions = Record<string, JSONValue>;
 
-/** What an upstream's refusal says beyond its status (design 5.3). */
+/** What an upstream's refusal says beyond its status. */
 export type Refusal = "model_not_found" | "insufficient_balance";
 
 /** The `error` object of a vendor's error body. */
@@ -72,7 +71,7 @@ export interface Vendor {
   cache: (modelId: string, ttl: "5m" | "1h") => VendorOptions;
   /**
    * What this vendor's own refusal means, read from its status and parsed body
-   * (design 5.3: each vendor's forms, never another's).
+   * (each vendor's forms, never another's).
    */
   refusal: (status: number, body: unknown) => Refusal | undefined;
   /** The status this vendor's own plain error part stands for, when its SDK hands one over as it came. */

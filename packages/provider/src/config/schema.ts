@@ -60,7 +60,7 @@ const extraStepSchema = z.strictObject({
   reused: z.boolean().optional(),
 });
 
-// Every binding carries its price (design 4.2): the cheapest mode and the
+// Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
 const bindingSchema = z.strictObject({
   upstream: z.string().min(1),
@@ -100,7 +100,7 @@ const llmSchema = z.strictObject({
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /** Direct token prices in USD per million tokens, by our model id. */
   prices: z.record(z.string(), llmPriceSchema).optional(),
-  /** The request size past which Gemini takes media through its Files API, in bytes (design 6.5). */
+  /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
   /** How often an uploaded Gemini file's state is asked about, in ms. */
   gemini_file_poll_ms: z.number().int().positive().default(GEMINI_FILE_POLL_MS),
@@ -117,7 +117,7 @@ const routingSchema = z.strictObject({
 const inputSchema = z.strictObject({
   upstreams: z.record(z.string(), upstreamSchema),
   media: z.strictObject({ models: z.record(z.string(), z.strictObject({ upstreams: z.array(bindingSchema) })) }),
-  /** `config/provider/llm.yaml` (design 4.3). */
+  /** `config/provider/llm.yaml`. */
   llm: llmSchema.optional(),
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
   routing: routingSchema.optional(),
@@ -127,7 +127,7 @@ const inputSchema = z.strictObject({
 export type UpstreamDecl = z.infer<typeof upstreamSchema>;
 /** How one of our params is written for one upstream. */
 export type ParamBinding = z.infer<typeof paramSchema>;
-/** One model bound to one upstream (design 4.2). */
+/** One model bound to one upstream. */
 export type MediaBinding = z.infer<typeof bindingSchema>;
 /** The raw provider configuration, as read from the yaml files by the caller. */
 export type ProviderConfigInput = z.input<typeof inputSchema>;
@@ -138,7 +138,7 @@ export type LlmRoute = z.infer<typeof llmRouteSchema>;
 export interface ProviderConfig {
   upstreams: Record<string, UpstreamDecl>;
   models: Record<string, MediaBinding[]>;
-  /** The LLM routing file (design 4.3), every field filled. */
+  /** The LLM routing file, every field filled. */
   llm: Required<z.infer<typeof llmSchema>>;
 }
 
@@ -331,7 +331,7 @@ export function candidateOf(config: ProviderConfig, upstream: string, weight: nu
 }
 
 /**
- * Check every binding against our catalog (design 4.2, R11).
+ * Check every binding against our catalog.
  * @param config - The validated configuration.
  * @param catalog - Our models and their params.
  * @throws {ProviderConfigError} Listing every mismatch.

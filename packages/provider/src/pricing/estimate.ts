@@ -4,13 +4,13 @@
 import { z } from "zod";
 import { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 
-/** How the caller wants its upstream chosen (design 3.2). */
+/** How the caller wants its upstream chosen. */
 export type Route =
   | { mode: "default" }
   | { mode: "upstream"; upstream: string }
   | { mode: "cheapest" };
 
-/** One run as the application layer prepared it for an estimate (design 7.2). */
+/** One run as the application layer prepared it for an estimate. */
 export interface EstimateInput {
   /** Our params after placeholders and joins. */
   params: Record<string, unknown>;
@@ -33,7 +33,7 @@ export interface Estimate {
   upstream: string;
 }
 
-/** Which of a model's upstreams this deployment can reach, in effective weight order (design 3.3). */
+/** Which of a model's upstreams this deployment can reach, in effective weight order. */
 export interface Availability {
   upstreams: { upstream: string; weight: number; configured: boolean; envVar: string }[];
 }
@@ -136,7 +136,7 @@ function reads(formulas: readonly string[], field: string): boolean {
 }
 
 /**
- * What one upstream would charge for a run, and how sure that is (design 7.2).
+ * What one upstream would charge for a run, and how sure that is.
  * @param rule - The upstream's pricing.
  * @param input - The prepared run.
  * @returns The estimate.

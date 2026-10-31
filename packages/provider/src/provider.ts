@@ -27,7 +27,7 @@ import {
   type UpstreamPricing,
 } from "@provider/pricing/estimate.js";
 
-/** What the caller hands provider (design 3.1). */
+/** What the caller hands provider. */
 export interface ProviderOptions {
   config: ProviderConfigInput;
   /** Reads one environment variable; undefined or empty means not configured. */
@@ -38,7 +38,7 @@ export interface ProviderOptions {
   cleanText: (text: string) => string;
 }
 
-/** One provider instance (design 3). */
+/** One provider instance. */
 export interface Provider {
   /** The validated configuration, deployment overrides applied. */
   readonly config: ProviderConfig;
@@ -47,7 +47,7 @@ export interface Provider {
   /** A model's upstreams in effective weight order, each saying whether its key is configured. */
   availability(model: string): Availability;
   /**
-   * Check this instance's bindings against our catalog (design 4.2).
+   * Check this instance's bindings against our catalog.
    * @throws {ProviderConfigError} Listing every mismatch.
    */
   assertBindsCatalog(catalog: CatalogShape): void;
@@ -132,7 +132,7 @@ const generationSchema = z.looseObject({
 const MAX_LOOKUP_BYTES = 1024 * 1024;
 
 /**
- * Ask the upstream again for a cost that was pending (design 3.6): OpenRouter
+ * Ask the upstream again for a cost that was pending: OpenRouter
  * by generation id, WaveSpeed by its billing search. Until the last attempt an
  * unanswered lookup stays pending; on it, it is missing.
  * @param config - The validated configuration.

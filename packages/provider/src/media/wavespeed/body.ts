@@ -5,7 +5,7 @@ import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";
 import { isPresent } from "@provider/pricing/estimate.js";
 
-/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>` (design 4.2). */
+/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>`. */
 const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
 
 /**

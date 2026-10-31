@@ -20,7 +20,7 @@ export interface TokenBuckets {
   reasoning: number;
 }
 
-/** What one paid call cost (design 3.6). */
+/** What one paid call cost. */
 export type Cost =
   | { state: "known"; usd: number; tokens?: TokenBuckets; source: "reported" | "billing" | "price_table" }
   | { state: "pending"; lookup: CostLookup }

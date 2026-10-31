@@ -3,7 +3,7 @@
 
 /**
  * Freezes what today's code answers, so the provider package can prove it
- * answers the same without importing today's code (inner#1743, design 13.2).
+ * answers the same without importing today's code (inner#1743).
  *
  * Run from the repository root with `pnpm exec tsx scripts/provider-fixtures.ts`.
  * It reads every catalog model's WaveSpeed pricing contracts, prices a set of
@@ -185,7 +185,7 @@ interface BodyCase {
 }
 
 /**
- * Families whose prompt or params the application layer prepares (design 7.1):
+ * Families whose prompt or params the application layer prepares:
  * the params they consume never reach provider. nano-banana's list is copied from
  * `packages/worker/src/providers/families/nano-banana.ts` (`CONSUMES`), whose
  * module needs a live LLM to load.
@@ -233,7 +233,7 @@ function filledEverything(model: RawModel): Record<string, unknown> {
 }
 
 /**
- * The declarations with each mention written as design 4.2's neutral reference
+ * The declarations with each mention written as the neutral reference
  * `<<ref:{param}:{n}>>`, so a joined slot names its pool as provider's input carries it.
  * @param model - The catalog entry.
  * @returns The declarations.
@@ -386,7 +386,7 @@ for (const [name, family] of [["meshy", meshy], ["hunyuan3d", hunyuan3d]] as con
   const file = parse(readFileSync(resolve(ROOT, `config/models/three_d/${name}.yaml`), "utf8")) as { models: RawModel[] };
   for (const model of file.models) {
     const seen = new Set<string>();
-    // Every free-text param also as "": today's 3D path drops only null (transports/wavespeed.ts:139-142).
+    // Every free-text param also as "": today's 3D path drops only null (three-d/transports/wavespeed.ts:67-71).
     const blanks = Object.fromEntries(
       Object.entries(filledEverything(model)).map(([name, value]) => [name, typeof value === "string" && !(model.params?.[name]?.values ?? []).includes(value) ? "" : value]),
     );
@@ -430,7 +430,7 @@ const UNPICKED = "unpicked";
 
 /**
  * The input provider receives for one run, prepared the way shared's
- * `estimateCredits` prepares it before pricing (design 7.2).
+ * `estimateCredits` prepares it before pricing.
  * @param model - The catalog entry.
  * @param raw - The reader's params, prompt and known clip lengths.
  * @returns The prepared input.

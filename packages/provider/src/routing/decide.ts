@@ -20,7 +20,7 @@ export type Decision = "switch" | "retry" | "stop";
 
 /**
  * Whether a status says the upstream may serve the same request if asked again: 408, 429
- * and 5xx, and before an LLM's content also 409, the statuses the AI SDK retries (DD 25).
+ * and 5xx, and before an LLM's content also 409, the statuses the AI SDK retries.
  * @param status - The status.
  * @param phase - Where the call was.
  * @returns True for a passing status.
@@ -30,7 +30,7 @@ export function passingStatus(status: number, phase: Phase): boolean {
 }
 
 /**
- * Decide what a failure leads to (design section 5.3).
+ * Decide what a failure leads to.
  * @param failure - How the attempt failed.
  * @param phase - Where the call was.
  * @param retriesUsed - Retries already spent on this upstream.

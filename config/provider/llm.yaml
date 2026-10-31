@@ -1,7 +1,7 @@
-# Where LLM calls go (design 4.3). A model id takes the first route whose prefix
+# Where LLM calls go. A model id takes the first route whose prefix
 # it starts with; within a route the configured upstream of lowest weight is
 # tried first, and a call moves on before its first content when an upstream
-# has no key, cannot be reached, keeps answering 429 or 5xx, lacks the model,
+# has no key, cannot be reached, keeps answering 408, 409, 429 or 5xx, lacks the model,
 # or says its balance is exhausted.
 # understand_routes is the same for reading media, the official API first.
 # vendor_ids is the id an upstream serves one of our models under.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The language model a prepared call hands the AI SDK (design 5.5). Its
+ * The language model a prepared call hands the AI SDK. Its
  * first model call tries the route's upstreams in order until the first
  * content part arrives, and the upstream that sent it serves every later
  * step of the call: each vendor reads back only its own reasoning, so a
@@ -56,7 +56,7 @@ function idOf(part: StreamPart): string | undefined {
   return part.type === "response-metadata" ? part.id : undefined;
 }
 
-/** Parts that are the model's content: the switch boundary (design 5.5). */
+/** Parts that are the model's content: the switch boundary. */
 const CONTENT = new Set(["text-delta", "reasoning-delta", "tool-input-start", "tool-input-delta", "tool-call", "file", "source"]);
 
 /**
@@ -158,7 +158,7 @@ export function reportedCost(metadata: unknown): number | undefined {
 }
 
 /**
- * Wait before a retry on the same upstream (design 5.3): as long as the upstream
+ * Wait before a retry on the same upstream: as long as the upstream
  * asked, up to a minute; beyond that the upstream is not retried. Otherwise a
  * full-jitter backoff. The wait ends with the call's signal.
  * @param error - What the attempt threw.
@@ -185,7 +185,7 @@ export async function pauseBeforeRetry(error: unknown, retry: number, signal: Ab
 }
 
 /**
- * The lookup a finished call carries (design 3.6): an upstream that reports
+ * The lookup a finished call carries: an upstream that reports
  * generations, a generation id, and no cost reported on the answer.
  * @param upstream - The upstream that served the call.
  * @param tracksGenerations - Whether that upstream reports generations to look up.
@@ -229,7 +229,7 @@ export class SwitchingModel implements ModelV4 {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
-          // Pinned (design 12.4): only a request that never left and a passing status are retried, here
+          // Pinned: only a request that never left and a passing status are retried, here
           // and never elsewhere; a missing model or balance is thrown at once, since a retry cannot fix it.
           const failure = classifyLlm(error, this.setup.vendorFor(pinned.upstream));
           const passing = failure?.kind === "not_sent" || (failure?.kind === "http_status" && passingStatus(failure.status, "llm_before_content"));
@@ -337,7 +337,7 @@ export class SwitchingModel implements ModelV4 {
         return answer;
       } catch (error) {
         // A 2xx that arrived was billed, however the call then ended (its SDK refused the body, it
-        // was cut, the caller stopped): by the generation it names, else missing (DD 35).
+        // was cut, the caller stopped): by the generation it names, else missing.
         if (last !== undefined && isSuccess(last.status)) {
           const text = last.copy === undefined ? "" : await last.copy.text().catch(() => "");
           const id = tracks ? this.track(c.upstream, costedOf(parsed(text)).id) : undefined;

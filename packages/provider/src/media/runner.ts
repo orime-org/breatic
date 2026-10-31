@@ -18,7 +18,7 @@ import { failedReason } from "@provider/routing/try-in-order.js";
 /**
  * Everything provider knows about one media run. The caller stores it as JSON
  * and hands it back; only `version` is the caller's to read, for a
- * compare-and-set write (design 12.2).
+ * compare-and-set write.
  */
 export interface MediaTicket {
   readonly version: number;
@@ -28,7 +28,7 @@ export interface MediaTicket {
 /** What one step of a run does. */
 export type StepKind = "generate" | "upload_reference" | "upload_melody" | "vocal" | "voice" | "speak" | "element" | "describe";
 
-/** One output of a finished run (design 3.4, S5). */
+/** One output of a finished run. */
 export type MediaOutput =
   | { kind: "url"; url: string; contentType?: string }
   | { kind: "bytes"; bytes: Uint8Array; contentType: string };
@@ -42,7 +42,7 @@ export interface MediaClone {
   upstreamId: string;
 }
 
-/** Something provider wants the caller to log (design 3.7). */
+/** Something provider wants the caller to log. */
 export interface MediaWarning {
   code: string;
   detail: Record<string, unknown>;
@@ -57,7 +57,7 @@ interface AnswerCommon {
   warnings: MediaWarning[];
 }
 
-/** Where a run is after one call (design 3.4). */
+/** Where a run is after one call. */
 export type MediaAnswer = AnswerCommon &
   (
     | { state: "send"; ticket: MediaTicket; step: { kind: StepKind } }
@@ -98,7 +98,7 @@ export interface PollOptions extends CallBounds {
   finalAsk?: boolean;
 }
 
-/** One `task_upstream_steps` row written before the provider layer (design 3.4, X3). */
+/** One `task_upstream_steps` row written before the provider layer. */
 export interface LegacyStep {
   position: number;
   kind: Exclude<StepKind, "describe">;
@@ -116,7 +116,7 @@ export interface LegacyRows {
   steps?: LegacyStep[];
 }
 
-/** Media runs as tickets (design 3.4). */
+/** Media runs as tickets. */
 export interface MediaRunner {
   plan(model: string, input: MediaInput, route: Route, options: PlanOptions): Promise<MediaAnswer>;
   send(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
@@ -421,7 +421,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   };
 
   /**
-   * The steps of a run on the ticket's upstream (design 6.2).
+   * The steps of a run on the ticket's upstream.
    * @param ticket - The ticket, its steps not yet set.
    * @returns The steps in order: extra steps before, the model's own call, extra steps after.
    */

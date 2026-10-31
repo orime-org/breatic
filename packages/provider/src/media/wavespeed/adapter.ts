@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * WaveSpeed (design 6.2): a submit is `POST {base_url}/{model_id}` and may
+ * WaveSpeed: a submit is `POST {base_url}/{model_id}` and may
  * answer the outputs at once; a prediction is asked about at
  * `GET /predictions/{id}/result`; what it cost is a billing search. The
  * upstream has no client key, so a send whose answer was lost cannot be
@@ -97,7 +97,7 @@ const resultSchema = z.looseObject({
 /**
  * Submit one prediction; resent only on a 408 or 429, which the upstream did not process.
  * A 2xx whose answer cannot be read (cut, not JSON, no id and no outputs) is NoAnswer: sent,
- * outcome unknown (design 3.4).
+ * outcome unknown.
  * @param reach - The upstream.
  * @param endpoint - The model path.
  * @param body - The request body.

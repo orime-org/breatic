@@ -3,7 +3,7 @@
 
 /**
  * Writes the provider package's configuration from today's catalog
- * (inner#1743, design 4.5), so the provider tests can prove the move changes
+ * (inner#1743), so the provider tests can prove the move changes
  * nothing: every catalog and 3D model bound to WaveSpeed at weight 1 with the
  * upstream fields, value spellings, extra steps and pricing the catalog
  * declares today, the upstreams from `config/models/<modality>/providers.yaml`
@@ -45,7 +45,7 @@ interface RawModel {
 const ROOT = resolve(import.meta.dirname, "..");
 
 /**
- * Params the application layer turns into the prompt itself (design 7.1): no
+ * Params the application layer turns into the prompt itself: no
  * upstream field carries them. Copied from the families in
  * `packages/worker/src/providers/families/`.
  */
@@ -62,7 +62,7 @@ const APP_PARAMS: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
-/** Params whose value the upstream takes in its own shape (design 4.2). */
+/** Params whose value the upstream takes in its own shape. */
 const TRANSFORMS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   "minimax-speech-2.8-hd": { pronunciation_dict: "pronunciation_pairs" },
 };
@@ -195,7 +195,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
 }
 
 const MEDIA_HEADER = `
-Where each of our {modality} models runs, upstream by upstream (design 4.2).
+Where each of our {modality} models runs, upstream by upstream.
 Weight is priority: the lowest configured weight is tried first, and weights
 are unique per model. Each binding names the upstream's model id, the field
 the prompt goes in (\`send_empty\` sends it and every param even when empty),
@@ -205,7 +205,8 @@ entry wrapped under it), \`absent_value\` (holding it sends nothing) and
 \`transform\`. A param not listed is not sent to that upstream. \`mentions\` is
 how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 \`pricing\` is the upstream's contract: base_price in millionths of a USD, a
-JSONata formula (empty means base_price per call), discount_rate in percent.
+JSONata formula (empty means base_price per call), discount_rate the percentage
+of the price charged (100 is full price).
 `;
 
 const sources: [string, string[]][] = [
@@ -245,7 +246,7 @@ const SDK_BASE_URLS: Readonly<Record<string, string>> = {
 
 const wavespeed = yaml<{ wavespeed: { base_url: string; api_key_env: string } }>("config/models/image/providers.yaml").wavespeed;
 write("upstreams.yaml", `
-Every upstream provider reaches (design 4.1): the adapter kind that speaks to
+Every upstream provider reaches: the adapter kind that speaks to
 it, its address, the environment variable that holds its key, and for media
 upstreams how many requests one process sends it at once. An upstream whose
 key variable is empty is skipped, and the call says which variable is missing.
@@ -275,10 +276,10 @@ const DIRECT_PRICES: Readonly<Record<string, Record<string, number>>> = {
 const flash = capture(llmSource, /modelId === "([^"]+)" \? "[^"]+"/);
 const flashOnDeepseek = capture(llmSource, /modelId === "[^"]+" \? "([^"]+)"/);
 write("llm.yaml", `
-Where LLM calls go (design 4.3). A model id takes the first route whose prefix
+Where LLM calls go. A model id takes the first route whose prefix
 it starts with; within a route the configured upstream of lowest weight is
 tried first, and a call moves on before its first content when an upstream
-has no key, cannot be reached, keeps answering 429 or 5xx, lacks the model,
+has no key, cannot be reached, keeps answering 408, 409, 429 or 5xx, lacks the model,
 or says its balance is exhausted.
 understand_routes is the same for reading media, the official API first.
 vendor_ids is the id an upstream serves one of our models under.
@@ -304,7 +305,7 @@ uploaded file is asked about until it is ready.
 });
 
 write("routing.yaml.template", `
-This deployment's own upstream weights (design 4.4). Copy this file to
+This deployment's own upstream weights. Copy this file to
 config/provider/routing.yaml and change the weights there; the copy is not
 shipped. Without it every model keeps the weights in media/*.yaml and
 llm.yaml. Overrides change weights only: naming an upstream a model or route

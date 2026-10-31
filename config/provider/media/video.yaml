@@ -1,4 +1,4 @@
-# Where each of our video models runs, upstream by upstream (design 4.2).
+# Where each of our video models runs, upstream by upstream.
 # Weight is priority: the lowest configured weight is tried first, and weights
 # are unique per model. Each binding names the upstream's model id, the field
 # the prompt goes in (`send_empty` sends it and every param even when empty),
@@ -8,7 +8,8 @@
 # `transform`. A param not listed is not sent to that upstream. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 # `pricing` is the upstream's contract: base_price in millionths of a USD, a
-# JSONata formula (empty means base_price per call), discount_rate in percent.
+# JSONata formula (empty means base_price per call), discount_rate the percentage
+# of the price charged (100 is full price).
 
 models:
   gemini-omni-1.1-flash-text-to-video:

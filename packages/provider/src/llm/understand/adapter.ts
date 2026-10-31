@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What an understand adapter does (design 6.5): send one question with its media to one
+ * What an understand adapter does: send one question with its media to one
  * upstream's native API through provider's own HTTP module, and read the answer. Routing,
  * retries, refusals and costs stay with the caller.
  */
@@ -18,7 +18,7 @@ export interface UploadedFile {
   uri?: string;
 }
 
-/** What one understand call keeps across its attempts (design 6.5). */
+/** What one understand call keeps across its attempts. */
 export interface UnderstandSession {
   /** The media uploaded to an upstream, by its base url and in item order, for later attempts to reuse. */
   uploads: Map<string, UploadedFile[]>;
@@ -60,7 +60,7 @@ export interface Answered {
 export type Reading = { text: string; finishReason: FinishReason } | { error: unknown } | { unreadable: string };
 
 /**
- * The upstream answered something provider cannot use (design 3.5): a Files API step
+ * The upstream answered something provider cannot use: a Files API step
  * that ended without what it promised, or a 2xx model answer that cannot be read. The
  * call stops there; a model answer's cost was recorded where it arrived.
  */

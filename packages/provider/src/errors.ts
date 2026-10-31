@@ -12,7 +12,7 @@ export type UnavailableReason =
 export class NoUpstreamAvailable extends Error {
   readonly model: string;
   readonly reasons: readonly UnavailableReason[];
-  /** What the answers it moved past cost, in order, when an upstream billed them (design 3.5). */
+  /** What the answers it moved past cost, in order, when an upstream billed them. */
   readonly costs: Cost[];
 
   /**
@@ -30,11 +30,14 @@ export class NoUpstreamAvailable extends Error {
   }
 }
 
-/** The request itself was refused, or names an upstream the model has no binding for; no other upstream is tried. */
+/**
+ * The request was refused, names an upstream the model has no binding for, names a model no
+ * LLM route serves, or got an answer provider cannot use; no other upstream is tried.
+ */
 export class UpstreamRequestRejected extends Error {
   readonly model: string;
   readonly upstream: string;
-  /** What the billed answers cost, in order: those moved past, then the refused one (design 3.5, 5.4). */
+  /** What the billed answers cost, in order: those moved past, then the refused one. */
   readonly costs: Cost[];
   /** The upstream's status for the refusal (an error carried in an answer gives its code). */
   readonly status?: number;
@@ -42,7 +45,7 @@ export class UpstreamRequestRejected extends Error {
   /**
    * Record what the error carries.
    * @param model - Our model id.
-   * @param upstream - The upstream that refused, or the one asked for.
+   * @param upstream - The upstream that refused or answered, the one asked for, or "" when no route matches the model.
    * @param message - What was refused.
    * @param costs - What the billed answers cost; empty when none was billed.
    * @param refusal - The upstream's status and its own error, when an upstream refused.
@@ -62,7 +65,7 @@ export class UpstreamRequestRejected extends Error {
 /**
  * An understand call that ended other than by an answer, a refusal or running out of
  * upstreams (a deadline, an abort, a lost answer, an error form it cannot read); it carries
- * what the answers before it were billed, and the original error as its cause (design 3.5).
+ * what the answers before it were billed, and the original error as its cause.
  */
 export class UnderstandInterrupted extends Error {
   readonly model: string;
@@ -85,7 +88,7 @@ export class UnderstandInterrupted extends Error {
 
 /**
  * Every cost an error and its causes carry, in order from the outermost: the way to account
- * for a thrown understand call or describe step whatever it ended with (design 3.5).
+ * for a thrown understand call or describe step whatever it ended with.
  * @param error - What was thrown.
  * @returns The costs found.
  */
@@ -103,7 +106,7 @@ export function costsOf(error: unknown): Cost[] {
 /**
  * A billed 2xx answer whose body could not be read (cut, not JSON, or missing what it
  * promised): it rides as the cause of the error that ends the call, carrying one missing
- * cost for costsOf (design 3.5, DD 33).
+ * cost for costsOf.
  */
 export class BilledAnswerLost extends Error {
   readonly costs: Cost[];

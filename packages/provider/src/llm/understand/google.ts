@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Understanding through Gemini's own generateContent (design 6.5). Each item goes inline,
+ * Understanding through Gemini's own generateContent. Each item goes inline,
  * unless the request would pass the inline limit: then every item is first uploaded through
  * the Files API's resumable protocol, waited on until it is ACTIVE, sent by its uri, and
  * deleted once the call ends (https://ai.google.dev/gemini-api/docs/files).

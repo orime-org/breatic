@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Understanding through OpenRouter's chat completions (design 6.5): the question, then each
+ * Understanding through OpenRouter's chat completions: the question, then each
  * item labelled and sent inline, images included: images as `image_url` and video as
  * `video_url` (data URIs), audio as `input_audio` with OpenRouter's name for its format.
  */

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The LLM part of a provider instance (design 3.5): routing a model id to
+ * The LLM part of a provider instance: routing a model id to
  * its upstreams, what each upstream is sent, the cost of a finished call,
  * reading media, the decisions endpoint and the picture capability.
  */
@@ -41,8 +41,7 @@ const modelRowSchema = z.looseObject({
 });
 
 /**
- * Wait for the shared refresh while letting just this caller leave
- * (ported from domain's agent/model-picture-capability.ts).
+ * Wait for the shared refresh while letting just this caller leave.
  * @param pending - The shared request, which this function never cancels.
  * @param signal - This caller's stop signal.
  * @returns Once the refresh settles, for a caller still waiting.
@@ -205,14 +204,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     const merged: Record<string, VendorOptions> = {};
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
-      // The OpenRouter backend pin is understand's alone (design 4.3), never a prepared call's.
+      // The OpenRouter backend pin is understand's alone, never a prepared call's.
       merged[vendor.sdkName] = optionsFor(vendor, modelId, wants);
     }
     return merged;
   };
 
   /**
-   * The cost of a finished call (design 3.6).
+   * The cost of a finished call.
    * @param finished - The call's model, usage and metadata.
    * @returns Known, pending or missing.
    */
@@ -250,7 +249,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
 
   /**
    * The failure class of an understand attempt's error: a vendor's refusal forms are read
-   * only on its model answers, never on a preparatory step's (design 6.5).
+   * only on its model answers, never on a preparatory step's.
    * @param error - What the attempt threw.
    * @param upstream - The upstream it was on.
    * @returns Its class, or null.
@@ -259,7 +258,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     classifyLlm(error, error instanceof StepRefused ? undefined : vendorOf(kindOf(upstream)));
 
   /**
-   * How an understand call ended, when it did not answer (design 3.5): a refusal the route
+   * How an understand call ended, when it did not answer: a refusal the route
    * stopped on becomes UpstreamRequestRejected with the upstream's status (an error in a 2xx
    * answer with no code of its own takes that answer's status), an unusable answer one with
    * none, running out of upstreams NoUpstreamAvailable, anything else UnderstandInterrupted.
@@ -288,7 +287,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
-   * What an answer that served nothing cost, read from its body (design 3.5): the cost it
+   * What an answer that served nothing cost, read from its body: the cost it
    * reported, else a lookup by an OpenRouter generation id, else missing for a 2xx.
    * @param upstream - The upstream that answered.
    * @param status - The answer's status.
@@ -439,7 +438,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               }
               throw error;
             }
-            // Every billed answer is recorded as it arrives, before the route judges it (design 3.5, DD 33).
+            // Every billed answer is recorded as it arrives, before the route judges it.
             /**
              * Record what an answer that served nothing carried: a refusal that names a cost or a
              * generation was billed; an unusable 2xx always was, never a price-table guess.

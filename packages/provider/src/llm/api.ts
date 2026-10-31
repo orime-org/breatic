@@ -6,7 +6,7 @@ import type { Cost } from "@provider/cost.js";
 import type { Availability } from "@provider/pricing/estimate.js";
 import type { Route } from "@provider/routing/route.js";
 
-/** What a caller asks of one LLM call (design 3.5). */
+/** What a caller asks of one LLM call. */
 export interface CallWants {
   thinking: boolean;
   /** The prompt cache lifetime asked for, or false for none. */
@@ -44,7 +44,7 @@ export interface FinishedCall {
   providerMetadata?: ProviderMetadata;
 }
 
-/** One reading of media by an understand model (design 6.5). */
+/** One reading of media by an understand model. */
 export interface UnderstandRequest {
   model: string;
   question: string;
@@ -104,8 +104,9 @@ export interface LlmApi {
   assertModelsPriced(models: readonly string[]): void;
   /**
    * The upstreams a model's calls of one use would try, in effective weight order, each
-   * saying whether its key is configured (design 3.5): `call` by the routes `prepare` uses,
-   * `understand` by the understanding routes, `judge` by the OpenRouter upstream `judge` uses.
+   * saying whether its key is configured: `call` by the routes `prepare` uses,
+   * `understand` by the understanding routes, `judge` as every OpenRouter-kind upstream with
+   * the one `judge` sends to first (it tries no other; the weights are list positions).
    */
   availability(modelId: string, use: "call" | "understand" | "judge"): Availability;
 }

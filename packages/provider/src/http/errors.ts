@@ -14,7 +14,10 @@ function named(url: string): string {
   return `${parsed.origin}${parsed.pathname}${parsed.search !== "" ? "?<redacted>" : ""}${parsed.hash !== "" ? "#<redacted>" : ""}`;
 }
 
-/** The request never left this machine: DNS failed or the connection was refused. */
+/**
+ * The request never left this machine: the name did not resolve, or no connection was made
+ * (refused, host or network unreachable, connect timeout).
+ */
 export class NotSent extends Error {
   /**
    * Record what the error carries.
@@ -27,7 +30,10 @@ export class NotSent extends Error {
   }
 }
 
-/** The request was sent but no complete answer came back: a timeout or a reset. Whether the upstream accepted it is unknown. */
+/**
+ * The request was sent but no complete answer came back: a timeout after connecting, or a
+ * reset. Whether the upstream accepted it is unknown.
+ */
 export class NoAnswer extends Error {
   /**
    * Record what the error carries.
