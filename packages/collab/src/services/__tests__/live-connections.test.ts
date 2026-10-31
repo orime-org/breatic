@@ -287,3 +287,51 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("live connections — a message or a ping counts as a pong, as the transport counts it", () => {
+  const PING = 30_000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps refreshing a socket that sends messages and never pongs, at most twice per period", () => {
+    vi.useFakeTimers({ now: 0 });
+    const handled: number[] = [];
+    const table = createLiveConnections({ onPong: () => handled.push(Date.now()), pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    // crossws keeps this socket open, so its seat must not expire under it.
+    for (let at = 0; at < 3 * PING; at += 1_000) {
+      vi.advanceTimersByTime(at - Date.now());
+      fire(connection, "message");
+    }
+    vi.advanceTimersByTime(PING);
+
+    expect(handled).toEqual([0, 15_000, 30_000, 45_000, 60_000, 75_000, 90_000]);
+  });
+
+  it("refreshes on a ping from the client", () => {
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    fire(connection, "ping");
+
+    expect(onPong).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaches from pongs, pings and messages when the socket closes", () => {
+    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    fire(connection, "close");
+
+    for (const event of ["pong", "ping", "message"]) {
+      expect(connection.listeners.get(event)).toEqual([]);
+    }
+  });
+});

@@ -144,16 +144,18 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     seatExpiryMs: timings.seatExpiryMs,
   });
 
-  // What this instance holds, indexed by socket. A pong arrives on a socket
-  // and refreshes every seat that socket carries plus the presence record of
+  // What this instance holds, indexed by socket. A sign of life (a pong, a
+  // ping or any message) arrives on a socket and refreshes every seat that
+  // socket carries plus the presence record of
   // whoever owns its meta connection; a demote request names a socket and
   // asks whether it is one of ours.
   //
   // Both of those answer the same question — is this connection still there —
-  // so both hang off the one thing that answers it without the page running:
-  // the transport's pong, replied to by the browser's network stack under
-  // RFC 6455. Awareness frames come from a JS timer that a browser throttles
-  // to once a minute in a tab hidden for over five minutes.
+  // so both hang off what the transport itself keeps the socket open on. Of
+  // those, the pong is answered by the browser's network stack under RFC 6455
+  // without the page running; awareness frames come from a JS timer that a
+  // browser throttles to once a minute in a tab hidden for over five minutes,
+  // so they add refreshes but are never relied on.
   //
   // A renewal can report that an arrival retried on this pong replaced one of
   // the person's earlier seats. The demote channel that carries that request
@@ -457,8 +459,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         connection.close({ code: 4403, reason: "duplicate-document-on-socket" });
         return;
       }
-      // Remembering the socket is also what starts listening for its pongs,
-      // once, however many documents it carries.
+      // Remembering the socket is also what starts listening for its signs of
+      // life, once, however many documents it carries.
       liveConnections.remember(
         socketId,
         documentName,

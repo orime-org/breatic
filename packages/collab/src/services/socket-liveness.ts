@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a socket answering its ping proves, and everything that rides on it.
+ * What a socket's sign of life (a pong, a ping or any message, the events
+ * the transport keeps it open on) proves, and everything that rides on it.
  *
  * There is more than one fact hanging off this one signal — a seat per
  * document the socket carries, and the presence record of whoever owns its
@@ -55,7 +56,8 @@ export interface SocketLivenessDeps {
 type PongConnection = SocketConnection & DemotableConnection;
 
 /**
- * Build the callback the per-socket table calls on every pong.
+ * Build the callback the per-socket table calls on each sign of life it
+ * handles.
  * @param deps - See {@link SocketLivenessDeps}.
  * @returns The callback, taking the socket and what it carries.
  */

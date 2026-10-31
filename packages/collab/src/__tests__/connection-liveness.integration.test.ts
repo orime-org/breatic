@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The transport fact the seat and presence expiries are built on: how often
- * crossws pings. It is somebody else's behaviour, so it is measured against a
+ * The transport facts the seat and presence expiries are built on: how often
+ * crossws pings, and that a socket it keeps open on messages alone keeps its
+ * seat. It is somebody else's behaviour, so it is measured against a
  * real server over a real socket rather than reasoned about.
  *
  * This takes real seconds. There is no way around it: what is being checked
@@ -17,15 +18,23 @@
  * anything ever resolves the other one — no pong would arrive.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, afterEach } from "vitest";
 import { Server } from "@hocuspocus/server";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 
+import { createRedisClient, initCore } from "@breatic/core";
 import { getCollabConfig } from "@collab/config";
+import { createConnectionRegistry } from "@collab/services/connection-registry.js";
+import {
+  createLiveConnections,
+  type HeldConnection,
+} from "@collab/services/live-connections.js";
 
 const WIRE_AUTH = 2;
 const AUTH_SUB_TOKEN = 0;
+const WIRE_QUERY_AWARENESS = 3;
 
 /**
  * The frame a client opens with, carrying the document it wants.
@@ -39,6 +48,18 @@ function authFrame(docName: string, token: string): Uint8Array {
   encoding.writeVarUint(e, WIRE_AUTH);
   encoding.writeVarUint(e, AUTH_SUB_TOKEN);
   encoding.writeVarString(e, token);
+  return encoding.toUint8Array(e);
+}
+
+/**
+ * A frame that asks for the document's awareness: harmless, and a message.
+ * @param docName - Document it is for.
+ * @returns The encoded frame.
+ */
+function queryAwarenessFrame(docName: string): Uint8Array {
+  const e = encoding.createEncoder();
+  encoding.writeVarString(e, docName);
+  encoding.writeVarUint(e, WIRE_QUERY_AWARENESS);
   return encoding.toUint8Array(e);
 }
 
@@ -113,4 +134,71 @@ describe("crossws liveness", () => {
       expect(gap).toBeLessThan(declared * 1.2);
     }
   }, 90_000);
+});
+
+describe("seat liveness follows the transport's", () => {
+  it("keeps the seat of a socket that sends messages and never answers a ping", async () => {
+    // crossws counts any message as a sign of life and never closes such a
+    // socket, so its seat must not expire either: a newcomer taking it would
+    // leave one more writable connection than the cap allows.
+    initCore(process.env);
+    const redis = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-liveness-seat" });
+    teardown.push(() => void redis.quit());
+    const ns = `t1034-liveness:${randomUUID()}`;
+    const doc = "seat-doc";
+    // Far shorter than the transport's own ping interval, so no ping reaches
+    // the socket while this runs and only its messages can refresh the seat.
+    const registry = createConnectionRegistry({
+      redis,
+      instanceId: "i-1",
+      pingIntervalMs: 200,
+      seatExpiryMs: 400,
+      keyFor: (documentName: string) => `${ns}:${documentName}`,
+    });
+    const live = createLiveConnections({
+      onPong: (socketId: string) => void registry.refreshSocket(socketId),
+      pingIntervalMs: 200,
+    });
+
+    const server = new Server({
+      port: 0,
+      address: "127.0.0.1",
+      quiet: true,
+      stopOnSignals: false,
+      timeout: 3_600_000,
+      onAuthenticate: async () => ({ user: { id: "probe" } }),
+      connected: async ({ connection, socketId, documentName }: {
+        connection: unknown;
+        socketId: string;
+        documentName: string;
+      }) => {
+        live.remember(socketId, documentName, connection as HeldConnection);
+        await registry.takeSeat(documentName, { socketId, userId: "u-1", arrivedAtMs: Date.now() }, 1);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    await server.listen();
+    teardown.push(() => server.destroy());
+    const address = (
+      server as unknown as { httpServer: { address(): { port: number } } }
+    ).httpServer.address();
+
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/`, { autoPong: false });
+    teardown.push(() => ws.terminate());
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+    });
+    ws.send(authFrame(doc, "__probe__"));
+    await expect.poll(() => registry.count(doc)).toBe(1);
+
+    // Five seat expiries of messages and nothing else.
+    const sending = setInterval(() => ws.send(queryAwarenessFrame(doc)), 100);
+    teardown.push(() => clearInterval(sending));
+    await new Promise((r) => setTimeout(r, 2_000));
+
+    expect(await registry.count(doc)).toBe(1);
+    const newcomer = await registry.takeSeat(doc, { socketId: "s-2", userId: "u-2", arrivedAtMs: Date.now() }, 1);
+    expect(newcomer.outcome).toBe("full");
+  }, 30_000);
 });

@@ -99,7 +99,7 @@ function isMetaDoc(documentName: string): boolean {
 export interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
-  /** How long without a pong before an online record is disbelieved. */
+  /** How long without a sign of life before an online record is disbelieved. */
   staleAfterMs: number;
 }
 
@@ -161,8 +161,8 @@ export interface SocketConnection {
 }
 
 /**
- * A socket answered its ping, so whoever owns it is still here: push their
- * timestamp forward, and sweep.
+ * A socket showed a sign of life (a pong, a ping or any message), so whoever
+ * owns it is still here: push their timestamp forward, and sweep.
  *
  * Arrival stamps a record once, through `recordPresenceOnConnect`; from then
  * on this is what moves it, and it is deliberately the only refresh this
@@ -170,13 +170,14 @@ export interface SocketConnection {
  * once a minute in a tab hidden for more than five minutes, so a roster driven
  * by anything the page has to run would flip a connected person offline once
  * the threshold cleared. The transport's pong is answered by the network stack
- * under RFC 6455 and needs no JavaScript at all.
+ * under RFC 6455 and needs no JavaScript at all; messages the page sends only
+ * add refreshes.
  *
  * It hangs off the socket's META connection rather than the seat index. Seats
  * exclude meta documents and read-only connections by definition, so a
  * viewer's socket holds no seat anywhere and asking the index who owns it
  * would never answer. A socket has exactly one meta connection, so this writes
- * once per pong however many Spaces the member has open — which is why the
+ * once per refresh however many Spaces the member has open — which is why the
  * loop returns at the first one rather than carrying on.
  *
  * Sweeping here rather than on a timer is what lets a crashed process be

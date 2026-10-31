@@ -16,7 +16,8 @@
  *   key    = `{env}:collab:seats:{documentName}`
  *   member = `{userId}:{arrivedAtMs}:{instanceId}:{socketId}`
  *   score  = epoch ms this connection was last heard from — the moment it
- *            took the seat, then the moment of each pong after that
+ *            took the seat, then each time its socket showed a sign of
+ *            life (a pong, a ping or any message) after that
  *
  * `arrivedAtMs` is the moment the connection's handshake for this document
  * began. It orders one person's connections: when the document is full, an
@@ -33,7 +34,7 @@
  * room and otherwise reports the seat lost.
  *
  * A score is written only by that script, and the script runs only for a
- * connection taking its seat or answering a ping. The key's TTL is renewed by
+ * connection taking its seat or whose socket shows a sign of life. The key's TTL is renewed by
  * the same script, so a key lives exactly as long as some member in it is
  * still answering.
  *

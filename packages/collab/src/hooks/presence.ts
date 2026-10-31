@@ -37,10 +37,10 @@
  * arrive afterwards starts the sweeps that clear them. The threshold is a
  * DELAY before that happens, not a chance to miss it.
  *
- * ## Every pong is written
+ * ## Every refresh is written
  *
- * A socket has exactly one meta connection, so one pong is one write and there
- * is nothing to rate-limit. The widest gap between two writes is therefore the
+ * A socket has exactly one meta connection, so one refresh is one write, and
+ * the per-socket table already holds refreshes to two per ping period. The widest gap between two writes is therefore the
  * transport's ping period, whatever the page is doing: the pong is answered by
  * the browser's network stack under RFC 6455 and never runs JavaScript, so a
  * tab hidden long enough for its timers to be throttled keeps answering at the
