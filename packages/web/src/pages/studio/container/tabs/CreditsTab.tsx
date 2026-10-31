@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react';
 
 import { parseCreditDecimal, serializeCreditMicro, maxCreditMicro } from '@breatic/shared';
 
-import type { StudioLedgerView, StudioLotView } from '@breatic/shared';
+import type { CreditMicro, StudioLedgerView, StudioLotView } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -261,7 +261,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   // The part of the balance the holds take. Holds larger than the balance
   // take all of it, and a studio that owes has none for them to take, so the
   // rows above the total always add up to it.
-  const heldTaken = serializeCreditMicro(maxCreditMicro(0n, parseCreditDecimal(head.spendable ?? '0.000000')) - maxCreditMicro(0n, parseCreditDecimal(available)));
+  const heldTaken = serializeCreditMicro(maxCreditMicro(0n as CreditMicro, parseCreditDecimal(head.spendable ?? '0.000000')) - maxCreditMicro(0n as CreditMicro, parseCreditDecimal(available)));
   const state =
     parseCreditDecimal(head.debt ?? '0.000000') > 0n
       ? 'debt'

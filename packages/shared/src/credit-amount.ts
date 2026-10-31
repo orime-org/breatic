@@ -86,41 +86,41 @@ export function ceilCreditMicroToCent(value: bigint): CreditMicro {
  * @param right - The second exact operand.
  * @returns The converted or computed exact amount.
  */
-export function addCreditMicro(left: bigint, right: bigint): CreditMicro { return (left + right) as CreditMicro; }
+export function addCreditMicro(left: CreditMicro, right: CreditMicro): CreditMicro { return (left + right) as CreditMicro; }
 /**
  * Subtract exact amounts.
  * @param left - The first exact operand.
  * @param right - The second exact operand.
  * @returns The converted or computed exact amount.
  */
-export function subtractCreditMicro(left: bigint, right: bigint): CreditMicro { return (left - right) as CreditMicro; }
+export function subtractCreditMicro(left: CreditMicro, right: CreditMicro): CreditMicro { return (left - right) as CreditMicro; }
 /**
  * Compare exact amounts.
  * @param left - The first exact operand.
  * @param right - The second exact operand.
  * @returns The converted or computed exact amount.
  */
-export function compareCreditMicro(left: bigint, right: bigint): number { return left < right ? -1 : left > right ? 1 : 0; }
+export function compareCreditMicro(left: CreditMicro, right: CreditMicro): number { return left < right ? -1 : left > right ? 1 : 0; }
 /**
  * Select the smaller amount.
  * @param left - The first exact operand.
  * @param right - The second exact operand.
  * @returns The converted or computed exact amount.
  */
-export function minCreditMicro(left: bigint, right: bigint): CreditMicro { return (left < right ? left : right) as CreditMicro; }
+export function minCreditMicro(left: CreditMicro, right: CreditMicro): CreditMicro { return (left < right ? left : right); }
 /**
  * Select the larger amount.
  * @param left - The first exact operand.
  * @param right - The second exact operand.
  * @returns The converted or computed exact amount.
  */
-export function maxCreditMicro(left: bigint, right: bigint): CreditMicro { return (left > right ? left : right) as CreditMicro; }
+export function maxCreditMicro(left: CreditMicro, right: CreditMicro): CreditMicro { return (left > right ? left : right); }
 /**
  * Reverse an exact amount's sign.
  * @param value - The amount to convert.
  * @returns The converted or computed exact amount.
  */
-export function negateCreditMicro(value: bigint): CreditMicro { return -value as CreditMicro; }
+export function negateCreditMicro(value: CreditMicro): CreditMicro { return -value as CreditMicro; }
 
 /**
  * Calculate a bounded display weight without narrowing the source amounts.
