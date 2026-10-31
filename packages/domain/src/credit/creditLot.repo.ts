@@ -1075,15 +1075,15 @@ export interface LotContext {
 }
 
 /**
- * One account's purchases, newest first, one keyset page at a time.
+ * One account's credit lots, newest first, one keyset page at a time.
  *
- * Keyset rather than offset: a purchase landing while someone pages would
+ * A lot arriving while someone pages would
  * shift every later row down by one under an offset, which shows a row twice
  * and hides another.
- * @param userId - Whose purchases to list.
+ * @param userId - Whose credit lots to list.
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
- * @param lifecycle - Narrow to one state; omit for every purchase.
+ * @param lifecycle - Narrow to one state; omit for every lot.
  * @param lotId - Narrow to this one lot when projecting a designation reply.
  * @returns The page, newest first.
  */

@@ -8,8 +8,8 @@
  * cent and is summed across several purchases. Doing that arithmetic in binary
  * floating point leaves a residue on a lot that can neither be spent nor
  * refunded, so every calculation here runs on integer micro-credits — one
- * millionth of a credit, exactly the column's scale — and converts back only
- * at the database boundary. BigInt also preserves aggregates wider than one stored row.
+ * millionth of a credit, exactly the column's scale — and serializes exact
+ * decimal strings at database and HTTP boundaries. BigInt also preserves aggregates wider than one stored row.
  *
  * A charge is planned rather than applied here: this module holds no database
  * access, which is what lets the ordering and the "spend what is there" rule

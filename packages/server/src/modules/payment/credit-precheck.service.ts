@@ -6,7 +6,7 @@
  * inner#1611).
  *
  * A run is admitted by holding its estimate (`reserveForRun`): the studio's
- * purchases less its debt less every hold still counted must cover it, and
+ * designated lot balance less its debt less every counted hold must cover it, and
  * the hold stays until the worker charges the run or the run ends. Concurrent
  * runs therefore see each other's estimates instead of the same balance.
  *
@@ -153,7 +153,7 @@ export async function reserveForRun(
 }
 
 /**
- * Refuse work whose studio's balance (purchases less debt) is below
+ * Refuse work whose Studio's balance (designated lots less debt) is below
  * `required`, holding nothing and leaving running work's holds out of it.
  * Skipped entirely when payments are disabled.
  * @param projectId - The project the work belongs to; its studio pays.

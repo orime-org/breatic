@@ -176,7 +176,7 @@ export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
 ];
 
 /**
- * What the account holds, counting everything it paid for.
+ * What the account holds across its credit lots.
  *
  * Three terms, and the third is the one that is easy to drop: leaving a pack
  * under refund out makes the total fall the moment it is asked about, with
@@ -189,7 +189,7 @@ export function accountTotal(overview: CreditOverview): CreditDecimal {
   return serializeCreditMicro(parseCreditDecimal(overview.assignedCredits) + parseCreditDecimal(overview.unassignedCredits) + parseCreditDecimal(overview.underRefundCredits));
 }
 
-/** One purchase of this account's, as the overlay shows it. */
+/** One credit lot held by this account, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
   /**
@@ -303,7 +303,7 @@ export interface CreditLedgerView {
    * What this run came to, as a negative exact amount.
    *
    * On a `generation` or a `debt_repayment` it is what left this account's
-   * purchases. On an `unbilled` line nothing left them: the figure is what
+   * credit lots. On an `unbilled` line nothing left them: the figure is what
    * the run would have cost, which is why that line carries a word saying so.
    */
   amount: CreditDecimal;

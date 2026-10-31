@@ -107,9 +107,7 @@ export const users = pgTable(
     // Enterprise validity is read alongside this raw tier. Ordinary paid
     // validity is interpreted from subscription facts.
     //
-    // Credits are yet another leg and live in `credit_lots`, one row per
-    // purchase, never on the
-    // account row.
+    // Credits live in `credit_lots`, one row per funding source.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),

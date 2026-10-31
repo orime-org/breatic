@@ -134,7 +134,7 @@ export async function getOverview(
 }
 
 /**
- * Read one account-owned lot through the same projection as its purchase list.
+ * Read one account-owned lot through the same projection as its lot list.
  * @param userId - The holder whose ownership narrows the query.
  * @param lotId - The just-designated lot.
  * @returns Its complete exact-decimal view.
@@ -152,12 +152,12 @@ export async function getLot(userId: string, lotId: string): Promise<CreditLotVi
 }
 
 /**
- * This account's purchases, newest first.
+ * This account's credit lots, newest first.
  * @param userId - The signed-in account.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
- * @param lifecycle - Narrow to one state; omit for every purchase.
- * @returns One page of purchases.
+ * @param lifecycle - Narrow to one state; omit for every lot.
+ * @returns One page of credit lots.
  */
 export async function listLots(
   userId: string,

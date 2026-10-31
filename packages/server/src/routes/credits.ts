@@ -5,10 +5,9 @@
  * Credit routes (task #11) — the account's own view of its credits, and the
  * one write that decides whether they can be spent.
  *
- * Credits are bought per purchase and each purchase is assigned to one studio.
- * A purchase starts assigned to nothing, so until somebody points it at a
- * studio it buys nothing — which makes the designation endpoint below the
- * switch that turns money into capacity.
+ * Credits are held in lots from payments, gifts and compensation. Purchased
+ * lots become spendable after designation; granted lots arrive bound to the
+ * account's personal Studio.
  *
  * The studio-facing view lives on `/studio/:slug/credits` next to that
  * studio's other tabs, so it sits behind the studio role gate rather than
@@ -90,7 +89,7 @@ credits.get(
 );
 
 /**
- * `GET /credits/lots` — this account's purchases, newest first.
+ * `GET /credits/lots` — this account's credit lots, newest first.
  * @returns `200` with one keyset page.
  */
 credits.get("/lots", validate("query", creditLotQuerySchema), async (c) => {

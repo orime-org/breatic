@@ -7,7 +7,7 @@
  *
  * An admission that only reads the balance lets every concurrent request see
  * the same credits and pass, and the charges that follow push the studio into
- * debt. Here an admission counts what the purchases hold, less the debt, less
+ * debt. Here an admission counts what the designated lots hold, less the debt, less
  * every hold still counted, and writes its own hold before letting the work
  * start. Admissions and charges on one studio both take the studio's debt
  * lock first, so they queue and each sees what the one before it held.
@@ -101,7 +101,7 @@ export async function releaseHold(referenceId: string): Promise<void> {
 }
 
 /**
- * A studio's purchases less debt, its counted holds, and what is left, as of
+ * A Studio's designated lot balance less debt, its counted holds, and what is left, as of
  * one instant.
  * @param studioId - The studio.
  * @returns The three figures, in credits.
