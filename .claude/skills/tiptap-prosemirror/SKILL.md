@@ -5,7 +5,7 @@ description: Use before changing a TipTap / ProseMirror editor in packages/web â
 
 # TipTap, ProseMirror and BlockNote traps
 
-Each entry says when it breaks and what to do instead. Paths are relative to `packages/web/src/`. Versions referred to: `@tiptap/core` 3.29.2, `@blocknote/core` 0.54.0 (see `pnpm-workspace.yaml`).
+Each entry says when it breaks and what to do instead. Paths are relative to `packages/web/src/`. Versions referred to: `@tiptap/core` 3.31.4, `@blocknote/core` 0.56.0 (see `pnpm-workspace.yaml`).
 
 ## Reference chips and mention suggestions
 
@@ -133,9 +133,15 @@ WebKit's contenteditable deletes an element that becomes empty during a composit
 
 **To make a container step aside while something else renders through it, make it invisible (`invisible pointer-events-none`); do not unmount it or let a plugin remove its element.** A `FloatingPortal` changes only DOM position, not React ownership, so unmounting the container takes every portal it hosts (a link panel, its buttons) out of the page as well. jsdom keeps the children and unit tests stay green; pin it with a browser test, plus a unit assertion on the class name. `spaces/document/SelectionBubbleBar.tsx` steps aside this way (`standingAside`).
 
+### Chrome over a block inside a table cell
+
+**A table sits in a horizontal scroller that clips anything reaching past it, so chrome drawn over a block in a cell (a media toolbar) is placed with floating-ui `strategy: 'fixed'` and stays among the block's own elements.** Moving it into a `FloatingPortal` breaks hover when it already holds a portal (a media toolbar sits in `MediaControlsPortal`): with a portal nested in a portal, React reports the pointer moving from the bar onto its own button as leaving the bar, and the bar closes under the hand. Before relying on `fixed`, check that no ancestor has a `transform`, `filter`, `contain: layout`/`paint` or a `container-type` (which implies layout containment); any of them makes that ancestor the containing block. `DocumentMediaBlock.tsx` does this when the block is in a `docTable`.
+
+**`useFloating` runs `whileElementsMounted` whenever both elements are mounted, whatever `open` says.** Pass `autoUpdate` only while the placement is needed (`whileElementsMounted: inCell ? autoUpdate : undefined`), or every instance keeps its scroll listeners and resize observer.
+
 ### Document body CSS layer
 
-**Every `.doc-body` rule in `index.css` lives in `@layer components`, except the four `::selection` rules and the gap-cursor colour (`.doc-body .ProseMirror-gapcursor::after`).** Those face the unlayered stylesheet `@tiptap/core` injects into `<head>`, and a layered rule never beats an unlayered one (the gap cursor would stay a black line in dark mode). Two rules without `.doc-body` must sit in the same layer as the body rules, because the body's overrides of them depend on in-layer specificity and order: the collaborator selection band (`.collaboration-carets__selection:not(:has(.reference-mention))`) and the link panel's selection stand-in (`[data-show-selection]`). `spaces/document/__tests__/document-body-layer-css.test.ts` enforces the layering with postcss; it does not check properties shared with utility classes.
+**Every `.doc-body` rule in `index.css` lives in `@layer components`, except the five `::selection` rules and the gap-cursor colour (`.doc-body .ProseMirror-gapcursor::after`).** Those face the unlayered stylesheet `@tiptap/core` injects into `<head>`, and a layered rule never beats an unlayered one (the gap cursor would stay a black line in dark mode). Two rules without `.doc-body` must sit in the same layer as the body rules, because the body's overrides of them depend on in-layer specificity and order: the collaborator selection band (`.collaboration-carets__selection:not(:has(.reference-mention))`) and the link panel's selection stand-in (`[data-show-selection]`). `spaces/document/__tests__/document-body-layer-css.test.ts` enforces the layering with postcss; it does not check properties shared with utility classes.
 
 ## Tests and verification limits
 

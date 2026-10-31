@@ -60,6 +60,7 @@ describe('the document body stylesheet', () => {
       '.doc-body[data-selection-drawn] ::selection',
       '.doc-body .ProseMirror-gapcursor::after',
       '.doc-body .doc-empty-line-in-selection ::selection',
+      '.doc-body .doc-table-in-selection ::selection',
     ]);
   });
 });

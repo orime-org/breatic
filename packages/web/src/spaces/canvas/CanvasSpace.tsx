@@ -40,6 +40,7 @@ import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import {
   canGenerate,
   newId,
+  type CanvasProposal,
 } from '@breatic/shared';
 import {
   defaultParamsOf,
@@ -86,6 +87,7 @@ import {
   freshNodesBox,
   viewportForBuilt,
   viewportToInspect,
+  viewportToShowPlaced,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
@@ -326,7 +328,7 @@ import {
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -1339,6 +1341,82 @@ function CanvasSpaceInner({
     stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
+
+  // Once nodes just placed and the generate panel opened on one of them,
+  // grown around its prompt, are laid out, the camera moves once so all of
+  // it is in front of the reader, clear of the menu, toolbar and minimap
+  // floating over the canvas, zooming out only as far as that takes
+  // (inner#1345): a template applied in a panel, and a proposal landed with
+  // its panel open. A node off screen is not mounted, so its position comes
+  // from the canvas's own record and its size from the layout until it is
+  // measured. Waits for the panel to hold one height for two frames; past
+  // that many frames it frames what is there.
+  const showPlaced = React.useCallback(
+    (placed: PlacedProposal, panelNodeId: string, duration: number): void => {
+      let tries = 0;
+      let lastHeight = -1;
+      /** One frame of waiting for the panel to be laid out. */
+      const step = (): void => {
+        const container = containerRef.current;
+        if (!container) return;
+        const panel = container.querySelector<HTMLElement>('[data-canvas-panel]')?.getBoundingClientRect();
+        const settled = panel !== undefined && panel.height === lastHeight;
+        lastHeight = panel?.height ?? -1;
+        if (!settled && tries++ < PLACED_SHOW_FRAMES) {
+          requestAnimationFrame(step);
+          return;
+        }
+        const rects = placed.nodeIds.map((id, i): Rect => {
+          const laid = placed.rects[i] ?? { x: 0, y: 0, ...EMPTY_NODE_SIZE };
+          const node = getInternalNode(id);
+          return {
+            ...(node?.internals.positionAbsolute ?? laid),
+            width: node?.measured?.width ?? laid.width,
+            height: node?.measured?.height ?? laid.height,
+          };
+        });
+        const [first, ...rest] = rects;
+        const anchor = rects[placed.nodeIds.indexOf(panelNodeId)] ?? first;
+        if (first === undefined || anchor === undefined) return;
+        const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
+        const origin = container.getBoundingClientRect();
+        // The project page's menu and toolbar float beside the Space outlets.
+        const stage = container.closest('[data-space-outlet]')?.parentElement;
+        const chrome = [
+          ...(stage?.querySelectorAll<HTMLElement>('[data-canvas-chrome]') ?? []),
+          ...container.querySelectorAll<HTMLElement>('.react-flow__minimap'),
+        ].map((el) => {
+          const box = el.getBoundingClientRect();
+          return { x: box.left - origin.left, y: box.top - origin.top, width: box.width, height: box.height };
+        });
+        const view = { nodes: [first, ...rest] as [Rect, ...Rect[]], anchor, panel: { width: panel?.width ?? 0, height: panel?.height ?? 0 } };
+        const next = viewportToShowPlaced(view, { width, height }, { x, y, zoom }, chrome, CANVAS_MIN_ZOOM);
+        if (next === null) return;
+        void setViewport(next, { duration: next.zoom === zoom ? duration : PROPOSAL_FRAME_MS, interpolate: 'linear' });
+      };
+      requestAnimationFrame(step);
+    },
+    [getInternalNode, rfStoreApi, setViewport],
+  );
+
+  // A template picked in a generate panel lands around that panel's node
+  // (inner#1345 6.5): every other node is in the way, and so is every group
+  // but the one the node sits in, which grows around what joins it.
+  const placeTemplate = React.useCallback(
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+      const anchorId = existing.get(0)?.nodeId;
+      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
+      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
+      const occupied = occupiedRects(around, (id) => {
+        const measured = getInternalNode(id)?.measured;
+        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
+      });
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
+      return placed;
+    },
+    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+  );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -2723,12 +2801,18 @@ function CanvasSpaceInner({
             : undefined;
         });
         const placed = placeProposalAt(intent.proposal, center, occupied);
-        // The camera follows what landed: centred on it, zoomed out only as
-        // far as it takes to show all of it (inner#1443 A4).
-        if (placed.bounds) {
-          // A Space opened empty and never framed still has its opening fit
-          // queued for the first nodes to arrive; this framing is that one.
-          rfStoreApi.setState({ fitViewQueued: false });
+        const focus = whatToFocus(intent.proposal, placed);
+        // A Space opened empty and never framed still has its opening fit
+        // queued for the first nodes to arrive; the framing below is that one.
+        if (placed.bounds) rfStoreApi.setState({ fitViewQueued: false });
+        if (focus.panel) {
+          // The panel that opens under one of them is framed with them once
+          // it has landed, in one move.
+          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+        } else if (placed.bounds) {
+          // The camera follows what landed: centred on it, zoomed out only as
+          // far as it takes to show all of it (inner#1443 A4).
           const zoom = rfStoreApi.getState().transform[2];
           void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
             duration: PROPOSAL_FRAME_MS,
@@ -2737,9 +2821,7 @@ function CanvasSpaceInner({
             interpolate: 'linear',
           });
         }
-        const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
         // `placeProposalAt` takes back whatever it wrote before it threw, so
@@ -2768,6 +2850,7 @@ function CanvasSpaceInner({
     getInternalNode,
     rfStoreApi,
     setViewport,
+    showPlaced,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one
@@ -4800,6 +4883,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
@@ -4809,6 +4893,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* Audio Generate panel: its own panel kind, opened by an audio
               node. It takes `getLastWriteWasLocal` for the same reason the
@@ -4821,6 +4906,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* A mini-tool's parameter panel: the same slot under the node,
               so it and the Generate panels never show together. */}
@@ -5109,6 +5195,15 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }
+
+/**
+ * Where a template picked in a panel is aimed. Unused while the panel's node
+ * is on the canvas: the template lines up on that node.
+ */
+const TEMPLATE_AIM = { x: 0, y: 0 };
+
+/** How many frames placing nodes waits for them and their panel to be laid out before framing them. */
+const PLACED_SHOW_FRAMES = 30;
 
 /**
  * Canvas space body. Wraps `CanvasSpaceInner` in a

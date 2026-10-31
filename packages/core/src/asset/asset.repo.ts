@@ -16,7 +16,21 @@ import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
+import * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
 import type { ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
+
+/** A retired physical key cannot acquire a new live reference. */
+export class StorageKeyRetiredError extends Error {
+  /**
+   * Construct a typed conflict without exposing object bytes.
+   * @param storageKey - The exact retired key.
+   * @throws {never} Never.
+   */
+  constructor(readonly storageKey: string) {
+    super("storage_key_retired");
+    this.name = "StorageKeyRetiredError";
+  }
+}
 
 /**
  * Map a Drizzle row to a StudioAssetEntity.
@@ -226,11 +240,12 @@ export async function fillMediaNumbers(
  * A live asset row stored under a key, from any studio. Storage keys are
  * tenant-neutral, so every row under one key describes the same bytes.
  * @param storageKey - The object's storage key.
+ * @param tx - Optional shared key transaction.
  * @returns One such row, or null when no live asset is stored under it.
  * @throws {Error} When the database query fails.
  */
-export async function findLiveByStorageKey(storageKey: string): Promise<StudioAssetEntity | null> {
-  const [row] = await db
+export async function findLiveByStorageKey(storageKey: string, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  const [row] = await (tx ?? db)
     .select()
     .from(studioAssets)
     .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
@@ -276,46 +291,64 @@ export async function findKindByStorageKey(storageKey: string): Promise<string |
  * one row.
  * @param input - The asset fields (studioId is the resolved owner).
  * @returns The asset entity plus whether it was a dedup hit.
+ * @throws {StorageKeyRetiredError} When the input key is retired without a live canonical alternative.
  * @throws {Error} If the insert conflicts but no existing row is found
  *   (should be impossible - indicates index/predicate drift).
  */
 export async function registerWithDedup(
   input: RegisterAssetInput,
 ): Promise<{ asset: StudioAssetEntity; deduped: boolean }> {
-  const inserted = await db
-    .insert(studioAssets)
-    .values({
-      studioId: input.studioId,
-      // Only lands on an INSERT. A dedup hit takes the onConflictDoNothing
-      // path and returns the EXISTING row, so the first producer is kept —
-      // see StudioAssetEntity.producedByUserId.
-      producedByUserId: input.producedByUserId,
-      contentHash: input.contentHash,
-      storageKey: input.storageKey,
-      fileUrl: input.fileUrl,
-      sizeBytes: input.sizeBytes,
-      mimeType: input.mimeType,
-      kind: input.kind,
-      source: input.source,
-      generationTaskId: input.generationTaskId ?? null,
-      width: input.width ?? null,
-      height: input.height ?? null,
-      durationSeconds: input.durationSeconds ?? null,
-      coverAssetId: input.coverAssetId ?? null,
-    })
-    .onConflictDoNothing({
-      target: [studioAssets.studioId, studioAssets.contentHash],
-      where: sql`deleted_at IS NULL`,
-    })
-    .returning();
-  if (inserted[0]) return { asset: toEntity(inserted[0]), deduped: false };
-  const existing = await findByStudioAndHash(input.studioId, input.contentHash);
-  if (!existing) {
-    throw new Error(
-      "studio_assets dedup conflict but no existing row (index/predicate drift)",
-    );
-  }
-  return { asset: existing, deduped: true };
+  return db.transaction(async (tx) => {
+    await maintenanceRepo.lockKey(input.storageKey, tx);
+    const retired = await maintenanceRepo.findObject(input.storageKey, tx);
+    if (retired?.retiredAt) {
+      const [canonical] = await tx.select().from(studioAssets).where(and(
+        eq(studioAssets.studioId, input.studioId),
+        eq(studioAssets.contentHash, input.contentHash),
+        isNull(studioAssets.deletedAt),
+      )).limit(1);
+      if (canonical && canonical.storageKey !== input.storageKey) return { asset: toEntity(canonical), deduped: true };
+      throw new StorageKeyRetiredError(input.storageKey);
+    }
+    const inserted = await tx
+      .insert(studioAssets)
+      .values({
+        studioId: input.studioId,
+        // Only lands on an INSERT. A dedup hit takes the onConflictDoNothing
+        // path and returns the EXISTING row, so the first producer is kept —
+        // see StudioAssetEntity.producedByUserId.
+        producedByUserId: input.producedByUserId,
+        contentHash: input.contentHash,
+        storageKey: input.storageKey,
+        fileUrl: input.fileUrl,
+        sizeBytes: input.sizeBytes,
+        mimeType: input.mimeType,
+        kind: input.kind,
+        source: input.source,
+        generationTaskId: input.generationTaskId ?? null,
+        width: input.width ?? null,
+        height: input.height ?? null,
+        durationSeconds: input.durationSeconds ?? null,
+        coverAssetId: input.coverAssetId ?? null,
+      })
+      .onConflictDoNothing({
+        target: [studioAssets.studioId, studioAssets.contentHash],
+        where: sql`deleted_at IS NULL`,
+      })
+      .returning();
+    if (inserted[0]) return { asset: toEntity(inserted[0]), deduped: false };
+    const [row] = await tx.select().from(studioAssets).where(and(
+      eq(studioAssets.studioId, input.studioId),
+      eq(studioAssets.contentHash, input.contentHash),
+      isNull(studioAssets.deletedAt),
+    )).limit(1);
+    if (!row) {
+      throw new Error(
+        "studio_assets dedup conflict but no existing row (index/predicate drift)",
+      );
+    }
+    return { asset: toEntity(row), deduped: true };
+  });
 }
 
 /**
@@ -409,6 +442,32 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
       and(inArray(studioAssets.studioId, studioIds), isNull(studioAssets.deletedAt)),
     );
   return Number(rows[0]?.total ?? 0);
+}
+
+/**
+ * Read any global live reference to an exact key using the caller's optional transaction.
+ * @param key - Exact candidate key.
+ * @param tx - Optional caller transaction.
+ * @returns Whether any studio currently references this key.
+ * @throws {Error} When the database query fails.
+ */
+export async function hasLiveStorageKey(key: string, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db).select({ id: studioAssets.id }).from(studioAssets)
+    .where(and(eq(studioAssets.storageKey, key), isNull(studioAssets.deletedAt))).limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Read a live canonical winner by immutable ledger identity.
+ * @param id - Grant's completed canonical asset.
+ * @param tx - Optional caller transaction.
+ * @returns Canonical live asset or null.
+ * @throws {Error} When the database query fails.
+ */
+export async function findLiveById(id: string, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  const [row] = await (tx ?? db).select().from(studioAssets)
+    .where(and(eq(studioAssets.id, id), isNull(studioAssets.deletedAt))).limit(1);
+  return row ? toEntity(row) : null;
 }
 
 /** A keyset boundary retaining PostgreSQL timestamp precision. */

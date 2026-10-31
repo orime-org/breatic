@@ -4,7 +4,7 @@
 /** Compatibility exports from the single backend asset repository. */
 import { assetRepo } from "@breatic/core";
 
-export type { RegisterAssetInput } from "@breatic/core";
+export { StorageKeyRetiredError, type RegisterAssetInput } from "@breatic/core";
 
 /** The shared repository implementation of findByStudioAndHash. */
 export const findByStudioAndHash: typeof assetRepo.findByStudioAndHash = assetRepo.findByStudioAndHash;
@@ -32,3 +32,7 @@ export const findCoverOf: typeof assetRepo.findCoverOf = assetRepo.findCoverOf;
 export const usageByStudio: typeof assetRepo.usageByStudio = assetRepo.usageByStudio;
 /** The shared repository implementation of usageByStudios. */
 export const usageByStudios: typeof assetRepo.usageByStudios = assetRepo.usageByStudios;
+/** The shared repository implementation of hasLiveStorageKey. */
+export const hasLiveStorageKey: typeof assetRepo.hasLiveStorageKey = assetRepo.hasLiveStorageKey;
+/** The shared repository implementation of findLiveById. */
+export const findLiveById: typeof assetRepo.findLiveById = assetRepo.findLiveById;

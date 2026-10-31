@@ -131,6 +131,8 @@ export {
   canvasProposalSchema,
   feedsOf,
   layersOf,
+  layoutFeedsOf,
+  TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
   writtenMark,

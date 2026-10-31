@@ -177,6 +177,7 @@ function mount(): ReturnType<typeof render> {
             edges={[]}
             nodes={nodes()}
             getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -253,6 +254,7 @@ describe('the container keeps its memoized children bail-able', () => {
               edges={[]}
               nodes={nodes()}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>
@@ -314,6 +316,7 @@ describe('the container keeps its memoized children bail-able', () => {
                 >[0]['nodes']
               }
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>

@@ -24,8 +24,12 @@ import {
 import { fixOn, refuse, type NodeLabel, type NodeFix, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { modelsForMode, waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
 
-/** What a node holds, which decides how it may go into a generation. */
-export type Holding = "material" | "empty" | "words";
+/**
+ * What a node holds, which decides how it may go into a generation. A
+ * template's resource lands holding a file we host, fetched once it is placed:
+ * nothing needs saying about it, yet it has no address to fill a slot with.
+ */
+export type Holding = "material" | "resource" | "empty" | "words";
 
 /** One way a node can go into a generation, and everything the proposal does to send it. */
 export interface Entry {
@@ -73,6 +77,7 @@ export function chosenModelOf(node: ProposalNode): ModelInfo | undefined {
  */
 export function holdingOf(node: ProposalNode): Holding {
   if (node.material !== undefined) return "material";
+  if (node.resource !== undefined) return "resource";
   return node.role === "written" ? "words" : "empty";
 }
 
@@ -270,6 +275,7 @@ export function holdingsOf(kind: string): readonly Holding[] {
  */
 export function holdingSubject(kind: string, holding: Holding): string {
   if (holding === "words") return "A written text node";
+  if (holding === "resource") return `${capitalised(aNode(kind))} holding a template's file`;
   return holding === "material" ? `${capitalised(aNode(kind))} holding material` : `An empty ${kind} node`;
 }
 

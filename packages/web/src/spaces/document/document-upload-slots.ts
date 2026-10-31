@@ -38,6 +38,7 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { syncBindingOf, type SyncBound } from '@web/spaces/document/document-link-tracking';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
+import { DOC_TABLE, holdsBlocks } from '@web/spaces/document/document-table-nodes';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
@@ -173,14 +174,17 @@ function placeSlot(batch: UploadBatch, k: number, doc: PMNode): { at: number; qu
  * @returns True when its line is quoted.
  */
 function isQuoted(row: PMNode | null | undefined): boolean {
-  return row?.firstChild?.attrs[QUOTED] === true;
+  // A table carries its quote on its own node, which no container wraps.
+  const content = row?.type.name === DOC_TABLE ? row : row?.firstChild;
+  return content?.attrs[QUOTED] === true;
 }
 
 /**
  * The gap between blocks a position stands for. One inside a block is lifted
  * to the gap under that block's line: the head of its nested blocks when it
  * has some, as "insert below" places a row (`insertRowForMenu`), or the gap
- * after it.
+ * after it. A table cell holds its blocks the way a block group does, so a
+ * gap in a cell stays in it (inner#1619).
  * @param doc - The document.
  * @param pos - A position.
  * @returns A position between two blocks.
@@ -189,7 +193,8 @@ export function blockGapAt(doc: PMNode, pos: number): number {
   // The top-level block group, which is the document's only child, spans 1 to size - 1.
   const $at = doc.resolve(Math.min(Math.max(pos, 1), doc.content.size - 1));
   for (let depth = $at.depth; depth > 0; depth -= 1) {
-    if ($at.node(depth).type.name !== 'blockGroup') continue;
+    const holder = $at.node(depth);
+    if (!holdsBlocks(holder)) continue;
     if (depth === $at.depth) return $at.pos;
     const row = $at.node(depth + 1);
     const children = row.lastChild;

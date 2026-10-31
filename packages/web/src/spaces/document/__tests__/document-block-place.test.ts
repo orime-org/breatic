@@ -13,7 +13,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/document-block-place';
+import { placeOnBlock, selectWordlessBlock, wordlessBlockAt } from '@web/spaces/document/document-block-place';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -71,5 +72,18 @@ describe('finding and selecting a wordless block from its element', () => {
     selectWordlessBlock(view, divider);
 
     expect(dispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('the selection for a table block (inner#1619)', () => {
+  it('is the start of its first cell\'s words', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'lead' }, tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never);
+    const { state } = editor.prosemirrorView!;
+    const tableId = (editor.document[1] as { id: string }).id;
+
+    const selection = placeOnBlock(state, tableId);
+
+    expect(state.doc.textBetween(selection.from, selection.from + 2)).toBe('a1');
   });
 });

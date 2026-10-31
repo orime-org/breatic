@@ -69,7 +69,7 @@ function open(blocks: unknown[]): Opened {
   mounted.push(editor);
   render(
     <TooltipProvider>
-      <DocumentMediaViews editor={editor} />
+      <DocumentMediaViews editor={editor} viewport={scroller} />
     </TooltipProvider>,
   );
   act(() => {

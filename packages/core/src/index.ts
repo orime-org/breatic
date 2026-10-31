@@ -206,7 +206,7 @@ export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
 export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
 export * as assetRepo from "@core/asset/asset.repo.js";
-export type { RegisterAssetInput } from "@core/asset/asset.repo.js";
+export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export {
   projectActivitiesRepo,
@@ -330,3 +330,8 @@ export {
   getAccountAttribution,
   recordReportedConsent,
 } from "@core/analytics/account.repo.js";
+
+export * from "@core/maintenance/types.js";
+export * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
+export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceStorage } from "@core/maintenance/storage.js";
+export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";

@@ -29,10 +29,10 @@ describe('Command', () => {
   it('CommandInput renders <input> with placeholder + search icon', () => {
     render(
       <Command>
-        <CommandInput placeholder='Search skills' />
+        <CommandInput placeholder='Search projects' />
       </Command>,
     );
-    const input = screen.getByPlaceholderText('Search skills');
+    const input = screen.getByPlaceholderText('Search projects');
     expect(input.tagName).toBe('INPUT');
   });
 

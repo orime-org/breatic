@@ -747,8 +747,29 @@
     {
       "idx": 106,
       "version": "7",
-      "when": 1792925232939,
-      "tag": "0106_project_asset_references",
+      "when": 1793064782839,
+      "tag": "0106_long_media_understanding",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793151689125,
+      "tag": "0107_drop_skill_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793264153142,
+      "tag": "0108_storage_reclaim_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1793417179001,
+      "tag": "0109_project_asset_references",
       "breakpoints": true
     }
   ]

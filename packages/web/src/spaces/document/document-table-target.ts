@@ -13,9 +13,9 @@
  * is cleared, and the menu has nothing left to act on. The plugin's `apply` is
  * the one place the target changes; a menu sets and clears it with a meta.
  *
- * A row or column menu also names its line, and the plugin marks every cell
- * of that line while the menu is open, in the look of selected cells, so the
- * reader sees what the commands will reach (the confirmed demo's flow, step
+ * A menu also names the cells it acts on (its row, its column, or the cell
+ * button's one cell), and the plugin marks them while the menu is open, in the
+ * look of selected cells, so the reader sees what the commands will reach (the confirmed demo's flow, step
  * five). The reader's own selection is left as it was.
  */
 
@@ -24,21 +24,18 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
-import { cellsOfScope } from '@web/spaces/document/document-table-run';
+import { cellsOfScope, type CellScope } from '@web/spaces/document/document-table-run';
 
-/** The line a row or column menu acts on. */
-type Line = 'row' | 'column';
-
-/** The target cell, and the line its menu acts on when it is a line's. */
+/** The target cell, and the cells its menu acts on: its row, its column or itself. */
 interface Held {
   readonly pos: number;
-  readonly line: Line | null;
+  readonly line: CellScope;
 }
 
 /** What a menu holds, or null when no menu holds a cell. */
 type Target = Held | null;
 
-/** The class on each cell of the held line. */
+/** The class on each cell the open menu acts on. */
 const TARGET_CLASS = 'doc-table-target';
 
 /** Where the target lives. */
@@ -70,13 +67,13 @@ function tableTargetPlugin(): Plugin<Target> {
     }),
     props: {
       /**
-       * Marks the cells of the held line.
+       * Marks the cells the open menu acts on.
        * @param state - The editor state.
        * @returns The marks, or none.
        */
       decorations: (state): DecorationSet | null => {
         const held = tableTargetKey.getState(state) ?? null;
-        if (held === null || held.line === null) return null;
+        if (held === null) return null;
         const marks = cellsOfScope(state.doc, held.pos, held.line).map((pos) =>
           Decoration.node(pos, pos + (state.doc.nodeAt(pos)?.nodeSize ?? 0), { class: TARGET_CLASS }),
         );
@@ -99,9 +96,9 @@ export function tableTargetOf(state: EditorState): number | null {
  * Sets or clears the cell a table menu acts on.
  * @param view - The editor view.
  * @param pos - The position before the cell, or null to clear it.
- * @param line - The line a row or column menu acts on; none for the cell button.
+ * @param line - The cells its menu acts on: the row, the column or the one cell.
  */
-export function setTableTarget(view: EditorView, pos: number | null, line: Line | null = null): void {
+export function setTableTarget(view: EditorView, pos: number | null, line: CellScope = 'cell'): void {
   const held: Target = pos === null ? null : { pos, line };
   view.dispatch(view.state.tr.setMeta(tableTargetKey, held).setMeta('addToHistory', false));
 }

@@ -11,6 +11,7 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
     destroy: ReturnType<typeof vi.fn>;
     receivedOnOpenPayload?: Event;
     emit: (event: string, data?: unknown) => void;
+    config: Record<string, unknown>;
   }>,
   providerInstances: [] as Array<{
     destroy: ReturnType<typeof vi.fn>;
@@ -33,7 +34,9 @@ vi.mock('@hocuspocus/provider', () => ({
     emit(event: string, data?: unknown): void {
       for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
     }
-    constructor() {
+    config: Record<string, unknown>;
+    constructor(config: Record<string, unknown>) {
+      this.config = config;
       wsInstances.push(this);
     }
   },
@@ -123,6 +126,15 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     releaseDocProvider(META);
     vi.runOnlyPendingTimers();
     expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('WU08 builds the shared socket on ChunkingWebSocket, once per tab', async () => {
+    const { ChunkingWebSocket } = await import('@web/data/yjs/chunking-websocket');
+    acquireDocProvider(META, getDoc(META), '/ws');
+    acquireDocProvider('project-p1/canvas-s1', getDoc('project-p1/canvas-s1'), '/ws');
+    expect(wsInstances).toHaveLength(1);
+    expect(wsInstances[0]!.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
+    expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws`);
   });
 
   it('creates ONE shared socket + attaches the provider on first acquire', () => {

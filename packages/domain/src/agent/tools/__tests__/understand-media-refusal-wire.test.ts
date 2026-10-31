@@ -4,11 +4,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as Shared from "@breatic/shared";
+import type * as Core from "@breatic/core";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { toolOptions, usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 const httpRequestMock = vi.fn();
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof Core>(),
   getRawEnvVar: (name: string): string | undefined => name === "OPENROUTER_API_KEY" ? "unit-test-key" : undefined,
   getAgentConfig: () => ({
     understand_media_max_items: 10,

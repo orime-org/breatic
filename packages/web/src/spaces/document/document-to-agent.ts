@@ -21,6 +21,8 @@ import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
+import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -76,11 +78,14 @@ function selectedWords(view: EditorView): string {
  * @returns The Markdown, without the exporter's closing newline.
  */
 function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
-  const { externalHTML, markdown } = selectedFragmentToHTML(view, editor);
   const { $from, $to } = view.state.selection;
   const insideOneBlock =
     $from.parent.isTextblock && $from.sameParent($to) && $from.parent.type.spec.code !== true;
-  return (insideOneBlock ? cleanHTMLToMarkdown(`<p>${externalHTML}</p>`) : markdown).trimEnd();
+  if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${selectedFragmentToHTML(view, editor).externalHTML}</p>`).trimEnd();
+  // Selected cells, or a range through a table: the plain text copy writes,
+  // where BlockNote's export empties or flattens the cells.
+  const picked = tableClippedBlocks(view);
+  return (picked === null ? selectedFragmentToHTML(view, editor).markdown : blocksMarkdown(editor, picked.blocks)).trimEnd();
 }
 
 /**
@@ -109,7 +114,7 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
   if (block === undefined || node === undefined) {
     throw new Error(`no block ${blockId} in the document`);
   }
-  const markdown = editor.blocksToMarkdownLossy([block]).trimEnd();
+  const markdown = blocksMarkdown(editor, [block]);
   const words = node.textBetween(0, node.content.size, '\n', '\n');
   return textItem(`document-block-${blockId}`, nameFrom(words), markdown);
 }

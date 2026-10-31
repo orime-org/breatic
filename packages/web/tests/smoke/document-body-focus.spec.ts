@@ -191,7 +191,8 @@ test('a body let go draws neither its text selection nor its selected cells (A20
   await page.getByTestId('doc-table-size-2-2').click();
   const first = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
   const last = (await page.locator(`${EDITOR} td`).last().boundingBox())!;
-  await page.mouse.move(first.x + 10, first.y + first.height / 2);
+  // On the cell's words, right of a first-column block's handle on the table's left line.
+  await page.mouse.move(first.x + 20, first.y + first.height / 2);
   await page.mouse.down();
   await page.mouse.move(last.x + last.width - 10, last.y + last.height / 2, { steps: 6 });
   await page.mouse.up();
@@ -269,7 +270,8 @@ async function insertTable(p: Page): Promise<void> {
 async function selectCells(p: Page): Promise<void> {
   const first = (await p.locator(`${EDITOR} td`).first().boundingBox())!;
   const last = (await p.locator(`${EDITOR} td`).last().boundingBox())!;
-  await p.mouse.move(first.x + 10, first.y + first.height / 2);
+  // On the cell's words, right of a first-column block's handle on the table's left line.
+  await p.mouse.move(first.x + 20, first.y + first.height / 2);
   await p.mouse.down();
   await p.mouse.move(last.x + last.width - 10, last.y + last.height / 2, { steps: 6 });
   await p.mouse.up();

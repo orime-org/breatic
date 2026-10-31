@@ -243,6 +243,8 @@ export {
   occurrences,
   feedsOf,
   layersOf,
+  layoutFeedsOf,
+  TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
   markReadsBack,
   markText,
@@ -385,6 +387,7 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
   SyncConfirmRequestSchema,
@@ -767,6 +770,41 @@ export {
 // What a stored asset is called, which is the last segment of the address it
 // is stored at — read by both ends that name a file while refusing it.
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
+export {
+  bisectMediaCore,
+  expandMediaDecodeWindow,
+  planLongMediaSegments,
+  type MediaCoreInterval,
+  type MediaDecodeWindow,
+  type LongMediaInputRange,
+  type LongMediaPlanLimits,
+  type LongMediaPlannedSegment,
+} from "@shared/media/long-media-interval.js";
+export {
+  MediaInputDescriptorSchema,
+  type MediaInputDescriptor,
+} from "@shared/media/long-media-schema.js";
+export {
+  LongMediaProbeReportSchema,
+  LongMediaInputSchema,
+  readLongMediaProbeReport,
+  type LongMediaProbeReport,
+} from "@shared/media/long-media-probe.js";
+export {
+  computeLongMediaInputsDigest,
+  LongMediaPlanRequestSchema,
+  readLongMediaPlanRequest,
+  type LongMediaPlanRequest,
+} from "@shared/media/long-media-plan.js";
+export {
+  computeLongMediaJobRequestDigest,
+  LongMediaJobRequestSchema,
+  readLongMediaJobRequest,
+  verifyLongMediaJobRequest,
+  type LongMediaJobPayload,
+  type LongMediaJobRequest,
+  type LongMediaSourceReference,
+} from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
 export {
@@ -776,11 +814,35 @@ export {
 } from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
-  findTemplate,
-  templatePrompt,
+  TEMPLATE_GOALS,
+  templateAnchor,
+  templateGoalsFor,
   templatesFor,
   type GenerationTemplate,
+  type TemplateEdge,
+  type TemplateGenerateNode,
+  type TemplateGoal,
+  type TemplateInput,
+  type TemplateNodeKey,
+  type TemplateResourceNode,
+  type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export {
+  expandTemplate,
+  matchTemplateInstance,
+  templateGuideNode,
+  templateMarkTargets,
+  templateNodeDefaults,
+  templateSkeleton,
+  type TemplateExpansionInput,
+  type TemplateExpansionResult,
+  type TemplateGraph,
+  type TemplateGraphNode,
+  type TemplateInstanceMatch,
+  type TemplateKeyMatch,
+  type TemplateMarkTarget,
+  type TemplateSkeleton,
+} from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 

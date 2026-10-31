@@ -44,6 +44,8 @@ The Update button reloads the page through the Project `beforeunload` guard. Tha
 
 Release the collab service with support for `sync:confirm` and `sync:confirmed` before releasing the web build that uses those messages. The receipt schema and Project confirmation lifecycle are described in [Canvas collaboration](../docs/ARCHITECTURE.md#canvas-collaboration).
 
+Release the collab service that reassembles chunked messages no later than the web build that sends them. That web build sends any collaboration message over 128 KiB as a text declaration followed by binary chunks; a collab service without reassembly reads the declaration as an ordinary message, cannot decode it and closes the connection, so large pastes and offline catch-ups fail until collab is updated. Tabs opened before the web release keep sending such messages whole, and the updated collab closes those connections with code 1009 until the tab reloads.
+
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
 
 ## Product analytics (off by default)

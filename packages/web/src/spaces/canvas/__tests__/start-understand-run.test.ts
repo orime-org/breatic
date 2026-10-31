@@ -27,6 +27,7 @@ vi.mock('@web/data/api/canvas', () => ({
     transcribe: vi.fn(async () => ({ task_id: 't-2', status: 'pending' })),
   },
   getCachedUnderstandMaxBytes: vi.fn(() => 20 * 1024 * 1024),
+  getCachedUnderstandLongMediaMaxBytes: vi.fn(() => 2 * 1024 * 1024 * 1024),
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn() },
@@ -37,7 +38,10 @@ vi.mock('@breatic/shared', async (importOriginal) => ({
 }));
 
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
-import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import {
+  canvasApi,
+  getCachedUnderstandMaxBytes,
+} from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 
@@ -143,6 +147,22 @@ describe('one press of Understand', () => {
       expect.objectContaining({ source_mime_type: RUN.source.mimeType }),
       expect.any(String),
     );
+  });
+
+  it('starts an oversized audio run under the long-media source ceiling', async () => {
+    await startUnderstandRun({
+      ...RUN,
+      source: {
+        ...RUN.source,
+        kind: 'audio',
+        mimeType: 'audio/wav',
+        sizeBytes: 20 * 1024 * 1024 + 1,
+      },
+    });
+
+    expect(addNode).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   // The answer becomes this node's body, and the reader opens it in the

@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runTool } from "../run-tool.js";
+import { runTool, runToolBounded } from "../run-tool.js";
 
 const BYTES = new TextEncoder().encode("abc");
 
@@ -92,5 +92,28 @@ describe("a deadline that fires mid-read", () => {
     expect(out).toBeNull();
     expect(errors).toHaveBeenCalledTimes(1);
     expect(errors.mock.calls[0]?.[0]).toBe("media_tool_failed");
+  });
+});
+
+describe("a bounded encoded output", () => {
+  it("returns the completed bytes when they fit the cap", async () => {
+    await expect(runToolBounded("node", ["-e", "process.stdout.write('abc')"], {
+      maxBytes: 3,
+      signal: AbortSignal.timeout(5_000),
+    })).resolves.toEqual(Buffer.from("abc"));
+  });
+
+  it("reports over-cap output separately and never retains bytes beyond the cap", async () => {
+    await expect(runToolBounded("node", ["-e", "process.stdout.write('abcdef')"], {
+      maxBytes: 3,
+      signal: AbortSignal.timeout(5_000),
+    })).resolves.toBe("over_cap");
+  });
+
+  it("returns no bytes when the encoder exits unsuccessfully", async () => {
+    await expect(runToolBounded("node", ["-e", "process.exit(2)"], {
+      maxBytes: 3,
+      signal: AbortSignal.timeout(5_000),
+    })).resolves.toBeNull();
   });
 });

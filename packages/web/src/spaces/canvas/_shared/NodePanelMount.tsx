@@ -12,8 +12,8 @@ interface NodePanelMountProps {
   children: React.ReactNode;
 }
 
-/** xyflow's own gap between a node and its toolbar, in screen pixels. */
-const TOOLBAR_GAP_PX = 10;
+/** The gap between a node and the panel hung under it, in screen pixels (xyflow's own toolbar gap). */
+export const NODE_PANEL_GAP_PX = 10;
 
 /**
  * Hangs a panel under its node. The generation panels and the mini-tool panel
@@ -27,7 +27,7 @@ const TOOLBAR_GAP_PX = 10;
  */
 export function NodePanelMount({ nodeId, drop = 0, children }: NodePanelMountProps): React.JSX.Element {
   return (
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom} offset={TOOLBAR_GAP_PX + drop}>
+    <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom} offset={NODE_PANEL_GAP_PX + drop}>
       {children}
     </NodeToolbar>
   );

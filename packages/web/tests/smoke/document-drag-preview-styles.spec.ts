@@ -176,17 +176,17 @@ function installComparer(): void {
   };
 
   const originalsOf = (content: Element, editor: Element): Array<[Element, Element]> => {
+    if (content.matches('[data-node-type="docTable"]')) {
+      const text = content.querySelector('td, th')?.textContent ?? '';
+      const cell = [...editor.querySelectorAll('td, th')].find((c) => c.textContent === text)!;
+      return [[content, cell.closest('[data-node-type="docTable"]')!]];
+    }
     const rows = [...content.querySelectorAll('.bn-block-outer[data-id]')];
     const tops = [content.matches('.bn-block-outer[data-id]') ? content : null, ...rows]
       .filter((row): row is Element => row !== null)
       .filter((row) => row === content || !row.parentElement!.closest('.bn-block-outer[data-id]') || !content.contains(row.parentElement!.closest('.bn-block-outer[data-id]')));
     if (tops.length > 0) {
       return tops.map((row) => [row, editor.querySelector(`.bn-block-outer[data-id="${row.getAttribute('data-id')}"]`)!]);
-    }
-    if (content.matches('[data-content-type="table"]')) {
-      const text = content.querySelector('td, th')?.textContent ?? '';
-      const cell = [...editor.querySelectorAll('td, th')].find((c) => c.textContent === text)!;
-      return [[content, cell.closest('[data-content-type="table"]')!]];
     }
     const media = content.querySelector('img, audio, video, canvas')?.tagName.toLowerCase();
     const box = [...editor.querySelectorAll('[data-media-box]')].find((b) => b.querySelector(media === 'canvas' ? 'video' : media ?? '*') !== null)!;
@@ -357,11 +357,22 @@ async function openDocument(p: Page): Promise<void> {
           ],
         };
       };
-      const cell = (type: string, value: string, attrs: Record<string, unknown> = {}): unknown => ({
-        type,
-        attrs,
-        content: [{ type: 'tableParagraph', content: value === '' ? [] : [text(value)] }],
-      });
+      const cell = (type: string, value: string, attrs: Record<string, unknown> = {}): unknown => {
+        n += 1;
+        return {
+          type,
+          attrs: { id: `preview-${n}`, ...attrs },
+          content: [{ type: 'blockContainer', attrs: { id: `preview-${n}-line` }, content: [{ type: 'paragraph', content: value === '' ? [] : [text(value)] }] }],
+        };
+      };
+      const row = (cells: unknown[]): unknown => {
+        n += 1;
+        return { type: 'docTableRow', attrs: { id: `preview-${n}` }, content: cells };
+      };
+      const table = (attrs: Record<string, unknown>, rows: unknown[]): unknown => {
+        n += 1;
+        return { type: 'docTable', attrs: { id: `preview-${n}`, ...attrs }, content: rows };
+      };
       const quoted = { quoted: true };
       const doc = {
         type: 'doc',
@@ -395,14 +406,14 @@ async function openDocument(p: Page): Promise<void> {
               block('codeBlock', {}, [text(`const id = "${unbroken}";`)]),
               block('paragraph', {}, [text(url)]),
               block('divider', {}),
-              block('table', {}, [
-                { type: 'tableRow', content: [cell('tableHeader', 'Head one'), cell('tableHeader', 'Head two')] },
-                { type: 'tableRow', content: [cell('tableCell', unbroken.slice(0, 120)), cell('tableCell', 'b2')] },
-                { type: 'tableRow', content: [cell('tableCell', 'a3', { backgroundColor: 'blue' }), cell('tableCell', 'b3')] },
+              table({}, [
+                row([cell('docTableHeader', 'Head one'), cell('docTableHeader', 'Head two')]),
+                row([cell('docTableCell', unbroken.slice(0, 120)), cell('docTableCell', 'b2')]),
+                row([cell('docTableCell', 'a3', { backgroundColor: 'blue' }), cell('docTableCell', 'b3')]),
               ]),
-              block('table', quoted, [
-                { type: 'tableRow', content: [cell('tableCell', 'q1'), cell('tableCell', 'A quoted table cell holding a long sentence of words')] },
-                { type: 'tableRow', content: [cell('tableCell', 'q2'), cell('tableCell', 'r2')] },
+              table(quoted, [
+                row([cell('docTableCell', 'q1'), cell('docTableCell', 'A quoted table cell holding a long sentence of words')]),
+                row([cell('docTableCell', 'q2'), cell('docTableCell', 'r2')]),
               ]),
               block('heading', { ...quoted, level: 1 }, [text('Quoted heading first')]),
               block('paragraph', quoted, [text('After the quoted heading')]),
@@ -570,7 +581,9 @@ async function compareKept(p: Page): Promise<Array<{ diffs: string[]; unmatched:
  */
 async function centreOf(p: Page, selector: string): Promise<{ x: number; y: number }> {
   const target = p.locator(`${EDITOR} ${selector}`).first();
-  await target.scrollIntoViewIfNeeded();
+  // In the middle of the window: a drag cancelled with Escape near the window's
+  // edge leaves Chromium under Playwright scrolling the body on its own.
+  await target.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
   const box = await target.boundingBox();
   if (box === null) throw new Error(`no box for ${selector}`);
   return { x: box.x + Math.min(40, box.width / 2), y: box.y + box.height / 2 };
@@ -689,7 +702,11 @@ test('A1: a short line, and a narrow table\'s row and cells, draw at their own s
   await editor.click();
   await editor.evaluate((el) => {
     const text = (value: string): unknown => ({ type: 'text', text: value });
-    const cell = (value: string): unknown => ({ type: 'tableCell', content: [{ type: 'tableParagraph', content: [text(value)] }] });
+    const cell = (value: string): unknown => ({
+      type: 'docTableCell',
+      attrs: { id: `drawn-${value}` },
+      content: [{ type: 'blockContainer', attrs: { id: `drawn-${value}-line` }, content: [{ type: 'paragraph', content: [text(value)] }] }],
+    });
     (el as unknown as { editor: { commands: { setContent: (c: unknown) => void } } }).editor.commands.setContent({
       type: 'doc',
       content: [{
@@ -697,15 +714,12 @@ test('A1: a short line, and a narrow table\'s row and cells, draw at their own s
         content: [
           { type: 'blockContainer', attrs: { id: 'drawn-1' }, content: [{ type: 'bulletListItem', content: [text('Bullet one')] }] },
           {
-            type: 'blockContainer',
+            type: 'docTable',
             attrs: { id: 'drawn-2' },
-            content: [{
-              type: 'table',
-              content: [
-                { type: 'tableRow', content: [cell('g1'), cell('h1'), cell('i1')] },
-                { type: 'tableRow', content: [cell('g2'), cell('h2'), cell('i2')] },
-              ],
-            }],
+            content: [
+              { type: 'docTableRow', attrs: { id: 'drawn-row-1' }, content: [cell('g1'), cell('h1'), cell('i1')] },
+              { type: 'docTableRow', attrs: { id: 'drawn-row-2' }, content: [cell('g2'), cell('h2'), cell('i2')] },
+            ],
           },
           { type: 'blockContainer', attrs: { id: 'drawn-3' }, content: [{ type: 'paragraph', content: [] }] },
         ],
@@ -755,8 +769,12 @@ test('A1: an indented quoted table draws its row in a frame as wide as the body\
   await editor.evaluate((el) => {
     let n = 0;
     const text = (value: string): unknown => ({ type: 'text', text: value });
-    const cell = (value: string): unknown => ({ type: 'tableCell', attrs: { colwidth: [240] }, content: [{ type: 'tableParagraph', content: [text(value)] }] });
-    const row = (r: number): unknown => ({ type: 'tableRow', content: Array.from({ length: 6 }, (_, c) => cell(`r${r}c${c}`)) });
+    const cell = (value: string): unknown => ({
+      type: 'docTableCell',
+      attrs: { id: `quoted-table-${value}`, colwidth: [240] },
+      content: [{ type: 'blockContainer', attrs: { id: `quoted-table-${value}-line` }, content: [{ type: 'paragraph', content: [text(value)] }] }],
+    });
+    const row = (r: number): unknown => ({ type: 'docTableRow', attrs: { id: `quoted-table-row-${r}` }, content: Array.from({ length: 6 }, (_, c) => cell(`r${r}c${c}`)) });
     const block = (type: string, attrs: Record<string, unknown>, content: unknown[], children?: unknown[]): unknown => {
       n += 1;
       return {
@@ -770,7 +788,7 @@ test('A1: an indented quoted table draws its row in a frame as wide as the body\
       content: [{
         type: 'blockGroup',
         content: [
-          block('paragraph', { quoted: true }, [text('Quoted parent')], [block('table', { quoted: true }, [row(1), row(2), row(3)])]),
+          block('paragraph', { quoted: true }, [text('Quoted parent')], [{ type: 'docTable', attrs: { id: 'quoted-table', quoted: true }, content: [row(1), row(2), row(3)] }]),
           block('paragraph', {}, [text('After')]),
         ],
       }],
@@ -779,7 +797,7 @@ test('A1: an indented quoted table draws its row in a frame as wide as the body\
   // Indented a level under the quoted line, wider than its frame and scrolled.
   const body = await page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first().evaluate((viewport) => {
     viewport.scrollLeft = 200;
-    const block = viewport.closest('[data-content-type="table"]') as HTMLElement;
+    const block = viewport.closest('[data-node-type="docTable"]') as HTMLElement;
     return { frame: viewport.clientWidth, depth: block.style.getPropertyValue('--quote-depth') };
   });
   expect(body.depth).toBe('1');

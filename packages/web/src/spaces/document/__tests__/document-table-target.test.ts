@@ -15,6 +15,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { cellAt, deleteRowAt, insertColumn, insertRow, setCellsAttr } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -39,10 +40,7 @@ function open(): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'above' },
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
-    },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
   ] as never);
   return editor;
 }
@@ -56,7 +54,7 @@ function open(): Editor {
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'tableCell' && node.textContent === text) at = pos;
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === text) at = pos;
     return at < 0;
   });
   return at;
@@ -169,11 +167,11 @@ describe('the cells a row or column menu acts on (A6)', () => {
     expect(marked()).toEqual(['b1', 'b2']);
   });
 
-  it('are not marked for the cell button, which acts on its one cell', () => {
+  it('is the one cell, marked, while the cell button\'s menu holds it', () => {
     const editor = open();
-    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'));
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'), 'cell');
 
-    expect(marked()).toEqual([]);
+    expect(marked()).toEqual(['b2']);
   });
 
   it('follow the row when a row is added above it, and go when the menu lets go', () => {
