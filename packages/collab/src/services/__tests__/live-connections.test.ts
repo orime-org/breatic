@@ -306,14 +306,17 @@ describe("live connections — a refresh carries the time its socket was last he
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
-    // A pong, a message 50 ms later held back behind it, then nothing: the
-    // socket was last heard at 50 ms, whenever the held-back refresh runs.
+    // A pong, then two messages held back behind it, then nothing: the
+    // socket was last heard at 10 050 ms, the second of the two, whenever
+    // the held-back refresh runs.
     fire(connection, "pong");
     vi.advanceTimersByTime(50);
     fire(connection, "message");
+    vi.advanceTimersByTime(10_000);
+    fire(connection, "message");
     vi.advanceTimersByTime(PING);
 
-    expect(calls).toEqual([[0, 0], [PING / 2, 50]]);
+    expect(calls).toEqual([[0, 0], [PING / 2, 10_050]]);
   });
 
   it("hands an immediate refresh the wall-clock time it was heard, whatever the gate's clock reads", () => {
