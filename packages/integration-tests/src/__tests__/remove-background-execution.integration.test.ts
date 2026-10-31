@@ -33,7 +33,7 @@ const PREDICTION = "fixture-prediction-original";
 const PROVIDER_URL = "https://provider.example.test/result.webm";
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
 const BODY = { video: "https://assets.example.test/video/source.mp4", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
-const GOLDEN: AcceptedMiniToolExecution = {
+const GOLDEN: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }> = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
   binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: BODY.video, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
@@ -43,7 +43,7 @@ const GOLDEN: AcceptedMiniToolExecution = {
   model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY, credits: 30,
   requestFingerprint: "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e", planFingerprint: "8bc4ec38c3f353492d0f7feca81963d398171ae1f42e66e146723f82962cedf4",
 };
-interface Fixture extends StudioFixture { plan: AcceptedMiniToolExecution; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
+interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;

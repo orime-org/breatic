@@ -11,7 +11,7 @@ import { seedStudioFixture } from "../../../../server/src/__tests__/integration/
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
 interface Fixture {
-  body: MiniToolPlannedRequest;
+  body: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>;
   userId: string;
   otherEditorId: string;
   viewerId: string;
@@ -38,7 +38,7 @@ interface StoredTask {
 }
 
 // inner#1306: the independent admission oracle supplies these request literals.
-const GOLDEN_BODY: MiniToolPlannedRequest = {
+const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> = {
   tool: "video.remove-bg",
   project_id: "10000000-0000-4000-8000-000000000001",
   space_id: "20000000-0000-4000-8000-000000000001",

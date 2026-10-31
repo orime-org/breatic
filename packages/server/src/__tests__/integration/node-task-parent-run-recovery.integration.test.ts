@@ -93,7 +93,8 @@ async function admitted(): Promise<ExecutionFixture> {
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { Cookie: await cookie(f.userId), "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify(body) });
   expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: body.run_id, status: "pending" } });
   const context = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
-  const plan = context.execution; const record = await miniToolExecutionService.getMiniToolExecution(f.projectId, body.run_id, viewerId);
+  const plan = context.execution; if (plan.tool !== "video.remove-bg") throw new Error("Expected removal fixture plan");
+  const record = await miniToolExecutionService.getMiniToolExecution(f.projectId, body.run_id, viewerId);
   const assetId = randomUUID(); const key = `video/parent-winner/${assetId}.webm`; const canonicalURL = (await getStorageAdapter()).publicUrl(key);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
     VALUES (${assetId},${f.studioId},${"b".repeat(64)},${key},${canonicalURL},1588436,'video/webm','video','ai',${f.userId},${body.run_id},960,540,5.013)`;

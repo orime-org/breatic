@@ -48,6 +48,7 @@ export async function runMiniToolRemoveBackground(
   onProviderReturned?: (stepId: string) => void,
 ): Promise<{ asset: StudioAssetEntity; cover: StudioAssetEntity | null }> {
   const { task, execution } = await readMiniToolExecutionPlan(taskId);
+  if (execution.tool !== "video.remove-bg") throw new Error("Planned container execution requires its container runner");
   const [owned] = await upstreamStepRepo.ensureSteps(task.id, [{ kind: "generate", endpoint: execution.provider.model_id, itemIndex: 0 }]);
   if (owned === undefined || owned.kind !== "generate" || owned.endpoint !== execution.provider.model_id || owned.itemIndex !== 0) {
     throw new Error("Video removal lost its original provider step");

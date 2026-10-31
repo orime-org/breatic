@@ -455,17 +455,39 @@ export async function storeMiniToolExecutionRecord(id: string, record: Record<st
  * @param data.taskType - The planned output medium.
  * @param data.model - The internally selected model.
  * @param data.params - The complete immutable execution namespace.
+ * @param data.result - Initial public output slots, when the lane initializes them at admission.
+ * @param transaction - Retry arbitration transaction, when present.
  * @returns Whether this caller inserted the durable winner.
  * @throws {Error} When the database write fails.
  */
 export async function claimMiniToolExecutionTask(data: {
   id: string; userId: string; projectId: string; spaceId: string;
-  taskType: MiniToolMedium; model: string; params: Record<string, unknown>;
-}): Promise<boolean> {
-  const rows = await db.insert(tasks).values({
+  taskType: MiniToolMedium; model: string; params: Record<string, unknown>; result?: Record<string, unknown>;
+}, transaction?: DbTx): Promise<boolean> {
+  const rows = await (transaction ?? db).insert(tasks).values({
     ...data, mode: "append", source: "mini_tool",
   }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
   return rows.length === 1;
+}
+
+/**
+ * Detect output-node reservations, including claimed tasks whose node rows have not opened yet.
+ * @param projectId - The target Project.
+ * @param spaceId - The original canvas Space.
+ * @param nodeIds - Exact original output destinations.
+ * @param tx - The transaction holding the immutable original execution lock.
+ * @returns Whether a pending or running planned execution already owns any destination.
+ * @throws {Error} When the database read fails.
+ */
+export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId: string, nodeIds: string[], tx: DbTx): Promise<boolean> {
+  const rows = await tx.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks}
+    WHERE ${tasks.projectId} = ${projectId} AND ${tasks.spaceId} = ${spaceId}
+      AND ${tasks.source} = 'mini_tool' AND ${tasks.status} IN ('pending', 'running')
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(${tasks.params}->'miniToolExecution'->'outputs') AS output
+        WHERE output->>'nodeId' IN (${sql.join(nodeIds.map((id) => sql`${id}`), sql`, `)}))
+    LIMIT 1`);
+  return rows.length > 0;
 }
 
 /**

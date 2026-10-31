@@ -22,7 +22,7 @@ import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./stud
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { executionSnapshot, seedExecution, type ExecutionFixture } from "../../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 
-const BODY: MiniToolPlannedRequest = {
+const BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> = {
   tool: "video.remove-bg",
   project_id: "10000000-0000-4000-8000-000000000001",
   space_id: "20000000-0000-4000-8000-000000000001",
@@ -43,7 +43,7 @@ const BODY: MiniToolPlannedRequest = {
   outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
 };
 
-interface Fixture extends StudioFixture { body: MiniToolPlannedRequest; viewerId: string; otherId: string; sourceId: string; sourceStudioId: string; sourceKey: string; sourceHash: string }
+interface Fixture extends StudioFixture { body: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>; viewerId: string; otherId: string; sourceId: string; sourceStudioId: string; sourceKey: string; sourceHash: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown> | null; error_message: string | null; billed_at: string | null }
 let pg: ReturnType<typeof createPgClient>;
 let queue: Queue;
@@ -133,6 +133,7 @@ async function accepted(f: Fixture, response: Response): Promise<void> {
  */
 async function workerFacts(f: Fixture, completed: boolean): Promise<void> {
   const entered = await miniToolExecutionService.startMiniToolExecution(f.body.run_id, f.body.run_id);
+  if (entered.execution.tool !== "video.remove-bg") throw new Error("Expected removal fixture plan");
   const [s] = await upstreamStepRepo.ensureSteps(f.body.run_id, [{ kind: "generate", endpoint: entered.execution.provider.model_id, itemIndex: 0 }]); if (!s) throw new Error("Missing controlled worker step");
   const deadlineAt = entered.task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms; const attemptId = randomUUID();
   await beginMiniToolStepAttempt({ taskId: f.body.run_id, stepId: s.id, attemptId, deadlineAt, requestBody: { ...entered.execution.body }, chargeTo: "user" });

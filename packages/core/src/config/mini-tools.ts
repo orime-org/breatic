@@ -29,6 +29,15 @@ const opSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
+// Initial ceilings reuse the existing per-job output contract and video cut precheck,
+// not measured Std4 throughput; capacity qualification is still outstanding.
+const executionDefaults = { container_class: "MiniToolContainerStd4" as const, precheck_seconds: 300, max_outputs: 8 };
+const containerExecutionSchema = z.strictObject({
+  container_class: z.literal("MiniToolContainerStd4").default(executionDefaults.container_class),
+  precheck_seconds: z.number().positive().default(executionDefaults.precheck_seconds),
+  max_outputs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(executionDefaults.max_outputs),
+});
+
 const analysisProfileSchema = z.strictObject({
   id: z.string().min(1),
   version: z.string().min(1),
@@ -64,7 +73,9 @@ export const miniToolsConfigSchema = z
     poll_interval_ms: z.number().int().positive(),
     executions: z.strictObject({
       "video.remove-bg": z.strictObject({ model: z.string().min(1) }),
-    }).default({ "video.remove-bg": { model: "bria-fibo-video-background-remover" } }),
+      "video.extract-frames": containerExecutionSchema.default(executionDefaults),
+      "video.split": containerExecutionSchema.default(executionDefaults),
+    }).default({ "video.remove-bg": { model: "bria-fibo-video-background-remover" }, "video.extract-frames": executionDefaults, "video.split": executionDefaults }),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
       // Every uploadable video gets a presentation and a ledger: this equals storage.upload.max_upload_bytes.
@@ -116,6 +127,11 @@ export const miniToolsConfigSchema = z
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {
       ctx.addIssue({ code: "custom", path: ["presentation", "container_class"], message: "Presentation names an undeclared container class" });
+    }
+    for (const tool of ["video.extract-frames", "video.split"] as const) {
+      if (!(config.executions[tool].container_class in config.classes)) {
+        ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });
+      }
     }
     for (const [op, spec] of Object.entries(config.ops)) {
       if (!(spec.container_class in config.classes)) {

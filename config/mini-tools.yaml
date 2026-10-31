@@ -12,6 +12,16 @@ poll_interval_ms: 5000
 executions:
   video.remove-bg:
     model: "bria-fibo-video-background-remover"
+  # Provisional: reuse the existing eight-output job contract and cut's 300 s
+  # precheck, not measured capacity. Std4 worst-sample qualification is pending.
+  video.extract-frames:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+    max_outputs: 8
+  video.split:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
+    max_outputs: 8
 
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:

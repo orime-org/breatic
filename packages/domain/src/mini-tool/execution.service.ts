@@ -136,8 +136,10 @@ export async function completeResolvedMiniToolExecutionConsumptionSet(taskId: st
   const steps = await upstreamStepRepo.listSteps(taskId, tx);
   // The remove-background executor declares exactly this provider step before IO.
   // Missing execution facts are not a proof of a complete empty call set.
+  if (plan.execution.tool !== "video.remove-bg") return;
+  const providerModel = plan.execution.provider.model_id;
   if (!steps.some((step) => step.position === 0 && step.kind === "generate"
-    && step.endpoint === plan.execution.provider.model_id && step.itemIndex === 0)) return;
+    && step.endpoint === providerModel && step.itemIndex === 0)) return;
   if (steps.some((step) => step.output.miniToolStep !== undefined
     && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep)))) return;
   await completeMiniToolConsumptionSet(taskId, tx);

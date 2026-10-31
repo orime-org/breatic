@@ -11,7 +11,7 @@ import { seedStudioFixture } from "../../../../server/src/__tests__/integration/
 
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
 const BODY = { video: "https://assets.example.test/video/source.mp4", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
-const GOLDEN: AcceptedMiniToolExecution = {
+const GOLDEN: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }> = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
   binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: BODY.video, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
@@ -25,7 +25,7 @@ const GOLDEN: AcceptedMiniToolExecution = {
 export type FixturePg = ReturnType<typeof createPgClient>;
 export interface ExecutionFixture {
   taskId: string; userId: string; viewerId: string; projectId: string; studioId: string;
-  plan: AcceptedMiniToolExecution; record: MiniToolExecutionRecord; registered: MiniToolExecutionRegistered;
+  plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; record: MiniToolExecutionRecord; registered: MiniToolExecutionRegistered;
 }
 /** Seed original F, a real parent, membership and registered canonical rows, with no network or media processing.
  * @throws {Error} On a fixture SQL failure.

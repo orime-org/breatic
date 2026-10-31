@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolSourceBindingSchema, type MiniToolSourceBinding } from "@shared/mini-tools/analysis-record.js";
-import type { MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
+import { miniToolExecutionRecipeSchema, type MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
 
 /** Public registered cover facts, independent from provider presentation derivatives. */
 export interface MiniToolExecutionCover {
@@ -53,7 +53,7 @@ const registeredSchema = z.strictObject({
 /** Complete stable slot facts; private provider and storage capabilities are rejected. */
 export const miniToolExecutionOutputSchema = z.strictObject({
   outputIndex: z.number().int().nonnegative(), nodeId: z.uuid(),
-  recipe: z.strictObject({ kind: z.literal("remove-bg") }), late: z.boolean(),
+  recipe: miniToolExecutionRecipeSchema, late: z.boolean(),
   result: z.discriminatedUnion("status", [registeredSchema, z.strictObject({ status: z.literal("failed"), error: jsonObject })]).nullable(),
 });
 
