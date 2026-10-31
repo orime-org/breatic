@@ -61,8 +61,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.expandPrompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.frameCount": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.miniTool.videoUI.identifyingPeople": { excluded: REASONS.PASSING },
-  "canvas.miniTool.videoUI.loadingFrames": { excluded: REASONS.PASSING },
-  "canvas.miniTool.videoUI.mediaError": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.peopleEmpty": { excluded: REASONS.EMPTY_OR_SEARCH },
   "canvas.miniTool.videoUI.peopleIdentificationFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.miniTool.videoUI.peopleIdle": { excluded: REASONS.SAYS_WHAT_HAPPENED },
