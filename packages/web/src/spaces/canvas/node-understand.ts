@@ -95,11 +95,14 @@ function readsFormat(media: UnderstandableMedia): boolean {
  * @param media - What the node says it is showing.
  * @param limitBytes - The largest file a run will take, or null before the
  *   knobs carrying it have arrived.
+ * @param longMediaMaxBytes - The largest audio/video source the long-media
+ *   path will segment, or null before its knob has arrived.
  * @returns The refusal, or null when nothing here rules the run out.
  */
 export function understandRefusal(
   media: UnderstandableMedia,
   limitBytes: number | null,
+  longMediaMaxBytes: number | null = null,
 ): UnderstandRefusal | null {
   // Format first: a file that is both too large and in a format the endpoint
   // cannot read is not fixed by shrinking it.
@@ -111,8 +114,18 @@ export function understandRefusal(
     };
   }
   const sizeBytes = media.sizeBytes;
-  if (limitBytes !== null && sizeBytes !== undefined && sizeBytes > limitBytes) {
-    return { kind: 'size', limitBytes, sizeBytes, file: assetNameFromUrl(media.url) };
+  const mimeType = media.mimeType;
+  const isAudioOrVideo = mimeType === undefined
+    ? media.kind !== 'image'
+    : audioFormatOf(mimeType) !== undefined || videoFormatOf(mimeType) !== undefined;
+  let mediaLimitBytes = limitBytes;
+  if (isAudioOrVideo && longMediaMaxBytes !== null) {
+    mediaLimitBytes = limitBytes === null
+      ? longMediaMaxBytes
+      : Math.max(limitBytes, longMediaMaxBytes);
+  }
+  if (mediaLimitBytes !== null && sizeBytes !== undefined && sizeBytes > mediaLimitBytes) {
+    return { kind: 'size', limitBytes: mediaLimitBytes, sizeBytes, file: assetNameFromUrl(media.url) };
   }
   return null;
 }

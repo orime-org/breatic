@@ -32,12 +32,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { createExtension } from '@blocknote/core';
+import { createExtension, isLayoutNode } from '@blocknote/core';
 
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
+import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -81,13 +82,17 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  *
  * The shape is `doc > blockGroup > blockContainer`, and each level of
  * indentation adds a `blockGroup` and a `blockContainer` under the block above
- * — so a container's depth counts two per level, starting at one.
+ * — so a container's depth counts two per level, starting at one. In a table
+ * cell the count starts at the cell.
  * @param doc - The document the position belongs to.
  * @param pos - The position before the block's container.
  * @returns Zero for a top-level block, one for a block indented under it.
  */
 function indentDepth(doc: PMNode, pos: number): number {
-  return (doc.resolve(pos).depth - 1) / 2;
+  const $pos = doc.resolve(pos);
+  // A table cell is a body of its own: its blocks count their levels from it.
+  const cell = cellDepthOf($pos);
+  return ($pos.depth - (cell > 0 ? cell : 1)) / 2;
 }
 
 /** How many shapes a bulleted list cycles through before repeating. */
@@ -107,10 +112,12 @@ const BULLET_SHAPES = 3;
 function bulletLevel(doc: PMNode, pos: number): number {
   const at = doc.resolve(pos);
   let run = 0;
-  // Ancestors alternate `blockGroup` and `blockContainer`; a container says
-  // what kind of block it is through its own content node, the first child.
+  // A container says what kind of block it is through its own content node,
+  // the first child. A table cell holds a body of its own (inner#1619), so a
+  // list in it counts from there, as the quote's depth does.
   for (let depth = at.depth; depth > 0; depth -= 1) {
     const node = at.node(depth);
+    if (isTableCell(node)) break;
     if (node.type.name !== 'blockContainer') continue;
     if (node.firstChild?.type.name !== 'bulletListItem') break;
     run += 1;
@@ -148,7 +155,20 @@ function blockDecorations(doc: PMNode): DecorationSet {
       return true;
     }
     if (node.type.name !== 'blockContainer') {
-      return false;
+      // A table holds its rows and cells, whose blocks are blocks too; the
+      // table itself draws a quote's rule on its own frame.
+      if (!isLayoutNode(node.type)) return false;
+      if (node.attrs[QUOTED] === true) {
+        const id = String(node.attrs['id']);
+        const onTable: Record<string, string> = {
+          [QUOTE_RUN_ATTRIBUTE]: '',
+          style: `--quote-depth:${indentDepth(doc, pos)}`,
+        };
+        if (opens.has(id)) onTable[QUOTE_FIRST_ATTRIBUTE] = '';
+        if (closes.has(id)) onTable[QUOTE_LAST_ATTRIBUTE] = '';
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, onTable, CONTENT_DECORATION));
+      }
+      return true;
     }
     // A container always has one: `blockContainer` is `blockContent
     // blockGroup?` in the schema, which is also why `quoteRuns` above reaches

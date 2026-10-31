@@ -24,10 +24,12 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
+import type { BlockNoteEditor } from '@blocknote/core';
+import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
+import { columnCellOf } from '@web/spaces/document/document-table-nodes';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
@@ -72,6 +74,8 @@ export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrien
   const slots = orientation === 'row' ? map.width : map.height;
   for (let i = 0; i < slots; i += 1) {
     const index = orientation === 'row' ? at.top * map.width + i : i * map.width + at.left;
+    // 0 is a missing cell of a short row, which spans nothing.
+    if (map.map[index] === 0) continue;
     const cell = map.findCell(map.map[index]!);
     const fits =
       orientation === 'row'
@@ -205,7 +209,7 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
   const edges: number[] = [];
   let right = 0;
   for (let col = 0; col < at.map.width; col += 1) {
-    const rel = at.map.map[col]!;
+    const rel = columnCellOf(at.map, at.table, col);
     const element = view.nodeDOM(at.tableStart + rel);
     if (!(element instanceof Element)) return null;
     const box = element.getBoundingClientRect();

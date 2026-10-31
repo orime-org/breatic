@@ -257,8 +257,8 @@ DD 锁定方案后走 TDD。完整衔接见 [docs/DD-PROCESS.md](./DD-PROCESS.md
 业界共识:测试通过 ≠ 信任,只是 known-good。breatic 文化补充:
 
 1. **production / E2E / 用户反馈是 spec gap 的真正 detector**,不是 unit test
-2. **任何"测试都过了但生产挂了"事故必须 RCA**(同 R9 BUG-188 模式),调查 spec gap 来源
-3. **观测性投入(metrics / logs / tracing)是 spec gap 的兜底机制**(参考 BUG-152 / BUG-150 等可观测性 BUG)
+2. **任何"测试都过了但生产挂了"事故必须 RCA**,调查 spec gap 来源
+3. **观测性投入(metrics / logs / tracing)是 spec gap 的兜底机制**
 4. **定期 prune 测试套件**(每月 audit weak assertion / 重复测试 / 过时 fixture) — 防 debt 雪球
 5. **测试通过的代码仍可能有 unknown unknown gap** — 定期做 fuzz / mutation testing 主动暴露
 

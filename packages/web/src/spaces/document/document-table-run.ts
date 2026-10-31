@@ -22,7 +22,8 @@ import {
   type Transaction,
 } from '@tiptap/pm/state';
 import {
-  addColumn,
+  addColumnAfter,
+  addColumnBefore,
   addRow,
   cellAround,
   CellSelection,
@@ -39,6 +40,14 @@ import {
 } from '@tiptap/pm/tables';
 
 import { NO_COLOUR } from '@web/spaces/document/document-colour-run';
+import {
+  alignFaceOf,
+  writeAlignment,
+  type AlignFace,
+  type Alignment,
+} from '@web/spaces/document/document-align-run';
+import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
+import { isTableCell, squareSelectedTable, squareTable } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -51,7 +60,7 @@ export interface CellAt {
   readonly tableStart: number;
   /** The table's map. */
   readonly map: TableMap;
-  /** The id of the block holding the table. */
+  /** The table block's id. */
   readonly blockId: string;
   /** The rows and columns the cell covers. */
   readonly left: number;
@@ -72,36 +81,37 @@ export type CellScope = 'row' | 'column' | 'cell';
 export function cellAt(doc: PMNode, cellPos: number): CellAt | null {
   if (cellPos < 0 || cellPos >= doc.content.size) return null;
   const cell = doc.nodeAt(cellPos);
-  const role = cell?.type.spec['tableRole'] as string | undefined;
-  if (role !== 'cell' && role !== 'header_cell') return null;
+  if (cell === null || !isTableCell(cell)) return null;
   const $cell = doc.resolve(cellPos);
   const table = $cell.node($cell.depth - 1);
   const tableStart = $cell.start($cell.depth - 1);
   const map = TableMap.get(table);
   const rect = map.findCell(cellPos - tableStart);
-  const blockId = String($cell.node($cell.depth - 2).attrs['id']);
+  const blockId = String(table.attrs['id']);
   return { table, tableStart, map, blockId, ...rect };
 }
 
 /**
- * Runs a write against the table a cell is in, and puts the reader's
- * selection back.
+ * Runs a write against the table a cell is in, evened first, and puts the
+ * reader's selection back.
  * @param editor - The editor to write to.
  * @param cellPos - The cell the command acts on.
- * @param write - What the command does, given the cell as it stands in this
- *   transaction.
+ * @param write - What the command does, given the cell and its position as
+ *   they stand in this transaction once the table is evened.
  */
 function runOnTable(
   editor: TableEditor,
   cellPos: number,
-  write: (tr: Transaction, at: CellAt) => void,
+  write: (tr: Transaction, at: CellAt, cellPos: number) => void,
 ): void {
   editor.transact((tr) => {
-    const at = cellAt(tr.doc, cellPos);
-    if (at === null) return;
+    const found = cellAt(tr.doc, cellPos);
+    if (found === null) return;
     const reader = tr.selection;
     const written = tr.mapping.maps.length;
-    write(tr, at);
+    squareTable(tr, found.tableStart - 1);
+    const cell = tr.mapping.slice(written).map(cellPos);
+    write(tr, cellAt(tr.doc, cell)!, cell);
     if (tr.mapping.maps.length > written) {
       tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
     }
@@ -145,8 +155,10 @@ export function insertRow(editor: TableEditor, cellPos: number, side: 'above' | 
  * @param side - Which side.
  */
 export function insertColumn(editor: TableEditor, cellPos: number, side: 'left' | 'right'): void {
-  runOnTable(editor, cellPos, (tr, at) => {
-    addColumn(tr, at, side === 'left' ? at.left : at.right);
+  // In the cell's own state: `addColumn` maps its positions through the whole
+  // transaction, the cells evening the table added included.
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, side === 'left' ? addColumnBefore : addColumnAfter);
   });
 }
 
@@ -243,8 +255,8 @@ export function isMerged(doc: PMNode, cellPos: number): boolean {
  * @param cellPos - The cell.
  */
 export function splitCellAt(editor: TableEditor, cellPos: number): void {
-  runOnTable(editor, cellPos, (tr) => {
-    runInCell(tr, cellPos, splitCell);
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, splitCell);
   });
 }
 
@@ -258,8 +270,8 @@ export function splitCellAt(editor: TableEditor, cellPos: number): void {
  * @param kind - The row or the column.
  */
 export function toggleHeaderAt(editor: TableEditor, cellPos: number, kind: 'row' | 'column'): void {
-  runOnTable(editor, cellPos, (tr) => {
-    runInCell(tr, cellPos, toggleHeader(kind));
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, toggleHeader(kind));
   });
 }
 
@@ -284,7 +296,7 @@ export function setCellsAttr(
   value: unknown,
 ): void {
   runOnTable(editor, cellPos, (tr, at) => {
-    const cells = at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+    const cells = scopeCells(at, scope);
     writeCellsAttr(tr, cells, name, value);
   });
 }
@@ -328,6 +340,16 @@ function scopeRect(
 }
 
 /**
+ * The positions before the cells of a scope around a cell.
+ * @param at - The cell, placed in its table.
+ * @param scope - Its row, its column, or the cell alone.
+ * @returns The positions.
+ */
+function scopeCells(at: CellAt, scope: CellScope): number[] {
+  return at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+}
+
+/**
  * The cells a command written to a scope reaches, from one cell in it.
  * @param doc - The document.
  * @param cellPos - The position before the cell.
@@ -337,41 +359,53 @@ function scopeRect(
 export function cellsOfScope(doc: PMNode, cellPos: number, scope: CellScope): number[] {
   const at = cellAt(doc, cellPos);
   if (at === null) return [];
-  return at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+  return scopeCells(at, scope);
 }
 
 /**
- * The position before a cell, from the table block's id and the cell's place
- * among the nodes — the indices the library's handles report.
+ * Every block with words in it inside the given cells, nested ones included.
  * @param doc - The document.
- * @param blockId - The table block's id.
- * @param rowIndex - The row's index among the table's rows.
- * @param cellIndex - The cell's index among that row's cells.
- * @returns The position, or null when no such cell is there.
+ * @param cells - The positions before the cells.
+ * @returns Their content nodes and positions, in document order.
  */
-export function cellPosOf(
-  doc: PMNode,
-  blockId: string,
-  rowIndex: number,
-  cellIndex: number,
-): number | null {
-  let found: number | null = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name !== 'blockContainer' || node.attrs['id'] !== blockId) return true;
-    const table = node.firstChild;
-    if (table?.type.name !== 'table' || rowIndex >= table.childCount) return false;
-    const row = table.child(rowIndex);
-    if (cellIndex >= row.childCount) return false;
-    // Container, table and row each open one level.
-    let at = pos + 1 + 1;
-    for (let r = 0; r < rowIndex; r += 1) at += table.child(r).nodeSize;
-    at += 1;
-    for (let c = 0; c < cellIndex; c += 1) at += row.child(c).nodeSize;
-    found = at;
-    return false;
-  });
+export function blocksInCells(doc: PMNode, cells: readonly number[]): BlockUnder[] {
+  const found: BlockUnder[] = [];
+  for (const cellPos of [...cells].sort((a, b) => a - b)) {
+    doc.nodeAt(cellPos)?.descendants((node, rel) => {
+      if (node.isTextblock) {
+        found.push({ node, pos: cellPos + 1 + rel });
+        return false;
+      }
+      return true;
+    });
+  }
   return found;
+}
+
+/**
+ * Aligns the blocks of every cell of the row, of the column, or of the one
+ * cell. A block in a cell carries its own alignment, as anywhere in the body.
+ * @param editor - The editor to write to.
+ * @param cellPos - The cell.
+ * @param scope - Which cells.
+ * @param alignment - The alignment.
+ */
+export function alignCellsAt(editor: TableEditor, cellPos: number, scope: CellScope, alignment: Alignment): void {
+  runOnTable(editor, cellPos, (tr, at) => {
+    const cells = scopeCells(at, scope);
+    writeAlignment(tr, blocksInCells(tr.doc, cells), alignment);
+  });
+}
+
+/**
+ * The alignment the blocks of the row, the column or the one cell share.
+ * @param doc - The document.
+ * @param cellPos - The cell.
+ * @param scope - Which cells.
+ * @returns What the alignment menu shows for them.
+ */
+export function cellsAlignFace(doc: PMNode, cellPos: number, scope: CellScope): AlignFace {
+  return alignFaceOf(blocksInCells(doc, cellsOfScope(doc, cellPos, scope)));
 }
 
 /**
@@ -451,18 +485,61 @@ export function canMergeCells(state: EditorState): boolean {
 }
 
 /**
- * Merges the selected cells into one; their words stay, in reading order.
+ * Whether a cell holds one empty paragraph with nothing nested under it.
+ * Other empty block types carry the reader's chosen structure.
+ * @param cell - The cell node.
+ * @returns True when it is empty.
+ */
+function isEmptyCell(cell: PMNode): boolean {
+  const only = cell.childCount === 1 ? cell.firstChild : null;
+  const content = only?.childCount === 1 ? only.firstChild : null;
+  return content?.type.name === 'paragraph' && content.content.size === 0;
+}
+
+/**
+ * Merges the selected cells into one. The blocks of the cells that hold
+ * something follow one another in reading order; an empty cell adds nothing,
+ * and when every cell was empty one empty paragraph stays.
+ *
+ * prosemirror-tables keeps an empty cell's content out of the merge only when
+ * its first child is an empty text block (`isEmpty`), which a cell holding
+ * blocks never has, so the empty paragraphs it brings along are taken out in
+ * the same transaction.
  * @param editor - The editor to write to.
  */
 export function mergeSelectedCells(editor: TableEditor): void {
   const view = editor.prosemirrorView;
   if (view === undefined) return;
-  mergeCells(view.state, view.dispatch);
+  if (!(view.state.selection instanceof CellSelection)) return;
+  squareSelectedTable(view);
+  const { selection } = view.state;
+  if (!(selection instanceof CellSelection)) return;
+  const emptied = new Set<unknown>();
+  selection.forEachCell((cell) => {
+    if (isEmptyCell(cell)) emptied.add(cell.firstChild!.attrs['id']);
+  });
+  mergeCells(view.state, (tr) => {
+    const merged = tr.selection instanceof CellSelection ? tr.selection.$anchorCell.pos : null;
+    const cell = merged === null ? null : tr.doc.nodeAt(merged);
+    if (merged !== null && cell !== null) {
+      const drop: { from: number; to: number }[] = [];
+      cell.forEach((child, offset) => {
+        if (emptied.has(child.attrs['id'])) {
+          drop.push({ from: merged + 1 + offset, to: merged + 1 + offset + child.nodeSize });
+        }
+      });
+      // Every cell was empty: the first of their paragraphs stays.
+      if (drop.length === cell.childCount) drop.shift();
+      for (const { from, to } of drop.reverse()) tr.delete(from, to);
+    }
+    view.dispatch(tr);
+  });
 }
 
 /**
- * The table a selection takes in whole, when every cell of it is empty: the
- * case where deleting the selection leaves nothing of the table to keep.
+ * The table a selection takes in whole, when every cell of it is empty (one
+ * empty paragraph each): the case where deleting the selection leaves nothing
+ * of the table to keep.
  * @param state - The editor state.
  * @returns The table block's id, or null.
  */
@@ -475,9 +552,8 @@ export function wholeEmptyTableSelected(state: EditorState): string | null {
   if (at === null) return null;
   let empty = true;
   at.table.descendants((node) => {
-    const role = node.type.spec['tableRole'] as string | undefined;
-    if (role !== 'cell' && role !== 'header_cell') return true;
-    if (node.childCount !== 1 || node.firstChild!.childCount !== 0) empty = false;
+    if (!isTableCell(node)) return true;
+    if (!isEmptyCell(node)) empty = false;
     return false;
   });
   return empty ? at.blockId : null;
@@ -501,10 +577,10 @@ export function moveLineAt(
   orientation: 'row' | 'column',
   to: number,
 ): void {
-  runOnTable(editor, cellPos, (tr, at) => {
+  runOnTable(editor, cellPos, (tr, at, cell) => {
     const from = orientation === 'row' ? at.top : at.left;
     if (from === to) return;
     const move = orientation === 'row' ? moveTableRow : moveTableColumn;
-    runInCell(tr, cellPos, move({ from, to, select: false, pos: cellPos + 1 }));
+    runInCell(tr, cell, move({ from, to, select: false, pos: cell + 1 }));
   });
 }

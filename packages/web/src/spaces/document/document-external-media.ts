@@ -147,7 +147,9 @@ function strip(fragment: Fragment, prefix: string | null): { fragment: Fragment;
     if (inner.count === 0) {
       kept.push(node);
     } else if (node.type.name !== 'blockGroup' || inner.fragment.childCount > 0) {
-      kept.push(node.copy(inner.fragment));
+      // A table cell holds at least one block: one emptied keeps an empty
+      // paragraph.
+      kept.push(node.type.createAndFill(node.attrs, inner.fragment, node.marks) ?? node.copy(inner.fragment));
     }
   });
   return { fragment: Fragment.from(kept), count };

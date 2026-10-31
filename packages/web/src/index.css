@@ -669,7 +669,7 @@ body {
      line answers the question that drag is asking.
 
      ALL THREE ORIENTATIONS are named, because the colour comes from here alone:
-     `DropCursor.ts:121` writes an inline colour only when it was given one, and
+     `DropCursor.ts:139` writes an inline colour only when it was given one, and
      `applyOrientationClasses` (`DropCursor/utils.ts:141-170`) marks a text drop
      with `-inline` and a drop beside a column with `-vertical`. The library's
      own stylesheet gives those two transitions and no colour, so a selector
@@ -1008,8 +1008,8 @@ body {
      asking you to. The switch is the Editor's `injectCSS` option, which defaults
      to true and is left alone. Measured with a 180-character URL: two lines, no
      horizontal overflow, with and without an `overflow-wrap` of our own. */
-  /* The body's side gutters, and the whole-document entry that stands in the
-     right one. Declared together on their common ancestor because the gutter is
+  /* The body's right gutter, and the whole-document entry that stands in
+     it. Declared together on their common ancestor because the gutter is
      built out of the other three: the button, the gap it keeps from the padding
      box on its left, and the gap it keeps from the viewport edge on its right.
 
@@ -1024,7 +1024,8 @@ body {
      The margin reads size and clearance, the gutter is all three, so the two
      move together. Raise the gutter alone and the button follows the padding box
      inward, growing the inset; drop it below size + clearance and the button
-     overruns the viewport edge and gets clipped. */
+     overruns the viewport edge and gets clipped. The left gutter is sized by
+     the strips it holds (`BODY_GUTTER_START`, `document-strip-alignment.ts`). */
   .doc-body-scroller {
     --doc-entry-size: 32px;
     --doc-entry-inset: 16px;
@@ -1128,7 +1129,7 @@ body {
 
 @layer components {
   /* BlockNote's rule is `[data-show-selection] { background-color: highlight;
-     padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:194-197`) — adding
+     padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:195-198`) — adding
      a property does not remove the ones already there, so all three are answered:
      the colour here, the padding by the rule below.
 
@@ -1329,6 +1330,13 @@ body {
   }
 
   .doc-body > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
+    --doc-block-lift: 0px;
+  }
+
+  /* A table cell is a small body (inner#1619): its first block stands flush
+     against the cell's padding, as the document's first block does. */
+  .doc-body [data-node-type='docTable'] td > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] th > .bn-block-outer:first-child > .bn-block > .bn-block-content {
     --doc-block-lift: 0px;
   }
 
@@ -1871,7 +1879,7 @@ body {
     width: 2px;
     /* Stated because this pseudo-element is shared. BlockNote rides an empty
        block's placeholder on `::after` too, and gives it `margin-inline: -2px`
-       to take the caret's offset back (`Block.css:863-869`) — that rule arrives
+       to take the caret's offset back (`Block.css:922-928`) — that rule arrives
        in `@layer base` and loses every property this one names, so a property
        left unnamed is a property it still sets. Measured before this line: the
        segment beside an empty line sat at 614.5 against 616.5 for the blocks
@@ -1977,7 +1985,7 @@ body {
   }
 
   /* A table wider than the column scrolls inside its block, in the ScrollArea
-     `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
+     `document-table-nodes.tsx` draws it in. The wrapper around the table is a
      scroller of its own (`overflow-x: auto` from prosemirror-tables), which
      would put a second, native scrollbar inside ours.
      The wrapper keeps room under the table as tall as that scrollbar, which
@@ -2020,19 +2028,30 @@ body {
     border-right: 1px solid var(--color-border);
     background: linear-gradient(to left, var(--overflow-shade), transparent);
   }
-  .doc-body [data-content-type='table'] .tableWrapper {
+  .doc-body [data-node-type='docTable'] .tableWrapper {
     overflow: visible;
     padding: 0 0 0.5rem 0;
   }
 
+  /* The table whose cells hold blocks (inner#1619) takes the width BlockNote's
+     own stylesheet gives its table (`editor.css:151-154`), which matches only
+     `[data-content-type="table"]`; the lines round its cells and its bold
+     header cells are in the token rules below. */
+  .doc-body [data-node-type='docTable'] table {
+    width: auto !important;
+    word-break: break-word;
+  }
+
   /* A table every column of which has a stored width is as wide as its columns,
      and scrolls in its frame when that is wider (inner#1126 A12). The library
-     pins every table to `width: auto !important` (`editor.css:150-153`), so the
+     pins its table to `width: auto !important` (`editor.css:151-154`), and the
+     rule above pins the table whose cells hold blocks the same way, so the
      width prosemirror-tables writes onto such a table never lands and the
      columns are squeezed to the frame; the table's own max-content width, which
      is the sum of its columns, is a floor it keeps. A table with a column the
      browser sizes is left as it is drawn today. */
-  .doc-body [data-content-type='table'] table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth]))) {
+  .doc-body [data-content-type='table'] table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth]))),
+  .doc-body [data-node-type='docTable'] table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth]))) {
     min-width: max-content;
   }
 
@@ -2040,22 +2059,45 @@ body {
      writes fixed values for each of these — `#ddd` lines, `5px 10px` around a
      cell's words, `#c8c8ff66` over a selected cell, `#adf` for the resize
      line. */
-  .doc-body [data-content-type='table'] td {
+  .doc-body [data-content-type='table'] td,
+  .doc-body [data-node-type='docTable'] td {
+    border-style: solid;
+    border-width: 1px;
     border-color: var(--color-border);
     padding: var(--space-3) var(--space-5);
   }
 
-  .doc-body [data-content-type='table'] th {
+  .doc-body [data-content-type='table'] th,
+  .doc-body [data-node-type='docTable'] th {
+    border-style: solid;
+    border-width: 1px;
     border-color: var(--color-border);
+    font-weight: bold;
+    /* The browser centres a th; a header starts at the left as its column's
+       cells do and as the Alignment menu reads it, and the menu centres it. */
+    text-align: left;
     padding: var(--space-3) var(--space-5);
     background-color: var(--color-muted);
   }
 
-  /* Selected cells, and the cells an open row or column menu acts on: one look
-     (inner#1126 A6). The library draws this layer for `.selectedCell` only, so
+  /* A picture or video in a cell is shown at its stored width or the cell's,
+     whichever is less (inner#1619 T7), and takes no part in sizing its column:
+     a column with no stored width is as wide as its words, and the media's
+     stored width would otherwise widen it. */
+  .doc-body [data-node-type='docTable'] td [data-media-box],
+  .doc-body [data-node-type='docTable'] th [data-media-box] {
+    contain: inline-size;
+    /* With no stored width, the cell's. */
+    width: min(var(--doc-media-width, 100%), 100%) !important;
+  }
+
+  /* Selected cells, the cells an open row or column menu acts on, and the
+     cells of a table a selection runs out of: one look (inner#1126 A6,
+     inner#1619 T14). The library draws this layer for `.selectedCell` only, so
      the rule draws it whole. */
   .doc-body .selectedCell::after,
-  .doc-body .doc-table-target::after {
+  .doc-body .doc-table-target::after,
+  .doc-body .doc-table-in-selection::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -2067,17 +2109,19 @@ body {
   /* A cell selection is the selection too: not drawn while the body does not
      hold the focus. A row or column an open menu acts on is drawn — the menu is
      the body's own layer, and the body holds while it is open. */
-  .doc-body[contenteditable='true']:not([data-body-holds]) .selectedCell::after {
+  .doc-body[contenteditable='true']:not([data-body-holds]) .selectedCell::after,
+  .doc-body[contenteditable='true']:not([data-body-holds]) .doc-table-in-selection::after {
     content: none;
   }
 
   /* The tint above is a layer over the whole cell, at z-index 2; the cell's
-     line of words goes above it, so a selected cell reads like selected text:
-     the colour behind the words, the words in their own colour. The line only:
+     blocks go above it, so a selected cell reads like selected text: the
+     colour behind the words, the words in their own colour. The blocks only:
      the column-resize line is a child of the cell as well, drawn by being
      absolutely placed. */
-  .doc-body .selectedCell > p,
-  .doc-body .doc-table-target > p {
+  .doc-body .selectedCell > .bn-block-outer,
+  .doc-body .doc-table-target > .bn-block-outer,
+  .doc-body .doc-table-in-selection > .bn-block-outer {
     position: relative;
     z-index: 3;
   }
@@ -2121,33 +2165,48 @@ body {
 
   /* A cell's fill: the tint a highlight on words uses, so the panel's swatch,
      a highlight and a filled cell read one value. The library knows its own
-     colour names and not ours. */
+     colour names and not ours. In a table whose cells hold blocks it matches
+     the cell itself: a block in the cell draws its own fill. */
 
-  .doc-body [data-content-type='table'] [data-background-color='red'] {
+  .doc-body [data-content-type='table'] [data-background-color='red'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='red'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='red'] {
     background-color: var(--color-palette-red-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='orange'] {
+  .doc-body [data-content-type='table'] [data-background-color='orange'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='orange'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='orange'] {
     background-color: var(--color-palette-orange-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='green'] {
+  .doc-body [data-content-type='table'] [data-background-color='green'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='green'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='green'] {
     background-color: var(--color-palette-green-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='blue'] {
+  .doc-body [data-content-type='table'] [data-background-color='blue'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='blue'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='blue'] {
     background-color: var(--color-palette-blue-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='violet'] {
+  .doc-body [data-content-type='table'] [data-background-color='violet'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='violet'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='violet'] {
     background-color: var(--color-palette-violet-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='pink'] {
+  .doc-body [data-content-type='table'] [data-background-color='pink'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='pink'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='pink'] {
     background-color: var(--color-palette-pink-highlight);
   }
 
-  .doc-body [data-content-type='table'] [data-background-color='teal'] {
+  .doc-body [data-content-type='table'] [data-background-color='teal'],
+  .doc-body [data-node-type='docTable'] td[data-background-color='teal'],
+  .doc-body [data-node-type='docTable'] th[data-background-color='teal'] {
     background-color: var(--color-palette-teal-highlight);
   }
 }
@@ -2186,8 +2245,8 @@ body {
      measures — a no-break space in the line's own flow, so it stands where the
      caret would under the line's alignment — and the browser's is cleared, so
      the line wears one mark in every browser from the first frame of a drag.
-     A table cell's line is a bare `<p>` (BlockNote's `tableParagraph`), which
-     is itself the element its text sits in. */
+     A stored table's cell line is a bare `<p>` (`tableParagraph`), which is
+     itself the element its text sits in. */
   .doc-body .doc-empty-line-in-selection .bn-inline-content::before,
   .doc-body p.doc-empty-line-in-selection::before {
     content: '\a0';
@@ -2198,6 +2257,15 @@ body {
 }
 
 .doc-body .doc-empty-line-in-selection ::selection {
+  background-color: transparent;
+}
+
+/* A table a selection runs out of is drawn by its cells
+   (`.doc-table-in-selection`, inner#1619 T14). Under a pull ProseMirror holds
+   off writing the selection to the page, so the native one covers only the
+   words swept so far and grows to every cell on release; the cells draw the
+   same either way (inner#1350 A8). */
+.doc-body .doc-table-in-selection ::selection {
   background-color: transparent;
 }
 

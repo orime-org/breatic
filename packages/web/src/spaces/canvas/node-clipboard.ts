@@ -350,7 +350,7 @@ export function cloneForPaste(
       const parentAbs = options.externalParentAbs.get(node.parentId) as { x: number; y: number };
       position = { x: absShifted.x - parentAbs.x, y: absShifted.y - parentAbs.y };
     }
-    const data = rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>;
+    const data = withCopiedAnchor(rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>, idMap);
     const fallbackName = node.type === 'group' ? 'Group' : MODALITY_LABEL[node.type];
     const name = typeof data.name === 'string' ? data.name : fallbackName;
     if (node.external === true) {
@@ -428,6 +428,19 @@ function cloneEdges(
     });
   }
   return out;
+}
+
+/**
+ * A guide text node's anchor, pointed at the anchor's copy when the anchor is
+ * copied along (inner#1345); copied without it, the guide keeps the original.
+ * @param data - The copied node data.
+ * @param idMap - Original node id to its copy's id.
+ * @returns The data, its template tag's anchor rewritten where it was copied.
+ */
+function withCopiedAnchor(data: Record<string, unknown>, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  const tag = data.templateNode as { anchor?: unknown } | undefined;
+  const copy = typeof tag?.anchor === 'string' ? idMap.get(tag.anchor) : undefined;
+  return copy === undefined ? data : { ...data, templateNode: { ...tag, anchor: copy } };
 }
 
 /**

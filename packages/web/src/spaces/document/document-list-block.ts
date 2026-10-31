@@ -31,9 +31,7 @@
 import {
   createExtension,
   defaultBlockSpecs,
-  getBlockInfo,
-  getBlockInfoAtNearest,
-  getNearestBlockPos,
+  getBlockInfoNearPos,
   getPmSchema,
   updateBlockTr,
 } from '@blocknote/core';
@@ -82,14 +80,14 @@ export function splitCarryingQuote(
   keepType = true,
   keepProps = false,
 ): boolean {
-  const info = getBlockInfo(getNearestBlockPos(tr.doc, posInBlock));
-  if (!info.isBlockContainer) {
+  const info = getBlockInfoNearPos(tr, posInBlock);
+  if (!info.hasContent) {
     return false;
   }
   const schema = getPmSchema(tr);
-  const content = info.blockContent.node;
+  const content = info.content.node;
   tr.split(posInBlock, 2, [
-    { type: info.bnBlock.node.type, attrs: {} },
+    { type: info.block.node.type, attrs: {} },
     {
       type: keepType ? content.type : schema.nodes['paragraph'],
       attrs: keepProps
@@ -140,12 +138,12 @@ export function handleListEnter(
   // same highlight named a different block depending on which way it was
   // drawn, and this handler declined a key it should have claimed.
   const blockInfo = editor.transact((tr) =>
-    getBlockInfoAtNearest(tr, tr.selection.from),
+    getBlockInfoNearPos(tr, tr.selection.from),
   );
-  if (!blockInfo.isBlockContainer) {
+  if (!blockInfo.hasContent) {
     return false;
   }
-  const { bnBlock, blockContent } = blockInfo;
+  const { block: bnBlock, content: blockContent } = blockInfo;
   if (blockContent.node.type.name !== listItemType) {
     return false;
   }

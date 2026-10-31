@@ -258,11 +258,6 @@ export interface StudioLotView {
   id: string;
   purchasedCredits: number;
   remainingCredits: number;
-  /** The studio allowed to spend it, which on this page is the studio itself. */
-  designatedStudioId: string | null;
-  lifecycle: CreditLotLifecycle;
-  /** How many refund requests were refused; the lifecycle keeps no trace. */
-  refundAttempts: number;
   createdAt: string;
   /** Who bought it. Absent when their personal studio is gone. */
   buyerName: string | null;

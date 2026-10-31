@@ -3,7 +3,9 @@
 
 /**
  * inner#1126 A5: the strip on a table — the table entry, its menu, and the
- * indent rows greyed where the table cannot go.
+ * indent rows greyed where the table cannot go. The table's strip is its own,
+ * shown whenever the table is hovered (inner#1619 T13): the side menu's strip
+ * leaves tables to it.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -14,6 +16,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -33,9 +36,20 @@ vi.mock('@blocknote/react', () => ({
   useExtensionState: () => side.block,
 }));
 
-const { DocumentBlockHandle } = await import(
+const { BlockStrip, DocumentBlockHandle } = await import(
   '@web/spaces/document/DocumentBlockHandle'
 );
+
+/** Holds nothing: these tests never move the pointer. */
+const HOLD = { freeze: (): void => undefined, unfreeze: (): void => undefined };
+
+/**
+ * The strip for the row the pointer is over, as the table's controller draws it.
+ * @returns The strip.
+ */
+function Strip(): React.JSX.Element | null {
+  return <BlockStrip block={side.block as never} hold={HOLD} />;
+}
 
 
 const mounted: Editor[] = [];
@@ -47,10 +61,7 @@ afterEach(() => {
 });
 
 /** A 2 × 2 table block. */
-const TABLE = {
-  type: 'table',
-  content: { type: 'tableContent', rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] },
-};
+const TABLE = tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] });
 
 /**
  * Opens an editor holding the given blocks and points the strip at one row.
@@ -83,9 +94,16 @@ function rows(): string[] {
 }
 
 describe('the strip on a table (A5)', () => {
+  it('is not the side menu\'s (user 2026-10-21)', () => {
+    openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
+    const { container } = render(<DocumentBlockHandle />);
+
+    expect(container.innerHTML).toBe('');
+  });
+
   it('shows the table entry, which drags', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
-    render(<DocumentBlockHandle />);
+    render(<Strip />);
 
     const entry = screen.getByTestId('doc-block-table-handle');
     expect(entry.getAttribute('draggable')).toBe('true');
@@ -95,7 +113,7 @@ describe('the strip on a table (A5)', () => {
 
   it('stands where the strip stands on every other row', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
-    const { unmount } = render(<DocumentBlockHandle />);
+    const { unmount } = render(<Strip />);
     const onTable = (screen.getByTestId('doc-block-table-handle').closest('[data-row-id]') as HTMLElement).style.transform;
     unmount();
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 0);
@@ -108,7 +126,7 @@ describe('the strip on a table (A5)', () => {
 
   it('opens the six table rows', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
-    render(<DocumentBlockHandle />);
+    render(<Strip />);
 
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
@@ -118,7 +136,7 @@ describe('the strip on a table (A5)', () => {
 
   it('greys indent on a first table and outdent at the top level', () => {
     openOver([TABLE, { type: 'paragraph', content: 'below' }], 0);
-    render(<DocumentBlockHandle />);
+    render(<Strip />);
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
     expect(screen.getByTestId('doc-block-row-indent').getAttribute('aria-disabled')).toBe('true');
@@ -127,7 +145,7 @@ describe('the strip on a table (A5)', () => {
 
   it('indents the table under the block above', () => {
     const editor = openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
-    render(<DocumentBlockHandle />);
+    render(<Strip />);
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
     const indent = screen.getByTestId('doc-block-row-indent');
@@ -136,7 +154,7 @@ describe('the strip on a table (A5)', () => {
 
     const top = editor.document as unknown as { type: string; children: { type: string }[] }[];
     expect(top.map((b) => b.type)).toEqual(['paragraph']);
-    expect(top[0].children.map((b) => b.type)).toEqual(['table']);
+    expect(top[0].children.map((b) => b.type)).toEqual(['docTable']);
   });
 
   it('keeps the grip menu as it was on every other row', () => {

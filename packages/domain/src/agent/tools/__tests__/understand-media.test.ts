@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ZodType } from "zod";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 import type * as understandModule from "@domain/understand/index.js";
@@ -31,6 +32,16 @@ vi.mock("@domain/understand/index.js", async (importOriginal) => {
   return {
     ...actual,
     understandMediaAt: (...args: unknown[]) => understandMediaAtMock(...args),
+    understandMediaInBatches: vi.fn(),
+    openLongMediaBatchOperation: vi.fn(async () => ({
+      operationId: "operation-1",
+      checkpoint: { load: async () => null, save: async () => undefined },
+      signal: new AbortController().signal,
+      complete: async () => undefined,
+      release: async () => undefined,
+    })),
+    advanceLongMediaSegmentation: vi.fn(),
+    cancelLongMediaSegmentation: vi.fn(),
   };
 });
 
@@ -53,6 +64,8 @@ const { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, MediaUnavailable, UnderstandRefu
   await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 const { UNDERSTAND_PINS } = await import("@domain/understand/index.js");
+const { understandMediaInBatches, advanceLongMediaSegmentation, cancelLongMediaSegmentation } =
+  await import("@domain/understand/index.js");
 const { toolOptions, usageSpy } = await import("@domain/agent/__tests__/helpers/usage-spy.js");
 
 /** What one turn's copy of the tool is called with. */
@@ -116,11 +129,28 @@ async function failureOf(call: Promise<unknown>): Promise<{
 
 beforeEach(() => {
   understandMediaAtMock.mockReset();
+  vi.mocked(understandMediaInBatches).mockReset();
+  vi.mocked(advanceLongMediaSegmentation).mockReset();
+  vi.mocked(cancelLongMediaSegmentation).mockReset();
   apiKey = "test-key";
   understandMediaAtMock.mockResolvedValue({
     text: "A black Labrador retriever.",
     finishReason: "stop",
     kind: "image",
+  });
+});
+
+describe("understand_media context", () => {
+  it("accepts the turn's canonical storage capability", () => {
+    const build = TOOL_MAP.understand_media;
+    if (!build) throw new Error("understand_media is not registered");
+    const definition = build();
+    const contextSchema = definition.contextSchema as ZodType<unknown> | undefined;
+    if (!contextSchema) throw new Error("understand_media has no context schema");
+    const saveToStorage = vi.fn();
+    const parsed = contextSchema.parse({ usage: usageSpy().recorder, saveToStorage });
+
+    expect(parsed).toMatchObject({ saveToStorage });
   });
 });
 
@@ -237,6 +267,223 @@ describe("understand_media — a call that worked", () => {
       // The call is recorded where the service shows it billed.
       onBilled: expect.any(Function),
     });
+  });
+
+  it("uses the shared long-media path for one oversized canonical audio source", async () => {
+    const config = getAgentConfig();
+    const resolveCanonicalMediaSource = vi.fn(async () => ({
+      key: "audio/source.wav",
+      sha256: "a".repeat(64),
+      sizeBytes: config.understand_media_max_bytes + 1,
+      mimeType: "audio/wav",
+    }));
+    vi.mocked(advanceLongMediaSegmentation).mockResolvedValue({
+      kind: "ready",
+      segments: [{
+        url: "https://assets.example/audio/part.mp3",
+        ledgerType: "audio/mpeg",
+        sizeBytes: 900,
+        startUs: "0",
+        endUs: "60000000",
+      }],
+    });
+    vi.mocked(understandMediaInBatches).mockResolvedValue({
+      text: "The recording contains a short greeting.",
+      finishReason: "stop",
+      kind: "audio",
+      kinds: ["audio"],
+    });
+    const usage = usageSpy();
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    const answer = await execute(
+      { items: [{ url: "https://assets.example/audio/source.wav" }], question: "What is said?" },
+      toolOptions({ context: {
+        usage: usage.recorder,
+        studioId: "studio-1",
+        projectId: "project-1",
+        actorUserId: "user-1",
+        resolveCanonicalMediaSource,
+      } }) as never,
+    );
+
+    expect(answer).toBe("The recording contains a short greeting.");
+    expect(advanceLongMediaSegmentation).toHaveBeenCalledWith(expect.objectContaining({
+      sourceUrl: "https://assets.example/audio/source.wav",
+      projectId: "project-1",
+      actorUserId: "user-1",
+    }));
+    expect(understandMediaInBatches).toHaveBeenCalledWith(
+      expect.objectContaining({ maxItems: config.understand_media_max_items }),
+      [{
+        url: "https://assets.example/audio/part.mp3",
+        ledgerType: "audio/mpeg",
+        sizeBytes: 900,
+        startUs: "0",
+        endUs: "60000000",
+      }],
+    );
+    expect(understandMediaAtMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels the durable long-media job when the caller aborts during understanding", async () => {
+    const config = getAgentConfig();
+    const controller = new AbortController();
+    const resolveCanonicalMediaSource = vi.fn(async () => ({
+      key: "audio/source.wav",
+      sha256: "a".repeat(64),
+      sizeBytes: config.understand_media_max_bytes + 1,
+      mimeType: "audio/wav",
+    }));
+    vi.mocked(advanceLongMediaSegmentation).mockResolvedValue({
+      kind: "ready",
+      segments: [{
+        url: "https://assets.example/audio/part.mp3",
+        ledgerType: "audio/mpeg",
+        sizeBytes: 900,
+        startUs: "0",
+        endUs: "60000000",
+      }],
+    });
+    vi.mocked(understandMediaInBatches).mockImplementation(async () => {
+      controller.abort();
+      throw new Error("The provider request was interrupted.");
+    });
+    const usage = usageSpy();
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    await expect(execute(
+      { items: [{ url: "https://assets.example/audio/source.wav" }], question: "What is said?" },
+      toolOptions({ abortSignal: controller.signal, context: {
+        usage: usage.recorder,
+        projectId: "project-1",
+        actorUserId: "user-1",
+        resolveCanonicalMediaSource,
+      } }) as never,
+    )).rejects.toHaveProperty("toolFailure");
+    expect(cancelLongMediaSegmentation).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
+    expect(advanceLongMediaSegmentation).toHaveBeenCalledWith(expect.objectContaining({ signal: controller.signal }));
+  });
+
+  it("cancels while the segmentation planner is still running", async () => {
+    const config = getAgentConfig();
+    const controller = new AbortController();
+    const resolveCanonicalMediaSource = vi.fn(async () => ({
+      key: "audio/source.wav",
+      sha256: "a".repeat(64),
+      sizeBytes: config.understand_media_max_bytes + 1,
+      mimeType: "audio/wav",
+    }));
+    vi.mocked(advanceLongMediaSegmentation).mockImplementation(async (input) => {
+      controller.abort();
+      input.signal?.throwIfAborted();
+      return { kind: "pending" };
+    });
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    await expect(execute(
+      { items: [{ url: "https://assets.example/audio/source.wav" }], question: "What is said?" },
+      toolOptions({ abortSignal: controller.signal, context: {
+        usage: usageSpy().recorder,
+        projectId: "project-1",
+        actorUserId: "user-1",
+        resolveCanonicalMediaSource,
+      } }) as never,
+    )).rejects.toHaveProperty("toolFailure");
+
+    expect(cancelLongMediaSegmentation).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
+    expect(understandMediaInBatches).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed durable cancellation instead of reporting a normal stop", async () => {
+    const config = getAgentConfig();
+    const controller = new AbortController();
+    const resolveCanonicalMediaSource = vi.fn(async () => ({
+      key: "audio/source.wav",
+      sha256: "a".repeat(64),
+      sizeBytes: config.understand_media_max_bytes + 1,
+      mimeType: "audio/wav",
+    }));
+    vi.mocked(advanceLongMediaSegmentation).mockResolvedValue({
+      kind: "ready",
+      segments: [{
+        url: "https://assets.example/audio/part.mp3",
+        ledgerType: "audio/mpeg",
+        sizeBytes: 900,
+        startUs: "0",
+        endUs: "60000000",
+      }],
+    });
+    vi.mocked(understandMediaInBatches).mockImplementation(async () => {
+      controller.abort();
+      throw new Error("The provider request was interrupted.");
+    });
+    vi.mocked(cancelLongMediaSegmentation).mockRejectedValue(new Error("Ingest did not confirm cancellation."));
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    await expect(execute(
+      { items: [{ url: "https://assets.example/audio/source.wav" }], question: "What is said?" },
+      toolOptions({ abortSignal: controller.signal, context: {
+        usage: usageSpy().recorder,
+        projectId: "project-1",
+        actorUserId: "user-1",
+        resolveCanonicalMediaSource,
+      } }) as never,
+    )).rejects.toThrow("Cancellation cleanup could not be confirmed.");
+  });
+
+  it("does not store an oversized image after the direct request refuses it", async () => {
+    const saveToStorage = vi.fn(async (url: string) => ({ url }));
+    const resolveCanonicalMediaSource = vi.fn(async () => null);
+    understandMediaAtMock.mockRejectedValue(
+      new MediaUnavailable("too-large", { declaredType: "image/png", limit: 20_000_000 }),
+    );
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    const call = execute(
+      { items: [{ url: "https://example.com/large.png" }], question: "What is this?" },
+      toolOptions({ context: {
+        usage: usageSpy().recorder,
+        saveToStorage,
+        resolveCanonicalMediaSource,
+      } }) as never,
+    );
+
+    const { readerKey } = await failureOf(call);
+    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    expect(saveToStorage).not.toHaveBeenCalled();
+    expect(resolveCanonicalMediaSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the direct path available when the canonical source lookup fails", async () => {
+    const resolveCanonicalMediaSource = vi.fn(async () => {
+      throw new Error("The asset lookup is temporarily unavailable.");
+    });
+    understandMediaAtMock.mockResolvedValue({
+      text: "A small landscape photograph.",
+      finishReason: "stop",
+      kind: "image",
+      kinds: ["image"],
+    });
+    const execute = TOOL_MAP.understand_media?.().execute;
+    if (!execute) throw new Error("understand_media has no execute");
+
+    const answer = await execute(
+      { items: [{ url: "https://example.com/small.png" }], question: "What is this?" },
+      toolOptions({ context: {
+        usage: usageSpy().recorder,
+        resolveCanonicalMediaSource,
+      } }) as never,
+    );
+
+    expect(answer).toBe("A small landscape photograph.");
+    expect(resolveCanonicalMediaSource).toHaveBeenCalledWith("https://example.com/small.png");
+    expect(understandMediaAtMock).toHaveBeenCalledOnce();
   });
 
   it("says the answer was cut short, and keeps what there was", async () => {

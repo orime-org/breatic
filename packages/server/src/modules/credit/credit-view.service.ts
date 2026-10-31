@@ -94,9 +94,6 @@ function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
     id: lot.id,
     purchasedCredits: toNumber(lot.purchasedCredits),
     remainingCredits: toNumber(lot.remainingCredits),
-    designatedStudioId: lot.designatedStudioId,
-    lifecycle: lot.lifecycle,
-    refundAttempts: lot.refundAttempts,
     createdAt: lot.createdAt.toISOString(),
     buyerName: lot.buyerName,
   };

@@ -1,0 +1,72 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/** Durable phases for one logical media segment. */
+export type LongMediaSegmentStatus =
+  | "planned"
+  | "encoding"
+  | "oversize"
+  | "stored"
+  | "ready"
+  | "superseded"
+  | "paused"
+  | "failed";
+
+/** One immutable core and decode interval in a planned source-time leaf. */
+export interface LongMediaSegmentPlan {
+  id: string;
+  mediaInputId: string;
+  descriptor: Record<string, unknown>;
+  core: { startUs: string; endUs: string };
+  decode: { startUs: string; endUs: string };
+}
+
+/** An already validated segment lifecycle event. */
+export type LongMediaSegmentEvent =
+  | { type: "run" | "oversize" | "registered" | "split" | "transient" | "fatal" | "stop" | "adopt" | "length-repartition" }
+  | { type: "measured"; measured: LongMediaSegmentMeasurement }
+  | { type: "resume"; checkpoint: "planned" | "oversize" | "stored" };
+
+/** Facts measured from the bytes written to the authorized R2 object. */
+export interface LongMediaSegmentMeasurement {
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+}
+
+/** Reduce one segment phase after its event evidence has been checked. */
+export function transitionLongMediaSegment(
+  status: LongMediaSegmentStatus,
+  event: LongMediaSegmentEvent,
+): LongMediaSegmentStatus {
+  if (status === "superseded" || status === "failed") return status;
+
+  switch (event.type) {
+    case "run":
+      return status === "planned" ? "encoding" : status;
+    case "oversize":
+      return status === "encoding" ? "oversize" : status;
+    case "measured":
+      return status === "encoding" ? "stored" : status;
+    case "registered":
+      return status === "stored" ? "ready" : status;
+    case "split":
+      return status === "oversize" ? "superseded" : status;
+    case "transient":
+      return status === "encoding" ? "planned" : status;
+    case "fatal":
+      return status === "planned" || status === "encoding" || status === "oversize" || status === "stored"
+        ? "failed"
+        : status;
+    case "stop":
+      return status === "planned" || status === "encoding" || status === "oversize" || status === "stored"
+        ? "paused"
+        : status;
+    case "resume":
+      return status === "paused" ? event.checkpoint : status;
+    case "adopt":
+      return status === "planned" ? "ready" : status;
+    case "length-repartition":
+      return status === "ready" ? "superseded" : status;
+  }
+}

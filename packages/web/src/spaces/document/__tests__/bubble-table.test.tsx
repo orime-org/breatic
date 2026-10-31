@@ -3,9 +3,10 @@
 
 /**
  * inner#1126 A9 and A10: the bubble bar over table cells — it comes up over
- * any selection of cells, empty ones too; the block type and the link are
- * greyed; the colour panel gains a cell fill row; merging is one more button,
- * there only while cells are selected.
+ * any selection of cells, empty ones too; the link is greyed; the colour
+ * panel gains a cell fill row; merging is one more button, there only while
+ * cells are selected. A cell holds blocks (inner#1619 T2), so the block type
+ * works there as in the body.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -22,6 +23,7 @@ import {
   waitForBar,
   type HarnessEditor,
 } from './bubble-bar-harness';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   closeShared();
@@ -37,13 +39,9 @@ function openTable(cells: readonly [string, string, string, string]): HarnessEdi
   mountDocumentEditor(editor);
   act(() => {
     editor.replaceBlocks(editor.document, [
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }],
+      }),
     ] as never);
   });
   focusBody(editor);
@@ -58,7 +56,7 @@ function openTable(cells: readonly [string, string, string, string]): HarnessEdi
 function cells(editor: HarnessEditor): number[] {
   const out: number[] = [];
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (node.type.name === 'tableCell') out.push(pos);
+    if (node.type.name === 'docTableCell') out.push(pos);
     return true;
   });
   return out;
@@ -79,14 +77,65 @@ function selectCells(editor: HarnessEditor, anchor: number, head: number): void 
 }
 
 describe('the bubble bar over selected cells', () => {
-  it('comes up over empty cells, block type and link greyed', async () => {
+  it('comes up over empty cells, the link greyed and the block type live', async () => {
     const editor = openTable(['', '', '', '']);
     selectCells(editor, 0, 1);
 
     await waitForBar();
 
-    expect(screen.getByTestId('doc-bubble-block-type').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-bubble-block-type').getAttribute('aria-disabled')).not.toBe('true');
     expect((screen.getByTestId('doc-bubble-tool-link') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('turns the blocks of every selected cell into the type picked', async () => {
+    const editor = openTable(['a1', 'b1', 'a2', 'b2']);
+    selectCells(editor, 0, 1);
+    await waitForBar();
+
+    const menu = await hoverOpenSlot('doc-bubble-block-type');
+    await act(async () => {
+      fireEvent.click(menu.querySelector('[data-testid="doc-bubble-block-type-item-heading-1"]')!);
+    });
+
+    const types: string[] = [];
+    editor.prosemirrorState.doc.descendants((node, _pos, parent) => {
+      if (parent?.type.name === 'blockContainer' && node.isTextblock) types.push(`${node.type.name}:${node.textContent}`);
+      return true;
+    });
+    expect(types).toEqual(['heading:a1', 'heading:b1', 'paragraph:a2', 'paragraph:b2']);
+  });
+
+  it('turns words selected in one cell into the type picked, in that cell', async () => {
+    const editor = openTable(['hello', 'b1', 'a2', 'b2']);
+    let start = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (start < 0 && node.isText && node.text === 'hello') start = pos;
+      return start < 0;
+    });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start, start + 3)));
+    });
+    await waitForBar();
+    expect(screen.getByTestId('doc-bubble-block-type').getAttribute('aria-disabled')).not.toBe('true');
+
+    const menu = await hoverOpenSlot('doc-bubble-block-type');
+    await act(async () => {
+      fireEvent.click(menu.querySelector('[data-testid="doc-bubble-block-type-item-bullet-list"]')!);
+    });
+
+    let cellOfList = '';
+    editor.prosemirrorState.doc.descendants((node, _pos, parent) => {
+      if (node.type.name === 'bulletListItem' && parent !== null) cellOfList = node.textContent;
+      return true;
+    });
+    expect(cellOfList).toBe('hello');
+    let tables = 0;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'docTable') tables += 1;
+      return true;
+    });
+    expect(tables).toBe(1);
   });
 
   it('offers merging while cells are selected, and merges them', async () => {

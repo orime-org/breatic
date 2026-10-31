@@ -35,10 +35,11 @@ import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
+import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
-import type { Landed } from '@web/spaces/document/document-proposal-landing';
+import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -58,7 +59,7 @@ interface DocumentEditorProps {
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
   /** Where an Agent proposal just landed, to show the reader (inner#1509). */
-  landed?: Landed | null;
+  landed?: ProposalLocation | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -76,12 +77,13 @@ const LANDED_MARK_FADE = {
   '--tw-animation-duration': `${String(LANDED_FADE_MS)}ms`,
 } as React.CSSProperties;
 
+/** The body's left gutter, where the strips stand. */
+const GUTTER_START: React.CSSProperties = { paddingLeft: BODY_GUTTER_START };
+
 /** Where the mark around a landed block is drawn, in the viewport's coordinates. */
 interface LandedBox {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
+  location: ProposalLocation;
+  style: { top: number; left: number; width: number; height: number };
 }
 
 /**
@@ -167,9 +169,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     clearReplies(handle.editor);
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
-  // Held here because this is where the editor's DOM enters the scroller, and
-  // the bar needs the element that now holds it. A child looking it up for
-  // itself would look before this effect has run.
+  // ScrollArea owns this viewport; pass it to document surfaces so a table's
+  // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
 
   // The link toolbar stands aside while the selection holds anything: that is
@@ -192,46 +193,57 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const container = body.current;
     if (container === null) return;
     adoptDocumentEditor(handle, container);
-    setViewport(
-      container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
-    );
   }, [handle]);
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
   // runs its effects again when shown, and the reader may have scrolled away
-  // since. A comment is shown the way the reader's own is, by reading its
-  // thread, which opens the panel on its card; a block written is scrolled to
-  // a third of the way down the viewport and outlined for a moment.
+  // since. Comment selection is issued once by the pickup's command outlet;
+  // the rail consumes its current plugin state. A written block is scrolled
+  // to a third of the way down the viewport and outlined for a moment.
   const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
-  const shown = React.useRef<Landed | null>(null);
+  const shown = React.useRef<ProposalLocation | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
-    if (landed?.how === 'comment') {
-      shown.current = landed;
-      selectThreads(handle.editor, [landed.threadId]);
-      return undefined;
-    }
+    if (landed === null || landed.how === 'comment' || !isCurrentProposalLocation(landed, handle.editor)) return undefined;
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
     shown.current = landed;
-    // Around the block's own words, standing off them on every side: the
-    // block's outer box starts where its first letter does and carries the
-    // spacing above it.
-    const at = (block.querySelector('.bn-block-content') ?? block).getBoundingClientRect();
-    const frame = viewport.getBoundingClientRect();
-    const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
-    const top = at.top - frame.top + viewport.scrollTop - gap;
-    setLandedBox({
-      top,
-      left: at.left - frame.left + viewport.scrollLeft - gap,
-      width: at.width + gap * 2,
-      height: at.height + gap * 2,
+    // A regular block's own content leaves its indented children out. A
+    // layout table is already its own content frame; descendants belong to
+    // its cells and cannot stand in for the whole table (inner#1619).
+    const content = block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
+    /**
+     * Measures the layout after asynchronously committed table chrome changes it.
+     * @returns The outline's current coordinates and dimensions in its viewport.
+     */
+    const measure = (): LandedBox['style'] => {
+      const at = content.getBoundingClientRect();
+      const frame = viewport.getBoundingClientRect();
+      const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
+      return {
+        top: at.top - frame.top + viewport.scrollTop - gap,
+        left: at.left - frame.left + viewport.scrollLeft - gap,
+        width: at.width + gap * 2,
+        height: at.height + gap * 2,
+      };
+    };
+    const style = measure();
+    setLandedBox({ location: landed, style });
+    const sizes = new ResizeObserver(() => {
+      const currentStyle = measure();
+      setLandedBox((current) => current?.location === landed ? { location: landed, style: currentStyle } : current);
     });
-    viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
-    const timer = window.setTimeout(() => setLandedBox(null), LANDED_MARK_MS);
+    sizes.observe(content, { box: 'border-box' });
+    sizes.observe(viewport, { box: 'border-box' });
+    viewport.scrollTo({ top: Math.max(0, style.top - viewport.clientHeight / 3), behavior: 'smooth' });
+    const timer = window.setTimeout(() => {
+      sizes.disconnect();
+      setLandedBox((current) => current?.location === landed ? null : current);
+    }, LANDED_MARK_MS);
     return () => {
+      sizes.disconnect();
       window.clearTimeout(timer);
-      setLandedBox(null);
+      setLandedBox((current) => current?.location === landed ? null : current);
     };
   }, [landed, viewport, handle.editor]);
 
@@ -265,7 +277,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   useFocusReturn(
     focusReturn,
     () => handle.surface.contains(document.activeElement),
-    () => handle.editor.prosemirrorView?.focus(),
+    () => viewOf(handle.editor)?.focus(),
   );
 
   const viewOfEditor = React.useCallback(
@@ -285,18 +297,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           The top and bottom breathing room does not: it belongs to the
           editable surface itself, or the strip of it below the last block
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
-          The right gutter is also where the whole-document entry stands, which
-          is what sizes both of them (`--doc-body-gutter`). */}
+          The right gutter is where the whole-document entry stands, which
+          sizes it (`--doc-body-gutter`); the left one is where a table's own
+          strip stands, past its first column's (`BODY_GUTTER_START`). */}
       {/* One scroller over both columns, so the scrollbar sits at the far
           right of the Space rather than between the text and the panel, and a
           wheel anywhere in here moves both sides together. */}
       <div className='flex min-h-0 flex-1'>
         <ScrollArea
+          viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}
           // `relative` makes the viewport the containing block for the link
           // panel's anchor, which is what lets that anchor scroll with the text
-          // it points at. Nothing else inside is measured against it: the
-          // whole-document entry is `sticky` (it answers to the scroller), the
+          // it points at. It also owns the media scroll/collision boundary.
+          // The whole-document entry is `sticky` (it answers to the scroller), the
           // caret that opens a document is `absolute` with no offsets and so
           // stays at its static position, and a remote caret's label is measured
           // against the caret itself.
@@ -311,12 +325,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 data-testid='document-proposal-landed'
                 aria-hidden='true'
                 className='pointer-events-none absolute rounded-content-xs border border-content-link animate-out fade-out fill-mode-forwards'
-                style={{ ...landedBox, ...LANDED_MARK_FADE }}
+                style={{ ...landedBox.style, ...LANDED_MARK_FADE }}
               />
             )}
             <div
               {...{ [BODY_BLANK]: '' }}
-              className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'
+              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
+              style={GUTTER_START}
             >
               <DocumentMenuEntry
                 commentsOpen={railOpen}
@@ -359,8 +374,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       )}
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
-          too; their controls are hidden while the body is not editable. */}
-      <DocumentMediaViews editor={handle.editor} />
+          too; editing controls follow permission while playback stays available. */}
+      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}

@@ -72,6 +72,14 @@ describe('a failed step in a reply', () => {
     expect(view.failureLines).toEqual([{ step: { key }, reason: 'chat.tool.failure.notMember', count: 1 }]);
   });
 
+  it('names the step of get_generation_template that could not read the template', () => {
+    const view = toChatMessage(
+      reply([{ type: 'tool-get_generation_template', toolCallId: 'g1', state: 'output-error', input: { id: 'costume-sheet' }, errorText: FAILURE_LINES.busy }]),
+    );
+
+    expect(view.failureLines).toEqual([{ step: { key: 'chat.tool.step.readTemplate' }, reason: FAILURE_LINES.busy, count: 1 }]);
+  });
+
   it('leaves the prose the reader copies as it was', () => {
     const view = toChatMessage(reply([text('Let me look.'), failedSearch('s1', 'poster'), text('Carrying on.')]));
 

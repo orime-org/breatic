@@ -3,7 +3,7 @@
 
 /**
  * Where a table's own controls go (inner#1126 A6, A11): the cell button on the
- * caret cell, the column handle on the hovered column.
+ * hovered cell, the column handle on the hovered column.
  *
  * Both are smaller than 24px, so WCAG 2.2 SC 2.5.8 asks that a 24px circle
  * centred on each stay clear of the other. On a first-row cell they share a
@@ -13,8 +13,7 @@
  * disagree about where it is.
  */
 
-import { cellAround } from '@tiptap/pm/tables';
-import type { EditorState } from '@tiptap/pm/state';
+import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
 /** A box in viewport coordinates. */
 export interface Box {
@@ -24,42 +23,24 @@ export interface Box {
   readonly bottom: number;
 }
 
-/** The cell button's side, and its inset from the corner it sits in. */
+/**
+ * The cell button's side, and its inset from the corner it sits in: from the
+ * top line, and from the right line clear of that line's column-resize zone,
+ * since the button comes up on whatever cell the pointer is over.
+ */
 const BUTTON = 20;
 const INSET = 2;
+const RIGHT_INSET = COLUMN_RESIZE_ZONE + 1;
 
-/** The column handle's width and height (`w-6`, `h-3`), and the row handle's width (`w-3`). */
+/** The column handle's width and height (`w-6`, `h-3`). */
 export const COLUMN_HANDLE_WIDTH = 24;
 export const COLUMN_HANDLE_HEIGHT = 12;
-const ROW_HANDLE_WIDTH = 12;
 
-/**
- * How far inside the table's line the library puts a handle's inner edge:
- * `offset(-10)` for the row handle on the left line, `offset(-12)` for the
- * column handle on the top line (`TableHandlesController.tsx:195-216`).
- */
-const LIBRARY_ROW_INSET = 10;
-const LIBRARY_COLUMN_INSET = 12;
-
-/**
- * How far each handle moves from where the library puts it to sit centred on
- * its line, the row handle across and the column handle up.
- */
-export const ROW_HANDLE_NUDGE = ROW_HANDLE_WIDTH / 2 - LIBRARY_ROW_INSET;
-export const COLUMN_HANDLE_NUDGE = COLUMN_HANDLE_HEIGHT / 2 - LIBRARY_COLUMN_INSET;
+/** How thick either handle is across its line: the row handle's width, the column handle's height. */
+export const HANDLE_THICKNESS = COLUMN_HANDLE_HEIGHT;
 
 /** The diameter SC 2.5.8 keeps clear around a target under 24px. */
 const CLEARANCE = 24;
-
-/**
- * The cell the caret stands in, while the selection is a caret.
- * @param state - The editor state.
- * @returns The position before the cell, or null.
- */
-export function caretCellOf(state: EditorState): number | null {
-  if (!state.selection.empty) return null;
-  return cellAround(state.selection.$head)?.pos ?? null;
-}
 
 /**
  * The cell button's box on the part of its cell in view.
@@ -67,9 +48,10 @@ export function caretCellOf(state: EditorState): number | null {
  * @returns The box, or null when that part has no room for the button.
  */
 export function cellButtonBox(visible: Box): Box | null {
-  const room = BUTTON + 2 * INSET;
-  if (visible.right - visible.left < room || visible.bottom - visible.top < room) return null;
-  const right = visible.right - INSET;
+  if (visible.right - visible.left < BUTTON + INSET + RIGHT_INSET || visible.bottom - visible.top < BUTTON + 2 * INSET) {
+    return null;
+  }
+  const right = visible.right - RIGHT_INSET;
   const top = visible.top + INSET;
   return { left: right - BUTTON, top, right, bottom: top + BUTTON };
 }

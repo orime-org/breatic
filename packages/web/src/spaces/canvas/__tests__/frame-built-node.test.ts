@@ -12,7 +12,18 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
+import {
+  CHROME_GAP_PX,
+  frameBuiltNode,
+  framedBox,
+  freshNodesBox,
+  viewportForBuilt,
+  viewportToInspect,
+  NODE_NAME_REACH_PX,
+  placedScreenBoxes,
+  viewportToShowPlaced,
+  ZOOM_STEP,
+} from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -222,5 +233,80 @@ describe('freshNodesBox', () => {
   // A result planned taller than a fresh node is framed whole (inner#1303 §6.7).
   it('is the one node for a press that built one, as tall as it was planned', () => {
     expect(freshNodesBox([{ x: 10, y: 20, width: 288, height: 700 }])).toEqual({ x: 10, y: 20, width: 288, height: 700 });
+  });
+});
+
+describe('viewportToShowPlaced (inner#1345)', () => {
+  const pane = { width: 1000, height: 800 };
+  const G = CHROME_GAP_PX;
+  // A menu down the left side; a toolbar and a minimap in the bottom right.
+  const menu = { x: 16, y: 250, width: 48, height: 300 };
+  const toolbar = { x: 700, y: 740, width: 280, height: 44 };
+  const minimap = { x: 780, y: 580, width: 200, height: 150 };
+  const chrome = [menu, toolbar, minimap];
+  const room = { x: G, y: G, width: pane.width - 2 * G, height: pane.height - 2 * G };
+  const blocks = chrome.map((b) => ({ x: b.x - G, y: b.y - G, width: b.width + 2 * G, height: b.height + 2 * G }));
+  const inside = (r: Rect): boolean => r.x >= room.x && r.y >= room.y && r.x + r.width <= room.x + room.width && r.y + r.height <= room.y + room.height;
+  const clear = (r: Rect): boolean => blocks.every((b) => !(r.x < b.x + b.width && b.x < r.x + r.width && r.y < b.y + b.height && b.y < r.y + r.height));
+  const card = (x: number, y: number, height = 192): Rect => ({ x, y, width: 288, height });
+
+  it('stays put while the nodes, their names and the panel are clear of what floats over the canvas', () => {
+    const view = { nodes: [card(100, 100)] as [Rect], anchor: card(100, 100), panel: { width: 300, height: 200 } };
+
+    expect(viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1)).toBeNull();
+  });
+
+  it('counts the name above a node, so a node right under the top edge moves down', () => {
+    const view = { nodes: [card(300, 30)] as [Rect], anchor: card(300, 30), panel: { width: 300, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
+
+    expect(next).toEqual({ x: 0, y: G - (30 - NODE_NAME_REACH_PX), zoom: 1 });
+  });
+
+  it('slides at the reader zoom when everything fits there', () => {
+    const view = { nodes: [card(30, 100)] as [Rect], anchor: card(30, 100), panel: { width: 200, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
+
+    expect(next).toEqual({ x: menu.x + menu.width + G - 30, y: 0, zoom: 1 });
+  });
+
+  it('zooms out only as far as it takes for every node and the panel to fit clear', () => {
+    const view = {
+      nodes: [card(100, 30), card(100, 300, 300), card(450, 100)] as [Rect, Rect, Rect],
+      anchor: card(450, 100),
+      panel: { width: 600, height: 300 },
+    };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
+
+    expect(next).not.toBeNull();
+    expect(next!.zoom).toBeLessThan(1);
+    expect(next!.zoom).toBeGreaterThan(0.5);
+    const { all } = placedScreenBoxes(view, next!);
+    expect(inside(all)).toBe(true);
+    expect(clear(all)).toBe(true);
+    // One step closer would not have fitted.
+    const closer = placedScreenBoxes(view, { ...next!, zoom: next!.zoom / ZOOM_STEP });
+    expect(inside(closer.all) && clear(closer.all)).toBe(false);
+  });
+
+  it('never zooms in', () => {
+    const view = { nodes: [card(30, 100)] as [Rect], anchor: card(30, 100), panel: { width: 200, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 0.5 }, chrome, 0.1);
+
+    expect(next?.zoom).toBe(0.5);
+  });
+
+  it('keeps the panel and its node clear at the reader zoom when the nodes cannot fit at the lowest zoom', () => {
+    const view = {
+      nodes: [card(-20000, 100), card(20000, 100), card(300, 100)] as [Rect, Rect, Rect],
+      anchor: card(300, 100),
+      panel: { width: 300, height: 200 },
+    };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
+
+    expect(next?.zoom ?? 1).toBe(1);
+    const { own } = placedScreenBoxes(view, next ?? { x: 0, y: 0, zoom: 1 });
+    expect(inside(own)).toBe(true);
+    expect(clear(own)).toBe(true);
   });
 });

@@ -33,6 +33,7 @@ import {
   extFromUrl,
   labelForUrl,
   readerUrlSchema,
+  voiceSampleUrl,
 } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
@@ -74,7 +75,7 @@ import {
   getUnderstandConfig,
   logger,
 } from "@breatic/core";
-import { t, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
+import { t, GENERATION_TEMPLATES, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { UnderstandInput } from "@breatic/shared";
 
@@ -112,6 +113,8 @@ const urlIngestQueue = createQueue("url-ingest");
  * number has to reach it — and it comes from the same file the run itself
  * reads, which is what keeps the two from drifting into a refusal the browser
  * allows and the run rejects.
+ * `understandLongMediaMaxBytes`: largest audio or video source the long-media
+ * path will segment before understanding.
  *
  * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
  * cut band decodes in the browser while its peaks file is missing; past either
@@ -127,6 +130,7 @@ canvas.get("/limits", (c) => {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
       understandMaxBytes: getUnderstandConfig().max_media_bytes,
+      understandLongMediaMaxBytes: getUnderstandConfig().long_media.max_source_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
@@ -149,14 +153,35 @@ canvas.get("/limits", (c) => {
  * the thing behind that address. The type comes from the source's own answer,
  * read at the edge, and the size is bounded by what the ticket signs.
  */
-const ingestUrlSchema = z.object({
-  url: readerUrlSchema,
-  project_id: z.string().uuid(),
-  space_id: z.string().uuid(),
-  // Required, unlike the browser's lane. The outcome of this one is read back
-  // off the node's task list, and there is no other way to read it.
-  node_id: z.string().uuid(),
-});
+const ingestUrlSchema = z
+  .object({
+    url: readerUrlSchema.optional(),
+    // A file a generation template brings (inner#1345), named by its path
+    // under our hosted-resources address; the address is built here.
+    template_resource: z.string().min(1).max(512).optional(),
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
+    // Required, unlike the browser's lane. The outcome of this one is read back
+    // off the node's task list, and there is no other way to read it.
+    node_id: z.string().uuid(),
+  })
+  .refine((body) => (body.url === undefined) !== (body.template_resource === undefined), {
+    message: "Send url or template_resource, not both",
+  });
+
+/**
+ * The address of a file a generation template declares.
+ * @param path - The path under the hosted-resources address.
+ * @returns The address.
+ * @throws {ValidationError} 422 for a path no template declares.
+ */
+function templateResourceUrl(path: string): string {
+  const declared = GENERATION_TEMPLATES.some((template) =>
+    template.nodes.some((node) => node.role === "source" && node.resource === path),
+  );
+  if (!declared) throw new ValidationError(t("server.error.validation"));
+  return voiceSampleUrl(path);
+}
 
 /**
  * `POST /canvas/ingest-url` — take an address and fetch it into storage.
@@ -177,6 +202,7 @@ canvas.post(
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
+    const url = body.template_resource === undefined ? (body.url as string) : templateResourceUrl(body.template_resource);
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
     await assertStorageAllowance(body.project_id, "upload");
@@ -190,7 +216,7 @@ canvas.post(
         // how large the thing behind the address is (design §7.7).
         declaredSize: upload.max_upload_bytes,
         taskType: "url",
-        ext: extFromUrl(body.url),
+        ext: extFromUrl(url),
         expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
         context: {
           nodeId: body.node_id,
@@ -203,7 +229,7 @@ canvas.post(
         // held to the end of this row.
         budgetMs: getNodeTaskConfig().default_budget_ms,
         action: "upload",
-        label: labelForUrl(body.url),
+        label: labelForUrl(url),
       },
     );
 
@@ -213,7 +239,7 @@ canvas.post(
         {
           storageKey: key,
           studioId,
-          url: body.url,
+          url,
           userId: user.id,
           projectId: body.project_id,
           spaceId: body.space_id,

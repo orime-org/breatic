@@ -43,6 +43,7 @@ import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selec
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
@@ -117,9 +118,12 @@ function paintFor(state: EditorState): DecorationSet {
   } else if (!selection.empty) {
     // A no-text block is a leaf of size one, so reaching it here means the
     // range holds all of it; so does an empty line, whose one position lies
-    // inside any range that reaches it.
+    // inside any range that reaches it. A selection taking a table whole
+    // holds the blocks without words at the edges of its cells too
+    // (inner#1619 T14), which lie past its ends.
     const holdsLines = !(selection instanceof CellSelection);
-    doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    const range = heldRange(selection) ?? selection;
+    doc.nodesBetween(range.from, range.to, (node, pos) => {
       if (node.isTextblock) {
         if (holdsLines && node.content.size === 0) {
           found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));

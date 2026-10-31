@@ -10,6 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
+import type { Queue } from "bullmq";
 import { exitProcess, initSentry } from "@worker/sentry.js";
 import {
   env,
@@ -18,6 +19,7 @@ import {
   createWorker,
   createQueue,
   createQueueEvents,
+  defaultJobOpts,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -30,6 +32,7 @@ import {
   startHealthServer,
   runGracefulShutdown,
   getAgentConfig,
+  getWorkerConfig,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -123,6 +126,12 @@ import { runMediaRead } from "@worker/handlers/media-read.js";
 import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
+import {
+  LONG_MEDIA_DISPATCH_QUEUE,
+  LONG_MEDIA_OPERATIONS_QUEUE,
+  runLongMediaDispatchSweep,
+  type LongMediaOperationJob,
+} from "@worker/handlers/long-media-dispatch.js";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -134,6 +143,7 @@ const WORKER_QUEUES: readonly string[] = [
   AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
+  LONG_MEDIA_DISPATCH_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -185,6 +195,24 @@ export function startWorker(): void {
   // A per-queue figure for a queue this process does not run is a typo that
   // would leave the queue it meant at the default.
   assertKnownQueues(WORKER_QUEUES);
+
+  const longMediaOperationQueue = createQueue(LONG_MEDIA_OPERATIONS_QUEUE);
+  const longMediaDispatchQueue = createQueue(LONG_MEDIA_DISPATCH_QUEUE);
+  const longMediaDispatch = createWorker<Record<string, never>>(
+    LONG_MEDIA_DISPATCH_QUEUE,
+    () => runLongMediaDispatchSweep(longMediaOperationQueue as Queue<LongMediaOperationJob>),
+  );
+  longMediaDispatch.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "long_media_dispatch_sweep_failed");
+  });
+  const longMediaSweepJob = "long-media-dispatch-sweep";
+  void longMediaDispatchQueue.upsertJobScheduler(
+    longMediaSweepJob,
+    { every: getWorkerConfig().poll_interval },
+    { name: longMediaSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "long_media_dispatch_sweep_schedule_failed");
+  });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 

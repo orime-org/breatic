@@ -8,7 +8,7 @@
  * signal: when it fires, the read is aborted and the tool is killed together.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { Readable, pipeline } from "node:stream";
 
 /** What one tool run is given. */
@@ -99,6 +99,69 @@ export async function runTool(
     // everything closes its stdin, which lands here too, and its exit above
     // already says how it went.
     pipeline(source, child.stdin, () => {});
+  });
+}
+
+/**
+ * Run an encoder while distinguishing a complete output from an output over its byte cap.
+ * @param program - The executable to run.
+ * @param args - Its argument list.
+ * @param run - The output ceiling and shared deadline signal.
+ * @returns The complete bytes, `over_cap`, or null for an execution failure.
+ * @throws {RangeError} When the output ceiling is invalid.
+ */
+export async function runToolBounded(
+  program: string,
+  args: string[],
+  run: Pick<ToolRun, "maxBytes" | "signal">,
+): Promise<Buffer | "over_cap" | null> {
+  if (!Number.isSafeInteger(run.maxBytes) || run.maxBytes < 1) {
+    throw new RangeError("The bounded tool output ceiling must be a positive safe integer.");
+  }
+  return new Promise((resolve) => {
+    const child = spawn(program, args, {
+      stdio: ["ignore", "pipe", "ignore"],
+      signal: run.signal,
+    });
+    const chunks: Buffer[] = [];
+    let sizeBytes = 0;
+    let overCap = false;
+    let settled = false;
+    const finish = (result: Buffer | "over_cap" | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (overCap) return;
+      sizeBytes += chunk.byteLength;
+      if (sizeBytes > run.maxBytes) {
+        overCap = true;
+        chunks.length = 0;
+        child.kill("SIGKILL");
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.once("error", (err: Error) => {
+      if (!overCap) {
+        console.error("media_tool_failed", { program, err: err.message });
+        finish(null);
+      }
+    });
+    child.once("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      if (overCap) {
+        finish("over_cap");
+        return;
+      }
+      if (code !== 0 || sizeBytes === 0) {
+        console.error("media_tool_failed", { program, code, signal });
+        finish(null);
+        return;
+      }
+      finish(Buffer.concat(chunks, sizeBytes));
+    });
   });
 }
 

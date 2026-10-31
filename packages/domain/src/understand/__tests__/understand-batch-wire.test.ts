@@ -27,6 +27,28 @@ beforeEach(() => {
 });
 
 describe("understandMedia batch wire contract", () => {
+  it("waits for durable send authority immediately before the model request", async () => {
+    const order: string[] = [];
+    const onRequestSending = vi.fn(async () => {
+      order.push("send-authority");
+    });
+    httpRequestMock.mockImplementation(async () => {
+      order.push("model-request");
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "Compared." }, finish_reason: "stop" }],
+      }), { headers: { "content-type": "application/json" } });
+    });
+
+    await understandMedia({
+      ...base,
+      media: [{ kind: "audio", bytes: new Uint8Array([1]), format: "wav" }],
+      onRequestSending,
+    });
+
+    expect(order).toEqual(["send-authority", "model-request"]);
+    expect(onRequestSending).toHaveBeenCalledTimes(1);
+  });
+
   it("sends one question and numbered media in order through one pinned request", async () => {
     const media: Media[] = [
       { kind: "audio", bytes: new Uint8Array([1, 2]), format: "wav" },

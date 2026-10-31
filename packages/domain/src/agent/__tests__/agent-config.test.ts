@@ -57,6 +57,7 @@ describe("buildAgentConfig", () => {
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "judge_likelihood",
       "list_generation_models",

@@ -24,6 +24,8 @@ Check: is the code I changed in a different package from the one I am building o
 
 **A tsconfig path alias can be live with zero uses in its own package.** `shared`, `core` and `domain` point `exports.types` at their `src`, so a consumer's TypeScript reads the dependency's source and meets that package's internal aliases; `integration-tests` reaches the `server`, `worker` and `collab` source through `@server/*`, `@worker/*`, `@collab/*`. Web's tsconfig keeps `@shared/*` although `packages/web/src` never writes it. Whether an alias is dead depends on which packages can reach that source through the dependency graph; a search with zero hits is only the first condition.
 
+**Arguments after `--` go to every task the turbo run starts.** `pnpm turbo run typecheck test --filter=<pkg> -- <test file>` hands the file to `tsc` as well, which then ignores `tsconfig.json` and reports `esModuleInterop` and unresolved-alias errors that have nothing to do with the change; run the tasks separately.
+
 **Restart `pnpm dev` after changing tsup, vite or tsconfig configuration.** The running watchers keep building with the old configuration.
 
 **tsup, vite and vitest only transpile; types are checked only by `pnpm typecheck`.** CI runs `pnpm turbo typecheck`, which reaches a package only through its own `typecheck` script, so a new package without one is never typechecked.
@@ -35,6 +37,8 @@ Check: is the code I changed in a different package from the one I am building o
 **After changing any dependency, run a plain `pnpm install`, never one with `--filter`.** `pnpm install --filter <pkg>` and `pnpm --filter <pkg> add|remove <dep>` relink other packages' `node_modules`, for example pointing web's `vite` at another installed version, and typecheck then fails in files unrelated to the change while the lockfile diff looks clean.
 
 Check: does the failing file have anything to do with my change? No → run a full `pnpm install` before concluding the code was already broken. To confirm, `ls -l packages/<pkg>/node_modules/<dep>` and compare the linked `.pnpm` version with the declared range.
+
+**Change a file in `patches/` only through `pnpm patch <pkg>@<version>` and `pnpm patch-commit <dir>`, and commit the `pnpm-lock.yaml` change with it.** The lockfile records a hash of every patch file, so a patch edited by hand fails CI's and the Dockerfile's `pnpm install --frozen-lockfile` with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. An edit made inside `node_modules/.pnpm` never reaches a commit and the next install overwrites it, so testing a patch change, mutations included, means `patch-commit`, `pnpm install`, then restoring both files.
 
 **Before saying `main` is broken, check CI: `gh run list --branch main --limit 5`.** Green there means the failure is local. `pnpm install` reports nothing to do while `node_modules/.pnpm` still holds an older copy of a package next to the current one, and the older `.d.ts` can lack a new export; delete the `node_modules` directories and install again.
 

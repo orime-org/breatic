@@ -11,4 +11,4 @@
  * through `TierOffer`. A second copy here could only ever disagree with what
  * a card is actually charged.
  */
-export const SALES_EMAIL = 'breatic@orime.ai';
+export const SALES_EMAIL = 'contact@breatic.ai';

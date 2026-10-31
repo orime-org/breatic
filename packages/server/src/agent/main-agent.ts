@@ -856,6 +856,8 @@ export class MainAgent {
         toolsContext: turnToolsContext(sent!.agentConfig.tools, usage, {
           saveToStorage: saveToStorageFor({ projectId, userId }),
           studioId,
+          projectId,
+          actorUserId: userId,
           openDocument,
           records: projectRecordsFor({
             userId,

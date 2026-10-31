@@ -28,11 +28,15 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import postgres from "postgres";
 import {
   getRedis,
   initCore,
   loadLocales,
+  logger,
+  initLogger,
   projectMembersRepo,
   runWithLocale,
   sessionCookieName,
@@ -47,6 +51,14 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+
+// A real pino instance, as in production: the default export is a Proxy that a
+// spy cannot attach to.
+initLogger("project-leave-test", {
+  logsRoot: resolve(tmpdir(), "breatic-test-logs"),
+  debug: false,
+  console: "none",
+});
 
 import * as projectService from "@server/modules/project/project.service.js";
 import * as recentRepo from "@server/modules/recent/recent.repo.js";
@@ -235,5 +247,49 @@ describe("DELETE /projects/:id/membership", () => {
     const s = await seedScene();
     const res = await leaveAs(s.projectId, s.guestId);
     expect(res.status).toBe(403);
+  });
+
+  describe("a project id that is not a uuid (inner#1139)", () => {
+    const forbidden = (): string => runWithLocale("en", () => t("server.error.forbidden"));
+
+    for (const [name, id] of [
+      ["R1 plain text", "not-a-uuid"],
+      ["R2 uuid layout but not hex", "gggggggg-gggg-gggg-gggg-gggggggggggg"],
+      ["R3 the nil uuid, which names no project", "00000000-0000-0000-0000-000000000000"],
+    ] as const) {
+      it(`${name} → 403, with nothing logged as an error`, async () => {
+        const s = await seedScene();
+        const errors = vi.spyOn(logger, "error");
+        try {
+          const res = await leaveAs(id, s.editorId);
+          expect(res.status).toBe(403);
+          const body = (await res.json()) as { error: { code: number; message: string } };
+          expect(body.error).toMatchObject({ code: 403, message: forbidden() });
+          expect(errors).not.toHaveBeenCalled();
+        } finally {
+          errors.mockRestore();
+        }
+      });
+    }
+
+    it("R4 a version-0 uuid is a uuid: its viewer gets past the role check and leaves", async () => {
+      const s = await seedScene();
+      const hex = crypto.randomBytes(16).toString("hex").split("");
+      hex[12] = "0";
+      const h = hex.join("");
+      const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+      await sql`
+        INSERT INTO projects (id, studio_id, created_by_user_id, name, slug)
+        VALUES (${id}, ${s.studioId}, ${s.ownerId}, ${`v0-${id}`}, ${`v0-${id}`})
+      `;
+      await sql`
+        INSERT INTO project_members (project_id, user_id, role, added_by)
+        VALUES (${id}, ${s.ownerId}, 'owner', ${s.ownerId}),
+               (${id}, ${s.viewerId}, 'viewer', ${s.ownerId})
+      `;
+      const res = await leaveAs(id, s.viewerId);
+      expect(res.status).toBe(200);
+      expect(await projectMembersRepo.getRole(id, s.viewerId)).toBeNull();
+    });
   });
 });

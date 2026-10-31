@@ -416,7 +416,7 @@ describe("authorisation table (§4.3)", () => {
 
   // A route that mounts `validate()` before its handler is listed once per
   // handler, so the table is compared as a set of method and path.
-  it("registers exactly the approved refund and enterprise endpoints, by method and path template", async () => {
+  it("registers exactly the approved internal endpoints, by method and path template", async () => {
     const { createInternalApp } = await import("@server/internal-app.js");
     const registered = [
       ...new Set(
@@ -440,6 +440,14 @@ describe("authorisation table (§4.3)", () => {
         "GET /internal/v1/accounts/:userId/enterprise-membership",
         "GET /internal/v1/enterprise-membership-operations/:key",
         "POST /internal/v1/accounts/:userId/enterprise-membership",
+        "GET /internal/v1/maintenance/queue",
+        "GET /internal/v1/maintenance/reclaim/candidates",
+        "POST /internal/v1/maintenance/reclaim/preview",
+        "POST /internal/v1/maintenance/reclaim/operations",
+        "GET /internal/v1/maintenance/reclaim/operations/:key",
+        "POST /internal/v1/maintenance/reclaim/operations/:key/control",
+        "GET /internal/v1/maintenance/reclaim/controls/:key",
+        "POST /internal/v1/maintenance/reclaim/operations/:key/resume",
       ].sort(),
     );
   });

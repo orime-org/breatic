@@ -253,6 +253,8 @@ export interface UnderstandRequest {
   timeoutMs: number;
   /** Whether anyone still wants the answer. */
   signal?: AbortSignal;
+  /** Persist send authority immediately before the model request is issued. */
+  onRequestSending?: () => Promise<void>;
   /**
    * Called once when the service has billed the call: with what its body
    * says the call cost, or with undefined when a success answer carried no

@@ -116,14 +116,9 @@ function topmostBlockPos(view: EditorView): number | null {
   );
   if (range !== null) return range.start;
 
-  let first: number | null = null;
-  view.state.doc.descendants((node: PMNode, pos: number) => {
-    if (first !== null) return false;
-    if (node.type.name !== 'blockContainer') return true;
-    first = pos;
-    return false;
-  });
-  return first;
+  // The body's first block, a table too (inner#1619), stands right inside
+  // its block group.
+  return (view.state.doc.firstChild?.childCount ?? 0) > 0 ? 1 : null;
 }
 
 /**

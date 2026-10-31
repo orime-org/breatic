@@ -222,6 +222,7 @@ describe("what a plain chat turn hands the model", () => {
     expect(names).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "list_generation_models",
       "list_project_activity",

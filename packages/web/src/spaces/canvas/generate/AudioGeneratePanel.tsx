@@ -28,16 +28,18 @@ import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
+import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 
 /**
- * The panel's outer surface: width, corners, border, fill, padding, spacing.
+ * The panel's outer surface: corners, border, fill, padding, spacing; its
+ * width is `GENERATE_PANEL_WIDTH_STYLE`.
  *
  * One constant because this component returns it from two branches — the
  * legacy node's single line and the panel proper — and two literals can drift
  * into two different panels without anything failing.
  */
 const SHELL =
-  'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
+  'flex flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
 
 interface AudioGeneratePanelProps {
   /** The tts and audio models this panel offers. */
@@ -273,7 +275,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   // (user 2026-09-02).
   if (promptSlot === null) {
     return (
-      <div className={SHELL}>
+      <div data-canvas-panel='' className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
         <div className='flex items-start justify-between gap-2'>
           <p
             data-testid='generate-audio-legacy'
@@ -288,7 +290,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   }
 
   return (
-    <div className={SHELL}>
+    <div data-canvas-panel='' className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
       <div className='flex items-start justify-between'>
         <AudioGenerateToolbar
           onReference={onAddReference}

@@ -493,6 +493,7 @@ async function fileCover(
   const adapter = await getStorageAdapter();
   try {
     const registered = await assetService.register({
+      originStorageKey: grant.storageKey,
       ownerStudioId: grant.studioId,
       actingUserId: grant.userId,
       contentHash: cover.sha256,
@@ -694,6 +695,7 @@ export async function applyIngestReport(
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
   const { asset, deduped, reclaimQueueFailed } = await assetService.register({
+      originStorageKey: grant.storageKey,
     ...(cover.id !== null && { coverAssetId: cover.id }),
     ownerStudioId: grant.studioId,
     actingUserId: grant.userId,

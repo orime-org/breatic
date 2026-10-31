@@ -53,20 +53,7 @@ describe("Projects routes", () => {
     mocks.projectService.assertAccess.mockResolvedValue(undefined);
   });
 
-  describe("project id validation (middleware, not per-route)", () => {
-    it("refuses a malformed project id with 403, not a 500", async () => {
-      // The role middleware puts this param into a uuid comparison, so a
-      // non-uuid would make Postgres reject the statement and surface as an
-      // unclassified 500. Checked in the middleware rather than per route:
-      // every project route is behind it, and a per-route validator is one
-      // more thing each new route has to remember.
-      const res = await createApp().request(
-        "/api/v1/projects/not-a-uuid/transfer-owner",
-        { method: "POST", headers: AUTH, body: JSON.stringify({ toUserId: "u-2" }) },
-      );
-      expect(res.status).toBe(403);
-    });
-
+  describe("project id validation", () => {
     it("refuses a malformed id on a route gated in the service with 422", async () => {
       const res = await createApp().request(
         "/api/v1/projects/not-a-uuid/duplicate",

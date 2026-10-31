@@ -26,6 +26,7 @@ vi.mock('@web/data/api/canvas', () => ({
     transcribe: vi.fn(async () => ({ task_id: 't-2', status: 'pending' })),
   },
   getCachedUnderstandMaxBytes: vi.fn(() => 20 * 1024 * 1024),
+  getCachedUnderstandLongMediaMaxBytes: vi.fn(() => 2 * 1024 * 1024 * 1024),
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn() },

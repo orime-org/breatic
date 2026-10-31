@@ -39,7 +39,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
-import { getCollabConfig } from "@collab/config.js";
+import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
   }
 
   await server.listen();
-  logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
+  logger.info({ port: env.COLLAB_PORT, ...getReassemblyLimits() }, "Hocuspocus collaboration server started");
 
   // Both cross-service streams are read as consumer groups this instance
   // joins under its instance id (inner#1497 §6.1, §6.2).

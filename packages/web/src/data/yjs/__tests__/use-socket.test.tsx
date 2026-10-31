@@ -234,6 +234,22 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(result.current.hasEverSynced).toBe(true);
   });
 
+  it.each([1002, 1008, 1009, 1013])('WU09 treats a %i close from collab as a soft disconnect', (code) => {
+    // collab closes an over-limit or malformed reassembly with these codes;
+    // the shared socket reconnects and resends, as after any drop.
+    const doc = new Y.Doc();
+    const name = `project-p1/document-wu09-${code}`;
+    const { result } = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() => {
+      providerInstances[providerInstances.length - 1]!.emit('close', { event: { code, reason: '' } });
+    });
+
+    expect(result.current.status).toBe('disconnected');
+  });
+
   it('leaves reporting a dropped connection to the shared socket', () => {
     // One connection carries every open document; each document hearing the
     // close and reporting it turned one drop into a dozen alerts.

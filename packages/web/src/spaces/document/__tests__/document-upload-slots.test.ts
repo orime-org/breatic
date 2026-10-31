@@ -20,6 +20,7 @@ import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote
 import { mediaGapBelow, mediaGapOnRow } from '@web/spaces/document/document-insert-row';
 import { pasteTarget } from '@web/spaces/document/document-file-input';
 import { textblocks, gapBefore } from './textblocks';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import {
   addUploadBatch,
   documentUploadsExtension,
@@ -868,5 +869,24 @@ describe('a page that is not a secure context', () => {
       vi.unstubAllGlobals();
     }
     expect(shape(editor)).toEqual(['A', 'm1', 'B', 'C']);
+  });
+});
+
+describe('a file under a quoted table (inner#1619)', () => {
+  it('lands quoted, as under a quoted line', () => {
+    const { editor } = open([
+      { ...tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), props: { quoted: true } },
+      { type: 'paragraph', content: 'after', props: { quoted: true } },
+    ]);
+    const view = editor.prosemirrorView!;
+    const [slot] = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'after')), ['m1']);
+
+    land(editor, slot!);
+
+    expect((editor.document as Seen[]).map((block) => [block.type, block.props['quoted']])).toEqual([
+      ['docTable', true],
+      ['image', true],
+      ['paragraph', true],
+    ]);
   });
 });

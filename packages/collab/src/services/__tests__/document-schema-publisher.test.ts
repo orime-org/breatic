@@ -18,7 +18,11 @@ import {
   documentSchemaVersion,
 } from "@breatic/shared";
 
-import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+import {
+  DOCUMENT_SCHEMA_PUBLISH_ORIGIN,
+  keepDocumentSchemaPublished,
+  publishDocumentSchema,
+} from "@collab/services/document-schema-publisher.js";
 
 /** 这一版算出来的版本号 —— 跟 publisher 写进 meta 的那个是同一个。 */
 const MY_VERSION = DOCUMENT_SCHEMA_VERSION;
@@ -28,6 +32,7 @@ const OTHER_VERSION = documentSchemaVersion({
   publishedAt: "2020-01-01T00:00:00Z",
   nodes: { paragraph: [] },
   marks: {},
+  content: {},
 });
 
 /**
@@ -49,6 +54,7 @@ describe("往 meta 里写这一版的 schema", () => {
     expect(published.version).toBe(MY_VERSION);
     expect(published.nodes).toEqual(DOCUMENT_SCHEMA.nodes);
     expect(published.marks).toEqual(DOCUMENT_SCHEMA.marks);
+    expect(published.content).toEqual(DOCUMENT_SCHEMA.content);
     doc.destroy();
   });
 
@@ -161,3 +167,98 @@ describe("往 meta 里写这一版的 schema", () => {
     doc.destroy();
   });
 });
+
+/**
+ * Writes a published vocabulary into meta, as another collab instance would.
+ * @param doc - The meta document.
+ * @param version - The version.
+ * @param publishedAt - Its release time.
+ */
+function publishedBySomeoneElse(doc: Y.Doc, version: string, publishedAt: string): void {
+  doc.transact(() => {
+    const map = doc.getMap(DOCUMENT_SCHEMA_META_KEY);
+    map.set("version", version);
+    map.set("publishedAt", publishedAt);
+  }, "another-instance");
+}
+
+describe("publishing during a rolling release (inner#1619 design 5.6)", () => {
+  it("does not write over a version released later than this one", () => {
+    const doc = new Y.Doc();
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+
+    expect(publishDocumentSchema(doc)).toBe(false);
+    expect(readPublished(doc).version).toBe(OTHER_VERSION);
+    doc.destroy();
+  });
+
+  it("writes over a different version released at the same time", () => {
+    const doc = new Y.Doc();
+    publishedBySomeoneElse(doc, OTHER_VERSION, DOCUMENT_SCHEMA.publishedAt);
+
+    expect(publishDocumentSchema(doc)).toBe(true);
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+    doc.destroy();
+  });
+
+  it("writes over a later release when forced, as a rollback does", () => {
+    const doc = new Y.Doc();
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+
+    expect(publishDocumentSchema(doc, { force: true })).toBe(true);
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+    doc.destroy();
+  });
+
+  it("writes its version back as soon as an older one is written over it", () => {
+    const doc = new Y.Doc();
+    const stop = keepDocumentSchemaPublished(doc, { force: false });
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2020-01-01T00:00:00Z");
+
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+    stop();
+    doc.destroy();
+  });
+
+  it("leaves a later release written over it alone", () => {
+    const doc = new Y.Doc();
+    const stop = keepDocumentSchemaPublished(doc, { force: false });
+
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+
+    expect(readPublished(doc).version).toBe(OTHER_VERSION);
+    stop();
+    doc.destroy();
+  });
+
+  it("publishes once on load when forced, and answers no later write", () => {
+    const doc = new Y.Doc();
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+    const stop = keepDocumentSchemaPublished(doc, { force: true });
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+
+    // A later-build instance still running writes its own version back; a
+    // forced instance answering it would write against it without end.
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+
+    expect(readPublished(doc).version).toBe(OTHER_VERSION);
+    stop();
+    doc.destroy();
+  });
+
+  it("does not answer its own writes", () => {
+    const doc = new Y.Doc();
+    let writes = 0;
+    doc.on("afterTransaction", (transaction: Y.Transaction) => {
+      if (transaction.origin === DOCUMENT_SCHEMA_PUBLISH_ORIGIN) writes += 1;
+    });
+    const stop = keepDocumentSchemaPublished(doc, { force: false });
+
+    expect(writes).toBe(1);
+    stop();
+    doc.destroy();
+  });
+});
+

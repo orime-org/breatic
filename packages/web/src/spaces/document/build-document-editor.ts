@@ -54,6 +54,11 @@ import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
+import { documentTableHandlesExtension } from '@web/spaces/document/document-table-handles';
+import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
+import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
+import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
+import { STRIP_SIZE, TABLE_STRIP_OUTSET } from '@web/spaces/document/document-strip-alignment';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
@@ -163,6 +168,10 @@ export function buildDocumentEditor(
       documentTabExtension(),
       documentTableKeysExtension(),
       documentTableTargetExtension(),
+      documentTableHandlesExtension(),
+      documentTableCopyExtension(),
+      documentTableSideMenuExtension(),
+      documentTableLeaveSelectionExtension(),
       documentTableColumnWidthsExtension(),
       documentTableDragExtension(),
       documentKeyboardMoveExtension(),
@@ -219,7 +228,7 @@ export function buildDocumentEditor(
     // The line that says where a dragged block will land. Withholding the
     // colour is what lets `index.css` paint it: given one, the extension
     // writes `#ddeeff` inline onto the element
-    // (`extensions/DropCursor/DropCursor.ts:121-122`), and an inline style
+    // (`extensions/DropCursor/DropCursor.ts:139-140`), and an inline style
     // beats any rule of ours — so the affordance would keep a fixed light
     // blue that follows neither theme nor our tokens. `false` is the
     // extension's own way of saying "class only".
@@ -230,15 +239,11 @@ export function buildDocumentEditor(
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
     dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
-    // Merge and split, a fill colour per cell, and a header row and column.
-    // Cell text colour stays off: a cell's text takes the same text colour
-    // mark every other run does.
-    tables: {
-      splitCells: true,
-      cellBackgroundColor: true,
-      cellTextColor: false,
-      headers: true,
-    },
+    // The gutter left of the body counts as the row beside it, as far out as
+    // a strip stands, a table's own being the furthest: it is reached there,
+    // level with the table and past its first column's strips, since over its
+    // cells the strip belongs to their blocks (inner#1619 design 5.3).
+    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
     pasteHandler:
       options.onFiles === undefined
         ? documentPasteHandler

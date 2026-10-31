@@ -24,6 +24,10 @@ describe("worker concurrency", () => {
     expect(workerConcurrencyFor("mail")).toBe(5);
   });
 
+  it("limits the long-media SQL outbox scan to one worker at a time", () => {
+    expect(workerConcurrencyFor("long-media-dispatch")).toBe(1);
+  });
+
   it("has no per-round wait left: an upstream is asked once per pickup", () => {
     expect(getWorkerConfig()).not.toHaveProperty("poll_max_wait");
   });
@@ -31,12 +35,36 @@ describe("worker concurrency", () => {
   it("holds at most five media readings in memory at once", () => {
     expect(getUnderstandConfig().max_concurrent).toBe(5);
   });
+
+  it("loads the approved long-media limits and source-file profile", () => {
+    expect(getUnderstandConfig().long_media).toEqual({
+      max_source_bytes: 2_147_483_648,
+      max_sources: 10,
+      max_segment_bytes: 20_000_000,
+      audio_core_seconds: 300,
+      video_core_seconds: 60,
+      max_active_leaves: 512,
+      max_concurrent_encoders: 2,
+      delivery_concurrency: 2,
+      per_operation_delivery_concurrency: 1,
+      operation_lease_ms: 30_000,
+      container_class: "LongMediaContainerStd4",
+      container_max_instances: 2,
+      profile_version: "source-file-v1",
+      audio_codec: "libmp3lame",
+      audio_bitrate: "128k",
+      video_codec: "libx264",
+      video_crf: 23,
+      video_audio_codec: "aac",
+      video_audio_bitrate: "128k",
+    });
+  });
 });
 
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {

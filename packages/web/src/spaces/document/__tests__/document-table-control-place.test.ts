@@ -14,6 +14,7 @@ import {
   columnHandleCentre,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
+import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * A box from its edges.
@@ -42,8 +43,8 @@ function spaced(a: Box, b: Box): boolean {
 }
 
 describe('the cell button box', () => {
-  it('sits on the top-right corner of the part of the cell in view', () => {
-    expect(cellButtonBox(box(100, 40, 220, 75))).toEqual(box(198, 42, 218, 62));
+  it('sits on the top-right corner of the part of the cell in view, clear of the column-resize zone', () => {
+    expect(cellButtonBox(box(100, 40, 220, 75))).toEqual(box(220 - COLUMN_RESIZE_ZONE - 1 - 20, 42, 220 - COLUMN_RESIZE_ZONE - 1, 62));
   });
 
   it('is not there when the part in view has no room for it', () => {

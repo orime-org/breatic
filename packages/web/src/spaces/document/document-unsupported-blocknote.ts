@@ -188,7 +188,7 @@ const NAME_PROP = {
  * The block, declared to the block schema as well as to ProseMirror's.
  *
  * BlockNote keeps a second registry beside the ProseMirror schema, and every
- * route that hands out a block object looks a node up in it: `nodeToBlock.ts:427`
+ * route that hands out a block object looks a node up in it: `nodeToBlock.ts:461`
  * throws for a type it cannot find, and `getTextCursorPosition` — which
  * `SourceBlockWithPreview` calls on every selection change — converts the
  * block at the cursor along with its previous, next and parent. A stand-in
@@ -207,7 +207,7 @@ export const unsupportedBlockSpec = createBlockSpecFromTiptapNode(
 /**
  * The inline node, declared to the inline content schema.
  *
- * This one fails the other way. `nodeToBlock.ts:180-185` writes a console
+ * This one fails the other way. `nodeToBlock.ts:214-219` writes a console
  * warning for an inline type absent from that schema and returns, so the
  * stand-in is dropped from the block object without a word — and a document
  * read back that way has lost the element the stand-in was carrying.

@@ -28,6 +28,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -256,6 +257,18 @@ describe('a bullet says how deep its own list runs', () => {
     const bullet = root.querySelector('[data-content-type="bulletListItem"]');
     // Indented once, but it is the first level of its own list — the run of
     // bulleted parents above it is what the shape counts.
+    expect(bullet?.getAttribute('data-bullet-level')).toBe('0');
+  });
+});
+
+describe('a bullet list in a table cell (inner#1619)', () => {
+  it('starts at the first shape though the table is indented under a bullet', () => {
+    const cell = { blocks: [{ type: 'bulletListItem', content: 'in a cell' }] };
+    const { root } = open([
+      { type: 'bulletListItem', content: 'outer', children: [tableBlock({ rows: [{ cells: [cell, 'b1'] }] })] },
+    ] as never);
+
+    const bullet = [...root.querySelectorAll('[data-content-type="bulletListItem"]')].find((element) => element.textContent === 'in a cell');
     expect(bullet?.getAttribute('data-bullet-level')).toBe('0');
   });
 });

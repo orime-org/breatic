@@ -48,6 +48,7 @@ import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-body-autoscroll';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
@@ -134,7 +135,8 @@ function zoneAt(view: EditorView, y: number): PointerZone {
  */
 function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
   const pos = bodyEdgeBlockPos(view.state.doc, edge);
-  return pos !== null && view.state.doc.nodeAt(pos)?.type.name === 'table';
+  const name = pos === null ? undefined : view.state.doc.nodeAt(pos)?.type.name;
+  return name === 'table' || name === DOC_TABLE;
 }
 
 /**

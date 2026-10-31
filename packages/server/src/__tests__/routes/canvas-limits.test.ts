@@ -16,6 +16,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   return {
     ...(await coreMock(importOriginal)),
+    getUnderstandConfig: vi.fn(() => ({
+      max_media_bytes: 20_971_520,
+      long_media: { max_source_bytes: 2_147_483_648 },
+    })),
     getMiniToolsConfig: vi.fn(() => ({
       waveform_max_seconds: 600,
       waveform_max_bytes: 200_000_000,
@@ -69,6 +73,7 @@ describe("GET /canvas/limits", () => {
         referencePoolCap: number;
         nodeHistoryPageSize: number;
         understandMaxBytes: number;
+        understandLongMediaMaxBytes: number;
         waveformMaxSeconds: number;
         waveformMaxBytes: number;
         waveformPeaksRetryMs: number;
@@ -81,6 +86,7 @@ describe("GET /canvas/limits", () => {
     // toast says the number — so the number has to reach it, and it comes
     // from the same file the run itself reads.
     expect(body.data.understandMaxBytes).toBe(20_971_520);
+    expect(body.data.understandLongMediaMaxBytes).toBe(2_147_483_648);
     // inner#1305 §4.4: the cut band draws a waveform only under both.
     expect(body.data.waveformMaxSeconds).toBe(600);
     expect(body.data.waveformMaxBytes).toBe(200_000_000);

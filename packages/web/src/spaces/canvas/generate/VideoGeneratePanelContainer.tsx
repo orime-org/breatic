@@ -73,7 +73,7 @@ import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePan
 import {
   VIDEO_MODE_OPTIONS,
 } from '@web/spaces/canvas/generate/video-mode-options';
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
@@ -104,7 +104,7 @@ import {
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
-import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -162,6 +162,8 @@ interface VideoGeneratePanelContainerProps {
    * commit that ends a pick.
    */
   getLastWriteWasLocal: () => boolean;
+  /** Places a picked template around the node (inner#1345), as `CanvasSpace` places a proposal. */
+  placeTemplate: PlaceTemplate;
 }
 
 /**
@@ -174,6 +176,7 @@ interface VideoGeneratePanelContainerProps {
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
+ * @param root0.placeTemplate - Places a picked template around the node.
  * @returns The video Generate panel.
  */
 function VideoGeneratePanelBody({
@@ -183,6 +186,7 @@ function VideoGeneratePanelBody({
   projectId,
   spaceId,
   getLastWriteWasLocal,
+  placeTemplate,
 }: VideoGeneratePanelContainerProps & {
   nodeId: string;
 }): React.JSX.Element {
@@ -191,6 +195,8 @@ function VideoGeneratePanelBody({
   const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery(modelCatalogQuery());
+  // A template's nodes can run in other node types than the panel's.
+  const templateModels = React.useMemo(() => allGenerationModels(catalog), [catalog]);
   // `?? []` is pure defence now: since #1966 this body mounts only inside
   // `CatalogGatedFrame`, which withholds it until the query has data. Once
   // resolved, modelsApi.list() has run the response through
@@ -344,7 +350,7 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId, models, availableModes],
   );
 
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, templateModels, placeTemplate);
 
   /**
    * The node's live content view, or undefined when the node is gone or is not
@@ -943,7 +949,7 @@ function VideoGeneratePanelBody({
   return (
     <VideoGeneratePanel
       models={stableModels}
-      catalogModels={models}
+      catalogModels={templateModels}
       onPickTemplate={onPickTemplate}
       model={vm.model}
       params={stableParams}

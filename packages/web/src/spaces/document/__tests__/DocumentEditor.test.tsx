@@ -18,30 +18,50 @@
 
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
-import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { requestCommentLocation, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
+import { landedAt, landProposal, type Landed } from '@web/spaces/document/document-proposal-landing';
+import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';
   let doc: Y.Doc;
   let awareness: Awareness;
   let handle: DocumentEditorHandle;
+
+  /** Builds a valid publication for the chrome's geometry fixture. */
+  function publication(at: Landed, proposal: DocumentProposal): ProposalLocation {
+    return Object.freeze({ ...at, documentName: NAME, handle, pending: { proposal, action: 'view' as const, order: 0 }, owner: {} });
+  }
+
+  /** Gives the existing first block an actual proposal trace for measurement. */
+  function writtenLocation(): ProposalLocation {
+    const proposalId = '33333333-3333-4333-8333-333333333333';
+    const blockId = deriveId(`document-proposal:${proposalId}:0`);
+    const view = handle.editor.prosemirrorView!;
+    const first = view.state.doc.firstChild!.firstChild!;
+    act(() => view.dispatch(view.state.tr.setNodeMarkup(1, undefined, { ...first.attrs, id: blockId })));
+    return publication({ how: 'write', blockId }, {
+      proposalId, spaceId: 'd1', spaceName: 'Document', kind: 'insert', blockId: null,
+      body: 'Output', title: 'Suggestion', heading: '', original: '', blockType: null, lossy: false,
+    });
+  }
 
   beforeEach(async () => {
     doc = new Y.Doc();
@@ -252,22 +272,170 @@ describe('DocumentEditor', () => {
     const original = HTMLElement.prototype.scrollTo;
     HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
     try {
-      const landed = { how: 'write' as const, blockId: (handle.editor.document[0] as { id: string }).id };
-      const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      const at = (mode: 'visible' | 'hidden', landed: ProposalLocation | null): React.JSX.Element => (
         <React.Activity mode={mode}>
           <DocumentEditor handle={handle} uploader={uploader} landed={landed} />
         </React.Activity>
       );
-      const { rerender } = render(at('visible'));
+      const { rerender } = render(at('visible', null));
+      const landed = writtenLocation();
+      rerender(at('visible', landed));
       await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
 
-      rerender(at('hidden'));
-      rerender(at('visible'));
+      rerender(at('hidden', landed));
+      rerender(at('visible', landed));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(scrollTo).toHaveBeenCalledTimes(1);
     } finally {
       HTMLElement.prototype.scrollTo = original;
+    }
+  });
+
+  it.each(['paragraph', 'table'] as const)('outlines the landed %s itself, leaving descendant blocks out of its measurement', async (kind) => {
+    const { editor } = handle;
+    const { rerender } = render(<DocumentEditor handle={handle} />);
+    editor.replaceBlocks(editor.document, [kind === 'table'
+      ? tableBlock({ rows: [{ cells: ['H1', 'H2'] }, { cells: ['A', 'B'] }] })
+      : { type: 'paragraph', content: 'Parent', children: [{ type: 'paragraph', content: 'Child' }] },
+    ] as never);
+    const location = writtenLocation();
+    const blockId = location.blockId;
+    const block = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+    const own = kind === 'table' ? block : block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+    const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1]!;
+    expect(nested).not.toBe(own);
+    const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const spies = [
+      vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+      vi.spyOn(nested, 'getBoundingClientRect').mockReturnValue(new DOMRect(50, 100, 90, 20)),
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+    ];
+    viewport.style.setProperty('--space-2', '8px');
+    viewport.scrollTop = 30;
+    viewport.scrollLeft = 5;
+    try {
+      rerender(<DocumentEditor handle={handle} landed={location} />);
+
+      await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+        top: '92px', left: '27px', width: '316px', height: '176px',
+      }));
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it.each(['timer', 'replacement', 'hidden'] as const)('remeasures a growing landed table, scrolls once and retires its callbacks after %s', async (ending) => {
+    const observers: ControlledResizeObserver[] = [];
+    const originalResizeObserver = globalThis.ResizeObserver;
+    /** Delivers browser size notifications, including a previously queued delivery. */
+    class ControlledResizeObserver implements ResizeObserver {
+      readonly targets = new Set<Element>();
+
+      /** Saves the callback that receives a browser layout notification. */
+      constructor(readonly callback: ResizeObserverCallback) {
+        observers.push(this);
+      }
+
+      /** Watches one real DOM element. */
+      observe(target: Element): void { this.targets.add(target); }
+      /** Stops watching one element. */
+      unobserve(target: Element): void { this.targets.delete(target); }
+      /** Ends active observations; already queued deliveries remain test inputs. */
+      disconnect(): void { this.targets.clear(); }
+      /** Delivers the current geometry of the given observed elements. */
+      deliver(targets: readonly Element[] = [...this.targets]): void {
+        const entries = targets.map((target): ResizeObserverEntry => {
+          const contentRect = target.getBoundingClientRect();
+          const size = [{ inlineSize: contentRect.width, blockSize: contentRect.height }];
+          return { target, contentRect, borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size };
+        });
+        if (entries.length > 0) this.callback(entries, this);
+      }
+    }
+    vi.stubGlobal('ResizeObserver', ControlledResizeObserver);
+    const at = (mode: 'visible' | 'hidden', landed: ProposalLocation | null): React.JSX.Element => (
+      <React.Activity mode={mode}><DocumentEditor handle={handle} landed={landed} /></React.Activity>
+    );
+    const { rerender, unmount } = render(at('visible', null));
+    const spies: Array<{ mockRestore: () => void }> = [];
+    try {
+      act(() => handle.editor.replaceBlocks(handle.editor.document, [
+        tableBlock({ rows: [{ cells: ['H1', 'H2'] }, { cells: ['A', 'B'] }] }),
+        { type: 'paragraph', content: 'NEXT' },
+      ] as never));
+      await waitFor(() => expect(handle.surface.querySelectorAll('.doc-table-frame')).toHaveLength(1));
+      const location = writtenLocation();
+      const block = handle.surface.querySelector<HTMLElement>(`[data-id="${location.blockId}"]`)!;
+      const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+      let bounds = new DOMRect(40, 90, 300, 160);
+      spies.push(vi.spyOn(block, 'getBoundingClientRect').mockImplementation(() => bounds));
+      spies.push(vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)));
+      const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
+      spies.push(scroll);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      const bytes = Y.encodeStateAsUpdate(doc);
+      const tree: unknown = handle.editor.prosemirrorState.doc.toJSON();
+      const undo = [...handle.undoManager.undoStack];
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      rerender(at('visible', location));
+      expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+        top: '92px', left: '27px', width: '316px', height: '176px',
+      });
+      expect(scroll).toHaveBeenCalledTimes(1);
+
+      bounds = new DOMRect(50, 110, 420, 210);
+      act(() => { for (const observer of [...observers]) observer.deliver(); });
+      expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+        top: '112px', left: '37px', width: '436px', height: '226px',
+      });
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
+      expect(handle.editor.prosemirrorState.doc.toJSON()).toEqual(tree);
+      expect(handle.undoManager.undoStack).toEqual(undo);
+      const queued = observers.map((observer) => ({ observer, targets: [...observer.targets] }));
+
+      if (ending === 'replacement') {
+        const proposalId = '55555555-5555-4555-8555-555555555555';
+        const blockId = deriveId(`document-proposal:${proposalId}:0`);
+        const view = handle.editor.prosemirrorView!;
+        const secondPos = 1 + view.state.doc.firstChild!.firstChild!.nodeSize;
+        const second = view.state.doc.nodeAt(secondPos)!;
+        act(() => view.dispatch(view.state.tr.setNodeMarkup(secondPos, undefined, { ...second.attrs, id: blockId })));
+        const next = publication({ how: 'write', blockId }, {
+          proposalId, spaceId: 'd1', spaceName: 'Document', kind: 'insert', blockId: null,
+          body: 'NEXT', title: 'Suggestion', heading: '', original: '', blockType: null, lossy: false,
+        });
+        const own = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"] .bn-block-content`)!;
+        spies.push(vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(80, 160, 160, 40)));
+        rerender(at('visible', next));
+        expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '162px', left: '67px', width: '176px', height: '56px',
+        });
+      } else if (ending === 'timer') {
+        act(() => vi.advanceTimersByTime(2000));
+        expect(screen.queryByTestId('document-proposal-landed')).toBeNull();
+      } else {
+        rerender(at('hidden', location));
+        expect(screen.queryByTestId('document-proposal-landed')).toBeNull();
+      }
+      bounds = new DOMRect(5, 5, 900, 700);
+      act(() => { for (const delivery of queued) delivery.observer.deliver(delivery.targets); });
+      if (ending === 'replacement') {
+        expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '162px', left: '67px', width: '176px', height: '56px',
+        });
+      } else {
+        expect(screen.queryByTestId('document-proposal-landed')).toBeNull();
+      }
+      expect(scroll).toHaveBeenCalledTimes(ending === 'replacement' ? 2 : 1);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+      for (const spy of spies) spy.mockRestore();
+      vi.stubGlobal('ResizeObserver', originalResizeObserver);
     }
   });
 
@@ -291,11 +459,14 @@ describe('DocumentEditor', () => {
       blockType: 'paragraph',
       lossy: false,
     };
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
     const landed = landedAt(handle, proposal);
     expect(landed?.how).toBe('comment');
 
-    rerender(<DocumentEditor handle={handle} uploader={uploader} landed={landed} />);
+    if (landed === null) throw new Error('The fixture has no landing.');
+    const location = publication(landed, proposal);
+    act(() => requestCommentLocation(editor, location));
+    rerender(<DocumentEditor handle={handle} uploader={uploader} landed={location} />);
 
     await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument());
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([landed?.how === 'comment' ? landed.threadId : '']);

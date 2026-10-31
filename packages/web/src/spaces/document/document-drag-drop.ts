@@ -85,8 +85,8 @@ export const documentDragDropExtension = createExtension(() => ({
          *
          * WHETHER A ROW DRAG STARTED IS THE WHOLE QUESTION. Once one has, the
          * drop is answered here whatever comes of it: handing it back writes
-         * the slice `SideMenu.onDragStart` parsed out of `blocknote/html` when
-         * the pointer went down (`SideMenu.ts:295-318`), which is the row as
+         * the slice `onDragStart` parsed out of `blocknote/html` when the
+         * pointer went down (`SideMenu/blockDropHandling.ts:203-236`), which is the row as
          * it stood then, and ProseMirror finishes by putting a node selection
          * on what it wrote (`prosemirror-view/src/input.ts:820-823`) — the two
          * things §8 and A11.2 exist to keep out. A drop with nothing to write

@@ -26,6 +26,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 
+import { CountChip } from '@web/components/CountChip';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -44,7 +45,10 @@ import {
   onSelectedThreadsChange,
   selectThreads,
   selectedThreadsIn,
+  commentLocationIn,
+  onCommentLocationChange,
 } from '@web/spaces/document/document-comment-selection';
+import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import {
   removeReply,
   removeThread,
@@ -74,6 +78,7 @@ import {
 } from '@web/spaces/document/use-comment-cards';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
@@ -137,7 +142,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
-  const [filter, setFilter] = React.useState<Filter>('open');
   // Who is reading, for the rights each card draws itself with. The store is
   // where every other surface asks the same question.
   const viewerId = useCurrentUserStore((state) => state.user?.id);
@@ -147,6 +151,31 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     onSelectedThreadsChange,
     () => selectedThreadsIn(editor.prosemirrorState),
   );
+  const command = React.useSyncExternalStore(onCommentLocationChange, () =>
+    commentLocationIn(editor.prosemirrorState),
+  );
+  const explicit = command?.how === 'comment' && selected[0] === command.threadId &&
+    isCurrentProposalLocation(command, editor) ? command : null;
+  const [filterState, setFilterState] = React.useState<{
+    editor: ToolEditor;
+    filter: Filter;
+    prepared: ProposalLocation | null;
+  }>({ editor, filter: 'open', prepared: null });
+  // Prepare the complete collection before committing the membership effect.
+  // Keeping the processed identity lets a later manual filter stay in force.
+  if (filterState.editor !== editor) {
+    setFilterState({ editor, filter: explicit === null ? 'open' : 'all', prepared: explicit });
+  } else if (explicit !== null && filterState.prepared !== explicit) {
+    setFilterState({ editor, filter: 'all', prepared: explicit });
+  }
+  const filter = filterState.filter;
+  /**
+   * Applies a manual filter without replaying the current viewing command.
+   * @param value - The filter the reader chose.
+   */
+  const setFilter = React.useCallback((value: Filter): void => {
+    setFilterState((current) => ({ ...current, filter: value }));
+  }, []);
 
   // The comment being written, if one is: aimed at words, or dropped and
   // saying why (§9.4.1). The rail answers it with a card of its own; everything
@@ -400,9 +429,25 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // prop changes"). A layout that leaves less room holds it to what there
   // is, which is what everything reading it takes.
   const [lift, setLift] = React.useState(0);
-  const [liftFor, setLiftFor] = React.useState(reading);
-  if (liftFor !== reading) {
-    setLiftFor(reading);
+  const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
+  const ordinaryKey = reading === DRAFT_THREAD_ID
+    ? draftEntry === null ? null : `${DRAFT_THREAD_ID}:${String(draftEntry)}`
+    : reading;
+  const [liftFor, setLiftFor] = React.useState<{
+    editor: ToolEditor;
+    reading: string | null;
+    key: string | ProposalLocation | null;
+  }>({ editor, reading, key: explicit ?? ordinaryKey });
+  // Retiring explicit metadata is not a new reading turn when an overlap
+  // changes its IDs but leaves the first thread being read unchanged.
+  const reveal = explicit ?? (
+    reading !== null && reading !== DRAFT_THREAD_ID &&
+    liftFor.editor === editor && liftFor.reading === reading
+      ? liftFor.key
+      : ordinaryKey
+  );
+  if (liftFor.editor !== editor || liftFor.reading !== reading || liftFor.key !== reveal) {
+    setLiftFor({ editor, reading, key: reveal });
     setLift(0);
   }
   const lifted = Math.min(lift, placement.raised);
@@ -421,16 +466,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // in the same commit, before the observer reports the new height. A card
   // that grows afterwards is shown again at its new height, unless the
   // reader has scrolled since.
-  const revealed = React.useRef<{ key: string; height: number; top: number } | null>(null);
-  const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
-  const reveal =
-    reading === null
-      ? null
-      : reading === DRAFT_THREAD_ID
-        ? draftEntry === null
-          ? null
-          : `${DRAFT_THREAD_ID}:${String(draftEntry)}`
-        : reading;
+  const revealed = React.useRef<{ key: string | ProposalLocation; height: number; top: number } | null>(null);
   // Only once the card's words are measured, for where it is aimed now: until
   // then the layout holds it at the bottom of the column — which is where a
   // panel opened by this very press has every card on its first commit — and
@@ -446,7 +482,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Runs again on `heights` so a card whose box arrives after it came to be
   // read is shown once it is there.
   React.useLayoutEffect(() => {
-    if (reveal === null) {
+    if (reveal === null || (typeof reveal !== 'string' && !isCurrentProposalLocation(reveal, editor))) {
       revealed.current = null;
       return;
     }
@@ -470,7 +506,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     const words =
       last?.key === reveal || reading === null || reading === DRAFT_THREAD_ID
         ? null
-        : editor.prosemirrorView?.dom.querySelector<HTMLElement>(
+        : domElementOf(editor)?.querySelector<HTMLElement>(
             `.bn-thread-mark[data-bn-thread-id="${CSS.escape(reading)}"]`,
         );
     if (words !== null && words !== undefined) revealInTable(words);
@@ -617,10 +653,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   const showOpen = React.useCallback(() => {
     setFilter('open');
-  }, []);
+  }, [setFilter]);
   const showAll = React.useCallback(() => {
     setFilter('all');
-  }, []);
+  }, [setFilter]);
 
   // Two different nothings, and they send the reader different places: a
   // document nobody has commented on wants to know how to start one, while a
@@ -648,27 +684,29 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         data-testid='doc-comment-rail-header'
         className='sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-3 py-2'
       >
-        <span className='text-sm font-medium'>
+        <span className='min-w-0 truncate text-sm font-medium'>
           {t('spaces.document.comment.railTitle')}
         </span>
-        <div className='ml-auto flex gap-0.5'>
+        <div className='ml-auto flex shrink-0 gap-0.5'>
           <FilterButton
             id='open'
             on={filter === 'open'}
             label={t('spaces.document.comment.filterOpen')}
+            count={cards.unresolved.length}
             onPress={showOpen}
           />
           <FilterButton
             id='all'
             on={filter === 'all'}
             label={t('spaces.document.comment.filterAll')}
+            count={cards.unresolved.length + cards.resolved.length}
             onPress={showAll}
           />
         </div>
         <Button
           variant='chrome-ghost'
           size='icon'
-          className='size-5.5'
+          className='size-5.5 shrink-0'
           aria-label={t('spaces.document.comment.closeRail')}
           data-testid='doc-comment-rail-close'
           onClick={onClose}
@@ -1008,6 +1046,7 @@ function PlacedCard({
  * @param root0.id - Which filter, for the test id.
  * @param root0.on - Whether this one is in force.
  * @param root0.label - What it says.
+ * @param root0.count - How many cards it shows; none shows no chip.
  * @param root0.onPress - Switches to it.
  * @returns The button.
  */
@@ -1015,11 +1054,13 @@ function FilterButton({
   id,
   on,
   label,
+  count,
   onPress,
 }: {
   id: Filter;
   on: boolean;
   label: string;
+  count: number;
   onPress: () => void;
 }): React.JSX.Element {
   return (
@@ -1030,13 +1071,20 @@ function FilterButton({
       data-testid={`doc-comment-rail-filter-${id}`}
       onClick={onPress}
       className={cn(
-        'rounded-chrome px-2 py-0.5 text-2xs',
+        'gap-1 rounded-chrome px-2 py-0.5 text-2xs',
         on
           ? 'bg-accent-strong text-foreground'
           : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
     >
       {label}
+      {count === 0 ? null : (
+        <CountChip
+          count={count}
+          className='px-1 text-2xs leading-4'
+          data-testid={`doc-comment-rail-filter-${id}-count`}
+        />
+      )}
     </Button>
   );
 }

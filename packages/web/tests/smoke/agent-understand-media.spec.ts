@@ -23,8 +23,15 @@
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { dropFile, watchQueuedFinish } from '../helpers/upload';
+import { roomForUploads } from '../helpers/upload-budget';
+import { createOversizedLongAudioFixture, createOversizedLongVideoFixture } from '../helpers/long-media-fixtures';
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -195,6 +202,24 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
   return { reply, toolLines, call, calls };
 }
 
+/**
+ * Upload an oversized media fixture through the Canvas asset path.
+ * @param p - The signed-in Project page.
+ * @param filePath - The media fixture to upload.
+ * @param fileName - The name presented to the upload path.
+ * @param mimeType - The fixture's media type.
+ * @returns The URL of the registered asset.
+ * @throws {Error} When the upload does not finish.
+ */
+async function uploadLongMediaAsset(p: Page, filePath: string, fileName: string, mimeType: string): Promise<string> {
+  await expect(visibleSpace(p).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  await roomForUploads(1);
+  const uploadFinished = watchQueuedFinish(p);
+  await dropFile(p, fileName, mimeType, readFileSync(filePath));
+  const { delivered } = await uploadFinished;
+  return delivered.fileUrl;
+}
+
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     viewport: { width: 1400, height: 900 },
@@ -257,6 +282,72 @@ test('says what an audio clip sounds like @needs-internet @needs-model', async (
   expect(toolLines).toContain('Looking at the media');
   expect(call?.state).toBe('output-available');
   expect(String(call?.output)).toMatch(/piano|music|melod|钢琴|音乐/i);
+});
+
+test('understands an oversized uploaded audio file in Agent @needs-internet @needs-model @needs-storage @needs-ingest @needs-ffmpeg', async () => {
+  const workDir = mkdtempSync(join(tmpdir(), 'breatic-agent-long-audio-'));
+  let spaceId: string | null = null;
+  try {
+    const limitsResponse = await page.request.get('/api/v1/canvas/limits');
+    expect(limitsResponse.status()).toBe(200);
+    const { data: { understandMaxBytes, understandLongMediaMaxBytes } } = await limitsResponse.json() as {
+      data: { understandMaxBytes: number; understandLongMediaMaxBytes: number };
+    };
+    expect(understandLongMediaMaxBytes).toBeGreaterThan(understandMaxBytes);
+    const audioPath = createOversizedLongAudioFixture(workDir, understandMaxBytes);
+    expect(statSync(audioPath).size).toBeLessThanOrEqual(understandLongMediaMaxBytes);
+
+    spaceId = await createSpace(page, 'canvas', `agent-long-audio-${Date.now()}`);
+    const fileUrl = await uploadLongMediaAsset(page, audioPath, 'agent-long-audio.wav', 'audio/wav');
+    const { toolLines, call } = await askInFreshConversation(
+      page,
+      `Use understand_media to listen to this uploaded audio ${fileUrl} and briefly describe what you hear.`,
+      fileUrl,
+    );
+
+    expect(toolLines).toContain('Looking at the media');
+    expect(call?.state).toBe('output-available');
+    expect(String(call?.output).trim().length).toBeGreaterThan(0);
+  } finally {
+    try {
+      if (spaceId !== null) await deleteSpace(page, spaceId);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('understands an oversized uploaded video in Agent @needs-internet @needs-model @needs-storage @needs-ingest @needs-ffmpeg', async () => {
+  const workDir = mkdtempSync(join(tmpdir(), 'breatic-agent-long-video-'));
+  let spaceId: string | null = null;
+  try {
+    const limitsResponse = await page.request.get('/api/v1/canvas/limits');
+    expect(limitsResponse.status()).toBe(200);
+    const { data: { understandMaxBytes, understandLongMediaMaxBytes } } = await limitsResponse.json() as {
+      data: { understandMaxBytes: number; understandLongMediaMaxBytes: number };
+    };
+    expect(understandLongMediaMaxBytes).toBeGreaterThan(understandMaxBytes);
+    const videoPath = createOversizedLongVideoFixture(workDir, understandMaxBytes);
+    expect(statSync(videoPath).size).toBeLessThanOrEqual(understandLongMediaMaxBytes);
+
+    spaceId = await createSpace(page, 'canvas', `agent-long-video-${Date.now()}`);
+    const fileUrl = await uploadLongMediaAsset(page, videoPath, 'agent-long-video.mp4', 'video/mp4');
+    const { toolLines, call } = await askInFreshConversation(
+      page,
+      `Use understand_media to inspect this uploaded video ${fileUrl} and briefly describe what happens.`,
+      fileUrl,
+    );
+
+    expect(toolLines).toContain('Looking at the media');
+    expect(call?.state).toBe('output-available');
+    expect(String(call?.output).trim().length).toBeGreaterThan(0);
+  } finally {
+    try {
+      if (spaceId !== null) await deleteSpace(page, spaceId);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  }
 });
 
 test('compares an ordered audio image and video batch in one understanding call @needs-internet @needs-model', async () => {

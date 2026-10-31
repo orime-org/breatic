@@ -176,6 +176,7 @@ const STEP_KEYS: Readonly<Record<string, string>> = {
   list_generation_models: 'chat.tool.step.listModels',
   get_canvas_capabilities: 'chat.tool.step.canvasCapabilities',
   get_product_guide: 'chat.tool.step.productGuide',
+  get_generation_template: 'chat.tool.step.readTemplate',
   search_conversations: 'chat.tool.step.searchConversations',
   read_conversation: 'chat.tool.step.readConversation',
   read_node_history: 'chat.tool.step.readNodeHistory',

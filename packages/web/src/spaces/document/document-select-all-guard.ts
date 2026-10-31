@@ -23,7 +23,7 @@
  * disagreement about who binds what.
  *
  * Clearing leaves ONE EMPTY PARAGRAPH. BlockNote's schema is
- * `doc > blockGroup > blockGroupChild+` (`BlockGroup.ts:11`), so a document
+ * `doc > blockGroup > blockGroupChild+` (`BlockGroup.ts:12`), so a document
  * with no blocks is not a state this editor can rest in.
  */
 

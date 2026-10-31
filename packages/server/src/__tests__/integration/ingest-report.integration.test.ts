@@ -832,10 +832,11 @@ describe("a finish this server drove — a completed upload", () => {
     );
 
     expect(second.outcome).toMatchObject({ status: "registered", ownRow: false });
-    const queued = await sql<{ kept_storage_key: string }[]>`
-      SELECT kept_storage_key FROM storage_reclaim_queue WHERE storage_key = ${uprightKeyFor(secondKey)}
+    const queued = await sql<{ kept_storage_key: string; origin_storage_key: string | null }[]>`
+      SELECT kept_storage_key,origin_storage_key FROM storage_reclaim_queue WHERE storage_key = ${uprightKeyFor(secondKey)}
     `;
     expect(queued[0]!.kept_storage_key).toBe(uprightKeyFor(firstKey));
+    expect(queued[0]!.origin_storage_key).toBe(secondKey);
   });
 
   it("reuses the existing row when the bytes turn out to be a duplicate", async () => {
@@ -1447,6 +1448,23 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     );
     return { key, nodeId, cover };
   }
+
+  it("persists the exact original grant key for a deduplicated cover", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const firstCover = coverAnswer({ sha256: hash });
+    const firstKey = await mintTicket(seed, { filename: "clip.mp4", content_type: "video/mp4", node_id: crypto.randomUUID() });
+    await report(completed(firstKey, { content_type: "video/mp4", size_bytes: 200_000, cover: firstCover }));
+    const secondCover = coverAnswer({ sha256: hash });
+    const secondKey = await mintTicket(seed, { filename: "clip.mp4", content_type: "video/mp4", node_id: crypto.randomUUID() });
+    await report(completed(secondKey, { content_type: "video/mp4", size_bytes: 200_000, cover: secondCover }));
+    const queued = await sql<{ storage_key: string; kept_storage_key: string; origin_storage_key: string | null }[]>`
+      SELECT storage_key,kept_storage_key,origin_storage_key FROM storage_reclaim_queue WHERE storage_key=${secondCover.storageKey as string}`;
+    expect(queued).toEqual([{ storage_key: secondCover.storageKey, kept_storage_key: firstCover.storageKey, origin_storage_key: secondKey }]);
+    const [grant] = await sql<{ consumed_at: Date | null; asset_id: string | null }[]>`SELECT consumed_at,asset_id FROM upload_grants WHERE storage_key=${secondKey}`;
+    expect(grant!.consumed_at).not.toBeNull();
+    expect(grant!.asset_id).not.toBeNull();
+  });
 
   it("registers the video and consumes the grant like any other upload", async () => {
     const seed = await seedEditor();

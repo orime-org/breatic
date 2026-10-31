@@ -19,6 +19,8 @@ import { env,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
+import { getMaintenanceConfig } from "@server/config/maintenance.js";
+import { startMaintenanceLoop } from "@server/modules/maintenance/maintenance-loop.js";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
@@ -152,8 +154,9 @@ if (env.PAYMENT_ENABLED) {
 if (env.INTERNAL_API_ENABLED) {
   try {
     getCreditRefundConfig();
+    getMaintenanceConfig();
   } catch (err) {
-    logger.error({ err }, "credit_refund_config_invalid");
+    logger.error({ err }, "internal_api_config_invalid");
     await exitProcess(1);
   }
 }
@@ -243,6 +246,7 @@ const lifecycleRelay = startLifecycleRelay();
 // The refund disposition loop (inner#1410 §7.1); it runs whenever the
 // internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
+const maintenanceLoop = startMaintenanceLoop();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -326,8 +330,7 @@ async function shutdown(signal: string): Promise<void> {
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.
-        refundLoop
-          .stop()
+        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
           .then(() => settleAfterReply())
           .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues()])),
     ],

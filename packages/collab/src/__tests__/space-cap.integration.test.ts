@@ -51,6 +51,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   const wsServer = new Server({
     port: 0,
     quiet: true,
+    stopOnSignals: false,
     debounce: 50,
     unloadImmediately: true,
     extensions: [

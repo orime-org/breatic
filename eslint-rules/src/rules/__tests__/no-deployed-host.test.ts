@@ -11,6 +11,10 @@ ruleTester.run("no-deployed-host", noDeployedHost, {
       filename: "/repo/packages/web/src/lib/official-home.ts",
       code: `export const OFFICIAL_HOME_URL = "https://breatic.ai/";`,
     },
+    { code: `const email = "contact@breatic.ai";` },
+    { code: `const href = "mailto:contact@breatic.ai";` },
+    { code: `const href = "mailto:contact@breatic.ai?subject=Licence";` },
+    { code: "const email = `security@breatic.ai`;" },
     { code: `const apiTarget = "http://localhost:5173";` },
     { code: "const apiTarget = `http://localhost:${port}`;" },
     { code: `const apiTarget = env.PUBLIC_URL;` },
@@ -27,6 +31,12 @@ ruleTester.run("no-deployed-host", noDeployedHost, {
     { code: `const t = "https://thinkai.example";` },
   ],
   invalid: [
+    ...[
+      `const apiTarget = "https://contact@breatic.ai/api";`,
+      `const apiTarget = "wss://contact@breatic.ai";`,
+      `const apiTarget = "contact@breatic.ai/api";`,
+      `const text = "contact@breatic.ai https://breatic.ai/api";`,
+    ].map((code) => ({ code, errors: [{ messageId: "deployedHost" as const }] })),
     ...[
       { filename: "/repo/packages/web/src/lib/official-home.ts", code: `const apiTarget = "https://breatic.ai/";` },
       { filename: "/repo/packages/web/src/lib/official-home.ts", code: `export const OFFICIAL_HOME_URL = "https://breatic.ai/api";` },

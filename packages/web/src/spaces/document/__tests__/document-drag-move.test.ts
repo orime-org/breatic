@@ -22,6 +22,7 @@ import {
   moveRowTo,
 } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -206,7 +207,7 @@ describe('what the move writes', () => {
       { type: 'paragraph', content: 'beta' },
     ]);
     const nested = (
-      (editor.document[0] as unknown as { children: Seen[] }).children[0] as Seen
+      (editor.document[0] as unknown as { children: Seen[] }).children[0]
     ).id;
     const last = (editor.document[1] as unknown as Seen).id;
 
@@ -229,5 +230,79 @@ describe('what the move writes', () => {
     moveRowTo(editor.prosemirrorView, 'a-row-that-is-gone', at);
 
     expect(rowsOf(editor)).toEqual(['1/paragraph:alpha']);
+  });
+
+  it.each(['docTableCell', 'docTableHeader'])('rejects a whole table dropped into a list nested in a %s', (cellType) => {
+    const editor = open([
+      {
+        ...tableBlock({ rows: [{ cells: ['source'] }] }),
+        id: 'dragged-table',
+      },
+      tableBlock({
+        rows: [{ cells: [{
+          type: cellType,
+          blocks: [{
+            type: 'bulletListItem',
+            content: 'parent',
+            children: [{
+              type: 'bulletListItem',
+              content: 'nested parent',
+              children: [{ id: 'drop-target', type: 'paragraph', content: 'target' }],
+            }],
+          }],
+        }] }],
+      }),
+    ]);
+    const before = editor.prosemirrorState.doc;
+
+    moveRowTo(editor.prosemirrorView, 'dragged-table', insideRow(editor, 'drop-target'));
+
+    expect(editor.prosemirrorState.doc.toJSON()).toEqual(before.toJSON());
+  });
+
+  it.each([false, true])('rejects a block carrying a table when its drop target is nested=%s in a cell', (nested) => {
+    const target = { id: 'drop-target', type: 'paragraph', content: 'target' };
+    const editor = open([
+      {
+        id: 'dragged-parent',
+        type: 'bulletListItem',
+        content: 'carried parent',
+        children: [{
+          type: 'bulletListItem',
+          content: 'carried child',
+          children: [tableBlock({ rows: [{ cells: ['carried table'] }] })],
+        }],
+      },
+      tableBlock({
+        rows: [{ cells: [{ blocks: nested ? [{ type: 'bulletListItem', content: 'parent', children: [target] }] : [target] }] }],
+      }),
+    ]);
+    const before = editor.prosemirrorState.doc;
+
+    moveRowTo(editor.prosemirrorView, 'dragged-parent', insideRow(editor, 'drop-target'));
+
+    expect(editor.prosemirrorState.doc.toJSON()).toEqual(before.toJSON());
+  });
+
+  it('allows a whole table to be dropped into a list in the document body', () => {
+    const editor = open([
+      { ...tableBlock({ rows: [{ cells: ['source'] }] }), id: 'dragged-table' },
+      {
+        id: 'body-list',
+        type: 'bulletListItem',
+        content: 'parent',
+        children: [{ id: 'drop-target', type: 'paragraph', content: 'target' }],
+      },
+    ]);
+    const table = rowById(editor.prosemirrorState.doc, 'dragged-table')!.node.toJSON();
+
+    moveRowTo(editor.prosemirrorView, 'dragged-table', insideRow(editor, 'drop-target'));
+
+    const parent = rowById(editor.prosemirrorState.doc, 'body-list')!.node;
+    const children: string[] = [];
+    parent.lastChild!.forEach((node) => children.push(String(node.attrs['id'])));
+    expect(children).toEqual(['dragged-table', 'drop-target']);
+    expect(rowById(editor.prosemirrorState.doc, 'dragged-table')!.node.toJSON()).toEqual(table);
+    expect(editor.prosemirrorState.doc.child(0).childCount).toBe(1);
   });
 });

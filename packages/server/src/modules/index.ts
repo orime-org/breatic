@@ -45,3 +45,5 @@ export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
 export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/recording.service.js";
 export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
+
+export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";

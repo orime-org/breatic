@@ -21,6 +21,7 @@
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
 
 /**
@@ -334,12 +335,14 @@ export async function completeTransferGrant(storageKey: string): Promise<boolean
  * which proves nothing but that it holds the shared secret — every fact about
  * who this upload belongs to comes off the row itself.
  * @param storageKey - The key the report names.
+ * @param tx - Optional transaction retained through maintenance admission.
  * @returns The grant, or null when no such key was ever issued.
  */
 export async function findGrantByKey(
   storageKey: string,
+  tx?: DbTx,
 ): Promise<UploadGrant | null> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select()
     .from(uploadGrants)
     .where(eq(uploadGrants.storageKey, storageKey))

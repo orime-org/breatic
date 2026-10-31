@@ -6,8 +6,8 @@
  * tools.
  *
  * The chat turn is its one caller. It runs inside a request, and the tool set
- * is built per call: the proposal tool's description quotes the template
- * prompts in the request's language.
+ * is built per call: some tools hold state for one turn or bind what the turn
+ * knows (`TOOL_MAP`).
  *
  * Execution, step ceilings and temperature stay with the caller, which makes
  * its own model call with this config.

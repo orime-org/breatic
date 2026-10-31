@@ -382,7 +382,12 @@ export function scriptedModel(): MockLanguageModelV4 {
       const parts = [...next.parts];
       return {
         stream: new ReadableStream<ModelStreamPart>({
-          pull(controller) {
+          async pull(controller) {
+            // Each part arrives in a task of its own, as a provider's does
+            // over the network; parts handed out within one task are read
+            // ahead through the SDK's transform streams before the turn
+            // handles the first, by how far depends on the Node version.
+            await new Promise((resolve) => setTimeout(resolve, 0));
             // Each part a few milliseconds after the last, so a stretch of
             // thinking has a length.
             if (vi.isFakeTimers()) vi.setSystemTime(Date.now() + 7);

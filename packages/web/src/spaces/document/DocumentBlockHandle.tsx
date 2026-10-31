@@ -8,7 +8,7 @@
  * Handed to `SideMenuController` in place of the library's own strip, which
  * cannot serve here for two reasons: its handle draws a `react-icons` glyph at
  * a fixed size where the demo asks for lucide at 16 (A2), and its handle sits
- * inside `Components.Generic.Menu.Trigger` (`DragHandleButton.tsx:44`), which
+ * inside `Components.Generic.Menu.Trigger` (`DragHandleButton.tsx:46`), which
  * comes from a `ComponentsContext` this build does not provide. A menu
  * trigger is also the one thing the handle must not be: Radix's calls
  * `preventDefault()` on `onPointerDown`, which stops the browser from ever
@@ -76,6 +76,8 @@ import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -125,6 +127,8 @@ interface RowReading {
   readonly lone: boolean;
   /** The row is a table, so the strip shows the table entry. */
   readonly table: boolean;
+  /** The row stands in a table cell, so the plus menu greys Table. */
+  readonly inCell: boolean;
 }
 
 /**
@@ -135,21 +139,51 @@ interface RowReading {
  */
 function sameReading(a: RowReading, b: RowReading): boolean {
   return (
-    a.empty === b.empty && a.quoted === b.quoted && a.lone === b.lone && a.table === b.table
+    a.empty === b.empty &&
+    a.quoted === b.quoted &&
+    a.lone === b.lone &&
+    a.table === b.table &&
+    a.inCell === b.inCell
   );
 }
 
+/** Keeps a strip on its block while its menu is open or its drag runs. */
+export interface StripHold {
+  /** Holds it. */
+  readonly freeze: () => void;
+  /** Lets it follow the pointer again. */
+  readonly unfreeze: () => void;
+}
+
 /**
- * The strip, for the block the side menu currently points at.
+ * The strip, for the block the side menu currently points at. A table's
+ * strip is its own, shown whenever the table is hovered
+ * (`DocumentTableHandlesController`, inner#1619 T13).
  * @returns The handle, or null while there is no row to serve.
  */
 export function DocumentBlockHandle(): React.JSX.Element | null {
-  const t = useTranslation();
-  const editor = useBlockNoteEditor();
   const sideMenu = useExtension(SideMenuExtension);
   const block = useExtensionState(SideMenuExtension, {
     selector: (state) => state?.block,
   }) as PressedBlock | undefined;
+  const hold = React.useMemo<StripHold>(
+    () => ({ freeze: () => sideMenu.freezeMenu(), unfreeze: () => sideMenu.unfreezeMenu() }),
+    [sideMenu],
+  );
+  if (block?.type === DOC_TABLE) return null;
+  return <BlockStrip block={block} hold={hold} />;
+}
+
+/**
+ * The strip for one block.
+ * @param props - The block and what holds the strip on it.
+ * @param props.block - The block, undefined while there is none.
+ * @param props.hold - Holds the strip on its block.
+ * @returns The handle, or null while there is no row to serve.
+ */
+export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; hold: StripHold }): React.JSX.Element | null {
+  const t = useTranslation();
+  const editor = useBlockNoteEditor();
   const [menuOpen, setMenuOpen] = React.useState(false);
   // Which menu the strip opened, fixed when it opens: picking an entry can
   // turn the line from empty to not (or back) while the menu is still on
@@ -166,9 +200,9 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
-  // pointer alone (`SideMenu.ts:607` — `onMouseMove` straight to
-  // `updateStateFromMousePos`, with no selection in the judgement; it hides
-  // only while a key is pressed in the body, `:600-604`), so this gate is
+  // pointer alone (`SideMenu.ts:314-338` — its `mousemove` listener straight
+  // to `update`, with no selection in the judgement; it hides only while a key
+  // is pressed in the body, `:360-370`), so this gate is
   // ours. It reads whether the bubble bar is up rather than the selection
   // behind it: a selection the body let go of stays in the editor without
   // being drawn, and nothing stands over it (inner#1127, `document-bars.ts`).
@@ -189,8 +223,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
         return {
           empty: isEmptyParagraph(live),
           quoted: live?.props?.[QUOTED] === true,
-          lone: only != null && only.attrs.id === live?.id && only.childCount === 1,
-          table: live?.type === 'table',
+          // A table's own node holds its rows, so it is alone with what it holds.
+          lone:
+            only != null &&
+            only.attrs.id === live?.id &&
+            (only.type.name !== 'blockContainer' || only.childCount === 1),
+          table: live?.type === DOC_TABLE,
+          inCell: live !== undefined && blockInTableCell(current.prosemirrorState.doc, live.id),
         };
       },
       [rowNow],
@@ -202,7 +241,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // onto the middle of the row's first line (A2).
   const { ref: strip, offset } = useStripOnFirstLine(
     block?.id,
-    editor.prosemirrorView?.dom,
+    domElementOf(editor as never) ?? undefined,
   );
 
   // While the menu is open the strip has to stay on the row the menu is
@@ -211,12 +250,12 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     (open: boolean) => {
       setMenuOpen(open);
       if (open) {
-        sideMenu.freezeMenu();
+        hold.freeze();
       } else {
-        sideMenu.unfreezeMenu();
+        hold.unfreeze();
       }
     },
-    [sideMenu],
+    [hold],
   );
 
   // Held rather than written inline: the menu hands it to the memoised colour
@@ -329,13 +368,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               // first scroll, and a drag whose source left the page sends its
               // `dragend` nowhere the document hears (inner#1350 §5.2); frozen,
               // it stays put while the rows scroll, so it is hidden as well.
-              sideMenu.freezeMenu();
+              hold.freeze();
               source.hideAfterStart();
             }}
             onDragEnd={() => {
               setDragActive(false);
               source.show();
-              sideMenu.unfreezeMenu();
+              hold.unfreeze();
               endDrag.current?.();
               endDrag.current = null;
             }}
@@ -383,6 +422,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
                 onPick={onFill}
                 onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
+                tableUnreachable={row.inCell}
               />
               {/* The grip menu's delete row, the one command an empty line
                   still needs (A12). Drawn out of reach on the document's only

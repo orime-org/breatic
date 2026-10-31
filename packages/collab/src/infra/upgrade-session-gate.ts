@@ -29,11 +29,18 @@ interface UpgradeSessionOptions {
   recordFailedUpgrade?: (request: IncomingMessage) => Promise<void>;
 }
 
+/** A crossws peer, which keeps the upgrade request it was opened with. */
+interface PeerWithRequest {
+  _internal?: { nodeReq?: object };
+}
+
 /** The raw-socket extension and the entry's synchronous shutdown boundary. */
 export interface UpgradeSessionGate {
   onUpgrade(payload: UpgradePayload): Promise<void>;
   stop(): void;
   onDestroy(): Promise<void>;
+  /** The session's user of an admitted connection, read from its upgrade request. */
+  userOf(peer: object): string | undefined;
 }
 
 /** The first terminal decision remains authoritative for this physical request. */
@@ -47,6 +54,7 @@ interface FinishOutcome {
   kind: Exclude<UpgradeDecision, "pending">;
   reason: string;
   status?: 401 | 503;
+  userId?: string;
   error?: unknown;
   errorEvent?: "collab_upgrade_cookie_error" | "collab_upgrade_session_error";
 }
@@ -59,6 +67,19 @@ interface FinishOutcome {
 export function createUpgradeSessionGate(options: UpgradeSessionOptions): UpgradeSessionGate {
   let stopping = false;
   const pending = new Set<() => void>();
+  // crossws keeps the same request object on the peer (`_internal.nodeReq`),
+  // so the reassembler can name the user of each connection (inner#1585).
+  const admittedUsers = new WeakMap<object, string>();
+
+  /**
+   * The user an admitted connection's session belongs to.
+   * @param peer - A crossws peer.
+   * @returns The user id, or undefined when the request was not admitted here.
+   */
+  function userOf(peer: object): string | undefined {
+    const request = (peer as PeerWithRequest)._internal?.nodeReq;
+    return request === undefined ? undefined : admittedUsers.get(request);
+  }
 
   /** Stop every raw socket still owned by this extension synchronously. */
   function stop(): void {
@@ -169,6 +190,7 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
       }
       decision = outcome.kind;
       if (decision === "admitted") {
+        if (outcome.userId !== undefined) admittedUsers.set(request, outcome.userId);
         advanceOwnership("handed_off");
         resolveCompletion();
         return;
@@ -235,7 +257,7 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
         } else {
           void getSession(options.redis, token).then(
             (userId) => finish(userId
-              ? { kind: "admitted", reason: "session_valid" }
+              ? { kind: "admitted", reason: "session_valid", userId }
               : { kind: "rejected", reason: "session_not_found", status: 401 }),
             (err: unknown) => {
               if (decision === "pending") {
@@ -255,5 +277,6 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
     onUpgrade,
     stop,
     onDestroy: async (): Promise<void> => { stop(); },
+    userOf,
   };
 }

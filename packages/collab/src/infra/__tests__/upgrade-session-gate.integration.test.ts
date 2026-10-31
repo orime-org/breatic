@@ -142,6 +142,7 @@ async function listen(redis: Redis, throttleEnabled = false): Promise<RunningSer
     address: "127.0.0.1",
     port: 0,
     quiet: true,
+    stopOnSignals: false,
     timeout: 1_000,
     extensions: [
       {
