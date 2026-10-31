@@ -79,6 +79,7 @@ describe("import alias contract (fixer output ↔ resolvable aliases)", () => {
       "packages/worker/src/",
       "packages/collab/src/",
       "packages/integration-tests/src/",
+      "packages/provider/src/",
       "packages/web/src/",
       "eslint-rules/src/",
       "repo-lint/src/",

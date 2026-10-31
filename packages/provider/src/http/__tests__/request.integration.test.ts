@@ -1,0 +1,341 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Aborted, BodyTooLarge, HttpStatus, NoAnswer, NotSent } from "../errors.js";
+import { aiSdkFetch, fetchJson, send } from "../request.js";
+
+const servers: Server[] = [];
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await Promise.all(servers.splice(0).map((s) => new Promise<void>((done) => s.close(() => done()))));
+});
+
+/**
+ * Start a loopback server that answers each request by its arrival number.
+ * @param handler - Called with the request, the response and the 1-based request count.
+ * @returns The base URL and a counter of requests received.
+ */
+async function serve(
+  handler: (req: IncomingMessage, res: ServerResponse, n: number) => void,
+): Promise<{ url: string; count: () => number }> {
+  let n = 0;
+  const server = createServer((req, res) => handler(req, res, ++n));
+  servers.push(server);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
+  const { port } = server.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}`, count: () => n };
+}
+
+/**
+ * A loopback port with nothing listening on it.
+ * @returns The URL.
+ */
+async function closedPort(): Promise<string> {
+  const { url } = await serve(() => undefined);
+  const server = servers.pop()!;
+  await new Promise<void>((done) => server.close(() => done()));
+  return url;
+}
+
+const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void => {
+  res.writeHead(status, { "content-type": "application/json", ...headers });
+  res.end(JSON.stringify(body));
+};
+
+const read = { maxBodyBytes: 1_000_000, idleMs: 2_000 };
+
+describe("send — failure classes", () => {
+  it("a refused connection is NotSent", async () => {
+    const url = await closedPort();
+    await expect(send({ url, method: "POST" }, { replaySafe: false })).rejects.toBeInstanceOf(NotSent);
+  });
+
+  it("a connection reset after the request arrived is NoAnswer", async () => {
+    const { url } = await serve((req) => req.socket.destroy());
+    await expect(send({ url, method: "POST", body: "{}" }, { replaySafe: false })).rejects.toBeInstanceOf(NoAnswer);
+  });
+
+  it("any status comes back as a Response, not thrown", async () => {
+    const { url } = await serve((_req, res) => json(res, 503, { error: "busy" }));
+    const response = await send({ url, method: "GET" }, { replaySafe: false });
+    expect(response.status).toBe(503);
+  });
+});
+
+describe("resending", () => {
+  it("replaySafe false never sends twice, even on a 503", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 503, {}));
+    const error = await fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpStatus);
+    expect((error as HttpStatus).status).toBe(503);
+    expect(count()).toBe(1);
+  });
+
+  it("replaySafe false never sends twice after a reset", async () => {
+    const { url, count } = await serve((req) => req.socket.destroy());
+    await expect(fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read })).rejects.toBeInstanceOf(NoAnswer);
+    expect(count()).toBe(1);
+  });
+
+  it("replaySafe true resends a 503 and returns the later success", async () => {
+    const { url, count } = await serve((_req, res, n) => (n < 3 ? json(res, 503, {}) : json(res, 200, { ok: true })));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).resolves.toEqual({ ok: true });
+    expect(count()).toBe(3);
+  });
+
+  it("replaySafe true sends at most three times in all", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 502, {}));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).rejects.toBeInstanceOf(HttpStatus);
+    expect(count()).toBe(3);
+  });
+
+  it.each([408, 429])("replaySafe true resends a %i", async (status) => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, status, {}) : json(res, 200, {})));
+    await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read });
+    expect(count()).toBe(2);
+  });
+
+  it.each([408, 429])("replaySafe false still resends a %i, which says the server did not process it", async (status) => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, status, {}) : json(res, 200, { ok: true })));
+    await expect(fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read })).resolves.toEqual({ ok: true });
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe false waits the Retry-After of a 429 before resending", async () => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, 429, {}, { "retry-after": "1" }) : json(res, 200, {})));
+    const started = Date.now();
+    await fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe false sends a 429 at most three times in all", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 429, {}));
+    await expect(fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read })).rejects.toBeInstanceOf(HttpStatus);
+    expect(count()).toBe(3);
+  });
+
+  it("replaySafe true does not resend a 400", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 400, { error: "bad" }));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).rejects.toBeInstanceOf(HttpStatus);
+    expect(count()).toBe(1);
+  });
+
+  it("honours Retry-After before resending", async () => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, 429, {}, { "retry-after": "1" }) : json(res, 200, {})));
+    const started = Date.now();
+    await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    expect(count()).toBe(2);
+  });
+
+  it("gives up at once when Retry-After asks for more than 60 seconds", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 429, {}, { "retry-after": "120" }));
+    const started = Date.now();
+    const error = await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpStatus);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(count()).toBe(1);
+  });
+});
+
+describe("abort and deadline", () => {
+  it("a deadline already past sends nothing", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 200, {}));
+    await expect(send({ url, method: "POST" }, { replaySafe: false, deadlineAt: Date.now() - 1 })).rejects.toBeInstanceOf(Aborted);
+    expect(count()).toBe(0);
+  });
+
+  it("a deadline reached while waiting cuts the request", async () => {
+    const { url } = await serve(() => undefined);
+    const started = Date.now();
+    await expect(send({ url, method: "GET" }, { replaySafe: false, deadlineAt: Date.now() + 300 })).rejects.toBeInstanceOf(Aborted);
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
+  it("the caller's signal cuts the request", async () => {
+    const { url } = await serve(() => undefined);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 200);
+    await expect(send({ url, method: "GET" }, { replaySafe: false, signal: controller.signal })).rejects.toBeInstanceOf(Aborted);
+  });
+
+  it("an abort during a Retry-After wait stops without resending", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 503, {}, { "retry-after": "5" }));
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 300);
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, signal: controller.signal, ...read })).rejects.toBeInstanceOf(Aborted);
+    expect(count()).toBe(1);
+  });
+});
+
+describe("reading the body", () => {
+  it("a body over the limit is BodyTooLarge", async () => {
+    const { url } = await serve((_req, res) => json(res, 200, { blob: "x".repeat(10_000) }));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 2_000 })).rejects.toBeInstanceOf(BodyTooLarge);
+  });
+
+  it("a body that stops arriving for longer than idleMs is NoAnswer", async () => {
+    const { url } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write("{\"a\":");
+    });
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 300 })).rejects.toBeInstanceOf(NoAnswer);
+  });
+
+  it("a non-2xx carries the start of its body", async () => {
+    const { url } = await serve((_req, res) => json(res, 422, { error: "duration must be 5 or 10" }));
+    const error = await fetchJson({ url, method: "POST" }, { replaySafe: false, ...read }).catch((e: unknown) => e) as HttpStatus;
+    expect(error.status).toBe(422);
+    expect(error.bodySnippet).toContain("duration must be 5 or 10");
+  });
+});
+
+describe("aiSdkFetch", () => {
+  it("returns a 500 as a Response for AI SDK to parse", async () => {
+    const { url } = await serve((_req, res) => json(res, 500, { error: { message: "overloaded" } }));
+    const response = await aiSdkFetch(url, { method: "POST", body: "{}" });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: { message: "overloaded" } });
+  });
+
+  it("throws NotSent for a refused connection", async () => {
+    const url = await closedPort();
+    await expect(aiSdkFetch(url, { method: "POST" })).rejects.toBeInstanceOf(NotSent);
+  });
+
+  it("never resends: a 503 reaches the server once", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 503, {}));
+    await aiSdkFetch(url, { method: "POST", body: "{}" });
+    expect(count()).toBe(1);
+  });
+
+  it("streams the body without a byte limit", async () => {
+    const big = "y".repeat(3_000_000);
+    const { url } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end(big);
+    });
+    const response = await aiSdkFetch(url, { method: "POST" });
+    await expect(response.text()).resolves.toHaveLength(3_000_000);
+  });
+});
+
+describe("a deadline beyond what a timer can hold", () => {
+  it.each([
+    ["thirty days away", (): number => Date.now() + 30 * 24 * 60 * 60 * 1000],
+    ["endless", (): number => Number.POSITIVE_INFINITY],
+  ])("%s runs the request", async (_name, deadline) => {
+    const { url } = await serve((_req, res) => setTimeout(() => json(res, 200, { ok: 1 }), 50));
+    const body = await fetchJson({ url, method: "GET" }, { replaySafe: false, deadlineAt: deadline(), ...read });
+    expect(body).toEqual({ ok: 1 });
+  });
+});
+
+/**
+ * Make every platform fetch fail the way a refused connection does, counting the attempts.
+ * @returns How many deliveries were made.
+ */
+function refuseEveryConnection(): () => number {
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }));
+  return () => fetch.mock.calls.length;
+}
+
+describe("resending what never left or got no answer, as shared's decideRetry does", () => {
+  it("replaySafe true resends a request that was never sent, three deliveries in all", async () => {
+    const deliveries = refuseEveryConnection();
+    await expect(send({ url: "http://127.0.0.1:9/x", method: "GET" }, { replaySafe: true })).rejects.toBeInstanceOf(NotSent);
+    expect(deliveries()).toBe(3);
+  });
+
+  it("replaySafe false sends a request that was never sent once, leaving the choice to the caller", async () => {
+    const deliveries = refuseEveryConnection();
+    await expect(send({ url: "http://127.0.0.1:9/x", method: "POST", body: "{}" }, { replaySafe: false })).rejects.toBeInstanceOf(NotSent);
+    expect(deliveries()).toBe(1);
+  });
+
+  it("replaySafe true resends after a reset and returns the later answer", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { url, count } = await serve((req, res, n) => (n === 1 ? req.socket.destroy() : json(res, 200, { ok: true })));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).resolves.toEqual({ ok: true });
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe true sends a request that keeps getting reset at most three times", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { url, count } = await serve((req) => req.socket.destroy());
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).rejects.toBeInstanceOf(NoAnswer);
+    expect(count()).toBe(3);
+  });
+});
+
+describe("a status above 599 is not a server error", () => {
+  it("comes back as HttpStatus and is not resent", async () => {
+    const { url, count } = await serve((_req, res) => {
+      res.writeHead(600, { "content-type": "application/json" });
+      res.end("{}");
+    });
+    const error = await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpStatus);
+    expect((error as HttpStatus).status).toBe(600);
+    expect(count()).toBe(1);
+  });
+});
+
+describe("error messages name the address without its query", () => {
+  it.each([
+    ["NotSent", async (): Promise<unknown> => send({ url: `${await closedPort()}/upload?upload_id=secret-session#part`, method: "POST" }, { replaySafe: false }).catch((e: unknown) => e)],
+    ["NoAnswer", async (): Promise<unknown> => {
+      const { url } = await serve((req) => req.socket.destroy());
+      return send({ url: `${url}/upload?upload_id=secret-session`, method: "POST", body: "{}" }, { replaySafe: false }).catch((e: unknown) => e);
+    }],
+    ["HttpStatus", async (): Promise<unknown> => {
+      const { url } = await serve((_req, res) => json(res, 400, {}));
+      return fetchJson({ url: `${url}/upload?upload_id=secret-session`, method: "POST" }, { replaySafe: false, ...read }).catch((e: unknown) => e);
+    }],
+    ["BodyTooLarge", async (): Promise<unknown> => {
+      const { url } = await serve((_req, res) => json(res, 200, { blob: "x".repeat(5_000) }));
+      return fetchJson({ url: `${url}/upload?upload_id=secret-session`, method: "GET" }, { replaySafe: false, maxBodyBytes: 100, idleMs: 2_000 }).catch((e: unknown) => e);
+    }],
+    ["Aborted", async (): Promise<unknown> => send({ url: "http://127.0.0.1:9/upload?upload_id=secret-session", method: "GET" }, { replaySafe: false, deadlineAt: Date.now() - 1 }).catch((e: unknown) => e)],
+  ])("%s keeps the path and drops the query", async (_name, fail) => {
+    const error = await fail();
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("/upload");
+    expect((error as Error).message).not.toContain("secret-session");
+  });
+});
+
+describe("error messages name a label from our own code as given", () => {
+  it.each(["wavespeed", "the model call"])("an abort while waiting on %s names it", (label) => {
+    expect(new Aborted(label).message).toContain(label);
+  });
+});
+
+describe("the body limit at its edge", () => {
+  /**
+   * A server answering a JSON string body of exactly this many bytes.
+   * @param bytes - The body's length.
+   * @returns The URL.
+   */
+  const bodyOf = async (bytes: number): Promise<string> => {
+    const { url } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(`"${"x".repeat(bytes - 2)}"`);
+    });
+    return url;
+  };
+
+  it("reads a body of exactly maxBodyBytes", async () => {
+    await expect(fetchJson({ url: await bodyOf(1_000), method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 2_000 })).resolves.toHaveLength(998);
+  });
+
+  it("refuses a body one byte over maxBodyBytes", async () => {
+    await expect(fetchJson({ url: await bodyOf(1_001), method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 2_000 })).rejects.toBeInstanceOf(BodyTooLarge);
+  });
+});

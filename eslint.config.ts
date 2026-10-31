@@ -153,7 +153,7 @@ export default tseslint.config(
     // eslint-rules/ is first-party source like any package: the guard rules
     // themselves are held to the same documentation standard they enforce.
     files: [
-      "packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -213,7 +213,7 @@ export default tseslint.config(
     // handles we use: the db singleton and the transaction handle tx (so
     // tx.delete()/tx.update() inside a db.transaction are covered too).
     // Backend packages only — web has no DB access.
-    files: ["packages/{server,core,domain,worker,collab}/src/**/*.ts"],
+    files: ["packages/{server,core,domain,worker,collab,provider}/src/**/*.ts"],
     plugins: { drizzle },
     rules: {
       "drizzle/enforce-delete-with-where": [
@@ -293,7 +293,7 @@ export default tseslint.config(
     //
     // Library packages own no process-lifecycle decision — see the rule's own
     // docs for why. Tests are exempt under the standing test carve-out.
-    files: ["packages/{core,shared,domain}/src/**/*.ts"],
+    files: ["packages/{core,shared,domain,provider}/src/**/*.ts"],
     ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
     rules: {
       "breatic/no-library-process-exit": "error",
@@ -305,7 +305,7 @@ export default tseslint.config(
     // primitives the rule keeps out of everything else. A separate block is
     // the only way to vary `ignores` per rule — within one block, ignores
     // applies to every rule the block declares.
-    files: ["packages/{core,shared,domain}/src/**/*.ts"],
+    files: ["packages/{core,shared,domain,provider}/src/**/*.ts"],
     ignores: [
       "**/__tests__/**",
       "**/*.test.ts",
@@ -322,7 +322,7 @@ export default tseslint.config(
     // behaviour. core itself is absent from this scope for that reason.
     // web is covered by its own config, which imports the same plugin.
     files: [
-      "packages/{shared,server,worker,collab,domain}/src/**/*.{ts,tsx}",
+      "packages/{shared,server,worker,collab,domain,provider}/src/**/*.{ts,tsx}",
     ],
     ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
     rules: {
@@ -337,7 +337,7 @@ export default tseslint.config(
     // would make the GPL binary part of our own work rather than a separate
     // program it spawns (#178, action 1).
     files: [
-      "packages/{shared,core,domain,server,worker,collab,ingest}/src/**/*.{ts,tsx,mts,cts}",
+      "packages/{shared,core,domain,server,worker,collab,ingest,provider}/src/**/*.{ts,tsx,mts,cts}",
       "packages/ingest/container/**/*.ts",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
@@ -370,7 +370,7 @@ export default tseslint.config(
     // `find packages -name '*.ts'`, and narrowing it to src/ on the way into
     // ESLint quietly dropped every file at the package root. A drizzle row
     // type leaking out of a drizzle.config.ts is the same leak.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/**/*.{ts,tsx}"],
     ignores: [
       "**/*.repo.ts",
       "**/__tests__/**",
@@ -386,7 +386,7 @@ export default tseslint.config(
     // shipped with credentials, are wrong in a repo as much as anywhere — and
     // as wrong at the package root as inside src/, which is where the shell
     // guard these replaced looked and where narrowing to src/ stopped looking.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/**/*.{ts,tsx}"],
     ignores: [
       "**/__tests__/**",
       "**/*.test.{ts,tsx}",
@@ -403,7 +403,7 @@ export default tseslint.config(
     // config, infrastructure wiring, catalogue loaders, and the
     // agent's own filesystem sandbox, whose whole job is synchronous access.
     files: [
-      "packages/{core,domain,server,worker,collab}/src/**/*.ts",
+      "packages/{core,domain,server,worker,collab,provider}/src/**/*.ts",
     ],
     ignores: [
       "**/__tests__/**",
@@ -424,7 +424,7 @@ export default tseslint.config(
     // yjs_documents is written by collab and by the server, so it gets one
     // repo and everyone else calls it. The repo itself and the schema that
     // defines the table are the two places the name legitimately appears.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}"],
     ignores: [
       "packages/collab/src/services/yjs-documents.repo.ts",
       "packages/core/src/db/yjs-schema.ts",
@@ -441,7 +441,7 @@ export default tseslint.config(
     // module, so the same query cannot end up written twice in two services
     // and drifting. The db layer itself legitimately touches the driver, and
     // the connectivity ping runs `SELECT 1` against no table at all.
-    files: ["packages/{collab,core,domain,server}/src/**/*.ts"],
+    files: ["packages/{collab,core,domain,provider,server}/src/**/*.ts"],
     ignores: [
       "**/*.repo.ts",
       "packages/*/src/db/**",
@@ -463,7 +463,7 @@ export default tseslint.config(
     // is now the only thing that reads them — the documentation generator
     // was retired once this rule covered what it covered and more.
     files: [
-      "packages/{collab,core,domain,integration-tests,server,shared,worker}/**/*.{ts,tsx}",
+      "packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/**/*.{ts,tsx}",
       "eslint-rules/**/*.ts",
       "repo-lint/**/*.ts",
     ],
@@ -543,7 +543,7 @@ export default tseslint.config(
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
     files: [
-      "packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{test,spec}.{ts,tsx}",
+      "packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{test,spec}.{ts,tsx}",
       "eslint-rules/src/**/*.{test,spec}.ts",
       "repo-lint/src/**/*.{test,spec}.ts",
     ],
@@ -559,7 +559,7 @@ export default tseslint.config(
     // Orime copyright, which is why it is excluded rather than merely
     // unenforced.
     files: [
-      "packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -572,7 +572,7 @@ export default tseslint.config(
     // Tests are exempt: they are not shipped, so the resolution concern that
     // motivates the alias style does not reach them.
     files: [
-      "packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -599,7 +599,7 @@ export default tseslint.config(
     // Every package, not just core's schema file: the rule only reacts to a
     // pgTable call, so a table declared somewhere new is covered the day it
     // appears rather than the day someone remembers to widen a glob.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.ts"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.ts"],
     ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
     rules: {
       "breatic/schema-timestamps": "error",
@@ -610,14 +610,14 @@ export default tseslint.config(
     // is the same mistake as one in the dev proxy, and neither reads its
     // target from source. Tests included — a test that talks to production
     // is the version of this that nobody notices until it does damage.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}"],
     rules: {
       "breatic/no-deployed-host": "error",
     },
   },
   {
-    // Outbound HTTP goes through the shared transport. The six packages this
-    // file can reach; web declares the same rule in its own config, because
+    // Outbound HTTP goes through the shared transport, or for provider its own
+    // HTTP module. The packages this file can reach; web declares the same rule in its own config, because
     // ESLint started there never reads this one.
     //
     // packages/shared/src/http/ is where the transport is implemented, so the
@@ -629,9 +629,13 @@ export default tseslint.config(
     // for a concrete reason too — the transport's own real-fetch.test.ts opens
     // a real port and calls the platform fetch, which is the only way to prove
     // the thing it proves.
-    files: ["packages/{collab,core,domain,integration-tests,server,shared,worker}/src/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,domain,integration-tests,provider,server,shared,worker}/src/**/*.{ts,tsx}"],
     ignores: [
       "packages/shared/src/http/**",
+      // provider is a routing layer meant to leave this repository, so it
+      // carries its own HTTP module rather than the shared transport
+      // (inner#1743); its request.ts is the one file that calls fetch.
+      "packages/provider/src/http/request.ts",
       "**/__tests__/**",
       "**/*.test.ts",
       "**/*.spec.ts",
