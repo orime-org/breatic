@@ -21,7 +21,7 @@ import { OutgoingMessage } from "@hocuspocus/server";
 import { createRedisClient, initCore, type Redis } from "@breatic/core";
 import { createConnectionRegistry, type ConnectionRegistry } from "@collab/services/connection-registry.js";
 import { createSeatHandover, type SeatHandover } from "@collab/services/seat-handover.js";
-import { createPongHandler } from "@collab/services/socket-liveness.js";
+import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 
 import { evalsOn, m, wrapRedis, type WrappedRedis } from "./helpers/seat-redis.js";
 
@@ -37,7 +37,7 @@ interface FakeConn {
   webSocket: { send: ReturnType<typeof vi.fn> };
 }
 
-type PongConnections = Parameters<ReturnType<typeof createPongHandler>>[1];
+type LiveSocketConnections = Parameters<ReturnType<typeof createLivenessHandler>>[1];
 
 let R: Redis;
 const opened: Redis[] = [];
@@ -71,7 +71,7 @@ interface Rig {
   handover: SeatHandover;
   sockets: Map<string, Map<string, FakeConn>>;
   /** Fire a pong on a socket and wait until its consequences have landed. */
-  pong(socketId: string): Promise<void>;
+  alive(socketId: string): Promise<void>;
   /** Register a connection under its socket. */
   hold(socketId: string, c: FakeConn): FakeConn;
   /** How many connections are writable. */
@@ -119,7 +119,7 @@ async function rig(real = false): Promise<Rig> {
     forgetSeat: (documentName, member) => reg.forgetSeat(documentName, member),
   });
   if (real) await handover.start();
-  const onPong = createPongHandler({
+  const onAlive = createLivenessHandler({
     refreshSeats: (socketId: string) => reg.refreshSocket(socketId),
     requestDemote: (documentName: string, member: string) => handover.requestDemote(documentName, member),
     presencePolicy: { now: () => clock, staleAfterMs: 60_000 },
@@ -130,9 +130,9 @@ async function rig(real = false): Promise<Rig> {
     w,
     handover,
     sockets,
-    async pong(socketId: string): Promise<void> {
+    async alive(socketId: string): Promise<void> {
       const carried: ReadonlyMap<string, unknown> = sockets.get(socketId) ?? new Map();
-      onPong(socketId, carried as PongConnections);
+      onAlive(socketId, carried as LiveSocketConnections);
       await w.flush();
       for (let i = 0; i < 3; i++) await new Promise<void>((resolve) => setImmediate(resolve));
       await w.flush();
@@ -200,7 +200,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(await r.reg.takeSeat(DOC, { socketId: "s1", userId: "u1", arrivedAtMs: 5000 }, 2)).toEqual({ outcome: "unknown" });
     expect(r.writable()).toBe(3);
 
-    await r.pong("s1");
+    await r.alive("s1");
 
     expect(c1.readOnly).toBe(true);
     expect(c1.webSocket.send).toHaveBeenCalledTimes(1);
@@ -222,7 +222,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     expect(ca.readOnly).toBe(false);
     expect(r.writable()).toBe(3);
 
-    await r.pong("sa");
+    await r.alive("sa");
 
     expect(ca.readOnly).toBe(true);
     expect(ca.webSocket.send).toHaveBeenCalledTimes(1);
@@ -249,7 +249,7 @@ describe("B · invariant 3: each window closes within one pong", () => {
     await r.w.flush();
 
     const mark = r.w.log.length;
-    await r.pong("sa");
+    await r.alive("sa");
 
     expect(ca.webSocket.send).toHaveBeenCalledTimes(1);
     expect(evalsOn(r.w.log.slice(mark), keyFor(DOC))).toHaveLength(0);

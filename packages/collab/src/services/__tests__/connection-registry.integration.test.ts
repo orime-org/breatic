@@ -1080,7 +1080,7 @@ class World {
    * @param conn - The connection whose socket answered.
    * @param items - What refreshSocket returned.
    */
-  onPong(conn: ModelConn, items: RefreshItem[]): void {
+  onAlive(conn: ModelConn, items: RefreshItem[]): void {
     for (const item of items) {
       if (item.documentName !== DOC) {
         this.problems.push(`pong answered for unknown document ${item.documentName}`);
@@ -1131,8 +1131,8 @@ class World {
    * A connection's socket answers a ping.
    * @param conn - The connection.
    */
-  pong(conn: ModelConn): void {
-    void this.regs[conn.inst].refreshSocket(conn.socketId).then((items) => this.onPong(conn, items));
+  alive(conn: ModelConn): void {
+    void this.regs[conn.inst].refreshSocket(conn.socketId).then((items) => this.onAlive(conn, items));
   }
 
   /**
@@ -1192,7 +1192,7 @@ const commandArbs = [
   fc.nat().map((k) =>
     cmd(`Pong(${k})`, (w) => {
       const open = w.open();
-      w.pong(open[k % open.length]!);
+      w.alive(open[k % open.length]!);
     }, (w) => w.conns.some((c) => !c.closed)),
   ),
   fc.nat().map((k) =>
@@ -1269,7 +1269,7 @@ describe("D · any interleaving keeps the cap and leaves no stray seat", () => {
         await world.drain();
         for (let round = 0; round < 2; round++) {
           for (const conn of world.open()) {
-            world.pong(conn);
+            world.alive(conn);
             await world.settle();
             await world.checkCard();
           }

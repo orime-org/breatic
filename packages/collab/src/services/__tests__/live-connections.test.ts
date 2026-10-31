@@ -23,7 +23,7 @@ import {
   createLiveConnections,
   type HeldConnection,
 } from "@collab/services/live-connections.js";
-import { createPongHandler } from "@collab/services/socket-liveness.js";
+import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 
 /** A recording stand-in for the framework's Connection. */
 function fakeConnection(document: object = {}): HeldConnection & {
@@ -70,8 +70,8 @@ function fire(
 
 describe("live connections — one listener per socket", () => {
   it("attaches the pong listener once however many documents the socket carries", () => {
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: 30_000 });
     const first = fakeConnection();
     const second = fakeConnection();
 
@@ -86,8 +86,8 @@ describe("live connections — one listener per socket", () => {
   });
 
   it("hands the pong callback everything that socket carries", () => {
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: 30_000 });
     const meta = fakeConnection({ kind: "meta" });
     const canvas = fakeConnection({ kind: "canvas" });
     table.remember("s-1", "doc-meta", meta);
@@ -97,8 +97,8 @@ describe("live connections — one listener per socket", () => {
 
     // Seats are refreshed by socket id, but presence has to find this
     // socket's meta connection — so the callback gets the map, not just the id.
-    expect(onPong).toHaveBeenCalledTimes(1);
-    const [socketId, connections] = onPong.mock.calls[0] as [
+    expect(onAlive).toHaveBeenCalledTimes(1);
+    const [socketId, connections] = onAlive.mock.calls[0] as [
       string,
       ReadonlyMap<string, HeldConnection>,
     ];
@@ -108,8 +108,8 @@ describe("live connections — one listener per socket", () => {
   });
 
   it("stops answering for a socket once it closes", () => {
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: 30_000 });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -117,11 +117,11 @@ describe("live connections — one listener per socket", () => {
 
     expect(table.find("doc-a", "s-1")).toBeUndefined();
     fire(connection, "pong");
-    expect(onPong).not.toHaveBeenCalled();
+    expect(onAlive).not.toHaveBeenCalled();
   });
 
   it("drops one document without losing the rest of the socket", () => {
-    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: 30_000 });
+    const table = createLiveConnections({ onAlive: vi.fn(), pingIntervalMs: 30_000 });
     const meta = fakeConnection();
     const canvas = fakeConnection();
     table.remember("s-1", "doc-meta", meta);
@@ -134,7 +134,7 @@ describe("live connections — one listener per socket", () => {
   });
 
   it("keeps a demote for another instance's socket out of this one", () => {
-    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: 30_000 });
+    const table = createLiveConnections({ onAlive: vi.fn(), pingIntervalMs: 30_000 });
     table.remember("s-1", "doc-a", fakeConnection());
 
     expect(table.find("doc-a", "s-2")).toBeUndefined();
@@ -154,7 +154,7 @@ describe("live connections — a socket outlives the documents on it (inner#1034
       .mockResolvedValueOnce([{ documentName: "doc-b", outcome: "lost", liveCount: 2, cap: 2 }])
       .mockResolvedValue([]);
     const table = createLiveConnections({
-      onPong: createPongHandler({
+      onAlive: createLivenessHandler({
         refreshSeats,
         requestDemote: vi.fn(async () => undefined),
         presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
@@ -189,7 +189,7 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
   it("refreshes at half a period after an early pong, so no gap between refreshes exceeds two periods", () => {
     vi.useFakeTimers({ now: 0 });
     const handled: number[] = [];
-    const table = createLiveConnections({ onPong: () => handled.push(Date.now()), pingIntervalMs: PING });
+    const table = createLiveConnections({ onAlive: () => handled.push(Date.now()), pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -208,8 +208,8 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
   it("handles one pong of a flood that arrives within half a period, and the next one after it", () => {
     vi.useFakeTimers({ now: 0 });
     let clock = 1_000_000;
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING, now: () => clock });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: PING, now: () => clock });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -219,23 +219,23 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
       fire(connection, "pong");
       clock += 100;
     }
-    expect(onPong).toHaveBeenCalledTimes(1);
+    expect(onAlive).toHaveBeenCalledTimes(1);
 
     // The clock reaches half a period before the deferred timer runs, so this
     // pong is on time and takes the deferred one's place.
     clock = 1_000_000 + PING / 2;
     fire(connection, "pong");
-    expect(onPong).toHaveBeenCalledTimes(2);
+    expect(onAlive).toHaveBeenCalledTimes(2);
 
     vi.advanceTimersByTime(PING);
-    expect(onPong).toHaveBeenCalledTimes(2);
+    expect(onAlive).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it("handles a flood within half a period once at once and once deferred", () => {
     vi.useFakeTimers({ now: 1_000_000 });
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -243,18 +243,18 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
       fire(connection, "pong");
       vi.advanceTimersByTime(100);
     }
-    expect(onPong).toHaveBeenCalledTimes(1);
+    expect(onAlive).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(PING / 2);
-    expect(onPong).toHaveBeenCalledTimes(2);
+    expect(onAlive).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(PING * 2);
-    expect(onPong).toHaveBeenCalledTimes(2);
+    expect(onAlive).toHaveBeenCalledTimes(2);
   });
 
   it("keeps handling on-time pongs after the wall clock steps back", () => {
     vi.useFakeTimers({ now: 1_000_000 });
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -267,13 +267,13 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
       fire(connection, "pong");
     }
 
-    expect(onPong).toHaveBeenCalledTimes(4);
+    expect(onAlive).toHaveBeenCalledTimes(4);
   });
 
   it("cancels a deferred pong when the socket closes", () => {
     vi.useFakeTimers({ now: 1_000_000 });
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -283,7 +283,7 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
     fire(connection, "close");
     vi.advanceTimersByTime(PING);
 
-    expect(onPong).toHaveBeenCalledTimes(1);
+    expect(onAlive).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -298,7 +298,7 @@ describe("live connections — a message or a ping counts as a pong, as the tran
   it("keeps refreshing a socket that sends messages and never pongs, at most twice per period", () => {
     vi.useFakeTimers({ now: 0 });
     const handled: number[] = [];
-    const table = createLiveConnections({ onPong: () => handled.push(Date.now()), pingIntervalMs: PING });
+    const table = createLiveConnections({ onAlive: () => handled.push(Date.now()), pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -313,18 +313,18 @@ describe("live connections — a message or a ping counts as a pong, as the tran
   });
 
   it("refreshes on a ping from the client", () => {
-    const onPong = vi.fn();
-    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const onAlive = vi.fn();
+    const table = createLiveConnections({ onAlive, pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
     fire(connection, "ping");
 
-    expect(onPong).toHaveBeenCalledTimes(1);
+    expect(onAlive).toHaveBeenCalledTimes(1);
   });
 
   it("detaches from pongs, pings and messages when the socket closes", () => {
-    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: PING });
+    const table = createLiveConnections({ onAlive: vi.fn(), pingIntervalMs: PING });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 

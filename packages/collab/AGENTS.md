@@ -66,9 +66,9 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **Online is asserted by the socket's own signs of life (a pong, a ping or any message, the events crossws counts before it would close the socket), offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score moves only when its own socket shows one of those signs, and nothing else writes it; a narrower signal than the transport's lets a socket the transport keeps open lose its seat while it can still write. Keep presence off browser timers (`refreshPresenceForSocket` is the only refresh entry in `presence-wiring.ts`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled, so a hidden tab that sends nothing still refreshes.
 
-### One pong handler
+### One liveness handler
 
-**When a pong must refresh something new, add it to the handler `createPongHandler` builds in `services/socket-liveness.ts`, not as another call in the per-socket callback.** A second call can go missing unnoticed, because each module's own tests call it directly and still pass.
+**When a socket's sign of life must refresh something new, add it to the handler `createLivenessHandler` builds in `services/socket-liveness.ts`, not as another call in the per-socket callback.** A second call can go missing unnoticed, because each module's own tests call it directly and still pass.
 
 ### One ping interval
 

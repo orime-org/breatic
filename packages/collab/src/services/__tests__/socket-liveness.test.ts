@@ -29,10 +29,10 @@ vi.mock("@breatic/core", () => ({
 }));
 
 import { readPresence } from "@collab/hooks/presence.js";
-import { createPongHandler } from "@collab/services/socket-liveness.js";
+import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 
-type Deps = Parameters<typeof createPongHandler>[0];
-type Connections = Parameters<ReturnType<typeof createPongHandler>>[1];
+type Deps = Parameters<typeof createLivenessHandler>[0];
+type Connections = Parameters<ReturnType<typeof createLivenessHandler>>[1];
 type SeatAnswer = Awaited<ReturnType<Deps["refreshSeats"]>>[number];
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -62,7 +62,7 @@ const nothingToReport = (): ReturnType<Deps["refreshSeats"]> => Promise.resolve(
 describe("a pong refreshes everything it proves", () => {
   it("moves the socket's seats forward", () => {
     const refreshSeats = vi.fn(nothingToReport);
-    const handler = createPongHandler({
+    const handler = createLivenessHandler({
       refreshSeats,
       requestDemote: vi.fn(async () => undefined),
       presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
@@ -75,7 +75,7 @@ describe("a pong refreshes everything it proves", () => {
 
   it("moves the owner of the socket's meta connection forward", () => {
     const doc = metaDocWith(1_000);
-    const handler = createPongHandler({
+    const handler = createLivenessHandler({
       refreshSeats: vi.fn(nothingToReport),
       requestDemote: vi.fn(async () => undefined),
       presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
@@ -98,7 +98,7 @@ describe("a pong refreshes everything it proves", () => {
     // that reads them together.
     const refreshSeats = vi.fn(nothingToReport);
     const doc = metaDocWith(1_000);
-    const handler = createPongHandler({
+    const handler = createLivenessHandler({
       refreshSeats,
       requestDemote: vi.fn(async () => undefined),
       presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
@@ -168,12 +168,12 @@ function warnedWith(tag: string, fields: Record<string, unknown> = {}): boolean 
  * @param connections - What the socket carries.
  * @returns The demote spy and the presence document, if any.
  */
-async function pongWith(
+async function aliveWith(
   answers: SeatAnswer[],
   connections: Map<string, unknown>,
 ): Promise<{ requestDemote: ReturnType<typeof vi.fn> }> {
   const requestDemote = vi.fn(async () => undefined);
-  const handler = createPongHandler({
+  const handler = createLivenessHandler({
     refreshSeats: vi.fn(async () => answers),
     requestDemote,
     presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
@@ -190,7 +190,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P01 asks for the replaced connection to be demoted, and demotes nothing here", async () => {
     const c1 = contentConn();
-    const { requestDemote } = await pongWith(
+    const { requestDemote } = await aliveWith(
       [{ documentName: D1, outcome: "replaced", replaced: X }],
       new Map([[D1, c1]]),
     );
@@ -203,7 +203,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
   it("E-P02 demotes the connection whose retried arrival found the document full, and only that one", async () => {
     const c1 = contentConn();
     const c2 = contentConn();
-    const { requestDemote } = await pongWith(
+    const { requestDemote } = await aliveWith(
       [{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }],
       new Map([[D1, c1], [D2, c2]]),
     );
@@ -221,7 +221,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P03 demotes the connection that lost its seat and says so in the log", async () => {
     const c1 = contentConn();
-    await pongWith([{ documentName: D1, outcome: "lost", liveCount: 3, cap: 3 }], new Map([[D1, c1]]));
+    await aliveWith([{ documentName: D1, outcome: "lost", liveCount: 3, cap: 3 }], new Map([[D1, c1]]));
     expect(c1.readOnly).toBe(true);
     expect(c1.webSocket.send).toHaveBeenCalledTimes(1);
     expect(c1.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(D1));
@@ -236,7 +236,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
     const c2 = contentConn();
     const c3 = contentConn();
     const meta = metaDocWith(1_000);
-    const { requestDemote } = await pongWith(
+    const { requestDemote } = await aliveWith(
       [
         { documentName: D1, outcome: "replaced", replaced: X },
         { documentName: D2, outcome: "full", liveCount: 2, cap: 2 },
@@ -263,7 +263,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P05 does nothing more when the renewal has nothing to report", async () => {
     const c1 = contentConn();
-    const { requestDemote } = await pongWith([], new Map([[D1, c1]]));
+    const { requestDemote } = await aliveWith([], new Map([[D1, c1]]));
     expect(requestDemote).not.toHaveBeenCalled();
     expect(c1.readOnly).toBe(false);
     expect(c1.webSocket.send).not.toHaveBeenCalled();
@@ -272,7 +272,7 @@ describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
 
   it("E-P06 skips an answer for a document this socket no longer carries", async () => {
     const c2 = contentConn();
-    await pongWith([{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }], new Map([[D2, c2]]));
+    await aliveWith([{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }], new Map([[D2, c2]]));
     expect(c2.readOnly).toBe(false);
     expect(c2.webSocket.send).not.toHaveBeenCalled();
   });

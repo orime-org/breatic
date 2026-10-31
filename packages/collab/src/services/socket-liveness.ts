@@ -53,7 +53,7 @@ export interface SocketLivenessDeps {
 }
 
 /** One connection on the socket, as much of it as a pong needs. */
-type PongConnection = SocketConnection & DemotableConnection;
+type LiveSocketConnection = SocketConnection & DemotableConnection;
 
 /**
  * Build the callback the per-socket table calls on each sign of life it
@@ -61,11 +61,11 @@ type PongConnection = SocketConnection & DemotableConnection;
  * @param deps - See {@link SocketLivenessDeps}.
  * @returns The callback, taking the socket and what it carries.
  */
-export function createPongHandler(
+export function createLivenessHandler(
   deps: SocketLivenessDeps,
 ): (
   socketId: string,
-  connections: ReadonlyMap<string, PongConnection>,
+  connections: ReadonlyMap<string, LiveSocketConnection>,
 ) => void {
   const { refreshSeats, requestDemote, presencePolicy } = deps;
 
@@ -77,7 +77,7 @@ export function createPongHandler(
    */
   async function settleSeats(
     socketId: string,
-    connections: ReadonlyMap<string, PongConnection>,
+    connections: ReadonlyMap<string, LiveSocketConnection>,
   ): Promise<void> {
     const answers = await refreshSeats(socketId);
     for (const answer of answers) {

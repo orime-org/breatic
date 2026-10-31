@@ -65,7 +65,7 @@ export interface LiveConnectionsOptions {
    * holds rides on it, and so does the presence record of whoever owns its
    * meta connection.
    */
-  onPong: (
+  onAlive: (
     socketId: string,
     connections: ReadonlyMap<string, HeldConnection>,
   ) => void;
@@ -129,8 +129,8 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong, pingIntervalMs, now = (): number => performance.now() } = options;
-  const minPongGapMs = pingIntervalMs / 2;
+  const { onAlive, pingIntervalMs, now = (): number => performance.now() } = options;
+  const minGapMs = pingIntervalMs / 2;
 
   const bySocket = new Map<string, Map<string, HeldConnection>>();
 
@@ -156,14 +156,14 @@ export function createLiveConnections(
         const handle = (): void => {
           deferred = undefined;
           lastHandledAt = now();
-          onPong(socketId, held);
+          onAlive(socketId, held);
         };
         /**
          * Handle a sign of life now, or, within half a period of the last one
          * handled, once half a period has passed (see `pingIntervalMs`).
          */
         const alive = (): void => {
-          const wait = lastHandledAt + minPongGapMs - now();
+          const wait = lastHandledAt + minGapMs - now();
           if (wait <= 0) {
             clearTimeout(deferred);
             handle();

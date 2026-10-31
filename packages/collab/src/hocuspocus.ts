@@ -68,7 +68,7 @@ import {
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
-import { createPongHandler } from "@collab/services/socket-liveness.js";
+import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
@@ -161,7 +161,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // the person's earlier seats. The demote channel that carries that request
   // is built below, from this table, so the handler reaches it late.
   const liveConnections = createLiveConnections({
-    onPong: createPongHandler({
+    onAlive: createLivenessHandler({
       refreshSeats: (socketId: string): Promise<SeatRefreshResult[]> =>
         connectionRegistry.refreshSocket(socketId),
       requestDemote: (documentName: string, member: string): Promise<void> =>

@@ -156,7 +156,7 @@ describe("seat liveness follows the transport's", () => {
       keyFor: (documentName: string) => `${ns}:${documentName}`,
     });
     const live = createLiveConnections({
-      onPong: (socketId: string) => void registry.refreshSocket(socketId),
+      onAlive: (socketId: string) => void registry.refreshSocket(socketId),
       pingIntervalMs: 200,
     });
 

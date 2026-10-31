@@ -191,7 +191,7 @@ async function beat(client: LiveClient, clientId: number): Promise<void> {
  * @param options.document - The meta document on it, defaulting to the live one.
  * @param options.extraDocs - Further documents on the same socket.
  */
-function pong(
+function alive(
   userId: string,
   options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][] } = {},
 ): void {
@@ -279,7 +279,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     seedGhost(metaDoc(), "u-ghost", clock - 600_000);
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
   });
@@ -292,7 +292,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     );
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
   });
@@ -305,7 +305,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     const space = new Y.Doc();
 
     clock += BEAT_MS;
-    pong(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
+    alive(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
     space.destroy();
@@ -418,7 +418,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     });
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
     alice.close();
