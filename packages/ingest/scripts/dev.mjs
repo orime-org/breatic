@@ -39,8 +39,8 @@ if (!existsSync(CONFIG)) {
   process.exit(0);
 }
 
-// Every top-level `[[containers]]` block has to name this copy (README.md, "Each
-// of the three top-level `[[containers]]` blocks"). One left unnamed builds the
+// Every top-level `[[containers]]` block has to name this copy (see README.md).
+// One left unnamed builds the
 // same image ID as any other unnamed copy on this machine, and each rebuild of
 // one removes the tag the other's containers start from. Nothing reports that
 // when it happens, so it is checked here.

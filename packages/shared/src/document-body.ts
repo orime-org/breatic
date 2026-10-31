@@ -41,6 +41,8 @@ import { v4 as uuidv4 } from "uuid";
 import * as Y from "yjs";
 
 import type { SpaceType } from "@shared/types/space.js";
+import type { TimelineSettings } from "@shared/timeline/schema.js";
+import { initializeTimelineDocument } from "@shared/timeline/document.js";
 import { initializeSceneDocument } from "@shared/scene-version.js";
 
 /**
@@ -59,6 +61,18 @@ const DOCUMENT_BODY_KEY = "content";
  */
 export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
   return doc.getXmlFragment(DOCUMENT_BODY_KEY);
+}
+
+/**
+ * Read an existing body without manufacturing a root in an empty document.
+ * @param doc - The loaded or captured content document.
+ * @returns Its typed body, or undefined for an absent or unknown root type.
+ * @throws {never} Never.
+ */
+export function existingDocumentBodyFragment(doc: Y.Doc): Y.XmlFragment | undefined {
+  const held = doc.share.get(DOCUMENT_BODY_KEY);
+  if (held === undefined || (held.constructor !== Y.XmlFragment && held.constructor !== Y.AbstractType)) return undefined;
+  return documentBodyFragment(doc);
 }
 
 /**
@@ -131,22 +145,31 @@ function buildInitialDocumentBlock(): Y.XmlElement {
  * initial-content policy: a future kind that needs a seed changes one switch
  * here, not a call site somewhere else.
  * @param kind - The kind of Space this content document belongs to.
+ * @param timelineSettings - Service-configured creation settings for a Timeline.
  * @returns The encoded Yjs update, ready to persist as the initial state.
+ * @throws {Error} When Timeline settings are absent or invalid.
  */
-export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
+export function encodeInitialSpaceContent(kind: SpaceType, timelineSettings?: TimelineSettings): Uint8Array {
   const doc = new Y.Doc();
   // Returning from inside each branch keeps the switch exhaustive: TypeScript
   // reports a missing return path when another kind is added, which is the
   // point — a new kind must state its initial content on purpose.
-  switch (kind) {
-    case "document":
-      documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock()]);
-      return Y.encodeStateAsUpdate(doc);
-    case "3d":
-      initializeSceneDocument(doc);
-      return Y.encodeStateAsUpdate(doc);
-    case "canvas":
-    case "timeline":
-      return Y.encodeStateAsUpdate(doc);
+  try {
+    switch (kind) {
+      case "document":
+        documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock()]);
+        return Y.encodeStateAsUpdate(doc);
+      case "timeline":
+        if (timelineSettings === undefined) throw new Error("Timeline creation settings are required");
+        initializeTimelineDocument(doc, timelineSettings);
+        return Y.encodeStateAsUpdate(doc);
+      case "3d":
+        initializeSceneDocument(doc);
+        return Y.encodeStateAsUpdate(doc);
+      case "canvas":
+        return Y.encodeStateAsUpdate(doc);
+    }
+  } finally {
+    doc.destroy();
   }
 }

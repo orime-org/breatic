@@ -181,21 +181,23 @@ async function beat(client: LiveClient, clientId: number): Promise<void> {
 }
 
 /**
- * The transport answering a ping on a socket that carries the meta document.
+ * A sign of life (a pong, a ping or any message) on a socket that carries the
+ * meta document.
  *
  * This is what refreshes presence now. The socket's connections are what the
- * per-socket table hands the pong callback, so the shape here is that map with
- * the two fields presence reads off each connection.
+ * per-socket table hands the liveness callback, so the shape here is that map
+ * with the two fields presence reads off each connection.
  * @param userId - Whose socket answered.
  * @param options - What that socket carries.
  * @param options.document - The meta document on it, defaulting to the live one.
  * @param options.extraDocs - Further documents on the same socket.
+ * @param options.heardAt - When the socket was heard, defaulting to now.
  */
-function pong(
+function alive(
   userId: string,
-  options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][] } = {},
+  options: { document?: Y.Doc; extraDocs?: [string, Y.Doc][]; heardAt?: number } = {},
 ): void {
-  const { document = metaDoc(), extraDocs = [] } = options;
+  const { document = metaDoc(), extraDocs = [], heardAt = clock } = options;
   const connections = new Map(
     [
       ...extraDocs,
@@ -205,7 +207,7 @@ function pong(
       { context: { user: { id: userId } }, document: doc },
     ]),
   );
-  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY });
+  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY }, heardAt);
 }
 
 /**
@@ -270,7 +272,7 @@ describe("presence wiring — a connection puts you on the list", () => {
   });
 });
 
-describe("presence wiring — a pong refreshes and sweeps", () => {
+describe("presence wiring — a sign of life refreshes and sweeps", () => {
   it("clears a record nobody is refreshing when a pong arrives", async () => {
     // The sweep runs off other people's sockets answering, which is what makes
     // it able to clean up after a crashed server: the first person back starts
@@ -279,7 +281,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     seedGhost(metaDoc(), "u-ghost", clock - 600_000);
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
   });
@@ -292,9 +294,27 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     );
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
+  });
+
+  it("stamps the time the socket was last heard, and sweeps by the time the refresh runs", async () => {
+    // A refresh held back behind an earlier one runs up to half a ping period
+    // after the socket was heard. Stamping the run time would keep a person
+    // whose network just died online that much longer.
+    await connect("alice");
+    await waitFor(
+      () => readPresence(metaDoc(), ALICE)?.online === true,
+      "alice recorded online",
+    );
+    seedGhost(metaDoc(), "u-ghost", clock + BEAT_MS - POLICY.staleAfterMs);
+
+    clock += BEAT_MS;
+    alive(ALICE, { heardAt: clock - 14_950 });
+
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock - 14_950);
+    expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
   });
 
   it("refreshes from the meta connection even when the socket carries space documents too", async () => {
@@ -305,7 +325,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     const space = new Y.Doc();
 
     clock += BEAT_MS;
-    pong(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
+    alive(ALICE, { extraDocs: [[`project-${PID}/canvas-s1`, space]] });
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
     space.destroy();
@@ -327,6 +347,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
         ],
       ]),
       { now: () => clock, ...POLICY },
+      clock,
     );
 
     expect(readPresence(space, ALICE)).toBeNull();
@@ -418,7 +439,7 @@ describe("presence wiring — a pong refreshes and sweeps", () => {
     });
 
     clock += BEAT_MS;
-    pong(ALICE);
+    alive(ALICE);
 
     expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);
     alice.close();

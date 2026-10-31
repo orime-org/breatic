@@ -439,9 +439,9 @@ describe("what the guide says", () => {
     // Dropping takes any file; the picker is narrower, and the reader told to
     // pick a PDF there finds it greyed out.
     const page = webSource("pages/project/ProjectPage.tsx");
-    expect(page).toContain("accept='image/*,video/*,audio/*,text/*'");
+    expect(page).toContain("accept={`${uploadAcceptFor('all')},text/*`}");
     const making = section("Making nodes");
-    expect(making).toMatch(/file picker that lists pictures, videos, sounds and plain text files/);
+    expect(making).toMatch(/file picker that lists supported pictures, videos, sounds and plain text files/);
     expect(making).toMatch(/PDF, Word and Excel files go in by dropping or pasting them/);
   });
 

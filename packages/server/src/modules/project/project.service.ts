@@ -19,7 +19,7 @@
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { projectAuthService } from "@breatic/core";
+import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
 import { claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
@@ -587,6 +587,7 @@ export async function duplicate(
     await assertStudioHasProjectRoom(source.studioId, tx);
     const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    await projectAssetReferenceService.copyProjectAssetReferences(sourceId, copy.id, tx);
     return { project: copy, isFirst };
   });
   reportProjectCreated(project, { via: "duplicate", is_first: isFirst });

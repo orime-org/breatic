@@ -36,7 +36,7 @@ try {
 }
 
 interface Held {
-  context: { user: { id: string; role: string }; handedOverFrom: null; session: { token: string; id: string } };
+  context: { user: { id: string; role: string }; seatCap: null; arrivedAtMs: number; session: { token: string; id: string } };
   close: (event: { code: number; reason: string }) => void;
   closedWith: { code: number; reason: string } | null;
   closedAfterMs: number | null;
@@ -54,7 +54,7 @@ let publishedAt = 0;
  */
 function held(userId: string, token: string): Held {
   const connection: Held = {
-    context: { user: { id: userId, role: "editor" }, handedOverFrom: null, session: { token, id: sessionId(token) } },
+    context: { user: { id: userId, role: "editor" }, seatCap: null, arrivedAtMs: 0, session: { token, id: sessionId(token) } },
     closedWith: null,
     closedAfterMs: null,
     close: (event) => {

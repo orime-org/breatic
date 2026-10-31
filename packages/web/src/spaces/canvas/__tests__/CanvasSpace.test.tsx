@@ -3249,6 +3249,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(generate.getAttribute('aria-disabled')).not.toBe('true');
   });
 
+  it('offers extractable document types when opening a text node upload picker', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({
+      nodes: [{ id: 'text-upload', type: 'text', position: { x: 0, y: 0 }, data: { handling: false } }],
+    }));
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      renderSpace();
+      const node = document.querySelector('.react-flow__node');
+      if (node === null) throw new Error('Text node was not rendered');
+      fireEvent.contextMenu(node);
+      fireEvent.click(screen.getByTestId('node-menu-upload'));
+      expect(click).toHaveBeenCalledTimes(1);
+      const input = screen.getByTestId('canvas-upload-input') as HTMLInputElement;
+      const offered = input.accept.split(',');
+      expect(offered).not.toContain('.doc');
+      expect(offered).toEqual(expect.arrayContaining(['.txt', '.md', '.pdf', '.docx', '.xls', '.xlsx', 'text/*']));
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   // ---- Node-state gate: upload refused on a LOCKED node (bug 4) ----
   // Right-click Upload and the empty-node double-click both funnel through
   // activateNodeUpload; the gate there refuses a locked node before popping the

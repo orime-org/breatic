@@ -62,7 +62,7 @@ describe("handleLifecycleEvent", () => {
   it("project:duplicated copies the source, then asks every instance to close the NEW project's connections", async () => {
     await handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish);
 
-    expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID);
+    expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID, expect.any(Function));
     expect(order).toEqual(["copy", `publish:${NEW_PID}:content-updated`]);
   });
 

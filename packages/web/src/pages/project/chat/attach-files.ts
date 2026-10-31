@@ -8,9 +8,10 @@ import {
   checkFileAdmission,
   fileToNodeSpec,
   uploadAcceptFor,
+  refusedFormatParams,
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
-import { pickExtractor } from '@web/spaces/canvas/text-extract';
+import { pickExtractor, textExtractAccept } from '@web/spaces/canvas/text-extract';
 import type { Tray } from '@web/stores/attach-to-chat';
 import {
   chatAttachments,
@@ -40,17 +41,6 @@ export interface AttachDeps {
  */
 const MAX_BYTES_PER_CHAR = 3;
 
-/** The document types the picker offers, beside the media it offers. */
-const DOCUMENT_ACCEPT = [
-  '.pdf',
-  '.docx',
-  '.xlsx',
-  '.xls',
-  '.txt',
-  'text/plain',
-  'application/pdf',
-];
-
 /**
  * What the attach button's file picker offers.
  * @returns A comma-separated `accept` value.
@@ -60,7 +50,7 @@ export function attachAccept(): string {
     uploadAcceptFor('image'),
     uploadAcceptFor('video'),
     uploadAcceptFor('audio'),
-    ...DOCUMENT_ACCEPT,
+    textExtractAccept(),
   ].join(',');
 }
 
@@ -68,6 +58,15 @@ export function attachAccept(): string {
 interface Accepted {
   file: File;
   item: TrayItem;
+}
+
+/**
+ * Describe a media file refused for its format.
+ * @param file - The file whose medium determines the supported formats.
+ * @returns The notice rendered through the attachment tray's toast entry.
+ */
+function mediaFormatNotice(file: Pick<File, 'name' | 'type'>): TrayNotice {
+  return { key: 'unsupportedMedia', filename: file.name, ...refusedFormatParams(file) };
 }
 
 /**
@@ -88,6 +87,7 @@ function classify(
   if (!needsUpload && extractor === null) return { refused: { key: 'unsupported', filename: file.name } };
   const rejection = checkFileAdmission(file, maxBytes);
   if (rejection === 'tooLarge') return { refused: { key: 'tooLarge', filename: file.name } };
+  if (rejection === 'unsupportedType') return { refused: mediaFormatNotice(file) };
   if (rejection !== null) return { refused: { key: 'unsupported', filename: file.name } };
   if (extractor === 'text' && file.size > limits.maxChars * MAX_BYTES_PER_CHAR) {
     return { refused: { key: 'tooLong' } };
@@ -147,6 +147,9 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
       chip = { ...base, data_snapshot: { text } };
     }
   } catch (err) {
+    if (media && err instanceof UploadFailedError && err.reason === 'unsupportedType') {
+      chatAttachments.say(mediaFormatNotice(file));
+    }
     // The item says it failed, which is what the reader acts on: take it out
     // and pick the file again, after a while when it was uploading too often.
     const rateLimited = err instanceof UploadFailedError && err.reason === 'rateLimited';

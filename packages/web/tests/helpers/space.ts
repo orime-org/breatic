@@ -24,7 +24,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Locator, type Page } from 'playwright/test';
 
-export type SpaceKind = 'canvas' | 'document' | '3d';
+export type SpaceKind = 'canvas' | 'document' | '3d' | 'timeline';
 
 /**
  * The Space on screen, as a selector. Every open tab keeps its Space in the

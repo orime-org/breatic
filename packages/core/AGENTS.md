@@ -6,7 +6,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Database code lives in core
 
-**The Drizzle schema, migrations and database clients live only in `src/db/`; worker has no `drizzle-orm` dependency and reaches the database only through `@breatic/domain` repos.** Repos in server, domain and collab all query through core's `db` / `yjsDb`, so a second schema or client elsewhere would split the pool and the migration history.
+**The Drizzle schema, migrations and database clients live only in `src/db/`; worker has no `drizzle-orm` dependency and reaches the database through repository and service APIs in `@breatic/core` and `@breatic/domain`.** Repos in server, domain and collab all query through core's `db` / `yjsDb`, so a second schema or client elsewhere would split the pool and the migration history.
 
 ### Two Postgres databases
 
