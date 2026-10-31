@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { Unzip, UnzipInflate, strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
-import type { UnzipFile } from 'three/addons/libs/fflate.module.js';
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
@@ -34,13 +33,13 @@ const manifestSchema = z.object({ formatVersion: z.literal(1), entryPath: z.stri
  */
 export function normalizeModelPath(path: string): string {
   if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith('/') || path.startsWith('\\') || path.includes('\0')) {
-    throw new ModelImportError('invalid',`Invalid model resource path: ${path}`);
+    throw new ModelImportError('invalid', `Invalid model resource path: ${path}`);
   }
   const parts: string[] = [];
   for (const part of path.replaceAll('\\', '/').split('/')) {
     if (!part || part === '.') continue;
     if (part === '..') {
-      if (!parts.length) throw new ModelImportError('invalid',`Model resource path escapes its collection: ${path}`);
+      if (!parts.length) throw new ModelImportError('invalid', `Model resource path escapes its collection: ${path}`);
       parts.pop();
     } else parts.push(part);
   }
@@ -57,7 +56,7 @@ export function normalizeModelPath(path: string): string {
  */
 export function resolveModelDependency(entry: string, uri: string): string {
   if (/^[a-z][a-z\d+.-]*:/i.test(uri) || uri.startsWith('/') || uri.startsWith('\\')) {
-    throw new ModelImportError('invalid',`Model resource must be provided locally: ${uri}`);
+    throw new ModelImportError('invalid', `Model resource must be provided locally: ${uri}`);
   }
   const directory = entry.slice(0, entry.lastIndexOf('/') + 1);
   return normalizeModelPath(directory + decodeURIComponent(uri));
@@ -75,14 +74,14 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
   let json = bytes;
   if (entry.toLowerCase().endsWith('.glb')) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (bytes.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67) throw new ModelImportError('invalid','Scene asset is not a binary glTF model');
-    if (view.getUint32(4, true) !== 2) throw new ModelImportError('invalid','Unsupported binary glTF version');
+    if (bytes.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67) throw new ModelImportError('invalid', 'Scene asset is not a binary glTF model');
+    if (view.getUint32(4, true) !== 2) throw new ModelImportError('invalid', 'Unsupported binary glTF version');
     const length = view.getUint32(12, true);
     if (view.getUint32(8, true) !== bytes.byteLength || view.getUint32(16, true) !== 0x4e4f534a || length % 4 !== 0 || length > bytes.byteLength - 20) {
-      throw new ModelImportError('invalid','Invalid binary glTF JSON chunk');
+      throw new ModelImportError('invalid', 'Invalid binary glTF JSON chunk');
     }
     json = bytes.subarray(20, 20 + length);
-  } else if (!entry.toLowerCase().endsWith('.gltf')) throw new ModelImportError('invalid','Unsupported model entry format');
+  } else if (!entry.toLowerCase().endsWith('.gltf')) throw new ModelImportError('invalid', 'Unsupported model entry format');
   if (json.byteLength > limits.maxEntryJsonBytes) throw new ModelImportError('budget', 'Model entry JSON exceeds its configured budget');
   return gltfSchema.parse(JSON.parse(new TextDecoder().decode(json)) as unknown);
 }
@@ -97,7 +96,7 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
  */
 export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): ModelPackage {
   const bytes = files.get(entry);
-  if (!bytes) throw new ModelImportError('invalid',`Missing model entry: ${entry}`);
+  if (!bytes) throw new ModelImportError('invalid', `Missing model entry: ${entry}`);
   const json = readModelJson(bytes, entry, limits);
   const missing = [...json.buffers ?? [], ...json.images ?? []].flatMap((resource) => {
     if (resource.uri === undefined || resource.uri.startsWith('data:')) return [];
@@ -120,7 +119,6 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
 export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits, registered = false): Map<string, Uint8Array<ArrayBuffer>> {
   if (bytes.byteLength > (registered ? limits.maxArtifactBytes : limits.maxInputBytes)) throw new ModelImportError('budget', 'Model archive exceeds its input-byte budget');
   const files = new Map<string, Uint8Array<ArrayBuffer>>();
-  const active = new Set<UnzipFile>();
   let expanded = 0;
   let count = 0;
   const archive = new Unzip((file) => {
@@ -133,7 +131,6 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
     const chunks: Uint8Array[] = [];
     let size = 0;
     files.set(path, new Uint8Array());
-    active.add(file);
     file.ondata = (error, chunk, final) => {
       if (error) throw error;
       size += chunk.byteLength;
@@ -145,22 +142,17 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
         let offset = 0;
         for (const part of chunks) { output.set(part, offset); offset += part.byteLength; }
         files.set(path, output);
-        active.delete(file);
       }
     };
     file.start();
   });
   archive.register(UnzipInflate);
-  try {
-    // Small compressed input slices bound each decoder callback's allocation.
-    for (let offset = 0; offset < bytes.byteLength; offset += 4096) {
-      archive.push(bytes.subarray(offset, offset + 4096), offset + 4096 >= bytes.byteLength);
-    }
-    if (active.size) throw new ModelImportError('invalid','Incomplete model archive');
-    return files;
-  } finally {
-    for (const file of active) file.terminate();
+  // UnzipInflate is synchronous; its final push validates unfinished entries.
+  // Small compressed input slices bound each decoder callback's allocation.
+  for (let offset = 0; offset < bytes.byteLength; offset += 4096) {
+    archive.push(bytes.subarray(offset, offset + 4096), offset + 4096 >= bytes.byteLength);
   }
+  return files;
 }
 
 /**
@@ -173,13 +165,13 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
 export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImportLimits): ModelPackage {
   const files = unpackModelArchive(bytes, limits, true);
   const manifest = files.get('manifest.json');
-  if (!manifest || manifest.byteLength > limits.maxEntryJsonBytes) throw new ModelImportError('invalid','Missing or oversized model manifest');
+  if (!manifest || manifest.byteLength > limits.maxEntryJsonBytes) throw new ModelImportError('invalid', 'Missing or oversized model manifest');
   const result = manifestSchema.safeParse(JSON.parse(new TextDecoder().decode(manifest)) as unknown);
-  if (!result.success) throw new ModelImportError('invalid','Unsupported or invalid model manifest version');
+  if (!result.success) throw new ModelImportError('invalid', 'Unsupported or invalid model manifest version');
   const entry = normalizeModelPath(result.data.entryPath);
-  if (!entry.startsWith('files/') || entry !== result.data.entryPath) throw new ModelImportError('invalid','Invalid model manifest entry path');
+  if (!entry.startsWith('files/') || entry !== result.data.entryPath) throw new ModelImportError('invalid', 'Invalid model manifest entry path');
   for (const path of files.keys()) {
-    if (path !== 'manifest.json' && !path.startsWith('files/')) throw new ModelImportError('invalid',`Invalid model package resource path: ${path}`);
+    if (path !== 'manifest.json' && !path.startsWith('files/')) throw new ModelImportError('invalid', `Invalid model package resource path: ${path}`);
   }
   files.delete('manifest.json');
   return inspectModelFiles(files, entry, limits);
@@ -207,9 +199,9 @@ export function packModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer
   const manifest = Uint8Array.from(strToU8(JSON.stringify({ formatVersion: 1, entryPath: `files/${entry}` })));
   if (total + manifest.byteLength > limits.maxExpandedBytes) throw new ModelImportError('budget', 'Model exceeds its expanded-byte budget');
   const entries: Record<string, Uint8Array> = { 'manifest.json': manifest };
-  for (const [path, value] of [...files].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
-    if (normalizeModelPath(path) !== path) throw new ModelImportError('invalid',`Invalid model resource path: ${path}`);
-    entries[`files/${path}`] = value;
+  for (const path of [...files.keys()].sort()) {
+    if (normalizeModelPath(path) !== path) throw new ModelImportError('invalid', `Invalid model resource path: ${path}`);
+    entries[`files/${path}`] = files.get(path)!;
   }
   const bytes = Uint8Array.from(zipSync(entries, { level: 0, mtime: new Date(1980, 0, 1) }));
   if (bytes.byteLength > limits.maxArtifactBytes) throw new ModelImportError('budget', 'Model asset exceeds its configured budget');

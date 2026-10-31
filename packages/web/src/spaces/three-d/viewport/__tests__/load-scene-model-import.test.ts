@@ -10,7 +10,8 @@ import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
-import { disposeModelTemplate, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...await importOriginal<typeof SharedModule>(),
@@ -44,15 +45,24 @@ function triangleJson(rootName: string, bufferUri?: string): Record<string, unkn
  * Preserve binary geometry in a valid glTF 2.0 JSON/BIN container.
  * @throws {never} Never.
  */
-function triangleGlb(rootName: string, requiredExtension?: string): Uint8Array<ArrayBuffer> {
+function triangleGlb(rootName: string, requiredExtension?: string, image?: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
   const document = triangleJson(rootName);
+  const binary = new Uint8Array(TRIANGLE.byteLength + (image ? Math.ceil(image.byteLength / 4) * 4 : 0));
+  binary.set(new Uint8Array(TRIANGLE.buffer));
+  if (image) {
+    binary.set(image, TRIANGLE.byteLength);
+    document.buffers = [{ byteLength: binary.byteLength }];
+    document.bufferViews = [{ buffer: 0, byteLength: TRIANGLE.byteLength }, { buffer: 0, byteOffset: TRIANGLE.byteLength, byteLength: image.byteLength }];
+    document.images = [{ bufferView: 1, mimeType: 'image/png' }];
+    document.textures = [{ source: 0 }];
+    document.materials = [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }];
+  }
   if (requiredExtension !== undefined) {
     document.extensionsUsed = [requiredExtension];
     document.extensionsRequired = [requiredExtension];
   }
   const json = strToU8(JSON.stringify(document));
   const jsonLength = Math.ceil(json.byteLength / 4) * 4;
-  const binary = new Uint8Array(TRIANGLE.buffer);
   const result = new Uint8Array(12 + 8 + jsonLength + 8 + binary.byteLength);
   const header = new DataView(result.buffer);
   header.setUint32(0, 0x46546c67, true);
@@ -116,6 +126,39 @@ describe('registered model import containers (inner#1690)', () => {
     const root = await loadRegistered(triangleGlb('CharacterRoot').buffer, 'model/gltf-binary');
     expectTriangle(root, 'CharacterRoot');
     expect(httpRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains a GLB embedded texture resolved through the loader-owned blob URL', async () => {
+    const image = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+    const bitmap = vi.fn(async () => ({ width: 1, height: 1, close: vi.fn() }));
+    const request = vi.fn(async () => new Response(image));
+    vi.stubGlobal('createImageBitmap', bitmap);
+    vi.stubGlobal('fetch', request);
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:model-image');
+      static revokeObjectURL = vi.fn();
+    });
+    const root = await loadRegistered(triangleGlb('TexturedRoot', undefined, image).buffer, 'model/gltf-binary');
+    const mesh = root.getObjectByName('Surface');
+
+    expect(mesh).toBeInstanceOf(Mesh);
+    if (!(mesh instanceof Mesh) || Array.isArray(mesh.material)) throw new Error('Expected one textured mesh material');
+    expect(mesh.material).toMatchObject({ map: { image: { width: 1, height: 1 } } });
+    expect(bitmap).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['blob:foreign-model-image', 'https://external.example/texture.png'])('rejects a declared image URI outside the closed collection: %s', async (uri) => {
+    const geometry = btoa(String.fromCharCode(...new Uint8Array(TRIANGLE.buffer)));
+    const bytes = modelPackage('files/model.gltf', {
+      'files/model.gltf': strToU8(JSON.stringify({
+        ...triangleJson('CharacterRoot', `data:application/octet-stream;base64,${geometry}`), images: [{ uri }],
+      })),
+    });
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+    await expect(loadRegistered(bytes, 'application/zip')).rejects.toThrow('must be provided locally');
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('uses the manifest entry regardless of the order of other valid models in the ZIP', async () => {
@@ -183,6 +226,22 @@ describe('registered model import containers (inner#1690)', () => {
 
     await expect(loading).rejects.toBeInstanceOf(Error);
     expect(httpRequest).toHaveBeenCalledTimes(0);
+  });
+
+  it.each(['preview', 'registered'] as const)('checks image metadata before accepting a %s model', async (entryPoint) => {
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+    new DataView(png.buffer).setUint32(16, IMPORT_LIMITS.maxTextureEdge + 1);
+    const geometry = btoa(String.fromCharCode(...new Uint8Array(TRIANGLE.buffer)));
+    const json = Uint8Array.from(strToU8(JSON.stringify({
+      ...triangleJson('CharacterRoot', `data:application/octet-stream;base64,${geometry}`),
+      images: [{ uri: `data:image/png;base64,${btoa(String.fromCharCode(...png))}` }],
+    })));
+    const loading = entryPoint === 'registered'
+      ? loadRegistered(modelPackage('files/scene.gltf', { 'files/scene.gltf': json }), 'application/zip')
+      : parseSceneModel(inspectModelFiles(new Map([['scene.gltf', json]]), 'scene.gltf', IMPORT_LIMITS), new AbortController().signal, IMPORT_LIMITS)
+        .then((root) => { templates.add(root); return root; });
+
+    await expect(loading).rejects.toThrow(/texture.*dimension/i);
   });
 
   it('loads the same registered size when it fits the configured artifact budget', async () => {

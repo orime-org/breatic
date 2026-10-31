@@ -127,7 +127,7 @@ export class SceneViewportRuntime {
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(5, 10, 4);
     this.scene.add(light);
-    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground')));
+    this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
     this.controls.addEventListener('mouseDown', this.onGestureStart);
     this.controls.addEventListener('objectChange', this.onGestureChange);
     this.controls.addEventListener('mouseUp', this.onGestureCommit);

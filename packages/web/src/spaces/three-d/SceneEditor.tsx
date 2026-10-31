@@ -8,6 +8,8 @@ import { Lock } from 'lucide-react';
 import { type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset } from '@web/data/api/scene';
+import { uploadMedia } from '@web/data/upload/media-upload';
+import { docName } from '@web/data/yjs/manager';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -23,9 +25,12 @@ import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneModelState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
+import type { ModelBounds, ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
+const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneModelImportHost'));
 const lockIcon = <Lock className='size-4' />;
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
@@ -160,7 +165,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, [session, duplicate, ownsKeyboard]);
 
   /** Resolve one registered model through the same Project's access boundary. */
-  const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string }> =>
+  const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
     resolveSceneAsset(projectId, assetId, signal), [projectId]);
 
   /** Persist only the personal camera; it never enters shared content or awareness. */
@@ -194,6 +199,53 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const returnTarget = React.useRef<HTMLElement | null>(null);
   const [panel, setPanel] = React.useState<ScenePanel>('properties');
   const [rightOpen, setRightOpen] = useExclusiveOverlay(`scene:${spaceId}:right`);
+  const [importOpen, setImportOpen] = useExclusiveOverlay(`scene:${spaceId}:model-import`);
+  const [importController, setImportController] = React.useState<ModelImportController | null>(null);
+  const importLimits = controls.data?.import;
+  /** Inspect in an operation-owned worker and validate a real native preview. */
+  const prepareImport = React.useCallback(async (files: readonly File[], entry: string | undefined, signal: AbortSignal): Promise<PreparedModel> => {
+    if (!importLimits) throw new Error('Scene model import configuration is unavailable');
+    const { prepareSceneModel } = await import('@web/spaces/three-d/model-import-preparation');
+    signal.throwIfAborted();
+    return prepareSceneModel(files, entry, signal, importLimits);
+  }, [importLimits]);
+  /** Register through the common uploader, retaining its existing failure categories. */
+  const uploadImport = React.useCallback(async (file: File, signal: AbortSignal, onProgress: (fraction: number) => void,
+    onRegistering: () => void): Promise<{ assetId: string }> => {
+    try {
+      return await uploadMedia(file, { projectId, purpose: 'scene_model' }, onProgress, signal, onRegistering);
+    } catch (error) {
+      if (!signal.aborted) toast.error(t('spaces.threeD.importModel.errorUpload'));
+      throw error;
+    }
+  }, [projectId, t]);
+  /** Place at the personal orbit target with the model's original base on the ground. */
+  const positionImport = React.useCallback((bounds: ModelBounds): [number, number, number] => [
+    view.current.target[0] - bounds.center[0], -bounds.min[1], view.current.target[2] - bounds.center[2],
+  ], []);
+  React.useEffect(() => {
+    if (!importLimits) return;
+    setImportController(getModelImportController(session.doc, docName.threeDSpace(projectId, spaceId), {
+      userId, projectId, spaceId, session, prepare: prepareImport, upload: uploadImport, position: positionImport,
+    }));
+    return (): void => { setImportOpen(false); };
+  }, [session, userId, projectId, spaceId, importLimits, prepareImport, uploadImport, positionImport, setImportOpen]);
+  /** Show the current document's retained operation, including registered read-only results. */
+  const showImport = React.useCallback((): void => {
+    if (importController?.getSnapshot().phase === 'placed') importController.reset();
+    setImportOpen(true);
+  }, [importController, setImportOpen]);
+  /** Select the placed object and let native model readiness finish its focus. */
+  const imported = React.useCallback((id: string): void => {
+    pendingFocusIds.current.add(id);
+    session.select(id, false);
+    setPanel('properties');
+    setRightOpen(true);
+    if (modelStates.get(id) === 'ready') {
+      pendingFocusIds.current.delete(id);
+      setFocusRevision((value) => value + 1);
+    }
+  }, [session, setRightOpen, modelStates]);
   const wasRightOpen = React.useRef(false);
   React.useEffect(() => {
     if (wasRightOpen.current && !rightOpen) setFieldDrafts(new Map());
@@ -337,7 +389,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
               : <React.Suspense fallback={viewportFallback}>
                 <SceneViewport key={`${userId}:${spaceId}:${rendererRevision}`} objects={snapshot.objects} selectedIds={snapshot.selectedIds}
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
-                  remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} modelRetryRevision={modelRetryRevision}
+                  remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} />
@@ -346,7 +398,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
         <span>{t('spaces.threeD.modelFailed')}</span><Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>
       </div> : null}
     </div>
-    <SceneCreationMenu canEdit={snapshot.canEdit} onAdd={addBuiltin} />
+    <SceneCreationMenu canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport} />
+    {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
+      open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onPlaced={imported} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
       title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : t('spaces.threeD.tasks')}
       actions={panelActions}>

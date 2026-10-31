@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { SceneObject } from '@breatic/shared';
+import type { SceneImportLimits, SceneObject } from '@breatic/shared';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
 export type SceneVector3 = [number, number, number];
@@ -28,6 +28,7 @@ export type SceneModelState = 'loading' | 'ready' | 'failed';
 export interface ResolvedSceneAsset {
   url: string;
   mimeType: string;
+  sizeBytes: number;
 }
 export interface SceneViewportProps {
   /** Optional DOM allocation; its native renderer belongs to this visible view. */
@@ -42,6 +43,7 @@ export interface SceneViewportProps {
   cancelRevision: number;
   remotePeers: readonly SceneRemotePeer[];
   scaleSensitivity: number;
+  importLimits: SceneImportLimits;
   /** A new value retries failed model loads without changing their identity. */
   modelRetryRevision?: number;
   onSelect: (id: string | null, additive: boolean) => void;

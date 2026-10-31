@@ -147,7 +147,7 @@ describe('model resource paths and dependencies', () => {
     expect(normalizeModelPath(input)).toBe(expected);
   });
 
-  it.each(['../model.glb', '/character/model.glb', 'character/../../model.glb'])('rejects a file path outside the collection: %s', (path) => {
+  it.each(['../model.glb', '/character/model.glb', 'character/../../model.glb', '', '.', 'https://external.example/model.glb', '\\model.glb', 'invalid\0.glb'])('rejects a file path outside the collection: %s', (path) => {
     expect(() => normalizeModelPath(path)).toThrow(Error);
   });
 
@@ -240,6 +240,44 @@ describe('model-package configurable budget boundaries', () => {
     expect(() => readRegisteredModelPackage(bytes, { ...limits, maxArtifactBytes: bytes.byteLength - 1 })).toThrow(Error);
   });
 
+  it('checks source file and expanded-byte budgets before packaging', () => {
+    const files = sourceFiles();
+    const size = [...files.values()].reduce((sum, bytes) => sum + bytes.length, 0);
+    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxFiles: files.size - 1 })).toThrow(Error);
+    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size - 1 })).toThrow(Error);
+    const manifest = textBytes(JSON.stringify({ formatVersion: 1, entryPath: `files/${ENTRY}` }));
+    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size + manifest.length - 1 })).toThrow(Error);
+  });
+
+  it('rejects noncanonical original resource paths at the package boundary', () => {
+    const files = sourceFiles();
+    files.set('./notes.txt', textBytes('Original notes'));
+    expect(() => packModelFiles(files, ENTRY, IMPORT_LIMITS)).toThrow('Invalid model resource path');
+  });
+
+  it('packages a valid empty glTF envelope without buffer or image declarations', () => {
+    const original = textBytes('{"asset":{"version":"2.0"}}');
+    const bytes = packModelFiles(new Map([['scene.gltf', original]]), 'scene.gltf', IMPORT_LIMITS);
+    expect(Array.from(readRegisteredModelPackage(bytes, IMPORT_LIMITS).files.get('files/scene.gltf')!)).toEqual(Array.from(original));
+  });
+
+  it('ignores ZIP directory records while retaining original file bytes', () => {
+    const original = glb();
+    const bytes = archive(new Map([['folder/', new Uint8Array()], ['folder/model.glb', original]]));
+    expect(unpackModelArchive(bytes, IMPORT_LIMITS)).toEqual(new Map([['folder/model.glb', original]]));
+  });
+
+  it('rejects oversized declared entries and damaged DEFLATE streams', () => {
+    const bytes = archive(new Map([['large.bin', new Uint8Array(1000)]]), 6);
+    expect(() => unpackModelArchive(bytes, { ...IMPORT_LIMITS, maxExpandedBytes: 999 })).toThrow(Error);
+    const corrupt = bytes.slice();
+    const header = new DataView(corrupt.buffer);
+    const payload = 30 + header.getUint16(26, true) + header.getUint16(28, true);
+    corrupt[payload] = 0xff;
+    expect(() => unpackModelArchive(corrupt, IMPORT_LIMITS)).toThrow(Error);
+    expect(() => unpackModelArchive(bytes.slice(0, payload + 1), IMPORT_LIMITS)).toThrow(Error);
+  });
+
   it('measures glTF JSON by UTF-8 bytes at the exact configured boundary', () => {
     const encodedGeometry = btoa(String.fromCharCode(...GEOMETRY));
     const document = gltfDocument(`data:application/octet-stream;base64,${encodedGeometry}`, undefined, 'Original caf\u00e9');
@@ -261,6 +299,36 @@ describe('model-package configurable budget boundaries', () => {
 });
 
 describe('registered model-package manifest versions', () => {
+  it.each([
+    { field: 0, value: 0, reason: 'magic' },
+    { field: 4, value: 1, reason: 'version' },
+    { field: 8, value: 0, reason: 'container length' },
+    { field: 12, value: 1, reason: 'JSON alignment' },
+    { field: 12, value: 0xffffffff, reason: 'JSON bounds' },
+    { field: 16, value: 0, reason: 'JSON chunk type' },
+  ])('refuses invalid GLB $reason', ({ field, value }) => {
+    const bytes = glb();
+    new DataView(bytes.buffer).setUint32(field, value, true);
+    expect(() => readModelJson(bytes, 'model.glb', IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it.each(['unsupported.txt', 'model.gltf'])('refuses an invalid entry envelope in %s', (entry) => {
+    expect(() => readModelJson(textBytes('{"asset":{"version":"1.0"}}'), entry, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it('refuses an absent model entry', () => {
+    expect(() => inspectModelFiles(new Map(), 'missing.glb', IMPORT_LIMITS)).toThrow('Missing model entry');
+  });
+
+  it.each([
+    { files: new Map([['files/model.glb', glb()]]), reason: 'missing manifest' },
+    { files: new Map([['files/model.glb', glb()], ['manifest.json', textBytes('{"formatVersion":1,"entryPath":"model.glb"}')]]), reason: 'entry namespace' },
+    { files: new Map([['files/model.glb', glb()], ['manifest.json', textBytes('{"formatVersion":1,"entryPath":"files/./model.glb"}')]]), reason: 'noncanonical entry' },
+    { files: new Map([['files/model.glb', glb()], ['outside.bin', new Uint8Array([1])], ['manifest.json', textBytes('{"formatVersion":1,"entryPath":"files/model.glb"}')]]), reason: 'resource namespace' },
+  ])('refuses a registered package with $reason', ({ files }) => {
+    expect(() => readRegisteredModelPackage(archive(files), IMPORT_LIMITS)).toThrow(Error);
+  });
+
   it('reports an unknown manifest version for a valid package payload', () => {
     const original = glb();
     const bytes = archive(new Map([

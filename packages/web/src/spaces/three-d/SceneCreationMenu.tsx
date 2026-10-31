@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Accessibility, Box, HelpCircle, MessageCircle, Plus, Sparkles } from 'lucide-react';
+import { Accessibility, Box, HelpCircle, MessageCircle, Plus, Sparkles, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
@@ -21,15 +21,18 @@ const icons = { add: <Plus className='size-5' />, generate: <Sparkles className=
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.canEdit - Whether this document currently permits shared edits.
  * @param root0.onAdd - Places the requested built-in source.
+ * @param root0.onImport - Opens the document's model import after the menu exits.
  * @returns The left rail and its controlled dialogs.
  * @throws {never} Commands use the existing session feedback path.
  */
-export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit, onAdd }: { canEdit: boolean; onAdd: (kind: 'box' | 'figure') => void }): React.JSX.Element {
+export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit, onAdd, onImport }: { canEdit: boolean; onAdd: (kind: 'box' | 'figure') => void; onImport: () => void }): React.JSX.Element {
   const t = useTranslation();
   const id = React.useId();
   const [addOpen, setAddOpen] = useExclusiveOverlay(`${id}:add`);
   const [aiOpen, setAiOpen] = useExclusiveOverlay(`${id}:ai`);
   const [helpOpen, setHelpOpen] = useExclusiveOverlay(`${id}:help`);
+  const pendingImport = React.useRef(false);
+  const addTrigger = React.useRef<HTMLButtonElement>(null);
   const returnFocus = useReturnFocus(aiOpen || helpOpen);
   /**
    * Open the generation capability dialog.
@@ -41,11 +44,23 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit
    * @throws {never} Never.
    */
   const showHelp = React.useCallback((): void => setHelpOpen(true), [setHelpOpen]);
+  /**
+   * Transfer focus only after the menu's focus scope has finished closing.
+   * @param event - Radix's menu focus-restoration event.
+   * @throws {never} Never directly.
+   */
+  const afterAddClose = React.useCallback((event: Event): void => {
+    if (!pendingImport.current) return;
+    pendingImport.current = false;
+    event.preventDefault();
+    addTrigger.current?.focus();
+    onImport();
+  }, [onImport]);
   React.useEffect(() => () => { setAddOpen(false); setAiOpen(false); setHelpOpen(false); }, [setAddOpen, setAiOpen, setHelpOpen]);
   return <>
     <nav className='absolute left-[var(--space-5)] top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm' data-testid='scene-left-menu'>
-      <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}><DropdownMenuTrigger asChild><SceneIconButton label={t('spaces.threeD.add')} rail active disabled={!canEdit}>{icons.add}</SceneIconButton></DropdownMenuTrigger>
-        <DropdownMenuContent side='right' align='start'><DropdownMenuItem onSelect={() => onAdd('box')}><Box />{t('spaces.threeD.addBox')}</DropdownMenuItem><DropdownMenuItem onSelect={() => onAdd('figure')}><Accessibility />{t('spaces.threeD.addFigure')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+      <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}><DropdownMenuTrigger asChild><SceneIconButton ref={addTrigger} label={t('spaces.threeD.add')} rail active disabled={!canEdit}>{icons.add}</SceneIconButton></DropdownMenuTrigger>
+        <DropdownMenuContent side='right' align='start' onCloseAutoFocus={afterAddClose}><DropdownMenuItem onSelect={() => onAdd('box')}><Box />{t('spaces.threeD.addBox')}</DropdownMenuItem><DropdownMenuItem onSelect={() => onAdd('figure')}><Accessibility />{t('spaces.threeD.addFigure')}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => { pendingImport.current = true; }}><Upload />{t('spaces.threeD.importModel.title')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <SceneIconButton rail label={t('spaces.threeD.generate')} onClick={showAi}>{icons.generate}</SceneIconButton>
       <Tooltip><TooltipTrigger asChild><span className='inline-flex'><Button variant={null} size={null} disabled className='inline-flex h-10 w-10 items-center justify-center rounded-lg text-foreground-disabled'><MessageCircle className='size-5' /></Button></span></TooltipTrigger><TooltipContent side='right'>{t('spaces.threeD.annotationsLater')}</TooltipContent></Tooltip>
       <div className='my-1 h-px w-7 bg-border' /><SceneIconButton rail label={t('spaces.threeD.help')} onClick={showHelp}>{icons.help}</SceneIconButton>

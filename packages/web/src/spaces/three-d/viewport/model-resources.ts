@@ -1,14 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { BufferGeometry, Group, LoadingManager, Material, Mesh, SkinnedMesh, Texture } from 'three';
-import type { Skeleton } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Mesh, SkinnedMesh, Texture } from 'three';
+import type { BufferGeometry, Group, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { httpRequest } from '@breatic/shared';
-import type { SceneObject } from '@breatic/shared';
+import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
+import type { SceneImportLimits, SceneObject } from '@breatic/shared';
 import { createBuiltinModel } from '@web/spaces/three-d/viewport/builtin-models';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
+import type { ModelPackage } from '@web/spaces/three-d/model-package';
+import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 
 /** Additional parsed scenes stay owned until the active template is released. */
 const ownedScenes = new WeakMap<Group, readonly Group[]>();
@@ -189,12 +192,13 @@ export class ModelResourceCache {
 }
 
 /**
- * Read a registered GLB through the shared HTTP transport, then parse locally.
- * External dependency bundles are part of model import rather than placement.
+ * Read a registered complete model through the shared HTTP transport.
  * @param source - The immutable source from the scene document.
  * @param signal - Invalidated when the last holder leaves.
  * @param resolveAsset - Permission-aware application resolver for registered assets.
  * @param builtinColor - The current semantic object colour.
+ * @param limits - Import budgets injected from the Project configuration.
+ * @param renderer - Current device capabilities used for texture decoding.
  * @returns A template whose immutable resources belong to the cache.
  * @throws {Error} When resolving, transferring or parsing the model fails.
  */
@@ -203,21 +207,96 @@ export async function loadSceneModel(
   signal: AbortSignal,
   resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>,
   builtinColor: string,
+  limits: SceneImportLimits,
+  renderer?: WebGLRenderer,
 ): Promise<Group> {
   if (source.kind === 'builtin') return createBuiltinModel(source.id, builtinColor);
   const asset = await resolveAsset(source.assetId, signal);
-  if (asset.mimeType !== 'model/gltf-binary') throw new Error('Scene asset has an unsupported model type');
+  if (!isSceneModelMediaType(asset.mimeType)) throw new Error('Scene asset has an unsupported model type');
   if (signal.aborted) throw new DOMException('Scene model load cancelled', 'AbortError');
+  if (asset.sizeBytes > limits.maxArtifactBytes) throw new Error('Registered model exceeds its configured asset budget');
   const response = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true, signal });
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength < 4 || new DataView(bytes).getUint32(0, true) !== 0x46546c67) throw new Error('Scene asset is not a binary glTF model');
-  const manager = new LoadingManager();
-  manager.setURLModifier((url) => {
-    if (url.startsWith('blob:') || url.startsWith('data:')) return url;
-    throw new Error('Scene model requires external dependencies');
+  const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
+  const model = asset.mimeType === 'application/zip'
+    ? readRegisteredModelPackage(bytes, limits)
+    : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits);
+  return parseSceneModel(model, signal, limits, renderer);
+}
+
+/**
+ * Stop reading actual response bytes when the configured asset budget is reached.
+ * @param response - The registered asset response.
+ * @param maxBytes - Configured maximum artifact size.
+ * @param signal - Current model lease's cancellation signal.
+ * @returns An owned bounded buffer.
+ * @throws {Error} When transfer, cancellation or the byte budget fails.
+ */
+async function readModelBytes(response: Response, maxBytes: number, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  if (!response.body) throw new Error('Registered model response has no body');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const result = await reader.read();
+      if (result.done) break;
+      size += result.value.byteLength;
+      if (size > maxBytes) throw new Error('Registered model exceeds its configured asset budget');
+      chunks.push(result.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Parse the same closed model collection for import preview and registered use.
+ * @param model - Checked entry and original resources.
+ * @param signal - The owning operation or lease's signal.
+ * @param limits - Configured metadata, decoder and texture budgets.
+ * @param renderer - Current renderer supplying KTX2 device capabilities.
+ * @returns A template whose scenes belong to disposeModelTemplate.
+ * @throws {Error} When parsing, required extensions, textures or cancellation fail.
+ */
+export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, limits: SceneImportLimits, renderer?: WebGLRenderer): Promise<Group> {
+  signal.throwIfAborted();
+  const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
+  validateModelTextureMetadata(model, textureLimits);
+  const decoder = createModelDecoder(model, limits, renderer);
+  const bytes = model.files.get(model.entry)!;
+  const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes) : bytes.slice().buffer;
+  const parsed = decoder.loader.parseAsync(input, '').then((result) => {
+    ownedScenes.set(result.scene, result.scenes);
+    try {
+      signal.throwIfAborted();
+      if (decoder.failedResources.length) throw new Error(`Model resources could not be decoded: ${decoder.failedResources.join(', ')}`);
+      validateModelTextures(result.scenes, textureLimits);
+      return result.scene;
+    } catch (error) {
+      disposeModelTemplate(result.scene);
+      throw error;
+    }
   });
-  const result = await new GLTFLoader(manager).parseAsync(bytes, '');
-  ownedScenes.set(result.scene, result.scenes);
-  return result.scene;
+  let abort: (() => void) | undefined;
+  try {
+    return await new Promise<Group>((resolve, reject) => {
+      abort = () => {
+        decoder.dispose();
+        reject(new DOMException('Scene model load cancelled', 'AbortError'));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+      void parsed.then(resolve, reject);
+    });
+  } finally {
+    if (abort) signal.removeEventListener('abort', abort);
+    decoder.dispose();
+  }
 }

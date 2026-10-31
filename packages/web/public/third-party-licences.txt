@@ -9,7 +9,7 @@ copyright holder is the one named at the package's home page. Packages
 that install on one platform alone are left out: their bytes are native
 binaries, and no browser receives them.
 
-Packages 566, distinct licence texts 253
+Packages 567, distinct licence texts 253
 
 Regenerate with: pnpm --filter @breatic/repo-lint licences
 
@@ -335,6 +335,7 @@ hls.js 1.6.17  Apache-2.0  https://github.com/video-dev/hls.js
 html-url-attributes 3.0.1  MIT  https://github.com/rehypejs/rehype-minify/tree/main#readme
 https-proxy-agent 5.0.1  MIT  https://github.com/TooTallNate/node-https-proxy-agent#readme
 ieee754 1.2.1  BSD-3-Clause  https://github.com/feross/ieee754#readme
+image-dimensions 2.6.0  MIT  https://github.com/sindresorhus/image-dimensions#readme
 immediate 3.0.6  MIT  https://github.com/calvinmetcalf/immediate#readme
 immer 11.1.16  MIT  https://github.com/immerjs/immer#readme
 indent-string 4.0.0  MIT  https://github.com/sindresorhus/indent-string#readme
@@ -5005,7 +5006,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 106 of 253 — applies to: escape-string-regexp, file-type, is-plain-obj, uint8array-extras
+Licence 106 of 253 — applies to: escape-string-regexp, file-type, image-dimensions, is-plain-obj, uint8array-extras
 ------------------------------------------------------------------------
 
 MIT License

@@ -98,6 +98,18 @@ describe('model-selection file and entry contract (inner#1690)', () => {
     expect(Array.from(selected.artifact)).toEqual(Array.from(bytes));
   });
 
+  it('reports a collection that contains no supported model entry', async () => {
+    await expectFailure(inspectModelSelection([inputFile('notes.txt', new Uint8Array([65]))], undefined, IMPORT_LIMITS), 'unsupported', {
+      entries: [], paths: ['notes.txt'], missing: [],
+    });
+  });
+
+  it.each([new Error('File unavailable'), new DOMException('File unavailable', 'NotReadableError')])('reports an unreadable original file: %s', async (error) => {
+    const file = inputFile('character.glb', modelGlb());
+    vi.spyOn(file, 'arrayBuffer').mockRejectedValueOnce(error);
+    await expectFailure(inspectModelSelection([file], undefined, IMPORT_LIMITS), 'invalid');
+  });
+
   it('returns every entry and source path when several GLBs need an explicit choice', async () => {
     const files = [inputFile('first.glb', modelGlb('First')), inputFile('second.glb', modelGlb('Second'))];
     await expectFailure(inspectModelSelection(files, undefined, IMPORT_LIMITS), 'entry', {

@@ -8,6 +8,7 @@ import type * as Y from 'yjs';
 import { docName, destroyDoc, getDoc } from '@web/data/yjs/manager';
 import { readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, SceneSession } from '@web/data/yjs/scene-session';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import {
   evictModelImportController, getModelImportController,
 } from '@web/spaces/three-d/model-import-controller';
@@ -358,6 +359,131 @@ describe('document-owned model imports (inner#1690)', () => {
     expect(h.upload.mock.calls.map(([file]) => file)).toEqual([h.prepared.file, h.prepared.file]);
     expect(readSceneDocument(h.doc).objects).toMatchObject([{ name: 'Retry character', model: { kind: 'asset', assetId: ASSET_ID } }]);
     expect(h.session.history.undoStack).toHaveLength(1);
+  });
+
+  it.each(['idle', 'ready', 'failed', 'placed'] as const)('clears a %s operation without deleting existing scene content', async (phase) => {
+    const h = harness();
+    if (phase === 'failed') h.prepare.mockRejectedValueOnce(new Error('Invalid source'));
+    if (phase !== 'idle') await h.controller.select(h.files);
+    if (phase === 'placed') await h.controller.confirm();
+    const objects = readSceneDocument(h.doc).objects;
+    h.controller.reset();
+
+    expect(h.controller.getSnapshot()).toEqual({ phase: 'idle', name: '', progress: 0, error: null, prepared: null,
+      assetId: null, objectId: null, files: [], entry: undefined, entries: [], paths: [], missing: [] });
+    expect(h.prepared.dispose).toHaveBeenCalledTimes(phase === 'ready' || phase === 'placed' ? 1 : 0);
+    expect(readSceneDocument(h.doc).objects).toEqual(objects);
+    await h.controller.confirm();
+    expect(h.upload).toHaveBeenCalledTimes(phase === 'placed' ? 1 : 0);
+  });
+
+  it('cancels checking on reset and releases a late result without restoring input', async () => {
+    const h = harness();
+    const pending = Promise.withResolvers<PreparedModel>();
+    h.prepare.mockReturnValueOnce(pending.promise);
+    const checking = h.controller.select(h.files);
+    h.controller.reset();
+    expect(h.prepare.mock.calls[0][2].aborted).toBe(true);
+    pending.resolve(h.prepared);
+    await checking;
+
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'idle', files: [], prepared: null });
+    expect(h.prepared.dispose).toHaveBeenCalledTimes(1);
+    expect(readSceneDocument(h.doc).objects).toEqual([]);
+  });
+
+  it.each(['uploading', 'registering'] as const)('retains the confirmed operation during %s', async (phase) => {
+    const h = harness();
+    const pending = Promise.withResolvers<{ assetId: string }>();
+    h.upload.mockReturnValueOnce(pending.promise);
+    await h.controller.select(h.files);
+    const confirmation = h.controller.confirm();
+    if (phase === 'registering') h.upload.mock.calls[0][3]();
+    const before = h.controller.getSnapshot();
+    h.controller.reset();
+    await h.controller.select([new File(['next'], 'next.glb')]);
+    expect(h.controller.getSnapshot()).toBe(before);
+    expect(h.prepare).toHaveBeenCalledTimes(1);
+    expect(h.prepared.dispose).not.toHaveBeenCalled();
+    pending.resolve({ assetId: ASSET_ID });
+    await confirmation;
+    expect(readSceneDocument(h.doc).objects).toHaveLength(1);
+  });
+
+  it('ignores state changes and old callbacks after disposal', async () => {
+    const h = harness();
+    const pending = Promise.withResolvers<{ assetId: string }>();
+    h.upload.mockReturnValueOnce(pending.promise);
+    await h.controller.select(h.files);
+    const confirmation = h.controller.confirm();
+    h.controller.dispose();
+    const before = h.controller.getSnapshot();
+    h.controller.dispose();
+    h.controller.reset();
+    h.controller.setName('Late rename');
+    h.upload.mock.calls[0][2](0.8);
+    h.upload.mock.calls[0][3]();
+    await h.controller.select(h.files);
+    pending.reject('Late upload error');
+    await confirmation;
+    await h.controller.confirm();
+
+    expect(h.controller.getSnapshot()).toBe(before);
+    expect(h.prepared.dispose).toHaveBeenCalledTimes(1);
+    expect(h.prepare).toHaveBeenCalledTimes(1);
+    expect(readSceneDocument(h.doc).objects).toEqual([]);
+  });
+
+  it('does not restore an error from a superseded inspection', async () => {
+    const h = harness();
+    const pending = Promise.withResolvers<PreparedModel>();
+    h.prepare.mockReturnValueOnce(pending.promise);
+    const inspection = h.controller.select(h.files);
+    h.controller.reset();
+    pending.reject(new Error('Late inspection failure'));
+    await inspection;
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'idle', error: null, prepared: null });
+  });
+
+  it('retains registered bytes for a refused scene command and retries placement without uploading', async () => {
+    const h = harness();
+    await h.controller.select(h.files);
+    h.controller.setName('');
+    await h.controller.confirm();
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', assetId: ASSET_ID,
+      error: { name: 'ModelImportError', code: 'invalid' } });
+    expect(readSceneDocument(h.doc).objects).toEqual([]);
+    h.controller.setName('Valid character');
+    await h.controller.confirm();
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    expect(readSceneDocument(h.doc).objects).toMatchObject([{ name: 'Valid character', model: { kind: 'asset', assetId: ASSET_ID } }]);
+  });
+
+  it('does not create an object when publishing registration closes its document owner', async () => {
+    const h = harness();
+    await h.controller.select(h.files);
+    h.controller.subscribe(() => {
+      if (h.controller.getSnapshot().assetId !== null) h.controller.dispose();
+    });
+    await h.controller.confirm();
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'disposed', assetId: ASSET_ID });
+    expect(h.prepared.dispose).toHaveBeenCalledTimes(1);
+    expect(readSceneDocument(h.doc).objects).toEqual([]);
+  });
+
+  it('normalizes non-Error failures and preserves typed inspection choices', async () => {
+    const h = harness();
+    h.prepare.mockRejectedValueOnce('Invalid source');
+    await h.controller.select(h.files);
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', error: { message: 'Invalid source' } });
+    const info = { paths: ['one.glb', 'two.glb'], entries: ['one.glb', 'two.glb'], missing: [] };
+    h.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose an entry', info));
+    await h.controller.select(h.files);
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', ...info, error: { code: 'entry' } });
+    h.upload.mockRejectedValueOnce('Upload interrupted');
+    await h.controller.select(h.files);
+    await h.controller.confirm();
+    expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', error: { message: 'Upload interrupted' } });
   });
 
   it('records an inspection failure and accepts replacement input before upload', async () => {

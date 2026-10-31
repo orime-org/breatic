@@ -226,6 +226,61 @@ describe('model texture metadata dimensions before decoding', () => {
 });
 
 describe('model texture buffer metadata validation', () => {
+  it.each([-1, 0.5, 5])('rejects an invalid image bufferView index %s', (bufferView) => {
+    const source = model({ images: [{ bufferView }], bufferViews: [] });
+    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it.each([undefined, -1, 0.5])('rejects an invalid declared buffer length %s', (byteLength) => {
+    const image = png(1, 1);
+    const source = model({ buffers: [{ uri: 'image.bin', byteLength }],
+      bufferViews: [{ buffer: 0, byteLength: image.length }], images: [{ bufferView: 0 }] }, [['models/image.bin', image]]);
+    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it('rejects an actual buffer shorter than its declaration', () => {
+    const image = png(1, 1);
+    const source = model({ buffers: [{ uri: 'image.bin', byteLength: image.length + 1 }],
+      bufferViews: [{ buffer: 0, byteLength: image.length }], images: [{ bufferView: 0 }] }, [['models/image.bin', image]]);
+    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it.each(['missing-bin', 'truncated-header', 'unaligned-bin', 'oversized-bin'] as const)('rejects a GLB image with %s', (problem) => {
+    const original = embeddedGlb(png(1, 1)).files.get('scene.glb')!;
+    const jsonLength = new DataView(original.buffer, original.byteOffset, original.byteLength).getUint32(12, true);
+    const end = 20 + jsonLength;
+    const bytes = problem === 'missing-bin' ? original.slice(0, end)
+      : problem === 'truncated-header' ? original.slice(0, end + 1) : original.slice();
+    const header = new DataView(bytes.buffer);
+    header.setUint32(8, bytes.length, true);
+    if (problem === 'unaligned-bin') header.setUint32(end, 1, true);
+    if (problem === 'oversized-bin') header.setUint32(end, bytes.length, true);
+    const source = inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS);
+    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it('reads percent-encoded image bytes without changing the original URI', () => {
+    const uri = `data:image/png,${Array.from(png(32, 16), (byte) => `%${byte.toString(16).padStart(2, '0')}`).join('')}`;
+    const source = model({ images: [{ uri }] });
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 32 })).not.toThrow();
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 31 })).toThrow(Error);
+    expect(source.json.images?.[0].uri).toBe(uri);
+  });
+
+  it.each([
+    { images: [{}] },
+    { images: [{ uri: 'data:image/png;base64' }] },
+    { buffers: [{ byteLength: PNG.length }], bufferViews: [{ buffer: 0, byteLength: PNG.length }], images: [{ bufferView: 0 }] },
+    { buffers: [{ uri: 'data:application/octet-stream;base64,AA==', byteLength: 1 }, { byteLength: 1 }],
+      bufferViews: [{ buffer: 1, byteLength: 1 }], images: [{ bufferView: 0 }] },
+  ])('rejects an incomplete image source %j', (json) => {
+    expect(() => validateModelTextureMetadata(model(json), IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it.each([png(0, 1), png(1, 0), ktx2(0, 1), ktx2(1, 0), ktx2(1, 1).slice(0, 40)])('rejects invalid or truncated image dimensions', (image) => {
+    expect(() => validateModelTextureMetadata(externalImage(image), IMPORT_LIMITS)).toThrow(Error);
+  });
+
   it.each([
     { label: 'negative offset', view: { buffer: 0, byteOffset: -1, byteLength: 20 } },
     { label: 'fractional offset', view: { buffer: 0, byteOffset: 0.5, byteLength: 20 } },

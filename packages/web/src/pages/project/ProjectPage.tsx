@@ -29,6 +29,7 @@ import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { evictSceneSession } from '@web/data/yjs/scene-session';
+import { evictModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -507,6 +508,7 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictModelImportController(docName.threeDSpace(projectId, id));
       evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));

@@ -14,7 +14,7 @@ const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0
  * @param model - Checked model entry and original resources.
  * @param uri - Image or buffer URI relative to the model entry.
  * @returns The original resource bytes.
- * @throws {Error} When the URI or its encoded content is invalid or missing.
+ * @throws {Error} When embedded resource bytes cannot be decoded.
  */
 function readResource(model: ModelPackage, uri: string): Uint8Array<ArrayBuffer> {
   if (uri.startsWith('data:')) {
@@ -25,9 +25,8 @@ function readResource(model: ModelPackage, uri: string): Uint8Array<ArrayBuffer>
     return Uint8Array.from(binary, (value) => value.charCodeAt(0));
   }
   const path = resolveModelDependency(model.entry, uri);
-  const data = model.files.get(path);
-  if (!data) throw new ModelImportError('missing', `Missing model resource: ${path}`, undefined, path);
-  return data;
+  // inspectModelFiles establishes resource presence before either parsing entry point.
+  return model.files.get(path)!;
 }
 
 /**
