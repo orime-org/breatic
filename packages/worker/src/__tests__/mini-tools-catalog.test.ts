@@ -65,15 +65,28 @@ const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
 const plannedClaims = {
   "video.remove-bg": ["video", "background_color", "output_container_and_codec", "preserve_audio"],
 } as const;
+const plannedContainerClasses = {
+  "video.extract-frames": "MiniToolContainerStd4",
+  "video.split": "MiniToolContainerStd4",
+} as const;
+
+/**
+ * Enumerate only model-backed planned executions; the container branch has its own closed-set assertion.
+ * @returns Configured operation-to-model names without treating containers as models.
+ * @throws {Error} When the execution configuration cannot be loaded.
+ */
+function plannedModelExecutions(): Record<string, string> {
+  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) => "model" in execution ? [[operation, execution.model]] : []));
+}
 
 describe("model tools against the catalog", () => {
   it("binds every planned execution model to its declared parameter owner", () => {
-    const executions = getMiniToolsConfig().executions;
+    const executions = plannedModelExecutions();
     expect(Object.keys(executions).sort()).toEqual(Object.keys(plannedClaims).sort());
     for (const [operation, keys] of Object.entries(plannedClaims)) {
       const tool = MINI_TOOLS.find((candidate) => candidate.id === operation);
       expect(tool?.run.kind).toBe("planned");
-      const model = getFullModelConfig("video").models.find((candidate) => candidate.name === executions[operation as keyof typeof executions].model);
+      const model = getFullModelConfig("video").models.find((candidate) => candidate.name === executions[operation]);
       expect(model?.takes_prompt).toBe(false);
       for (const key of keys) expect(model?.params?.[key]?.fill, `${operation}.${key}`).toBe("tool");
       expect(model?.params?.video?.accepts).toBe("video");
@@ -83,6 +96,17 @@ describe("model tools against the catalog", () => {
         expect(model?.params?.[key]?.values, `${operation}.${key}`).toEqual([value]);
       }
     }
+  });
+  it("binds every planned container execution to its declared registry and Std4 class", () => {
+    const config = getMiniToolsConfig();
+    const executions = Object.entries(config.executions).filter(([, execution]) => !("model" in execution));
+    expect(executions.map(([operation]) => operation).sort()).toEqual(Object.keys(plannedContainerClasses).sort());
+    for (const [operation, execution] of executions) {
+      expect(MINI_TOOLS.find((tool) => tool.id === operation)?.run.kind).toBe("planned");
+      expect(execution).toMatchObject({ container_class: plannedContainerClasses[operation as keyof typeof plannedContainerClasses],
+        precheck_seconds: expect.any(Number), max_outputs: expect.any(Number) });
+    }
+    expect(config.classes.MiniToolContainerStd4).toMatchObject({ vcpu: 4, memory_gib: 12 });
   });
   it.each(modelTools.map((tool) => [tool.id, tool] as const))(
     "%s names a served model whose params it declares",
@@ -156,7 +180,7 @@ describe("model tools against the catalog", () => {
   it("reads only declared params in every pinned model's pricing formula", () => {
     const models = catalog();
     const undeclared: string[] = [];
-    const names = new Set([...modelTools.map((tool) => modelOf(tool)!), ...Object.values(getMiniToolsConfig().executions).map((execution) => execution.model)]);
+    const names = new Set([...modelTools.map((tool) => modelOf(tool)!), ...Object.values(plannedModelExecutions())]);
     for (const name of names) {
       const model = models.get(name)!;
       for (const provider of model.providers ?? []) {
@@ -178,9 +202,9 @@ describe("model tools against the catalog", () => {
         claimed.add(`${name}.${key}`);
       }
     }
-    const executions = getMiniToolsConfig().executions;
+    const executions = plannedModelExecutions();
     for (const [operation, keys] of Object.entries(plannedClaims)) {
-      const name = executions[operation as keyof typeof executions].model;
+      const name = executions[operation];
       for (const key of keys) claimed.add(`${name}.${key}`);
     }
     const unclaimed: string[] = [];

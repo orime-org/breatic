@@ -481,10 +481,11 @@ describe("S5 independent failed-output retry admission", () => {
   });
   it("S5-R05 settles a retry's actual container consumption and own hold once without charging or rewriting the original", async () => {
     const f = await seed(); const original = await failedOriginal(f); const body = retry(f); await accept(f, body);
-    const [step] = await upstreamStepRepo.ensureSteps(body.run_id, [{ kind: "container_job", endpoint: "video.split", itemIndex: 0 }]);
+    const [step] = await upstreamStepRepo.ensureSteps(body.run_id, [{ kind: "container_job", endpoint: "MiniToolContainerStd4", itemIndex: 0 }]);
     if (!step) throw new Error("Missing retry consumption fixture step");
     const identity = { kind: "container" as const, containerClass: "MiniToolContainerStd4", jobId: `retry-${body.run_id}`, chunkIndex: 0 };
-    const pricing = { configVersion: "s5-supplied-usage", size: settings.classes.MiniToolContainerStd4!, prices: settings.prices };
+    const size = settings.classes.MiniToolContainerStd4!;
+    const pricing = { configVersion: "s5-supplied-usage", size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: settings.prices };
     await openMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity, chargeTo: "user", creditMultiplier: 1, containerPricing: pricing });
     const usage = { wallMs: 1000, cpuUsec: 100000 }; const usd = containerCostUsd(usage, pricing.size, pricing.prices);
     const computing = await parent(body.run_id);
