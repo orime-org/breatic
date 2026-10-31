@@ -56,7 +56,7 @@ import {
   sessionCookieName,
   sessionId,
 } from "@breatic/core";
-import type { SeatClaim } from "@collab/services/connection-registry.js";
+import type { OwnSeat } from "@collab/services/connection-registry.js";
 import { parseDocName } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
@@ -88,13 +88,18 @@ export interface AuthContext {
     role: ProjectRole;
   };
   /**
-   * The seat this handshake took from one of the same person's other
-   * connections, or null when it took none. The `connected` hook acts on it:
-   * the framework can still abandon this connection between the document
-   * load and `connected`, and demoting the other tab before this one exists
-   * would leave that person with a read-only tab and nothing in its place.
+   * The ceiling this handshake judged the connection by, or null when it
+   * takes no seat (meta doc, viewer, full document where the person holds no
+   * seat, unresolvable ceiling). The `connected` hook takes the seat
+   * atomically under this cap; nothing is taken here, because the framework
+   * can still abandon the connection before `connected`.
    */
-  handedOverFrom: string | null;
+  seatCap: number | null;
+  /**
+   * Epoch ms this handshake began. It orders one person's connections when a
+   * full document's seat is replaced: only an earlier arrival can be.
+   */
+  arrivedAtMs: number;
   /**
    * The session this connection was opened with: the token, to read it again,
    * and its id (core `sessionId`), to match announcements of ended sessions
@@ -157,12 +162,13 @@ export interface CreateAuthHookOptions {
    */
   countConnections: (documentName: string) => Promise<number>;
   /**
-   * Take one of an arriving person's OWN seats on a document that is full,
-   * so their newest connection gets it and one of their other tabs goes
-   * read-only instead. Resolves to what was found: a seat taken, none held
-   * here, or nothing known because Redis could not answer.
+   * Whether an arriving person already holds a seat on a document that is
+   * full. `yes` lets them in writable: the `connected` hook then replaces one
+   * of their earlier seats atomically, and that tab goes read-only instead.
+   * `unknown` (Redis could not answer) lets them in too; `no` settles for
+   * read-only.
    */
-  claimSeatFrom: (documentName: string, userId: string) => Promise<SeatClaim>;
+  hasOwnSeat: (documentName: string, userId: string) => Promise<OwnSeat>;
 }
 
 /**
@@ -178,14 +184,14 @@ export interface CreateAuthHookOptions {
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
- * @param root0.claimSeatFrom - Takes one of the arriving person's own seats when the document is full, so nobody is kept out by themselves.
+ * @param root0.hasOwnSeat - Asks whether the arriving person already holds a seat when the document is full, so nobody is kept out by themselves.
  * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
   resolveConnectionLimit,
   countConnections,
-  claimSeatFrom,
+  hasOwnSeat,
 }: CreateAuthHookOptions) {
   return async ({
     documentName,
@@ -206,6 +212,9 @@ export function createAuthHook({
     /** This connection's socket id, passed through on the same path. */
     socketId: string;
   }): Promise<AuthContext> => {
+    // Taken first: every retry of this connection's seat orders by when the
+    // handshake began, not by how long the lookups below took.
+    const arrivedAtMs = Date.now();
     // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
     // bare-throw style let onAuthenticate fail silently from the
@@ -370,7 +379,7 @@ export function createAuthHook({
       //     direction: lowering a tier to 0 to stop concurrent editing
       //     would silently have allowed unlimited concurrent editing.
       let atCapacity = false;
-      let handedOverFrom: string | null = null;
+      let seatCap: number | null = null;
       if (role !== "viewer" && parsed.kind !== "meta") {
         // Resolving the ceiling is the one step here that can fail on OUR
         // data rather than on anything the user did: a tier value outside
@@ -409,23 +418,21 @@ export function createAuthHook({
           atCapacity = liveCount >= cap;
           if (atCapacity) {
             // Before settling for read-only, ask whether this person already
-            // holds a seat here. If they do, one of those goes and this
-            // connection takes it — their other tab is degraded rather than
-            // this one, so nobody is ever kept out by themselves. Whether
-            // that older connection is alive never enters into it: a
+            // holds a seat here. If they do, this connection is let in
+            // writable and the `connected` hook's seat script replaces one of
+            // their earlier seats atomically — their other tab is degraded
+            // rather than this one, so nobody is ever kept out by themselves.
+            // Whether that older connection is alive never enters into it: a
             // reconnect after a blip and a second tab are the same case.
-            const claim = await claimSeatFrom(documentName, userId);
-            if (claim.outcome === "took") {
-              handedOverFrom = claim.member;
-              atCapacity = false;
-            } else if (claim.outcome === "unknown") {
-              // The count said full and then Redis stopped answering. Holding
-              // this connection read-only on the strength of a query that
-              // failed would keep somebody out of their own second tab, which
-              // is the one thing this whole path exists to prevent — and it is
-              // the opposite of how the count itself treats a Redis problem.
-              atCapacity = false;
-            }
+            //
+            // `unknown`: the count said full and then Redis stopped
+            // answering. Holding this connection read-only on the strength of
+            // a query that failed would keep somebody out of their own second
+            // tab, which is the one thing this path exists to prevent — and
+            // it is the opposite of how the count itself treats a Redis
+            // problem. The seat script in `connected` still judges by the cap.
+            const own = await hasOwnSeat(documentName, userId);
+            if (own !== "no") atCapacity = false;
           }
           if (atCapacity) {
             // Permanent structured log. The cap degrade was previously
@@ -443,6 +450,8 @@ export function createAuthHook({
               },
               "connection_cap_degraded",
             );
+          } else {
+            seatCap = cap;
           }
         }
       }
@@ -465,8 +474,9 @@ export function createAuthHook({
       connectionConfig.readOnly =
         parsed.kind === "meta" || role === "viewer" || atCapacity;
 
-      // NOTE: this connection is registered in the cross-instance registry
-      // by the `connected` lifecycle hook (see hocuspocus.ts), NOT here.
+      // NOTE: this connection takes its seat in the cross-instance registry
+      // in the `connected` lifecycle hook (see hocuspocus.ts), NOT here; the
+      // ceiling and arrival moment travel there in the returned context.
       // Registration is deliberately bound to the Connection object's
       // existence so it is symmetric with the onDisconnect unregister:
       // Hocuspocus fires `connected` only after it creates the Connection
@@ -478,7 +488,8 @@ export function createAuthHook({
       // connection never reached (#1421).
       return {
         user: { id: userId, role },
-        handedOverFrom,
+        seatCap,
+        arrivedAtMs,
         session: { token, id: sessionId(token) },
       };
     } catch (err) {

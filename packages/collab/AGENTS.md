@@ -34,7 +34,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **Register any per-connection resource (Redis counter, lock, mapping) in the `connected` hook and release it in `onDisconnect`.** `onDisconnect` fires only for connections whose `Connection` object was created; a connection rejected by auth or failing document load never gets one, so anything registered in `onConnect` or `onAuthenticate` leaks, and with a refresh loop it never expires.
 
-**The two sides ask different questions on purpose: registering checks document type and writability (`shouldRegisterConnection`), unregistering checks document type only (`shouldTrackConnection`).** `onDisconnectPayload` carries no `connectionConfig`, and removing a member that was never added is a no-op.
+**The two sides ask different questions on purpose: a seat is taken only when the auth hook handed the connection a ceiling (`AuthContext.seatCap` is not null, so writable content documents only), and unregistering checks document type only (`shouldTrackConnection`).** `onDisconnectPayload` carries no `connectionConfig`, and removing a member that was never added is a no-op.
 
 ### No direct connection from a load hook
 
@@ -62,13 +62,13 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **A presence record in meta `users` holds only `id`, `online` and `lastSeenAt`, and only the server writes it.** Names and avatars come from the member roster on each client, so a copy here would go stale on rename.
 
-### Liveness rides the pong
+### Liveness follows the transport
 
-**Online is asserted by the socket's pong, offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score moves only when its own socket answers a ping, and nothing else writes it. Keep presence off browser timers (`refreshPresenceForSocket` is the only refresh entry in `presence-wiring.ts`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled.
+**Online is asserted by the socket's own signs of life (a pong, a ping or any message, the events crossws counts before it would close the socket), offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score is written when the seat is taken and afterwards only when its own socket shows one of those signs, to the time that sign was heard rather than the time a held-back refresh runs (`lastSeenAt` likewise), and nothing else writes it; a narrower signal than the transport's lets a socket the transport keeps open lose its seat while it can still write. Keep presence off browser timers (`refreshPresenceForSocket` is the only refresh entry in `presence-wiring.ts`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled, so a hidden tab that sends nothing still refreshes.
 
-### One pong handler
+### One liveness handler
 
-**When a pong must refresh something new, add it to the handler `createPongHandler` builds in `services/socket-liveness.ts`, not as another call in the per-socket callback.** A second call can go missing unnoticed, because each module's own tests call it directly and still pass.
+**When a socket's sign of life must refresh something new, add it to the handler `createLivenessHandler` builds in `services/socket-liveness.ts`, not as another call in the per-socket callback.** A second call can go missing unnoticed, because each module's own tests call it directly and still pass.
 
 ### One ping interval
 

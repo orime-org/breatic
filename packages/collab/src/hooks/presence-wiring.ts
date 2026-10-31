@@ -14,9 +14,10 @@
  *
  * ## Presence rides the transport, not the page
  *
- * A record moves forward on one thing: the socket answering its ping. The
- * refresh that does it is the only one exported, so nothing can quietly wire
- * the roster back onto something the browser is free to throttle.
+ * A record moves forward on one thing: the socket's own sign of life (a pong,
+ * a ping or any message), stamped with the time the socket was last heard.
+ * The refresh that does it is the only one exported, so nothing can quietly
+ * wire the roster back onto something the browser is free to throttle.
  *
  * ## There is deliberately no disconnect function here
  *
@@ -49,7 +50,7 @@ type PresenceDoc = Parameters<typeof markOnline>[0]["document"];
  * `@param` line per level — eight of them across this file, all saying the
  * same thing.
  *
- * Not the auth hook's own `AuthContext`, which also carries `handedOverFrom`
+ * Not the auth hook's own `AuthContext`, which also carries `seatCap`
  * and is what that hook RESOLVES. This is what a later hook finds attached.
  */
 interface PresenceContext {
@@ -99,7 +100,7 @@ function isMetaDoc(documentName: string): boolean {
 export interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
-  /** How long without a pong before an online record is disbelieved. */
+  /** How long without a sign of life before an online record is disbelieved. */
   staleAfterMs: number;
 }
 
@@ -151,7 +152,7 @@ export function recordPresenceOnConnect(
  * (`services/live-connections.ts`) and `DemotableConnection`
  * (`services/seat-handover.ts`) describe, each naming what its own reader
  * touches. The compiler holds this one to `HeldConnection`: the per-socket
- * table hands its map straight to the pong handler built from this.
+ * table hands its map straight to the liveness handler built from this.
  */
 export interface SocketConnection {
   /** Connection context established by `onAuthenticate`. */
@@ -161,8 +162,14 @@ export interface SocketConnection {
 }
 
 /**
- * A socket answered its ping, so whoever owns it is still here: push their
- * timestamp forward, and sweep.
+ * A socket showed a sign of life (a pong, a ping or any message), so whoever
+ * owns it is still here: push their timestamp forward to the time the socket
+ * was last heard, and sweep.
+ *
+ * The stamp is `heardAt`, not the time this runs: a refresh held back behind
+ * an earlier one runs up to half a ping period later, and stamping that
+ * moment would keep someone whose network just died online that much longer.
+ * The sweep still judges every record against `policy.now()`.
  *
  * Arrival stamps a record once, through `recordPresenceOnConnect`; from then
  * on this is what moves it, and it is deliberately the only refresh this
@@ -170,13 +177,14 @@ export interface SocketConnection {
  * once a minute in a tab hidden for more than five minutes, so a roster driven
  * by anything the page has to run would flip a connected person offline once
  * the threshold cleared. The transport's pong is answered by the network stack
- * under RFC 6455 and needs no JavaScript at all.
+ * under RFC 6455 and needs no JavaScript at all; messages the page sends only
+ * add refreshes.
  *
  * It hangs off the socket's META connection rather than the seat index. Seats
  * exclude meta documents and read-only connections by definition, so a
  * viewer's socket holds no seat anywhere and asking the index who owns it
  * would never answer. A socket has exactly one meta connection, so this writes
- * once per pong however many Spaces the member has open — which is why the
+ * once per refresh however many Spaces the member has open — which is why the
  * loop returns at the first one rather than carrying on.
  *
  * Sweeping here rather than on a timer is what lets a crashed process be
@@ -188,20 +196,21 @@ export interface SocketConnection {
  * chance, and costs one walk of a per-project map per refresh per person.
  * @param connections - Everything this socket carries, by document name.
  * @param policy - Clock and presence threshold.
+ * @param heardAt - Wall-clock time the socket was last heard, in ms.
  */
 export function refreshPresenceForSocket(
   connections: ReadonlyMap<string, SocketConnection>,
   policy: PresencePolicy,
+  heardAt: number,
 ): void {
   for (const [documentName, connection] of connections) {
     if (!isMetaDoc(documentName)) continue;
     const userId = userIdOf({ context: connection.context });
     if (!userId) return;
-    const now = policy.now();
-    if (!touchLastSeen({ document: connection.document, userId, now })) return;
+    if (!touchLastSeen({ document: connection.document, userId, heardAt })) return;
     sweepStalePresence({
       document: connection.document,
-      now,
+      now: policy.now(),
       staleAfterMs: policy.staleAfterMs,
     });
     return;

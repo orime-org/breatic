@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a socket answering its ping proves, and everything that rides on it.
+ * What a socket's sign of life (a pong, a ping or any message, the events
+ * the transport keeps it open on) proves, and everything that rides on it.
  *
  * There is more than one fact hanging off this one signal — a seat per
  * document the socket carries, and the presence record of whoever owns its
@@ -11,39 +12,104 @@
  * missing without anything noticing: the module it belongs to keeps passing
  * its own tests, because those call it directly.
  *
- * That is not hypothetical. Presence went a whole change without being wired
- * to the pong while its expiry was cut to two ping periods, and every test in
- * the package stayed green.
+ * Both refreshes record the time the socket was last heard, which the
+ * per-socket table hands over, not the time they run.
+ *
+ * The seat renewal can answer back, and the answers are acted on here too:
+ * `replaced` (an arrival retried on this sign of life took one of the
+ * person's earlier seats) asks for that connection to be demoted; `full` (the
+ * retried arrival found no seat) and `lost` (a held seat was gone and the
+ * document full) demote this socket's connection on that document.
  */
+
+import { createLogger } from "@breatic/core";
 
 import {
   refreshPresenceForSocket,
   type PresencePolicy,
   type SocketConnection,
 } from "@collab/hooks/presence-wiring.js";
+import type { SeatRefreshResult } from "@collab/services/connection-registry.js";
+import {
+  demoteForSeat,
+  type DemotableConnection,
+} from "@collab/services/seat-handover.js";
+
+const logger = createLogger("socket-liveness");
 
 /** What refreshing a socket's facts needs. */
 export interface SocketLivenessDeps {
-  /** Move every seat this socket holds forward. */
-  refreshSeats: (socketId: string) => Promise<void>;
+  /**
+   * Renew every seat this socket holds, scored at `heardAt`; returns what
+   * needs acting on.
+   */
+  refreshSeats: (socketId: string, heardAt: number) => Promise<SeatRefreshResult[]>;
+  /**
+   * Ask whichever instance holds it to demote a replaced connection. Bound
+   * late by the caller: the demote channel is built after the table this
+   * handler is handed to.
+   */
+  requestDemote: (documentName: string, member: string) => Promise<void>;
   /** Clock and presence threshold. */
   presencePolicy: PresencePolicy;
 }
 
+/** One connection on the socket, as much of it as a refresh needs. */
+type LiveSocketConnection = SocketConnection & DemotableConnection;
+
 /**
- * Build the callback the per-socket table calls on every pong.
+ * Build the callback the per-socket table calls on each sign of life it
+ * handles.
  * @param deps - See {@link SocketLivenessDeps}.
- * @returns The callback, taking the socket and what it carries.
+ * @returns The callback, taking the socket, what it carries and the
+ * wall-clock time it was last heard, which both refreshes record.
  */
-export function createPongHandler(
+export function createLivenessHandler(
   deps: SocketLivenessDeps,
 ): (
   socketId: string,
-  connections: ReadonlyMap<string, SocketConnection>,
+  connections: ReadonlyMap<string, LiveSocketConnection>,
+  heardAt: number,
 ) => void {
-  const { refreshSeats, presencePolicy } = deps;
-  return (socketId, connections): void => {
-    void refreshSeats(socketId);
-    refreshPresenceForSocket(connections, presencePolicy);
+  const { refreshSeats, requestDemote, presencePolicy } = deps;
+
+  /**
+   * Act on what the seat renewal answered.
+   * @param socketId - The socket that showed a sign of life.
+   * @param connections - What it carries.
+   * @param heardAt - When it was last heard.
+   * @returns once every demote request has been attempted.
+   */
+  async function settleSeats(
+    socketId: string,
+    connections: ReadonlyMap<string, LiveSocketConnection>,
+    heardAt: number,
+  ): Promise<void> {
+    const answers = await refreshSeats(socketId, heardAt);
+    for (const answer of answers) {
+      const { documentName } = answer;
+      if (answer.outcome === "replaced") {
+        await requestDemote(documentName, answer.replaced);
+        continue;
+      }
+      // Closed in the meantime: `unregister` has the seat.
+      const connection = connections.get(documentName);
+      if (!connection) continue;
+      demoteForSeat(connection, {
+        reason: answer.outcome === "full" ? "connection_cap_race_degraded" : "connection_seat_lost",
+        socketId,
+        userId: connection.context?.user?.id,
+        documentName,
+        liveCount: answer.liveCount,
+        cap: answer.cap,
+      });
+    }
+  }
+
+  return (socketId, connections, heardAt): void => {
+    settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
+      logger.error({ err, socketId }, "seat_refresh_failed");
+    });
+    refreshPresenceForSocket(connections, presencePolicy, heardAt);
   };
 }

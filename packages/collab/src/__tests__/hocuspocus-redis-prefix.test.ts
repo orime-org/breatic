@@ -27,6 +27,7 @@
  * Everything that would open a socket or a timer is mocked; the YAML config
  * is read for real (it is a pure file read).
  */
+import { EventEmitter } from "node:events";
 import { IncomingMessage } from "node:http";
 import { Duplex } from "node:stream";
 import type { Socket } from "node:net";
@@ -51,6 +52,7 @@ const {
   connectionGateSpy,
   failedAuthWrapperSpy,
   loggerInfoSpy,
+  loggerWarnSpy,
   authRedisStub,
   sessionLookupSpy,
   throttleCountSpy,
@@ -59,17 +61,18 @@ const {
   connectionGateSpy: vi.fn(),
   failedAuthWrapperSpy: vi.fn(),
   loggerInfoSpy: vi.fn(),
+  loggerWarnSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
     start: vi.fn(),
     stop: vi.fn(),
-    register: vi.fn(),
-    unregister: vi.fn(),
+    unregister: vi.fn(async () => undefined),
     count: vi.fn(async () => 0),
-    refreshSocket: vi.fn(async () => undefined),
+    takeSeat: vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ outcome: "seated" })),
+    hasOwnSeat: vi.fn(async (..._args: unknown[]): Promise<unknown> => "no"),
+    refreshSocket: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
     forgetSeat: vi.fn(async () => undefined),
-    claimSeatFrom: vi.fn(async () => ({ outcome: "none" as const })),
   },
   registryFactorySpy: vi.fn(),
   collabRedisStub: { on: vi.fn(), publish: vi.fn(async () => 1) },
@@ -104,7 +107,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModuleShape>()),
   createLogger: () => ({
     info: loggerInfoSpy,
-    warn: vi.fn(),
+    warn: loggerWarnSpy,
     error: vi.fn(),
     debug: vi.fn(),
   }),
@@ -184,6 +187,7 @@ vi.mock("@collab/services/connection-registry.js", async () => {
 });
 
 import * as Y from "yjs";
+import { OutgoingMessage } from "@hocuspocus/server";
 
 import { createCollabServer } from "../hocuspocus.js";
 import { getConnectionTimings } from "../config.js";
@@ -528,74 +532,350 @@ describe("createCollabServer — the identity rule is registered", () => {
   });
 });
 
-describe("createCollabServer — only writable connections take a seat", () => {
+describe("createCollabServer — the connected hook takes the seat (inner#1034)", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const DOC = `project-${PID}/canvas-22222222-2222-4222-9222-222222222222`;
+  const META = `project-${PID}/meta`;
+
   beforeEach(() => {
     serverSpy.mockClear();
-    registryStub.register.mockClear();
+    registryStub.takeSeat.mockReset().mockResolvedValue({ outcome: "seated" });
     registryStub.unregister.mockClear();
+    collabRedisStub.publish.mockClear();
+    loggerWarnSpy.mockClear();
+    // The two re-reads `connected` makes after the seat agree with the
+    // handshake, so nothing here is closed for an unrelated reason.
+    loadProjectRoleStub.mockReset().mockResolvedValue("editor");
+    sessionLookupSpy.mockResolvedValue("u1");
   });
 
+  /** A connection stand-in whose socket emits and records what it sends. */
+  type FakeConnection = {
+    readOnly: boolean;
+    close: ReturnType<typeof vi.fn>;
+    context: Record<string, unknown>;
+    document: Y.Doc;
+    webSocket: EventEmitter & { send: ReturnType<typeof vi.fn> };
+  };
+
   /**
-   * Run the registered `connected` hook the way Hocuspocus would.
-   * @param documentName - Which document the connection opened.
-   * @param readOnly - What the auth hook settled on `connectionConfig`.
-   * @returns Nothing; assert on the registry stub afterwards.
+   * Build the server, and run its `connected` hook the way Hocuspocus would.
+   * @param args - What the handshake settled.
+   * @param args.documentName - Document the connection opened.
+   * @param args.seatCap - The ceiling the handshake judged by, null for no seat.
+   * @returns The connection, the hooks and the running hook's promise.
    */
-  async function fireConnected(
-    documentName: string,
-    readOnly: boolean,
-  ): Promise<void> {
+  async function startConnected(args: { documentName?: string; seatCap?: number | null } = {}): Promise<{
+    connection: FakeConnection;
+    running: Promise<void> | undefined;
+    onDisconnect: (payload: unknown) => Promise<void>;
+  }> {
     await createCollabServer({
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
       shutdownDeadline: () => undefined,
     });
-    const config = serverSpy.mock.calls[0]?.[0] as {
+    const config = serverSpy.mock.calls.at(-1)?.[0] as {
       connected?: (payload: unknown) => Promise<void>;
+      onDisconnect: (payload: unknown) => Promise<void>;
     };
     expect(typeof config.connected).toBe("function");
-    await config.connected?.({
+    const documentName = args.documentName ?? DOC;
+    const context = {
+      user: { id: "u1", role: "editor" },
+      seatCap: args.seatCap === undefined ? 2 : args.seatCap,
+      arrivedAtMs: 4242,
+      session: { token: "tok", id: "tok-id" },
+    };
+    const connection: FakeConnection = {
+      readOnly: false,
+      close: vi.fn(),
+      context,
+      document: new Y.Doc(),
+      webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
+    };
+    loggerWarnSpy.mockClear();
+    const running = config.connected?.({
       documentName,
       socketId: "sock-1",
-      context: { user: { id: "u-1" }, handedOverFrom: null },
+      context,
       instance: { documents: new Map() },
-      connectionConfig: { readOnly },
-      // The socket the pong listener goes on. One per connection in
-      // production; the same one every time here, since these cases are
-      // about which documents take a seat.
-      connection: {
-        readOnly,
-        webSocket: { send: vi.fn(), on: vi.fn(), once: vi.fn(), off: vi.fn() },
-      },
+      connectionConfig: { readOnly: false },
+      connection,
     });
+    return { connection, running, onDisconnect: config.onDisconnect };
   }
 
-  // #88's central rule, at the one place it is actually applied. Everything
-  // else about it is covered against `shouldRegisterConnection` as a pure
-  // function, and that leaves this call site free: swapping it back to
-  // `shouldTrackConnection(documentName)` — the pre-#88 behaviour, where a
-  // read-only connection took a seat like any other — was measured to leave
-  // all 476 collab tests green. Acceptance item 18 rests entirely on this line.
-  it("registers a writable connection to a Space document", async () => {
-    await fireConnected("project-p/canvas-s", false);
-    expect(registryStub.register).toHaveBeenCalledWith(
-      "project-p/canvas-s",
-      expect.objectContaining({ socketId: "sock-1", userId: "u-1" }),
+  /**
+   * Whether a warn carrying this tag was logged.
+   * @param tag - The log tag.
+   * @returns The logged fields, when one was.
+   */
+  function warnFields(tag: string): Record<string, unknown> | undefined {
+    const call = loggerWarnSpy.mock.calls.find(([fields, message]) =>
+      message === tag || (fields as { tag?: unknown; reason?: unknown } | undefined)?.tag === tag
+      || (fields as { reason?: unknown } | undefined)?.reason === tag,
     );
+    return call?.[0] as Record<string, unknown> | undefined;
+  }
+
+  const readOnlyFrame = (documentName: string): Uint8Array =>
+    new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array();
+
+  it("E-C01 takes no seat for a connection the handshake gave no ceiling", async () => {
+    const { connection, running } = await startConnected({ seatCap: null });
+    await running;
+    expect(registryStub.takeSeat).not.toHaveBeenCalled();
+    expect(collabRedisStub.publish).not.toHaveBeenCalled();
+    expect(connection.webSocket.send).not.toHaveBeenCalled();
+    expect(connection.readOnly).toBe(false);
   });
 
-  it("does NOT register a read-only connection to the same document", async () => {
-    await fireConnected("project-p/canvas-s", true);
-    expect(registryStub.register).not.toHaveBeenCalled();
+  it("E-C02 takes the seat with the handshake's ceiling and arrival moment, and does nothing more when seated", async () => {
+    const { connection, running } = await startConnected();
+    await running;
+    expect(registryStub.takeSeat).toHaveBeenCalledTimes(1);
+    expect(registryStub.takeSeat).toHaveBeenCalledWith(DOC, { socketId: "sock-1", userId: "u1", arrivedAtMs: 4242 }, 2);
+    expect(collabRedisStub.publish).not.toHaveBeenCalled();
+    expect(connection.webSocket.send).not.toHaveBeenCalled();
+    expect(connection.readOnly).toBe(false);
   });
 
-  // The meta doc is exempt from the ceiling entirely, writable or not — it is
-  // project infrastructure everybody must hold, never a measure of how many
-  // people can collaborate.
-  it("does NOT register the project meta document", async () => {
-    await fireConnected("project-p/meta", false);
-    expect(registryStub.register).not.toHaveBeenCalled();
+  it("E-C03 asks for the replaced connection to be demoted and stays writable", async () => {
+    registryStub.takeSeat.mockResolvedValueOnce({ outcome: "replaced", replaced: "u1:1000:i2:sx" });
+    const { connection, running } = await startConnected();
+    await running;
+    expect(collabRedisStub.publish).toHaveBeenCalledTimes(1);
+    expect(collabRedisStub.publish).toHaveBeenCalledWith(
+      "dev:collab:seat-demote",
+      JSON.stringify({ documentName: DOC, member: "u1:1000:i2:sx" }),
+    );
+    expect(connection.readOnly).toBe(false);
+  });
+
+  it("E-C04 stays writable until the answer, then goes read-only when the race for the last seat was lost", async () => {
+    let answer!: (value: unknown) => void;
+    registryStub.takeSeat.mockReturnValueOnce(new Promise((resolve) => {
+      answer = resolve;
+    }));
+    const { connection, running } = await startConnected();
+    await vi.waitFor(() => expect(registryStub.takeSeat).toHaveBeenCalledTimes(1));
+    expect(connection.readOnly).toBe(false);
+    expect(connection.webSocket.send).not.toHaveBeenCalled();
+
+    answer({ outcome: "full", liveCount: 2 });
+    await running;
+
+    expect(connection.readOnly).toBe(true);
+    expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
+    expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
+    expect(warnFields("connection_cap_race_degraded")).toEqual(
+      expect.objectContaining({ socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2 }),
+    );
+    expect(warnFields("connection_cap_degraded")).toBeUndefined();
+    expect(collabRedisStub.publish).not.toHaveBeenCalled();
+  });
+
+  // The registry logs a failed script once; the hook does not
+  // log it again.
+  it("E-C05 lets the connection write on when Redis could not answer", async () => {
+    registryStub.takeSeat.mockResolvedValueOnce({ outcome: "unknown" });
+    const { connection, running } = await startConnected();
+    await running;
+    expect(connection.readOnly).toBe(false);
+    expect(connection.webSocket.send).not.toHaveBeenCalled();
+    expect(collabRedisStub.publish).not.toHaveBeenCalled();
+    expect(warnFields("conn_registry_take_failed")).toBeUndefined();
+  });
+
+  it("E-C06 does nothing when the connection left or was demoted before the answer", async () => {
+    registryStub.takeSeat.mockResolvedValueOnce({ outcome: "gone" });
+    const { connection, running } = await startConnected();
+    await running;
+    expect(connection.readOnly).toBe(false);
+    expect(connection.webSocket.send).not.toHaveBeenCalled();
+    expect(collabRedisStub.publish).not.toHaveBeenCalled();
+    expect(loggerWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it("E-C07 releases the seat of a content document on disconnect, and never asks for the meta document", async () => {
+    const { running, onDisconnect } = await startConnected();
+    await running;
+    await onDisconnect({ documentName: DOC, context: { user: { id: "u1" } }, socketId: "sock-1" });
+    expect(registryStub.unregister).toHaveBeenCalledWith(DOC, "sock-1");
+    registryStub.unregister.mockClear();
+    await onDisconnect({ documentName: META, context: { user: { id: "u1" } }, socketId: "sock-1" });
+    expect(registryStub.unregister).not.toHaveBeenCalled();
+  });
+
+  describe("one connection per document on a socket", () => {
+    /** The hooks of one server, and a way to run `connected` on it. */
+    async function serverHooks(): Promise<{
+      connect: (context: Record<string, unknown>) => Promise<FakeConnection>;
+      onDisconnect: (payload: unknown) => Promise<void>;
+    }> {
+      await createCollabServer({
+        collabRedisUrl: "redis://localhost:6379/3",
+        port: 1234,
+        redisKeyPrefix: "dev",
+        shutdownDeadline: () => undefined,
+      });
+      const config = serverSpy.mock.calls.at(-1)?.[0] as {
+        connected: (payload: unknown) => Promise<void>;
+        onDisconnect: (payload: unknown) => Promise<void>;
+      };
+      // Both connections ride the one socket.
+      const webSocket = Object.assign(new EventEmitter(), { send: vi.fn() });
+      return {
+        async connect(context): Promise<FakeConnection> {
+          const connection: FakeConnection = { readOnly: false, close: vi.fn(), context, document: new Y.Doc(), webSocket };
+          await config.connected({
+            documentName: DOC,
+            socketId: "sock-1",
+            context,
+            instance: { documents: new Map() },
+            connectionConfig: { readOnly: false },
+            connection,
+          });
+          return connection;
+        },
+        onDisconnect: config.onDisconnect,
+      };
+    }
+
+    /**
+     * A handshake's context for this document.
+     * @param arrivedAtMs - When it began.
+     * @returns The context.
+     */
+    const contextAt = (arrivedAtMs: number): Record<string, unknown> => ({
+      user: { id: "u1", role: "editor" },
+      seatCap: 2,
+      arrivedAtMs,
+      session: { token: "tok", id: "tok-id" },
+    });
+
+    it("refuses a second connection for a document the socket already carries, and its close leaves the first one's seat alone", async () => {
+      const { connect, onDisconnect } = await serverHooks();
+      const first = await connect(contextAt(1000));
+      loggerWarnSpy.mockClear();
+      const secondContext = contextAt(2000);
+      const second = await connect(secondContext);
+
+      expect(second.close).toHaveBeenCalledTimes(1);
+      expect(first.close).not.toHaveBeenCalled();
+      expect(registryStub.takeSeat).toHaveBeenCalledTimes(1);
+      expect(warnFields("duplicate_document_on_socket")).toEqual(
+        expect.objectContaining({ userId: "u1", documentName: DOC, socketId: "sock-1" }),
+      );
+      expect(loggerWarnSpy.mock.calls.find(([, message]) => message === "auth_rejected")).toBeDefined();
+
+      // The framework reports the refused connection's end like any other.
+      await onDisconnect({ documentName: DOC, context: secondContext, socketId: "sock-1" });
+      expect(registryStub.unregister).not.toHaveBeenCalled();
+    });
+
+    it("accepts the document again on that socket once the previous connection has closed", async () => {
+      const { connect, onDisconnect } = await serverHooks();
+      const firstContext = contextAt(1000);
+      await connect(firstContext);
+      await onDisconnect({ documentName: DOC, context: firstContext, socketId: "sock-1" });
+      loggerWarnSpy.mockClear();
+
+      const again = await connect(contextAt(2000));
+
+      expect(again.close).not.toHaveBeenCalled();
+      expect(registryStub.takeSeat).toHaveBeenCalledTimes(2);
+      expect(warnFields("duplicate_document_on_socket")).toBeUndefined();
+    });
+  });
+
+  describe("what a pong's renewal answers, through the real per-socket listener", () => {
+    beforeEach(() => {
+      registryStub.refreshSocket.mockReset().mockResolvedValue([]);
+    });
+
+    /**
+     * Connect, then fire one pong on the connection's socket.
+     * @param answer - What the renewal reports for this document.
+     * @returns The connection.
+     */
+    async function pongAnswering(answer: Record<string, unknown>): Promise<FakeConnection> {
+      const { connection, running } = await startConnected();
+      await running;
+      registryStub.refreshSocket.mockResolvedValueOnce([{ documentName: DOC, member: "u1:4242:i1:sock-1", ...answer }]);
+      connection.webSocket.emit("pong");
+      await vi.waitFor(() => expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1", expect.any(Number)));
+      for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      return connection;
+    }
+
+    it("E-P07 asks the demote channel the server built to demote the replaced connection", async () => {
+      const connection = await pongAnswering({ outcome: "replaced", replaced: "u1:1000:i2:sx" });
+      expect(collabRedisStub.publish).toHaveBeenCalledWith(
+        "dev:collab:seat-demote",
+        JSON.stringify({ documentName: DOC, member: "u1:1000:i2:sx" }),
+      );
+      expect(connection.readOnly).toBe(false);
+    });
+
+    it("E-P08 makes the connection read-only when its retried arrival found the document full", async () => {
+      const connection = await pongAnswering({ outcome: "full", liveCount: 2, cap: 2 });
+      expect(connection.readOnly).toBe(true);
+      expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
+      expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
+      expect(warnFields("connection_cap_race_degraded")).toEqual({
+        socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2, reason: "connection_cap_race_degraded",
+      });
+    });
+
+    it("E-P09 makes the connection read-only when its seat was lost", async () => {
+      const connection = await pongAnswering({ outcome: "lost", liveCount: 2, cap: 2 });
+      expect(connection.readOnly).toBe(true);
+      expect(connection.webSocket.send).toHaveBeenCalledTimes(1);
+      expect(connection.webSocket.send.mock.calls[0]![0]).toEqual(readOnlyFrame(DOC));
+      expect(warnFields("connection_seat_lost")).toEqual({
+        socketId: "sock-1", userId: "u1", documentName: DOC, projectId: PID, liveCount: 2, cap: 2, reason: "connection_seat_lost",
+      });
+    });
+  });
+
+  // E-A10's wiring half: the handshake the server installs counts and asks,
+  // and never takes a seat — a connection whose document then fails to load
+  // never reaches `connected`, so it must hold nothing.
+  it("E-A10 authenticates without taking a seat, asking the registry whether the person holds one", async () => {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls.at(-1)?.[0] as { onAuthenticate: (payload: unknown) => Promise<unknown> };
+    const meta = new Y.Doc();
+    const space = new Y.Map();
+    meta.getMap("spaces").set("22222222-2222-4222-9222-222222222222", space);
+    space.set("id", "22222222-2222-4222-9222-222222222222");
+    space.set("type", "canvas");
+    registryStub.count.mockResolvedValueOnce(100);
+    registryStub.hasOwnSeat.mockReset().mockResolvedValueOnce("yes");
+    const connectionConfig = { readOnly: false };
+
+    const ctx = (await config.onAuthenticate({
+      token: "__cookie_auth__",
+      documentName: DOC,
+      requestHeaders: new Headers({ cookie: "breatic_session_wiring-test=tok" }),
+      connectionConfig,
+      instance: { documents: new Map([[META, meta]]), createDocument: vi.fn(), unloadDocument: vi.fn() },
+      request: new Request("http://localhost/"),
+      socketId: "sock-1",
+    })) as { seatCap: number | null };
+
+    expect(registryStub.hasOwnSeat).toHaveBeenCalledWith(DOC, "u1");
+    expect(registryStub.takeSeat).not.toHaveBeenCalled();
+    expect(connectionConfig.readOnly).toBe(false);
+    expect(ctx.seatCap).toBe(100);
+    meta.destroy();
   });
 });
 
@@ -631,13 +911,11 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
    * @param args - What the handshake settled.
    * @param args.documentName - Document the connection opened.
    * @param args.document - The Yjs document behind it.
-   * @param args.handedOverFrom - Member string the handshake claimed, if any.
    * @returns The captured pong listener.
    */
   async function fireConnectedFor(args: {
     documentName: string;
     document: Y.Doc;
-    handedOverFrom?: string | null;
   }): Promise<() => void> {
     await createCollabServer({
       collabRedisUrl: "redis://localhost:6379/3",
@@ -651,7 +929,7 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
     const listeners = new Map<string, () => void>();
     const connection = {
       readOnly: false,
-      context: { user: { id: "u-1" }, handedOverFrom: args.handedOverFrom ?? null },
+      context: { user: { id: "u-1" }, seatCap: args.documentName.endsWith("/meta") ? null : 2, arrivedAtMs: 1000 },
       document: args.document,
       webSocket: {
         send: vi.fn(),
@@ -676,10 +954,9 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
   }
 
   // One pong, two facts, through the wiring that carries them. Cutting
-  // `onPong` out of the options — or either half out of the handler it is
-  // built from — left all 523 cases in this package green, which is the
-  // same shape the presence defect shipped in one round earlier: the module
-  // was correct and nothing called it.
+  // `onAlive` out of the options, or either half out of the handler it is
+  // built from, leaves every module's own tests green, because those call the
+  // functions directly; only this case sees it.
   it("moves both the seats and the presence record when a socket answers", async () => {
     const doc = metaDocWithTwoSpaces();
     const pong = await fireConnectedFor({
@@ -696,30 +973,12 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
 
     pong();
 
-    expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1");
+    expect(registryStub.refreshSocket).toHaveBeenCalledWith("sock-1", expect.any(Number));
+    const heardAt = registryStub.refreshSocket.mock.calls[0]![1] as number;
+    expect(heardAt).toBeGreaterThan(0);
     const after = readPresence(doc, "u-1");
     expect(after?.online).toBe(true);
-    expect(after?.lastSeenAt).toBeGreaterThan(0);
-  });
-
-  // Two of the three things a handover owes the tab it took a seat from:
-  // telling the instance that holds it, and naming which seat. Dropping the
-  // call leaves that tab writable with no notice and the document one
-  // connection over the ceiling its tier sells.
-  it("asks the holder of a claimed seat to demote it", async () => {
-    await fireConnectedFor({
-      documentName: "project-p/canvas-s",
-      document: new Y.Doc(),
-      handedOverFrom: "u-1:1000:inst-a:sock-old",
-    });
-
-    expect(collabRedisStub.publish).toHaveBeenCalledWith(
-      "dev:collab:seat-demote",
-      JSON.stringify({
-        documentName: "project-p/canvas-s",
-        member: "u-1:1000:inst-a:sock-old",
-      }),
-    );
+    expect(after?.lastSeenAt).toBe(heardAt);
   });
 
   // `pingIntervalMs` and `seatExpiryMs` are adjacent options of the same
@@ -767,7 +1026,7 @@ describe("createCollabServer — a connection re-reads its role once registered"
     await config.connected?.({
       documentName: DOC,
       socketId: "sock-1",
-      context: { user: { id: "u-1", role: "editor" }, handedOverFrom: null },
+      context: { user: { id: "u-1", role: "editor" }, seatCap: 2, arrivedAtMs: 1000 },
       instance: { documents: new Map() },
       connectionConfig: { readOnly: false },
       connection: {

@@ -2,24 +2,35 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Demoting the connection whose seat was just handed to another of the same
- * person's connections.
+ * Demoting a connection to read-only, and the channel that asks for it.
  *
- * Taking the seat is one ZREM and any instance can do it. The rest can only
- * be done by the instance holding that connection, and there are three parts
- * to it — each with its own way of going wrong if skipped:
+ * Every way a writable content connection loses its write access mid-life
+ * goes through {@link demoteConnection}:
  *
- *   set `connection.readOnly`      or the connection goes on writing
+ *   handover      another of the same person's connections replaced its seat;
+ *                 the replacing instance asks over the channel below
+ *   race lost     an arrival's seat script (in the `connected` hook, or
+ *                 retried on a sign of life) found the document full
+ *   seat lost     a sign of life found a held seat gone and the document full
+ *
+ * The last two also share their log line, through {@link demoteForSeat}, so
+ * one tag carries the same fields wherever it is written.
+ *
+ * Demoting is two parts, each with its own way of going wrong if skipped:
+ *
+ *   set `connection.readOnly`       or the connection goes on writing
  *   send an Authenticated(readonly) or that end never learns it is read-only
- *   let the seat go                 or the pong loop writes it back, leaving
- *                                   a read-only connection holding a seat
- *                                   that never comes free again
  *
- * Which instance holds the connection is not knowable from the handshake, so
- * the request goes out on a Redis pub/sub channel and every instance asks
- * whether the socket is one of its own. The instance that took the seat may
- * well be the same one; it takes the same path, so there is one flow rather
- * than a local case and a remote case.
+ * A handover has a third: let the seat go, or the socket's signs of life
+ * renew it and a read-only connection holds a seat that never comes free
+ * again. The other two paths have already dropped the seat in the registry by
+ * the time they demote.
+ *
+ * Which instance holds a replaced connection is not knowable from the
+ * instance that replaced it, so the request goes out on a Redis pub/sub
+ * channel and every instance asks whether the socket is one of its own. The
+ * replacing instance may well be the same one; it takes the same path, so
+ * there is one flow rather than a local case and a remote case.
  *
  * The channel is on DB3 alongside the Hocuspocus pub/sub and the Space count
  * lock, and carries the deployment's key prefix in its name: pub/sub is not
@@ -27,10 +38,13 @@
  * deployments sharing one Redis from answering each other's requests.
  *
  * A request that reaches nobody costs nothing: the seat is already gone and
- * so, in that case, is the connection.
+ * so, in that case, is the connection. A request that is lost while the
+ * connection lives is caught by that connection's next sign of life, which
+ * finds its seat gone.
  */
 
 import { createLogger, type Redis } from "@breatic/core";
+import { parseDocName } from "@breatic/shared";
 import { OutgoingMessage } from "@hocuspocus/server";
 
 import { parseSeatMember } from "@collab/services/connection-registry.js";
@@ -51,6 +65,62 @@ export interface DemotableConnection {
   readOnly: boolean;
   /** The underlying socket, for the Authenticated frame. */
   webSocket: { send(data: Uint8Array): void };
+}
+
+/**
+ * Make one connection read-only and tell its client.
+ *
+ * Idempotent: a connection that is already read-only is left alone, so a
+ * client is never sent the frame twice.
+ * @param documentName - The document the connection is for.
+ * @param connection - The connection.
+ */
+export function demoteConnection(
+  documentName: string,
+  connection: DemotableConnection,
+): void {
+  if (connection.readOnly) return;
+  connection.readOnly = true;
+  connection.webSocket.send(
+    new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array(),
+  );
+}
+
+/** A demote for a seat this connection could not hold, as it is logged. */
+export interface SeatDegrade {
+  /**
+   * `connection_cap_race_degraded`: an arrival (in `connected`, or retried on
+   * a sign of life) found the document full. `connection_seat_lost`: a sign
+   * of life found the seat gone and the document full.
+   */
+  reason: "connection_cap_race_degraded" | "connection_seat_lost";
+  /** The socket the connection rides. */
+  socketId: string;
+  /** Whose connection it is. */
+  userId: string | undefined;
+  /** The document. */
+  documentName: string;
+  /** How many seats the script counted. */
+  liveCount: number;
+  /** The ceiling the handshake judged this connection by. */
+  cap: number;
+}
+
+/**
+ * Demote a connection that could not hold a seat, and log why with the same
+ * fields wherever it happened.
+ * @param connection - The connection.
+ * @param degrade - Why, and the facts the log line carries.
+ */
+export function demoteForSeat(
+  connection: DemotableConnection,
+  degrade: SeatDegrade,
+): void {
+  demoteConnection(degrade.documentName, connection);
+  logger.warn(
+    { ...degrade, projectId: parseDocName(degrade.documentName)?.projectId },
+    degrade.reason,
+  );
 }
 
 /** What one instance needs to carry out a demote it is responsible for. */
@@ -80,9 +150,9 @@ export interface SeatHandoverDeps {
 /** Asks every instance to demote one connection, and answers such asks. */
 export interface SeatHandover {
   /**
-   * Tell whichever instance holds it that this seat has been handed over.
+   * Tell whichever instance holds it that this seat has been replaced.
    * @param documentName - Document the seat was on.
-   * @param member - The member string that was claimed.
+   * @param member - The member string that was replaced.
    * @returns once the publish has been attempted (best-effort).
    */
   requestDemote(documentName: string, member: string): Promise<void>;
@@ -105,7 +175,7 @@ export function createSeatHandover(deps: SeatHandoverDeps): SeatHandover {
   /**
    * Carry out a demote, if this instance is the one holding that connection.
    * @param documentName - Document the seat was on.
-   * @param member - The member string that was claimed.
+   * @param member - The member string that was replaced.
    * @returns once the seat has been let go.
    */
   async function applyDemote(
@@ -122,10 +192,7 @@ export function createSeatHandover(deps: SeatHandoverDeps): SeatHandover {
     }
     const connection = findConnection(documentName, parsed.socketId);
     if (!connection) return;
-    connection.readOnly = true;
-    connection.webSocket.send(
-      new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array(),
-    );
+    demoteConnection(documentName, connection);
     await forgetSeat(documentName, member);
   }
 
