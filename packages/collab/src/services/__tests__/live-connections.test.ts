@@ -248,6 +248,25 @@ describe("live connections — an early pong is deferred, not dropped (inner#103
     expect(onPong).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps handling on-time pongs after the wall clock steps back", () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    fire(connection, "pong");
+    // NTP steps the system clock back by five periods; the time between pongs
+    // has not changed.
+    vi.setSystemTime(Date.now() - 5 * PING);
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(PING);
+      fire(connection, "pong");
+    }
+
+    expect(onPong).toHaveBeenCalledTimes(4);
+  });
+
   it("cancels a deferred pong when the socket closes", () => {
     vi.useFakeTimers({ now: 1_000_000 });
     const onPong = vi.fn();

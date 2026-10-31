@@ -70,7 +70,11 @@ export interface LiveConnectionsOptions {
    * expires two periods after the last one handled.
    */
   pingIntervalMs: number;
-  /** Clock, injectable for tests (default `Date.now`). */
+  /**
+   * Clock the gap between pongs is measured with, injectable for tests
+   * (default `performance.now`). Monotonic, so a step of the system clock
+   * cannot hold back the next pong.
+   */
   now?: () => number;
 }
 
@@ -115,7 +119,7 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong, pingIntervalMs, now = Date.now } = options;
+  const { onPong, pingIntervalMs, now = (): number => performance.now() } = options;
   const minPongGapMs = pingIntervalMs / 2;
 
   const bySocket = new Map<string, Map<string, HeldConnection>>();
