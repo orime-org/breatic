@@ -41,4 +41,4 @@ The model provider layer: every model call (media generation, understanding, LLM
 ### Tests
 
 - **Upstreams are faked with the loopback server in `src/media/__tests__/fake-upstream.ts` (`hold`, `cut`, `reset`, `hang`) and the LLM fakes in `src/llm/__tests__/llm-harness.ts`; nothing in the test suites calls a real upstream.**
-- **`test/fixtures/*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; never edit them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from today's catalog the same way.
+- **`test/fixtures/*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; never edit them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from the `config/models/` catalog the same way.
