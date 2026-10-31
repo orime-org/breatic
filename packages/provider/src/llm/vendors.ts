@@ -52,7 +52,7 @@ function errorOf(body: unknown): ErrorBody {
  * @param body - The parsed body.
  * @returns The message, or "".
  */
-function messageOf(body: unknown): string {
+export function messageOf(body: unknown): string {
   const message = errorOf(body).message;
   return typeof message === "string" ? message : "";
 }

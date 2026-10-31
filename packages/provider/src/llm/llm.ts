@@ -19,7 +19,7 @@ import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, reportedCost, Sw
 import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { costedOf } from "@provider/llm/understand/openrouter.js";
-import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
+import { cacheMark, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import type { Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -283,8 +283,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     }
     if (failure?.kind !== "http_status") return new UnderstandInterrupted(model, billed, error);
     // The refused answer's whole text, a model answer's or an upload step's.
-    const said = (parsed(error instanceof HttpStatus ? error.body : undefined) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
-    return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, billed, { status: failure.status, cause: error });
+    const said = messageOf(parsed(error instanceof HttpStatus ? error.body : undefined));
+    return new UpstreamRequestRejected(model, upstream, said !== "" ? said : (error as Error).message, billed, { status: failure.status, cause: error });
   };
 
   /**
