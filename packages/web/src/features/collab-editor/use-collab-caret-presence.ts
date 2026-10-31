@@ -76,7 +76,7 @@ export type CollabCaretEditor =
  *
  * A BlockNote editor answers this question by THROWING once it has been
  * unmounted: every route to its view ends at tiptap's `view` accessor, which
- * raises rather than returning nothing (`@tiptap/core/src/Editor.ts:347`), and
+ * raises rather than returning nothing (`@tiptap/core/src/Editor.ts:368`), and
  * the wrapper offers no flag to ask first. The window opens whenever the body
  * unmounts the editor while the hook's own effects, which belong to a
  * component further up, have not been cleaned up yet (the body giving way to

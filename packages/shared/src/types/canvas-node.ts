@@ -306,6 +306,13 @@ export interface CanvasNodeFields {
      * content. Node state, not content: a copy of the node does not carry it.
      */
     taskResultEventId?: string;
+    /**
+     * The generation template node this node was placed as (inner#1345):
+     * the template, its key, and on the guide text node the id of the anchor
+     * it explains. Content: a copy carries it, with the anchor id rewritten
+     * when the anchor is copied along.
+     */
+    templateNode?: { template: string; key: string; anchor?: string };
 
     // ─── Data node fields ───────────────────────────────────
     /**

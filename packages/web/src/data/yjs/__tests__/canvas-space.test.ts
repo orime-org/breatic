@@ -37,6 +37,7 @@ import {
   setNodePosition,
   getTextBody,
   setNodeExtractedText,
+  setNodeTemplateNode,
 } from '@web/data/yjs/canvas-space';
 import {
   bodyToPlainText,
@@ -1174,5 +1175,59 @@ describe('setNodeExtractedText (#186 §3.7.4 local text extraction)', () => {
 
   it('is a no-op on a missing node', () => {
     expect(() => setNodeExtractedText(PID, SID, 'ghost', 'x')).not.toThrow();
+  });
+});
+
+describe('setNodeTemplateNode (inner#1345)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  /**
+   * The stored data map of one node in the test Space.
+   * @param id - The node.
+   * @returns Its data Y.Map.
+   */
+  const dataOf = (id: string): Y.Map<unknown> =>
+    (doc().getMap('nodesMap').get(id) as Y.Map<unknown>).get('data') as Y.Map<unknown>;
+
+  it('writes the tag into the node data Y.Map as a plain value', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'up' }));
+
+    setNodeTemplateNode(PID, SID, 'up', { template: 'fx', key: 'up' });
+
+    expect(dataOf('up').get('templateNode')).toEqual({ template: 'fx', key: 'up' });
+  });
+
+  it('hands the tag back on the views read from the document, and only on the nodes that carry one', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'anchor' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'input' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'up' }));
+    addNode(PID, SID, sampleFields('text', {}, { id: 'guide' }));
+    setNodeTemplateNode(PID, SID, 'up', { template: 'fx', key: 'up' });
+    setNodeTemplateNode(PID, SID, 'guide', { template: 'fx', key: 'guide', anchor: 'anchor' });
+
+    const { nodes } = readCanvasGraph(PID, SID);
+    const tagOf = (id: string): unknown => {
+      const found = nodes.find((n) => n.id === id);
+      if (!found || found.type === 'group' || found.type === 'annotation') throw new Error(`no content node ${id}`);
+      return found.data.templateNode;
+    };
+    expect(tagOf('up')).toEqual({ template: 'fx', key: 'up' });
+    expect(tagOf('guide')).toEqual({ template: 'fx', key: 'guide', anchor: 'anchor' });
+    expect(tagOf('anchor')).toBeUndefined();
+    expect(tagOf('input')).toBeUndefined();
+  });
+
+  it('keeps a tag a node was created with, as a paste writes it', () => {
+    addNode(PID, SID, sampleFields('image', { templateNode: { template: 'fx', key: 'style' } }, { id: 'style' }));
+
+    const found = readNodes(doc()).find((n) => n.id === 'style');
+    expect(found?.type === 'image' ? found.data.templateNode : 'not an image view').toEqual({ template: 'fx', key: 'style' });
+  });
+
+  it('is a no-op on a missing node', () => {
+    expect(() => setNodeTemplateNode(PID, SID, 'ghost', { template: 'fx', key: 'up' })).not.toThrow();
+    expect(doc().getMap('nodesMap').size).toBe(0);
   });
 });

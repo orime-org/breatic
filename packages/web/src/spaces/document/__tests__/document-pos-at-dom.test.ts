@@ -3,7 +3,8 @@
 
 /**
  * inner#1350 A8 (design §5.7): a page selection whose end lands on an element
- * that wraps a node's content — the table's wrappers, the code block's `pre` —
+ * that wraps a node's content — the table's frame and scroller, the code
+ * block's `pre` —
  * maps to the side of the node the offset points at. Unpatched
  * prosemirror-view 1.42.6 sends every point on the elements between a node's
  * own element and its content (the table's wrappers, the code block's `pre`)
@@ -14,11 +15,13 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -37,14 +40,16 @@ function open(): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'above' },
-    { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }] } },
-    { type: 'codeBlock', content: 'x = 1' },
-    { type: 'paragraph', content: 'below' },
-  ] as never);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'above' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+      { type: 'codeBlock', content: 'x = 1' },
+      { type: 'paragraph', content: 'below' },
+    ] as never);
+  });
   return editor;
 }
 
@@ -78,19 +83,19 @@ function el(editor: Editor, selector: string): Element {
 
 describe('posAtDOM on an element wrapping a node content (patched prosemirror-view)', () => {
   it.each([
-    ['the table wrapper, before its inner wrapper', '.tableWrapper', 0, 'start'],
-    ['the table wrapper, after its inner wrapper', '.tableWrapper', 1, 'end'],
-    ['the inner wrapper, before the table', '.tableWrapper-inner', 0, 'start'],
-    ['the inner wrapper, after the table', '.tableWrapper-inner', 1, 'end'],
+    ['the table frame, before its scroller', '.doc-table', 0, 'start'],
+    ['the table frame, after its scroller', '.doc-table', 1, 'end'],
+    ['the scroller, before the scroll area', '.doc-table-scroller', 0, 'start'],
+    ['the scroller, after the scroll area', '.doc-table-scroller', 1, 'end'],
+    ['the scroll viewport, before the table', '[data-radix-scroll-area-viewport]', 0, 'start'],
     ['the table, before its colgroup', 'table', 0, 'start'],
     ['the table, between colgroup and tbody', 'table', 1, 'start'],
     ['the table, after its tbody', 'table', 2, 'end'],
     ['the colgroup, which comes before the rows', 'colgroup', 0, 'start'],
-    ['the widgets container, which comes after the rows', '.table-widgets-container', 0, 'end'],
   ] as const)('maps %s to the table %s', (_name, selector, offset, side) => {
     const editor = open();
-    const view = editor.prosemirrorView!;
-    expect(view.posAtDOM(el(editor, selector), offset)).toBe(inside(editor, 'table')[side]);
+    const view = editor.prosemirrorView;
+    expect(view.posAtDOM(el(editor, selector), offset)).toBe(inside(editor, 'docTable')[side]);
   });
 
   it.each([
@@ -103,11 +108,4 @@ describe('posAtDOM on an element wrapping a node content (patched prosemirror-vi
     expect(view.posAtDOM(pre, offset)).toBe(inside(editor, 'codeBlock')[side]);
   });
 
-  it('maps the table block content element after its only child to the table end', () => {
-    const editor = open();
-    const view = editor.prosemirrorView!;
-    const content = el(editor, '.bn-block-content[data-content-type="table"]');
-    expect(view.posAtDOM(content, 0)).toBe(inside(editor, 'table').start);
-    expect(view.posAtDOM(content, content.childNodes.length)).toBe(inside(editor, 'table').end);
-  });
 });

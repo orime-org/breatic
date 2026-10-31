@@ -13,7 +13,7 @@
  */
 
 import { keyedStore } from '@web/lib/keyed-store';
-import { setHoveredMedia } from '@web/spaces/document/document-bars';
+import { mediaEvent } from '@web/spaces/document/document-bars';
 import type {
   MediaBlockActions,
   MediaBlockProps,
@@ -22,6 +22,7 @@ import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** What one container shows. */
 export interface MediaViewEntry {
+  readonly blockId: string;
   readonly type: MediaBlockType;
   readonly props: MediaBlockProps;
   readonly selected: boolean;
@@ -79,7 +80,7 @@ export function putMediaView(editor: object, host: HTMLElement, entry: MediaView
  */
 export function dropMediaView(editor: object, host: HTMLElement): void {
   // A block taken away under the pointer gets no leave event.
-  setHoveredMedia(editor, host, false);
+  mediaEvent(editor, { type: 'release', host });
   const views = store.get(editor);
   if (views.some(([held]) => held === host)) {
     store.set(editor, views.filter(([held]) => held !== host));

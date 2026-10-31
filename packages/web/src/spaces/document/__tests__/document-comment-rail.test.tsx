@@ -850,6 +850,90 @@ describe('the comment panel', () => {
     expect(empty.textContent).toBe('Nothing unresolved.');
   });
 
+  describe('the filter counts (inner#1199)', () => {
+    /** The count chip on each filter, open first; null where it has none. */
+    function filterLabels(): [string | null, string | null] {
+      return [
+        screen.queryByTestId('doc-comment-rail-filter-open-count')
+          ?.textContent ?? null,
+        screen.queryByTestId('doc-comment-rail-filter-all-count')
+          ?.textContent ?? null,
+      ];
+    }
+
+    it('shows no count while there is nothing to count', async () => {
+      show();
+      await pressCommentsRow();
+      await screen.findByTestId('doc-comment-rail');
+
+      expect(filterLabels()).toEqual([null, null]);
+      expect(
+        screen.getByTestId('doc-comment-rail-filter-open'),
+      ).toHaveTextContent(/^Unresolved$/);
+    });
+
+    it('counts unresolved threads, and all of them under "all"', async () => {
+      show();
+      await comment(0, 5, 'about alpha');
+      await comment(6, 11, 'about bravo');
+      await pressCommentsRow();
+      await waitFor(() => {
+        expect(filterLabels()).toEqual(['2', '2']);
+      });
+
+      const comments = handle.editor.getExtension(CommentsExtension)!;
+      const ids = [...comments.threadStore.getThreads().keys()];
+      await act(async () => {
+        await comments.threadStore.resolveThread({ threadId: ids[0]! });
+      });
+      await waitFor(() => {
+        expect(filterLabels()).toEqual(['1', '2']);
+      });
+
+      await act(async () => {
+        await comments.threadStore.resolveThread({ threadId: ids[1]! });
+      });
+      await waitFor(() => {
+        expect(filterLabels()).toEqual([null, '2']);
+      });
+
+      await act(async () => {
+        await comments.threadStore.unresolveThread({ threadId: ids[0]! });
+      });
+      await waitFor(() => {
+        expect(filterLabels()).toEqual(['1', '2']);
+      });
+    });
+
+    it('does not count a draft that has not been posted', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-rail');
+
+      expect(filterLabels()).toEqual([null, null]);
+    });
+
+    it('counts the cards on the panel, not a thread whose words are gone', async () => {
+      show();
+      await comment(0, 5, 'about alpha');
+      await comment(6, 11, 'about bravo');
+      await pressCommentsRow();
+      await waitFor(() => {
+        expect(filterLabels()).toEqual(['2', '2']);
+      });
+
+      const run = firstRun();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.delete(run.from, run.from + 5));
+      });
+
+      await waitFor(() => {
+        expect(filterLabels()).toEqual(['1', '1']);
+      });
+    });
+  });
+
   it('offers its controls on one of two overlapping threads, not both', async () => {
     // A20: pressing where two comments overlap lists both so the reader can
     // pick. Opening both puts two reply boxes on screen at once and neither

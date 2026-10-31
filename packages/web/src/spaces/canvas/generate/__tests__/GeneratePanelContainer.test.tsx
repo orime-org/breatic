@@ -65,6 +65,7 @@ import { toast } from 'sonner';
 import en from '@locales/en.json';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import type { PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useSocket } from '@web/data/yjs/use-socket';
 import {
@@ -104,6 +105,13 @@ function storedMode(): string {
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
 /**
+ * The placing callback `CanvasSpace` hands every panel (inner#1345 6.5); a
+ * case that picks a template passes a spy, every other case this stand-in.
+ * @returns Nothing.
+ */
+const NO_PLACE = (): undefined => undefined;
+
+/**
  * The container under a QueryClient, inside the Activity a Space body sits in.
  * @param client - The query client; the same one across re-renders keeps the
  *   tree mounted.
@@ -118,6 +126,7 @@ function containerTree(
     edges?: ContainerProps['edges'];
   },
   mode: 'visible' | 'hidden' = 'visible',
+  placeTemplate: PlaceTemplate = NO_PLACE,
 ): React.JSX.Element {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -162,6 +171,7 @@ function containerTree(
               }
               edges={graph?.edges ?? []}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={placeTemplate}
             />
           </CanvasContext.Provider>
         </ReactFlow>
@@ -176,14 +186,19 @@ function containerTree(
  * @param graph - Optional canvas graph override; defaults to a lone target.
  * @returns The render result.
  */
-function mountContainer(graph?: {
-  nodes?: ContainerProps['nodes'];
-  edges?: ContainerProps['edges'];
-}): ReturnType<typeof render> {
+function mountContainer(
+  graph?: {
+    nodes?: ContainerProps['nodes'];
+    edges?: ContainerProps['edges'];
+  },
+  placeTemplate?: PlaceTemplate,
+): ReturnType<typeof render> {
   return render(
     containerTree(
       new QueryClient({ defaultOptions: { queries: { retry: false } } }),
       graph,
+      'visible',
+      placeTemplate,
     ),
   );
 }
@@ -289,6 +304,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             nodes={[{ id: 'target', type: 'image', data: { handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
+            placeTemplate={() => undefined}
           />
         </ReactFlow>
       </CanvasContext.Provider>
@@ -475,6 +491,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -531,6 +548,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               ]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -1645,7 +1663,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
 
-  it('writes the template mode, model, params and prompt, mentioning the wired-in image, and reminds the reader', async () => {
+  it('hands placing the template mode, model, params and prompt, @ing the wired-in image, and reminds the reader', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL, TEMPLATE_MODEL]));
@@ -1655,44 +1673,62 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
       id: 'src',
       type: 'image',
       position: { x: -400, y: 0 },
-      data: { name: 'Hero', createdAt: 1000, createdBy: 'u1', locked: false, attachments: [] },
+      data: {
+        name: 'Hero',
+        content: 'https://cdn/hero.png',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        attachments: [],
+      },
     } as Parameters<typeof addNode>[2]);
     addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
-    mountContainer({
-      nodes: [
-        { id: 'target', type: 'image', data: { handling: false } },
-        { id: 'src', type: 'image', data: { handling: false } },
-      ],
-      edges: [{ id: 'e1', source: 'src', target: 'target' }],
-    });
+    const placeTemplate = vi.fn();
+    mountContainer(
+      {
+        nodes: [
+          { id: 'target', type: 'image', data: { handling: false } },
+          { id: 'src', type: 'image', data: { handling: false } },
+        ],
+        edges: [{ id: 'e1', source: 'src', target: 'target' }],
+      },
+      placeTemplate,
+    );
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.keyDown(await screen.findByTestId('generate-template-trigger'), { key: 'Enter' });
+    fireEvent.keyDown(await screen.findByTestId('generate-template-goal-comics-storyboards'), { key: 'ArrowRight' });
     fireEvent.click(await screen.findByTestId('generate-template-storyboard-grid-25'));
-    await waitFor(() => {
-      const d = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as {
-        mode?: string;
-        model?: string;
-        modelByMode?: Record<string, string>;
-        paramsByModel?: Record<string, Record<string, unknown>>;
-      };
-      expect(d.mode).toBe('i2i');
-      expect(d.model).toBe('nano-banana-pro-edit-ultra');
-      expect(d.modelByMode?.i2i).toBe('nano-banana-pro-edit-ultra');
-      expect(d.paramsByModel?.['nano-banana']).toEqual({ aspect_ratio: '16:9' });
-      expect(d.paramsByModel?.['nano-banana-pro-edit-ultra']).toMatchObject({
-        aspect_ratio: '1:1',
-        resolution: '4k',
-      });
+    await waitFor(() => expect(placeTemplate).toHaveBeenCalledTimes(1));
+    const [proposal, existing] = placeTemplate.mock.calls[0] as [
+      {
+        nodes: Array<{ mode?: string; model?: string; prompt?: Array<{ text?: string; ref?: number }> }>;
+        edges: unknown[];
+      },
+      ReadonlyMap<number, { nodeId: string; mention?: unknown; paramsByModel?: Record<string, Record<string, unknown>> }>,
+    ];
+    expect(existing.get(0)?.nodeId).toBe('target');
+    expect(proposal.nodes[0]).toMatchObject({ mode: 'i2i', model: 'nano-banana-pro-edit-ultra' });
+    expect(existing.get(0)?.paramsByModel?.['nano-banana']).toEqual({ aspect_ratio: '16:9' });
+    expect(existing.get(0)?.paramsByModel?.['nano-banana-pro-edit-ultra']).toMatchObject({
+      aspect_ratio: '1:1',
+      resolution: '4k',
     });
-    const prompt = getPromptFragment('p', 's', 'target', 'i2i')?.toString() ?? '';
-    expect(prompt).toContain('storyboard grid of exactly 5 rows');
-    // The picture wired in is left for the reader to @ by hand.
-    expect(prompt).not.toContain('sourceNodeId');
-    expect(prompt).toContain('[📎 Use @ to pick character or scene reference]');
-    expect(prompt).toContain('{✏️ the story}');
-    expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks, expect.anything());
+    const words = (proposal.nodes[0]?.prompt ?? []).map((seg) => seg.text ?? '').join('');
+    expect(words).toContain('storyboard grid of exactly 5 rows');
+    // The picture wired in is @'d for the reader (inner#1345 A3), not left to them.
+    const refs = (proposal.nodes[0]?.prompt ?? []).flatMap((seg) => (seg.ref === undefined ? [] : [seg.ref]));
+    expect(refs).toHaveLength(1);
+    expect(existing.get(refs[0] ?? -1)).toMatchObject({
+      nodeId: 'src',
+      mention: { sourceNodeId: 'src', label: 'Hero', kind: 'image', thumbnail: 'https://cdn/hero.png' },
+    });
+    // Nothing new, so nothing new is wired.
+    expect(proposal.nodes).toHaveLength(existing.size);
+    expect(proposal.edges).toEqual([]);
+    // `{✏️ the story}` is still the reader's to write.
+    expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks, expect.anything());
     listSpy.mockRestore();
   });
 });

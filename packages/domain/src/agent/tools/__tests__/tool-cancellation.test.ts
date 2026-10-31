@@ -60,6 +60,7 @@ describe("tools accept the cancellation signal", () => {
     expect(registeredTools().map(([name]) => name).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "judge_likelihood",
       "list_generation_models",

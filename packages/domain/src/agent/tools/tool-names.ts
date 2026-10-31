@@ -46,6 +46,13 @@ export const LIST_GENERATION_MODELS = "list_generation_models";
  */
 export const GET_PRODUCT_GUIDE = "get_product_guide";
 
+/**
+ * Read one generation template in full (inner#1807).
+ *
+ * Named here because the proposal tool's description points the model at it.
+ */
+export const GET_GENERATION_TEMPLATE = "get_generation_template";
+
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
@@ -63,6 +70,9 @@ export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
  * address is not ours yet.
  */
 export const SAVE_IMAGE = "save_image";
+
+/** Understands one ordered batch of images, video or audio. */
+export const UNDERSTAND_MEDIA = "understand_media";
 
 /**
  * Ask for a judgement over what the model is holding, with the odds (#282).

@@ -6,20 +6,21 @@
  *
  * A browser draws a table whose grid does not add up — a rowspan running past
  * the last row, a row with fewer cells than the others — and the clipboard
- * keeps it as written. BlockNote turns pasted HTML into blocks and back into
- * HTML before ProseMirror sees it (`ExportManager.pasteHTML`), and on the way
- * back it lays every cell out on a grid sized from the rows: a span past the
- * last row writes outside that grid and throws, so nothing is pasted
- * (`api/blockManipulation/tables/tables.ts:197-226`). A short row reaches
- * ProseMirror intact and `fixTables` fills it — at the start of the first row,
- * where it takes the missing cells to be under a span from above, which moves
- * that row's words to the right.
+ * keeps it as written. Read as written, a short row would stay short in the
+ * document: the table plugin's repairs that add cells are held back
+ * (`holdTableRepairs` in `document-table-nodes.tsx`), so it would show
+ * placeholder cells until a command on the table evens it.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
  * its end to the widest row, the shape the reader saw on the page.
+ *
+ * The same hook turns the tables a selection takes whole into empty lines
+ * before a paste whose ends stand in code blocks (inner#1619 T14).
  */
 
 import type { BlockNoteEditorOptions } from '@blocknote/core';
+
+import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /** BlockNote's paste hook, as this editor's options take it. */
 type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
@@ -77,12 +78,22 @@ export function evenPastedTables(html: string): string {
 /**
  * BlockNote's own paste, given the clipboard's HTML with its tables evened.
  * The clipboard is the event's, and BlockNote's handler reads it from there.
+ *
+ * BlockNote pastes plain text when both ends of the selection stand in code
+ * blocks. A selection taking a table whole whose end in it stands on a code
+ * block in a cell would paste that way although the body, with an empty line
+ * in the table's place, pastes as usual: its tables turn into those empty
+ * lines first (inner#1619 T14).
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
+ * @param context.editor - The editor pasted into.
  * @param context.defaultPasteHandler - BlockNote's own paste.
  * @returns Whether the paste was handled.
  */
-export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
+export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
+  const view = editor.prosemirrorView;
+  const { $from, $to } = view.state.selection;
+  if (heldTables(view.state.selection) !== null && $from.parent.type.spec.code && $to.parent.type.spec.code) swapHeldTables(view);
   const data = event.clipboardData;
   const html = data?.getData('text/html') ?? '';
   const even = evenPastedTables(html);

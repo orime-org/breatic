@@ -118,6 +118,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
@@ -185,6 +186,7 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
 export { getVoiceSampleConfig, voiceSampleUrl } from "@domain/model-catalog/voice-sample-config.js";
+export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
@@ -230,16 +232,52 @@ export {
   MediaUnavailable,
   UNDERSTAND_PINS,
   UnderstandRefused,
+  understandMediaInBatches,
+  LongMediaBatchFailureError,
+  openLongMediaBatchOperation,
+  longMediaInputDigest,
+  longMediaOperationId,
+  advanceLongMediaSegmentation,
   understandMediaAt,
   readingLimitsUntil,
 } from "@domain/understand/index.js";
+export {
+  openUnderstandOperation,
+  getUnderstandOperation,
+  listDueUnderstandDispatches,
+  applyUnderstandOperationEvent,
+  applyUnderstandDispatchEvent,
+  claimUnderstandOperationLease,
+  renewUnderstandOperationLease,
+  releaseUnderstandOperationLease,
+  beginUnderstandBatchAttempt,
+  markUnderstandBatchAttemptSending,
+  markUnderstandBatchAttemptUnknown,
+  saveUnderstandBatchAttemptResult,
+} from "@domain/understand/operation.repo.js";
 export type {
+  DueUnderstandDispatch,
+  OpenUnderstandOperationInput,
+  UnderstandOperationLease,
+  UnderstandOperationLeaseMutation,
+} from "@domain/understand/operation.repo.js";
+export type {
+  LongMediaBatchCheckpoint,
+  LongMediaBatchOperation,
+  LongMediaBatchOperationInput,
+  LongMediaBatchInterval,
+  LongMediaBatchStart,
+  LongMediaBatchLimits,
+  LongMediaSegmentReference,
   MediaKind,
   RefusalKind,
   UnavailableKind,
   UnderstandAnswer,
   UnderstandAt,
+  UnderstandMediaInBatchesRequest,
 } from "@domain/understand/index.js";
 
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
+
+export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";

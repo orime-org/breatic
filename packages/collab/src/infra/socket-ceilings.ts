@@ -30,12 +30,19 @@
  * memory. With both in force one unauthenticated socket's queue peaks at
  * frames of about 320 bytes, where the two ceilings meet: about 15–18 MB
  * resident per socket, measured (RSS varies with the machine's state). A client back from being offline replays
- * one frame per edit and can meet either ceiling first.
+ * one frame per edit and can meet either ceiling first. Each pending document
+ * also holds a hook payload outside both ceilings; the same patch parses the
+ * request URL once per connection, so that payload stays small whatever URL or
+ * Host the client sends, and every hook shares that one parse and must not
+ * mutate it (inner#1589). It also hands every frame to the frame reassembler
+ * before Hocuspocus sees it and, once the connection has authenticated a
+ * document, counts every frame, chunks included, as activity for the idle
+ * timeout (inner#1585).
  *
  *   pending documents    default 100    set to a full project's documents
  *   queued frame count   default 1000   byte ceiling / (shortest frame + its overhead)
  *   queued frame bytes   default 5 MB   left alone
- *   idle timeout         default 60 s   client resends awareness every 15 s, left alone
+ *   idle timeout         default 60 s   client resends awareness every 15 s and, once authenticated, every frame counts, left alone
  */
 import * as encoding from "lib0/encoding";
 import { defaultConfiguration, type Configuration } from "@hocuspocus/server";

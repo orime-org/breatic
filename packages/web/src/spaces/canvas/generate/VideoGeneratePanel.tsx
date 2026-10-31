@@ -19,6 +19,7 @@ import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
+import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 import type {
   VideoSlot,
   VideoSlotUrls,
@@ -208,7 +209,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   return (
-    <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div data-canvas-panel='' style={GENERATE_PANEL_WIDTH_STYLE} className='flex flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
         <VideoGenerateToolbar
           onReference={onAddReference}
