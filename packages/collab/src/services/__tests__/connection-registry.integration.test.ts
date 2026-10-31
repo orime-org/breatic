@@ -5,7 +5,8 @@
  * The cross-instance seat registry against a real Redis (inner#1034).
  *
  * Every new seat goes through one Lua script, in one of two modes: `arrive`
- * (the `connected` hook taking a seat) and `refresh` (a pong renewing one).
+ * (the `connected` hook taking a seat) and `refresh` (a sign of life
+ * renewing one, scored at the time the socket was last heard).
  * The script prunes, counts against the cap and, when the document is full,
  * may replace one of the arriving person's own EARLIER connections — all in
  * one step, so two handshakes can no longer both read "one seat left".
@@ -110,7 +111,7 @@ function build(
 /**
  * Put a member in a set as if another instance or connection had written it.
  * @param documentName - The document.
- * @param score - Its last-pong score.
+ * @param score - When it was last heard.
  * @param member - The member string.
  * @returns Once written.
  */
@@ -1116,8 +1117,9 @@ class World {
   }
 
   /**
-   * Act on a pong's answers the way the pong handler does. Every connection
-   * has a socket of its own, so whatever the pong returns is about `conn`.
+   * Act on a renewal's answers the way the liveness handler does. Every
+   * connection has a socket of its own, so whatever it returns is about
+   * `conn`.
    * @param conn - The connection whose socket answered.
    * @param items - What refreshSocket returned.
    */
@@ -1169,7 +1171,7 @@ class World {
   }
 
   /**
-   * A connection's socket answers a ping.
+   * A connection's socket shows a sign of life.
    * @param conn - The connection.
    */
   alive(conn: ModelConn): void {

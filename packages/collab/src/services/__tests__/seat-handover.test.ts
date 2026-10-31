@@ -11,8 +11,8 @@
  * held by a read-only connection for good.
  *
  * The first two are one shared function: the `connected` hook losing the race
- * for a seat and a pong finding its seat gone demote through it too, so the
- * frame cannot be forgotten on one path.
+ * for a seat and a sign of life finding its seat gone demote through it too,
+ * so the frame cannot be forgotten on one path.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

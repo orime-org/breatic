@@ -10,8 +10,8 @@
  *   handover      another of the same person's connections replaced its seat;
  *                 the replacing instance asks over the channel below
  *   race lost     an arrival's seat script (in the `connected` hook, or
- *                 retried on a pong) found the document full
- *   seat lost     a pong found a held seat gone and the document full
+ *                 retried on a sign of life) found the document full
+ *   seat lost     a sign of life found a held seat gone and the document full
  *
  * The last two also share their log line, through {@link demoteForSeat}, so
  * one tag carries the same fields wherever it is written.
@@ -21,10 +21,10 @@
  *   set `connection.readOnly`       or the connection goes on writing
  *   send an Authenticated(readonly) or that end never learns it is read-only
  *
- * A handover has a third: let the seat go, or the pong loop renews it and a
- * read-only connection holds a seat that never comes free again. The other
- * two paths have already dropped the seat in the registry by the time they
- * demote.
+ * A handover has a third: let the seat go, or the socket's signs of life
+ * renew it and a read-only connection holds a seat that never comes free
+ * again. The other two paths have already dropped the seat in the registry by
+ * the time they demote.
  *
  * Which instance holds a replaced connection is not knowable from the
  * instance that replaced it, so the request goes out on a Redis pub/sub
@@ -39,8 +39,8 @@
  *
  * A request that reaches nobody costs nothing: the seat is already gone and
  * so, in that case, is the connection. A request that is lost while the
- * connection lives is caught by that connection's next pong, which finds its
- * seat gone.
+ * connection lives is caught by that connection's next sign of life, which
+ * finds its seat gone.
  */
 
 import { createLogger, type Redis } from "@breatic/core";
@@ -90,8 +90,8 @@ export function demoteConnection(
 export interface SeatDegrade {
   /**
    * `connection_cap_race_degraded`: an arrival (in `connected`, or retried on
-   * a pong) found the document full. `connection_seat_lost`: a pong found the
-   * seat gone and the document full.
+   * a sign of life) found the document full. `connection_seat_lost`: a sign
+   * of life found the seat gone and the document full.
    */
   reason: "connection_cap_race_degraded" | "connection_seat_lost";
   /** The socket the connection rides. */

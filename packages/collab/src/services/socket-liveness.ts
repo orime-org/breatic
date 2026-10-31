@@ -13,14 +13,17 @@
  * its own tests, because those call it directly.
  *
  * That is not hypothetical. Presence went a whole change without being wired
- * to the pong while its expiry was cut to two ping periods, and every test in
- * the package stayed green.
+ * to the socket's signs of life while its expiry was cut to two ping periods,
+ * and every test in the package stayed green.
+ *
+ * Both refreshes record the time the socket was last heard, which the
+ * per-socket table hands over, not the time they run.
  *
  * The seat renewal can answer back, and the answers are acted on here too:
- * `replaced` (an arrival retried on this pong took one of the person's
- * earlier seats) asks for that connection to be demoted; `full` (the retried
- * arrival found no seat) and `lost` (a held seat was gone and the document
- * full) demote this socket's connection on that document.
+ * `replaced` (an arrival retried on this sign of life took one of the
+ * person's earlier seats) asks for that connection to be demoted; `full` (the
+ * retried arrival found no seat) and `lost` (a held seat was gone and the
+ * document full) demote this socket's connection on that document.
  */
 
 import { createLogger } from "@breatic/core";
@@ -55,7 +58,7 @@ export interface SocketLivenessDeps {
   presencePolicy: PresencePolicy;
 }
 
-/** One connection on the socket, as much of it as a pong needs. */
+/** One connection on the socket, as much of it as a refresh needs. */
 type LiveSocketConnection = SocketConnection & DemotableConnection;
 
 /**

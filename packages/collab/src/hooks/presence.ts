@@ -18,13 +18,14 @@
  *
  * ## Presence is asserted, never denied
  *
- * Two things write "online": a connection arriving, and its socket answering
- * a ping. NOTHING
- * writes "offline" when a socket closes, and that is the design rather than an
- * oversight. A disconnect is one SOCKET ending, while a record is keyed on the
- * PERSON — and the machine losing that socket cannot see whether they still
- * hold one somewhere else. So absence is never announced; it is inferred, by
- * {@link sweepStalePresence}, from nobody anywhere refreshing the timestamp.
+ * Two things write "online": a connection arriving, and its socket showing a
+ * sign of life (a pong, a ping or any message), which stamps the time the
+ * socket was last heard. NOTHING writes "offline" when a socket closes, and
+ * that is the design rather than an oversight. A disconnect is one SOCKET
+ * ending, while a record is keyed on the PERSON — and the machine losing that
+ * socket cannot see whether they still hold one somewhere else. So absence
+ * is never announced; it is inferred, by {@link sweepStalePresence}, from
+ * nobody anywhere refreshing the timestamp.
  *
  * That inference is right across every instance without any of them
  * coordinating, because the record lives in the shared meta document: whichever
@@ -39,12 +40,14 @@
  *
  * ## Every refresh is written
  *
- * A socket has exactly one meta connection, so one refresh is one write, and
- * the per-socket table already holds refreshes to two per ping period. The widest gap between two writes is therefore the
- * transport's ping period, whatever the page is doing: the pong is answered by
- * the browser's network stack under RFC 6455 and never runs JavaScript, so a
- * tab hidden long enough for its timers to be throttled keeps answering at the
- * same rate as one in the foreground.
+ * A socket has exactly one meta connection, so one refresh is one write. The
+ * widest gap between two writes is about one ping period, because the pong alone
+ * guarantees one sign of life per period whatever the page is doing: it is
+ * answered by the browser's network stack under RFC 6455 and never runs
+ * JavaScript, so a tab hidden long enough for its timers to be throttled keeps
+ * answering at the same rate as one in the foreground. Messages only add signs
+ * of life, and the per-socket table's throttle bounds the narrowest gap
+ * between two writes at half a period.
  *
  * The meta doc's socket carries more than presence — the Space and tab RPCs
  * ride it as stateless messages, and carets ride the canvas and document files
@@ -147,7 +150,7 @@ export function markOnline(args: {
  * @param args - Whose connection answered, and when.
  * @param args.document - The meta document to write into.
  * @param args.userId - The user whose connection this refresh came from.
- * @param args.now - Current time in ms.
+ * @param args.now - When the connection was last heard, in ms.
  * @returns True when the record was written, false when there is none to write.
  */
 export function touchLastSeen(args: {

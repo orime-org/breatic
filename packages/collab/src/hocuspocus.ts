@@ -146,9 +146,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
   // What this instance holds, indexed by socket. A sign of life (a pong, a
   // ping or any message) arrives on a socket and refreshes every seat that
-  // socket carries plus the presence record of
-  // whoever owns its meta connection; a demote request names a socket and
-  // asks whether it is one of ours.
+  // socket carries plus the presence record of whoever owns its meta
+  // connection, both to the time the socket was last heard; a demote request
+  // names a socket and asks whether it is one of ours.
   //
   // Both of those answer the same question — is this connection still there —
   // so both hang off what the transport itself keeps the socket open on. Of
@@ -157,9 +157,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // browser throttles to once a minute in a tab hidden for over five minutes,
   // so they add refreshes but are never relied on.
   //
-  // A renewal can report that an arrival retried on this pong replaced one of
-  // the person's earlier seats. The demote channel that carries that request
-  // is built below, from this table, so the handler reaches it late.
+  // A renewal can report that an arrival retried on a sign of life replaced
+  // one of the person's earlier seats. The demote channel that carries that
+  // request is built below, from this table, so the handler reaches it late.
   const liveConnections = createLiveConnections({
     onAlive: createLivenessHandler({
       refreshSeats: (socketId: string, heardAt: number): Promise<SeatRefreshResult[]> =>
@@ -197,7 +197,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // Subscribing is part of starting: an instance that silently failed to
   // subscribe would keep taking seats and never demote the connections it
   // replaced, so those people would hold a seat and a writable connection at
-  // once until that connection's next pong.
+  // once until that connection's next sign of life.
   await seatHandover.start();
 
   // Native upgrade admission and document authentication share the
@@ -490,8 +490,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
             cap: auth.seatCap,
           });
         }
-        // `unknown` keeps writing and retries on the next pong (the registry
-        // logged it); `gone` means the connection left or was demoted first.
+        // `unknown` keeps writing and retries on the next sign of life (the
+        // registry logged it); `gone` means the connection left or was demoted
+        // first.
       }
 
       // The id comes from what onAuthenticate resolved out of the credential,

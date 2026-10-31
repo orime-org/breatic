@@ -2,19 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One pong, two facts — and what the seat half answers.
+ * One sign of life, two facts — and what the seat half answers.
  *
  * Both facts already have their own tests, and both of those pass when the
- * pong never reaches them — they call the functions directly. What is asserted
- * here is the wiring, which is what actually went missing: presence spent a
- * whole change unconnected to the pong while its expiry was cut to two ping
- * periods, and every test in the package stayed green.
+ * sign of life never reaches them — they call the functions directly. What is
+ * asserted here is the wiring, which is what actually went missing: presence
+ * spent a whole change unconnected to the socket's signs of life while its
+ * expiry was cut to two ping periods, and every test in the package stayed
+ * green. Both facts are written at the time the socket was last heard.
  *
  * A renewal can also answer back, and the handler acts on it: `replaced`
  * asks for the other connection to be demoted, while `full` (an arrival
- * retried on this pong found no seat) and `lost` (a held
- * seat was gone and the document full) demote this socket's connection on
- * that document.
+ * retried on this sign of life found no seat) and `lost` (a held seat was
+ * gone and the document full) demote this socket's connection on that
+ * document.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -165,7 +166,8 @@ function warnedWith(tag: string, fields: Record<string, unknown> = {}): boolean 
 }
 
 /**
- * Fire one pong whose seat renewal answers `answers`, and let it land.
+ * Hand over one sign of life whose seat renewal answers `answers`, and let it
+ * land.
  * @param answers - What the renewal reports.
  * @param connections - What the socket carries.
  * @returns The demote spy and the presence document, if any.
@@ -185,7 +187,7 @@ async function aliveWith(
   return { requestDemote };
 }
 
-describe("a pong acts on what the seat renewal answers (inner#1034)", () => {
+describe("a sign of life acts on what the seat renewal answers (inner#1034)", () => {
   beforeEach(() => {
     logWarn.mockClear();
   });

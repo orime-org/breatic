@@ -3,15 +3,17 @@
 
 /**
  * The three bounded windows in which a writable content connection may hold
- * no seat (inner#1034 invariant 3), each closed within one pong:
+ * no seat (inner#1034 invariant 3), each closed within one sign of life:
  *
  *   1  between the handshake and the `arrive` reply
- *   2  after an `arrive` that Redis could not answer, until the next pong
- *   3  after being replaced, until the demote arrives or the next pong
+ *   2  after an `arrive` that Redis could not answer, until the next sign of
+ *      life
+ *   3  after being replaced, until the demote arrives or the next sign of life
  *
- * Real Redis, the real registry, the real pong handler and the real demote
- * channel. The connections are stand-ins carrying `readOnly` and a socket
- * whose `send` is recorded; pongs are fired by calling the handler directly.
+ * Real Redis, the real registry, the real liveness handler and the real
+ * demote channel. The connections are stand-ins carrying `readOnly` and a
+ * socket whose `send` is recorded; signs of life are fired by calling the
+ * handler directly.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +32,7 @@ const EXPIRY = 60_000;
 const T = 1_700_000_000_000;
 const DOC = "doc";
 
-/** A connection as the pong handler and the demote channel see it. */
+/** A connection as the liveness handler and the demote channel see it. */
 interface FakeConn {
   readOnly: boolean;
   document: object;
@@ -70,7 +72,7 @@ interface Rig {
   w: WrappedRedis;
   handover: SeatHandover;
   sockets: Map<string, Map<string, FakeConn>>;
-  /** Fire a pong on a socket and wait until its consequences have landed. */
+  /** Fire a sign of life on a socket and wait until its consequences have landed. */
   alive(socketId: string): Promise<void>;
   /** Register a connection under its socket. */
   hold(socketId: string, c: FakeConn): FakeConn;
@@ -79,7 +81,7 @@ interface Rig {
 }
 
 /**
- * Wire a registry, a demote channel and the pong handler.
+ * Wire a registry, a demote channel and the liveness handler.
  * @param real - Whether the demote channel uses real pub/sub (else publishes go nowhere).
  * @returns The rig.
  */

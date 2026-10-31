@@ -123,13 +123,13 @@ describe("presence — the server records who is here", () => {
   });
 });
 
-describe("presence — the timestamp tracks the socket's pong", () => {
-  it("moves the timestamp forward on every pong", () => {
+describe("presence — the timestamp tracks the socket's signs of life", () => {
+  it("moves the timestamp forward on every refresh", () => {
     // Every one of them, with nothing skipped. A socket has exactly one meta
-    // connection, so one pong is one write and there is no burst to
-    // rate-limit; the widest gap between two writes is the transport's ping
-    // period. A skip here would silently widen that gap past what the
-    // threshold is sized for.
+    // connection, so one refresh is one write, and the per-socket table has
+    // already throttled the socket's signs of life; the widest gap between
+    // two writes is about the transport's ping period. A skip here would
+    // silently widen that gap past what the threshold is sized for.
     const doc = emptyMetaDoc();
     markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
@@ -144,7 +144,7 @@ describe("presence — the timestamp tracks the socket's pong", () => {
     expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_002);
   });
 
-  it("puts a user back online when their next pong arrives", () => {
+  it("puts a user back online on their next sign of life", () => {
     // The sweep runs constantly, so it can flip somebody who is still here —
     // a pong delayed past the threshold by a slow network is enough. The next
     // one is proof they are connected, and proof outranks the inference that

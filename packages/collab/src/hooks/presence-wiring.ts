@@ -14,9 +14,10 @@
  *
  * ## Presence rides the transport, not the page
  *
- * A record moves forward on one thing: the socket answering its ping. The
- * refresh that does it is the only one exported, so nothing can quietly wire
- * the roster back onto something the browser is free to throttle.
+ * A record moves forward on one thing: the socket's own sign of life (a pong,
+ * a ping or any message), stamped with the time the socket was last heard.
+ * The refresh that does it is the only one exported, so nothing can quietly
+ * wire the roster back onto something the browser is free to throttle.
  *
  * ## There is deliberately no disconnect function here
  *
@@ -151,7 +152,7 @@ export function recordPresenceOnConnect(
  * (`services/live-connections.ts`) and `DemotableConnection`
  * (`services/seat-handover.ts`) describe, each naming what its own reader
  * touches. The compiler holds this one to `HeldConnection`: the per-socket
- * table hands its map straight to the pong handler built from this.
+ * table hands its map straight to the liveness handler built from this.
  */
 export interface SocketConnection {
   /** Connection context established by `onAuthenticate`. */

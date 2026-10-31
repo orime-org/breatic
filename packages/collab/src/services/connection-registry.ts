@@ -16,8 +16,9 @@
  *   key    = `{env}:collab:seats:{documentName}`
  *   member = `{userId}:{arrivedAtMs}:{instanceId}:{socketId}`
  *   score  = epoch ms this connection was last heard from — the moment it
- *            took the seat, then each time its socket showed a sign of
- *            life (a pong, a ping or any message) after that
+ *            took the seat, then the time of its socket's latest sign of
+ *            life (a pong, a ping or any message) at each renewal, not the
+ *            time the renewal runs
  *
  * `arrivedAtMs` is the moment the connection's handshake for this document
  * began. It orders one person's connections: when the document is full, an
@@ -28,8 +29,8 @@
  * prunes, counts against the cap and, when the document is full, replaces one
  * of the same person's earlier seats — in one step, so two handshakes can
  * never both read "one seat left". It runs in two modes: `arrive` (the
- * `connected` hook taking a seat, and a pong retrying an arrival Redis could
- * not answer) and `refresh` (a pong renewing a seat it holds). Only `arrive`
+ * `connected` hook taking a seat, and a sign of life retrying an arrival Redis
+ * could not answer) and `refresh` (a sign of life renewing a seat it holds). Only `arrive`
  * replaces; a `refresh` whose member is gone re-takes a seat when there is
  * room and otherwise reports the seat lost.
  *
@@ -49,7 +50,7 @@
  * (over-cap connections degrade to read-only, they are not rejected), so a
  * Redis outage must NOT lock everyone out — `count` returns 0 on error,
  * `takeSeat` answers `unknown` (the connection keeps writing and retries its
- * arrival on the next pong), and the release paths swallow errors.
+ * arrival on the next sign of life), and the release paths swallow errors.
  *
  * Meta-doc exemption is the CALLER's policy (the auth hook decides which
  * connections get a ceiling), not this module's.
@@ -219,12 +220,12 @@ export type TakeSeatResult =
   | { outcome: "replaced"; replaced: string }
   /** The document was full and nothing could be taken. */
   | { outcome: "full"; liveCount: number }
-  /** Redis could not answer; the next pong retries the arrival. */
+  /** Redis could not answer; the next sign of life retries the arrival. */
   | { outcome: "unknown" }
   /** The connection was released or demoted before the answer came back. */
   | { outcome: "gone" };
 
-/** Something a pong's renewal found that its caller has to act on. */
+/** Something a renewal found that its caller has to act on. */
 export type SeatRefreshResult =
   /** A retried arrival took one of this person's earlier seats. */
   | { documentName: string; outcome: "replaced"; replaced: string }
@@ -438,7 +439,7 @@ export function createConnectionRegistry(
    * A reply whose entry has been removed or replaced is dropped without a
    * trace: whoever removed it already sent the ZREM. `full` removes the entry
    * and releases its member. A Redis error leaves the entry's state as it
-   * was, so an arrival is retried as an arrival on the next pong.
+   * was, so an arrival is retried as an arrival on the next sign of life.
    * @param socketId - The socket.
    * @param documentName - The document.
    * @param entry - The entry, already marked in flight.
@@ -578,7 +579,7 @@ export function createConnectionRegistry(
    * Let go of a seat whose connection was demoted.
    *
    * Both halves are needed: the member comes out of this instance's map so no
-   * pong touches it again, and out of Redis — the replacing script already
+   * sign of life touches it again, and out of Redis — the replacing script already
    * removed it, but a script of this entry still in flight could have
    * written it back, and this ZREM runs after it. Removing a member that is
    * already gone is a no-op.

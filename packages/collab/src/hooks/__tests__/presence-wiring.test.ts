@@ -181,11 +181,12 @@ async function beat(client: LiveClient, clientId: number): Promise<void> {
 }
 
 /**
- * The transport answering a ping on a socket that carries the meta document.
+ * A sign of life (a pong, a ping or any message) on a socket that carries the
+ * meta document.
  *
  * This is what refreshes presence now. The socket's connections are what the
- * per-socket table hands the pong callback, so the shape here is that map with
- * the two fields presence reads off each connection.
+ * per-socket table hands the liveness callback, so the shape here is that map
+ * with the two fields presence reads off each connection.
  * @param userId - Whose socket answered.
  * @param options - What that socket carries.
  * @param options.document - The meta document on it, defaulting to the live one.
@@ -271,7 +272,7 @@ describe("presence wiring — a connection puts you on the list", () => {
   });
 });
 
-describe("presence wiring — a pong refreshes and sweeps", () => {
+describe("presence wiring — a sign of life refreshes and sweeps", () => {
   it("clears a record nobody is refreshing when a pong arrives", async () => {
     // The sweep runs off other people's sockets answering, which is what makes
     // it able to clean up after a crashed server: the first person back starts

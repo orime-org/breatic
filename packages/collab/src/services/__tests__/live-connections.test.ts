@@ -4,7 +4,8 @@
 /**
  * The per-socket table, and the one listener it hangs off each socket.
  *
- * Everything downstream of a pong — every seat's score, every presence record —
+ * Everything downstream of a sign of life (a pong, a ping or any message) —
+ * every seat's score, every presence record —
  * rides on this listener being attached exactly once per socket and firing.
  * Nothing else in the repo asserts that, so a change that attached it per
  * document, or stopped attaching it at all, would leave the whole suite green
@@ -85,7 +86,7 @@ describe("live connections — one listener per socket", () => {
     expect(second.listeners.get("pong")).toBeUndefined();
   });
 
-  it("hands the pong callback everything that socket carries", () => {
+  it("hands the liveness callback everything that socket carries", () => {
     const onAlive = vi.fn();
     const table = createLiveConnections({ onAlive, pingIntervalMs: 30_000 });
     const meta = fakeConnection({ kind: "meta" });
@@ -330,7 +331,7 @@ describe("live connections — a refresh carries the time its socket was last he
   });
 });
 
-describe("live connections — a message or a ping counts as a pong, as the transport counts it", () => {
+describe("live connections — a message or a ping is a sign of life, as the transport counts it", () => {
   const PING = 30_000;
 
   afterEach(() => {
