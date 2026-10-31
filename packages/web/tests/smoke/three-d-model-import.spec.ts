@@ -135,27 +135,38 @@ async function importModel(page: Page, file: SceneModelInput, name: string, entr
 async function holdRegistration(page: Page, key: Promise<string>, onCompleted: (assetId: string) => void, released: Promise<void>): Promise<() => Promise<void>> {
   const pattern = '**/api/v1/assets/upload-status**';
   let held = false;
+  const handling = new Set<Promise<void>>();
   /**
    * Hold only this operation's first real completed status.
    * @param route - Original browser status request.
    * @throws {Error} When the backend request cannot be proxied.
    */
   const capture = async (route: Route): Promise<void> => {
-    const response = await route.fetch();
-    if (response.status() === 200) {
-      const body = await response.json() as { data: { items: UploadStatus[] } };
-      const storageKey = await key;
-      const result = body.data.items.find((item) => item.key === storageKey && item.state === 'completed');
-      if (!held && result?.state === 'completed') {
-        held = true;
-        onCompleted(result.result.assetId);
-        await released;
+    const finished = Promise.withResolvers<void>();
+    handling.add(finished.promise);
+    try {
+      const response = await route.fetch();
+      if (response.status() === 200) {
+        const body = await response.json() as { data: { items: UploadStatus[] } };
+        const storageKey = await key;
+        const result = body.data.items.find((item) => item.key === storageKey && item.state === 'completed');
+        if (!held && result?.state === 'completed') {
+          held = true;
+          onCompleted(result.result.assetId);
+          await released;
+        }
       }
+      await route.fulfill({ response });
+    } finally {
+      handling.delete(finished.promise);
+      finished.resolve();
     }
-    await route.fulfill({ response });
   };
   await page.route(pattern, capture);
-  return (): Promise<void> => page.unroute(pattern, capture);
+  return async (): Promise<void> => {
+    await Promise.all([...handling]);
+    await page.unroute(pattern, capture);
+  };
 }
 
 /**
@@ -282,6 +293,7 @@ test('a selected ZIP entry preserves original resources through registration and
     await importModel(page, file, 'Selected ZIP character', 'models/second.gltf');
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
     const object = (await sceneObjects(page, id))[0];
+    object.position.forEach((value, axis) => expect(value).toBeCloseTo([-1, 0, 0][axis], 12));
     if (object.model.kind !== 'asset') throw new Error('Expected a registered ZIP model');
     const asset = await dataOf<{ url: string; mimeType: string; sizeBytes: number }>(
       await page.request.get(`/api/v1/projects/${smokeProjectId()}/three-d/assets/${object.model.assetId}`), 'resolve the registered model package',
@@ -299,6 +311,8 @@ test('a selected ZIP entry preserves original resources through registration and
     await page.reload();
     await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
     expect(await sceneObjects(page, id)).toMatchObject([{ id: object.id, name: 'Selected ZIP character', model: object.model }]);
+    await visibleSpace(page).getByTestId('three-d-viewport').press('f');
+    await expect.poll(async () => (await sceneView(page)).target).toEqual([0, 0.5, 0]);
   } finally {
     await deleteSpace(page, id);
   }
@@ -388,7 +402,11 @@ for (const [codec, label] of [['draco', 'Draco'], ['meshopt', 'EXT Meshopt'], ['
       await dialog.locator('input[type="file"]').first().setInputFiles([
         `${directory}/${codec}.gltf`, ...(codec === 'ktx2' ? [`${directory}/normal.ktx2`] : []),
       ]);
-      await expect(dialog.getByText('Model and accompanying files are ready', { exact: true })).toBeVisible({ timeout: test.info().timeout });
+      const failure = dialog.locator('p.text-status-error');
+      await Promise.race([
+        dialog.getByText('Model and accompanying files are ready', { exact: true }).waitFor({ state: 'visible', timeout: test.info().timeout }),
+        failure.waitFor({ state: 'visible', timeout: test.info().timeout }).then(async () => { throw new Error(await failure.innerText()); }),
+      ]);
       await previewReady(dialog);
       await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
       expect(await sceneObjects(page, id)).toEqual([]);
@@ -494,7 +512,9 @@ test('failed model transfer and loading retain existing objects and retry the sa
     await name.fill('Retried character');
     await roomForUploads(1);
     await dialog.getByRole('button', { name: 'Import to scene', exact: true }).click();
-    await expect(dialog.getByText('The model could not be uploaded. Try again.', { exact: true })).toBeVisible({ timeout: test.info().timeout });
+    const transferFailure = dialog.locator('p.text-status-error');
+    await expect(transferFailure).toBeVisible({ timeout: test.info().timeout });
+    expect(await transferFailure.innerText()).toBe('The model could not be uploaded. Try again.');
     await expect(name).toHaveValue('Retried character');
     await previewReady(dialog);
     expect(await sceneObjects(page, id)).toEqual([original]);
@@ -596,4 +616,3 @@ test('registration retains an asset across live permission loss and places it on
     }
   }
 });
-

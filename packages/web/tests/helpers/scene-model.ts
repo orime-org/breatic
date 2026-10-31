@@ -82,7 +82,9 @@ export function sceneZip(token: string, multiple = false): SceneModelInput {
   const { json, geometry, image } = sourceModel(token);
   const files: Record<string, Uint8Array> = { 'models/scene.gltf': strToU8(JSON.stringify(json)),
     'models/mesh.bin': geometry, 'models/color.png': image };
-  if (multiple) files['models/second.gltf'] = strToU8(JSON.stringify({ ...json, extras: { sourceIdentity: `${token}:second` } }));
+  if (multiple) files['models/second.gltf'] = strToU8(JSON.stringify({ ...json,
+    nodes: [{ name: 'Second original surface', mesh: 0, scale: [2, 1, 1] }],
+    extras: { sourceIdentity: `${token}:second` } }));
   return { name: 'character.zip', mimeType: 'application/zip', buffer: Buffer.from(zipSync(files, { level: 0 })) };
 }
 
