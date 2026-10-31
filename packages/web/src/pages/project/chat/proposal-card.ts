@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { feedsOf, layersOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
+import { TEMPLATE_GUIDE_KEY, layersOf, layoutFeedsOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -74,12 +74,36 @@ export interface PanelLines {
  *
  * A generation has no counterpart here: what it makes does not exist yet, so
  * there is nothing to draw. The difference is not a preference about cards.
+ * A template's guide text node is left to {@link guidesOf}.
  * @param proposal - The proposal the card draws.
- * @returns Every node carrying finished words.
+ * @returns Every node carrying finished words, guides aside.
  * @throws {never} Never.
  */
 export function writtenOf(proposal: CanvasProposal): ProposalNode[] {
-  return proposal.nodes.filter((n) => n.role === 'written');
+  return proposal.nodes.filter((n) => n.role === 'written' && !isGuide(n));
+}
+
+/**
+ * The template guide text nodes, in the order they were proposed (inner#1345).
+ *
+ * Their steps come after generating, so the card draws them after what is
+ * left to do first.
+ * @param proposal - The proposal the card draws.
+ * @returns Every guide text node.
+ * @throws {never} Never.
+ */
+export function guidesOf(proposal: CanvasProposal): ProposalNode[] {
+  return proposal.nodes.filter((n) => n.role === 'written' && isGuide(n));
+}
+
+/**
+ * Whether a node is a template's guide text node.
+ * @param node - The proposed node.
+ * @returns True for a guide.
+ * @throws {never} Never.
+ */
+function isGuide(node: ProposalNode): boolean {
+  return node.templateNode?.key === TEMPLATE_GUIDE_KEY;
 }
 
 /**
@@ -110,7 +134,8 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
   const run = runsOf(proposal);
   const groups = new Map<number, Map<number, ShapeChip[]>>();
   proposal.nodes.forEach((node, at) => {
-    const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined };
+    // A template's resource lands holding the template's file: we fill it, not the reader.
+    const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined && node.resource === undefined };
     const depth = layer[at] ?? 0;
     const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
     home.set(depth, [...(home.get(depth) ?? []), chip]);
@@ -124,16 +149,16 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
 /**
  * Which run of the flow each node belongs to.
  *
- * Every node an edge or a slot fill touches is in the same run as the node at
- * its other end, whichever way it points: what matters for drawing is that
- * they are one piece of work, not which of them came first.
+ * Every node an edge, a slot fill or a template guide touches is in the same
+ * run as the node at its other end, whichever way it points: what matters for
+ * drawing is that they are one piece of work, not which of them came first.
  * @param proposal - The proposal the card draws.
  * @returns One run number per node, in the proposal's own order.
  * @throws {never} Never.
  */
 function runsOf(proposal: CanvasProposal): number[] {
   const run = proposal.nodes.map((_, at) => at);
-  const feeds = feedsOf(proposal);
+  const feeds = layoutFeedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
     for (const edge of feeds) {

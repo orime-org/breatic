@@ -25,7 +25,7 @@ import { FINISHED, finishedSpending, finishing } from "../helpers/model-double.j
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
@@ -119,7 +119,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 /**
@@ -204,7 +204,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfTooLong, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -222,6 +222,7 @@ describe("what a plain chat turn hands the model", () => {
     expect(names).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "list_generation_models",
       "list_project_activity",
@@ -284,11 +285,11 @@ describe("a turn that failed", () => {
     // already finished streaming, and shorten nothing until the turn after.
     await runTurn(saidAndSpent("hi", 100));
 
-    expect(foldIfOverBudget).toHaveBeenCalledTimes(1);
+    expect(foldIfTooLong).toHaveBeenCalledTimes(1);
     // The user's message is stored before the assembly, the reply after the
     // stream ends. The check sits between them.
     const [asked, replied] = addMessage.mock.invocationCallOrder;
-    const looked = foldIfOverBudget.mock.invocationCallOrder[0]!;
+    const looked = foldIfTooLong.mock.invocationCallOrder[0]!;
     expect(looked).toBeGreaterThan(asked!);
     expect(looked).toBeLessThan(replied!);
   });

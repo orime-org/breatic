@@ -26,6 +26,7 @@ vi.mock('@hocuspocus/provider', async () => {
       awareness: Awareness;
       constructor(config: { document: Y.Doc }) { this.awareness = new RealAwareness(config.document); }
       on(): void {}
+      off(): void {}
       attach(): void {}
       destroy(): void { this.awareness.destroy(); }
     },

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
+  Box,
   Clock,
   Eye,
   FileText,
@@ -71,11 +72,12 @@ interface SpaceDrawerProps {
 
 const TYPE_META: Record<
   SpaceType,
-  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' }
+  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' }
 > = {
   canvas: { icon: Palette, labelKey: 'spaces.kind.canvas' },
   document: { icon: FileText, labelKey: 'spaces.kind.document' },
   timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
+  '3d': { icon: Box, labelKey: 'spaces.kind.threeD' },
 };
 
 // The row's own layout, the same whether it is the row's button or, while the

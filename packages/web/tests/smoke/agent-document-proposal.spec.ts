@@ -13,7 +13,11 @@
  */
 
 import { expect, type Page, type Route } from 'playwright/test';
+import type { DocumentProposal } from '@breatic/shared';
+import type { DocumentEditorHandle } from '../../src/spaces/document/document-editor-cache';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { test } from '../helpers/slot';
+import { pressAndSettle } from '../helpers/editor-keys';
 import { startNewConversation } from '../helpers/conversation';
 import { openCommentRail } from '../helpers/document-body';
 import { openSmokeProject } from '../helpers/project';
@@ -36,6 +40,16 @@ const created: string[] = [];
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  // Keep late document modules in Resource Timing for liveModuleUrl; a cold
+  // editor load exceeds the browser's default resource-entry capacity.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(5000));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Runtime.enable');
+  cdp.on('Runtime.consoleAPICalled', (event: { type: string; args: Array<{ value?: unknown }>; stackTrace?: unknown }) => {
+    if (event.type === 'error' && event.args.some((arg) => String(arg.value).includes('flushSync was called'))) {
+      void test.info().attach('table-mount-console-stack', { body: JSON.stringify(event.stackTrace), contentType: 'application/json' });
+    }
+  });
   await openSmokeProject(page);
 });
 
@@ -181,6 +195,29 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await expect(rail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
 });
 
+test('a manual comment filter survives a real Space switch after an Agent View', async () => {
+  const id = await openDocumentWithText();
+  await sendTheOpenSpace();
+  await answerWith(onSecondBlock({ kind: 'comment', quote: 'her bags packed', body: 'Why is she leaving?' }));
+  const card = await askForTheCard();
+  await card.getByRole('button').first().click();
+  await expect(card).toHaveAttribute('data-state', 'applied');
+  const rail = visibleSpace(page).getByTestId('doc-comment-rail');
+  await expect(rail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+  await rail.getByTestId('doc-comment-rail-filter-open').click();
+  created.push(await createSpace(page, 'canvas', `comment-filter-switch-${String(Date.now())}`));
+  await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
+  await test.info().attach('hidden-document-body', {
+    body: JSON.stringify({ loadingBodies: await page.locator(`[data-testid="document-space"][data-space-id="${id}"] [data-testid="document-space-loading"]`).count() }),
+    contentType: 'application/json',
+  });
+  await page.getByTestId(`space-tab-name-${id}`).click();
+  await expect(rail).toBeVisible();
+  await expect(rail.getByTestId('doc-comment-rail-filter-open')).toHaveAttribute('aria-pressed', 'true');
+  await card.getByRole('button').click();
+  await expect(rail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+});
+
 /** A table wider than the body column: its second column holds `MIDCELL`, its last `LASTCELL`. */
 const WIDE_TABLE = [
   `| ${Array.from({ length: 8 }, (_, i) => `Column ${String(i + 1)}`).join(' | ')} |`,
@@ -229,13 +266,13 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
 
   await page.unroute('**/chat/message');
   await answerWith((blocks, spaceId) => {
-    const table = blocks.find((b) => b.type === 'table')!;
+    const table = blocks.find((b) => b.type === 'docTable')!;
     return {
       ...onSecondBlock({})(blocks, spaceId),
       kind: 'comment',
       blockId: table.id,
       original: table.text,
-      blockType: 'table',
+      blockType: 'docTable',
       quote: 'LASTCELL',
       body: 'Is this the last shot?',
     };
@@ -246,6 +283,26 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await expect(comment).toHaveAttribute('data-state', 'applied');
   await expect.poll(commentInTable).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
   expect((await commentInTable()).scrolled).toBeGreaterThan(0);
+
+  // A new explicit View reaches the same final consumer while it stays open.
+  await page.evaluate(() => {
+    for (const frame of document.querySelectorAll<HTMLElement>('.doc-table-scroller [data-radix-scroll-area-viewport]')) frame.scrollLeft = 0;
+  });
+  await expect.poll(async () => (await commentInTable()).inside).toBe(false);
+  await comment.getByRole('button').click();
+  await expect.poll(async () => (await commentInTable()).inside).toBe(true);
+
+  // Settled marks remain a valid landing. Explicit View prepares All before
+  // membership cleanup, then a later manual filter remains the reader's.
+  const selectedRail = visibleSpace(page).getByTestId('doc-comment-rail');
+  await selectedRail.getByTestId('doc-comment-resolve').click();
+  await selectedRail.getByTestId('doc-comment-rail-filter-open').click();
+  await expect(selectedRail.getByTestId('doc-comment-card')).toHaveCount(0);
+  await comment.getByRole('button').click();
+  await expect(selectedRail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(selectedRail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+  await expect(selectedRail.getByTestId('doc-comment-reopen')).toBeVisible();
+  await selectedRail.getByTestId('doc-comment-reopen').click();
 
   // Pressing its card in the panel does the same once the table is scrolled back.
   const rail = visibleSpace(page).getByTestId('doc-comment-rail');
@@ -262,8 +319,8 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await rail.getByTestId('doc-comment-rail-close').click();
   await page.unroute('**/chat/message');
   await answerWith((blocks, spaceId) => {
-    const table = blocks.find((b) => b.type === 'table')!;
-    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'table', quote: 'MIDCELL', body: 'Why this shot?' };
+    const table = blocks.find((b) => b.type === 'docTable')!;
+    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'docTable', quote: 'MIDCELL', body: 'Why this shot?' };
   });
   const middle = await askForTheCard();
   await page.evaluate(() => {
@@ -275,6 +332,108 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await expect.poll(() => commentInTable('MIDCELL')).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
   expect(await page.locator('.doc-table-overflow-edge[data-overflow-edge="left"]').first().getAttribute('data-on')).toBe('');
 });
+
+/**
+ * Seeds a normal table and moves the existing target through the drag command.
+ * @param spaceId - The open document.
+ * @param targetId - The proposal's unchanged target block.
+ * @returns The complete tree immediately before applying the proposal.
+ */
+async function moveTargetIntoCell(spaceId: string, targetId: string): Promise<unknown> {
+  const urls = await Promise.all([
+    liveModuleUrl(page, 'spaces/document/document-editor-cache.ts'),
+    liveModuleUrl(page, 'spaces/document/document-drag-move.ts'),
+    liveModuleUrl(page, 'spaces/document/document-row-by-id.ts'),
+  ]);
+  const name = `project-${projectIdOf(page.url())}/document-${spaceId}`;
+  return page.evaluate(async ({ urls, name, targetId }) => {
+    const cache = await import(urls[0]!) as { peekDocumentEditor: (name: string) => DocumentEditorHandle | undefined };
+    const move = await import(urls[1]!) as { moveRowTo: (view: DocumentEditorHandle['editor']['prosemirrorView'], id: string, pos: number) => void };
+    const rows = await import(urls[2]!) as { rowById: (doc: PMNode, id: string) => { from: number } | undefined };
+    const handle = cache.peekDocumentEditor(name);
+    if (handle === undefined) throw new Error('The visible document has no live cache handle.');
+    const editor = handle.editor;
+    const table = await editor.tryParseMarkdownToBlocks('| Host | Other |\n| --- | --- |\n| Anchor | Retained |');
+    const last = editor.document[editor.document.length - 1] as { id: string };
+    editor.insertBlocks(table, last.id, 'after');
+    let anchorId: string | null = null;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'docTableCell' && anchorId === null) anchorId = String(node.firstChild!.attrs.id);
+      return true;
+    });
+    if (anchorId === null) throw new Error('The seeded table has no cell block.');
+    const anchor = rows.rowById(editor.prosemirrorState.doc, anchorId);
+    if (anchor === undefined) throw new Error('The seeded cell block has no row.');
+    move.moveRowTo(editor.prosemirrorView, targetId, anchor.from);
+    handle.undoManager.clear();
+    return editor.prosemirrorState.doc.toJSON();
+  }, { urls, name, targetId });
+}
+
+/**
+ * Reads the trace and complete document from the page's live module copies.
+ * @param proposal - The proposal whose actual output is being read.
+ * @returns The current landing, full tree and undo count.
+ */
+async function proposalState(proposal: DocumentProposal): Promise<{ at: { how: string; blockId: string } | null; tree: unknown; undo: number }> {
+  const urls = await Promise.all([
+    liveModuleUrl(page, 'spaces/document/document-editor-cache.ts'),
+    liveModuleUrl(page, 'spaces/document/document-proposal-landing.ts'),
+  ]);
+  const name = `project-${projectIdOf(page.url())}/document-${proposal.spaceId}`;
+  return page.evaluate(async ({ urls, name, proposal }) => {
+    const cache = await import(urls[0]!) as { peekDocumentEditor: (name: string) => DocumentEditorHandle | undefined };
+    const landing = await import(urls[1]!) as { landedAt: (handle: DocumentEditorHandle, proposal: DocumentProposal) => { how: string; blockId: string } | null };
+    const handle = cache.peekDocumentEditor(name);
+    if (handle === undefined) throw new Error('The document has no live cache handle.');
+    return { at: landing.landedAt(handle, proposal), tree: handle.editor.prosemirrorState.doc.toJSON(), undo: handle.undoManager.undoStack.length };
+  }, { urls, name, proposal });
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const kind of ['insert', 'rewrite'] as const) {
+    test(`a ${kind} follows its target into a cell and keeps its trace through undo, redo and refresh (${theme})`, async () => {
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+      const spaceId = await openDocumentWithText();
+      await sendTheOpenSpace();
+      let proposal!: DocumentProposal;
+      await answerWith((blocks, id) => {
+        const result = onSecondBlock({ kind, body: '| Agent header |\n| --- |\n| AGENT_CELL |' })(blocks, id);
+        proposal = result as unknown as DocumentProposal;
+        return result;
+      });
+      const card = await askForTheCard();
+      const before = await moveTargetIntoCell(spaceId, proposal.blockId!);
+      await page.getByTestId('theme-toggle').click();
+      await page.getByTestId(`theme-option-${theme}`).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await card.getByRole('button').last().click();
+      await expect(card).toHaveAttribute('data-state', 'applied');
+      await expect(page.locator(`${DOCUMENT_EDITOR} table table`)).toHaveCount(0);
+      await expect(page.locator(`${DOCUMENT_EDITOR} p`).filter({ hasText: /^AGENT_CELL$/ })).toHaveCount(1);
+      const applied = await proposalState(proposal);
+      expect(applied.at).toEqual({ how: 'write', blockId: expect.any(String) });
+      expect(applied.undo).toBe(1);
+      await card.getByRole('button').click();
+      expect((await proposalState(proposal)).tree).toEqual(applied.tree);
+      await page.locator(`${DOCUMENT_EDITOR} p`).filter({ hasText: /^AGENT_CELL$/ }).click();
+      await pressAndSettle(page, 'Meta+z');
+      await expect.poll(async () => (await proposalState(proposal)).tree).toEqual(before);
+      await expect(card).toHaveAttribute('data-state', 'idle');
+      await pressAndSettle(page, 'Meta+Shift+z');
+      await expect.poll(async () => (await proposalState(proposal)).tree).toEqual(applied.tree);
+      await expect(card).toHaveAttribute('data-state', 'applied');
+      await page.screenshot({ path: test.info().outputPath(`cell-${kind}-${theme}.png`) });
+      await page.reload();
+      await expect(page.locator(DOCUMENT_EDITOR)).toBeVisible();
+      await expect.poll(async () => (await proposalState(proposal)).at).toEqual(applied.at);
+      await expect(page.locator(`${DOCUMENT_EDITOR} p`).filter({ hasText: /^AGENT_CELL$/ })).toHaveCount(1);
+      expect(errors).toEqual([]);
+    });
+  }
+}
 
 test('a comment card brought up from the bottom of the window stops as far above it as the chat composer', async () => {
   const id = await createSpace(page, 'document', `doc-proposal-${String(Date.now())}`);
@@ -347,28 +506,59 @@ test('a rewrite replaces the passage as one undo step', async () => {
   await expect(card).toHaveAttribute('data-state', 'idle');
 });
 
-test('an insert puts a table after the passage, opening the document when another Space is in front', async () => {
-  const docId = await openDocumentWithText();
-  await sendTheOpenSpace();
-  await answerWith((blocks, spaceId) => ({
-    ...onSecondBlock({})(blocks, spaceId),
-    kind: 'insert',
-    body: '| Shot | Size |\n|---|---|\n| 1 | Wide |',
-  }));
+for (const theme of ['light', 'dark']) {
+  test(`an insert puts a table after the passage, opening the document when another Space is in front (${theme})`, async () => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    const docId = await openDocumentWithText();
+    await sendTheOpenSpace();
+    await answerWith((blocks, spaceId) => ({
+      ...onSecondBlock({})(blocks, spaceId),
+      kind: 'insert',
+      body: '| Shot | Size |\n|---|---|\n| 1 | Wide |',
+    }));
 
-  const card = await askForTheCard();
-  await expect(card.getByTestId('document-proposal-anchor')).toHaveText('He pushes the door open and sees her bags packed.');
-  created.push(await createSpace(page, 'canvas', `doc-proposal-canvas-${String(Date.now())}`));
-  await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
-  await card.getByRole('button').last().click();
+    const card = await askForTheCard();
+    await expect(card.getByTestId('document-proposal-anchor')).toHaveText('He pushes the door open and sees her bags packed.');
+    created.push(await createSpace(page, 'canvas', `doc-proposal-canvas-${String(Date.now())}`));
+    await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
+    await page.getByTestId('theme-toggle').click();
+    await page.getByTestId(`theme-option-${theme}`).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await card.getByRole('button').last().click();
 
-  await expect(card).toHaveAttribute('data-state', 'applied');
-  await expect(visibleSpace(page).getByTestId('document-space')).toHaveAttribute('data-space-id', docId);
-  const table = page.locator(`${DOCUMENT_EDITOR} table`);
-  await expect(table).toBeVisible();
-  const box = await table.boundingBox();
-  expect(box !== null && box.y >= 0 && box.y + box.height <= 900).toBe(true);
-});
+    await expect(card).toHaveAttribute('data-state', 'applied');
+    await expect(visibleSpace(page).getByTestId('document-space')).toHaveAttribute('data-space-id', docId);
+    const table = page.locator(`${DOCUMENT_EDITOR} table`);
+    await expect(table).toBeVisible();
+    const box = await table.boundingBox();
+    expect(box !== null && box.y >= 0 && box.y + box.height <= 900).toBe(true);
+    const mark = visibleSpace(page).getByTestId('document-proposal-landed');
+    await expect(mark).toBeVisible();
+    const bounds = await mark.evaluate((element) => {
+      const space = element.closest('[data-testid="document-space"]')!;
+      const frame = space.querySelector('[data-node-type="docTable"]')!;
+      const mark = element.getBoundingClientRect();
+      const table = frame.getBoundingClientRect();
+      const first = frame.querySelector('.bn-block-content')!.getBoundingClientRect();
+      return { theme: document.documentElement.getAttribute('data-theme'), mark: mark.toJSON(), table: table.toJSON(), first: first.toJSON() };
+    });
+    expect(bounds.theme).toBe(theme);
+    expect(bounds.mark.left).toBeLessThan(bounds.table.left);
+    expect(bounds.mark.top).toBeLessThan(bounds.table.top);
+    expect(bounds.mark.right).toBeGreaterThan(bounds.table.right);
+    expect(bounds.mark.bottom).toBeGreaterThan(bounds.table.bottom);
+    expect(bounds.mark.width).toBeGreaterThan(bounds.first.width);
+    await test.info().attach(`table-landing-${theme}`, { body: JSON.stringify(bounds), contentType: 'application/json' });
+    const screenshot = test.info().outputPath(`table-landing-${theme}.png`);
+    await page.screenshot({ path: screenshot });
+    await test.info().attach(`table-landing-${theme}.png`, { path: screenshot, contentType: 'image/png' });
+    expect(errors).toEqual([]);
+  });
+}
 
 test('a passage changed after the proposal is left alone, and a toast says so', async () => {
   await openDocumentWithText();

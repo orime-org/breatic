@@ -6,9 +6,11 @@
 
 将创作简报、场景与媒体组织在同一个项目里。在 Document Space 中写作，在 Canvas Space 中生成和调整素材，与 AI Agent 和团队共同推进创作，让每个环节都保留作品的上下文。
 
-**Beta · 源码可用 · 桌面浏览器**
+**线上已开放 · 源码可用 · 桌面浏览器**
 
-[在线体验](https://breatic.ai/login) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
+[在线体验][hosted-app] · [观看45秒英文演示](https://youtu.be/mc1XAqtJD_M) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
+
+官方在线服务提供免费的 Starter 会员档。AI 生成积分单独购买，不包含在会员套餐内，具体见[会员与积分定价][hosted-pricing]。
 
 ![Breatic 项目中的咖啡店图片候选，画布旁是项目聊天](docs/images/readme/workspace-zh-CN.png)
 
@@ -21,10 +23,23 @@
 | **一个项目，多个 Space** | 将创作简报、各个场景和不同创意方向组织在一起，每个 Space 有独立标签页。 |
 | **Document Space（文档空间）** | 用标题、列表和格式化文字编写剧本、镜头描述及制作清单。 |
 | **Canvas Space（画布空间）** | 在无限画布上排列参考素材和媒体，结合提示词、模型及参考输入生成、调整资产。 |
+| **3D（DEV）** | 在共享三维场景中布置内置对象，编辑位置、旋转及缩放。 |
 | **项目中的 AI Agent** | 讨论创意、提供文档或画布上下文，结合已有素材查看和评审提案。 |
-| **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布和文档。 |
+| **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布、文档和三维场景。 |
 
-支持的媒体包括图片、视频、音频和 3D 资产，具体生成能力取决于已配置的供应商及模型权限。目前可使用 Canvas 和 Document Space；**Timeline 尚未开放**。
+支持的媒体包括图片、视频、音频和 3D 资产，具体生成能力取决于已配置的供应商及模型权限。Canvas 和 Document Space 可用，3D 场景编辑器的创建入口带有 **DEV** 标记；场景内的模型生成与批注正在开发中。**Timeline 尚未开放**。
+
+## 一起评审和修改
+
+创作简报变了，把修改决定放在作品旁边。这个例子中，两张场景图与共享创作方向在同一画布里，协作者直接在项目中修改了方向说明。
+
+![Breatic画布中的共享创作方向与两张候选场景图，英文界面示例](docs/images/readme/shared-direction.png)
+
+Agent 可以先提出改写方案，团队查看后再决定是否替换共享文档中的段落。
+
+![共享文档中的改写提案，以及Add comment和Replace操作，英文界面示例](docs/images/readme/agent-review.png)
+
+图片来自真实示例项目；故事与场景素材用于演示。
 
 ## 创作流程：一条 30 秒咖啡店视频
 
@@ -48,11 +63,11 @@
 
 | 你的目标 | 从这里开始 |
 | --- | --- |
-| 使用官方在线产品 | 在桌面浏览器中[打开 Breatic](https://breatic.ai/login)，注册或登录 |
+| 使用官方在线产品 | 在桌面浏览器中[打开 Breatic][hosted-app]，注册或登录 |
 | 个人、私密群体或组织内部自行部署 | [个人与局域网部署](self-host/LOCAL-CN.md) |
 | 修改源码或参与贡献 | [开发环境搭建](self-host/DEVELOPMENT-CN.md) |
 
-登录后完成个人 Studio 设置，创建项目，用 **+** 添加 Document 或 Canvas Space。写下简报或上传参考素材，再使用聊天和画布工具。[使用指南](docs/USAGE-CN.md) 包含注册、首个项目、画布操作和[快捷键](docs/USAGE-CN.md#keyboard-shortcuts)。
+登录后完成个人 Studio 设置，创建项目，用 **+** 添加 Document、Canvas 或 3D Space。写下简报、上传参考素材或布置内置三维对象。[使用指南](docs/USAGE-CN.md) 包含注册、首个项目、Space 操作和[快捷键](docs/USAGE-CN.md#keyboard-shortcuts)。
 
 ### 自行部署前
 
@@ -62,7 +77,7 @@ Web、API、后台任务和协作服务使用已发布的 Docker 镜像，依赖
 
 ## 产品状态与帮助
 
-Breatic 处于 Beta 阶段，持续开发中。已发布版本和更新说明见 [Releases](https://github.com/orime-org/breatic/releases)。
+Breatic 官方在线服务已开放使用，并持续开发。上文各功能的 DEV 标记与开放范围说明仍然适用。已发布版本和更新说明见 [Releases](https://github.com/orime-org/breatic/releases)。
 
 [报告问题](https://github.com/orime-org/breatic/issues/new?template=bug_report.yml) · [建议功能](https://github.com/orime-org/breatic/issues/new?template=feature_request.yml) · [社区交流](https://discord.gg/Yeu6A4aejN)
 
@@ -82,8 +97,11 @@ Breatic 处于 Beta 阶段，持续开发中。已发布版本和更新说明见
 
 Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码可用**项目，以 Apache 2.0 为基础附加条款。
 
-许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [licensing@orime.ai](mailto:licensing@orime.ai)。
+许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [contact@breatic.ai](mailto:contact@breatic.ai)。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+
+[hosted-app]: https://breatic.ai/login?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_cn
+[hosted-pricing]: https://breatic.ai/zh-CN/pricing/?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_pricing_cn
 
 © 2026 Orime, Inc.

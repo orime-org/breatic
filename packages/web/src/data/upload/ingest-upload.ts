@@ -14,10 +14,16 @@
  */
 
 
-/** What the ticket endpoint hands back when bytes have to move. */
+/**
+ * What the ticket endpoint hands back when bytes have to move: an upload our
+ * server already opened at the Worker (inner#1595), so the page can only send
+ * parts into this one upload and never open another.
+ */
 export interface UploadTicket {
-  /** The signed permission slip the Worker verifies. */
-  ticket: string;
+  /** R2's id for the open multipart upload. */
+  uploadId: string;
+  /** The session token the first part carries. */
+  token: string;
   /** The key the bytes land under — the server minted it. */
   storageKey: string;
   /** The ingest Worker's base address. */
@@ -98,8 +104,18 @@ export interface UploadAlreadyStored {
   height: number | null;
 }
 
-/** Either answer the ticket endpoint can give. */
-export type UploadTicketResponse = UploadTicket | UploadAlreadyStored;
+/**
+ * The ticket endpoint's answer when our server could not open the upload at
+ * the Worker (inner#1595). The grant and the task row are already settled on
+ * the server; `taskId` names that row when the upload opened one.
+ */
+export interface OpenFailedAnswer {
+  openFailed: { reason: string };
+  taskId?: string;
+}
+
+/** Any answer the ticket endpoint can give. */
+export type UploadTicketResponse = UploadTicket | UploadAlreadyStored | OpenFailedAnswer;
 
 /**
  * Tell the two ticket answers apart.
@@ -112,7 +128,16 @@ export function isAlreadyStored(
   return 'alreadyExists' in res && res.alreadyExists;
 }
 
-/** The batch form's third answer: this file was turned down before any bytes moved. */
+/**
+ * Tell an upload our server could not open from the other answers.
+ * @param res - What the ticket endpoint answered.
+ * @returns True when no upload was opened.
+ */
+export function isOpenFailed(res: UploadTicketResponse): res is OpenFailedAnswer {
+  return 'openFailed' in res;
+}
+
+/** The batch form's other answer: this file was turned down before any bytes moved. */
 export interface UploadRefused {
   refused: { reason: 'storage' | 'too_large' };
 }

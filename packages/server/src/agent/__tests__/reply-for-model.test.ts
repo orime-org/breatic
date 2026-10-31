@@ -121,13 +121,13 @@ describe("how much a turn added and where the conversation ended up", () => {
   it("reads both off what the provider reported", () => {
     const tokens = replyTokens({ firstInput: 1000, lastInput: 1500, lastOutput: 200 }, { user: 30, reply: 999, request: 999 });
 
-    expect(tokens).toEqual({ turnTokens: 1500 + 200 - 1000 + 30, endTokens: 1700 });
+    expect(tokens).toEqual({ turnTokens: 1500 + 200 - 1000 + 30, endTokens: 1700, endTokensFrom: "provider" });
   });
 
   it("counts characters as tokens when nothing was reported", () => {
     const tokens = replyTokens({}, { user: 30, reply: 400, request: 5000 });
 
-    expect(tokens).toEqual({ turnTokens: 430, endTokens: 5400 });
+    expect(tokens).toEqual({ turnTokens: 430, endTokens: 5400, endTokensFrom: "chars" });
   });
 });
 

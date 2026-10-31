@@ -83,6 +83,7 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  *   asset. On a dedup hit the existing row's producer is kept.
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
  * @param input.storageKey - Random storage key.
+ * @param input.originStorageKey - Exact original issued grant key.
  * @param input.fileUrl - Public URL embedded in Yjs.
  * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
@@ -112,6 +113,7 @@ export async function register(input: {
   actingUserId: string;
   contentHash: string;
   storageKey: string;
+  originStorageKey?: string;
   fileUrl: string;
   sizeBytes: number;
   mimeType: string;
@@ -174,6 +176,7 @@ export async function register(input: {
   try {
     await queueForReclaim({
       storageKey: input.storageKey,
+      originStorageKey: input.originStorageKey,
       contentHash: input.contentHash,
       studioId,
       keptStorageKey: result.asset.storageKey,

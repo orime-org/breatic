@@ -298,6 +298,8 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     body.provider = { only: [request.backend], allow_fallbacks: false };
   }
 
+  request.signal?.throwIfAborted();
+  await request.onRequestSending?.();
   const res = await httpRequest(
     `${request.baseUrl}/chat/completions`,
     {

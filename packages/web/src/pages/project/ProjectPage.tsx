@@ -28,6 +28,7 @@ import { useTrackActiveRegion } from '@web/features/active-region/use-track-acti
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
+import { evictSceneSession } from '@web/data/yjs/scene-session';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -42,7 +43,7 @@ import {
   endAllKeptEditors,
   endSpaceKeptEditors,
 } from '@web/spaces/canvas/kept-editors';
-import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
+import { LeaveProjectGuard, type LeaveProjectGuardHandle } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@breatic/shared';
@@ -506,6 +507,7 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
@@ -515,7 +517,7 @@ function ProjectWorkspace({
     if (departed.length > 0) {
       setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));
     }
-  }, [projectId, tabs.openIds]);
+  }, [projectId, userId, tabs.openIds]);
 
   // Note: NO URL ↔ active-space reconcile. Space is a type/template, not a
   // route segment (a product decision). What survives a reload is the whole strip, and it comes
@@ -572,28 +574,12 @@ function ProjectWorkspace({
     return () => clearTimeout(handle);
   }, [spaceOpInProgress, setSpaceOpInProgress, t]);
 
-  // Warn before a browser tab / window close while any space has an in-flight
-  // front-end operation (#1617). Unlike a space-tab close (which we block), the
-  // browser only allows a generic, non-customizable prompt — it cannot be
-  // blocked — so this is a best-effort guard against losing an upload whose
-  // local Yjs write-back has not synced yet. Reads the registry at event time so
-  // the listener never needs re-attaching.
-  React.useEffect(() => {
-    /**
-     * beforeunload handler: trigger the browser's generic close prompt while any
-     * space has an in-flight front-end operation (#1617).
-     * @param event - The beforeunload event.
-     */
-    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
-      if (!useSpaceOperationsStore.getState().hasAnyOperations()) return;
-      event.preventDefault();
-      // Legacy browsers require a returnValue to trigger the prompt; modern ones
-      // show their own generic message and ignore the string.
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, []);
+  const leaveGuard = React.useRef<LeaveProjectGuardHandle>(null);
+  /**
+   * Requests the Project's refresh confirmation.
+   * @throws {Error} Propagates reload failures.
+   */
+  const requestRefresh = React.useCallback((): void => { leaveGuard.current?.requestRefresh(); }, []);
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
@@ -864,13 +850,10 @@ function ProjectWorkspace({
           style={{ minWidth: `${PAGE_MIN_WIDTH}px` }}
           data-testid='project-page'
         >
-          {/* Confirm before an in-app leave (back link / logo / browser back) while
-          a front-end operation is still syncing (#1787) — the in-app companion
-          to the beforeunload guard. Renders nothing while not blocked. */}
-          <LeaveProjectGuard />
+          <LeaveProjectGuard ref={leaveGuard} />
           <ConnectionBanner
             status={connectionStatus}
-            onReload={() => window.location.reload()}
+            onReload={requestRefresh}
             // The connection was refused, which this banner answers with
             // "sign in again": drop the stored account on this device (local
             // only, no server logout) so the sign-in page does not act for it.

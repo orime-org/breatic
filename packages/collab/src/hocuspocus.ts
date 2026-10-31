@@ -35,6 +35,7 @@ import {
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
@@ -59,6 +60,7 @@ import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  SyncConfirmRequestSchema,
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
@@ -68,7 +70,8 @@ import {
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
 import { createPongHandler } from "@collab/services/socket-liveness.js";
-import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
+import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,
@@ -83,7 +86,7 @@ import {
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
+import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import {
   handleSpaceRpc,
 } from "@collab/services/space-rpc.js";
@@ -277,9 +280,23 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // so reading it late is safe.
   const storeGate: { current?: UnloadGate } = {};
 
+  // A frame carries at most 128 KiB; larger messages arrive chunked and are
+  // reassembled within the limits in config/collab.yaml (inner#1585).
+  const limits = getReassemblyLimits();
+  const frameAssembler = createFrameAssembler({
+    maxMessageBytes: limits.maxMessageBytes,
+    budgetBytes: limits.budgetBytes,
+    idleTimeoutMs: limits.idleTimeoutMs,
+    userOf: sessionGate.userOf,
+  });
+
   const wsServer = new Server({
     port: infra.port,
     quiet: cfg.quiet,
+    websocketOptions: { maxPayload: limits.frameMaxBytes },
+    receiveFrame: frameAssembler.receiveFrame,
+    onPeerClose: frameAssembler.onPeerClose,
+    onPeerError: frameAssembler.onPeerError,
 
     // The library installs its own SIGINT / SIGQUIT / SIGTERM handler by
     // default (`stopOnSignals`, hocuspocus-server.esm.js:1675-1682) and it is
@@ -370,12 +387,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         // already means "do not intercept" — the safe side. So the load
         // continues.
         try {
-          if (publishDocumentSchema(document)) {
-            logger.info(
-              { documentName, reason: "document_schema_published" },
-              "document_schema_published",
-            );
-          }
+          keepDocumentSchemaPublished(
+            document,
+            { force: getCollabConfig().document_schema.force_publish },
+            () => {
+              logger.info(
+                { documentName, reason: "document_schema_published" },
+                "document_schema_published",
+              );
+            },
+          );
         } catch (err) {
           logger.error(
             { err, documentName, reason: "document_schema_publish_failed" },
@@ -384,7 +405,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
         return;
       }
-
     },
 
     // Register this connection in the cross-instance registry for the
@@ -544,20 +564,31 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
-    // parse, route to the handler, and send the response on the requesting
-    // connection, which matches it by request `id`.
-    onStateless: async ({ documentName, payload, connection }) => {
+    // Content receipts share the requesting Connection's update queue.
+    // Meta requests dispatch Space lifecycle commands on their original channel.
+    onStateless: async ({ documentName, document, payload, connection }) => {
       const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
+      if (!parsed) return;
 
       let json: unknown;
       try {
         json = JSON.parse(payload);
-      } catch {
-        return; // non-JSON stateless message (e.g. frontend cache invalidate)
+      } catch (err) {
+        logger.error({ err, ctx: { documentName } }, "Invalid stateless payload");
+        return;
       }
+
+      if (parsed.kind === "canvas" || parsed.kind === "document") {
+        const request = SyncConfirmRequestSchema.safeParse(json);
+        if (!request.success) return;
+        try {
+          replySyncConfirmation(document, connection, request.data.id);
+        } catch (err) {
+          logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
+        }
+        return;
+      }
+      if (parsed.kind !== "meta") return;
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
       if (!reqResult.success) return;
@@ -591,7 +622,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection.sendStateless(JSON.stringify(response));
     },
 
-    // Document size limit — reject updates that would exceed max.
+    // Document size limit: a document past it is only logged (warn).
     onChange: async ({ documentName, document }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
@@ -622,7 +653,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // no one number to print. Name its SOURCE instead: an operator reading
     // this banner needs to know where to look, and a stale key name would
     // send them to a file that no longer has it.
-    concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
+    concurrentEditorsFrom: "current Studio admin membership reading: configured or negotiated concurrent_editors",
     // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
     // able to read what this process is enforcing.

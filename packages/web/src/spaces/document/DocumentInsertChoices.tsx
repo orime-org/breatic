@@ -24,6 +24,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   itemWithin,
   rulesAfter,
+  whenOutOfReach,
 } from '@web/spaces/document/document-block-menu-parts';
 import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { DIVIDER } from '@web/spaces/document/document-divider';
@@ -47,6 +48,8 @@ interface DocumentInsertChoicesProps {
    * reachable when it is left out.
    */
   unreachable?: ReadonlySet<InsertChoice>;
+  /** Whether the table entry is drawn out of reach: a table never goes in a cell. */
+  tableUnreachable?: boolean;
   /** What picking a media entry does; left out, the menu offers none. */
   onPickMedia?: (kind: MediaBlockType) => void;
 }
@@ -56,12 +59,14 @@ interface DocumentInsertChoicesProps {
  * @param props - See {@link DocumentInsertChoicesProps}.
  * @param props.onPick - What picking an entry does.
  * @param props.unreachable - Entries that would do nothing here.
+ * @param props.tableUnreachable - Whether the table entry is out of reach.
  * @param props.onPickMedia - What picking a media entry does.
  * @returns The rows.
  */
 export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   onPick,
   unreachable,
+  tableUnreachable = false,
   onPickMedia,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
@@ -106,13 +111,15 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
         {t('spaces.document.commands.divider')}
       </DropdownMenuItem>
       <DropdownMenuSub>
-        <DropdownMenuSubTrigger data-testid='doc-block-insert-table'>
+        <DropdownMenuSubTrigger data-testid='doc-block-insert-table' {...whenOutOfReach(tableUnreachable)}>
           <Table />
           {t('spaces.document.commands.table')}
         </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className='min-w-0'>
-          <DocumentTableSizeGrid onPick={onPickTable} />
-        </DropdownMenuSubContent>
+        {tableUnreachable ? null : (
+          <DropdownMenuSubContent className='min-w-0'>
+            <DocumentTableSizeGrid onPick={onPickTable} />
+          </DropdownMenuSubContent>
+        )}
       </DropdownMenuSub>
       {onPickMedia !== undefined &&
         MEDIA_ENTRIES.map(({ kind, Icon }) => (

@@ -16,6 +16,25 @@
  */
 
 export { understandMediaAt } from "@domain/understand/understand-at.js";
+export {
+  longMediaOperationId,
+  openLongMediaBatchOperation,
+  longMediaInputDigest,
+} from "@domain/understand/long-media-checkpoint.js";
+export type {
+  LongMediaBatchOperation,
+  LongMediaBatchOperationInput,
+} from "@domain/understand/long-media-checkpoint.js";
+export {
+  LongMediaBatchIncompleteError,
+  LongMediaBatchFailureError,
+  understandMediaInBatches,
+} from "@domain/understand/understand-segment-batches.js";
+export {
+  LongMediaCancellationError,
+  advanceLongMediaSegmentation,
+  cancelLongMediaSegmentation,
+} from "@domain/understand/long-media-segmentation.js";
 export { readingLimitsUntil } from "@domain/understand/limits-until.js";
 export {
   AUDIO_FORMAT_NAMES,
@@ -25,6 +44,21 @@ export {
   UnderstandRefused,
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/types.js";
+export type {
+  LongMediaBatchLimits,
+  LongMediaSegmentReference,
+} from "@domain/understand/segment-batches.js";
+export type {
+  LongMediaBatchCheckpoint,
+  LongMediaBatchInterval,
+  LongMediaBatchStart,
+  UnderstandMediaInBatchesRequest,
+} from "@domain/understand/understand-segment-batches.js";
+export type {
+  AdvanceLongMediaSegmentationInput,
+  LongMediaSegmentationProgress,
+  RegisteredLongMediaSegment,
+} from "@domain/understand/long-media-segmentation.js";
 export type {
   Media,
   MediaKind,

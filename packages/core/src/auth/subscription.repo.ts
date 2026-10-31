@@ -16,7 +16,8 @@
  * converges on one row per Stripe subscription.
  */
 
-import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
@@ -91,6 +92,27 @@ export interface SubscriptionWrite {
 
 /** The row shape drizzle returns, before it is narrowed. */
 type SubscriptionRow = typeof subscriptions.$inferSelect;
+
+/**
+ * Subscription projection embedded into the membership statement snapshot.
+ * @param userId - The account column of the enclosing statement.
+ * @returns Its live and ended facts, with absolute period deadlines.
+ */
+export function subscriptionFactsForMembership(userId: AnyPgColumn): SQL<SubscriptionRecord[]> {
+  return sql<SubscriptionRecord[]>`(
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'stripeSubscriptionId', ${subscriptions.stripeSubscriptionId},
+      'status', ${subscriptions.status},
+      'tier', ${subscriptions.tier},
+      'period', ${subscriptions.period},
+      'cancelAtPeriodEnd', ${subscriptions.cancelAtPeriodEnd},
+      'hasPendingUpdate', ${subscriptions.hasPendingUpdate},
+      'currentPeriodEnd', ${subscriptions.currentPeriodEnd}
+    )), '[]'::jsonb)
+    from ${subscriptions}
+    where ${subscriptions.userId} = ${userId} and ${subscriptions.deletedAt} is null
+  )`.mapWith((rows: Array<Omit<SubscriptionRecord, "currentPeriodEnd"> & { currentPeriodEnd: string | null }>) => rows.map((row) => ({ ...row, currentPeriodEnd: row.currentPeriodEnd === null ? null : new Date(row.currentPeriodEnd) })));
+}
 
 /**
  * Turns a stored row into the shape callers read.

@@ -203,6 +203,7 @@ export function SpaceTab({
       {...listeners}
       type='button'
       role='tab'
+      data-space-tab={id}
       aria-selected={active}
       onClick={editing ? undefined : onActivate}
       // Pressing a tab switches Space without taking focus from a Space, as a

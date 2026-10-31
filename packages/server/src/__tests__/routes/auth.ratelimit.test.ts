@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Auth rate limiting (BUG-010, inner#1478).
+ * Auth rate limiting (inner#1478).
  *
  * Each pre-auth route is limited by the client address our proxy wrote, and
  * login, forgot-password and recovery-code reset also by that address paired

@@ -110,7 +110,7 @@ function declaredType(headers: Headers | undefined): string | undefined {
  * @param url - The address.
  * @returns The implied type, or undefined when the extension says nothing.
  */
-function typeFromAddress(url: string): string | undefined {
+export function typeFromAddress(url: string): string | undefined {
   let path: string;
   try {
     path = new URL(url).pathname;
@@ -277,7 +277,11 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // refused for its type rather than its size.
   const headLength = statedLength(headers);
   if (settled && headLength !== undefined && headLength > byteLimit(request, settled)) {
-    throw new MediaUnavailable("too-large", { bytes: headLength, limit: byteLimit(request, settled) });
+    throw new MediaUnavailable("too-large", {
+      bytes: headLength,
+      limit: byteLimit(request, settled),
+      ...(declared ? { declaredType: declared } : {}),
+    });
   }
   if (settledPeek && settled !== undefined && settled.kind !== "image" && byteLimit(request, settled) <= 0) {
     throw new MediaUnavailable("too-large", { limit: byteLimit(request, settled) });
@@ -346,7 +350,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   const limit = byteLimit(request, kind);
   if (stated !== undefined && stated > limit) {
     void res.body?.cancel();
-    throw new MediaUnavailable("too-large", { bytes: stated, limit });
+    throw new MediaUnavailable("too-large", { bytes: stated, limit, declaredType: mediaType });
   }
 
   if (kind.kind === "image") {
@@ -357,7 +361,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   }
   if (limit <= 0) {
     void res.body?.cancel();
-    throw new MediaUnavailable("too-large", { limit });
+    throw new MediaUnavailable("too-large", { limit, declaredType: mediaType });
   }
 
   // How long the body may take, from how large it is. With no statement at all
@@ -374,7 +378,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     // No `bytes` on the size failure: what this path knows is "more than the
     // limit arrived", and the cut-off point is not the file's size.
     if (err instanceof BodyTooLarge) {
-      throw new MediaUnavailable("too-large", { limit });
+      throw new MediaUnavailable("too-large", { limit, declaredType: mediaType });
     }
     // A body that was never there is not a body that stopped part way, and it
     // is not an address that could not be reached either: this one answered

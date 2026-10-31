@@ -16,7 +16,9 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
+  alignCellsAt,
   cellAt,
+  cellsAlignFace,
   deleteColumnAt,
   deleteRowAt,
   headerOn,
@@ -25,6 +27,7 @@ import {
   setCellsAttr,
   toggleHeaderAt,
 } from '@web/spaces/document/document-table-run';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -49,16 +52,12 @@ function open(): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'reader' },
-    {
-      type: 'table',
-      content: {
-        type: 'tableContent',
-        rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
-      },
-    },
+    tableBlock({
+      rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
+    }),
   ] as never);
   // The reader's caret, in the paragraph, after "rea".
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
   return editor;
 }
@@ -72,7 +71,7 @@ function open(): Editor {
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && (node.type.name === 'tableCell' || node.type.name === 'tableHeader') && node.textContent === text) {
+    if (at < 0 && (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') && node.textContent === text) {
       at = pos;
     }
     return at < 0;
@@ -89,14 +88,14 @@ function cellOf(editor: Editor, text: string): number {
 function grid(editor: Editor): string[][] {
   let table: PMNode | null = null;
   editor.prosemirrorState.doc.descendants((node) => {
-    if (table === null && node.type.name === 'table') table = node;
+    if (table === null && node.type.name === 'docTable') table = node;
     return table === null;
   });
   if (table === null) return [];
   const rows: string[][] = [];
   (table as PMNode).forEach((row) => {
     const cells: string[] = [];
-    row.forEach((cell) => cells.push(`${cell.type.name === 'tableHeader' ? '#' : ''}${cell.textContent}`));
+    row.forEach((cell) => cells.push(`${cell.type.name === 'docTableHeader' ? '#' : ''}${cell.textContent}`));
     rows.push(cells);
   });
   return rows;
@@ -198,7 +197,7 @@ describe('cell attributes off the handles and the cell button (A6, A11)', () => 
   function attrs(editor: Editor, name: string): unknown[][] {
     const out: unknown[][] = [];
     editor.prosemirrorState.doc.descendants((node) => {
-      if (node.type.name === 'tableRow') {
+      if (node.type.name === 'docTableRow') {
         const row: unknown[] = [];
         node.forEach((cell) => row.push(cell.attrs[name]));
         out.push(row);
@@ -209,16 +208,51 @@ describe('cell attributes off the handles and the cell button (A6, A11)', () => 
     return out;
   }
 
-  it('aligns every cell of the row, of the column, or the one cell', () => {
+  /**
+   * The alignment of the blocks in each cell, one entry per block.
+   * @param editor - The editor.
+   * @returns Per row, per cell, the alignments of its blocks joined by `/`.
+   */
+  function blockAlignments(editor: Editor): string[][] {
+    const out: string[][] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'docTableRow') {
+        const row: string[] = [];
+        node.forEach((cell) => {
+          const aligned: string[] = [];
+          cell.descendants((inner) => {
+            if (inner.isTextblock) aligned.push(String(inner.attrs['textAlignment']));
+            return !inner.isTextblock;
+          });
+          row.push(aligned.join('/'));
+        });
+        out.push(row);
+        return false;
+      }
+      return true;
+    });
+    return out;
+  }
+
+  it('aligns the blocks of every cell of the row, of the column, or the one cell', () => {
     const editor = open();
-    setCellsAttr(editor, cellOf(editor, 'b1'), 'row', 'textAlignment', 'center');
-    setCellsAttr(editor, cellOf(editor, 'c2'), 'column', 'textAlignment', 'right');
-    setCellsAttr(editor, cellOf(editor, 'a2'), 'cell', 'textAlignment', 'center');
-    expect(attrs(editor, 'textAlignment')).toEqual([
+    alignCellsAt(editor, cellOf(editor, 'b1'), 'row', 'center');
+    alignCellsAt(editor, cellOf(editor, 'c2'), 'column', 'right');
+    alignCellsAt(editor, cellOf(editor, 'a2'), 'cell', 'center');
+    expect(blockAlignments(editor)).toEqual([
       ['center', 'center', 'right'],
       ['center', 'left', 'right'],
     ]);
+    expect(attrs(editor, 'textAlignment').flat().every((value) => value === undefined)).toBe(true);
     expect(readerKept(editor)).toBe(true);
+  });
+
+  it('reads the alignment the blocks of a row share, and none where they differ', () => {
+    const editor = open();
+    alignCellsAt(editor, cellOf(editor, 'a1'), 'row', 'right');
+    expect(cellsAlignFace(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'row')).toBe('right');
+    alignCellsAt(editor, cellOf(editor, 'a1'), 'cell', 'center');
+    expect(cellsAlignFace(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'row')).toBe('mixed');
   });
 
   it('writes every cell even when the target already has the value', () => {

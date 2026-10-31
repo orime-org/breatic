@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A table's row and column handles (inner#1126 A6), handed to the library's
- * `TableHandlesController` in place of its own, which read a
- * `ComponentsContext` this build does not provide.
+ * A table's row and column handles (inner#1126 A6), placed by
+ * `DocumentTableHandlesController`.
  *
- * The controller places them and reports which row and column the pointer is
- * over; everything else is ours. A handle's menu acts on the cell the menu
+ * `document-table-handles.ts` reports which row and column the pointer is
+ * over; everything else is here. A handle's menu acts on the cell the menu
  * was opened on, held in `document-table-target.ts` and mapped through every
  * change while the menu is open, so an edit someone else makes above the
- * table cannot point a command at another row. The library's own table
- * position is written on pointer moves only and goes stale under such an edit,
- * so no command reads it.
+ * table cannot point a command at another row. The hover state's cell
+ * (`cellPos`) is read once, when a menu opens or a drag starts; from then on
+ * the held target is what the commands act on.
  *
  * Neither is on screen while the reader holds a selection: the
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 
-import { TableHandlesExtension } from '@blocknote/core/extensions';
 import {
   useBlockNoteEditor,
   useExtension,
@@ -54,7 +52,6 @@ import type { HandleEditor } from '@web/spaces/document/document-handle-commands
 import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   cellAt,
-  cellPosOf,
   deleteColumnAt,
   deleteRowAt,
   headerOn,
@@ -71,26 +68,15 @@ import {
 import {
   cellButtonBox,
   columnHandleCentre,
-  COLUMN_HANDLE_NUDGE,
-  ROW_HANDLE_NUDGE,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
+import { tableLineOf } from '@web/spaces/document/document-strip-alignment';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
-import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
-
-/** What the library's handle state carries, as far as these read it. */
-interface HandlesState {
-  readonly show: boolean;
-  readonly block: { readonly id: string };
-  readonly rowIndex: number | undefined;
-  readonly colIndex: number | undefined;
-  /** The hovered cell's box, read when the handles were last placed. */
-  readonly referencePosCell: DOMRect | undefined;
-}
+import { documentTableHandlesExtension, TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 
 /** What the controller hands a handle. */
 interface TableHandleProps {
@@ -119,15 +105,15 @@ interface FramePlace {
 const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**
- * The cell button's box, when the caret's cell is in this table.
+ * The cell button's box, when its cell is in this table.
  * @param view - The editor view.
  * @param table - The table.
  * @param frame - The table's scroll frame.
- * @param caretCell - The position before the caret's cell, or null.
+ * @param buttonCell - The position before the cell the cell button stands on, or null.
  * @returns The box, or null when no button is shown here.
  */
-function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCell: number | null): Box | null {
-  const cell = caretCell === null ? null : view.nodeDOM(caretCell);
+function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, buttonCell: number | null): Box | null {
+  const cell = buttonCell === null ? null : view.nodeDOM(buttonCell);
   if (!(cell instanceof Element) || !table.contains(cell)) return null;
   const box = cell.getBoundingClientRect();
   return cellButtonBox({
@@ -140,9 +126,9 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
 
 /**
  * Where a handle is drawn against the table's scroll frame. The controller
- * places the row handle at the table's own left edge
- * (`TableHandlesController.tsx:108-124`) and the column handle centred over
- * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
+ * places the row handle at the table's own left edge and the column handle
+ * centred over the hovered cell (`DocumentTableHandlesController.tsx`
+ * `referencesOf`); on a table scrolled sideways either can lie
  * outside the frame. The row handle moves across by the width scrolled out of
  * it, so it sits on the frame's left line;
  * the column handle moves onto the part of its cell in view, aside from the
@@ -152,7 +138,7 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
  * @param cell - The hovered cell's box, as the controller read it, if it has.
- * @param caretCell - The position before the caret's cell, or null.
+ * @param buttonCell - The position before the cell the cell button stands on, or null.
  * @returns The placement.
  */
 function framePlaceOf(
@@ -160,13 +146,13 @@ function framePlaceOf(
   blockId: string,
   row: boolean,
   cell: DOMRect | undefined,
-  caretCell: number | null,
+  buttonCell: number | null,
 ): FramePlace {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
   if (view === undefined || !table || !frame) return IN_PLACE;
   const box = frame.getBoundingClientRect();
-  if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
+  if (row) return { shift: tableLineOf(table)! - table.getBoundingClientRect().left, hidden: false };
   if (cell === undefined) return IN_PLACE;
   const visible = {
     left: Math.max(cell.left, box.left),
@@ -174,7 +160,7 @@ function framePlaceOf(
     right: Math.min(cell.right, box.right),
     bottom: cell.bottom,
   };
-  const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, caretCell));
+  const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, buttonCell));
   return x === null ? { shift: 0, hidden: true } : { shift: x - (cell.left + cell.width / 2), hidden: false };
 }
 
@@ -288,8 +274,8 @@ export function DocumentTableHandle({
 }: TableHandleProps): React.JSX.Element | null {
   const t = useTranslation();
   const editor = useBlockNoteEditor() as unknown as HandleEditor;
-  const handles = useExtension(TableHandlesExtension);
-  const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
+  const handles = useExtension(documentTableHandlesExtension);
+  const state = useExtensionState(documentTableHandlesExtension);
   const holdsSelection = useHoldsSelection(editor);
   const [open, setOpen] = React.useState(false);
   // The handles are frozen for this handle's drag so the handle, the drag's
@@ -329,9 +315,8 @@ export function DocumentTableHandle({
       const view = editor.prosemirrorView;
       if (view === undefined) return;
       if (next) {
-        if (state?.rowIndex === undefined || state.colIndex === undefined) return;
-        const pos = cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
-        if (pos === null) return;
+        const pos = state?.cellPos;
+        if (pos === undefined) return;
         setTableTarget(view, pos, row ? 'row' : 'column');
         handles.freezeHandles();
         hideOtherElements(true);
@@ -351,21 +336,17 @@ export function DocumentTableHandle({
   useCloseWhenTargetGone(editor, open, close);
 
   // Read against the frame whenever the controller places the handles; it
-  // hides them on a scroll. The cell the cell button stands on, as the button
-  // says: it is up only while the body holds the focus (inner#1127).
-  const caretCell = useDocumentBars(editor).cellButtonCell;
+  // hides them on a scroll. The cell the cell button stands on: the hovered
+  // one, while no selection is held (`DocumentTableCellButton`).
+  const buttonCell = state?.show === true && !holdsSelection ? (state.cellPos ?? null) : null;
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
       state === undefined
         ? IN_PLACE
-        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, caretCell);
+        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, buttonCell);
     if (place.hidden) return { visibility: 'hidden' };
-    // Centred on its line: the row handle on the table's left line, the
-    // column handle on its top line.
-    const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
-    const up = row ? 0 : COLUMN_HANDLE_NUDGE;
-    return { transform: `translate(${String(across)}px, ${String(up)}px)` };
-  }, [editor, row, state, caretCell]);
+    return { transform: `translateX(${String(place.shift)}px)` };
+  }, [editor, row, state, buttonCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
@@ -378,6 +359,7 @@ export function DocumentTableHandle({
         style={placeStyle}
         // A layer of the body, belonging on its table (inner#1127).
         {...bodyLayerMark(editor, { block: state.block.id })}
+        {...{ [TABLE_CONTROL]: '' }}
       >
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the
@@ -398,11 +380,8 @@ export function DocumentTableHandle({
           draggable
           onDragStart={(event) => {
             const view = editor.prosemirrorView;
-            const pos =
-              view === undefined || state.rowIndex === undefined || state.colIndex === undefined
-                ? null
-                : cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
-            if (view === undefined || pos === null || !startTableDrag(view, orientation, pos)) {
+            const pos = state.cellPos;
+            if (view === undefined || pos === undefined || !startTableDrag(view, orientation, pos)) {
               event.preventDefault();
               return;
             }

@@ -6,8 +6,8 @@
  * tools.
  *
  * The chat turn is its one caller. It runs inside a request, and the tool set
- * is built per call: the proposal tool's description quotes the template
- * prompts in the request's language.
+ * is built per call: some tools hold state for one turn or bind what the turn
+ * knows (`TOOL_MAP`).
  *
  * Execution, step ceilings and temperature stay with the caller, which makes
  * its own model call with this config.
@@ -17,6 +17,7 @@ import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
 import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+import { resolveModelContextWindow } from "@domain/agent/model-context-window.js";
 import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
@@ -61,6 +62,13 @@ export interface ResolvedAgentConfig {
   seesPictures: boolean;
   /** Fixed request-projection policy, also included in the history prefix seed. */
   picturePolicy?: AgentPicturePolicy;
+  /**
+   * The main model's context window in tokens: the smallest endpoint's, or
+   * `context_window_fallback_tokens` when the directory could not say.
+   */
+  contextWindow: number;
+  /** Set when `contextWindow` is the configured fallback, so the caller can say so. */
+  contextWindowFallback?: true;
 }
 
 /**
@@ -75,12 +83,15 @@ export async function buildAgentConfig(
   const { basePrompt, memoryContext, toolContext } = request;
   const config = getAgentConfig();
   const modelId = config.default_model;
-  const seesPictures = await resolveModelPictureCapability(modelId, {
-    override: config.main_model_sees_pictures,
+  const catalogPolicy = {
     timeoutMs: config.model_catalog_timeout_ms,
     ttlMs: config.model_catalog_ttl_ms,
     retryMs: config.model_catalog_retry_ms,
-  }, request.signal);
+  };
+  const [seesPictures, resolvedWindow] = await Promise.all([
+    resolveModelPictureCapability(modelId, { override: config.main_model_sees_pictures, ...catalogPolicy }, request.signal),
+    resolveModelContextWindow(modelId, catalogPolicy, request.signal),
+  ]);
   const picturePolicy: AgentPicturePolicy = {
     seesPictures,
     maxPictures: config.chat_pictures_max,
@@ -94,5 +105,7 @@ export async function buildAgentConfig(
     tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
     seesPictures,
     picturePolicy,
+    contextWindow: resolvedWindow ?? config.context_window_fallback_tokens,
+    ...(resolvedWindow === undefined ? { contextWindowFallback: true as const } : {}),
   };
 }

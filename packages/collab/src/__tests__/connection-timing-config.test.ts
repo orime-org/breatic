@@ -72,6 +72,8 @@ describe("connection timing", () => {
     const handWrittenExpiries = Object.keys(shipped).filter((k) =>
       /_stale_|_expiry_|_timeout_ms$/.test(k),
     );
-    expect(handWrittenExpiries).toEqual(["store_alert_timeout_ms"]);
+    // The reassembly timeout bounds the wait between two chunks of one
+    // message (inner#1585), not whether a connection is alive.
+    expect(handWrittenExpiries).toEqual(["reassembly_idle_timeout_ms", "store_alert_timeout_ms"]);
   });
 });

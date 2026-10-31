@@ -25,6 +25,10 @@ import type * as coreModule from "@breatic/core";
 const httpRequestMock = vi.fn();
 
 vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 vi.mock("@breatic/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof sharedModule>();

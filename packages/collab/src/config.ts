@@ -11,7 +11,25 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { COLLAB_FRAME_MAX_BYTES, MAX_TIMER_MS } from "@breatic/shared";
+
+/**
+ * Room above the document cap for a message's own header (document name,
+ * message type); real document names are under 100 bytes.
+ */
+const MESSAGE_HEADER_ALLOWANCE = 64 * 1024;
+
+/**
+ * The largest message one connection may reassemble.
+ * @param cfg - The document cap and the reassembly budget.
+ * @param cfg.max_document_bytes - The document cap, 0 for none.
+ * @param cfg.reassembly_budget_bytes - The process reassembly budget.
+ * @returns The per-connection cap in bytes.
+ */
+function deriveMaxMessageBytes(cfg: { max_document_bytes: number; reassembly_budget_bytes: number }): number {
+  if (cfg.max_document_bytes === 0) return cfg.reassembly_budget_bytes;
+  return Math.max(cfg.max_document_bytes + MESSAGE_HEADER_ALLOWANCE, COLLAB_FRAME_MAX_BYTES);
+}
 
 // NOTE: no `port` here. The WebSocket port moved to the core env schema
 // (`COLLAB_PORT`) alongside the other service ports — this file is behaviour
@@ -39,12 +57,17 @@ const collabConfigSchema = z.object({
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
 
+  // Reassembly of messages larger than one WebSocket frame (inner#1585). The
+  // per-connection cap is derived from max_document_bytes, see
+  // `getReassemblyLimits`.
+  reassembly_budget_bytes: z.number().int().gt(COLLAB_FRAME_MAX_BYTES).default(67_108_864),
+  reassembly_idle_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30_000),
+
   // Connection limits.
   //
-  // The per-document ceiling on WRITABLE connections is not here: it comes
-  // from the membership tier of the studio that owns the project
-  // (`concurrent_editors` in config/membership.yaml), so it differs per
-  // project and cannot be a process-wide constant (#88).
+  // Each document's writable connection ceiling comes from the owning
+  // Studio's current admin membership reading. It resolves configured or
+  // negotiated concurrent_editors and expiry together for each new handshake.
 
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),
@@ -85,6 +108,24 @@ const collabConfigSchema = z.object({
   unload_store_retry_ms: z.number().int().positive().default(1200),
   unload_store_retry_interval_ms: z.number().int().positive().default(200),
   unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),
+  // The published document-editor vocabulary (inner#1619 design 5.6).
+  // `force_publish` writes this build's version over a later release: a
+  // rollback turns it on and turns it off once every instance is back.
+  document_schema: z
+    .object({ force_publish: z.boolean().default(false) })
+    .default({ force_publish: false }),
+}).superRefine((cfg, ctx) => {
+  // One account may hold one full message; the budget must leave room for
+  // another member's full message beside it.
+  if (cfg.max_document_bytes === 0) return;
+  const floor = 2 * deriveMaxMessageBytes(cfg);
+  if (cfg.reassembly_budget_bytes < floor) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["reassembly_budget_bytes"],
+      message: `must be at least ${floor}, twice the largest message one connection may send`,
+    });
+  }
 });
 
 /** Validated collab configuration type. */
@@ -143,5 +184,33 @@ export function getConnectionTimings(): ConnectionTimings {
     pingIntervalMs,
     seatExpiryMs: pingIntervalMs * 2,
     presenceStaleAfterMs: pingIntervalMs * 2,
+  };
+}
+
+/** The limits on reassembling chunked messages, in bytes and milliseconds. */
+export interface ReassemblyLimits {
+  /** The largest single WebSocket frame. */
+  frameMaxBytes: number;
+  /** The largest message one connection, and one user, may reassemble. */
+  maxMessageBytes: number;
+  /** What all connections together may hold while reassembling. */
+  budgetBytes: number;
+  /** The longest wait between two chunks. */
+  idleTimeoutMs: number;
+}
+
+/**
+ * The reassembly limits, with the per-connection cap derived from the
+ * document cap.
+ * @returns The limits.
+ * @throws {Error} When the YAML is missing / unreadable or fails validation.
+ */
+export function getReassemblyLimits(): ReassemblyLimits {
+  const cfg = getCollabConfig();
+  return {
+    frameMaxBytes: COLLAB_FRAME_MAX_BYTES,
+    maxMessageBytes: deriveMaxMessageBytes(cfg),
+    budgetBytes: cfg.reassembly_budget_bytes,
+    idleTimeoutMs: cfg.reassembly_idle_timeout_ms,
   };
 }

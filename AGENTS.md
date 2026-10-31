@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document or timeline); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
 
 | Read | When |
 |---|---|
@@ -85,7 +85,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 **Every task on a canvas node (upload, generation, understanding, mini-tool, container tools) has one limit, two hours: `default_budget_ms` in `config/node-tasks.yaml`.** Container deadlines and worker waits take this value; a shorter limit kills healthy tasks inside their budget. Check: writing a timeout or deadline for a task? It is two hours; any other value is asked about first.
 
 ### Storage
-**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser exchanges a signed ticket from `POST /assets/upload-ticket` and sends chunks to the ingest Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
+**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser asks `POST /assets/upload-ticket`, whose answer is an upload our server has already opened at the ingest Worker with the shared secret (a signed ticket never leaves our services, so each opens exactly one upload), and sends chunks to the Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
 
 | Bytes are | Path |
 |---|---|
@@ -96,6 +96,8 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 
 Upload and generation paths only insert objects, never delete them (dedup losers are queued for offline reclaim); every URL a consumer stores comes from the registered record (`publicUrl(record.storage_key)`), never from a freshly written key; a failed registration is a failed upload; hash, size and content type come from the Worker's report on the stored bytes, never from client claims. Mechanism, thumbnails, covers and avatars: the storage paragraph of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Canvas collaboration".
 
+### Cloudflare Worker environments
+**Breatic has three separate Worker environments: the local development Worker belongs to the current worktree, the Cloudflare remote development Worker is shared by developers, and the production Worker serves users.** After a Worker PR merges, its code owner deploys the merged code to the remote development Worker during cleanup and verifies it; developers using that shared service do not need to run a local Worker. Production deployments belong to the deploy Agent, and every handoff must explicitly name the production Worker as its target.
 **Transfer uploads are the one exception to registration: on the three routes that mount `acceptTransferBody` (`/canvas/paste`, `/canvas/node-history/snapshot`, `/chat/message`), a JSON request body over `request_body_max_bytes` (`config/limits.yaml`) goes up through `POST /assets/transfer-ticket` under the `transfer/` prefix in our own `application/vnd.breatic.transfer` format, and the route is sent `{ "transfer": key }` instead; every other route answers such a body with 413.** The finish marks the grant complete with no `studio_assets` row and no storage usage, and each reference is read once. The deployment must keep the prefix off the public asset domain and give the bucket a one-day lifecycle rule for it ([self-host/LOCAL.md](self-host/LOCAL.md)).
 
 ## Server production standards

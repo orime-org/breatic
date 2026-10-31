@@ -20,8 +20,8 @@
  * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
- * out with every turn of every conversation, and is measured against the same
- * budget the messages are (`payload-size.ts`). The descriptions carry the
+ * out with every turn of every conversation, and counts toward the request a
+ * fold is sized with (`payload-size.ts`) and the window the provider checks. The descriptions carry the
  * rules a first attempt needs to take the right shape; a refusal below says
  * what is wrong, the rule it breaks and the facts of the proposal (design
  * 5.10), and the agent puts the proposal right from that.
@@ -42,7 +42,11 @@ import { z } from "zod";
 import {
   canConnect,
   GENERATION_TEMPLATES,
+  t,
+  templateAnchor,
+  templateGuideNode,
   type CanvasProposal,
+  type GenerationTemplate,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
@@ -53,8 +57,9 @@ import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
-import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
+import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
+import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
@@ -135,7 +140,7 @@ function edgesSaid(edges: CanvasProposal["edges"], from: NodeLabel, to: NodeLabe
  * @throws {never} Never.
  */
 export function checkProposal(sent: CanvasProposal, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
-  return checkResolved(withCatalogFacts(sent), materials);
+  return checkResolved(withCatalogFacts(sent), materials, []);
 }
 
 /**
@@ -146,10 +151,11 @@ export function checkProposal(sent: CanvasProposal, materials: MaterialTable = N
  * catalog taken after the verdict.
  * @param proposal - The proposal, carrying its catalog facts.
  * @param materials - The registration behind each material address.
+ * @param instances - Each template anchored in it, with what its match found.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-function checkResolved(proposal: CanvasProposal, materials: MaterialTable): ProposalVerdict {
+function checkResolved(proposal: CanvasProposal, materials: MaterialTable, instances: readonly AnchoredInstance[]): ProposalVerdict {
   for (const [index, node] of proposal.nodes.entries()) {
     const at = nodeLabel(proposal.nodes, index);
     const held = checkMaterial(node, at, materials);
@@ -223,6 +229,13 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
     return refuse("group-unnamed", "Two or more nodes land together in a group, and it has no name.", fixGroup("Give the group a name saying what it is for."));
   }
 
+  // Asked once the edges are known to join real nodes and before any
+  // generation is judged: a template edge left out would otherwise be
+  // reported as a ref with no edge behind it, whose fix leaves the template
+  // still short of that edge.
+  const whole = checkTemplateInstances(proposal, instances);
+  if (!whole.ok) return whole;
+
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
     const verdict = checkGenerateNode(proposal, node, index);
@@ -237,39 +250,112 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   return fit.ok ? checkUnsentNotes(proposal) : fit;
 }
 
+/** The proposal as the check judges it, and where each node stands in a template it names. */
+interface Resolved {
+  proposal: CanvasProposal;
+  instances: AnchoredInstance[];
+}
+
 /**
  * The proposal as the check judges it: every node naming a template filled
  * in from it, and the catalog's facts written on, or the refusal a template
  * gives.
  * @param sent - What the model sent.
- * @returns The resolved proposal, or the refusal.
+ * @param templates - The registry the tags are read against.
+ * @returns The resolved proposal and its anchored templates, or the refusal.
  * @throws {never} Never.
  */
-function resolveSent(sent: z.infer<typeof inputSchema>): { proposal: CanvasProposal } | Refusal {
+function resolveSent(sent: z.infer<typeof inputSchema>, templates: readonly GenerationTemplate[]): Resolved | Refusal {
   const nodes: ProposalNode[] = [];
+  const places: (TemplatePlace | undefined)[] = [];
   for (const [index, node] of sent.nodes.entries()) {
-    if (node.template === undefined) {
-      const { template: _none, ...plain } = node;
+    const { template: tag, ...plain } = node;
+    if (tag === undefined) {
       nodes.push(plain);
+      places.push(undefined);
       continue;
     }
-    const expanded = expandTemplate({ ...node, template: node.template }, nodeLabel(sent.nodes, index));
+    const place = templatePlace(tag, plain, templates);
+    if ("ok" in place) return place;
+    const expanded = expandAt(place, plain, nodeLabel(sent.nodes, index));
     if (!expanded.ok) return expanded;
     nodes.push(expanded.node);
+    places.push(place);
   }
-  return { proposal: withCatalogFacts({ ...sent, nodes }) };
+  const proposal = withCatalogFacts({ ...sent, nodes });
+  return { proposal, instances: anchoredInstances(proposal, places) };
 }
 
 /**
  * Whether what the model sent stands, templates and all.
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
  * @returns The verdict, naming the refusal when there is one.
  * @throws {never} Never.
  */
-export function verdictFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
-  const resolved = resolveSent(sent);
-  return "proposal" in resolved ? checkResolved(resolved.proposal, materials) : resolved;
+export function verdictFor(
+  sent: z.infer<typeof inputSchema>,
+  materials: MaterialTable = NO_MATERIAL,
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): ProposalVerdict {
+  const resolved = resolveSent(sent, templates);
+  return "proposal" in resolved ? checkResolved(resolved.proposal, materials, resolved.instances) : resolved;
+}
+
+/**
+ * Each anchored template's own nodes marked with the key they stand for, so
+ * the panel recognises them on the canvas later; the anchor and the inputs
+ * carry no mark, as on the canvas.
+ * @param nodes - The proposal's nodes.
+ * @param instances - Each anchor and its match.
+ * @returns The nodes, marked.
+ * @throws {never} Never.
+ */
+function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
+  const marks = new Map<number, ProposalNode["templateNode"]>();
+  for (const { place, match } of instances) {
+    for (const [key, found] of match.keys) {
+      if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key });
+    }
+  }
+  return nodes.map((node, index) => {
+    const mark = marks.get(index);
+    return mark === undefined ? node : { ...node, templateNode: mark };
+  });
+}
+
+/**
+ * The edges with the inputs wired into each generation put in the order the
+ * template declares its inputs, so the reference rail, which lists the edges
+ * in the order they were drawn, reads the same as a panel apply would.
+ * @param edges - The edges, as sent.
+ * @param instances - Each anchor and its match.
+ * @returns The edges, the inputs' reordered in the places they held.
+ * @throws {never} Never.
+ */
+function orderInputEdges(edges: CanvasProposal["edges"], instances: readonly AnchoredInstance[]): CanvasProposal["edges"] {
+  const out = [...edges];
+  for (const { anchor, place, match } of instances) {
+    const fedTo = new Map<number, Map<number, number>>();
+    place.template.inputs.forEach((input, declared) => {
+      for (const [fed, node] of match.inputs.get(input.key) ?? []) {
+        const to = fed === place.template.anchor ? undefined : match.keys.get(fed);
+        const target = to === undefined ? undefined : to.kind === "one" ? Number(to.node) : undefined;
+        const at = fed === place.template.anchor ? anchor : target;
+        if (at === undefined) continue;
+        fedTo.set(at, (fedTo.get(at) ?? new Map<number, number>()).set(Number(node), declared));
+      }
+    });
+    for (const [to, order] of fedTo) {
+      const slots = out.flatMap((edge, i) => (edge.toIndex === to && order.has(edge.fromIndex) ? [i] : []));
+      const sorted = slots.map((i) => out[i] as CanvasProposal["edges"][number]).sort((a, b) => (order.get(a.fromIndex) ?? 0) - (order.get(b.fromIndex) ?? 0));
+      slots.forEach((i, k) => {
+        out[i] = sorted[k] as CanvasProposal["edges"][number];
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -279,18 +365,33 @@ export function verdictFor(sent: z.infer<typeof inputSchema>, materials: Materia
  * everything below `execute` is this function, and a test that reached it
  * through the SDK would be pinning the SDK's calling convention.
  * Nodes naming a template are expanded first, so the check judges the node
- * that will be placed.
+ * that will be placed; a template with steps gets its guide text node after
+ * the agent's own nodes, in the reader's language.
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
  * @returns The answer the card and the canvas read.
  * @throws {never} Never.
  */
-export function answerFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalAnswer {
-  const sentResolved = resolveSent(sent);
+export function answerFor(
+  sent: z.infer<typeof inputSchema>,
+  materials: MaterialTable = NO_MATERIAL,
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): ProposalAnswer {
+  const sentResolved = resolveSent(sent, templates);
   if (!("proposal" in sentResolved)) return { placed: false, reason: sentResolved.reason };
-  const resolved = sentResolved.proposal;
-  const verdict = checkResolved(resolved, materials);
+  const { proposal: resolved, instances } = sentResolved;
+  const verdict = checkResolved(resolved, materials, instances);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
+  const guides = instances.flatMap(({ anchor, place }) => {
+    const guide = templateGuideNode(place.template, anchor);
+    return guide === undefined ? [] : [guide];
+  });
+  const nodes = [...markTemplateNodes(resolved.nodes, instances), ...guides];
+  const first = instances[0];
+  const groupName =
+    resolved.groupName ?? (nodes.length > 1 && first !== undefined ? t(`canvas.template.${first.place.template.id}.name`) : undefined);
+  const edges = orderInputEdges(resolved.edges, instances);
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
   // could be absent -- the reader may press Use before it loads. Each node
@@ -298,15 +399,16 @@ export function answerFor(sent: z.infer<typeof inputSchema>, materials: Material
   // the way an upload would.
   return {
     ...resolved,
+    ...(groupName === undefined ? {} : { groupName }),
     // Each edge names the way the check routed it, so landing reads one
     // answer and never resolves an edge left without into a second time.
-    edges: resolved.edges.map((edge) => {
+    edges: edges.map((edge) => {
       const chosen = edge.into === undefined ? chosenModelOf(resolved.nodes[edge.toIndex] as ProposalNode) : undefined;
       const routing = chosen === undefined ? undefined : routeEdges({ ...resolved, edges: [edge] }, edge.toIndex, chosen);
       const way = routing !== undefined && "routed" in routing ? routing.routed[0]?.entry.way : undefined;
       return way === undefined ? edge : { ...edge, into: way.into };
     }),
-    nodes: resolved.nodes.map((node) => {
+    nodes: nodes.map((node) => {
       const facts = node.material === undefined ? undefined : materials.get(node.material);
       return facts === undefined || facts === "missing" ? node : { ...node, materialMedia: facts.media };
     }),
@@ -329,26 +431,26 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 }
 
 /**
- * The templates as the agent reads them: id, what each makes, how many
- * references it takes, and its prompt in the reader's language, so the agent
- * can rewrite that prompt rather than write one from nothing.
- *
- * The prompt is shown as the segments a proposal sends, not as the box shows
- * it: the box adds words to a reference mark, and a model copying what it
- * reads would send those words back inside the label, or a bracket as text.
+ * The templates as one line each, what the agent weighs when choosing one:
+ * its id, goal and anchor type, what it makes, the words a reader asks for it
+ * with and when to offer it unasked (inner#1807). The full text is read with
+ * get_generation_template, so a turn carries every template's index but only
+ * the prompts of the template it means to propose.
+ * @param templates - The registry.
  * @returns The paragraph appended to the tool's description.
+ * @throws {never} Never.
  */
-function templateGuide(): string {
+function templateIndex(templates: readonly GenerationTemplate[]): string {
+  const lines = templates.map(
+    (template) =>
+      `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
+      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}. ` +
+      `Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`,
+  );
   return (
-    "Templates a generate node can start from: " +
-    GENERATION_TEMPLATES.map((template) => {
-      const references = template.references;
-      return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${templateSegmentsText(template)}`;
-    }).join("; ") +
-    ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\", and @'d by its ref. " +
-    "Name the template on the node and leave out the mode and model you keep. Send the template's prompt as the " +
-    "node's own, rewritten in the language the reader writes in with their story or detail in it: fill a tweak " +
-    "segment with words or keep it for them."
+    `Templates: ${lines.join(" | ")} ` +
+    `Before proposing a template, read it with ${GET_GENERATION_TEMPLATE}: it gives the nodes, wiring, inputs and each prompt ` +
+    "in the reader's language, and how to send them."
   );
 }
 
@@ -360,11 +462,14 @@ export interface ProposeContext extends Record<string, unknown> {
 const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
 
 /**
- * The proposal tool, built per turn: its description carries the template
- * prompts in the reader's language, which only a turn knows.
+ * The proposal tool over a template registry: its description indexes the
+ * registry's templates.
+ * @param templates - The template registry it reads.
  * @returns The tool.
  */
-export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
+export function makeProposeCanvasAction(
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
   return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -393,7 +498,7 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +
     `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +
-    templateGuide(),
+    templateIndex(templates),
   inputSchema,
   contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
@@ -408,7 +513,14 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return answerFor(proposal, materials);
+    return answerFor(proposal, materials, templates);
   },
 });
 }
+
+/**
+ * The proposal tool over the registry; it holds nothing between calls, so one
+ * object serves every turn. It is built when the module loads, so its
+ * description carries no text in the reader's language.
+ */
+export const proposeCanvasAction = makeProposeCanvasAction();

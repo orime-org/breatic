@@ -17,6 +17,10 @@ import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { instructionsText } from "@domain/agent/instructions.js";
 
 vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -53,6 +57,7 @@ describe("buildAgentConfig", () => {
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "judge_likelihood",
       "list_generation_models",
@@ -112,5 +117,18 @@ describe("buildAgentConfig", () => {
     expect(instructionsText(config.instructions)).toBe(
       "base\n\n## Project Context\np\n\n## Conversation Memory\nc",
     );
+  });
+
+  it("carries the main model's window, and the configured fallback when the directory cannot say (inner#1567)", async () => {
+    const { resolveModelContextWindow } = await import("@domain/agent/model-context-window.js");
+    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(200_000);
+    const known = await buildAgentConfig({ basePrompt: "base" });
+    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(undefined);
+    const unknown = await buildAgentConfig({ basePrompt: "base" });
+
+    expect(known.contextWindow).toBe(200_000);
+    expect(known.contextWindowFallback).toBeUndefined();
+    expect(unknown.contextWindow).toBe(getAgentConfig().context_window_fallback_tokens);
+    expect(unknown.contextWindowFallback).toBe(true);
   });
 });

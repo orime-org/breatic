@@ -40,12 +40,13 @@ import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { foldIfOverBudget } from "@server/agent/turn-budget.js";
-import { requestTokens } from "@server/agent/request-size.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import { foldIfTooLong } from "@server/agent/turn-fold.js";
+import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
+import type { Assembly, TurnIdentity } from "@server/agent/turn-fold.js";
+import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows } from "@server/agent/history-replay.js";
+import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
@@ -245,7 +246,8 @@ export class MainAgent {
    * callback runs when the stream ends *and* when a reader lets go of it --
    * the SDK attaches it to both `flush` and `cancel` -- so a closed page
    * still closes the books. Folding memory is not among them: it belongs in
-   * front of the reply, on the turn whose assembled request it can shorten.
+   * front of the call whose request it can shorten, at the start of the turn
+   * or between its steps, or right after a call the provider turned away.
    * Assembling what the model is asked happens inside `execute`, not before
    * the stream is built. Everything it takes -- the two memory reads,
    * the conversation and its history -- is time the
@@ -316,6 +318,19 @@ export class MainAgent {
       thoughtForMs += Date.now() - thinkingOpenedAt;
       thinkingOpenedAt = undefined;
     };
+    /** Whether the reader has been told how long the turn thought. */
+    let thoughtSaid = false;
+    /**
+     * Tell the reader how long the turn thought, once it is known to end
+     * here; said once a turn, by whichever ending gets there first.
+     * @param writer - The stream the turn is written to.
+     */
+    const sayThoughtFor = (writer: UIMessageStreamWriter): void => {
+      if (thoughtSaid) return;
+      closeThinking();
+      if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
+      thoughtSaid = true;
+    };
 
     // Every paid call this turn makes is recorded where it happens, one row
     // each (#296); the turn is charged what those rows add up to. Model calls
@@ -377,8 +392,22 @@ export class MainAgent {
     // request has started: that step is partial and went nowhere.
     let lastStepUnsent = false;
     let reported: ReportedUsage = {};
-    // The assembly the turn's first call sent, once the model has been asked.
+    // The assembly the turn sends, once it has been read; a fold replaces it.
     let sent: Assembly | undefined;
+    // Input plus output the provider reported for the conversation's latest
+    // call, the count the next call is checked against: the previous turn's
+    // until this turn's first call reports. A fold voids it: it measured the
+    // request before the fold.
+    let lastCallTotal: number | undefined;
+    // The request now going out, and the latest one whose call reported its
+    // usage: the next turn checks its replayed prefix against this one before
+    // it trusts the count (design 6.2).
+    let pendingRequest: { hash: string; messages: number } | undefined;
+    let reportedRequest: { hash: string; messages: number } | undefined;
+    // Folds set off by the provider turning a call away, this turn.
+    let overflowFolds = 0;
+    // The turn ended because its request could not be made to fit.
+    let tooLong = false;
 
     /**
      * The reply's durable protocol facts: the finished steps, the step
@@ -394,7 +423,7 @@ export class MainAgent {
      * @throws {never} Never; a step that cannot be rebuilt is left out.
      */
     const keptOfReply = async (ended: {
-      exit: "aborted" | "failed" | "blocked" | "completed";
+      exit: "aborted" | "failed" | "too_long" | "blocked" | "completed";
       stored: readonly MessagePart[];
       parts: UIMessage["parts"];
       tools: ToolSet;
@@ -451,6 +480,7 @@ export class MainAgent {
           } : {}),
         },
         ...(opening.kind === "answer" && sent.userKept.snapshot !== undefined ? { snapshot: sent.userKept.snapshot } : {}),
+        ...(reportedRequest === undefined ? {} : { lastRequest: reportedRequest }),
         ...replyTokens(reported, {
           user: measureMessages(sent.userKept.messages),
           // A resumed segment's own message is the `user` above; counted once.
@@ -564,76 +594,105 @@ export class MainAgent {
     };
 
     /**
-     * Ask the model, once everything it needs has been read.
-     * @param writer - The stream, for the one thing that happens before the
-     *   answer starts and is worth saying out loud.
-     * @returns The model's answer, as the stream the protocol is made of.
+     * Who the folds of this turn are for, and how the reader hears of one.
+     * @param writer - The stream the turn is written to.
+     * @returns The identity a fold is run under.
      */
-    const askTheModel = async (
-      writer: UIMessageStreamWriter,
-    ): Promise<ReadableStream<UIMessageChunk>> => {
-      let assembly = await assemble();
+    const foldFor = (writer: UIMessageStreamWriter): TurnIdentity => ({
+      userId,
+      conversationId,
+      projectId,
+      turnIndex,
+      ...(signal ? { signal } : {}),
+      // A fold is a model call of its own, seconds long, with somebody
+      // watching. This does not make the wait shorter; it makes it
+      // explainable. Transient, like the heartbeat: it is a word about the
+      // turn, not a piece of the answer, so it must not become a message part
+      // or count as the turn having started to speak.
+      onStart: () => writer.write({ type: "data-memory-consolidating", transient: true, data: {} }),
+    });
 
-      // Measured here rather than inside the assembly because this is where
-      // the request is whole: the instructions carry the persona and the
-      // memory, and the tool definitions reach the provider as an
-      // argument of their own.
-      // A resumed segment does not fold: it is in the middle of a tool round,
-      // and a fold changes the memory in the instructions, after which the
-      // paused reply would be sent again without its thinking. The fold waits
-      // for the reader's next message, when the round is closed.
-      if (
-        opening.kind === "message" &&
-        await foldIfOverBudget(assembly, {
-          userId,
-          conversationId,
-          projectId,
-          ...(signal ? { signal } : {}),
-          // A fold is a model call of its own in front of the reply, seconds
-          // long, on a turn where the panel is empty and somebody is watching
-          // it. This does not make the wait shorter; it makes it explainable.
-          onStart: () =>
-            // Transient, like the heartbeat: it is a word about the turn,
-            // not a piece of the answer, so it must not become a message
-            // part or count as the turn having started to speak.
-            writer.write({ type: "data-memory-consolidating", transient: true, data: {} }),
-        })
-      ) {
-        try {
-          assembly = await assemble();
-        } catch (err) {
-          // The fold moved the watermark, so the window is out of the history
-          // whichever way it ended. Failing here would spend it and give the
-          // reader nothing, and the reply is what was promised. What is still
-          // in hand is the pre-fold assembly, over the token budget by
-          // however much this conversation had grown: sending it is the one
-          // move left that answers at all, and the provider is what decides
-          // whether it fits.
-          logger.error(
-            { err, userId, conversationId, projectId },
-            "turn_reassembly_failed",
-          );
-        }
+    /**
+     * Keep this turn's message as it is about to go out, so later turns send
+     * it again as it is. Losing the copy costs this turn nothing: later turns
+     * render the message from its parts the way they always did, so the
+     * cache stops matching from this message on and this turn's reply goes
+     * back without its thinking. A resumed segment's own message is kept in
+     * its reply row instead: the reader's row of this turn holds the message
+     * that opened it.
+     * @param assembly - What is about to be sent.
+     * @throws {never} Never; a failed write is logged.
+     */
+    const keepUserMessage = async (assembly: Assembly): Promise<void> => {
+      if (opening.kind !== "message") return;
+      try {
+        await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
+      } catch (err) {
+        logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
       }
+    };
 
-      const { agentConfig, messages } = assembly;
+    /**
+     * Read everything again after a fold moved the watermark, and make it what
+     * the turn sends from now on.
+     *
+     * A failure here ends the turn as failed: what is still in hand was read
+     * at the old watermark and with the old memory, and sending it, or folding
+     * from it again, would repeat a refKey and write turns already in memory
+     * a second time.
+     * @returns The new assembly.
+     * @throws {unknown} Whatever the reassembly threw.
+     */
+    const reassemble = async (): Promise<Assembly> => {
+      try {
+        sent = await assemble();
+      } catch (err) {
+        logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_reassembly_failed");
+        throw err;
+      }
+      await keepUserMessage(sent);
+      return sent;
+    };
+
+    /**
+     * The messages a stream that carries on after a fold starts from: the
+     * reassembled history and message, then this turn's finished steps. A fold
+     * changed the memory in the prefix, so no thinking replayed after it is
+     * what its turn sent; the steps go without it, signatures included.
+     * @param assembly - The reassembled request.
+     * @returns The messages.
+     */
+    const carriedOn = (assembly: Assembly): ModelMessage[] => [...assembly.messages, ...stripThinking(steps.flat())];
+
+    /**
+     * Ask the model, once everything it needs has been read, and carry the
+     * turn on through any fold its requests need (inner#1567, design 6.4).
+     *
+     * Before each call, the provider's last count is checked against the
+     * window; past it, the oldest turns are folded first. A call the provider
+     * turns away as too long is not shown to the reader: the turn folds and a
+     * new stream carries on inside the same reply, with the finished steps as
+     * they ran, so no tool runs twice.
+     * @param writer - The stream the turn is written to.
+     * @throws {unknown} When the turn fails; the stream's `onError` records it.
+     */
+    const askTheModel = async (writer: UIMessageStreamWriter): Promise<void> => {
+      sent = await assemble();
+      if (sent.agentConfig.contextWindowFallback === true) {
+        logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
+      }
+      const knownAtStart = knownTokensAtStart(sent.replayed);
+      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
+      signal?.throwIfAborted();
+      // The last count the conversation has stands for the first call until
+      // that call reports. A fold voids it, and one that could not run is not
+      // tried again before the call.
+      lastCallTotal = opened === "none" ? knownAtStart : undefined;
+      if (opened === "moved") await reassemble();
+      else await keepUserMessage(sent);
+
+      const { agentConfig } = sent;
       modelId = agentConfig.modelId;
-      sent = assembly;
-
-      // Kept as it is about to go out, after any fold, so later turns send it
-      // again as it is. Losing the copy costs this turn nothing: later turns
-      // render the message from its parts the way they always did, so the
-      // cache stops matching from this message on and this turn's reply goes
-      // back without its thinking.
-      // A resumed segment's own message is kept in its reply row instead: the
-      // reader's row of this turn holds the message that opened it.
-      if (opening.kind === "message") {
-        try {
-          await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
-        } catch (err) {
-          logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
-        }
-      }
       turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
@@ -645,33 +704,130 @@ export class MainAgent {
         cacheTtl: agentCfg.prompt_cache_ttl,
       });
       calls = watch;
-
       const mainModel = getModel(agentConfig.modelId);
       if (typeof mainModel === "string") throw new TypeError("The main agent requires an instantiated language model.");
+
+      for (let first = true; ; first = false) {
+        const turnedAway = await streamOnce(writer, {
+          first,
+          messages: first ? sent.messages : carriedOn(sent),
+          mainModel,
+          watch,
+          studioId,
+        });
+        if (turnedAway === undefined) return;
+
+        overflowFolds += 1;
+        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+          kind: "overflow",
+          overflow: turnedAway.overflow,
+          known: lastCallTotal,
+          attempt: overflowFolds,
+          error: turnedAway.error,
+        });
+        signal?.throwIfAborted();
+        if (folded === "too_long") {
+          // Not an error frame: the panel shows the reason in the reply and
+          // offers no "send it again", which would only fail the same way.
+          tooLong = true;
+          sayThoughtFor(writer);
+          writer.write({ type: "data-failed", data: { reason: "too_long" } });
+          writer.write({ type: "finish" });
+          return;
+        }
+        if (folded !== "moved") {
+          // Nothing moved, so what would go out is what was just turned away.
+          throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
+        }
+        lastCallTotal = undefined;
+        prefixChangedDuringTurn = true;
+        await reassemble();
+      }
+    };
+
+    /**
+     * Run one model stream of the turn and write it to the reader.
+     *
+     * Everything goes out as it comes except the `finish` and the first error,
+     * held until the stream ends. When that first error is a call the provider
+     * turned away as too long, the turn folds instead and neither goes out.
+     * Otherwise the error goes out after the thinking figure and everything
+     * else, followed only by the held `finish`: the SDK carries on past a
+     * provider's error chunk when the step's tool calls ran, and the panel
+     * reads nothing after an error frame. Any later error is dropped, as the
+     * panel would never read it.
+     * @param writer - The stream the turn is written to.
+     * @param run - What this stream starts from.
+     * @param run.first - Whether this is the turn's first stream, which opens the reply.
+     * @param run.messages - The messages it starts from.
+     * @param run.mainModel - The model.
+     * @param run.watch - The turn's recorder of model calls.
+     * @param run.studioId - The studio whose material a proposal may name.
+     * @returns The overflow that cut this stream short, or undefined when the
+     *   stream ended the turn.
+     */
+    const streamOnce = async (
+      writer: UIMessageStreamWriter,
+      run: {
+        first: boolean;
+        messages: ModelMessage[];
+        mainModel: Exclude<ReturnType<typeof getModel>, string>;
+        watch: ModelCallWatch;
+        studioId: string;
+      },
+    ): Promise<{ error: unknown; overflow: ContextOverflow } | undefined> => {
+      const { watch, studioId } = run;
+      // Set from the stream's own error callback, which has run for every
+      // error chunk by the time the reader sees the stream end, and before the
+      // stream's end callback.
+      const seen: { failed?: true; turnedAway?: { error: unknown; overflow: ContextOverflow } } = {};
       const result = streamTextRetry({
-        model: wrapLanguageModel({ model: mainModel, middleware: pictureMiddleware }),
+        model: wrapLanguageModel({ model: run.mainModel, middleware: pictureMiddleware }),
         // Chat is the one call site that asks for reasoning: it plans,
         // searches and decides between tools, and shows its working. It is
         // also the one whose prefix repeats -- every step of a turn and every
         // later turn resends it -- so it is the one that asks for caching.
-        ...callOptionsFor(agentConfig.modelId, {
+        ...callOptionsFor(modelId, {
           thinking: true,
           cache: agentCfg.prompt_cache_ttl,
           session: conversationId,
         }),
-        system: systemFor(agentConfig.modelId, agentConfig.instructions, agentCfg.prompt_cache_ttl),
-        messages,
-        prepareStep: ({ messages: stepMessages }) => {
+        system: systemFor(modelId, sent!.agentConfig.instructions, agentCfg.prompt_cache_ttl),
+        messages: run.messages,
+        prepareStep: async ({ messages: stepMessages }) => {
           signal?.throwIfAborted();
           // The SDK carries the previous projected request plus the new step.
           // Keep its omissions for this run; raw response steps remain separate
           // so the next turn can reconstruct all original picture facts.
-          const logical = stepMessages;
-          const offset = (assembly.logicalMessages ?? messages).length;
+          let logical = stepMessages;
+          let instructions: ReturnType<typeof systemFor> | undefined;
+          // Checked against the provider's count for this turn's previous call
+          // (the first call was checked before the stream); a fold voids it
+          // until the next call reports, so two folds always have a call
+          // between them.
+          if (steps.length > 0) {
+            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+              kind: "precheck",
+              at: "step",
+              known: lastCallTotal,
+            });
+            signal?.throwIfAborted();
+            if (folded === "moved") {
+              lastCallTotal = undefined;
+              prefixChangedDuringTurn = true;
+              const next = await reassemble();
+              logical = carriedOn(next);
+              instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
+            }
+          }
+          const current = sent!;
+          const { agentConfig } = current;
+          const own = opening.kind === "answer" ? current.userKept.messages.length : 0;
+          const offset = (current.logicalMessages ?? current.messages).length;
           const activeSteps = generationSteps.map((step) => ({
             ...step,
-            messageStart: offset + step.messageStart - (opening.kind === "answer" ? assembly.userKept.messages.length : 0),
-            messageEnd: offset + step.messageEnd - (opening.kind === "answer" ? assembly.userKept.messages.length : 0),
+            messageStart: offset + step.messageStart - own,
+            messageEnd: offset + step.messageEnd - own,
           }));
           const projected = agentConfig.picturePolicy === undefined ? undefined : projectAgentRequest({
             messages: logical, pictures: requestPictureFacts, policy: agentConfig.picturePolicy, phase: "step",
@@ -681,9 +837,14 @@ export class MainAgent {
           if (lastRequest.length > 0 && JSON.stringify(actual.slice(0, lastRequest.length)) !== JSON.stringify(lastRequest)) prefixChangedDuringTurn = true;
           lastRequest = structuredClone(actual);
           generationPrefix = prefixHash(agentConfig, actual);
-          return { messages: actual };
+          // What this call sends, as the next turn will find it in the reply
+          // row: the hash of the whole request and how many of the row's
+          // messages it holds. Kept once the call reports its usage.
+          pendingRequest = { hash: generationPrefix, messages: actual.length - (current.messages.length - own) };
+          reportedRequest = undefined;
+          return { messages: actual, ...(instructions === undefined ? {} : { instructions }) };
         },
-        tools: agentConfig.tools,
+        tools: sent!.agentConfig.tools,
         // The paying tools record their calls on this turn's recorder, the
         // save stores for this project and reader, the canvas proposal check
         // reads material for this studio, and the document proposal checks
@@ -692,9 +853,11 @@ export class MainAgent {
         // a plain record, whose context type the SDK reads as absent; each
         // tool's `contextSchema` is what checks this at run time, before its
         // `execute`.
-        toolsContext: turnToolsContext(agentConfig.tools, usage, {
+        toolsContext: turnToolsContext(sent!.agentConfig.tools, usage, {
           saveToStorage: saveToStorageFor({ projectId, userId }),
           studioId,
+          projectId,
+          actorUserId: userId,
           openDocument,
           records: projectRecordsFor({
             userId,
@@ -704,7 +867,10 @@ export class MainAgent {
             spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
           }),
         }) as never,
-        stopWhen: stepCountIs(agentCfg.max_tool_iterations),
+        // One ceiling for the whole turn, every stream of it together: a
+        // stream that carries on after a fold has the steps already taken
+        // counted against it.
+        stopWhen: stepCountIs(Math.max(1, agentCfg.max_tool_iterations - steps.length)),
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An
         // answer with no ceiling is carried whole by every later turn's
@@ -745,11 +911,19 @@ export class MainAgent {
         },
         // Fires when a model response is parsed, before the tools it asked
         // for run: a turn stopped while a tool is running has still paid for
-        // the call that asked for it.
+        // the call that asked for it. A call the provider turned away never
+        // gets here, so it is neither recorded nor charged.
         onLanguageModelCallEnd: (event) => {
           watch.callEnded(event);
           reported = noteUsage(reported, event.usage);
-          if (event.usage.inputTokens === undefined || event.usage.outputTokens === undefined) completeUsage = false;
+          const { inputTokens, outputTokens } = event.usage;
+          if (inputTokens === undefined || outputTokens === undefined) {
+            completeUsage = false;
+            lastCallTotal = undefined;
+          } else {
+            lastCallTotal = inputTokens + outputTokens;
+            reportedRequest = pendingRequest;
+          }
         },
         // Fires as each request is about to go out, after the previous
         // step's onStepFinish: the request carries that step as it is.
@@ -757,7 +931,7 @@ export class MainAgent {
           lastStepUnsent = false;
         },
         onStepFinish: (step) => {
-          const own = opening.kind === "answer" ? assembly.userKept.messages.length : 0;
+          const own = opening.kind === "answer" ? sent!.userKept.messages.length : 0;
           const messageStart = own + steps.flat().length;
           generationSteps.push({ messageStart, messageEnd: messageStart + step.response.messages.length, prefixHash: generationPrefix });
           steps.push(step.response.messages);
@@ -805,32 +979,51 @@ export class MainAgent {
             for (const url of searchedPictures(toolOutput.output)) vouchedMedia.add(url);
           }
         },
-        // Deliberately does nothing. The same failure reaches the end of the
-        // stream as an error chunk and is recorded there, alongside the ones
-        // our own code throws; recording it twice would put two lines in the
-        // log for one failed turn. What this is for is the default it
-        // replaces, which writes the provider's error -- endpoint and key
-        // hints included -- straight to the console, around our logger.
-        onError: () => undefined,
+        // Records nothing a failure itself: the same failure reaches the end of
+        // the stream as an error chunk and is recorded there, alongside the
+        // ones our own code throws, and recording it twice would put two lines
+        // in the log for one failed turn. It replaces the default, which writes
+        // the provider's error -- endpoint and key hints included -- straight
+        // to the console, around our logger. What it does do is tell an
+        // overflow apart, which the turn folds for instead of failing, and
+        // note a 400 nobody recognised, so the wording list can learn it.
+        // The first error decides: an overflow after another error, in a step
+        // the SDK carried on to, comes on a turn that has already failed.
+        onError: ({ error }) => {
+          const overflow = readContextOverflow(error);
+          if (overflow === undefined) {
+            const unknown400 = unrecognised400(error);
+            if (unknown400 !== undefined) {
+              logger.error({ ...unknown400, userId, conversationId, turnIndex, model: modelId }, "agent_unrecognised_400");
+            }
+          } else if (seen.failed !== true) {
+            seen.turnedAway = { error, overflow };
+            return;
+          }
+          seen.failed = true;
+        },
         // Whether the model runs out of room is not ours to decide; whether
         // the reader is told it happened is. Said on the wire rather than
         // only in storage, because this is the one signal the browser cannot
         // work out for itself -- the same reason a failed turn puts its own
         // mark on the reply as it happens. The SDK turns the frame into a
         // part of the reply, which is what carries it into storage and back.
+        // A stream cut short by an overflow after one of its steps finished
+        // still ends here (one turned away on its first call records no step,
+        // and the SDK skips this callback); the turn has not ended, so none of
+        // this is said on it.
         onFinish: ({ finishReason, toolCalls }) => {
+          if (seen.turnedAway !== undefined) return;
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
           // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
-          // the reader as the turn ends. A turn that never gets here -- one
-          // stopped mid-answer -- has the same figure written into its
-          // stored parts at the exit below, which runs however it ended.
-          closeThinking();
-          if (thoughtForMs > 0) {
-            writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
-          }
+          // the reader as the turn ends, ahead of an error the stream held.
+          // A turn that never gets here is told after the stream, or at the
+          // end of `execute`, or, when stopped, has the figure written into
+          // its stored parts at the exit below.
+          sayThoughtFor(writer);
           // The step stopped at a questionnaire when it holds an `ask_user`
           // call the schema took and nothing has answered. The first is the
           // card the reader is shown; any later one in the step is turned
@@ -839,11 +1032,11 @@ export class MainAgent {
           // came to nothing -- the rule lives on this side only. Written last,
           // so it is the last part of the segment that asked: the browser
           // splits the reply there once the reader answers and the turn
-          // resumes in the same message. A step that ended on an error is a
-          // failed turn, stored with its calls as never run, so it names no
-          // card.
+          // resumes in the same message. A stream that met an error, in its
+          // last step or one the SDK carried on past, is a failed turn, stored
+          // with its calls as never run, so it names no card.
           const asks =
-            finishReason === "error"
+            finishReason === "error" || seen.failed === true
               ? []
               : toolCalls
                 .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
@@ -865,7 +1058,31 @@ export class MainAgent {
       // after a reload.
       // A call turned away to steer the model has no line; what goes out for
       // it says so, and the panel draws nothing.
-      return result.toUIMessageStream({ onError: (err) => wireLineOf(endingOf(err)) });
+      const reader = result
+        .toUIMessageStream({ sendStart: run.first, onError: (err) => wireLineOf(endingOf(err)) })
+        .getReader();
+      let finished: UIMessageChunk | undefined;
+      let failed: UIMessageChunk | undefined;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value.type === "error") {
+          failed ??= value;
+          continue;
+        }
+        if (value.type === "finish") {
+          finished = value;
+          continue;
+        }
+        writer.write(value);
+      }
+      if (seen.turnedAway !== undefined) return seen.turnedAway;
+      if (failed !== undefined) {
+        if (signal?.aborted !== true) sayThoughtFor(writer);
+        writer.write(failed);
+      }
+      if (finished !== undefined) writer.write(finished);
+      return undefined;
     };
 
     const stream = createUIMessageStream({
@@ -882,13 +1099,18 @@ export class MainAgent {
           for (const toolCallId of opening.closedAsks) writer.write({ type: "data-ask-replied", data: { toolCallId } });
         }
         try {
-          writer.merge(await askTheModel(writer));
+          await askTheModel(writer);
         } catch (err) {
           // Before a model stream exists, the SDK cannot emit its own abort.
           // Pass the same stop through its wire protocol; ordinary failures
           // still reach the single application error logger below.
           if (signal?.aborted === true && err === signal.reason) writer.write({ type: "abort" });
           else throw err;
+        } finally {
+          // Whatever ended the turn without saying it: a throw of our own,
+          // which the SDK turns into the error frame after this. Not on a
+          // stop, as on any stop.
+          if (signal?.aborted !== true) sayThoughtFor(writer);
         }
       },
       // The one place a failed turn is noticed, whichever way it failed: the
@@ -906,9 +1128,11 @@ export class MainAgent {
           ? "aborted"
           : failure !== undefined
             ? "failed"
-            : awaitingCall !== undefined
-              ? "blocked"
-              : "completed";
+            : tooLong
+              ? "too_long"
+              : awaitingCall !== undefined
+                ? "blocked"
+                : "completed";
 
         // A stretch still open is one the turn broke off inside, and what it
         // had thought so far is still how long it thought. Closed here rather

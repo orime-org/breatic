@@ -47,9 +47,10 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import crypto from "node:crypto";
 import postgres from "postgres";
 import fc from "fast-check";
-import { projectMembersRepo, initCore } from "@breatic/core";
+import { projectMembersRepo, projectAuthService, initCore } from "@breatic/core";
 
 // @breatic/integration-tests/env injects the container URLs into process.env but
 // deliberately does not call initCore itself — a setup file runs for
@@ -203,6 +204,147 @@ describe("getRole — auth critical-path invariants (real Postgres)", () => {
         return (await projectMembersRepo.getRole(projectId, userId)) === null;
       }),
       { numRuns: 50 },
+    );
+  });
+});
+
+/**
+ * What the id columns hold: Postgres's canonical text form of a uuid, any
+ * version and variant, either case.
+ */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A fresh uuid whose version nibble is 0: canonical in shape, not RFC 4122. */
+function versionZeroUuid(): string {
+  const hex = crypto.randomBytes(16).toString("hex").split("");
+  hex[12] = "0";
+  const h = hex.join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+describe("getAccess / loadProjectRole / loadProjectAccess — project id shape (real Postgres)", () => {
+  interface ShapeScene {
+    userId: string;
+    /** U is editor, live. */
+    p: string;
+    /** U is owner, archived. */
+    q: string;
+    /** U is not a member. */
+    r: string;
+    /** Version-0 id, U is viewer. */
+    z: string;
+  }
+  let scene: ShapeScene;
+
+  beforeAll(async () => {
+    const userId = await insertUser("shape-u@example.com");
+    const other = await seedProject("shape-p");
+    await insertMember(other.projectId, userId, "editor", other.ownerId);
+    const archivedStudio = await insertStudio(userId, "studio-shape-q");
+    const archived = { projectId: await insertProject(archivedStudio, userId, "project-shape-q") };
+    await insertMember(archived.projectId, userId, "owner", null);
+    await sql`
+      UPDATE projects SET archived_at = NOW(), archived_by_user_id = ${userId} WHERE id = ${archived.projectId}
+    `;
+    const stranger = await seedProject("shape-r");
+    const z = versionZeroUuid();
+    await sql`
+      INSERT INTO projects (id, studio_id, created_by_user_id, name, slug)
+      VALUES (${z}, ${other.studioId}, ${other.ownerId}, 'shape-z', 'shape-z')
+    `;
+    await insertMember(z, userId, "viewer", other.ownerId);
+    scene = { userId, p: other.projectId, q: archived.projectId, r: stranger.projectId, z };
+  });
+
+  /**
+   * Ask all three readers about one project id.
+   * @param projectId - The id under test
+   * @returns The three answers
+   */
+  async function askAll(projectId: string): Promise<[unknown, unknown, unknown]> {
+    return Promise.all([
+      projectMembersRepo.getAccess(projectId, scene.userId),
+      projectAuthService.loadProjectRole(scene.userId, projectId),
+      projectAuthService.loadProjectAccess(scene.userId, projectId),
+    ]);
+  }
+
+  const notUuid: Array<[string, () => string]> = [
+    ["C1 plain text", () => "not-a-uuid"],
+    ["C2 empty string", () => ""],
+    ["C3 36 chars in uuid layout but not hex", () => "gggggggg-gggg-gggg-gggg-gggggggggggg"],
+    ["C4 36 hex-or-hyphen chars in the wrong layout", () => "--------------------------------0123"],
+    ["C5 a member's id followed by SQL-looking text", () => `${scene.p}' OR '1'='1`],
+    ["C6 a member's id with a trailing newline", () => `${scene.p}\n`],
+    ["C7 a member's id in braces", () => `{${scene.p}}`],
+    ["C8 a member's id without hyphens", () => scene.p.replaceAll("-", "")],
+  ];
+
+  for (const [name, id] of notUuid) {
+    it(`${name}: all three answer no access without throwing`, async () => {
+      expect(await askAll(id())).toEqual([null, null, null]);
+    });
+  }
+
+  it("C9 an upper-case uuid keeps the member's answer", async () => {
+    expect(await askAll(scene.p.toUpperCase())).toEqual([
+      { role: "editor", archived: false },
+      "editor",
+      { role: "editor", archived: false },
+    ]);
+  });
+
+  it("C10 the canonical id keeps the member's answer", async () => {
+    expect(await askAll(scene.p)).toEqual([
+      { role: "editor", archived: false },
+      "editor",
+      { role: "editor", archived: false },
+    ]);
+  });
+
+  it("C11 an archived project still caps the role at viewer", async () => {
+    expect(await askAll(scene.q)).toEqual([
+      { role: "owner", archived: true },
+      "viewer",
+      { role: "owner", archived: true },
+    ]);
+  });
+
+  it("C12 a uuid-shaped project the caller is not on answers no access", async () => {
+    expect(await askAll(scene.r)).toEqual([null, null, null]);
+  });
+
+  it("C13 a version-0 uuid is a uuid: its member gets their role", async () => {
+    expect(await askAll(scene.z)).toEqual([
+      { role: "viewer", archived: false },
+      "viewer",
+      { role: "viewer", archived: false },
+    ]);
+  });
+
+  it("C14 property: no string outside the uuid shape is ever sent to the uuid column", async () => {
+    const variants = fc.constantFrom(
+      (id: string) => `{${id}}`,
+      (id: string) => id.replaceAll("-", ""),
+      (id: string) => ` ${id}`,
+      (id: string) => `${id} `,
+      (id: string) => `${id}\n`,
+      (id: string) => `urn:uuid:${id}`,
+      (id: string) => id.slice(0, -1),
+    );
+    const fromMember = fc
+      .tuple(variants, fc.string({ maxLength: 2 }))
+      .map(([shape, tail]) => shape(scene.p) + tail);
+    const arbitrary = fc.oneof(fc.string(), fc.string({ unit: "binary" }), fc.constant("\u0000"));
+    await fc.assert(
+      fc.asyncProperty(
+        fc.oneof(arbitrary, fromMember).filter((s) => !UUID_SHAPE.test(s)),
+        async (projectId) => {
+          expect(await projectMembersRepo.getAccess(projectId, scene.userId)).toBeNull();
+          expect(await projectAuthService.loadProjectAccess(scene.userId, projectId)).toBeNull();
+        },
+      ),
+      { numRuns: 200 },
     );
   });
 });

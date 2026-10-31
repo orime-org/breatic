@@ -157,6 +157,8 @@ interface SendOptions {
   stream?: { total: number; bodyAt: (offset: number, length: number) => Buffer };
   /** The connection pool to send through; the default global agent otherwise. */
   agent?: http.Agent;
+  /** Identify the X03 request in transport failure diagnostics. */
+  diagnosticStage?: "first" | "again";
 }
 
 /**
@@ -190,13 +192,29 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
             reusedSocket: req.reusedSocket,
           }),
         );
-        res.on("error", reject);
+        res.on("error", rejectWithDiagnostics);
       },
     );
+    /**
+     * Keep the native failure as the cause while identifying the X03 request.
+     * @param err - The original socket or response error.
+     */
+    function rejectWithDiagnostics(err: unknown): void {
+      if (opts.diagnosticStage === undefined) {
+        reject(err);
+        return;
+      }
+      const code = err instanceof Error && "code" in err ? String(err.code) : "undefined";
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(
+        `X03 stage=${opts.diagnosticStage} error.code=${code} reusedSocket=${req.reusedSocket}: ${message}`,
+        { cause: err },
+      ));
+    }
     req.on("error", (err) => {
       // A refusal may close the socket while the client is still writing;
       // the case passes on the answer, which has already arrived.
-      if (!answered) reject(err);
+      if (!answered) rejectWithDiagnostics(err);
     });
     /**
      * Write one piece, waiting for the socket to drain when it asks.
@@ -231,7 +249,7 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
       }
       if (!req.destroyed) req.end();
     })().catch((err: unknown) => {
-      if (!answered) reject(err instanceof Error ? err : new Error(String(err)));
+      if (!answered) rejectWithDiagnostics(err instanceof Error ? err : new Error(String(err)));
     });
   });
 }
@@ -663,8 +681,8 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
     );
     const headers = { "Content-Type": "application/json", Cookie: a.cookie, "Idempotency-Key": randomUUID() };
 
-    const first = await send("/api/v1/projects", { headers, body });
-    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16 });
+    const first = await send("/api/v1/projects", { headers, body, diagnosticStage: "first" });
+    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16, diagnosticStage: "again" });
 
     expect(first.status).toBe(201);
     expect(again.status).toBe(201);

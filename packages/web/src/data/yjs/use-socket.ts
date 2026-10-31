@@ -10,9 +10,13 @@ import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
   readDocFacts,
+  readWriteAccess,
   releaseDocProvider,
   useCollabSocketContext,
+  type WriteAccess,
 } from '@web/data/yjs/collab-socket';
+
+export type { WriteAccess } from '@web/data/yjs/collab-socket';
 
 interface UseSocketOptions {
   /** Document name (e.g. `project-abc/meta`). */
@@ -38,39 +42,7 @@ export type ConnectionStatus =
   | 'authFailed'
   | 'disconnected';
 
-/**
- * Whether the SERVER has granted this connection permission to write.
- *
- * Distinct from the role the UI already knows about. A connection comes back
- * read-only for one of four reasons: the user is a viewer; the document
- * already holds as many writers as the owning studio's tier allows; the
- * ceiling could not be resolved at all, which degrades rather than refuses
- * (#88); or the document is the project meta doc, which no client may write
- * regardless of role. The two middle ones are the surprise to the UI — a
- * member it believes may edit cannot. The server answers this on the wire at
- * authentication time; anything it refuses afterwards is discarded silently,
- * with no error and no disconnect, so this is the only warning a client gets.
- *
- *   unknown — not yet authenticated for this document
- *   granted — may write
- *   denied  — authenticated read-only; every update sent will be dropped
- */
-export type WriteAccess = 'unknown' | 'granted' | 'denied';
-
-/**
- * Read a provider's already-settled write access.
- *
- * Needed alongside the `authenticated` listener because the provider registry
- * is shared: a document another component acquired first may already have
- * authenticated, and it will not re-emit the event for a late subscriber.
- * @param provider - The document's provider.
- * @returns What the server granted, or `unknown` if it has not answered yet.
- */
-function readWriteAccess(provider: HocuspocusProvider): WriteAccess {
-  if (!provider.isAuthenticated) return 'unknown';
-  return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
-}
-
+/** The current connection and its local display mirrors. */
 export interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
@@ -204,7 +176,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setAuthFailedReason(null);
       // Read from the provider rather than the facts: unlike a refusal, the
       // granted scope can change across reconnects, so the live value wins.
-      setWriteAccess(readWriteAccess(provider));
+      setWriteAccess(readWriteAccess(provider, facts.authFailure));
     }
 
     /**
@@ -282,7 +254,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
       setProvider(null);
-      releaseDocProvider(name);
+      releaseDocProvider(name, doc);
       setSynced(false);
       // Not a reset of the latch itself — that lives in the registry and is
       // untouched here. This only clears the local mirror for the case where

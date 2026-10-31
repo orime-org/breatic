@@ -19,7 +19,11 @@ describe('SPACE_TYPES registry', () => {
     Object.values(SPACE_TYPES).forEach((def) => {
       expect(def.label.length).toBeGreaterThan(0);
       expect(def.icon.length).toBeGreaterThan(0);
-      expect(typeof def.bodyComponent).toBe('function');
+      // Like the Canvas node registry, Space bodies may be memo components.
+      const component: unknown = def.bodyComponent;
+      expect(typeof component === 'function' ||
+        (typeof component === 'object' && component !== null &&
+          '$$typeof' in component && component.$$typeof === Symbol.for('react.memo'))).toBe(true);
     });
   });
 });

@@ -360,7 +360,8 @@
     },
     "error": {
       "network": "Network error",
-      "turnFailed": "This reply could not be finished. Try sending it again."
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "turnTooLong": "This turn had too much to process and could not finish. Try a narrower request."
     },
     "message": {
       "interrupted": "Stopped",
@@ -401,6 +402,7 @@
       "savingImage": "Saving the picture",
       "checkingModels": "Looking up the models",
       "readingGuide": "Reading how the product works",
+      "readingTemplate": "Reading the template",
       "understanding": "Looking at the media",
       "judging": "Weighing it up",
       "searchingConversations": "Searching your conversations",
@@ -423,7 +425,8 @@
         "readConversation": "Reading the conversation",
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
-        "other": "Calling {tool}"
+        "other": "Calling {tool}",
+        "readTemplate": "Reading the template"
       }
     },
     "loadEarlier": "Load earlier messages",
@@ -880,7 +883,6 @@
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
       },
-      "editMarks": "Replace the text in square brackets and braces. Orange notes are not sent to the model.",
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: "
     },
@@ -1351,16 +1353,114 @@
       "title": "Templates",
       "empty": "No templates",
       "unavailable": "Unavailable",
+      "goal": {
+        "character": "Character design & consistency",
+        "comics-storyboards": "Comics & storyboards"
+      },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
         "description": "A 5×5 sequence of one story, for turning into a video",
-        "prompt": "Use [📎 character or scene reference] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: {✏️ the story}. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers."
+        "prompt": "Use [📎 Character or scene] as the reference. Create ONE image: a storyboard grid of exactly 5 rows and 5 columns, 25 equal panels in total, separated by thin white gutters, read left to right and top to bottom as one continuous sequence in time. Story: {✏️ the story}. Every panel keeps the same people, outfits, location and lighting as the reference. Vary shot size and camera angle from panel to panel like a film storyboard. No text, no numbers.",
+        "input": {
+          "reference": {
+            "name": "Character or scene",
+            "note": "Add the character or scene reference first, then generate."
+          }
+        }
       },
       "costume-sheet": {
         "name": "Character turnaround",
         "description": "Front, side and back views plus a close-up of a detail",
-        "prompt": "Use [📎 character reference] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text."
-      }
+        "prompt": "Use [📎 Character] as the character reference. Create ONE image: a character costume sheet on a plain light grey background. On the left, full-body front, side and back views of the same character standing side by side; on the right, smaller close-up frames of {✏️ the hands or another body part}. The same photorealistic photographic style as the reference, not an illustration. The face, hairstyle, outfit, colours and body proportions match the reference in every view. Even studio lighting. No text.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "character-bible": {
+        "name": "Character sheet",
+        "description": "Views, expressions, poses and details of one character",
+        "prompt": "Use [📎 Character] as the only character reference; do not invent a new character. Create ONE image: a character sheet of exactly this character on a plain light grey background. The four main full-body views, front, three-quarter, side and back, take the largest area. Around them, in this order: a colour palette of the hair, skin and outfit; a black silhouette; 8 expressions; 5 micro-expressions; 4 head angles; 3 poses; one bust showing a strong emotion; close-ups of the outfit details; hand gestures. Every small frame is drawn in the same style as the main views, with the same face, hairstyle, outfit, colours and body proportions as the reference. Style: {✏️ the same style as the reference}. Even studio lighting. No text, no labels.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "expression-sheet": {
+        "name": "Expression sheet",
+        "description": "Expressions, micro-expressions and head angles of one face",
+        "prompt": "Use [📎 Character] as the character reference. Create ONE image: an expression sheet of this character on a plain light grey background, head and shoulders in every frame. Top row, 8 expressions: neutral, smiling, laughing, sad, angry, surprised, afraid, disgusted. Middle row, 5 micro-expressions: a held-back smile, doubt, contempt, holding back tears, embarrassment. Bottom row, the neutral face at 4 head angles: front, three-quarter, profile, looking down. The same face, hairstyle, skin and lighting in every frame, matching the reference. Style: {✏️ the same style as the reference}. No text, no labels.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "character-design-from-text": {
+        "name": "Character from a description",
+        "description": "Design a character from words, then a full character sheet",
+        "prompt": "(💡 Generate Character design first)Use [📎 Character design] as the only character reference; do not invent a new character. Create ONE image: a character sheet of exactly this character on a plain light grey background. The four main full-body views, front, three-quarter, side and back, take the largest area. Around them, in this order: a colour palette of the hair, skin and outfit; a black silhouette; 8 expressions; 5 micro-expressions; 4 head angles; 3 poses; one bust showing a strong emotion; close-ups of the outfit details; hand gestures. Keep the reference's exact rendering in the main views and in every small frame: a 3D render stays a 3D render, a drawing stays a drawing, with the same face, hairstyle, outfit, colours and body proportions. Even studio lighting. No text, no labels.",
+        "node": {
+          "design": {
+            "name": "Character design",
+            "prompt": "A full-body character design of {✏️ who the character is: age, build, face, hair, outfit, colours}, in {✏️ one style, e.g. 3D cartoon, anime or photorealistic}. Neutral standing pose facing the camera, arms relaxed, the whole body from head to feet in frame, on a plain light grey background. Even studio lighting. No text."
+          }
+        }
+      },
+      "single-view-refs-scene": {
+        "name": "Character in a video scene",
+        "description": "Front, side and back views keep one person the same in a video",
+        "prompt": "(💡 Generate Front first)(💡 Generate Side first)(💡 Generate Back first)The person in this video is [📎 Character]; [📎 Front], [📎 Side] and [📎 Back] show the same person from the front, side and back. Take only the face, hairstyle, body shape and whole outfit from these pictures, not their background, pose or lighting. Place: {✏️ where it happens}. In one continuous shot, {✏️ one thing the person does}. Camera: {✏️ one move with a start, a direction and an end, e.g. starts wide behind the person and moves in to a close-up of the face}. The first frame is already the finished picture and already moving. One light source throughout. Sound: the ambient sound of the place and the person's footsteps, no music, no speech. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character photo first, then generate Front, Side and Back."
+          }
+        },
+        "node": {
+          "front": {
+            "name": "Front",
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from the front, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+          },
+          "side": {
+            "name": "Side",
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from the side, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+          },
+          "back": {
+            "name": "Back",
+            "prompt": "Use [📎 Character] as the character reference. The same person seen from behind, full body, standing straight, on a plain light grey background, even studio lighting. Keep only the face, hairstyle, body shape and the whole outfit from the reference; not its background, pose or lighting."
+          }
+        }
+      },
+      "identity-locked-sequence": {
+        "name": "One character, three shots",
+        "description": "Three shots in a row of the same character",
+        "prompt": "[📎 Character] is the only character and the same person in every shot. 0–3 s: the character, {✏️ 4 features, e.g. short black hair, round glasses, red scarf, grey wool coat}, {✏️ does what, where}. 3–6 s: the character, {✏️ the same 4 features}, {✏️ does what next}. 6–8 s: the character, {✏️ the same 4 features}, {✏️ how it ends}. The face does not change, and the type and main colour of the outfit do not change. One camera move per shot, each with an end point. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "character-showcase-orbit": {
+        "name": "Character orbit",
+        "description": "The camera circles the character to show the look",
+        "prompt": "[📎 Character] stands still in the middle of {✏️ a plain studio or a place}, relaxed, arms at the sides. The camera starts in front of the character at chest height and circles 180 degrees around them to end behind them, at the same height and distance throughout. The character does not turn with the camera and does not step away; only the camera moves. The background shifts with clear parallax as the camera circles. Soft light from one side. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Character",
+            "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "applyFailed": "Couldn't apply the template.",
+      "groupLocked": "The group is locked. Unlock it to add nodes."
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
@@ -1488,7 +1588,11 @@
       "title": "Leave with work in progress?",
       "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
       "stay": "Stay",
-      "leave": "Leave anyway"
+      "leave": "Leave anyway",
+      "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
+      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "completeDescription": "Changes are synced and operations are complete.",
+      "completeTitle": "Ready to continue"
     },
     "header": {
       "renameFailed": "Couldn't rename the project"
@@ -1532,6 +1636,11 @@
       "confirm": "Leave",
       "done": "You left “{name}”",
       "failed": "Couldn't leave"
+    },
+    "refreshGuard": {
+      "title": "Refresh with work in progress?",
+      "refresh": "Refresh anyway",
+      "failed": "Couldn't refresh. Try again."
     }
   },
   "common": {
@@ -1615,6 +1724,9 @@
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "Arrange and collaborate in 3D",
       "canvas": "Canvas",
       "canvasSub": "Infinite canvas + nodes",
       "document": "Document",
@@ -1791,10 +1903,63 @@
         "close": "Close",
         "download": "Download",
         "delete": "Delete",
-        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead."
+        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
+        "captionReadOnly": "Read-only. You can copy this draft.",
+        "captionRetained": "Media removed. Copy this draft before closing the Space."
       }
     },
-    "readOnlyReconnect": "Reconnect"
+    "readOnlyReconnect": "Reconnect",
+    "threeD": {
+      "loading": "Loading scene…",
+      "loadFailed": "The scene could not be loaded.",
+      "reload": "Reload page",
+      "valueFailed": "The value was not applied.",
+      "figure": "Figure",
+      "box": "Stage block",
+      "move": "Move",
+      "rotate": "Rotate",
+      "scale": "Scale",
+      "focus": "Focus selection",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "undo": "Undo",
+      "redo": "Redo",
+      "objects": "Objects",
+      "properties": "Properties",
+      "addFigure": "Add figure",
+      "addBox": "Add block",
+      "position": "Position (m)",
+      "rotation": "Rotation (°)",
+      "name": "Name",
+      "lock": "Lock",
+      "unlock": "Unlock",
+      "selectedCount": "{count} selected",
+      "multiTransform": "Use the scene handles to transform the selection around its centre.",
+      "mixed": "Mixed",
+      "selectObject": "Select an object to edit its properties.",
+      "refused": "The connection to this scene was refused. Changes will not be saved.",
+      "retry": "Retry",
+      "viewFailed": "Your personal view could not be saved.",
+      "commandFailed": "The action could not be applied. Check selection, locks and editing access.",
+      "invalidObject": "Unreadable object: {id}",
+      "empty": "Add a figure or block to start arranging your scene.",
+      "unsupported": "This scene uses an unsupported format. Reload to update the page.",
+      "modelFailed": "A model could not be loaded.",
+      "peerSelection": "{name}: {count} selected",
+      "add": "Add",
+      "generate": "AI generation",
+      "annotationsLater": "Annotations (coming later)",
+      "help": "Help",
+      "tasks": "Generation tasks",
+      "minimap": "Scene minimap",
+      "generationDev": "3D model generation is in development",
+      "prompt": "Describe the 3D model you want to generate",
+      "reference": "Reference image (optional)",
+      "chooseReference": "Choose reference image",
+      "submit": "Generate",
+      "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
+      "closePanel": "Close"
+    }
   },
   "menu": {
     "createAria": "Create menu",

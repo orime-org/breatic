@@ -17,7 +17,9 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
+import { TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -71,14 +73,32 @@ function openOver(rowIndex: number, colIndex: number): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'reader' },
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
-    },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
   ] as never);
   side.editor = editor;
-  side.state = { show: true, block: editor.document[1], rowIndex, colIndex };
+  side.state = { show: true, block: editor.document[1], rowIndex, colIndex, cellPos: cellPosAt(editor, rowIndex, colIndex) };
   return editor;
+}
+
+/**
+ * The position before a cell of the table, as the hover state reports it.
+ * @param editor - The editor.
+ * @param rowIndex - The cell's row.
+ * @param colIndex - The cell's place in its row.
+ * @returns The position.
+ */
+function cellPosAt(editor: Editor, rowIndex: number, colIndex: number): number {
+  let at = -1;
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (at >= 0 || node.type.name !== 'docTable') return at < 0;
+    let rowPos = pos + 1;
+    for (let r = 0; r < rowIndex; r += 1) rowPos += node.child(r).nodeSize;
+    let cellPos = rowPos + 1;
+    for (let c = 0; c < colIndex; c += 1) cellPos += node.child(rowIndex).child(c).nodeSize;
+    at = cellPos;
+    return false;
+  });
+  return at;
 }
 
 /**
@@ -89,14 +109,14 @@ function openOver(rowIndex: number, colIndex: number): Editor {
 function grid(editor: Editor): string[][] {
   let table: PMNode | null = null;
   editor.prosemirrorState.doc.descendants((node) => {
-    if (table === null && node.type.name === 'table') table = node;
+    if (table === null && node.type.name === 'docTable') table = node;
     return table === null;
   });
   if (table === null) return [];
   const rows: string[][] = [];
   (table as PMNode).forEach((row) => {
     const cells: string[] = [];
-    row.forEach((cell) => cells.push(`${cell.type.name === 'tableHeader' ? '#' : ''}${cell.textContent}`));
+    row.forEach((cell) => cells.push(`${cell.type.name === 'docTableHeader' ? '#' : ''}${cell.textContent}`));
     rows.push(cells);
   });
   return rows;
@@ -171,7 +191,7 @@ describe('the row handle (A6)', () => {
 
     let a1 = -1;
     editor.prosemirrorState.doc.descendants((node, pos) => {
-      if (a1 < 0 && node.type.name === 'tableCell' && node.textContent === 'a1') a1 = pos;
+      if (a1 < 0 && node.type.name === 'docTableCell' && node.textContent === 'a1') a1 = pos;
       return a1 < 0;
     });
     insertRow(editor, a1, 'above');
@@ -229,7 +249,7 @@ describe('the row handle (A6)', () => {
 
     let a2 = -1;
     editor.prosemirrorState.doc.descendants((node, pos) => {
-      if (a2 < 0 && node.type.name === 'tableCell' && node.textContent === 'a2') a2 = pos;
+      if (a2 < 0 && node.type.name === 'docTableCell' && node.textContent === 'a2') a2 = pos;
       return a2 < 0;
     });
     act(() => {
@@ -260,6 +280,22 @@ describe('the row handle (A6)', () => {
   });
 });
 
+describe('the handles as table controls (inner#1402)', () => {
+  it('carry the mark that keeps the handles up while the pointer is on them', () => {
+    openOver(0, 0);
+    render(
+      <>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+        <DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />
+      </>,
+    );
+
+    for (const id of ['doc-table-row-handle', 'doc-table-col-handle']) {
+      expect(screen.getByTestId(id).closest(`[${TABLE_CONTROL}]`)).not.toBeNull();
+    }
+  });
+});
+
 describe('the column handle (A6)', () => {
   it('offers the column commands and deletes the column', () => {
     const editor = openOver(0, 1);
@@ -286,7 +322,7 @@ describe('the table handles as layers of the body (inner#1127)', () => {
     render(<DocumentTableHandle orientation={orientation} hideOtherElements={() => undefined} />);
 
     const handle = screen.getByTestId(orientation === 'row' ? 'doc-table-row-handle' : 'doc-table-col-handle');
-    const table = (editor.document as { id: string; type: string }[]).find((block) => block.type === 'table')!;
+    const table = (editor.document as { id: string; type: string }[]).find((block) => block.type === 'docTable')!;
     expect(handle.closest(`[${BODY_LAYER}]`)?.getAttribute(BODY_ANCHOR)).toBe(`block:${table.id}`);
   });
 });
