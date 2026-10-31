@@ -21,6 +21,7 @@ export const CREDIT_AMOUNT_FORMAT = "decimal-v1";
  * @returns The converted or computed exact amount.
  */
 export function parseCreditDecimal(value: string): CreditMicro {
+  if (typeof value !== "string") throw new RangeError("Invalid credit decimal number");
   const match = /^(-?)(\d+)(?:\.(\d{0,6}))?$/.exec(value);
   if (!match) throw new RangeError("Invalid credit decimal number");
   const magnitude = BigInt(match[2]!) * CREDIT_MICRO_PER_CREDIT + BigInt((match[3] ?? "").padEnd(6, "0"));

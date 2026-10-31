@@ -23,6 +23,8 @@
  * switch the letter to a different language.
  */
 
+import type { CreditDecimal } from "@breatic/shared";
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -123,12 +125,12 @@ function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
     taxCents: 240,
     totalCents: 2240,
     currency: "usd",
-    creditsGranted: 1700,
+    creditsGranted: "1700.000000" as CreditDecimal,
     grantedAt: new Date("2026-08-26T01:30:00.000Z"),
     consentTextVersion: CONSENT_CREDITS_VERSION,
     refundTextVersion: REFUND_CREDITS_VERSION,
     timeZone: "UTC",
-    balanceCredits: 4200,
+    balanceCredits: "4200.000000" as CreditDecimal,
     ...over,
   };
 }

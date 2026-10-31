@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { parseCreditDecimal } from '@breatic/shared';
+
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { refundRefusal, isPurchased } from '@breatic/shared';
@@ -71,7 +73,7 @@ function noteOf(
   if (refusal === 'already_spent') {
     // Spent to nothing and spent from read as different facts to the buyer,
     // though the rule refuses both on the same count.
-    return lot.remainingCredits === 0
+    return parseCreditDecimal(lot.remainingCredits) === 0n
       ? t('credits.lifecycle.depleted')
       : t('credits.refundReason.spent');
   }

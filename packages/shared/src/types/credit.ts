@@ -438,7 +438,7 @@ export const creditLedgerViewSchema = z.object({
 export const studioLedgerViewSchema = z.object({
   id, kind: z.enum(["generation", "debt_repayment"]), actorUserId: id.nullable(), actorName: nullableText,
   projectId: id.nullable(), projectName: nullableText, model: nullableText, provider: nullableText,
-  charged: amount, consumed: amount, owed: amount, createdAt: z.string(),
+  charged: creditDecimalSchema, consumed: creditDecimalSchema, owed: creditDecimalSchema, createdAt: z.string(),
 });
 export const projectCreditsViewSchema = z.object({ spendable: creditDecimalSchema, held: amount, available: creditDecimalSchema });
 export const studioCreditsViewSchema = z.object({

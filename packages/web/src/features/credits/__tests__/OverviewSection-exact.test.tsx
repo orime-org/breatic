@@ -78,7 +78,7 @@ describe('exact credit overview rendering', () => {
       '199999999999999.980000', '0.000000',
       ['99999999999999.990000', '99999999999999.990000'],
     )} />);
-    expect(screen.getByText('199,999,999,999,999.98')).toBeInTheDocument();
+    expect(screen.getAllByText('199,999,999,999,999.98')).toHaveLength(2);
     expect(screen.getByText('Studio 1 99,999,999,999,999.99')).toBeInTheDocument();
     expect(screen.getByText('Studio 2 99,999,999,999,999.99')).toBeInTheDocument();
     const weights = [...container.querySelectorAll<HTMLElement>('span[style*="flex-grow"]')]

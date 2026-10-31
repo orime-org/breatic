@@ -351,7 +351,7 @@ interface RowProps {
 /** The figure to print, and an optional hook for tests. */
 interface RowBalanceProps {
   /** How many are left. */
-  credits: number;
+  credits: string;
   /** A hook for tests to name this figure. */
   'data-testid'?: string;
 }

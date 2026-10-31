@@ -26,6 +26,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
+  creditAmountFormatQuerySchema,
   creditLotQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
@@ -46,6 +47,7 @@ credits.use(requireAuth);
  */
 credits.get(
   "/overview",
+  validate("query", creditAmountFormatQuerySchema),
   // Reconciling below reaches Stripe on every read, so this reader is a caller
   // of somebody else's API and is capped like one.
   rateLimitFor("credits-read", "user"),

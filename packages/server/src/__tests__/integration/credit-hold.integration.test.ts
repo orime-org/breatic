@@ -290,7 +290,7 @@ describe("chargeForGeneration with a hold", () => {
       referenceId: reference,
       releaseHold: reference,
     });
-    expect(outcome.charged).toBe(70);
+    expect(Number(outcome.charged)).toBe(70);
     expect(await holdRows(reference)).toEqual([{ status: "released", amount: "50.000000" }]);
     expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 30, held: 0, available: 30 });
   });
@@ -386,9 +386,11 @@ describe("hold invariant", () => {
           }
           const position = await creditHoldService.getCreditPosition(fx.studioId);
           // What is left reads below zero only when the studio owes.
-          const left = position.spendable < 0 ? position.spendable : Math.max(0, position.spendable - position.held);
-          expect(position.available).toBeCloseTo(left, 6);
-          if (admitted) expect(position.held).toBeLessThanOrEqual(position.spendable + 1e-6);
+          const spendable = Number(position.spendable);
+          const held = Number(position.held);
+          const left = spendable < 0 ? spendable : Math.max(0, spendable - held);
+          expect(Number(position.available)).toBeCloseTo(left, 6);
+          if (admitted) expect(held).toBeLessThanOrEqual(spendable + 1e-6);
         }
       }),
       { numRuns: 25 },

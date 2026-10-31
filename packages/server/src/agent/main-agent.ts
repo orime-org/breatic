@@ -8,6 +8,8 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
+import { parseCreditDecimal } from "@breatic/shared";
+
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
@@ -1258,7 +1260,7 @@ export class MainAgent {
                   provider: resolveProvider(modelId),
                 },
               );
-              if (outcome && outcome.shortfall > 0) {
+              if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {
                 // The pool ran out mid-turn, or its credits were reassigned
                 // while the model was answering. The reply is already with the
                 // reader, so what could not be charged goes to reconciliation.

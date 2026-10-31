@@ -22,7 +22,7 @@ import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 // The one door into the memory module: what a turn is injected with is what
@@ -385,7 +385,7 @@ describe("a consolidation that works", () => {
   it("logs a charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
-    } as never);
+    });
     await consolidate();
 
     expect(logger.error).toHaveBeenCalledWith(

@@ -27,7 +27,7 @@ import type {
   CreditSourceKind,
   PurchaseRow,
 } from "@breatic/shared";
-import { t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
+import { parseCreditDecimal, serializeCreditMicro, t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
 import {
   AppError,
   NotFoundError,
@@ -1037,9 +1037,9 @@ export async function getPurchaseHistory(
       totalCents: row.totalCents,
       taxCents: row.taxCents,
       currency: row.currency,
-      creditsGranted: row.creditsGranted,
+      creditsGranted: serializeCreditMicro(parseCreditDecimal(row.creditsGranted)),
       remainingCredits:
-        row.remainingCredits === null ? null : Number(row.remainingCredits),
+        row.remainingCredits === null ? null : serializeCreditMicro(parseCreditDecimal(row.remainingCredits)),
       lifecycle: row.lifecycle as CreditLotLifecycle | null,
       designatedStudioId: row.designatedStudioId,
       designatedStudioName: row.designatedStudioName,

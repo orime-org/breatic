@@ -17,7 +17,7 @@ import { fetchStudioCredits } from '@web/data/api/credits';
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiGet).mockResolvedValue({
-    spendable: 0,
+    spendable: '0.000000',
     lots: [],
     ledger: { items: [], nextCursor: null },
   });
@@ -27,7 +27,7 @@ describe('fetchStudioCredits', () => {
   it('按 slug 打到那个 studio 的积分地址', async () => {
     await fetchStudioCredits('acme');
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/studio/acme/credits', {
-      params: undefined,
+      params: { amountFormat: 'decimal-v1' },
     });
   });
 
@@ -35,14 +35,14 @@ describe('fetchStudioCredits', () => {
     // 带一个空的 params 会让第一页的请求地址跟后续页不同，缓存和日志都对不上。
     await fetchStudioCredits('acme', 'cursor-1');
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/studio/acme/credits', {
-      params: { cursor: 'cursor-1' },
+      params: { amountFormat: 'decimal-v1', cursor: 'cursor-1' },
     });
   });
 
   it('slug 里的特殊字符按 URL 转义，不直接拼进地址', async () => {
     await fetchStudioCredits('a/b');
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/studio/a%2Fb/credits', {
-      params: undefined,
+      params: { amountFormat: 'decimal-v1' },
     });
   });
 });

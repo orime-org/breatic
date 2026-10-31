@@ -8,6 +8,8 @@
  * open so the buyer can read the toast and try again from where they were.
  */
 
+import type { CreditDecimal } from '@breatic/shared';
+
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -58,9 +60,9 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
 function refundableLot(): CreditLotView {
   return {
     id: 'lot-1',
-    sourceKind: 'payment' as CreditLotView['sourceKind'],
-    purchasedCredits: 1700,
-    remainingCredits: 1700,
+    sourceKind: 'payment',
+    purchasedCredits: '1700.000000' as CreditDecimal,
+    remainingCredits: '1700.000000' as CreditDecimal,
     designatedStudioId: null,
     designatedStudioName: null,
     designated: false,
@@ -195,7 +197,7 @@ describe('a purchase whose credits were restored (inner#1410 v9 §5.3)', () => {
     renderRefunds();
 
     await screen.findByTestId('lot-remaining');
-    expect(screen.getByText(restoredNote!)).toBeInTheDocument();
+    expect(screen.getByText(restoredNote)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.credits.askRefund })).toBeNull();
   });
 });

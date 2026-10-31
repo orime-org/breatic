@@ -19,31 +19,31 @@ const {
 
 describe('the four account-level reads and writes', () => {
   beforeEach(() => {
-    apiGet.mockReset().mockResolvedValue({});
+    apiGet.mockReset().mockImplementation(async (url: string) => url.endsWith('/overview') ? { assignedCredits: '0.000000', unassignedCredits: '0.000000', underRefundCredits: '0.000000', billing: true, studios: [] } : { items: [], nextCursor: null });
     apiPatch.mockReset().mockResolvedValue({});
   });
 
   it('asks /credits/overview for the overview, with no parameters', async () => {
     await fetchCreditOverview();
-    expect(apiGet).toHaveBeenCalledWith('/credits/overview');
+    expect(apiGet).toHaveBeenCalledWith('/credits/overview', { params: { amountFormat: 'decimal-v1' } });
   });
 
   it('sends no query string when the purchases are not narrowed', async () => {
     await fetchCreditLots();
-    expect(apiGet).toHaveBeenCalledWith('/credits/lots', { params: undefined });
+    expect(apiGet).toHaveBeenCalledWith('/credits/lots', { params: { amountFormat: 'decimal-v1' } });
   });
 
   it('carries both the lifecycle and the cursor', async () => {
     await fetchCreditLots({ lifecycle: 'active', cursor: 'c1' });
     expect(apiGet).toHaveBeenCalledWith('/credits/lots', {
-      params: { lifecycle: 'active', cursor: 'c1' },
+      params: { amountFormat: 'decimal-v1', lifecycle: 'active', cursor: 'c1' },
     });
   });
 
   it('narrows the ledger to one studio and sends nothing else', async () => {
     await fetchCreditLedger({ studioId: 's1' });
     expect(apiGet).toHaveBeenCalledWith('/credits/ledger', {
-      params: { studioId: 's1' },
+      params: { amountFormat: 'decimal-v1', studioId: 's1' },
     });
   });
 
