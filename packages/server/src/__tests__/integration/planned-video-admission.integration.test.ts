@@ -207,14 +207,53 @@ function retry(f: Fixture, ids = [2], run = randomUUID()): { tool: Tool; project
   return { tool: f.body.tool, project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: ids } };
 }
 
+/** Count real lock waiters whose blocker chain reaches this gate's backend. @throws {Error} On fixture SQL failure. */
+async function blockedBy(gatePid: number): Promise<number> {
+  const [row] = await pg<{ count: number }[]>`WITH RECURSIVE blockers AS (
+    SELECT pid AS waiter,unnest(pg_blocking_pids(pid)) AS blocker FROM pg_stat_activity
+    WHERE datname=current_database() AND wait_event_type='Lock'
+      AND lower(query) LIKE '%tasks%' AND lower(query) LIKE '%for update%'
+    UNION
+    SELECT blockers.waiter,unnest(pg_blocking_pids(blockers.blocker)) FROM blockers
+  ) SELECT count(DISTINCT waiter)::int AS count FROM blockers WHERE blocker=${gatePid}`;
+  if (!row) throw new Error("Missing blocker projection");
+  return row.count;
+}
+
+/** Supply a valid failed retry with two failed original output identities. @throws {Error} On schema, admission or fixture SQL failure. */
+async function seedRetryChain(): Promise<{ f: Fixture; original: Parent; failedRetry: Parent }> {
+  const f = await seed(); const original = await failedOriginal(f); const body = retry(f, [1, 2]);
+  await accept(f, body); const accepted = await parent(body.run_id); const plan = accepted.params.miniToolExecution;
+  const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
+    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false,
+      result: { status: "failed", error: { code: "supplied_retry_failure" } } })), usage: [], billingState: "idle", error: { code: "supplied_retry_failure" } });
+  await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...accepted.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${body.run_id}`;
+  await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${body.run_id}`;
+  await creditHoldService.releaseHold(body.run_id);
+  return { f, original, failedRetry: await parent(body.run_id) };
+}
+
+/** Independently preserve the original executions' rows, holds and ledger facts. @throws {Error} On fixture SQL failure. */
+async function chainSnapshot(ids: string[]): Promise<Record<string, unknown>> {
+  return { parents: await Promise.all(ids.map((id) => parent(id))),
+    rows: [...await pg`SELECT id,node_id,task_id,status,started_by_user_id,started_at::text,settled_at::text,budget_ms FROM node_tasks WHERE task_id=ANY(${ids}::uuid[]) ORDER BY id`],
+    holds: [...await pg`SELECT reference_id,actor_user_id,amount::text,status,expires_at::text,released_at::text FROM credit_holds WHERE reference_id=ANY(${ids}::text[]) ORDER BY reference_id`],
+    ledger: [...await pg`SELECT id,reference_id,entry_type,amount::text FROM credit_ledger WHERE reference_id=ANY(${ids}::text[]) ORDER BY id`] };
+}
+
 /** Block real immutable-parent row locks, observe both contenders, then release and drain. @throws {Error} On failed lock probe or caller error. */
 async function contending<T>(id: string, calls: (() => Promise<T>)[]): Promise<T[]> {
-  let release!: () => void; let entered!: () => void;
+  let release!: () => void; let entered!: () => void; let gatePid = 0;
   const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
-  const owner = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${id} FOR UPDATE`; entered(); await gate; });
+  const owner = pg.begin(async (tx) => {
+    const [backend] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+    if (!backend) throw new Error("Missing gate backend");
+    gatePid = backend.pid; await tx`SELECT id FROM tasks WHERE id=${id} FOR UPDATE`; entered(); await gate;
+  });
   await ready;
   const pending = calls.map((call) => call()); pending.forEach((promise) => { void promise.catch(() => undefined); });
-  try { await waitUntilBlockedOn(pg, ["tasks", "for update"], calls.length); release(); await owner; return await Promise.all(pending); }
+  try { await waitUntilBlockedOn(pg, ["tasks", "for update"], calls.length); expect(await blockedBy(gatePid)).toBe(calls.length);
+    release(); await owner; return await Promise.all(pending); }
   finally { release(); await owner; await Promise.allSettled(pending); }
 }
 
@@ -492,6 +531,66 @@ describe("S5 independent failed-output retry admission", () => {
         .toEqual([{ reference_id: body.run_id, amount: estimate("video.split"), status: "held" }]);
       expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${body.run_id}`)]).toEqual([]);
     }), { seed: 130605, numRuns: 8 });
+  });
+  it("S5-R06 serializes direct and chained retries on their common root before admitting one execution for the same node", async () => {
+    const { f, original, failedRetry } = await seedRetryChain();
+    const before = await chainSnapshot([original.id, failedRetry.id]);
+    const chained = retry(f); chained.retry.runId = failedRetry.id;
+    const direct = retry(f);
+    const responses = await contending(original.id, [() => post(f, chained), () => post(f, direct, randomUUID(), f.otherId)]);
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    const counts = await Promise.all([effects(chained.run_id), effects(direct.run_id)]);
+    expect(counts.reduce((sum, count) => ({ tasks: sum.tasks + count.tasks, rows: sum.rows + count.rows, holds: sum.holds + count.holds, jobs: sum.jobs + count.jobs }), { tasks: 0, rows: 0, holds: 0, jobs: 0 }))
+      .toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect([...(await pg`SELECT node_id,count(*)::int AS n FROM node_tasks WHERE node_id=${f.body.outputs[2]!.nodeId} AND status='running' GROUP BY node_id`)])
+      .toEqual([{ node_id: f.body.outputs[2]!.nodeId, n: 1 }]);
+    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
+  });
+  it("S5-R06 permits disjoint direct and chained retries instead of making their whole retry chain exclusive", async () => {
+    const { f, original, failedRetry } = await seedRetryChain();
+    const before = await chainSnapshot([original.id, failedRetry.id]);
+    const chained = retry(f); chained.retry.runId = failedRetry.id;
+    const direct = retry(f, [1]);
+    const responses = await contending(original.id, [() => post(f, chained), () => post(f, direct, randomUUID(), f.otherId)]);
+    expect(responses.map((response) => response.status)).toEqual([201, 201]);
+    expect(await effects(chained.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect(await effects(direct.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
+    expect((await parent(chained.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
+    expect((await parent(direct.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[1]]);
+    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
+  });
+  it("S5-R06 rechecks the selected failed retry after its own row lock observes a late registered output", async () => {
+    const { f, original, failedRetry } = await seedRetryChain();
+    const before = await chainSnapshot([original.id, failedRetry.id]);
+    const late = miniToolExecutionRecordSchema.parse(failedRetry.result.miniToolExecution);
+    const successful = miniToolExecutionRecordSchema.parse(original.result.miniToolExecution).outputs[0]!.result;
+    const output = late.outputs.find((candidate) => candidate.outputIndex === 2);
+    if (!output || successful?.status !== "registered") throw new Error("Missing supplied canonical late outcome");
+    output.result = structuredClone(successful); output.late = true; late.resultVersion += 1;
+    expect(miniToolExecutionRecordSchema.parse(late)).toEqual(late);
+    const result = z.json().parse({ ...failedRetry.result, miniToolExecution: late });
+    let release!: () => void; let entered!: () => void; let gatePid = 0;
+    const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
+    // This connection holds only B, never the common root A.
+    const owner = pg.begin(async (tx) => {
+      const [backend] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      if (!backend) throw new Error("Missing selected-task gate backend");
+      gatePid = backend.pid; await tx`SELECT id FROM tasks WHERE id=${failedRetry.id} FOR UPDATE`; entered(); await gate;
+      await tx`UPDATE tasks SET result=${tx.json(result)} WHERE id=${failedRetry.id}`;
+    });
+    await ready;
+    const body = retry(f); body.retry.runId = failedRetry.id;
+    const pending = post(f, body); void pending.catch(() => undefined);
+    try {
+      await waitUntilBlockedOn(pg, ["tasks", "for update"], 1); expect(await blockedBy(gatePid)).toBe(1);
+      release(); await owner;
+      expect((await pending).status).toBe(422);
+      expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+      const after = await chainSnapshot([original.id, failedRetry.id]);
+      expect(after.rows).toEqual(before.rows); expect(after.holds).toEqual(before.holds); expect(after.ledger).toEqual(before.ledger);
+      expect(await parent(original.id)).toEqual(original);
+      expect(await parent(failedRetry.id)).toEqual({ ...failedRetry, result });
+    } finally { release(); await owner; await Promise.allSettled([pending]); }
   });
   it("S5-R05 settles a retry's actual container consumption and own hold once without charging or rewriting the original", async () => {
     const f = await seed(); const original = await failedOriginal(f); const body = retry(f); await accept(f, body);
