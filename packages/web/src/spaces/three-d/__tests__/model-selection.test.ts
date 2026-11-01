@@ -122,9 +122,30 @@ describe('model-selection supplements and archiver metadata (inner#1690)', () =>
     expect([...selected.paths].sort()).toEqual(['hero/mesh.bin', ENTRY]);
   });
 
-  it('keeps a supplemented file under its own name when several missing paths share that name', () => {
-    const file = inputFile('a.png', GEOMETRY.slice());
-    expect(supplementSources([file], ['one/a.png', 'two/a.png'])).toEqual([{ path: 'a.png', file }]);
+  it('leaves out a supplemented file that matches several missing paths or none', () => {
+    const shared = inputFile('a.png', GEOMETRY.slice());
+    const unrelated = inputFile('b.png', GEOMETRY.slice());
+    expect(supplementSources([shared, unrelated], ['one/a.png', 'two/a.png'])).toEqual([]);
+  });
+
+  it('keeps the missing list after an ambiguous supplement and can be supplemented again', async () => {
+    const entry = inputFile('hero.gltf', modelJson('body/color.png'));
+    const sources = [...sourcesFromFiles([entry]), ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png', 'head/color.png'])];
+    await expectFailure(inspectModelSelection(sources, 'hero.gltf', IMPORT_LIMITS), 'missing', {
+      entries: ['hero.gltf'], paths: ['hero.gltf'], missing: ['body/color.png'],
+    });
+    const again = [...sources, ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png'])];
+    expect([...(await inspectModelSelection(again, 'hero.gltf', IMPORT_LIMITS)).paths]).toEqual(['body/color.png', 'hero.gltf']);
+  });
+
+  it('expands a ZIP chosen in a folder that also holds Finder metadata', async () => {
+    const zipped = archive(new Map([['hero/model.glb', modelGlb()]]));
+    const selected = await inspect([
+      inputFile('.DS_Store', new Uint8Array([0, 0, 0, 1]), 'pack/.DS_Store'),
+      inputFile('model.zip', zipped, 'pack/model.zip'),
+      inputFile('._model.zip', new Uint8Array([0, 5, 22, 7]), 'pack/._model.zip'),
+    ], undefined, IMPORT_LIMITS);
+    expect([...selected.entries]).toEqual(['hero/model.glb']);
   });
 
   it('leaves Finder metadata out of a folder selection and its single entry', async () => {

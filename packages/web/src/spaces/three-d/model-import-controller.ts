@@ -52,6 +52,8 @@ export class ModelImportController {
   private readonly listeners = new Set<() => void>();
   private operation = new AbortController();
   private inFlight: Promise<void> | null = null;
+  /** Counts selection requests so a slow read is dropped once a newer selection was made. */
+  private requests = 0;
 
   /**
    * Bind import work to the existing scene command owner.
@@ -96,6 +98,7 @@ export class ModelImportController {
    * @throws {never} Inspection failures are retained in the snapshot.
    */
   async select(files: readonly ModelSource[], entry?: string): Promise<void> {
+    this.requests += 1;
     if (['disposed', 'uploading', 'registering'].includes(this.snapshot.phase)) return;
     this.operation.abort();
     this.snapshot.prepared?.dispose();
@@ -112,6 +115,18 @@ export class ModelImportController {
       if (!operation.signal.aborted) this.publish({ phase: 'failed', error: error instanceof Error ? error : new Error(String(error)),
         ...(error instanceof ModelImportError && error.info ? error.info : {}) });
     }
+  }
+
+  /**
+   * Inspect a selection that is still being read, unless the user selects something else before it is ready.
+   * @param read - The selection's sources once read, such as the files of a dropped folder.
+   * @returns Completion of the read and, when still current, its inspection.
+   * @throws {never} Inspection failures are retained in the snapshot.
+   */
+  async selectWhenRead(read: Promise<readonly ModelSource[]>): Promise<void> {
+    const request = ++this.requests;
+    const files = await read;
+    if (request === this.requests) await this.select(files);
   }
 
   /**

@@ -152,11 +152,12 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const dropFiles = React.useCallback((event: React.DragEvent<HTMLDivElement>): void => {
     event.preventDefault();
     if (!canEdit || busy) return;
+    // A drag that carries no files (selected text, a link) is not a selection.
+    if (!event.dataTransfer.files.length) return;
     setDetails(false);
     // An unreadable drop is inspected as dropped, so the read failure shows as the selection's own error.
     const dropped = sourcesFromFiles(Array.from(event.dataTransfer.files));
-    void sourcesFromDrop(event.dataTransfer).then((sources) => sources, () => dropped)
-      .then((sources) => { if (sources.length) void controller.select(sources); });
+    void controller.selectWhenRead(sourcesFromDrop(event.dataTransfer).catch(() => dropped));
   }, [canEdit, busy, controller]);
   /**
    * Reinspect the same resource collection around an explicitly selected entry.

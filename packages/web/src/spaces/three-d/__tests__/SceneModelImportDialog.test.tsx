@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
 import { SceneSession } from '@web/data/yjs/scene-session';
@@ -46,6 +46,75 @@ afterEach(() => {
   cleanup();
   for (const dispose of disposers.splice(0)) dispose();
   vi.clearAllMocks();
+});
+
+/**
+ * Build a dropped directory entry whose reader answers when the test allows it.
+ * @throws {never} Never.
+ */
+function droppedFolder(name: string, files: readonly File[], gate: Promise<void> = Promise.resolve()): FileSystemDirectoryEntry {
+  const entries = files.map((file) => ({ isFile: true, isDirectory: false, name: file.name, fullPath: `/${name}/${file.name}`,
+    file: (resolve: (value: File) => void) => resolve(file) }));
+  return { isFile: false, isDirectory: true, name, fullPath: `/${name}`, createReader: () => {
+    const batches = [entries, []];
+    return { readEntries: (resolve: (value: unknown[]) => void) => { void gate.then(() => resolve(batches.shift() ?? [])); } };
+  } } as unknown as FileSystemDirectoryEntry;
+}
+
+/**
+ * Drop one folder entry on the dialog's drop zone as a browser does.
+ * @throws {never} Never.
+ */
+function dropFolder(folder: FileSystemDirectoryEntry): void {
+  const placeholder = new File([], folder.name);
+  fireEvent.drop(screen.getByTestId('model-import-dropzone'), { dataTransfer: {
+    files: [placeholder], items: [{ kind: 'file', webkitGetAsEntry: () => folder, getAsFile: () => placeholder }],
+  } });
+}
+
+/**
+ * Supply an idle import whose inspection is a test double.
+ * @throws {never} Never.
+ */
+function idleImport(): { controller: ModelImportController; prepare: ReturnType<typeof vi.fn> } {
+  const doc = new Y.Doc();
+  doc.getMap('scene').set('formatVersion', 1);
+  const session = new SceneSession(doc);
+  session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
+  const prepare = vi.fn(() => new Promise<PreparedModel>(() => undefined));
+  const controller = new ModelImportController({ session, upload: vi.fn(), position: () => [0, 0, 0], prepare });
+  disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
+  return { controller, prepare };
+}
+
+describe('model import dialog folder drops (inner#1690)', () => {
+  it('inspects a dropped folder with its files under the folder path', async () => {
+    const { controller, prepare } = idleImport();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    dropFolder(droppedFolder('hero', [new File(['{}'], 'scene.gltf'), new File(['x'], 'mesh.bin')]));
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    expect(prepare.mock.calls[0][0].map((source: { path: string }) => source.path)).toEqual(['hero/scene.gltf', 'hero/mesh.bin']);
+  });
+
+  it('keeps a later selection when an earlier folder drop finishes reading after it', async () => {
+    const { controller, prepare } = idleImport();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const read = Promise.withResolvers<void>();
+    dropFolder(droppedFolder('large', [new File(['x'], 'junk.txt')], read.promise));
+    const later = [{ path: 'hero.glb', file: new File(['glb'], 'hero.glb') }];
+    await act(async () => { void controller.select(later); });
+    await act(async () => { read.resolve(); await read.promise; await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().files).toBe(later);
+  });
+
+  it('reports a dropped folder that holds no files', async () => {
+    const { controller, prepare } = idleImport();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    dropFolder(droppedFolder('empty', []));
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    expect(prepare.mock.calls[0][0]).toEqual([]);
+  });
 });
 
 describe('model import dialog controls', () => {
