@@ -84,7 +84,7 @@ import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { createFileUploads, type FileUploads } from '@web/spaces/document/document-uploads';
 import { insertAtGapTr, type FilesArrival } from '@web/spaces/document/document-file-input';
-import { putBlocks } from '@web/spaces/document/document-put';
+import { putBlocks, selectPlaced } from '@web/spaces/document/document-put';
 import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import { captionDraftsFor, type CaptionDrafts } from '@web/spaces/document/document-caption-drafts';
@@ -229,7 +229,10 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        if (arrival.gap === null) putBlocks(editor, prepared.blocks);
+        if (arrival.at !== undefined) {
+          const placed = putBlocks(editor, prepared.blocks, arrival.at);
+          if (placed !== null) selectPlaced(view, placed);
+        } else if (arrival.gap === null) putBlocks(editor, prepared.blocks);
         else view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
         prepared.start();
       },

@@ -596,13 +596,14 @@ function putInGap(view: EditorView, blocks: readonly ReadBlock[], gap: number): 
 
 /**
  * Puts blocks already built, nothing read and every medium already
- * judged, at the selection: a canvas paste, files.
+ * judged, at the selection or a drop's point: a canvas paste, files.
  * @param editor - The editor.
  * @param blocks - The blocks.
+ * @param dropAt - A drop's point, when they were dropped there.
  * @returns Where they landed, or null when nothing went in.
  */
-export function putBlocks(editor: Editor, blocks: readonly ReadBlock[]): Placed | null {
-  return putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props });
+export function putBlocks(editor: Editor, blocks: readonly ReadBlock[], dropAt?: number): Placed | null {
+  return putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props, ...(dropAt !== undefined && { dropAt }) });
 }
 
 /**

@@ -27,6 +27,7 @@ import {
 import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { cellAround } from '@tiptap/pm/tables';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { QUOTED } from '@web/spaces/document/document-list-block';
@@ -48,6 +49,11 @@ export interface FilesArrival {
    * selection by the body's placement (inner#1351 design §5.4.3).
    */
   readonly gap: BlockGap | null;
+  /**
+   * The point of a drop on the words of a table cell, where the files land
+   * as a paste there would (§5.1, §5.4.7).
+   */
+  readonly at?: number;
 }
 
 /** Where arriving files are handed over. */
@@ -89,9 +95,22 @@ export function gapAtDrop(doc: PMNode, at: number): BlockGap {
 }
 
 /**
+ * Whether a position is in the words of a table cell, where dropped files
+ * land at the pointer (§5.1).
+ * @param doc - The document.
+ * @param at - The position.
+ * @returns True there.
+ */
+function onCellWords(doc: PMNode, at: number): boolean {
+  const $at = doc.resolve(at);
+  return $at.parent.isTextblock && cellAround($at) !== null;
+}
+
+/**
  * The drop line a drag of files shows (A2): at the gap the files land in, the
- * line a dragged row shows there; none over a read-only body, where the drop
- * does nothing. Every other drag keeps the line the editor draws.
+ * line a dragged row shows there; over a table cell's words the editor's own
+ * caret, where they land; none over a read-only body, where the drop does
+ * nothing. Every other drag keeps the line the editor draws.
  * @param context - The drag, as the drop line extension hands it.
  * @returns The line, or null for none.
  */
@@ -99,6 +118,7 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   const { view, event, defaultPosition } = context;
   if (view.dragging !== null || !carriesFiles(event)) return defaultPosition;
   if (!view.editable || defaultPosition === null) return null;
+  if (onCellWords(view.state.doc, defaultPosition.pos)) return defaultPosition;
   return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
@@ -180,7 +200,8 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
-              sink({ files, gap: gapAtDrop(view.state.doc, at.pos) });
+              const { doc } = view.state;
+              sink(onCellWords(doc, at.pos) ? { files, gap: null, at: at.pos } : { files, gap: gapAtDrop(doc, at.pos) });
               return true;
             },
           },
