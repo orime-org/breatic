@@ -6,7 +6,8 @@
  * (inner#1743), so the provider tests can prove the move changes
  * nothing: every catalog and 3D model bound to WaveSpeed at weight 1 with the
  * upstream fields, value spellings, extra steps and pricing the catalog
- * declares today, the upstreams from `config/models/<modality>/providers.yaml`
+ * declares today (where WaveSpeed's own schema departs from them, the
+ * `WAVESPEED` table below), the upstreams from `config/models/<modality>/providers.yaml`
  * and the LLM routes from `packages/domain/src/agent/llm.ts`.
  *
  * Run from the repository root with `pnpm exec tsx scripts/provider-config-migration.ts`.
@@ -29,6 +30,8 @@ import { mergeLlm, mergeMediaModels, mergeUpstreams } from "./provider-config-me
 interface RawPricing { base_price: number; formula: string; discount_rate: number }
 interface RawParam {
   upstream?: string;
+  values?: (string | number | boolean)[];
+  into_prompt?: string;
   upstream_values?: Record<string, string | number | boolean>;
   item_key?: string;
   absent_value?: string | number | boolean;
@@ -50,9 +53,9 @@ interface RawModel {
 const ROOT = resolve(import.meta.dirname, "..");
 
 /**
- * Params the application layer turns into the prompt itself: no
- * upstream field carries them. Copied from the families in
- * `packages/worker/src/providers/families/`.
+ * Params the application layer turns into the prompt itself besides those
+ * the catalog marks `into_prompt`: no upstream field carries them. Copied
+ * from the families in `packages/worker/src/providers/families/`.
  */
 const APP_PARAMS: Readonly<Record<string, readonly string[]>> = {
   "nano-banana-2": ["enable_camera", "camera", "lens", "focal_length", "aperture"],
@@ -65,6 +68,43 @@ const APP_PARAMS: Readonly<Record<string, readonly string[]>> = {
     "light_quality",
     "light_reference",
   ],
+};
+
+/** Why a param WaveSpeed has no field for is dropped whatever its value. */
+const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
+
+/**
+ * Where WaveSpeed departs from the catalog, by model, from its schemas
+ * (`/api/v3/models`) and submits probed on 2026-11-01 (inner#1775, inner#1872,
+ * inner#1873). `renames`: the catalog's field to the name WaveSpeed's schema
+ * gives it (WaveSpeed takes both and echoes the schema's). `refuses`: the
+ * catalog's values WaveSpeed rejects; the binding supports the others.
+ * `ignores`: params WaveSpeed has no field for and ignores. `noPrompt`: its
+ * schema has no prompt, and one sent is ignored. `delisted`: WaveSpeed no
+ * longer serves the model, so it gets no WaveSpeed binding (fal serves it).
+ */
+const WAVESPEED: Readonly<Record<string, {
+  renames?: Readonly<Record<string, string>>;
+  refuses?: Readonly<Record<string, readonly (string | number | boolean)[]>>;
+  ignores?: readonly string[];
+  noPrompt?: true;
+  delisted?: true;
+}>> = {
+  "flux-3-start-end-to-video": { renames: { start_image: "image", end_image: "last_image" } },
+  "muse-image-edit": { renames: { image_urls: "images" }, refuses: { aspect_ratio: ["9:21"] } },
+  "wan-3.0-text-to-video": { renames: { enable_audio: "generate_audio" } },
+  "wan-3.0-image-to-video": { renames: { enable_audio: "generate_audio" } },
+  "wan-3.0-reference-to-video": { renames: { enable_audio: "generate_audio" } },
+  "hunyuan3d-v3": { refuses: { generate_type: ["LowPoly"] } },
+  "hunyuan3d-v3-i23d": { refuses: { generate_type: ["LowPoly"] }, noPrompt: true },
+  "hunyuan3d-v3.1-rapid": { noPrompt: true },
+  "nano-banana-2-relight": { refuses: { output_format: ["webp"] } },
+  "nano-banana-2-quick-edit": { refuses: { output_format: ["webp"] } },
+  "elevenlabs-v3": { ignores: ["similarity"] },
+  "sfx-1.6-text-to-audio": { ignores: ["loop"] },
+  "meshy6-t23d": { delisted: true },
+  "veed-clean-audio": { delisted: true },
+  "recraft-v4-style-text-to-image": { delisted: true },
 };
 
 /** Params whose value the upstream takes in its own shape. */
@@ -159,19 +199,27 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   const provider = model.providers?.find((p) => p.name === "wavespeed");
   if (provider === undefined) throw new Error(`${model.name} has no WaveSpeed provider`);
   const skipped = new Set(APP_PARAMS[model.name] ?? []);
+  const facts = WAVESPEED[model.name] ?? {};
   const params: Record<string, Record<string, unknown>> = {};
   const mentions: Record<string, string> = {};
-  const drops: Record<string, "*"> = {};
+  const drops: Record<string, "*" | { all_values: string }> = {};
   for (const [name, spec] of Object.entries(model.params ?? {})) {
     if (spec.mention !== undefined) mentions[name] = spec.mention;
     // A slot that joins a pool travels inside it; no field carries the slot itself.
-    if (skipped.has(name) || spec.joins !== undefined) {
+    if (skipped.has(name) || spec.into_prompt !== undefined || spec.joins !== undefined) {
       drops[name] = "*";
       continue;
     }
+    if (facts.ignores?.includes(name) === true) {
+      drops[name] = { all_values: IGNORED };
+      continue;
+    }
     const transform = TRANSFORMS[model.name]?.[name];
+    const field = threeD ? name : (spec.upstream ?? name);
+    const refused = facts.refuses?.[name];
     params[name] = {
-      field: threeD ? name : (spec.upstream ?? name),
+      field: facts.renames?.[field] ?? field,
+      ...(refused === undefined ? {} : { supported: (spec.values ?? []).filter((v) => !refused.includes(v)) }),
       ...(spec.upstream_values === undefined ? {} : { values: spec.upstream_values }),
       ...(spec.item_key === undefined ? {} : { item_key: spec.item_key }),
       ...(spec.absent_value === undefined ? {} : { absent_value: spec.absent_value }),
@@ -196,7 +244,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     weight: 1,
     model_id: provider.model_id,
     // Today's 3D path sends the prompt on every call, "" when there is none, and drops only null params.
-    ...(threeD ? { prompt_field: "prompt", send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
+    ...(threeD ? { ...(facts.noPrompt ? {} : { prompt_field: "prompt" }), send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
     ...(Object.keys(drops).length === 0 ? {} : { drops }),
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
@@ -244,7 +292,8 @@ for (const [modality, files] of sources) {
   const placeholders: Record<string, unknown> = {};
   for (const file of files) {
     for (const model of yaml<{ models: RawModel[] }>(file).models) {
-      models[model.name] = { upstreams: [bindingOf(model, modality === "three_d")] };
+      // An empty list makes the merge remove the WaveSpeed binding the model had.
+      models[model.name] = { upstreams: WAVESPEED[model.name]?.delisted ? [] : [bindingOf(model, modality === "three_d")] };
       const placeholder = placeholderOf(model);
       if (placeholder !== undefined) placeholders[model.name] = placeholder;
     }
