@@ -10,29 +10,32 @@
  * paste: words in an empty heading turn it into a paragraph, lines in a code
  * block split it, a table in a cell splits that table.
  *
- * What is put is the drag's own content, which ProseMirror took at dragstart
- * and ran through `transformPasted`: a move keeps its comments and row ids, a
- * copy drops both (`document-comment-paste.ts`, `landingAsDrop`). It is read as its paste
+ * What is put is the drag's own content as ProseMirror took it at dragstart,
+ * read as its paste reads the body's own copy: a move keeps its comments and
+ * row ids, a copy drops both (`document-comment-paste.ts`, `landingSlice`,
+ * `landingAsDrop`). It is read as its paste
  * reads the body's own copy, each block keeping the node it came from, so the
  * placement puts the body's own words back with their marks.
  *
  * A drop onto the dragged content itself changes nothing, as in CKEditor 5
- * and Lexical; a drag holding no words and no block (a line break alone) is
- * ProseMirror's own drop.
+ * and Lexical; a drag the paste would put nothing of (a line break, empty
+ * lines) lands as ProseMirror's own drop puts it. A line the move takes only
+ * part of keeps its row id where it stays, and the part that moved gets a new
+ * one.
  */
 
 import type { Slice } from '@tiptap/pm/model';
-import type { Transaction } from '@tiptap/pm/state';
+import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
+import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
-import { carriesTable } from '@web/spaces/document/document-drag-move';
 import { readBodyContent, type BlockReader } from '@web/spaces/document/document-paste-read';
-import { landingAsDrop } from '@web/spaces/document/document-comment-paste';
-import { onlyTable, putContent, selectPlaced, type Placed } from '@web/spaces/document/document-put';
+import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
+import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
 /** The editor a drop is put by. */
 type Editor = Parameters<typeof putContent>[0] & BlockReader;
@@ -42,34 +45,39 @@ type Editor = Parameters<typeof putContent>[0] & BlockReader;
  * @param editor - The editor.
  * @param view - The view.
  * @param event - The drop.
- * @param slice - The dragged content, as ProseMirror hands it to `handleDrop`.
+ * @param slice - The dragged content as ProseMirror hands it to `handleDrop`, read when the drag's own is not there.
  * @param moved - Whether the drop moves it, as ProseMirror reads the keys at the drop.
  * @returns True when the drop was handled here.
  */
 export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, slice: Slice, moved: boolean): boolean {
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
   if (at === undefined) return false;
-  if (slice.content.textBetween(0, slice.content.size, '', '\ufffc') === '') return false;
   const { selection } = view.state;
   if (!selection.empty && at >= selection.from && at <= selection.to) return true;
-  const html = view.serializeForClipboard(slice).dom.innerHTML;
-  const read = readBodyContent(editor, html, view.state.schema);
-  if (cellAround(view.state.doc.resolve(at)) !== null && carriesTable(slice.content) && onlyTable(read.blocks) === null) {
+  // A node drag carries the node selection it picked up (prosemirror-view
+  // `Dragging.node`), which its public type leaves out; ProseMirror's own drop
+  // deletes that, else the selection. With neither (the selection already
+  // moved off the dragged content) nothing is taken away, and the drop lands
+  // as the copy it then is.
+  const node = (view.dragging as { node?: { replace: (tr: Transaction) => void } } | null)?.node;
+  const removes = moved && (node !== undefined || !selection.empty);
+  const tr = view.state.tr;
+  if (removes && node === undefined) tr.deleteSelection();
+  else if (removes) node!.replace(tr);
+  // The drag's own content as ProseMirror took it at dragstart: the slice it
+  // hands over has already been through the paste transforms against the
+  // selection the drag began from, and the paste below runs them again
+  // against the drop point.
+  const dragged = view.dragging?.slice ?? slice;
+  const content = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
+  const read = readBodyContent(editor, view.serializeForClipboard(content).dom.innerHTML, view.state.schema);
+  if (!holdsContent(read.blocks)) return dropAsItIs(view, tr, content, at);
+  if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, read.blocks)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return true;
   }
-  let point = at;
-  if (moved) {
-    const tr = view.state.tr;
-    // A node drag carries the node selection it picked up (prosemirror-view
-    // `Dragging.node`), which its public type leaves out; ProseMirror's own
-    // drop deletes that, else the selection.
-    const node = (view.dragging as { node?: { replace: (tr: Transaction) => void } } | null)?.node;
-    if (node === undefined) tr.deleteSelection();
-    else node.replace(tr);
-    point = tr.mapping.map(at);
-    view.dispatch(tr);
-  }
+  if (removes) view.dispatch(tr);
+  const point = tr.mapping.map(at);
   // BlockNote's own paste fixes read their target from the selection and stand
   // aside while a drag is in flight (`transformPasted.ts`); the placement puts
   // the selection at the drop point first, so the drag is taken off the view
@@ -78,10 +86,32 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   view.dragging = null;
   let placed: Placed | null;
   try {
-    placed = landingAsDrop(moved, () => putContent(editor, read, { wordsIntoTarget: true, judge: (props) => props, dropAt: point }));
+    placed = landingAsDrop(removes, () => putContent(editor, read, { wordsIntoTarget: true, judge: (props) => props, dropAt: point }));
   } finally {
     view.dragging = dragging;
   }
   if (placed !== null) selectPlaced(view, placed);
+  return true;
+}
+
+/**
+ * Puts a drag its paste would put nothing of (a line break, empty lines) as
+ * ProseMirror's own drop puts it (prosemirror-view `input.ts` drop): the
+ * slice as it is, at the point `dropPoint` finds, then selected.
+ * @param view - The view.
+ * @param tr - The transaction, its source already taken away when the drop moves it.
+ * @param slice - The content, without the row ids the document still holds.
+ * @param at - The drop point, in the document before the transaction.
+ * @returns True.
+ */
+function dropAsItIs(view: EditorView, tr: Transaction, slice: Slice, at: number): boolean {
+  const insertAt = dropPoint(view.state.doc, at, slice) ?? at;
+  const pos = tr.mapping.map(insertAt);
+  tr.replaceRange(pos, pos, slice);
+  let end = tr.mapping.map(insertAt);
+  tr.mapping.maps[tr.mapping.maps.length - 1]?.forEach((_from, _to, _newFrom, newTo) => {
+    end = newTo;
+  });
+  view.dispatch(tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(end))).setMeta('uiEvent', 'drop'));
   return true;
 }

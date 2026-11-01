@@ -25,7 +25,7 @@ import { toast } from '@web/lib/toast';
 import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { BODY_NODE, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { BODY_NODE, OPEN_EDGE, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeld, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
@@ -153,6 +153,22 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
 }
 
 /**
+ * Blocks without the open ends of a copy that hold no words (`OPEN_EDGE`),
+ * where a placement would put them as lines of their own: such an end joins
+ * the line it lands in, and with no line to join it is nothing.
+ * @param blocks - The blocks.
+ * @param lead - Whether the leading one goes.
+ * @param trail - Whether the trailing one goes.
+ * @returns The blocks.
+ */
+function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: boolean): ReadBlock[] {
+  const out = [...blocks];
+  if (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
+  if (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
+  return out;
+}
+
+/**
  * The block container a position is in.
  * @param $at - The position.
  * @returns The container and where it starts, or null outside any block.
@@ -169,7 +185,7 @@ function lineAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
  * @param $at - The position.
  * @returns It, or null when the position is in neither.
  */
-export function textOnlyAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
+function textOnlyAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
   for (let depth = $at.depth; depth > 1; depth -= 1) {
     const name = $at.node(depth).type.name;
     if (name === 'table' || name === 'codeBlock') return { node: $at.node(depth - 1), pos: $at.before(depth - 1) };
@@ -225,14 +241,18 @@ function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
 }
 
 /**
- * Whether blocks put anything in: a block that is not words, or any words,
- * nested ones too. Empty lines alone, such as what is left of a paragraph
- * whose only medium did not land, put nothing.
+ * Whether blocks put anything in: a block that is not words, or any words
+ * besides line breaks, nested ones too. Empty lines alone, such as what is
+ * left of a paragraph whose only medium did not land, put nothing.
  * @param blocks - The blocks.
  * @returns True when they do.
  */
-function holdsContent(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => wordsIn(block.content) !== '' || holdsContent(block.children ?? []));
+export function holdsContent(blocks: readonly ReadBlock[]): boolean {
+  return blocks.some((block) => {
+    const words = wordsIn(block.content);
+    // A line break alone reads as a trailing break and pastes as nothing.
+    return words === null || words.replace(/\n/g, '') !== '' || holdsContent(block.children ?? []);
+  });
 }
 
 /**
@@ -462,9 +482,20 @@ function includesTable(blocks: readonly ReadBlock[]): boolean {
  * @param blocks - The content read.
  * @returns Its table, or null for mixed content.
  */
-export function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
+function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
   const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content)?.trim() === '' && (block.children ?? []).length === 0));
   return kept.length === 1 && kept[0]!.type === DOC_TABLE ? kept[0]! : null;
+}
+
+/**
+ * Whether content is refused in a table cell (A14): it holds a table, and is
+ * not one table alone.
+ * @param inCell - Whether its target is in a table cell.
+ * @param blocks - The content read.
+ * @returns True when it is refused there.
+ */
+export function refusedInCell(inCell: boolean, blocks: readonly ReadBlock[]): boolean {
+  return inCell && includesTable(blocks) && onlyTable(blocks) === null;
 }
 
 /**
@@ -486,10 +517,11 @@ function putTableInCells(view: EditorView, table: ReadBlock): Placed | null {
  * Repeats ordinary blocks through a cell selection, retaining the cells' own
  * types and attributes. Each copy has its own block ids and the same upload ids.
  * @param view - The view with a cell selection.
- * @param blocks - The content to put in each selected cell.
+ * @param content - The content to put in each selected cell.
  * @returns The content written to the top-left cell.
  */
-function putBlocksInCells(view: EditorView, blocks: readonly ReadBlock[]): Placed {
+function putBlocksInCells(view: EditorView, content: readonly ReadBlock[]): Placed {
+  const blocks = withoutOpenEdges(content, true, true);
   squareSelectedTable(view);
   const selection = view.state.selection as CellSelection;
   const rect = selectedRect(view.state);
@@ -561,7 +593,7 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
       return { kind: 'range', from, to: view.state.selection.head };
     });
   }
-  if (inCell && includesTable(content.blocks) && onlyTable(content.blocks) === null) {
+  if (refusedInCell(inCell, content.blocks)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return null;
   }
@@ -612,7 +644,8 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
  * @returns Where the content landed.
  */
 function putInGap(view: EditorView, blocks: readonly ReadBlock[], gap: number): Placed {
-  const nodes = containers(quotedBeside(view.state.doc, gap) ? quotedAs(blocks, true) : blocks, view.state);
+  const own = withoutOpenEdges(blocks, true, true);
+  const nodes = containers(quotedBeside(view.state.doc, gap) ? quotedAs(own, true) : own, view.state);
   const tr = view.state.tr.insert(gap, nodes);
   finishCaret(tr, nodes, gap);
   view.dispatch(tr.scrollIntoView());
@@ -642,7 +675,8 @@ function replaceBlock(view: EditorView, blocks: readonly ReadBlock[], selection:
   const line = selection.node.type.name === 'blockContainer' ? { node: selection.node, pos: selection.from } : lineAt(selection.$from);
   if (line === null) return null;
   const isQuoted = line.node.firstChild?.attrs[QUOTED] === true;
-  const own = containers(isQuoted ? quotedAs(blocks, true) : blocks, view.state);
+  const put = withoutOpenEdges(blocks, true, true);
+  const own = containers(isQuoted ? quotedAs(put, true) : put, view.state);
   const nodes = nestLast(own, line.node);
   const tr = view.state.tr.replaceWith(line.pos, line.pos + line.node.nodeSize, nodes);
   const size = nodes.reduce((sum, node) => sum + node.nodeSize, 0);
@@ -664,13 +698,15 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
   const line = lineAt($caret);
   const own = line?.node.firstChild;
   if (line === null || own === undefined || own === null || !own.isTextblock) return null;
-  const content = own.attrs[QUOTED] === true ? quotedAs(blocks, true) : blocks;
+  const offset = $caret.parentOffset;
+  const size = own.content.size;
+  // An empty line joins neither open end of a copy, a line's start only the trailing one.
+  const put = withoutOpenEdges(blocks, offset === 0, size === 0);
+  const content = own.attrs[QUOTED] === true ? quotedAs(put, true) : put;
   const { state } = view;
   const nodes = containers(content, state);
   const firstWords = nodes.length > 1 && isWordsLine(content[0]);
   const lastWords = nodes.length > 1 && isWordsLine(content[content.length - 1]);
-  const offset = $caret.parentOffset;
-  const size = own.content.size;
   const start = line.pos;
   const end = line.pos + line.node.nodeSize;
   const tr = state.tr;

@@ -15,8 +15,8 @@
  *
  * A TEXT DRAG IS NOT A ROW. When the reader drags a selection,
  * `view.dragging` is ProseMirror's own and no row was picked up: the drop is
- * `dropAsPaste`'s where its paste lands otherwise than ProseMirror's own
- * drop, and ProseMirror's own everywhere else (A19).
+ * put as its paste at the drop point (`dropAsPaste`), and a drag the paste
+ * would put nothing of is ProseMirror's own drop (A19).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -74,8 +74,7 @@ export function rowInFlight(): boolean {
 
 /**
  * The extension that writes a dropped row from the document, not the payload,
- * and puts any other drag within the body as its paste where that lands
- * otherwise than ProseMirror's own drop.
+ * and puts any other drag within the body as its paste at the drop point.
  * @returns The extension, for the assembly to register.
  */
 export const documentDragDropExtension = createExtension(({ editor }) => ({

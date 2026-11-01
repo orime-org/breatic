@@ -133,12 +133,14 @@ interface LandingView {
 }
 
 /**
- * Rebuilds a slice with no row ids. The editor fills an id that is null with
- * a new one (BlockNote's `UniqueID`, `appendTransaction`).
+ * Rebuilds a slice with no row ids, or none of those a test picks. The editor
+ * fills an id that is null with a new one (BlockNote's `UniqueID`,
+ * `appendTransaction`).
  * @param slice - The slice about to be inserted.
- * @returns The same content and open depths, every row's id null.
+ * @param drops - Which ids go; every one when left out.
+ * @returns The same content and open depths, those rows' ids null.
  */
-function withoutRowIds(slice: Slice): Slice {
+function withoutRowIds(slice: Slice, drops: (id: unknown) => boolean = () => true): Slice {
   /**
    * Rebuilds one fragment, clearing ids at every depth.
    * @param fragment - The fragment to rebuild.
@@ -151,7 +153,7 @@ function withoutRowIds(slice: Slice): Slice {
         out.push(child);
         return;
       }
-      const attrs = 'id' in child.attrs ? { ...child.attrs, id: null } : child.attrs;
+      const attrs = 'id' in child.attrs && drops(child.attrs['id']) ? { ...child.attrs, id: null } : child.attrs;
       out.push(child.type.create(attrs, rebuild(child.content), child.marks));
     });
     return Fragment.fromArray(out);
@@ -252,3 +254,20 @@ export const documentCommentPasteExtension = createExtension(() => ({
   key: 'document-comment-paste',
   prosemirrorPlugins: [commentPastePlugin()],
 }));
+
+/**
+ * A moved slice without the row ids a document still holds: a line the move
+ * took only part of stays where it was under its own id, and the part that
+ * moved lands under a new one, so no two rows share an id.
+ * @param slice - The moved content.
+ * @param doc - The document after the move took its source away.
+ * @returns The slice.
+ */
+export function withoutRowIdsIn(slice: Slice, doc: PMNode): Slice {
+  const held = new Set<unknown>();
+  doc.descendants((node) => {
+    if (node.attrs['id'] !== undefined && node.attrs['id'] !== null) held.add(node.attrs['id']);
+    return true;
+  });
+  return withoutRowIds(slice, (id) => held.has(id));
+}

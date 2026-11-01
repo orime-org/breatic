@@ -28,7 +28,15 @@ export interface ReadBlock {
   readonly children?: readonly ReadBlock[];
   /** The body's own node the block was read from, when a drag within the body brings it. */
   readonly [BODY_NODE]?: PMNode;
+  /** Whether the block is an open end of the body's own copy with no words. */
+  readonly [OPEN_EDGE]?: true;
 }
+
+/**
+ * Marks a block read off an open end of the body's own copy that holds no
+ * words: a placement that would put it as a line of its own leaves it out.
+ */
+export const OPEN_EDGE: unique symbol = Symbol('open edge');
 
 /**
  * Where a block read off the body's own content keeps the node it came from.
@@ -626,7 +634,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const html = data.types.includes('text/html') ? data.getData('text/html') : '';
   if (data.types.includes('blocknote/html')) {
     const own = data.getData('blocknote/html');
-    return { blocks: reader.tryParseHTMLToBlocks(own) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(own, true) };
+    return { blocks: withOpenEdges(reader.tryParseHTMLToBlocks(own) as ReadBlock[], own), lost: 0, plain: null, paste: (r) => r.pasteHTML(own, true) };
   }
   const plainOnly = html === '' && plain !== '' ? plain : null;
   const mode = data.types.includes('vscode-editor-data') ? editorLanguage(data.getData('vscode-editor-data')) : null;
@@ -675,5 +683,30 @@ export function readBodyContent(reader: BlockReader, html: string, schema: Schem
         const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
         return { ...block, children: sourced(block.children ?? [], nested), [BODY_NODE]: node };
       });
-  return { blocks: sourced(blocks, group.children), lost: 0, plain: null, paste: (r) => r.pasteHTML(html, true) };
+  return { blocks: withOpenEdges(sourced(blocks, group.children), html), lost: 0, plain: null, paste: (r) => r.pasteHTML(html, true) };
+}
+
+/**
+ * The body's own copy with its open ends marked. ProseMirror records how deep
+ * each end of a copied slice is open (`data-pm-slice`); an open end with no
+ * words is the boundary of a line the copy only touched, which joins the line
+ * it lands in and is no line of its own (`OPEN_EDGE`).
+ * @param blocks - The blocks read.
+ * @param html - The copy's clipboard HTML.
+ * @returns The blocks.
+ */
+function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] {
+  const marker = /data-pm-slice="(\d+) (\d+)/.exec(html);
+  const out = [...blocks];
+  if (marker === null || out.length < 2) return out;
+  /**
+   * Whether a block is a line with no words and nothing nested.
+   * @param block - The block.
+   * @returns True for such a line.
+   */
+  const blank = (block: ReadBlock): boolean => wordsIn(block.content) === '' && (block.children ?? []).length === 0;
+  const last = out.length - 1;
+  if (Number(marker[1]) > 0 && blank(out[0]!)) out[0] = { ...out[0]!, [OPEN_EDGE]: true };
+  if (Number(marker[2]) > 0 && blank(out[last]!)) out[last] = { ...out[last]!, [OPEN_EDGE]: true };
+  return out;
 }
