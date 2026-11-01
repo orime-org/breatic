@@ -79,14 +79,17 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
  * inner#1873). `renames`: the catalog's field to the name WaveSpeed's schema
  * gives it (WaveSpeed takes both and echoes the schema's). `refuses`: the
  * catalog's values WaveSpeed rejects; the binding supports the others.
- * `ignores`: params WaveSpeed has no field for and ignores. `noPrompt`: its
- * schema has no prompt, and one sent is ignored. `delisted`: WaveSpeed no
- * longer serves the model, so it gets no WaveSpeed binding (fal serves it).
+ * `drops`: params WaveSpeed has no field for and ignores, written as the
+ * binding's `drops`: whatever the value, or only for the listed values when
+ * another value asks for what WaveSpeed cannot do (a switch turned on that
+ * fal serves). `noPrompt`: its schema has no prompt, and one sent is ignored.
+ * `delisted`: WaveSpeed no longer serves the model, so it gets no WaveSpeed
+ * binding (fal serves it).
  */
 const WAVESPEED: Readonly<Record<string, {
   renames?: Readonly<Record<string, string>>;
   refuses?: Readonly<Record<string, readonly (string | number | boolean)[]>>;
-  ignores?: readonly string[];
+  drops?: Readonly<Record<string, readonly (string | number | boolean)[] | { all_values: string }>>;
   noPrompt?: true;
   delisted?: true;
 }>> = {
@@ -100,11 +103,12 @@ const WAVESPEED: Readonly<Record<string, {
   "hunyuan3d-v3.1-rapid": { noPrompt: true },
   "nano-banana-2-relight": { refuses: { output_format: ["webp"] } },
   "nano-banana-2-quick-edit": { refuses: { output_format: ["webp"] } },
-  "elevenlabs-v3": { ignores: ["similarity"] },
-  "sfx-1.6-text-to-audio": { ignores: ["loop"] },
+  "elevenlabs-v3": { drops: { similarity: { all_values: IGNORED } } },
+  "sfx-1.6-text-to-audio": { drops: { loop: [false], double_output: [false] } },
   "meshy6-t23d": { delisted: true },
   "veed-clean-audio": { delisted: true },
   "recraft-v4-style-text-to-image": { delisted: true },
+  "sfx-1.6-extend-audio": { delisted: true },
 };
 
 /** Params whose value the upstream takes in its own shape. */
@@ -202,7 +206,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   const facts = WAVESPEED[model.name] ?? {};
   const params: Record<string, Record<string, unknown>> = {};
   const mentions: Record<string, string> = {};
-  const drops: Record<string, "*" | { all_values: string }> = {};
+  const drops: Record<string, NonNullable<(typeof facts)["drops"]>[string] | "*"> = {};
   for (const [name, spec] of Object.entries(model.params ?? {})) {
     if (spec.mention !== undefined) mentions[name] = spec.mention;
     // A slot that joins a pool travels inside it; no field carries the slot itself.
@@ -210,8 +214,9 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       drops[name] = "*";
       continue;
     }
-    if (facts.ignores?.includes(name) === true) {
-      drops[name] = { all_values: IGNORED };
+    const dropped = facts.drops?.[name];
+    if (dropped !== undefined) {
+      drops[name] = dropped;
       continue;
     }
     const transform = TRANSFORMS[model.name]?.[name];

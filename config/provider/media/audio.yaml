@@ -122,15 +122,15 @@ models:
         model_id: mirelo-ai/sfx-1.6/text-to-audio
         prompt_field: text_prompt
         params:
-          double_output:
-            field: double_output
           duration:
             field: duration
           num_samples:
             field: num_samples
         drops:
           loop:
-            all_values: WaveSpeed has no such field and ignores it, probed 2026-11-01
+            - false
+          double_output:
+            - false
         pricing:
           kind: formula
           base_price: 10000
@@ -201,17 +201,18 @@ models:
           discount_rate: 100
   sfx-1.6-extend-audio:
     upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: mirelo-ai/sfx-1.6/extend-audio
-        prompt_field: prompt
+      - upstream: fal
+        weight: 2
+        model_id: mirelo-ai/sfx1.6/extend-audio
+        prompt_field: text_prompt
+        output_field: audio
         params:
           ambience:
             field: ambience
           append_duration:
             field: append_duration
           audio:
-            field: audio
+            field: audio_url
           double_output:
             field: double_output
           num_samples:
