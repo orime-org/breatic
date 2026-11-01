@@ -15,6 +15,11 @@ upstreams:
     billing_url: https://api.fal.ai/v1
     key_env: FAL_KEY
     concurrency: 10
+  sandbase:
+    kind: sandbase
+    base_url: https://api.sandbase.ai/v1
+    key_env: SANDBASE_API_KEY
+    concurrency: 10
   openrouter:
     kind: openrouter
     base_url: https://openrouter.ai/api/v1
