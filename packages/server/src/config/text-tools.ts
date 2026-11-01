@@ -23,6 +23,7 @@ const textToolsConfigSchema = z
     selection_max_chars: z.number().int().positive().default(40000),
     context_max_chars: z.number().int().positive().default(200000),
     stream_delay_ms: z.number().int().nonnegative().default(20),
+    stream_burst_max_ms: z.number().int().positive().default(1500),
   })
   .refine((config) => config.selection_max_chars <= config.context_max_chars, {
     message: "selection_max_chars must not exceed context_max_chars",

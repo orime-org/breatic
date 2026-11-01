@@ -475,19 +475,20 @@ describe("the model call", () => {
     expect(model.calls[0]).not.toHaveProperty("temperature");
   });
 
-  it("evens out bursts of text: word by word, at the configured stream_delay_ms", async () => {
+  it("paces the answer from the configured stream_delay_ms and stream_burst_max_ms, reasoning dropped first", async () => {
     const shipped = parse(readFileSync(join(roots.real, "config", "text-tools.yaml"), "utf-8")) as Record<string, unknown>;
     expect(typeof shipped.stream_delay_ms).toBe("number");
+    expect(typeof shipped.stream_burst_max_ms).toBe("number");
 
     await run(bodyFor("polish"));
 
     expect(vi.mocked(smoothStream)).toHaveBeenCalledWith({
       delayInMs: shipped.stream_delay_ms,
-      chunking: expect.any(Intl.Segmenter),
+      chunking: expect.any(Function),
     });
-    const chunking = vi.mocked(smoothStream).mock.calls.at(-1)?.[0]?.chunking as Intl.Segmenter;
-    expect(chunking.resolvedOptions().granularity).toBe("word");
-    expect(model.calls[0]?.experimental_transform).toBe(vi.mocked(smoothStream).mock.results.at(-1)?.value);
+    const transforms = model.calls[0]?.experimental_transform as unknown[];
+    expect(Array.isArray(transforms)).toBe(true);
+    expect(transforms.at(-1)).toBe(vi.mocked(smoothStream).mock.results.at(-1)?.value);
   });
 
   it.each([
