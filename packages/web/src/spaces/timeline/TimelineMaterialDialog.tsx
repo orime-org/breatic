@@ -3,7 +3,9 @@
 
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { orderedTimelineClips, TIMELINE_MAIN_TRACK_ID, timelineInsertionIndex, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineEditPlacement } from '@breatic/shared';
+import { TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineInsertionIndex, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { Film, Upload } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';

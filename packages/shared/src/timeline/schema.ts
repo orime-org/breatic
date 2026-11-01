@@ -42,20 +42,6 @@ export interface TimelineVideoClip {
 /** The seeded bottom visual track; it is magnetic when the editing user turns magnet on. */
 export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
-/** The editing user's local placement switches, carried with each command. */
-export interface TimelineEditPlacement { magnet: boolean; linkage: boolean }
-
-/** An edit to the Timeline's collaborative layout. */
-export type TimelineEditCommand = (
-  | { operation: "add_video"; parameters: { source: TimelineVideoSource; clip: TimelineVideoClip; newTrackId?: string } }
-  | { operation: "move"; parameters: { clipId: string; startFrame: number; trackId?: string; newTrackId?: string } }
-  | { operation: "set_range"; parameters: { clipId: string; startFrame: number; sourceInFrame: number; durationFrames: number } }
-  | { operation: "split"; parameters: { clipId: string; frame: number; newClipId: string } }
-  | { operation: "duplicate"; parameters: { clipId: string; newClipId: string } }
-  | { operation: "delete"; parameters: { clipId: string } }
-  | { operation: "delete_track"; parameters: { trackId: string } }
-) & { placement: TimelineEditPlacement };
-
 /** Our persisted integer-frame format, independent of any editor library. */
 export interface TimelineDocumentV1 {
   schemaVersion: 1;
@@ -112,33 +98,6 @@ export const TimelineVideoClipSchema = z.object({
     rotation: z.number().finite(),
   }).strict(),
 }).strict();
-
-const trackIdentity = z.string().min(1).max(64);
-const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
-
-/** A normalized user-confirmed native edit. */
-export const TimelineEditCommandSchema = z.discriminatedUnion("operation", [
-  z.object({
-    operation: z.literal("add_video"),
-    parameters: z.object({ source: TimelineVideoSourceSchema, clip: TimelineVideoClipSchema, newTrackId: trackIdentity.optional() }).strict(),
-    placement,
-  }).strict(),
-  z.object({
-    operation: z.literal("move"),
-    parameters: z.object({ clipId: identity, startFrame: safeFrame, trackId: trackIdentity.optional(), newTrackId: trackIdentity.optional() }).strict()
-      .refine((value) => value.trackId === undefined || value.newTrackId === undefined, { message: "A move names one target track" }),
-    placement,
-  }).strict(),
-  z.object({
-    operation: z.literal("set_range"),
-    parameters: z.object({ clipId: identity, startFrame: safeFrame, sourceInFrame: safeFrame, durationFrames: positiveInteger }).strict(),
-    placement,
-  }).strict(),
-  z.object({ operation: z.literal("split"), parameters: z.object({ clipId: identity, frame: safeFrame, newClipId: identity }).strict(), placement }).strict(),
-  z.object({ operation: z.literal("duplicate"), parameters: z.object({ clipId: identity, newClipId: identity }).strict(), placement }).strict(),
-  z.object({ operation: z.literal("delete"), parameters: z.object({ clipId: identity }).strict(), placement }).strict(),
-  z.object({ operation: z.literal("delete_track"), parameters: z.object({ trackId: trackIdentity }).strict(), placement }).strict(),
-]);
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({

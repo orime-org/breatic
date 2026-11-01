@@ -4,16 +4,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import { durationToFrames, TimelineEditCommandSchema } from '@breatic/shared';
-import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from '@breatic/shared/space-content';
+import { durationToFrames } from '@breatic/shared';
+import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type {
   ProjectRegisteredAsset,
-  TimelineEditCommand,
-  TimelineEditPlacement,
   TimelineSettings,
   TimelineTrack,
   TimelineVideoClip,
 } from '@breatic/shared';
+import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 

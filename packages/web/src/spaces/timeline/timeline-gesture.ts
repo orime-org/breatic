@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { orderedTimelineClips, TIMELINE_MAIN_TRACK_ID, timelineInsertionIndex, timelineHeadRoom, timelineSourceRoom, timelineTrimHead, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement } from '@breatic/shared';
+import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineInsertionIndex, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
+import { timelineHeadRoom, timelineSourceRoom, timelineTrimHead } from '@web/data/yjs/timeline-time';
 import { snapTimelineEdges, timelineSnapTargets, TIMELINE_SNAP_PX } from '@web/spaces/timeline/timeline-snap';
 
 /** What a pointer drag on a clip changes. */

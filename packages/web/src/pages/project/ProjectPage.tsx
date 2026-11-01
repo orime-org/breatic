@@ -33,7 +33,7 @@ import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
-import { evictTimelineEditSession } from '@web/spaces/timeline/timeline-edit-session';
+import { evictTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
   useProjectMeta,
   type ProjectSpace,

@@ -2,5 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 
-export { initializeTimelineDocument, readTimelineContent, readTimelineDocument, removeTimelineRecord, applyTimelineEdit, type TimelineDamagedRecords } from "@shared/timeline/document.js";
+export {
+  attachTimelineRecord, freezeTimelineRecord, initializeTimelineDocument, readTimelineContent, readTimelineDocument, type TimelineDamagedRecords,
+} from "@shared/timeline/document.js";
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";

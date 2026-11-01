@@ -13,9 +13,10 @@
 import * as Y from 'yjs';
 import {
   TimelineDocumentV1Schema,
-  type TimelineDocumentV1, type TimelineEditPlacement, type TimelineRate, type TimelineTrack,
+  type TimelineDocumentV1, type TimelineRate, type TimelineTrack,
   type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
+import type { TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
 
 export const FPS: TimelineRate = { num: 24, den: 1 };

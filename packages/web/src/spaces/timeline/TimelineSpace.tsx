@@ -5,11 +5,12 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  activeTimelineClipAt, newId, orderedTimelineClips, resolveTimelineArrangement, TIMELINE_MAIN_TRACK_ID,
-  type TimelineArrangementReason, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlan, type TimelineVideoClip,
-} from '@breatic/shared';
-import { removeTimelineRecord } from '@breatic/shared/space-content';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { resolveTimelineArrangement, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
+import { removeTimelineRecord } from '@web/data/yjs/timeline-document';
+import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
+import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
+import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -28,7 +29,7 @@ import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import { TimelineMaterialDialog } from '@web/spaces/timeline/TimelineMaterialDialog';
 import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
-import { getTimelineEditSession } from '@web/spaces/timeline/timeline-edit-session';
+import { getTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import { timelineKeyAction } from '@web/spaces/timeline/timeline-keyboard';
 import { getTimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { nextTimelinePlaybackBoundary, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import { nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
+import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
 /** The current document projection and its authorized preview resource. */

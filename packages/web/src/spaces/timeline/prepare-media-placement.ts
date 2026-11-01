@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as Y from 'yjs';
-import type { ProjectRegisteredAsset, TimelineEditCommand, TimelineEditPlacement, TimelineEditRefusal } from '@breatic/shared';
-import { durationToFrames, newId, planTimelineEdit, TimelineEditCommandSchema } from '@breatic/shared';
-import { readTimelineDocument } from '@breatic/shared/space-content';
+import type { ProjectRegisteredAsset } from '@breatic/shared';
+import { durationToFrames, newId } from '@breatic/shared';
+import { readTimelineDocument } from '@web/data/yjs/timeline-document';
+import { planTimelineEdit, TimelineEditCommandSchema, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {

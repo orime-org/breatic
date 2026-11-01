@@ -9,37 +9,37 @@
  * fails here with a schema error instead of masquerading as an edit refusal.
  */
 
-import { TimelineDocumentV1Schema } from "../schema.js";
+import { TimelineDocumentV1Schema } from '@breatic/shared';
 import type {
   TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
-} from "../schema.js";
+} from '@breatic/shared';
 
 export const FPS: TimelineRate = { num: 24, den: 1 };
-export const MAIN = "visual-1";
-export const V2 = "v2";
-export const V3 = "v3";
-export const V4 = "v4";
+export const MAIN = 'visual-1';
+export const V2 = 'v2';
+export const V3 = 'v3';
+export const V4 = 'v4';
 
 /** 1000 frames at 24 fps: ceil(41.666 * 24) = 1000, and frame 999 samples before 41.666 s. */
 export const SOURCE: TimelineVideoSource = {
-  id: "10000000-0000-4000-8000-000000000001",
-  kind: "video",
-  assetId: "20000000-0000-4000-8000-000000000001",
+  id: '10000000-0000-4000-8000-000000000001',
+  kind: 'video',
+  assetId: '20000000-0000-4000-8000-000000000001',
   timebase: FPS,
   extentFrames: 1000,
-  durationSeconds: "41.666",
-  durationOrigin: "registered",
+  durationSeconds: '41.666',
+  durationOrigin: 'registered',
 };
 
 /** 48 frames at 24 fps. */
 export const SHORT_SOURCE: TimelineVideoSource = {
-  id: "10000000-0000-4000-8000-000000000002",
-  kind: "video",
-  assetId: "20000000-0000-4000-8000-000000000002",
+  id: '10000000-0000-4000-8000-000000000002',
+  kind: 'video',
+  assetId: '20000000-0000-4000-8000-000000000002',
   timebase: FPS,
   extentFrames: 48,
-  durationSeconds: "2",
-  durationOrigin: "registered",
+  durationSeconds: '2',
+  durationOrigin: 'registered',
 };
 
 export const ON = { magnet: true, linkage: true } as const;
@@ -54,7 +54,7 @@ export const LINK_ONLY = { magnet: false, linkage: true } as const;
  * @throws {never} Never.
  */
 export function cid(n: number): string {
-  return `30000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  return `30000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 }
 
 /**
@@ -63,11 +63,11 @@ export function cid(n: number): string {
  * @returns A function returning a new uuid on each call.
  * @throws {never} Never.
  */
-export function idFactory(prefix = "40000000"): () => string {
+export function idFactory(prefix = '40000000'): () => string {
   let next = 0;
   return () => {
     next += 1;
-    return `${prefix}-0000-4000-8000-${String(next).padStart(12, "0")}`;
+    return `${prefix}-0000-4000-8000-${String(next).padStart(12, '0')}`;
   };
 }
 
@@ -87,7 +87,7 @@ export function clip(
   return {
     id,
     trackId,
-    kind: "video",
+    kind: 'video',
     sourceId: SOURCE.id,
     startFrame,
     sourceInFrame: 0,
@@ -108,7 +108,7 @@ export function clip(
  * @throws {never} Never.
  */
 export function track(id: string, order: number): TimelineTrack {
-  return { id, kind: "visual", order };
+  return { id, kind: 'visual', order };
 }
 
 export const MAIN_AND_V2 = [track(MAIN, 0), track(V2, 1)];

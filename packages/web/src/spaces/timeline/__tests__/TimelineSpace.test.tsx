@@ -8,10 +8,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
-  t, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineEditCommand, type TimelineTrack,
+  t, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineTrack,
   type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
-import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from '@breatic/shared/space-content';
+import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';

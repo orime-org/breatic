@@ -113,7 +113,7 @@ vi.mock('@web/spaces/document/document-editor-cache', async () => {
 
 // The Timeline edit session (personal undo and selection) is a third doc-keyed cache (inner#1708 E12).
 const evictTimelineEditSessionMock = vi.fn();
-vi.mock('@web/spaces/timeline/timeline-edit-session', () => ({
+vi.mock('@web/data/yjs/timeline-edit-session', () => ({
   evictTimelineEditSession: (name: string) => evictTimelineEditSessionMock(name),
   getTimelineEditSession: vi.fn(),
 }));

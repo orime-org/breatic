@@ -11,9 +11,11 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
-  orderedTimelineClips, planTimelineEdit, timelineInsertionIndex, TimelineDocumentV1Schema,
+  TimelineDocumentV1Schema,
   type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
+import { planTimelineEdit, timelineInsertionIndex } from '@web/data/yjs/timeline-edit';
+import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 
 import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode } from '@web/spaces/timeline/timeline-gesture';
 import {

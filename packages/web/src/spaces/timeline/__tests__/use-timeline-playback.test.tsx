@@ -5,7 +5,9 @@ import * as React from 'react';
 import { act, renderHook, type RenderHookResult } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { activeTimelineClipAt, resolveTimelineArrangement, type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
+import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];

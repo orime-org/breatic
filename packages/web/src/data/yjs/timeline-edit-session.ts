@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from 'yjs';
-import type { TimelineEditCommand, TimelineEditPlan } from '@breatic/shared';
-import { applyTimelineEdit } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { applyTimelineEdit } from '@web/data/yjs/timeline-document';
+import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
 /** What the Timeline toolbar and properties read from the personal session. */

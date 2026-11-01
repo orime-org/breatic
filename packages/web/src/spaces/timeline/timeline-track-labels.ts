@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { getLocale, orderedTimelineTracks, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
+import { getLocale, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
+import { orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 
 import { useTranslation } from '@web/i18n/use-translation';
 

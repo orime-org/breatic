@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
 import { type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
-import { applyTimelineEdit, initializeTimelineDocument } from '@breatic/shared/space-content';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
+import { applyTimelineEdit } from '@web/data/yjs/timeline-document';
 
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 

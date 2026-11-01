@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { newId, TIMELINE_MAIN_TRACK_ID, timelineSourceOverflow, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { timelineSourceOverflow, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';

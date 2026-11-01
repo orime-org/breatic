@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { TimelineTrack, TimelineVideoClip } from "@shared/timeline/schema.js";
+import type { TimelineTrack, TimelineVideoClip } from '@breatic/shared';
 
 /**
  * Compare identities in code-unit order, independent of a client's locale.

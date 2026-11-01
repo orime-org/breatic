@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { timelineTrackRank } from "@shared/timeline/order.js";
-import type { TimelineDocumentV1, TimelineVideoClip } from "@shared/timeline/schema.js";
+import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
+
+import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
  * The clip the preview shows at a frame: the ready clip on the highest-ranked track covering it, ties by id.

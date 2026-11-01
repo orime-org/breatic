@@ -3,7 +3,8 @@
 
 import type * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
-import { newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditPlan } from '@breatic/shared';
+import { newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset } from '@breatic/shared';
+import type { TimelineEditCommand, TimelineEditPlacement, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 import { timelineApi } from '@web/data/api/timeline';
 import { uploadMedia } from '@web/data/upload/media-upload';

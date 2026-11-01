@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { type TimelineDocumentV1 } from '@breatic/shared';
-import { readTimelineContent, type TimelineDamagedRecords } from '@breatic/shared/space-content';
+import { readTimelineContent, type TimelineDamagedRecords } from '@web/data/yjs/timeline-document';
 
 /** The current supported content or the format error reported by its reader. */
 export interface TimelineDocumentState {

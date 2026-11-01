@@ -3,11 +3,9 @@
 
 import * as Y from "yjs";
 import {
-  TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema,
-  type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
+  TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema,
+  type TimelineDocumentV1, type TimelineSettings,
 } from "@shared/timeline/schema.js";
-import { planTimelineEdit, type TimelineEditPlan } from "@shared/timeline/edit.js";
-import { newId as createId } from "@shared/ids.js";
 
 /**
  * Attach a child map before populating it, preserving Yjs field-level merges.
@@ -17,7 +15,7 @@ import { newId as createId } from "@shared/ids.js";
  * @returns The attached child map.
  * @throws {Error} When Yjs cannot attach a map to this document.
  */
-function attachRecord(parent: Y.Map<unknown>, id: string, value: object): Y.Map<unknown> {
+export function attachTimelineRecord(parent: Y.Map<unknown>, id: string, value: object): Y.Map<unknown> {
   const child = new Y.Map<unknown>();
   parent.set(id, child);
   for (const [key, item] of Object.entries(value)) child.set(key, item);
@@ -30,9 +28,9 @@ function attachRecord(parent: Y.Map<unknown>, id: string, value: object): Y.Map<
  * @returns The same deeply immutable value.
  * @throws {never} Never.
  */
-function freezeRecord<T>(value: T): T {
+export function freezeTimelineRecord<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const child of Object.values(value)) freezeRecord(child);
+    for (const child of Object.values(value)) freezeTimelineRecord(child);
     Object.freeze(value);
   }
   return value;
@@ -47,12 +45,12 @@ function freezeRecord<T>(value: T): T {
 export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSettings): void {
   const held = Y.decodeUpdate(Y.encodeStateAsUpdate(doc));
   if (held.structs.length !== 0 || held.ds.clients.size !== 0) throw new Error("Timeline initialization requires empty content");
-  const normalized = freezeRecord(TimelineSettingsSchema.parse(settings));
+  const normalized = freezeTimelineRecord(TimelineSettingsSchema.parse(settings));
   doc.transact(() => {
     const timeline = doc.getMap("timeline");
     timeline.set("schemaVersion", 1);
     timeline.set("settings", normalized);
-    attachRecord(doc.getMap("tracks"), "visual-1", { id: "visual-1", kind: "visual", order: 0 });
+    attachTimelineRecord(doc.getMap("tracks"), "visual-1", { id: "visual-1", kind: "visual", order: 0 });
     doc.getMap("clips");
     doc.getMap("sources");
   });
@@ -108,63 +106,4 @@ export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1;
  */
 export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
   return readTimelineContent(doc).document;
-}
-
-/**
- * Delete one clip or track record, damaged or not, in one transaction.
- * @param doc - The content document.
- * @param kind - The collection.
- * @param id - The record id.
- * @param origin - The transaction origin.
- * @throws {never} Never.
- */
-export function removeTimelineRecord(doc: Y.Doc, kind: "clips" | "tracks", id: string, origin: unknown): void {
-  doc.transact(() => { doc.getMap(kind).delete(id); }, origin);
-}
-
-/**
- * Apply a user-confirmed layout edit to the shared Y.Doc in one transaction, writing only what changed.
- * @param doc - The current content document.
- * @param command - The normalized edit with the editing user's placement switches.
- * @param origin - The transaction origin; a Y.UndoManager tracking it undoes this edit in one step.
- * @param newId - Supplies ids for clips cut by an overwrite and tracks created by a linkage bump.
- * @returns The applied plan, or why nothing was written.
- * @throws {Error} When the document or command is structurally invalid.
- */
-export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = createId): TimelineEditPlan {
-  const normalized = TimelineEditCommandSchema.parse(command);
-  const current = readTimelineDocument(doc);
-  const plan = planTimelineEdit(current, normalized, newId);
-  if (!plan.ok) return plan;
-  const { next } = plan;
-  doc.transact(() => {
-    const sources = doc.getMap<unknown>("sources");
-    for (const [id, source] of Object.entries(next.sources)) if (!sources.has(id)) sources.set(id, freezeRecord(structuredClone(source)));
-    writeRecords(doc.getMap<unknown>("tracks"), current.tracks, next.tracks);
-    writeRecords(doc.getMap<unknown>("clips"), current.clips, next.clips);
-  }, origin);
-  return plan;
-}
-
-/**
- * Bring one collection to its planned state: attach new records, delete removed ones, set only changed fields.
- * @param parent - The attached collection map.
- * @param before - The records the plan started from.
- * @param after - The planned records.
- * @throws {Error} When an existing record is not an attached map.
- */
-function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, object>>, after: Readonly<Record<string, object>>): void {
-  for (const id of Object.keys(before)) if (after[id] === undefined) parent.delete(id);
-  for (const [id, value] of Object.entries(after)) {
-    const was = before[id];
-    if (was === undefined) {
-      attachRecord(parent, id, value);
-      continue;
-    }
-    const target = parent.get(id);
-    if (!(target instanceof Y.Map)) throw new Error("Timeline record is not an attached map");
-    for (const [key, item] of Object.entries(value)) {
-      if (JSON.stringify((was as Record<string, unknown>)[key]) !== JSON.stringify(item)) target.set(key, item);
-    }
-  }
 }

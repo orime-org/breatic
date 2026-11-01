@@ -12,11 +12,12 @@ import * as React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { TimelineVideoClipSchema, type TimelineEditCommand, type TimelineVideoSource } from '@breatic/shared';
-import { applyTimelineEdit, readTimelineDocument } from '@breatic/shared/space-content';
+import { TimelineVideoClipSchema, type TimelineVideoSource } from '@breatic/shared';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
+import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
-import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/spaces/timeline/timeline-edit-session';
+import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
   MAIN, OFF, ON, SOURCE, cid, clip, connect, seededDoc, starts, timeline, track,
 } from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
