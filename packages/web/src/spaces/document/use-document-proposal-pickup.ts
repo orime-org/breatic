@@ -7,8 +7,9 @@
  *
  * The project page has opened this document; here every card waiting on it is
  * landed one after another in the order it was pressed, and how each ended is
- * reported back to the card. A "View" press writes nothing: it shows where the
- * change is, or, when the change is no longer in the document (the reader
+ * reported back to the card. A locate press writes nothing: it shows where
+ * the proposal points (inner#1646). A "View" press writes nothing either: it
+ * shows where the change is, or, when the change is no longer in the document (the reader
  * undid it), tells the card the change is gone. Each change to the document
  * is counted, so a card reads again whether its change is still there.
  * Nothing is taken while there is no editor yet or
@@ -23,7 +24,7 @@ import * as React from 'react';
 import { readDocConnection, type WriteAccess } from '@web/data/yjs/collab-socket';
 import { peekDocumentEditor, type DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { requestCommentLocation } from '@web/spaces/document/document-comment-selection';
-import { landedAt, landProposal, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal, sourceAt, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { pendingFor, useDocumentProposals, type PendingDocumentProposal } from '@web/stores/document-proposals';
 
@@ -119,6 +120,17 @@ export function useDocumentProposalPickup(
           const next = pendingFor(spaceId)[0];
           if (next === undefined) break;
           const id = next.proposal.proposalId;
+
+          // A locate press only reads where the proposal points, so it is read
+          // and reported at once, whatever the connection may write (inner#1646).
+          if (next.action === 'locate') {
+            const found = sourceAt(handle, next.proposal);
+            if (found.outcome !== 'blockGone') {
+              setLanded(Object.freeze({ ...found.target, documentName: name, handle, pending: next, owner }));
+            }
+            report(id, found.outcome);
+            continue;
+          }
 
           /**
            * Reads commit-time admission from current connection facts.

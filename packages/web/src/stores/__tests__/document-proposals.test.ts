@@ -202,7 +202,7 @@ describe('locating a card\'s passage (inner#1646)', () => {
     store().start(proposal('p1'), 'write');
     store().locate(proposal('p1'));
 
-    expect(pendingFor('d1')).toHaveLength(1);
+    expect(pendingFor('d1')).toEqual([expect.objectContaining({ action: 'locate', order: 0 })]);
     expect(store().cards.p1).toBeUndefined();
   });
 

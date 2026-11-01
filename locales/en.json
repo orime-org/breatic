@@ -488,6 +488,7 @@
       "addComment": "Add comment",
       "apply": "Replace",
       "insert": "Insert",
+      "locate": "Locate",
       "appliedComment": "Comment added",
       "appliedRewrite": "Replaced",
       "appliedInsert": "Inserted",
@@ -499,6 +500,7 @@
       "failedComment": "Could not add the comment. Try again.",
       "failedRewrite": "Could not replace the passage. Try again.",
       "failedInsert": "Could not insert. Try again.",
+      "failedLocate": "Could not locate. Try again.",
       "lossy": "The formatting and comments in this passage will be replaced."
     },
     "thinking": "Thought for a moment",

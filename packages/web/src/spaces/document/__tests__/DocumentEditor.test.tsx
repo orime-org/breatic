@@ -563,7 +563,7 @@ describe('DocumentEditor', () => {
       }
     });
 
-    it('scrolls a wide table sideways to the quoted words before scrolling the body', async () => {
+    it('scrolls a wide table sideways to the quoted words before scrolling the body, outlining only what its frame shows', async () => {
       const { editor } = handle;
       const { rerender } = render(<DocumentEditor handle={handle} />);
       editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['Shot', 'Action'] }, { cells: ['Close', 'She turns'] }] })] as never);
@@ -573,7 +573,8 @@ describe('DocumentEditor', () => {
       const viewport = bodyViewport();
       const order: string[] = [];
       const spies: MockInstance[] = [
-        rangeRects({ 'She turns': new DOMRect(400, 210, 70, 20) }),
+        // The words run past the frame's right edge; the stubs do not move them when it scrolls.
+        rangeRects({ 'She turns': new DOMRect(250, 210, 130, 20) }),
         vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
         vi.spyOn(table, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 300, 400)),
       ];
@@ -584,8 +585,9 @@ describe('DocumentEditor', () => {
         rerender(<DocumentEditor handle={handle} landed={located({ blockId, quote: 'She turns' })} />);
 
         await waitFor(() => expect(down).toHaveBeenCalled());
-        expect(sideways).toHaveBeenCalledWith({ left: 382, behavior: 'instant' });
+        expect(sideways).toHaveBeenCalledWith({ left: 232, behavior: 'instant' });
         expect(order).toEqual(['table', 'body']);
+        expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({ left: '232px', width: '76px', top: '182px', height: '36px' });
       } finally {
         for (const spy of spies) spy.mockRestore();
         sideways.mockRestore();

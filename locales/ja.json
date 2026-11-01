@@ -488,6 +488,7 @@
       "addComment": "コメントを追加",
       "apply": "置き換える",
       "insert": "挿入",
+      "locate": "位置を表示",
       "appliedComment": "コメントを追加しました",
       "appliedRewrite": "置き換えました",
       "appliedInsert": "挿入しました",
@@ -499,6 +500,7 @@
       "failedComment": "コメントを追加できませんでした。もう一度お試しください。",
       "failedRewrite": "置き換えられませんでした。もう一度お試しください。",
       "failedInsert": "挿入できませんでした。もう一度お試しください。",
+      "failedLocate": "位置を表示できませんでした。もう一度お試しください。",
       "lossy": "この段落の書式とコメントは置き換えられます。"
     },
     "thinking": "少し考えました",

@@ -34,6 +34,9 @@ export function overflowSides(scrollLeft: number, scrollWidth: number, clientWid
 /** No side has more to scroll. */
 const FITS: OverflowSides = { left: false, right: false };
 
+/** The class on the element a table scrolls sideways in, for code that brings words inside it into view (inner#1646). */
+export const TABLE_VIEWPORT_CLASS = 'doc-table-viewport';
+
 /**
  * The frame.
  * @param props - The frame's content.
@@ -66,7 +69,7 @@ export function DocumentTableScroller({ children }: { children: React.ReactNode 
 
   return (
     <div className='doc-table-frame'>
-      <ScrollArea scrollbars='horizontal' viewportRef={setViewport}>
+      <ScrollArea scrollbars='horizontal' viewportRef={setViewport} viewportClassName={TABLE_VIEWPORT_CLASS}>
         {children}
       </ScrollArea>
       <span aria-hidden='true' className='doc-table-overflow-edge' data-overflow-edge='left' data-on={sides.left ? '' : undefined} />

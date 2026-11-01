@@ -91,20 +91,29 @@ function rangesOf(doc: ProseMirrorNode, blockId: string, start: number, end: num
 }
 
 /**
+ * Where a comment's quote is in the body, read only.
+ * @param doc - The body.
+ * @param blockId - The block.
+ * @param quote - The words.
+ * @returns One range per run of text the words cover, or null when the block is gone or they no longer appear once.
+ */
+function quoteRanges(doc: ProseMirrorNode, blockId: string, quote: string): Array<{ from: number; to: number }> | null {
+  const block = blockById(doc, blockId);
+  if (block === null) return null;
+  const text = blockPlainText(block.node);
+  if (occurrences(text, quote) !== 1) return null;
+  const at = text.indexOf(quote);
+  return rangesOf(doc, blockId, at, at + quote.length);
+}
+
+/**
  * Where a comment's quote is, once it still appears once in its block.
  * @param blockId - The block.
  * @param quote - The words.
  * @returns The aim for {@link commentOn}.
  */
 function quoteAim(blockId: string, quote: string): CommentAim {
-  return (state) => {
-    const block = blockById(state.doc, blockId);
-    if (block === null) return null;
-    const text = blockPlainText(block.node);
-    if (occurrences(text, quote) !== 1) return null;
-    const at = text.indexOf(quote);
-    return rangesOf(state.doc, blockId, at, at + quote.length);
-  };
+  return (state) => quoteRanges(state.doc, blockId, quote);
 }
 
 /**
@@ -188,15 +197,64 @@ export function landedAt(handle: Pick<Landable, 'editor'>, proposal: DocumentPro
  * @param proposal - The proposal.
  * @returns The outcome to report, or null when it can land.
  */
-function blockProblem(handle: Landable, proposal: DocumentProposal): 'blockGone' | 'changed' | null {
+function blockProblem(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): 'blockGone' | 'changed' | null {
   if (proposal.blockId === null) return null;
-  const block = blockById(handle.editor.prosemirrorState.doc, proposal.blockId);
+  const { doc } = handle.editor.prosemirrorState;
+  const block = blockById(doc, proposal.blockId);
   if (block === null) return 'blockGone';
   if (blockPlainText(block.node) !== proposal.original) return 'changed';
-  if (proposal.quote !== undefined && quoteAim(proposal.blockId, proposal.quote)(handle.editor.prosemirrorState) === null) {
-    return 'changed';
-  }
+  if (proposal.quote !== undefined && quoteRanges(doc, proposal.blockId, proposal.quote) === null) return 'changed';
   return null;
+}
+
+/**
+ * What a locate press points at (inner#1646): the block a rewrite replaces or
+ * an insert goes after, a comment's quoted words in its block, or the end of
+ * the document (`blockId` null). Only what to find is kept; where it is, is
+ * read from the document each time it is drawn.
+ */
+export type SourceTarget = Readonly<{ how: 'source'; blockId: string | null; quote?: string }>;
+
+/**
+ * Where a proposal points in the document as it is now, writing nothing. The
+ * passage is still shown when it changed since the proposal, with the same
+ * check a press makes before it writes, so `changed` means a press would be
+ * refused.
+ * @param handle - The document.
+ * @param proposal - The proposal.
+ * @returns What to show and whether the passage changed, or that it is gone.
+ */
+export function sourceAt(
+  handle: Pick<Landable, 'editor'>,
+  proposal: DocumentProposal,
+): { outcome: 'located' | 'changed'; target: SourceTarget } | { outcome: 'blockGone' } {
+  const problem = blockProblem(handle, proposal);
+  if (problem === 'blockGone') return { outcome: 'blockGone' };
+  const target: SourceTarget = proposal.quote === undefined
+    ? { how: 'source', blockId: proposal.blockId }
+    : { how: 'source', blockId: proposal.blockId, quote: proposal.quote };
+  return { outcome: problem ?? 'located', target };
+}
+
+/**
+ * Where a located target is in the body now: its block, and a comment's quoted
+ * words while they still appear once there (otherwise the block itself). The
+ * end is the last block, which is where an insert at the end goes.
+ * @param doc - The body.
+ * @param target - What was located.
+ * @returns The block and the words' ranges, or null when the block is gone.
+ */
+export function sourceSpot(
+  doc: ProseMirrorNode,
+  target: SourceTarget,
+): { blockId: string; ranges: Array<{ from: number; to: number }> | null } | null {
+  if (target.blockId === null) {
+    const last = doc.firstChild?.lastChild;
+    return last === null || last === undefined ? null : { blockId: String(last.attrs.id), ranges: null };
+  }
+  if (blockById(doc, target.blockId) === null) return null;
+  const ranges = target.quote === undefined ? null : quoteRanges(doc, target.blockId, target.quote);
+  return { blockId: target.blockId, ranges: ranges === null || ranges.length === 0 ? null : ranges };
 }
 
 /**

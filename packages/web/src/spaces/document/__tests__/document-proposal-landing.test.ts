@@ -541,7 +541,7 @@ describe('where a proposal points in the document, before anything lands (inner#
     expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: null } });
     expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })).toEqual({ blockId: blocks(handle)[1]!.id, ranges: null });
 
-    handle.editor.insertBlocks([{ type: 'paragraph', content: 'Later.' }], blocks(handle)[1]!.id, 'after');
+    handle.editor.insertBlocks([{ type: 'paragraph', content: 'Later.' }] as never, blocks(handle)[1]!.id, 'after');
     expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })?.blockId).toBe(blocks(handle)[2]!.id);
   });
 

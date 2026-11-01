@@ -488,6 +488,7 @@
       "addComment": "增加批注",
       "apply": "直接修改",
       "insert": "插入",
+      "locate": "定位",
       "appliedComment": "已增加批注",
       "appliedRewrite": "已修改",
       "appliedInsert": "已插入",
@@ -499,6 +500,7 @@
       "failedComment": "没能增加批注，再试一次。",
       "failedRewrite": "没能修改，再试一次。",
       "failedInsert": "没能插入，再试一次。",
+      "failedLocate": "没能定位，再试一次。",
       "lossy": "这一段的格式和批注会被替换。"
     },
     "thinking": "思考了一会儿",
