@@ -82,7 +82,13 @@ import { formatBytes, t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 import { serveOnLoopback, type RunningApp } from "./internal-api-harness.js";
-import { freshGetStatus, rawUpload, refusedThenNext, watchServerSockets } from "./refused-connection.js";
+import {
+  expectWholeAnswerThenCloseAtBodyEnd,
+  freshGetStatus,
+  rawUpload,
+  refusedThenNext,
+  watchServerSockets,
+} from "./refused-connection.js";
 
 try {
   initCore(process.env);
@@ -167,8 +173,6 @@ interface SendOptions {
   stream?: { total: number; bodyAt: (offset: number, length: number) => Buffer };
   /** The connection pool to send through; the default global agent otherwise. */
   agent?: http.Agent;
-  /** Identify the X03 request in transport failure diagnostics. */
-  diagnosticStage?: "first" | "again";
 }
 
 /**
@@ -202,29 +206,13 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
             reusedSocket: req.reusedSocket,
           }),
         );
-        res.on("error", rejectWithDiagnostics);
+        res.on("error", reject);
       },
     );
-    /**
-     * Keep the native failure as the cause while identifying the X03 request.
-     * @param err - The original socket or response error.
-     */
-    function rejectWithDiagnostics(err: unknown): void {
-      if (opts.diagnosticStage === undefined) {
-        reject(err);
-        return;
-      }
-      const code = err instanceof Error && "code" in err ? String(err.code) : "undefined";
-      const message = err instanceof Error ? err.message : String(err);
-      reject(new Error(
-        `X03 stage=${opts.diagnosticStage} error.code=${code} reusedSocket=${req.reusedSocket}: ${message}`,
-        { cause: err },
-      ));
-    }
     req.on("error", (err) => {
       // A refusal may close the socket while the client is still writing;
       // the case passes on the answer, which has already arrived.
-      if (!answered) rejectWithDiagnostics(err);
+      if (!answered) reject(err);
     });
     /**
      * Write one piece, waiting for the socket to drain when it asks.
@@ -259,7 +247,7 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
       }
       if (!req.destroyed) req.end();
     })().catch((err: unknown) => {
-      if (!answered) rejectWithDiagnostics(err instanceof Error ? err : new Error(String(err)));
+      if (!answered) reject(err instanceof Error ? err : new Error(String(err)));
     });
   });
 }
@@ -691,8 +679,8 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
     );
     const headers = { "Content-Type": "application/json", Cookie: a.cookie, "Idempotency-Key": randomUUID() };
 
-    const first = await send("/api/v1/projects", { headers, body, diagnosticStage: "first" });
-    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16, diagnosticStage: "again" });
+    const first = await send("/api/v1/projects", { headers, body });
+    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16 });
 
     expect(first.status).toBe(201);
     expect(again.status).toBe(201);
@@ -729,49 +717,32 @@ describe("§inner#1782 a refusal closes its connection (P1–P6)", () => {
     }
   });
 
-  /**
-   * Upload 20 MiB slowly, read only afterwards, and check the server read it
-   * to the end before closing.
-   * @param contentLength - Declared length, or undefined for chunked.
-   */
-  async function slowUploadReadAfter(contentLength: number | undefined): Promise<void> {
-    const port = Number(new URL(running.baseUrl).port);
-    const watch = watchServerSockets(running.server);
-    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+  it.each([0, 200])("P7: after a finite chunked body just over the limit is refused, a GET %i ms later goes out on a new connection", async (delayMs) => {
+    const fresh = await freshGetStatus(running.baseUrl, NEXT_PATH);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
     try {
-      upload = await rawUpload({
-        port,
-        path: LOGIN_PATH,
-        contentLength,
-        blocks: 320,
-        pauseMs: 20,
-        terminate: contentLength === undefined,
-        readAfterUpload: true,
-      });
-      const readFrom = upload.tLast;
-      expect(upload.tLast - upload.t0).toBeLessThan(20_000);
-      expect(upload.response?.status).toBe(413);
-      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
-      expect(JSON.parse(upload.response!.body)).toEqual(tooLarge());
-      const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
-      expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
-      expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
-      expect(tClose - upload.t0).toBeLessThan(30_000);
-      expect(upload.error).toBeUndefined();
-      expect(upload.tFin).toBeDefined();
-      expect(upload.tFin! - readFrom).toBeLessThan(2000);
+      for (let round = 0; round < 10; round++) {
+        const { refused, next } = await refusedThenNext(running.baseUrl, agent, LOGIN_PATH, NEXT_PATH, { total: 1_258_291, delayMs });
+
+        expect(refused.status).toBe(413);
+        expect(refused.headers.connection).toBe("close");
+        expect(next.error).toBeUndefined();
+        expect(next.status).toBe(fresh);
+        expect(next.reusedSocket).toBe(false);
+      }
     } finally {
-      upload?.client.destroy();
-      watch.stop();
+      agent.destroy();
     }
-  }
+  });
 
   it("P2: a declared 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
-    await slowUploadReadAfter(TWENTY_MIB);
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, TWENTY_MIB);
+    expect(JSON.parse(answer.body)).toEqual(tooLarge());
   });
 
   it("P3: a finite chunked 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
-    await slowUploadReadAfter(undefined);
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, undefined);
+    expect(JSON.parse(answer.body)).toEqual(tooLarge());
   });
 
   it("P4: a client that stalls mid-body gets the 413 and a FIN at once, and the server closes at the deadline", async () => {

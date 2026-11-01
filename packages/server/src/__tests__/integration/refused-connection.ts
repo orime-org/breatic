@@ -15,6 +15,7 @@
 import http from "node:http";
 import net from "node:net";
 import { performance } from "node:perf_hooks";
+import { expect } from "vitest";
 
 /** 64 KiB, the size of every block a probe writes. */
 export const BLOCK = 65_536;
@@ -215,22 +216,81 @@ export async function rawUpload(plan: UploadPlan): Promise<Upload> {
   return result;
 }
 
-/** One round of an endless chunked request followed by a GET on the same agent. */
+/**
+ * Upload 20 MiB slowly from a client that reads only afterwards, and check
+ * it gets the whole 413 and the server closes once the body ends.
+ * @param server - The listening server.
+ * @param baseUrl - Its base URL.
+ * @param path - Where the body goes.
+ * @param contentLength - The declared length, or undefined for chunked.
+ * @returns The 413, for the caller to check its body.
+ */
+export async function expectWholeAnswerThenCloseAtBodyEnd(
+  server: http.Server,
+  baseUrl: string,
+  path: string,
+  contentLength: number | undefined,
+): Promise<ParsedResponse> {
+  const watch = watchServerSockets(server);
+  let upload: Upload | undefined;
+  try {
+    upload = await rawUpload({
+      port: Number(new URL(baseUrl).port),
+      path,
+      contentLength,
+      blocks: 320,
+      pauseMs: 20,
+      terminate: contentLength === undefined,
+      readAfterUpload: true,
+    });
+    expect(upload.tLast - upload.t0).toBeLessThan(20_000);
+    expect(upload.response?.status).toBe(413);
+    expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
+    const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
+    expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
+    expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
+    expect(tClose - upload.t0).toBeLessThan(30_000);
+    expect(upload.error).toBeUndefined();
+    expect(upload.tFin).toBeDefined();
+    expect(upload.tFin! - upload.tLast).toBeLessThan(2000);
+    return upload.response!;
+  } finally {
+    upload?.client.destroy();
+    watch.stop();
+  }
+}
+
+/** One round of a refused chunked request followed by a GET on the same agent. */
 export interface RefusedThenNext {
   refused: { status: number; headers: http.IncomingHttpHeaders; body: string; errorBeforeAnswer?: string };
   next: { status: number; reusedSocket: boolean; error?: string };
 }
 
+/** How the refused body is sent and when the next request follows. */
+export interface RefusedThenNextOptions {
+  /** Bytes of chunked body to write before ending it; endless (until answered) when omitted. */
+  total?: number;
+  /** Wait this long after the answer before the GET; 0 by default. */
+  delayMs?: number;
+}
+
 /**
- * Send a chunked body that never ends until answered, read the answer, end
- * the request, then send a GET through the same agent at once.
+ * Send a chunked body over the limit, read the answer, end the request, then
+ * send a GET through the same agent.
  * @param baseUrl - The server.
  * @param agent - A keep-alive agent with one socket.
- * @param postPath - Where the endless body goes.
+ * @param postPath - Where the body goes.
  * @param getPath - Where the next request goes.
+ * @param opts - The body's size and the GET's delay.
  * @returns Both answers.
  */
-export async function refusedThenNext(baseUrl: string, agent: http.Agent, postPath: string, getPath: string): Promise<RefusedThenNext> {
+export async function refusedThenNext(
+  baseUrl: string,
+  agent: http.Agent,
+  postPath: string,
+  getPath: string,
+  opts: RefusedThenNextOptions = {},
+): Promise<RefusedThenNext> {
   const url = new URL(baseUrl);
   const refused = await new Promise<RefusedThenNext["refused"]>((resolve, reject) => {
     let answered = false;
@@ -256,8 +316,9 @@ export async function refusedThenNext(baseUrl: string, agent: http.Agent, postPa
     });
     const block = Buffer.alloc(BLOCK, 0x20);
     void (async () => {
-      while (!answered && !req.destroyed) {
-        if (!req.write(block)) await new Promise<void>((done) => {
+      for (let sent = 0; !answered && !req.destroyed && (opts.total === undefined || sent < opts.total); sent += BLOCK) {
+        const piece = opts.total === undefined ? block : block.subarray(0, Math.min(BLOCK, opts.total - sent));
+        if (!req.write(piece)) await new Promise<void>((done) => {
           const timer = setTimeout(done, 200);
           req.once("drain", () => {
             clearTimeout(timer);
@@ -265,8 +326,10 @@ export async function refusedThenNext(baseUrl: string, agent: http.Agent, postPa
           });
         });
       }
+      if (opts.total !== undefined && !req.destroyed) req.end();
     })();
   });
+  if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
   const next = await new Promise<RefusedThenNext["next"]>((resolve) => {
     const req = http.request({ host: url.hostname, port: url.port, path: getPath, method: "GET", agent }, (res) => {
       res.resume();

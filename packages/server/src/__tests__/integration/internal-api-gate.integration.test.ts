@@ -94,7 +94,7 @@ import {
   useInternalApp,
 } from "./internal-api-harness.js";
 import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
-import { freshGetStatus, rawUpload, refusedThenNext, watchServerSockets } from "./refused-connection.js";
+import { expectWholeAnswerThenCloseAtBodyEnd, freshGetStatus, refusedThenNext } from "./refused-connection.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
 // the shared beforeEach clears the rate-limit keys through the same client.
@@ -652,33 +652,25 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     ["I2: a declared 20 MiB body", 20 * 1024 * 1024],
     ["I3: a finite chunked 20 MiB body", undefined],
   ])("%s sent slowly by a client that reads only afterwards gets the whole 413", async (_name, contentLength) => {
-    const port = Number(new URL(running.baseUrl).port);
-    const watch = watchServerSockets(suite.server);
-    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(suite.server, running.baseUrl, PROBE_PATH, contentLength);
+    expect(JSON.parse(answer.body)).toEqual({ code: "invalid_body" });
+  });
+
+  it.each([0, 200])("I5: after a finite chunked body just over 64 KiB is refused, a request %i ms later goes out on a new connection", async (delayMs) => {
+    const fresh = await freshGetStatus(running.baseUrl, PROBE_PATH);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
     try {
-      upload = await rawUpload({
-        port,
-        path: PROBE_PATH,
-        contentLength,
-        blocks: 320,
-        pauseMs: 20,
-        terminate: contentLength === undefined,
-        readAfterUpload: true,
-      });
-      expect(upload.tLast - upload.t0).toBeLessThan(20_000);
-      expect(upload.response?.status).toBe(413);
-      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
-      expect(JSON.parse(upload.response!.body)).toEqual({ code: "invalid_body" });
-      const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
-      expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
-      expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
-      expect(tClose - upload.t0).toBeLessThan(30_000);
-      expect(upload.error).toBeUndefined();
-      expect(upload.tFin).toBeDefined();
-      expect(upload.tFin! - upload.tLast).toBeLessThan(2000);
+      for (let round = 0; round < 10; round++) {
+        const { refused, next } = await refusedThenNext(running.baseUrl, agent, PROBE_PATH, PROBE_PATH, { total: 80 * 1024, delayMs });
+
+        expect(refused.status).toBe(413);
+        expect(refused.headers.connection).toBe("close");
+        expect(next.error).toBeUndefined();
+        expect(next.status).toBe(fresh);
+        expect(next.reusedSocket).toBe(false);
+      }
     } finally {
-      upload?.client.destroy();
-      watch.stop();
+      agent.destroy();
     }
   });
 
