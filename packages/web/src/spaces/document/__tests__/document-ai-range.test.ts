@@ -249,7 +249,7 @@ describe('the AI range under any mix of edits (property)', () => {
 
         let wasGone = false;
         for (const step of edits) {
-          if (step.kind === 'undo' || step.kind === 'redo') {
+          if (!('at' in step)) {
             undo.manager.stopCapturing();
             if (step.kind === 'undo') undo.manager.undo();
             else undo.manager.redo();
@@ -260,7 +260,7 @@ describe('the AI range under any mix of edits (property)', () => {
             const textStart = 3;
             const textEnd = Math.max(textStart, size - 3);
             const at = textStart + (step.at % (textEnd - textStart + 1));
-            const tr = step.kind === 'insert'
+            const tr = 'text' in step
               ? view.state.tr.insertText(step.text, at)
               : view.state.tr.delete(at, Math.min(textEnd, at + step.length));
             if (step.kind === 'insert' || tr.docChanged) {
