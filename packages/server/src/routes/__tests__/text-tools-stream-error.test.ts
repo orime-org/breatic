@@ -89,6 +89,7 @@ describe("text tools stream when the client leaves before anything is read", () 
     const signals: AbortSignal[] = [];
     service.executeTextTool.mockImplementation(async function* (
       _user: string,
+      _project: string,
       _tool: string,
       _params: unknown,
       signal: AbortSignal,
