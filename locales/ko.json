@@ -2830,7 +2830,14 @@
     "empty": "동영상을 추가하여 Timeline 편집을 시작하세요.",
     "video": "동영상",
     "conflict": "충돌",
-    "conflictHelp": "클립이 겹치거나 동영상 범위를 벗어났습니다. 클립을 선택하고 이동, 트리밍 또는 삭제하세요.",
+    "conflictHelp": "클립이 겹치거나, 트랙이 삭제되었거나, 동영상 범위를 벗어났습니다. 클립을 선택하고 이동, 트랙 변경, 트리밍 또는 삭제하세요.",
+    "conflictReason": {
+      "overlap": "다른 클립과 겹칩니다",
+      "missing_track": "트랙이 삭제되었습니다",
+      "invalid_range": "동영상 범위를 벗어났습니다",
+      "incompatible_track": "다른 종류의 트랙에 있습니다",
+      "damaged": "이 클립을 더 이상 읽을 수 없습니다"
+    },
     "loadingMedia": "동영상 불러오는 중…",
     "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",
     "retry": "다시 시도",
@@ -2883,7 +2890,7 @@
       "track_not_empty": "빈 트랙만 삭제할 수 있습니다."
     },
     "mainTrack": "메인 트랙",
-    "track": "트랙 {index}",
+    "track": "영상 {index}",
     "edit": {
       "undo": "실행 취소",
       "redo": "다시 실행",
@@ -2903,6 +2910,8 @@
       "newTrackZone": "여기에 놓아 새 트랙 만들기",
       "trackRemoved": "트랙이 삭제됨",
       "deleteTrack": "트랙 삭제",
+      "ghostInsert": "삽입",
+      "ghostOverwrite": "아래 클립 덮어쓰기",
       "selectFirst": "먼저 클립을 선택하세요.",
       "magnetStartHint": "메인 트랙 자석이 켜져 있습니다. 드래그하여 순서를 바꾸세요.",
       "splitOutside": "분할하려면 재생 헤드를 선택한 클립 안으로 옮기세요.",

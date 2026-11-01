@@ -2830,7 +2830,14 @@
     "empty": "Add a video to start your Timeline.",
     "video": "Video",
     "conflict": "Conflict",
-    "conflictHelp": "Clips overlap or fall outside their video. Select a clip and move, trim or delete it.",
+    "conflictHelp": "Clips overlap, sit on a removed track or fall outside their video. Select a clip and move it, change its track, trim or delete it.",
+    "conflictReason": {
+      "overlap": "Overlaps another clip",
+      "missing_track": "Its track was removed",
+      "invalid_range": "Outside its video",
+      "incompatible_track": "On a track of another kind",
+      "damaged": "This clip can no longer be read"
+    },
     "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
@@ -2883,7 +2890,7 @@
       "track_not_empty": "Only an empty track can be deleted."
     },
     "mainTrack": "Main track",
-    "track": "Track {index}",
+    "track": "Visual {index}",
     "edit": {
       "undo": "Undo",
       "redo": "Redo",
@@ -2903,6 +2910,8 @@
       "newTrackZone": "Drop here for a new track",
       "trackRemoved": "Track removed",
       "deleteTrack": "Delete track",
+      "ghostInsert": "Insert",
+      "ghostOverwrite": "Covers clips below",
       "selectFirst": "Select a clip first.",
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",

@@ -24,6 +24,61 @@ export interface TimelineEditSession {
   dispose: () => void;
 }
 
+/** Clip and track records by id, as JSON, for the records one undo step touched. */
+interface RecordSnapshot { clips: Record<string, Record<string, unknown>>; tracks: Record<string, Record<string, unknown>> }
+
+// Writes that complete revived records; untracked, so they never become an undo step of their own.
+const REPAIR_ORIGIN = Symbol('timeline-record-repair');
+
+/**
+ * Every clip and track record as JSON.
+ * @param doc - The document.
+ * @returns The records.
+ * @throws {never} Never.
+ */
+function snapshotRecords(doc: Y.Doc): RecordSnapshot {
+  return { clips: doc.getMap('clips').toJSON(), tracks: doc.getMap('tracks').toJSON() };
+}
+
+/**
+ * The records of `from` whose content differs from `other`, including ones `other` lacks.
+ * @param from - The snapshot to keep records from.
+ * @param other - The snapshot on the other side of the edit.
+ * @returns The touched records of `from`.
+ * @throws {never} Never.
+ */
+function touched(from: RecordSnapshot, other: RecordSnapshot): RecordSnapshot {
+  /**
+   * The touched records of one collection.
+   * @param kind - The collection.
+   * @returns Its touched records.
+   * @throws {never} Never.
+   */
+  const pick = (kind: keyof RecordSnapshot): Record<string, Record<string, unknown>> => Object.fromEntries(
+    Object.entries(from[kind]).filter(([id, record]) => JSON.stringify(record) !== JSON.stringify(other[kind][id])),
+  );
+  return { clips: pick('clips'), tracks: pick('tracks') };
+}
+
+/**
+ * Give every present record of the snapshot the fields it lacks, leaving fields it has untouched.
+ * @param doc - The document.
+ * @param records - The snapshot of the step just undone or redone.
+ * @throws {never} Never.
+ */
+function completeRecords(doc: Y.Doc, records: RecordSnapshot): void {
+  doc.transact(() => {
+    for (const kind of ['clips', 'tracks'] as const) {
+      const collection = doc.getMap<unknown>(kind);
+      for (const [id, record] of Object.entries(records[kind])) {
+        const target = collection.get(id);
+        if (!(target instanceof Y.Map)) continue;
+        for (const [key, value] of Object.entries(record)) if (!target.has(key)) target.set(key, value);
+      }
+    }
+  }, REPAIR_ORIGIN);
+}
+
 /**
  * Create the personal session for a Timeline document.
  * @param doc - The live collaborative document.
@@ -47,8 +102,18 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     snapshot = next;
     listeners.forEach((listener) => listener());
   };
-  history.on('stack-item-added', () => {
+  // The opposite-stack step an undo or redo creates, so it inherits the popped step's snapshots.
+  let added: { meta: Map<string, unknown> } | null = null;
+  history.on('stack-item-added', ({ stackItem }: { stackItem: { meta: Map<string, unknown> } }) => {
+    added = stackItem;
     while (history.undoStack.length > MAX_UNDO_DEPTH) history.undoStack.shift();
+  });
+  // A peer's edit to a record this step deleted lands in the deleted map, and undo restores only what this
+  // session removed, so a revived record can lack fields; complete it from the step's snapshot.
+  history.on('stack-item-popped', ({ stackItem, type }: { stackItem: { meta: Map<string, unknown> }; type: 'undo' | 'redo' }) => {
+    const records = stackItem.meta.get(type === 'undo' ? 'before' : 'after') as RecordSnapshot | undefined;
+    if (records !== undefined) completeRecords(doc, records);
+    if (added !== null && added !== stackItem) for (const [key, value] of stackItem.meta) added.meta.set(key, value);
   });
   doc.on('update', refresh);
 
@@ -64,17 +129,27 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       const timeout = history.captureTimeout;
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
-        return applyTimelineEdit(doc, command, origin);
+        const before = snapshotRecords(doc);
+        const plan = applyTimelineEdit(doc, command, origin);
+        const item = history.undoStack[history.undoStack.length - 1];
+        if (plan.ok && item !== undefined) {
+          const after = snapshotRecords(doc);
+          if (!item.meta.has('before')) item.meta.set('before', touched(before, after));
+          item.meta.set('after', touched(after, before));
+        }
+        return plan;
       } finally {
         history.captureTimeout = timeout;
         refresh();
       }
     },
     undo() {
+      added = null;
       history.undo();
       refresh();
     },
     redo() {
+      added = null;
       history.redo();
       refresh();
     },

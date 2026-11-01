@@ -113,7 +113,8 @@ export function previewTimelineGesture(
       sourceInFrame = timelineTrimHead(clip, source, fps, shift);
     }
     if (sourceInFrame === null || shift === 0) return base;
-    return { ...base, startFrame: Math.max(0, clip.startFrame + shift), sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
+    // A head pulled past frame 0 on the magnetic main track previews the committed result: the clip keeps its slot.
+    return { ...base, startFrame: clip.startFrame + shift < 0 ? clip.startFrame : clip.startFrame + shift, sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
   }
 
   const longest = Math.max(1, source === undefined ? clip.durationFrames : timelineSourceRoom(clip, source, fps));

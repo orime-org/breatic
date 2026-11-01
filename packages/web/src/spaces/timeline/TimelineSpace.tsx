@@ -7,8 +7,9 @@ import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, 
 import { useQueryClient } from '@tanstack/react-query';
 import {
   activeTimelineClipAt, newId, orderedTimelineClips, resolveTimelineArrangement, TIMELINE_MAIN_TRACK_ID,
-  type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlan, type TimelineVideoClip,
+  type TimelineArrangementReason, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlan, type TimelineVideoClip,
 } from '@breatic/shared';
+import { removeTimelineRecord } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -37,15 +38,38 @@ import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback'
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** The existing content document and its supported native projection. */
-interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1 }
+interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
 
 /** One conflicting placement listed with its frames. */
 interface TimelineConflictRowProps {
   projectId: string;
   clip: TimelineVideoClip;
   assetId: string;
+  reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
   onSelect: (clipId: string) => void;
+}
+
+/** A clip record that can no longer be read, listed so an Editor can delete it. */
+interface TimelineDamagedRowProps { clipId: string; readOnly: boolean; onDelete: (clipId: string) => void }
+
+/**
+ * List one damaged clip record with its reason and, for an Editor, a delete control.
+ * @param props - The record and the delete callback.
+ * @param props.clipId - The damaged record's id.
+ * @param props.readOnly - Whether editing is unavailable.
+ * @param props.onDelete - Deletes the record.
+ * @returns The row.
+ * @throws {never} Never.
+ */
+function TimelineDamagedRow({ clipId, readOnly, onDelete }: TimelineDamagedRowProps): React.JSX.Element {
+  const t = useTranslation();
+  const remove = React.useCallback((): void => onDelete(clipId), [onDelete, clipId]);
+  return <div data-testid={`timeline-conflict-${clipId}`} className='flex w-full min-w-0 items-center gap-2 rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-2 text-xs'>
+    <Film className='size-4 shrink-0' />
+    <span className='min-w-0 flex-1 truncate leading-normal text-status-error-foreground'>{t('timeline.conflictReason.damaged')}</span>
+    {!readOnly && <Button data-testid={`timeline-damaged-delete-${clipId}`} variant='outline' size='compact' onClick={remove} icon={<Trash2 className='size-3.5' />}>{t('timeline.edit.delete')}</Button>}
+  </div>;
 }
 
 const DEFAULT_PIXELS_PER_FRAME = 2;
@@ -58,12 +82,13 @@ const ZOOM_STEP = 0.1;
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
+ * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
  * @param props.onSelect - Selects it.
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, selected, onSelect }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onSelect }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
   const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
@@ -72,6 +97,7 @@ function TimelineConflictRow({ projectId, clip, assetId, selected, onSelect }: T
     <Film className='size-4 shrink-0' />
     <span className='min-w-0 truncate leading-normal'>{asset.data?.displayName || t('timeline.video')}</span>
     <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>
+    {reason !== null && <span data-testid={`timeline-conflict-reason-${clip.id}`} className='min-w-0 truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
     <span className='shrink-0 text-muted-foreground'>{t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}</span>
   </Button>;
 }
@@ -84,10 +110,11 @@ function TimelineConflictRow({ projectId, clip, assetId, selected, onSelect }: T
  * @param props.readOnly - The existing Project role's editing restriction.
  * @param props.doc - The content document held by the existing Space connection.
  * @param props.document - Its validated native Timeline projection.
+ * @param props.damagedClipIds - Clip records that can no longer be read.
  * @returns The preview, toolbar, tracks, properties and conflicts.
  * @throws {never} Never.
  */
-function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }: TimelineEditorProps): React.JSX.Element {
+function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, damagedClipIds }: TimelineEditorProps): React.JSX.Element {
   const t = useTranslation();
   const [frame, setFrame] = React.useState(0);
   const [zoom, setZoom] = React.useState(DEFAULT_PIXELS_PER_FRAME);
@@ -118,6 +145,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
   const arrangement = React.useMemo(() => resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips, sources: document.sources, fps: document.settings.fps }), [document.tracks, clips, document.sources, document.settings.fps]);
   const readyIds = React.useMemo(() => new Set(arrangement.readyClipIds), [arrangement.readyClipIds]);
+  const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
   const selectedAssetId = selected === undefined ? '' : document.sources[selected.sourceId]?.assetId ?? '';
@@ -125,7 +153,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const active = activeTimelineClipAt(document, readyIds, frame);
   const source = active === null ? null : document.sources[active.sourceId] ?? null;
   const assetId = source?.assetId ?? '';
-  const resource = useTimelineAsset(projectId, assetId, source !== null);
+  const resource = useTimelineAsset(projectId, assetId);
   const resourceState = source === null ? 'ready' : resource.isError ? 'failed' : resource.isPending ? 'loading' : 'ready';
   const playback = useTimelinePlayback({ document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState });
   const { seek, retry: retryPlayback } = playback;
@@ -144,6 +172,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     if (!plan.ok) toast.warning(t(`timeline.errors.${plan.reason}`));
     return plan;
   }, [readOnly, editWithNotice, t]);
+  const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineRecord(doc, 'clips', clipId, session.origin); }, [readOnly, doc, session]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 
@@ -290,9 +319,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     </div>
     <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
       pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} />
-    {arrangement.hasConflicts && <ScrollArea className='h-28 shrink-0 border-t border-border' viewportClassName='flex flex-col gap-2 p-3'>
+    {(arrangement.hasConflicts || damagedClipIds.length > 0) && <ScrollArea className='h-28 shrink-0 border-t border-border' viewportClassName='flex flex-col gap-2 p-3'>
       <p className='text-xs text-status-error-foreground'>{t('timeline.conflictHelp')}</p>
-      {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} selected={selectedId === clip.id} onSelect={selectClip} />)}
+      {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onSelect={selectClip} />)}
+      {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
     </ScrollArea>}
     <div className='flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-xs'>
       {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
@@ -316,5 +346,5 @@ export function TimelineSpace(props: SpaceBodyProps): React.JSX.Element {
   const state = useTimelineDocument(doc, connection.hasEverSynced);
   if (!connection.hasEverSynced) return <div data-testid={connection.status === 'authFailed' ? 'timeline-space-unavailable' : 'timeline-space-loading'} className='flex h-full items-center justify-center p-6 text-sm text-muted-foreground'>{t(connection.status === 'authFailed' ? 'timeline.unavailable' : 'timeline.loading')}</div>;
   if (state.document === null) return <div data-testid='timeline-space-error' className='flex h-full items-center justify-center p-6 text-sm text-muted-foreground'>{t('timeline.incompatible')}</div>;
-  return <TimelineEditor {...props} doc={doc} document={state.document} />;
+  return <TimelineEditor {...props} doc={doc} document={state.document} damagedClipIds={state.damaged.clips} />;
 }

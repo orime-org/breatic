@@ -2830,7 +2830,14 @@
     "empty": "新增影片，開始編排 Timeline。",
     "video": "影片",
     "conflict": "衝突",
-    "conflictHelp": "片段重疊或超出影片範圍。請選擇片段並移動、裁剪或刪除。",
+    "conflictHelp": "片段重疊、所在軌道已被移除或超出影片範圍。請選擇片段並移動、改換軌道、裁剪或刪除。",
+    "conflictReason": {
+      "overlap": "與其他片段重疊",
+      "missing_track": "所在軌道已被移除",
+      "invalid_range": "超出影片範圍",
+      "incompatible_track": "所在軌道類型不符",
+      "damaged": "該片段已無法讀取"
+    },
     "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",
     "retry": "重試",
@@ -2883,7 +2890,7 @@
       "track_not_empty": "只能刪除空軌道。"
     },
     "mainTrack": "主軌",
-    "track": "軌道 {index}",
+    "track": "畫面 {index}",
     "edit": {
       "undo": "復原",
       "redo": "重做",
@@ -2903,6 +2910,8 @@
       "newTrackZone": "拖到這裡新增軌道",
       "trackRemoved": "軌道已移除",
       "deleteTrack": "刪除軌道",
+      "ghostInsert": "插入",
+      "ghostOverwrite": "覆蓋下方片段",
       "selectFirst": "請先選擇一個片段。",
       "magnetStartHint": "主軌磁吸已開啟，拖動調整順序。",
       "splitOutside": "請將播放頭移到選取片段內再分割。",

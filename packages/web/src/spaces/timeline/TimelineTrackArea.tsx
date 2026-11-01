@@ -162,6 +162,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
+  const cancelled = React.useRef(false);
   const latest = React.useRef({ document, frame, pixelsPerFrame, snap, placement, readOnly });
   latest.current = { document, frame, pixelsPerFrame, snap, placement, readOnly };
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_PX } }));
@@ -171,18 +172,19 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const startDrag = React.useCallback((event: DragStartEvent): void => {
     const data = event.active.data.current as { mode: TimelineGestureMode; clipId: string } | undefined;
     if (data === undefined || readOnly) return;
+    cancelled.current = false;
     onSelect(data.clipId);
     setGesture({ mode: data.mode, clipId: data.clipId, preview: null });
   }, [onSelect, readOnly]);
   const moveDrag = React.useCallback((event: DragMoveEvent): void => {
     const data = event.active.data.current as { mode: TimelineGestureMode; clipId: string } | undefined;
-    if (data === undefined || latest.current.readOnly) return;
+    if (data === undefined || latest.current.readOnly || cancelled.current) return;
     setGesture({ mode: data.mode, clipId: data.clipId, preview: previewOf(latest.current, data, event) });
   }, []);
   const endDrag = React.useCallback((event: DragEndEvent): void => {
     const data = event.active.data.current as { mode: TimelineGestureMode; clipId: string } | undefined;
     setGesture(null);
-    if (data === undefined || readOnly) return;
+    if (data === undefined || readOnly || cancelled.current) return;
     const view = latest.current;
     if (view.document.clips[data.clipId] === undefined) { onVanished(); return; }
     const preview = previewOf(view, data, event);
@@ -192,6 +194,18 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   }, [onCommit, onVanished, readOnly]);
   const cancelDrag = React.useCallback((): void => setGesture(null), []);
   React.useEffect(() => { if (readOnly) setGesture(null); }, [readOnly]);
+  // Leaving the window ends a drag without writing (dnd-kit itself cancels only on Esc, resize and hidden pages).
+  const dragging = gesture !== null;
+  React.useEffect(() => {
+    if (!dragging) return;
+    /**
+     * Cancel the drag in progress.
+     * @throws {never} Never.
+     */
+    const cancel = (): void => { cancelled.current = true; setGesture(null); };
+    window.addEventListener('blur', cancel);
+    return () => window.removeEventListener('blur', cancel);
+  }, [dragging]);
 
   const clearOnBlank = React.useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return;
@@ -238,7 +252,12 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
               {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''}
                 selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} onSelect={onSelect} />)}
-              {showGhost && <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle} />}
+              {showGhost && preview !== null && <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle}>
+                <span data-testid='timeline-ghost-label' className='absolute -top-5 left-0 whitespace-nowrap rounded-chrome border border-border bg-background px-1 text-2xs tabular-nums'>
+                  {t('timeline.clipFrames', { start: preview.startFrame, duration: preview.durationFrames })}
+                  {gesture?.mode === 'move' && ` · ${t(isMain && placement.magnet ? 'timeline.edit.ghostInsert' : 'timeline.edit.ghostOverwrite')}`}
+                </span>
+              </div>}
               {showGhost && isMain && placement.magnet && gesture?.mode === 'move' && <div data-testid='timeline-insert-marker' className='pointer-events-none absolute -inset-y-1 w-px bg-active-border' style={{ left: timelineInsertMarkerFrame(document, gesture.clipId, preview?.startFrame ?? 0) * pixelsPerFrame }} />}
               {showGhost && preview?.snapFrame !== null && preview !== null && <div className='pointer-events-none absolute -inset-y-1 w-px bg-status-warning-foreground' style={{ left: (preview.snapFrame ?? 0) * pixelsPerFrame }} />}
               <div className='pointer-events-none absolute inset-y-0 w-px bg-active-border' style={{ left: frame * pixelsPerFrame }} />

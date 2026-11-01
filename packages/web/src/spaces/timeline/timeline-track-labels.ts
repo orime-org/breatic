@@ -7,7 +7,7 @@ import { getLocale, orderedTimelineTracks, TIMELINE_MAIN_TRACK_ID, type Timeline
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** One visual track and its display name. */
-export interface TimelineTrackLabel { id: string; order: number; label: string }
+export interface TimelineTrackLabel { id: string; label: string }
 
 /** Visual tracks bottom-up with their names, and a name lookup for any track id. */
 export interface TimelineTrackLabels { visual: TimelineTrackLabel[]; nameOf: (trackId: string) => string | null }
@@ -24,7 +24,7 @@ export function useTimelineTrackLabels(document: TimelineDocumentV1): TimelineTr
   const locale = getLocale();
   return React.useMemo(() => {
     const visual = orderedTimelineTracks(document.tracks).filter((track) => track.kind === 'visual')
-      .map((track, index) => ({ id: track.id, order: track.order, label: track.id === TIMELINE_MAIN_TRACK_ID ? t('timeline.mainTrack') : t('timeline.track', { index: index + 1 }) }));
+      .map((track, index) => ({ id: track.id, label: track.id === TIMELINE_MAIN_TRACK_ID ? t('timeline.mainTrack') : t('timeline.track', { index: index + 1 }) }));
     const names = new Map(visual.map((track) => [track.id, track.label]));
     return { visual, nameOf: (trackId: string) => names.get(trackId) ?? null };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locale stands in for the translations `t` returns.

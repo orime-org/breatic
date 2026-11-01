@@ -2830,7 +2830,14 @@
     "empty": "添加视频，开始编排 Timeline。",
     "video": "视频",
     "conflict": "冲突",
-    "conflictHelp": "片段重叠或超出视频范围。请选择片段并移动、裁剪或删除。",
+    "conflictHelp": "片段重叠、所在轨道已被移除或超出视频范围。请选择片段并移动、改换轨道、裁剪或删除。",
+    "conflictReason": {
+      "overlap": "与其他片段重叠",
+      "missing_track": "所在轨道已被移除",
+      "invalid_range": "超出视频范围",
+      "incompatible_track": "所在轨道类型不符",
+      "damaged": "该片段已无法读取"
+    },
     "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
     "retry": "重试",
@@ -2883,7 +2890,7 @@
       "track_not_empty": "只能删除空轨道。"
     },
     "mainTrack": "主轨",
-    "track": "轨道 {index}",
+    "track": "画面 {index}",
     "edit": {
       "undo": "撤销",
       "redo": "重做",
@@ -2903,6 +2910,8 @@
       "newTrackZone": "拖到这里新建轨道",
       "trackRemoved": "轨道已移除",
       "deleteTrack": "删除轨道",
+      "ghostInsert": "插入",
+      "ghostOverwrite": "覆盖下方片段",
       "selectFirst": "请先选择一个片段。",
       "magnetStartHint": "主轨磁吸已开启，拖动调整顺序。",
       "splitOutside": "请把播放头移到选中片段内再分割。",

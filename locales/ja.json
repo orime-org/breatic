@@ -2830,7 +2830,14 @@
     "empty": "動画を追加して Timeline の編集を始めましょう。",
     "video": "動画",
     "conflict": "競合",
-    "conflictHelp": "クリップが重複しているか、動画の範囲外です。クリップを選択して移動、トリム、または削除してください。",
+    "conflictHelp": "クリップが重複しているか、トラックが削除されたか、動画の範囲外です。クリップを選択して移動、トラックの変更、トリム、または削除してください。",
+    "conflictReason": {
+      "overlap": "他のクリップと重複しています",
+      "missing_track": "トラックが削除されました",
+      "invalid_range": "動画の範囲外です",
+      "incompatible_track": "種類の異なるトラックにあります",
+      "damaged": "このクリップは読み込めなくなりました"
+    },
     "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
     "retry": "再試行",
@@ -2883,7 +2890,7 @@
       "track_not_empty": "空のトラックのみ削除できます。"
     },
     "mainTrack": "メイントラック",
-    "track": "トラック {index}",
+    "track": "映像 {index}",
     "edit": {
       "undo": "元に戻す",
       "redo": "やり直す",
@@ -2903,6 +2910,8 @@
       "newTrackZone": "ここにドロップして新しいトラックを作成",
       "trackRemoved": "トラックは削除されました",
       "deleteTrack": "トラックを削除",
+      "ghostInsert": "挿入",
+      "ghostOverwrite": "下のクリップを上書き",
       "selectFirst": "先にクリップを選択してください。",
       "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
       "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",

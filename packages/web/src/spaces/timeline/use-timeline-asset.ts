@@ -21,12 +21,11 @@ export function timelineAssetKey(projectId: string, assetId: string): readonly [
  * Resolve a registered asset for the Timeline: its name, file and cover.
  * @param projectId - The authorizing Project.
  * @param assetId - The registered asset; '' resolves nothing.
- * @param enabled - Whether to fetch; defaults to whenever there is an asset.
  * @returns The query.
  * @throws {never} Never.
  */
-export function useTimelineAsset(projectId: string, assetId: string, enabled = assetId !== ''): UseQueryResult<Awaited<ReturnType<typeof timelineApi.resolveAsset>>> {
+export function useTimelineAsset(projectId: string, assetId: string): UseQueryResult<Awaited<ReturnType<typeof timelineApi.resolveAsset>>> {
   const queryKey = React.useMemo(() => timelineAssetKey(projectId, assetId), [projectId, assetId]);
   const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
-  return useQuery({ queryKey, queryFn, enabled });
+  return useQuery({ queryKey, queryFn, enabled: assetId !== '' });
 }
