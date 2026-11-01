@@ -736,3 +736,92 @@ describe('a drag within the body into a block that takes only words (design §5.
     expect(lines(editor).filter((label) => label === 'table')).toHaveLength(1);
   });
 });
+
+describe('a drag within the body, put as its paste at the drop point (design §5.4.1)', () => {
+  /**
+   * Drags the selection between two points to a third.
+   * @param editor - The editor.
+   * @param from - Where the selection starts.
+   * @param to - Where it ends.
+   * @param at - Where it is dropped.
+   */
+  function dragWithin(editor: Editor, from: number, to: number, at: number): void {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    view.focus();
+    // A drag from this body starts with a dragstart in it, which BlockNote's
+    // `UniqueID` reads to keep the row ids a move carries.
+    view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    dropFormats(editor, at, { 'text/html': '<p>x</p>' });
+  }
+
+  it('puts words into an empty heading as that heading\'s words', async () => {
+    const { editor } = await openReady([{ type: 'heading' }, { type: 'paragraph', content: 'abcd' }]);
+    const view = editor.prosemirrorView;
+    let heading = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (heading < 0 && node.type.name === 'heading') heading = pos + 1;
+      return heading < 0;
+    });
+    dragWithin(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'abcd', 3), heading);
+    await settled();
+    expect(lines(editor)).toEqual(['heading:bc', 'paragraph:ad']);
+  });
+
+  it('moves whole lines with their comments and their row ids', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+      { type: 'paragraph', content: 'cc' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    const view = editor.prosemirrorView;
+    const from = positionOf(editor, 'bb', 0);
+    view.dispatch(view.state.tr.addMark(from, from + 2, view.state.schema.marks[COMMENT_MARK]!.create({ threadId: 'th1', orphan: false })));
+    const ids = (editor.document as { id: string; content: { text?: string }[] }[]).map((block) => `${block.content.map((c) => c.text ?? '').join('')}:${block.id}`);
+    dragWithin(editor, positionOf(editor, 'aa', 2), positionOf(editor, 'cc', 2), positionOf(editor, 'tail', 4));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:aa', 'paragraph:tail', 'paragraph:bb', 'paragraph:cc']);
+    const after = (editor.document as { id: string; content: { text?: string }[] }[]).map((block) => `${block.content.map((c) => c.text ?? '').join('')}:${block.id}`);
+    expect(after).toContain(ids[1]);
+    const marked: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === COMMENT_MARK)) marked.push(node.text!);
+      return true;
+    });
+    expect(marked).toEqual(['bb']);
+  });
+
+  it('moves lines around a picture with their comments and their row ids', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'cc' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    const view = editor.prosemirrorView;
+    const from = positionOf(editor, 'bb', 0);
+    view.dispatch(view.state.tr.addMark(from, from + 2, view.state.schema.marks[COMMENT_MARK]!.create({ threadId: 'th1', orphan: false })));
+    const bbId = (editor.document as { id: string; content?: { text?: string }[] }[]).find((block) => block.content?.[0]?.text === 'bb')!.id;
+    dragWithin(editor, positionOf(editor, 'aa', 2), positionOf(editor, 'cc', 2), positionOf(editor, 'tail', 4));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:aa', 'paragraph:tail', 'paragraph:bb', `image(${PIC})`, 'paragraph:cc']);
+    expect((editor.document as { id: string; content?: { text?: string }[] }[]).find((block) => block.content?.[0]?.text === 'bb')!.id).toBe(bbId);
+    const marked: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === COMMENT_MARK)) marked.push(node.text!);
+      return true;
+    });
+    expect(marked).toEqual(['bb']);
+  });
+
+  it('changes nothing when dropped onto the dragged content itself', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
+    const before = editor.prosemirrorView.state.doc.toJSON();
+    dragWithin(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'tail', 2), positionOf(editor, 'abcd', 3));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before);
+  });
+});

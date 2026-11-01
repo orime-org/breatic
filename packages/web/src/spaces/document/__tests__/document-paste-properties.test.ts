@@ -412,6 +412,58 @@ describe('a drop', () => {
   });
 });
 
+describe('a drag within the body', () => {
+  it('lands as its copy pasted at the drop point', () => {
+    fc.assert(
+      fc.property(
+        fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
+        ({ body, from, to, at }) => {
+          /**
+           * Opens the body with a range selected and the drop point found.
+           * @returns The editor and the drop point.
+           */
+          const ready = (): { editor: Editor; point: number } => {
+            const editor = open(body).editor;
+            const text = textPositions(editor.prosemirrorView.state.doc);
+            select(editor, { kind: 'range', from, to });
+            return { editor, point: text[at % text.length]! };
+          };
+          const pasted = ready();
+          const pastedView = pasted.editor.prosemirrorView;
+          const html = pastedView.serializeForClipboard(pastedView.state.selection.content()).dom.innerHTML;
+          // A drop onto the dragged content itself is no paste, and a drag
+          // holding no words and no block, a line break alone, puts nothing.
+          const { from: start, to: end } = pastedView.state.selection;
+          const dragged = pastedView.state.selection.content().content;
+          if (dragged.textBetween(0, dragged.size, '', '\ufffc') === '' || (pasted.point >= start && pasted.point <= end)) {
+            unmountAll();
+            return;
+          }
+          pastedView.dispatch(pastedView.state.tr.setSelection(TextSelection.create(pastedView.state.doc, pasted.point)));
+          pasteFormats(pasted.editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
+          const expectedShape = shape(pasted.editor);
+          unmountAll();
+
+          const dropped = ready();
+          const view = dropped.editor.prosemirrorView;
+          (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: false };
+          // The pointer inside the body's box: a drop beside it is re-sent by BlockNote's side menu without its keys.
+          const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
+          for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
+          view.posAtCoords = (): { pos: number; inside: number } => ({ pos: dropped.point, inside: -1 });
+          const event = new Event('drop', { bubbles: true, cancelable: true });
+          Object.assign(event, { clientX: 1, clientY: 1, altKey: true, ctrlKey: true });
+          Object.defineProperty(event, 'dataTransfer', { value: { types: ['text/html'], files: [], items: [], getData: (): string => html } });
+          view.dom.dispatchEvent(event);
+          expect(shape(dropped.editor), `${JSON.stringify(body)} ${from}..${to} @${dropped.point}`).toBe(expectedShape);
+          unmountAll();
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
 describe('content put on an empty plain line (design §5.4.3)', () => {
   it('becomes that line when it ends in words, and leaves the line for the caret otherwise', () => {
     fc.assert(
