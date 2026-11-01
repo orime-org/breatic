@@ -1483,8 +1483,8 @@
         "nudgeFar": "移得更远",
         "pan": "平移",
         "zoom": "缩放",
-        "brushSize": "画笔或标注大小",
-        "deleteMark": "删除选中的标注",
+        "brushSize": "画笔或备注大小",
+        "deleteMark": "删除选中的备注",
         "closePanel": "关闭面板",
         "exitPick": "退出选取",
         "cancelNote": "取消放批注"

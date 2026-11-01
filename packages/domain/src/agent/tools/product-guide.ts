@@ -614,9 +614,10 @@ export function renderProductGuide(): string {
       "Deleting someone else's note from the canvas, unless you own the project, shows " +
       `${quoted(t("canvas.gate.notYours"))}`,
     `Below a thin line the left menu has a keyboard icon, ${quoted(t("menu.item.shortcuts"))}, which opens a ` +
-      "list of the canvas's keyboard shortcuts and mouse gestures in groups: editing, grouping, selecting and " +
-      "moving, the view, drawing tools, and leaving a mode. Each line names the action and its keys, written " +
-      "with Cmd on a Mac and Ctrl elsewhere. A viewer can open it too and sees only the lines that work for them.",
+      "list of the canvas's keyboard shortcuts and pointer gestures in groups: editing, grouping, selecting and " +
+      "moving, the view, drawing tools, and leaving a mode. Each entry names an action and its keys, two entries " +
+      "to a line, with the ⌘ and ⇧ symbols on a Mac and Ctrl+ and Shift+ elsewhere. A viewer can open it too and " +
+      "sees only the entries that work for them.",
     "",
     "## Moving around the canvas",
     "At the bottom right of a canvas is a bar, left to right: " +

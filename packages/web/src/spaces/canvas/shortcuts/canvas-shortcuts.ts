@@ -7,7 +7,8 @@ import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
  * The canvas key chords, read by the keyboard shortcuts dialog and by every
  * context-menu hint. The handlers that answer them are
  * `matchHistoryShortcut`, `matchGroupShortcut`, `matchDuplicateShortcut`,
- * `brushSizeStep`, `DELETE_KEYS` and the document's `copy` / `paste` events.
+ * `brushSizeStep`, `DELETE_KEYS`, the document's `copy` / `paste` events, and
+ * `useEscapeInSpace` with each panel's own Escape handling.
  */
 export const CANVAS_KEY_SHORTCUTS = {
   undo: { mod: true, key: 'Z' },
