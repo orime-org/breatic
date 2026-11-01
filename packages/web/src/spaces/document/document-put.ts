@@ -241,24 +241,11 @@ function containerById(doc: PMNode, id: string): { node: PMNode; pos: number } |
 }
 
 /**
- * Puts the caret at the start of the line that follows a block in reading
- * order, its own nested lines first, when that line holds words; else in an
- * empty line opened right after the block, quoted as it (Lexical's
- * `insertNodes` leaves the caret after the last block it puts; ProseMirror
- * has no caret between blocks, so a line holds it).
- * @param tr - The transaction.
- * @param end - Where the block's own content ends, inside its container.
- */
-function caretAfter(tr: Transaction, end: number): void {
-  const $end = tr.doc.resolve(end);
-  // The only thing after a block's own content in its container is its group of nested lines.
-  caretFrom(tr, $end.nodeAfter === null ? $end.after() : end + 1, $end.parent.firstChild?.attrs[QUOTED] === true);
-}
-
-/**
  * Puts the caret at the start of the line that follows a position between
- * blocks in reading order, leaving nested groups upward, when that line
- * holds words; else in an empty line opened there, quoted as asked.
+ * blocks in reading order, nested lines first and leaving nested groups
+ * upward, when that line holds words; else in an empty line opened there,
+ * quoted as asked (Lexical's `insertNodes` leaves the caret after the last
+ * block it puts; ProseMirror has no caret between blocks, so a line holds it).
  * @param tr - The transaction.
  * @param slot - The position right after the last block put.
  * @param quoted - Whether an opened line is quoted.
@@ -279,7 +266,8 @@ function caretFrom(tr: Transaction, slot: number, quoted: boolean): void {
 /**
  * Puts the caret after content laid out from `start` (§5.4.3): after its
  * last line in reading order when that holds words, else at the start of
- * the line that follows it (`caretAfter`).
+ * the line that follows it (`caretFrom`). A line's own nested blocks handed
+ * to the last container sit right after its content, so they follow first.
  * @param tr - The transaction.
  * @param nodes - The content's own containers, before a line hands its nested blocks to the last of them.
  * @param start - Where they start.
@@ -292,13 +280,9 @@ function finishCaret(tr: Transaction, nodes: readonly PMNode[], start: number): 
     pos += 2 + last.firstChild!.nodeSize + group.content.size - group.lastChild!.nodeSize;
     last = group.lastChild!;
   }
-  if (last.type.name === DOC_TABLE) {
-    caretFrom(tr, pos + last.nodeSize, last.attrs[QUOTED] === true);
-    return;
-  }
-  const own = last.firstChild!;
-  if (own.isTextblock) tr.setSelection(TextSelection.create(tr.doc, pos + 2 + own.content.size));
-  else caretAfter(tr, pos + 1 + own.nodeSize);
+  const own = last.type.name === DOC_TABLE ? null : last.firstChild!;
+  if (own?.isTextblock === true) tr.setSelection(TextSelection.create(tr.doc, pos + 2 + own.content.size));
+  else caretFrom(tr, pos + last.nodeSize, (own ?? last).attrs[QUOTED] === true);
 }
 
 /**
