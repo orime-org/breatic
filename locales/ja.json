@@ -1784,7 +1784,6 @@
         "code": "インラインコード",
         "comment": "コメント",
         "ai": "AI",
-        "comingLabel": "{name}（未提供）",
         "link": "リンク",
         "blockType": "ブロックの種類",
         "paragraph": "本文",
@@ -1814,6 +1813,26 @@
         "ai_storyboard": "絵コンテを作る",
         "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
+      },
+      "ai": {
+        "customTitle": "カスタム指示",
+        "tone": {
+          "professional": "よりプロフェッショナルに",
+          "casual": "よりカジュアルに",
+          "straightforward": "より率直に",
+          "confident": "より自信を持って",
+          "friendly": "より親しみやすく"
+        },
+        "close": "閉じる",
+        "stop": "停止",
+        "retry": "再試行",
+        "insert": "挿入",
+        "replace": "置換",
+        "instructionsPlaceholder": "選択したテキストを AI にどうしてほしいか入力。Enter で開始、Shift+Enter で改行",
+        "instruction": "指示：{text}",
+        "rangeGone": "選択したテキストは削除されました",
+        "blockGone": "元の段落は削除されました",
+        "notWritable": "現在は編集できません"
       },
       "comment": {
         "placeholder": "コメントを書く",

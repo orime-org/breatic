@@ -11,6 +11,7 @@ import {
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import { DocumentAiDialog } from '@web/spaces/document/DocumentAiDialog';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftIn,
@@ -415,7 +416,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // drawn for one either.
   return (
     <DocumentMediaPicker uploader={readOnly ? null : uploader} view={viewOfEditor}>
-      {chrome}
+      {/* The AI output dialog, reached from the bubble bar's AI menu
+          (inner#1860). */}
+      <DocumentAiDialog editor={handle.editor} viewport={viewport}>
+        {chrome}
+      </DocumentAiDialog>
     </DocumentMediaPicker>
   );
 });

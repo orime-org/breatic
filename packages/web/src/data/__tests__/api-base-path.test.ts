@@ -78,7 +78,7 @@ describe('the API prefix has one definition', () => {
 
   it('the text mini-tool stream opens under it', async () => {
     await textToolsApi.stream(
-      { toolId: 'polish', document: 'text' },
+      { tool: 'polish', project_id: 'p-1', selection: 'text', document: 'text' },
       { onEvent: () => undefined },
     );
     expect(lastStreamUrl()).toBe(`${API_BASE_PATH}/mini-tools/text`);

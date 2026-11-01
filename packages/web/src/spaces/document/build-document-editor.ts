@@ -72,6 +72,7 @@ import {
   type DocumentCommentsOptions,
 } from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
+import { documentAiRange } from '@web/spaces/document/document-ai-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
@@ -196,6 +197,7 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      documentAiRange(),
       documentFileDropExtension(options.onFiles),
       documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),

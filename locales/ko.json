@@ -1784,7 +1784,6 @@
         "code": "인라인 코드",
         "comment": "댓글",
         "ai": "AI",
-        "comingLabel": "{name}(미제공)",
         "link": "링크",
         "blockType": "블록 종류",
         "paragraph": "본문",
@@ -1814,6 +1813,26 @@
         "ai_storyboard": "콘티 만들기",
         "ai_illustrate": "이 문단으로 그림 만들기",
         "ai_custom": "직접 지시…"
+      },
+      "ai": {
+        "customTitle": "직접 지시",
+        "tone": {
+          "professional": "더 전문적으로",
+          "casual": "더 편안하게",
+          "straightforward": "더 직설적으로",
+          "confident": "더 자신 있게",
+          "friendly": "더 친근하게"
+        },
+        "close": "닫기",
+        "stop": "중지",
+        "retry": "다시 시도",
+        "insert": "삽입",
+        "replace": "바꾸기",
+        "instructionsPlaceholder": "선택한 텍스트를 AI가 어떻게 할지 적어 주세요. Enter로 시작, Shift+Enter로 줄 바꿈",
+        "instruction": "지시: {text}",
+        "rangeGone": "선택한 텍스트가 삭제되었습니다",
+        "blockGone": "원래 단락이 삭제되었습니다",
+        "notWritable": "지금은 편집할 수 없습니다"
       },
       "comment": {
         "placeholder": "댓글 작성",

@@ -1784,7 +1784,6 @@
         "code": "行內程式碼",
         "comment": "批註",
         "ai": "AI",
-        "comingLabel": "{name}（未開放）",
         "link": "連結",
         "blockType": "區塊類型",
         "paragraph": "內文",
@@ -1814,6 +1813,26 @@
         "ai_storyboard": "產生分鏡表",
         "ai_illustrate": "依這段產生示意圖",
         "ai_custom": "自訂要求…"
+      },
+      "ai": {
+        "customTitle": "自訂要求",
+        "tone": {
+          "professional": "更專業",
+          "casual": "更輕鬆",
+          "straightforward": "更直白",
+          "confident": "更自信",
+          "friendly": "更親切"
+        },
+        "close": "關閉",
+        "stop": "停止",
+        "retry": "重試",
+        "insert": "插入",
+        "replace": "取代",
+        "instructionsPlaceholder": "寫下你要 AI 對選取的文字做什麼，按 Enter 開始，Shift+Enter 換行",
+        "instruction": "要求：{text}",
+        "rangeGone": "原本選取的文字已被刪除",
+        "blockGone": "原本所在的段落已被刪除",
+        "notWritable": "你目前沒有編輯權限"
       },
       "comment": {
         "placeholder": "寫一條批註…",

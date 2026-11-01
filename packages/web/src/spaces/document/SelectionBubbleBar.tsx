@@ -99,7 +99,7 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
+import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
@@ -147,6 +147,11 @@ interface BubbleGroup {
     openId: string | null;
     onOpenChange: (id: string, open: boolean) => void;
   }>;
+  /**
+   * Whether the group belongs on the bar over a selection of table cells; its
+   * separator goes with it. Left out, it does.
+   */
+  overCells?: boolean;
 }
 
 /**
@@ -176,7 +181,11 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     slot: ColorSlot,
     after: [commentTool, addToAgentTool, mergeCellsTool],
   },
-  { key: 'ai', tools: [], panels: [], slot: AiSlot },
+  // The AI commands rewrite words, and a selection of several cells is not
+  // words (inner#1860 design §5.2): Notion offers only its autofill over
+  // cells, Word Copilot rewrites plain paragraphs only. Words selected inside
+  // one cell are an ordinary text selection and keep the group.
+  { key: 'ai', tools: [], panels: [], slot: AiSlot, overCells: false },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -217,26 +226,31 @@ const GAP_FROM_SELECTION_PX = 8;
  * select-all reaching this far is answered by its pin before the call
  * ({@link bubbleAnchorRect}), so that reading stands only in the frames
  * between a pin being dropped and the bar being taken away with it.
+ *
+ * Exported with the two ends as arguments because the AI output dialog
+ * (inner#1860, design §5.3) anchors by the same rule, once, as it opens, and
+ * then follows the position it picked rather than the live selection.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
- * @returns The anchored line's extent, in viewport coordinates.
+ * @param anchor - The selection's anchor.
+ * @param head - The selection's head.
+ * @returns The position picked, and its line's extent in viewport coordinates.
  */
-function pickAnchorLine(
+export function pickAnchorLine(
   view: EditorView,
   bounds: DOMRect,
-): { top: number; bottom: number } {
-  // An end on an edge of the body sits outside any line, where the answer is the
-  // zero-height separator described above; the nearest text stands in for it
-  // (#124), the same place a collaborator's caret is drawn.
-  const { anchor, head } = textEnds(view.state.selection);
+  anchor: number,
+  head: number,
+): { pos: number; top: number; bottom: number } {
   const from = Math.min(anchor, head);
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
   const headLine = view.coordsAtPos(head);
   if (headLine.bottom > bounds.top && headLine.top < bounds.bottom) {
-    return headLine;
+    return { pos: head, top: headLine.top, bottom: headLine.bottom };
   }
-  return view.coordsAtPos(from);
+  const fromLine = view.coordsAtPos(from);
+  return { pos: from, top: fromLine.top, bottom: fromLine.bottom };
 }
 
 /**
@@ -379,7 +393,11 @@ export function bubbleAnchorRect(
   // anchor's own x is no such thing, and neither is `posToDOMRect`, which
   // samples only the two endpoints and so misses the block edge a middle line
   // starts at.
-  const line = pickAnchorLine(view, viewportBox);
+  // An end on an edge of the body sits outside any line, where the answer is
+  // the zero-height separator `pickAnchorLine` describes; the nearest text
+  // stands in for it (#124), the same place a collaborator's caret is drawn.
+  const { anchor, head } = textEnds(view.state.selection);
+  const line = pickAnchorLine(view, viewportBox, anchor, head);
   return anchorRect(selectionBox(view).left, line);
 }
 
@@ -528,6 +546,16 @@ function BubbleBar({
   // defect — it is the initial value meaning what the name says.)
   const wasSelectAllRef = React.useRef(
     editor.prosemirrorState.selection instanceof AllSelection,
+  );
+  // Which groups the bar carries: one that does not act on table cells stands
+  // down, separator and all, while cells are selected.
+  const overCells = useEditorSnapshot(
+    editor,
+    (current) => current.prosemirrorState.selection instanceof CellSelection,
+  );
+  const groups = React.useMemo(
+    () => (overCells ? BUBBLE_GROUPS.filter((group) => group.overCells !== false) : BUBBLE_GROUPS),
+    [overCells],
   );
 
   /**
@@ -1136,7 +1164,7 @@ function BubbleBar({
             && 'invisible pointer-events-none',
         )}
       >
-        {BUBBLE_GROUPS.map((group, index) => (
+        {groups.map((group, index) => (
           <React.Fragment key={group.key}>
             {index > 0 ? (
               <Separator

@@ -1344,11 +1344,41 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
       "Comments below). The speech bubble with a plus puts the selected text into the Agent's box as an " +
       "attachment written as Markdown (bold, italic, strikethrough, code and links are kept; underline, colour " +
-      "and alignment are not), opening the Agent panel if it is hidden. The AI menu's commands look " +
-      "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
+      "and alignment are not), opening the Agent panel if it is hidden. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
       "pressing it turns the inline code back into plain text. On an empty line the colour menu is greyed.",
+    `- The AI menu has three groups: ${quoted(t("spaces.document.commands.aiRewriteGroup"))} with ` +
+      `${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
+      `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
+      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
+      `with two rows; and ${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
+      `${quoted(t("spaces.document.commands.ai_custom"))}. Two of the AI menu's commands look available but do ` +
+      `nothing yet: the two under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for a shot list and an ` +
+      "illustration. Hovering " +
+      `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
+      "languages, each written in its own language; hovering " +
+      `${quoted(t("spaces.document.commands.ai_tone"))} opens ${quoted(t("spaces.document.ai.tone.professional"))}, ` +
+      `${quoted(t("spaces.document.ai.tone.casual"))}, ${quoted(t("spaces.document.ai.tone.straightforward"))}, ` +
+      `${quoted(t("spaces.document.ai.tone.confident"))} and ${quoted(t("spaces.document.ai.tone.friendly"))}. ` +
+      "Picking a command opens a panel under the selection, titled with the command, where the result appears as " +
+      "it is written; the document itself does not change. While it is written the panel shows " +
+      `${quoted(t("spaces.document.ai.stop"))}; once it is done or stopped it shows ` +
+      `${quoted(t("spaces.document.ai.retry"))}, ${quoted(t("spaces.document.ai.insert"))} and ` +
+      `${quoted(t("spaces.document.ai.replace"))}. ${quoted(t("spaces.document.ai.insert"))} adds the result as ` +
+      "new blocks under the block the selection ends in (under the whole table when the selection runs into a " +
+      "table from outside or across cells) and keeps the selected words; " +
+      `${quoted(t("spaces.document.ai.replace"))} swaps the selected words for it. Either is one step Cmd+Z takes ` +
+      "back. If the selected words are deleted while the panel is open, " +
+      `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
+      `${quoted(t("spaces.document.ai.rangeGone"))}; if their block is deleted too, both are greyed with ` +
+      `${quoted(t("spaces.document.ai.blockGone"))}. ${quoted(t("spaces.document.commands.ai_custom"))} first ` +
+      "shows a box to write the instruction in: Enter starts, Shift+Enter starts a new line, and the instruction " +
+      "then stays as a line above the result. An X at the top right of the panel, or Escape, closes it and stops " +
+      "the run; clicking elsewhere does not. A run that fails shows a message and leaves only the X and " +
+      `${quoted(t("spaces.document.ai.retry"))}. Picking another AI command while the panel is open closes it and ` +
+      "opens a new one. With several table cells selected the bar has no AI button. Each run uses the Studio's " +
+      "credits.",
     `- The link icon opens a box, ${quoted(t("spaces.document.link.placeholder"))}, with ` +
       `${quoted(t("spaces.document.link.confirm"))}; for an address that is not one, ` +
       `${quoted(t("spaces.document.link.confirm"))} looks greyed, and pressing it or Enter shows ` +
@@ -1523,7 +1553,8 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
+    "- There is no slash menu. Not available yet: the AI commands that draft a shot list or illustrate a " +
+      "passage, snapshots, images or other media, " +
       "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",

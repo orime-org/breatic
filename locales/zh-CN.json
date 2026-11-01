@@ -1784,7 +1784,6 @@
         "code": "行内代码",
         "comment": "批注",
         "ai": "AI",
-        "comingLabel": "{name}（未开放）",
         "link": "链接",
         "blockType": "块类型",
         "paragraph": "正文",
@@ -1814,6 +1813,26 @@
         "ai_storyboard": "生成分镜表",
         "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
+      },
+      "ai": {
+        "customTitle": "自定义要求",
+        "tone": {
+          "professional": "更专业",
+          "casual": "更轻松",
+          "straightforward": "更直白",
+          "confident": "更自信",
+          "friendly": "更亲切"
+        },
+        "close": "关闭",
+        "stop": "停止",
+        "retry": "重试",
+        "insert": "插入",
+        "replace": "替换",
+        "instructionsPlaceholder": "写下你要 AI 对选中文字做什么，回车开始，Shift+回车换行",
+        "instruction": "要求：{text}",
+        "rangeGone": "原来选中的文字已被删掉",
+        "blockGone": "原来所在的段落已被删掉",
+        "notWritable": "你现在没有编辑权限"
       },
       "comment": {
         "placeholder": "写一条批注…",

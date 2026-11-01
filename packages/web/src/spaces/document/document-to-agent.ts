@@ -13,7 +13,7 @@
  * leaves one item.
  */
 
-import { cleanHTMLToMarkdown, getNodeById, selectedFragmentToHTML } from '@blocknote/core';
+import { getNodeById } from '@blocknote/core';
 import type { EditorView } from '@tiptap/pm/view';
 import { MessageSquarePlus } from 'lucide-react';
 
@@ -22,7 +22,7 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
+import { selectionMarkdown } from '@web/spaces/document/document-blocks-read';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -65,27 +65,6 @@ function selectedWords(view: EditorView): string {
     .sort((a, b) => a.$from.pos - b.$from.pos)
     .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
     .join('\n');
-}
-
-/**
- * The selection as Markdown: what copy puts on the clipboard, except inside
- * one block. There BlockNote exports bare inline HTML, and its Markdown
- * conversion reads a top-level `<br>` as nothing and a top-level link as a
- * block of its own, so the words are wrapped in the paragraph they came from
- * first. A code block keeps the raw text copy gives it.
- * @param editor - The document editor.
- * @param view - Its view.
- * @returns The Markdown, without the exporter's closing newline.
- */
-function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
-  const { $from, $to } = view.state.selection;
-  const insideOneBlock =
-    $from.parent.isTextblock && $from.sameParent($to) && $from.parent.type.spec.code !== true;
-  if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${selectedFragmentToHTML(view, editor).externalHTML}</p>`).trimEnd();
-  // Selected cells, or a range through a table: the plain text copy writes,
-  // where BlockNote's export empties or flattens the cells.
-  const picked = tableClippedBlocks(view);
-  return (picked === null ? selectedFragmentToHTML(view, editor).markdown : blocksMarkdown(editor, picked.blocks)).trimEnd();
 }
 
 /**

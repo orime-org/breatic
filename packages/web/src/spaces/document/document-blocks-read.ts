@@ -11,8 +11,11 @@
  * thing.
  */
 
-import type { BlockNoteEditor } from '@blocknote/core';
+import { cleanHTMLToMarkdown, selectedFragmentToHTML, type BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
+
+import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 /** One top-level block as the Agent is sent it. */
@@ -111,4 +114,26 @@ export function readTopBlocks(editor: BlockNoteEditor<never, never, never>): Rea
     out.push({ id: block.id, type: block.type, markdown, text: blockPlainText(node), lossy: lossyBlock(node) });
   }
   return out;
+}
+
+/**
+ * The selection as Markdown: what copy puts on the clipboard, except inside
+ * one block. There BlockNote exports bare inline HTML, and its Markdown
+ * conversion reads a top-level `<br>` as nothing and a top-level link as a
+ * block of its own, so the words are wrapped in the paragraph they came from
+ * first. A code block keeps the raw text copy gives it. What the Agent's tray
+ * and the AI dialog (inner#1860) both send for a selection.
+ * @param editor - The document editor.
+ * @param view - Its view.
+ * @returns The Markdown, without the exporter's closing newline.
+ */
+export function selectionMarkdown(editor: BlockNoteEditor<never, never, never>, view: EditorView): string {
+  const { $from, $to } = view.state.selection;
+  const insideOneBlock =
+    $from.parent.isTextblock && $from.sameParent($to) && $from.parent.type.spec.code !== true;
+  if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${selectedFragmentToHTML(view, editor).externalHTML}</p>`).trimEnd();
+  // Selected cells, or a range through a table: the plain text copy writes,
+  // where BlockNote's export empties or flattens the cells.
+  const picked = tableClippedBlocks(view);
+  return (picked === null ? selectedFragmentToHTML(view, editor).markdown : blocksMarkdown(editor, picked.blocks)).trimEnd();
 }
