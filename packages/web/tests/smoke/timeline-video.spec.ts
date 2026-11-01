@@ -127,7 +127,7 @@ test('a real Viewer sees the registered Timeline clips without material or start
       const outlet = visibleSpace(peer);
       // Synchronized placements and resolved media anchor the read-only absence checks.
       await expect(outlet.getByTestId('timeline-add-media')).toHaveCount(0);
-      await expect(outlet.getByTestId('timeline-edit-start')).toHaveCount(0);
+      await expect(outlet.locator('input[data-testid^="timeline-clip-"]')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-start-frame')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-play')).toBeEnabled();
       await outlet.getByTestId('timeline-play').click();
@@ -156,6 +156,9 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
     const secondId = await addProjectTimelineVideo(page, uploaded.asset.assetId);
     const duration = uploaded.durationFrames;
     const farStart = duration * 3;
+    // Overlaps are built on a sub track: the magnetic main track keeps its clips end to end.
+    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'New visual track');
+    await moveTimelineClip(page, secondId, duration, duration, 'Track 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
@@ -248,7 +251,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
         await expect(page.getByTestId('workspace-disabled-overlay')).toBeVisible();
         // Inspect retained content without interacting through the existing disconnection curtain.
         expect(await timelineClipIds(page)).toEqual([uploaded.clipId, secondId]);
-        await expect(visibleSpace(page).getByText(`Start ${duration} · Duration ${duration} frames`, { exact: true })).toHaveCount(1);
+        await expect(visibleSpace(page).getByTestId('timeline-clip-start')).toHaveText(String(duration));
         await expectTimelineConnected(peer);
         expect(await timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
         await page.context().setOffline(false);
@@ -261,9 +264,9 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
           await expectTimelineStart(member, secondId, duration, duration);
         }
         // Editing resumes only after the real connection and its normal Project policy are restored.
-        await moveTimelineClip(page, uploaded.clipId, duration * 3, duration);
+        await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New visual track');
         await expectTimelineStart(peer, uploaded.clipId, duration * 3, duration);
-        await moveTimelineClip(peer, secondId, duration * 4, duration);
+        await moveTimelineClip(peer, secondId, duration * 4, duration, 'Track 2');
         await expectTimelineStart(page, secondId, duration * 4, duration);
         for (const member of [page, peer]) {
           await expectTimelineConnected(member);
