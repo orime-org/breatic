@@ -84,6 +84,8 @@ beforeEach(() => {
     attachmentMaxItems: 10,
     currentSpaceMaxChars: 100_000,
     spaceListMaxItems: 200,
+    spaceRequestMaxSpaces: 3,
+    spaceReadTimeoutMs: 20_000,
   });
 });
 

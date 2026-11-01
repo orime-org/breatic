@@ -45,7 +45,7 @@ const PAUSED: StoredUiMessage[] = [
 const SHARED = {
   toolCallId: 'req-1',
   decision: 'shared' as const,
-  spaces: [{ id: 'c1', name: 'Cast', kind: 'canvas' as const, state: 'read' as const, content: '{"nodes":[],"edges":[]}', total_chars: 23, detail: { slim: false, texts_cut: 0, nodes_not_listed: 0 } }],
+  spaces: [{ id: 'c1', name: 'Cast', kind: 'canvas' as const, state: 'read' as const, content: '{"nodes":[],"edges":[]}', total_chars: 23, detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }],
 };
 const CONTEXT = {
   spaces: [{ id: 'c1', name: 'Cast', kind: 'canvas' as const }, { id: 'd1', name: 'Script', kind: 'document' as const }],

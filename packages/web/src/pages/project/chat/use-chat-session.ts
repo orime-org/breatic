@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip, SpaceRequestAnswer } from '@breatic/shared';
 
 import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -14,7 +14,7 @@ import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
 import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { answerInSession, chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { answerInSession, chatSessionFor, sendInSession, shareSpacesInSession, stopChatSession } from '@web/stores/chat-sessions';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -90,6 +90,12 @@ export interface ChatSession {
    * (inner#1542); the turn that asked resumes. Resolves when that turn is over.
    */
   answer: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
+  /**
+   * Answer the request to look at Spaces the conversation on screen stopped
+   * at (inner#1552); the turn that asked resumes. Resolves when that turn is
+   * over.
+   */
+  shareSpaces: (answer: SpaceRequestAnswer) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
   /** The conversations fetched so far here, most recently used first. */
@@ -316,6 +322,23 @@ export function useChatSession(
     [conversationId, readSpaces],
   );
 
+  const shareSpaces = React.useCallback(
+    async (shared: SpaceRequestAnswer): Promise<void> => {
+      // As for a questionnaire: the card is in the conversation on screen,
+      // and the Spaces go as they stand at the press.
+      const opened = conversationId;
+      if (opened === undefined) return;
+      const spaces = readSpaces();
+      const limits = await chatApi.streamConfig().catch(() => null);
+      if (limits === null) {
+        chatAttachments.say({ key: 'sendUnavailable' });
+        return;
+      }
+      await shareSpacesInSession(opened, shared, clipSpaceContext(spaces, limits, []));
+    },
+    [conversationId, readSpaces],
+  );
+
   const abort = React.useCallback((): void => {
     if (conversationId) stopChatSession(conversationId);
   }, [conversationId]);
@@ -454,6 +477,7 @@ export function useChatSession(
     loadEarlier,
     send,
     answer,
+    shareSpaces,
     abort,
     conversations,
     hasMoreConversations,

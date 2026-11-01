@@ -23,7 +23,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
+import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -94,8 +94,14 @@ const CONSOLIDATING = 'data-memory-consolidating';
 const ASK_REPLIED = 'data-ask-replied';
 
 /**
- * The conversations whose running turn is an answer to a questionnaire, and
- * which call it answers. Such a turn carries on the paused reply rather than
+ * What a card's call ends with: a questionnaire's result, or a request to
+ * look at Spaces settled as the server stored it (inner#1552).
+ */
+type CardResult = AskUserResult | Record<string, unknown>;
+
+/**
+ * The conversations whose running turn is an answer to a card (a
+ * questionnaire, or a request to look at Spaces), and which call it answers. Such a turn carries on the paused reply rather than
  * saying anything of the reader's, so the parts of a send that are about the
  * reader's words leave it alone.
  */
@@ -531,7 +537,7 @@ function giveUpOn(conversationId: string): void {
 const givenUpOn = new Set<string>();
 
 /**
- * Write a questionnaire call's result into whichever message holds the call.
+ * Write a card call's result into whichever message holds the call.
  *
  * The call is in the reply that asked, which is not the message a turn is
  * writing when a typed message closes it, nor when the server answers a
@@ -540,7 +546,7 @@ const givenUpOn = new Set<string>();
  * @param toolCallId - The call.
  * @param result - What it ended with.
  */
-function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskUserResult): void {
+function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: CardResult): void {
   const at = chat.messages.findIndex((m) =>
     m.parts.some((p) => (p as { toolCallId?: unknown }).toolCallId === toolCallId),
   );
@@ -560,12 +566,12 @@ function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskU
  * @param error - Whatever the turn ended with.
  * @returns The call's result, or undefined for any other refusal.
  */
-function callAlreadyAnswered(error: unknown): AskUserResult | undefined {
+function callAlreadyAnswered(error: unknown): CardResult | undefined {
   try {
     const body: unknown = JSON.parse(error instanceof Error ? error.message : '');
     const { error: envelope, call } = body as { error?: { code?: unknown }; call?: { status?: unknown; output?: unknown } };
     if (envelope?.code !== 409 || call?.status !== 'success') return undefined;
-    return call.output as AskUserResult;
+    return call.output as CardResult;
   } catch {
     return undefined;
   }
@@ -814,6 +820,30 @@ export async function answerInSession(
   answering.set(conversationId, toolCallId);
   await runTurn(conversationId, chat, (session) =>
     session.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } }),
+  );
+}
+
+/**
+ * Answer the request to look at Spaces a conversation's turn stopped at, and
+ * watch the stream the resumed turn comes back on (inner#1552).
+ *
+ * Sent the way a questionnaire's answer is: no message of the reader's, the
+ * paused reply carried on, one request at a time on a conversation.
+ * @param conversationId - The conversation.
+ * @param answer - What the reader shared, or that they declined.
+ * @param spaces - The reader's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+export async function shareSpacesInSession(
+  conversationId: string,
+  answer: SpaceRequestAnswer,
+  spaces: ChatSpaceContext = {},
+): Promise<void> {
+  const chat = sessions.get(conversationId);
+  if (!chat || runningTurn.has(conversationId)) return;
+  answering.set(conversationId, answer.toolCallId);
+  await runTurn(conversationId, chat, (session) =>
+    session.sendMessage(undefined, { body: { ...spaces, shared_spaces: answer } }),
   );
 }
 
