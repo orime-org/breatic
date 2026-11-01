@@ -5,12 +5,8 @@ import * as Y from "yjs";
 import {
   TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema,
   type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
-  type TimelineVideoClip, type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
-import { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
-import { validateTimelineRange } from "@shared/timeline/time.js";
-
-const EDIT_ORIGIN = Symbol("timeline-native-edit");
+import { planTimelineEdit, type TimelineEditPlan } from "@shared/timeline/edit.js";
 
 /**
  * Attach a child map before populating it, preserving Yjs field-level merges.
@@ -80,61 +76,48 @@ export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
 }
 
 /**
- * Prepare one canonical edit against the complete current arrangement.
+ * Apply a user-confirmed layout edit to the shared Y.Doc in one transaction, writing only what changed.
  * @param doc - The current content document.
- * @param command - The normalized edit to prepare.
- * @returns Its target and either an applicable clip/source or a stable reason.
- * @throws {Error} When the current document or command is invalid.
+ * @param command - The normalized edit with the editing user's placement switches.
+ * @param origin - The transaction origin; a Y.UndoManager tracking it undoes this edit in one step.
+ * @param newId - Supplies ids for clips cut by an overwrite and tracks created by a linkage bump.
+ * @returns The applied plan, or why nothing was written.
+ * @throws {Error} When the document or command is structurally invalid.
  */
-export function prepareTimelineEdit(doc: Y.Doc, command: TimelineEditCommand): {
-  clipId: string;
-  clip?: TimelineVideoClip;
-  source?: TimelineVideoSource;
-  reason?: "target_missing" | "invalid_range" | "overlap" | "source_unavailable";
-} {
+export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = () => crypto.randomUUID()): TimelineEditPlan {
+  const normalized = TimelineEditCommandSchema.parse(command);
   const current = readTimelineDocument(doc);
-  const clipId = command.operation === "add_video" ? command.parameters.clip.id : command.parameters.clipId;
-  const existing = current.clips[clipId];
-  if (command.operation === "add_video" && existing !== undefined) return { clipId, reason: "target_missing" };
-  if (command.operation === "set_start" && existing === undefined) return { clipId, reason: "target_missing" };
-  const clip = command.operation === "add_video"
-    ? command.parameters.clip
-    : existing === undefined ? undefined : { ...existing, startFrame: command.parameters.startFrame };
-  if (clip === undefined) return { clipId, reason: "target_missing" };
-  const source = command.operation === "add_video" ? command.parameters.source : current.sources[clip.sourceId];
-  if (source === undefined) return { clipId, reason: "source_unavailable" };
-  if (!validateTimelineRange(clip, source, current.settings.fps).valid) return { clipId, reason: "invalid_range" };
-  const arrangement = resolveTimelineArrangement({
-    tracks: Object.values(current.tracks),
-    clips: [...Object.values(current.clips).filter((item) => item.id !== clipId), clip],
-  });
-  const placement = arrangement.placements.find((item) => item.clipId === clipId);
-  if (placement?.status !== "ready") return { clipId, reason: placement?.reasons.some((reason) => reason.code === "overlap") ? "overlap" : "target_missing" };
-  return { clipId, clip, source };
+  const plan = planTimelineEdit(current, normalized, newId);
+  if (!plan.ok) return plan;
+  const { next } = plan;
+  doc.transact(() => {
+    const sources = doc.getMap<unknown>("sources");
+    for (const [id, source] of Object.entries(next.sources)) if (!sources.has(id)) sources.set(id, freezeRecord(structuredClone(source)));
+    writeRecords(doc.getMap<unknown>("tracks"), current.tracks, next.tracks);
+    writeRecords(doc.getMap<unknown>("clips"), current.clips, next.clips);
+  }, origin);
+  return plan;
 }
 
 /**
- * Apply a valid layout edit atomically to the shared Y.Doc.
- * @param doc - The current content document.
- * @param command - The user-confirmed layout edit.
- * @returns Whether the current layout accepted the edit.
- * @throws {Error} When the document or command is structurally invalid.
+ * Bring one collection to its planned state: attach new records, delete removed ones, set only changed fields.
+ * @param parent - The attached collection map.
+ * @param before - The records the plan started from.
+ * @param after - The planned records.
+ * @throws {Error} When an existing record is not an attached map.
  */
-export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand): boolean {
-  const normalized = TimelineEditCommandSchema.parse(command);
-  const prepared = prepareTimelineEdit(doc, normalized);
-  const { clip, source } = prepared;
-  if (prepared.reason !== undefined || clip === undefined || source === undefined) return false;
-  doc.transact(() => {
-    const clips = doc.getMap<unknown>("clips");
-    if (normalized.operation === "add_video") {
-      if (!doc.getMap("sources").has(source.id)) doc.getMap("sources").set(source.id, freezeRecord(source));
-      attachRecord(clips, clip.id, clip);
-    } else {
-      const target = clips.get(clip.id);
-      if (!(target instanceof Y.Map)) throw new Error("Timeline clip is not an attached map");
-      target.set("startFrame", clip.startFrame);
+function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, object>>, after: Readonly<Record<string, object>>): void {
+  for (const id of Object.keys(before)) if (after[id] === undefined) parent.delete(id);
+  for (const [id, value] of Object.entries(after)) {
+    const was = before[id];
+    if (was === undefined) {
+      attachRecord(parent, id, value);
+      continue;
     }
-  }, EDIT_ORIGIN);
-  return true;
+    const target = parent.get(id);
+    if (!(target instanceof Y.Map)) throw new Error("Timeline record is not an attached map");
+    for (const [key, item] of Object.entries(value)) {
+      if (JSON.stringify((was as Record<string, unknown>)[key]) !== JSON.stringify(item)) target.set(key, item);
+    }
+  }
 }

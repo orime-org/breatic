@@ -1,10 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { TimelineTrack } from "@shared/timeline/schema.js";
+import type { TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from "@shared/timeline/schema.js";
+import { validateTimelineRange } from "@shared/timeline/time.js";
 
 /** The placement fields needed to diagnose a merged collaborative layout. */
-export interface TimelineArrangementClip { id: string; trackId: string; kind: string; startFrame: number; durationFrames: number }
+export interface TimelineArrangementClip {
+  id: string;
+  trackId: string;
+  kind: string;
+  startFrame: number;
+  durationFrames: number;
+  sourceId?: string;
+  sourceInFrame?: number;
+  rate?: TimelineRate;
+}
 
 /** One stable diagnostic, retained alongside the unmodified placement. */
 export interface TimelineArrangementReason {
@@ -25,10 +35,17 @@ export interface TimelineArrangement { placements: TimelinePlacement[]; conflict
  * @param input - The complete current arrangement.
  * @param input.tracks - Current track identities and kinds.
  * @param input.clips - Current raw placement bounds.
+ * @param input.sources - The document's sources; with `fps`, a clip outside its source is invalid_range.
+ * @param input.fps - The Timeline frame rate.
  * @returns Stable readiness and conflict classifications.
  * @throws {never} Never.
  */
-export function resolveTimelineArrangement(input: { tracks: readonly TimelineTrack[]; clips: readonly TimelineArrangementClip[] }): TimelineArrangement {
+export function resolveTimelineArrangement(input: {
+  tracks: readonly TimelineTrack[];
+  clips: readonly TimelineArrangementClip[];
+  sources?: Readonly<Record<string, TimelineVideoSource>>;
+  fps?: TimelineRate;
+}): TimelineArrangement {
   const tracks = new Map(input.tracks.map((track) => [track.id, track]));
   const records = [...input.clips].sort((a, b) => compareIds(a.id, b.id)).map((clip) => {
     const endFrame = clip.startFrame + clip.durationFrames;
@@ -39,7 +56,7 @@ export function resolveTimelineArrangement(input: { tracks: readonly TimelineTra
     else if (track.kind !== (clip.kind === "audio" ? "audio" : "visual")) reasons.push({ code: "incompatible_track", ...detail });
     if (!Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0
       || !Number.isSafeInteger(clip.durationFrames) || clip.durationFrames < 1
-      || !Number.isSafeInteger(endFrame)) reasons.push({ code: "invalid_range", ...detail });
+      || !Number.isSafeInteger(endFrame) || outsideSource(clip, input.sources, input.fps)) reasons.push({ code: "invalid_range", ...detail });
     return { clip, endFrame, reasons };
   });
 
@@ -66,6 +83,20 @@ export function resolveTimelineArrangement(input: { tracks: readonly TimelineTra
   }));
   const conflicts = placements.filter((placement) => placement.status === "conflict");
   return { placements, conflicts, readyClipIds: placements.filter((placement) => placement.status === "ready").map((placement) => placement.clipId), hasConflicts: conflicts.length > 0 };
+}
+
+/**
+ * Whether a clip with a known source samples outside it.
+ * @param clip - The placement.
+ * @param sources - The document's sources, when the caller has them.
+ * @param fps - The Timeline frame rate, when the caller has it.
+ * @returns True only when the source is known and the range is invalid for it.
+ * @throws {never} Never.
+ */
+function outsideSource(clip: TimelineArrangementClip, sources: Readonly<Record<string, TimelineVideoSource>> | undefined, fps: TimelineRate | undefined): boolean {
+  const source = clip.sourceId === undefined ? undefined : sources?.[clip.sourceId];
+  if (source === undefined || fps === undefined || clip.sourceInFrame === undefined || clip.rate === undefined) return false;
+  return !validateTimelineRange(clip as TimelineVideoClip, source, fps).valid;
 }
 
 /**

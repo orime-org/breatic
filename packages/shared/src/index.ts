@@ -422,6 +422,7 @@ export {
   TimelineVideoClipSchema,
   TimelineEditCommandSchema,
   TimelineDocumentV1Schema,
+  TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -430,8 +431,12 @@ export type {
   TimelineVideoSource,
   TimelineVideoClip,
   TimelineEditCommand,
+  TimelineEditPlacement,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
+export { planTimelineEdit, timelineSourceOverflow } from "@shared/timeline/edit.js";
+export type { TimelineEditPlan, TimelineEditRefusal } from "@shared/timeline/edit.js";
+export { activeTimelineClipAt, nextTimelinePlaybackBoundary } from "@shared/timeline/layers.js";
 export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
 export type { TimelineRangeValidation } from "@shared/timeline/time.js";
 
