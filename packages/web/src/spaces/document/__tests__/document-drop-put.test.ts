@@ -44,14 +44,15 @@ async function openReady(blocks: Parameters<typeof open>[0]): Promise<ReturnType
  * @param at - Where the pointer is.
  * @param formats - Each format the drag carries, with its data.
  * @param clientX - The pointer's x: inside the body's 0..100 box, or beside it.
+ * @param copyKey - Whether the platform's copy key is held at the drop.
  */
-function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>, clientX = 1): void {
+function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>, clientX = 1, copyKey = false): void {
   const view = editor.prosemirrorView;
   const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
   for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
   view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
   const event = new Event('drop', { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX, clientY: 1 });
+  Object.assign(event, { clientX, clientY: 1, altKey: copyKey, ctrlKey: copyKey });
   Object.defineProperty(event, 'dataTransfer', {
     value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' },
   });
@@ -183,7 +184,7 @@ describe('a drop selects what it put', () => {
     expect(lines(editor).filter((label) => label.startsWith('paragraph:') && label !== 'paragraph:')).toEqual(['paragraph:A', 'paragraph:B']);
   });
 
-  it('words then a picture at the end of a line with nested lines: the words, as without them, never the nested lines', async () => {
+  it('words then a picture at the end of a line with nested lines: the joined words, never the nested lines', async () => {
     const { editor } = await openReady([{ type: 'paragraph', content: 'aaa', children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'tail' }]);
     dropFormats(editor, positionOf(editor, 'aaa', 3), { 'text/html': `<p>n</p><img src="${PIC}">`, 'text/plain': 'n' });
     await settled();
@@ -191,6 +192,14 @@ describe('a drop selects what it put', () => {
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.deleteSelection());
     expect(view.state.doc.textContent).toBe('aaakidtail');
+  });
+
+  it('words, a picture and words at the end of a line with nested lines: the joined words alone, the rest after the nested lines', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'aaa', children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'aaa', 3), { 'text/html': `<p>n</p><img src="${PIC}"><p>m</p>`, 'text/plain': 'n m' });
+    await settled();
+    expect(selectedContent(editor)).toEqual({ oneCell: true, words: 'n', media: [] });
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('aaankidmtail');
   });
 
   it('media then words at the end of a cell: deleting it keeps the cell\'s own words', async () => {
@@ -454,13 +463,90 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
    * @param from - Where the selection starts.
    * @param to - Where it ends.
    * @param at - Where it is dropped.
+   * @param keys - Whether the drag started as a move, and whether the copy key is held at the drop.
+   * @param keys.started - Whether the drag started as a move.
+   * @param keys.copyKey - Whether the copy key is held at the drop.
    */
-  function dragWithin(editor: Editor, from: number, to: number, at: number): void {
+  function dragWithin(editor: Editor, from: number, to: number, at: number, keys = { started: true, copyKey: false }): void {
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
-    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
-    dropFormats(editor, at, { 'text/html': '<p>x</p>' });
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: keys.started };
+    dropFormats(editor, at, { 'text/html': '<p>x</p>' }, 1, keys.copyKey);
   }
+
+  /**
+   * Every table's cells, in order, and the names of the tables.
+   * @param editor - The editor.
+   * @returns Each table's type and its cells' words.
+   */
+  function grids(editor: Editor): string[] {
+    const found: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name !== 'docTable' && node.type.name !== 'table') return true;
+      const cells: string[] = [];
+      node.descendants((cell) => {
+        if (cell.type.name !== 'docTableCell' && cell.type.name !== 'tableCell') return true;
+        cells.push(cell.textContent);
+        return false;
+      });
+      found.push(`${node.type.name}:${cells.join(',')}`);
+      return false;
+    });
+    return found;
+  }
+
+  it('fills cells from the drop with a stored table alone, as its paste does, never nesting it', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } },
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ] as unknown as Parameters<typeof open>[0]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1));
+    await settled();
+    expect(grids(editor)).toEqual(['docTable:c1,c2,l1,l2']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('refuses a stored table with other content, leaving the body as it was', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } },
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }] }),
+    ] as unknown as Parameters<typeof open>[0]);
+    const before = editor.prosemirrorView.state.doc.toJSON();
+    dragWithin(editor, positionOf(editor, 'lead', 2), positionOf(editor, 'tail', 2), positionOf(editor, 'c1', 1));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('copies a table when the copy key is held at the drop, though the drag started as a move', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: true, copyKey: true });
+    await settled();
+    expect(grids(editor)).toEqual(['docTable:t1,t2', 'docTable:c1,c2,t1,t2']);
+  });
+
+  it('moves a table when the copy key is let go before the drop, though the drag started as a copy', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: false, copyKey: false });
+    await settled();
+    expect(grids(editor)).toEqual(['docTable:c1,c2,t1,t2']);
+  });
 
   it('refuses content holding a table, leaving the body as it was', async () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
