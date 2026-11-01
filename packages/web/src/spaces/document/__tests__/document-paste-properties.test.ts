@@ -47,15 +47,64 @@ const bodyBlock: fc.Arbitrary<BodyBlock> = fc.oneof(
   readerWords.map((content) => ({ type: 'codeBlock', content })),
 );
 
-/** A piece of pasted content. */
-type Piece = { kind: 'words'; words: string } | { kind: 'medium' } | { kind: 'table'; words: string } | { kind: 'divider' };
+/** A piece of pasted content: a list item may nest a picture or another item last. */
+type Piece =
+  | { kind: 'words'; words: string }
+  | { kind: 'medium' }
+  | { kind: 'table'; words: string }
+  | { kind: 'divider' }
+  | { kind: 'listMedium'; words: string }
+  | { kind: 'listWords'; words: string };
 
 const piece: fc.Arbitrary<Piece> = fc.oneof(
   pastedWords.map((words): Piece => ({ kind: 'words', words })),
   fc.constant<Piece>({ kind: 'medium' }),
   pastedWords.map((words): Piece => ({ kind: 'table', words })),
   fc.constant<Piece>({ kind: 'divider' }),
+  pastedWords.map((words): Piece => ({ kind: 'listMedium', words })),
+  pastedWords.map((words): Piece => ({ kind: 'listWords', words })),
 );
+
+/**
+ * Whether a piece holds only lines of words, which BlockNote's own paste puts
+ * as main does (§5.4.3).
+ * @param p - The piece.
+ * @returns True for words.
+ */
+function isWords(p: Piece): boolean {
+  return p.kind === 'words' || p.kind === 'listWords';
+}
+
+/**
+ * Whether the last line of the pieces in reading order is a line of words:
+ * a nested item counts as read after its parent, a table and a medium as
+ * blocks of their own.
+ * @param pieces - The pieces.
+ * @returns True when the content ends in words.
+ */
+function endsInWords(pieces: readonly Piece[]): boolean {
+  return isWords(pieces[pieces.length - 1]!);
+}
+
+/**
+ * The pieces as blocks; media are named m0, m1… in order.
+ * @param pieces - The pieces.
+ * @returns The blocks.
+ */
+function blocksOf(pieces: readonly Piece[]): Record<string, unknown>[] {
+  let n = 0;
+  const media = (): string => `${OURS}m${n++}.png`;
+  return pieces.map((p) => {
+    switch (p.kind) {
+      case 'medium': return { type: 'image', props: { url: media() } };
+      case 'table': return tableBlock({ rows: [{ cells: [p.words] }] });
+      case 'divider': return { type: 'divider' };
+      case 'listMedium': return { type: 'bulletListItem', content: p.words, children: [{ type: 'image', props: { url: media() } }] };
+      case 'listWords': return { type: 'bulletListItem', content: p.words, children: [{ type: 'bulletListItem', content: `${p.words}z` }] };
+      default: return { type: 'paragraph', content: p.words };
+    }
+  });
+}
 
 /** How the reader made the selection the paste replaces. */
 type Aim =
@@ -169,28 +218,24 @@ function paste(editor: Editor, pieces: readonly Piece[], source: Source): void {
     pasteFormats(editor, { 'text/plain': serializeClipboard({ version: 2, picked: nodes.map((x) => x.id), nodes, edges: [] } as ClipboardPayload) });
     return;
   }
-  const blocks = pieces.map((p) =>
-    p.kind === 'medium'
-      ? { type: 'image', props: { url: media() } }
-      : p.kind === 'table'
-        ? tableBlock({ rows: [{ cells: [p.words] }] })
-        : p.kind === 'divider'
-          ? { type: 'divider' }
-          : { type: 'paragraph', content: p.words },
-  );
-  const html = editor.blocksToFullHTML(blocks as never);
+  const html = editor.blocksToFullHTML(blocksOf(pieces) as never);
   pasteFormats(editor, source === 'own' ? { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' } : { 'text/html': html, 'text/plain': 'copied' });
 }
 
 /**
- * Every block container's id, depth and first child.
+ * Every block container's id, depth, first child and the id of the
+ * container it is nested in.
  * @param doc - The document.
  * @returns They.
  */
-function containers(doc: PMNode): { id: string; depth: number; node: PMNode }[] {
-  const out: { id: string; depth: number; node: PMNode }[] = [];
+function containers(doc: PMNode): { id: string; depth: number; node: PMNode; parent: string | null }[] {
+  const out: { id: string; depth: number; node: PMNode; parent: string | null }[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.name === 'blockContainer' || node.type.name === 'docTable') out.push({ id: String(node.attrs['id']), depth: doc.resolve(pos).depth, node });
+    if (node.type.name !== 'blockContainer' && node.type.name !== 'docTable') return true;
+    const $pos = doc.resolve(pos);
+    let parent: string | null = null;
+    for (let d = $pos.depth; d > 0 && parent === null; d -= 1) if ($pos.node(d).type.name === 'blockContainer') parent = String($pos.node(d).attrs['id']);
+    out.push({ id: String(node.attrs['id']), depth: $pos.depth, node, parent });
     return true;
   });
   return out;
@@ -224,7 +269,7 @@ const body = fc.array(bodyBlock, { minLength: 1, maxLength: 5 }).filter((blocks)
 
 const property = fc.record({
   body,
-  pieces: fc.array(piece, { minLength: 1, maxLength: 4 }).filter((p) => p.some((x) => x.kind !== 'words')),
+  pieces: fc.array(piece, { minLength: 1, maxLength: 4 }).filter((p) => p.some((x) => !isWords(x))),
   source: fc.constantFrom<Source>('web', 'own', 'canvas'),
   aim,
 });
@@ -245,7 +290,7 @@ interface Sample {
 function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
 
   const content = source === 'canvas' ? pieces.filter((p) => p.kind === 'words' || p.kind === 'medium') : pieces;
-  if (!content.some((p) => p.kind !== 'words')) return;
+  if (!content.some((p) => !isWords(p))) return;
   const { editor, manager, sink } = open(body, { onCanvasPaste: { start: vi.fn(), notPasted: vi.fn() } });
   const view = editor.prosemirrorView;
   select(editor, chosen);
@@ -295,7 +340,9 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
   const ids = containers(after.doc).map((c) => c.id);
   expect(new Set(ids).size, `ids: ${where}`).toBe(ids.length);
 
-  const media = placed.filter((c) => ['image', 'docTable', 'divider'].includes(c.node.type.name === 'docTable' ? c.node.type.name : c.node.firstChild!.type.name));
+  // A medium the content itself nests (a list item's picture) sits under its own item.
+  const placedIds = new Set(placed.map((c) => c.id));
+  const media = placed.filter((c) => (c.parent === null || !placedIds.has(c.parent)) && ['image', 'docTable', 'divider'].includes(c.node.type.name === 'docTable' ? c.node.type.name : c.node.firstChild!.type.name));
   // Across lines the target is the line left once the selection is deleted; the matrix covers that.
   const oneLine = !(selection instanceof TextSelection) || selection.$from.sameParent(selection.$to);
   if (!target.textOnly && oneLine) for (const c of media) expect(c.depth, `nested: ${where}`).toBe(target.depth);
@@ -311,7 +358,7 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
     copies = 0;
     selection.forEachCell(() => { copies += 1; });
   }
-  const pasted = content.filter((p) => p.kind === 'medium').length * copies;
+  const pasted = content.filter((p) => p.kind === 'medium' || p.kind === 'listMedium').length * copies;
   const landed = containers(after.doc).filter((c) => {
     const own = c.node.firstChild!;
     return own.type.name === 'image' && (/\/m\d+\.png$/.test(String(own.attrs['url'])) || String(own.attrs['uploadId'] ?? '') !== '');
@@ -345,22 +392,8 @@ describe('a drop', () => {
 
           const dropped = open(body).editor;
           const view = dropped.prosemirrorView;
-          let html = '';
-          let own = '';
-          {
-            let n = 0;
-            const blocks = pieces.map((p) =>
-              p.kind === 'medium'
-                ? { type: 'image', props: { url: `${OURS}m${n++}.png` } }
-                : p.kind === 'table'
-                  ? tableBlock({ rows: [{ cells: [p.words] }] })
-                  : p.kind === 'divider'
-                    ? { type: 'divider' }
-                    : { type: 'paragraph', content: p.words },
-            );
-            html = dropped.blocksToFullHTML(blocks as never);
-            own = source === 'own' ? html : '';
-          }
+          const html = dropped.blocksToFullHTML(blocksOf(pieces) as never);
+          const own = source === 'own' ? html : '';
           view.posAtCoords = (): { pos: number; inside: number } => ({ pos: point, inside: -1 });
           const formats: Record<string, string> = own === '' ? { 'text/html': html, 'text/plain': 'copied' } : { 'blocknote/html': own, 'text/html': html, 'text/plain': 'copied' };
           const event = new Event('drop', { bubbles: true, cancelable: true });
@@ -368,6 +401,137 @@ describe('a drop', () => {
           Object.defineProperty(event, 'dataTransfer', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' } });
           view.dom.dispatchEvent(event);
           expect(shape(dropped), `${source} ${JSON.stringify(body)} ${JSON.stringify(pieces)} @${point}`).toBe(expectedShape);
+          unmountAll();
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+describe('content put on an empty plain line (design §5.4.3)', () => {
+  it('becomes that line when it ends in words, and leaves the line for the caret otherwise', () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          body,
+          index: fc.nat(),
+          inCell: fc.boolean(),
+          pieces: fc.array(piece, { minLength: 1, maxLength: 4 }).filter((p) => p.some((x) => !isWords(x))),
+          source: fc.constantFrom<Source>('web', 'own'),
+        }),
+        ({ body: blocks, index, inCell, pieces, source }) => {
+          // A table in a cell is filled or refused (§5.4.7), not put on the line.
+          if (inCell && pieces.some((p) => p.kind === 'table')) return;
+          const line = { type: 'paragraph', id: 'emptyline' };
+          const host = inCell ? [tableBlock({ rows: [{ cells: [{ blocks: [line] }, 'kept'] }] })] : [line];
+          const at = index % (blocks.length + 1);
+          const { editor } = open([...blocks.slice(0, at), ...host, ...blocks.slice(at)] as never);
+          const view = editor.prosemirrorView;
+          let linePos = -1;
+          view.state.doc.descendants((node, pos) => {
+            if (node.attrs['id'] === 'emptyline') linePos = pos;
+            return linePos < 0;
+          });
+          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, linePos + 2)));
+          view.focus();
+          paste(editor, pieces, source);
+          const where = `${source} ${inCell ? 'cell' : 'body'} ${JSON.stringify(pieces)} → ${shape(editor)}`;
+          const { doc, selection } = view.state;
+          let taker: PMNode | null = null;
+          doc.descendants((node) => {
+            if (node.attrs['id'] === 'emptyline') taker = node;
+            return taker === null;
+          });
+          expect(taker, `line id: ${where}`).not.toBeNull();
+          const own = (taker as unknown as PMNode).firstChild!;
+          if (endsInWords(pieces)) {
+            expect(own.content.size, `taken: ${where}`).toBeGreaterThan(0);
+          } else {
+            expect({ type: own.type.name, size: own.content.size, caretHere: selection.$head.parent === own }, `kept: ${where}`).toEqual({ type: 'paragraph', size: 0, caretHere: true });
+          }
+          unmountAll();
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+/** Body lines whose words are one letter each, so a line that takes another's words shows. */
+const letteredBody = fc.array(
+  fc.oneof(
+    fc.constant('paragraph'),
+    fc.constant('heading'),
+    fc.constant('bulletListItem'),
+    fc.constant('quoted'),
+    fc.constant('nested'),
+    fc.constant('image'),
+    fc.constant('table'),
+  ),
+  { minLength: 2, maxLength: 5 },
+).filter((kinds) => kinds.some((kind) => kind !== 'image')).map((kinds) => kinds.map((kind, i): BodyBlock => {
+  const a = 'abcdefghijklm'[i * 2]!.repeat(3);
+  const b = 'abcdefghijklm'[i * 2 + 1]!.repeat(3);
+  switch (kind) {
+    case 'image': return { type: 'image', props: { url: `${OURS}old${i}.png` } };
+    case 'table': return tableBlock({ rows: [{ cells: [a, b] }] });
+    case 'quoted': return { type: 'paragraph', content: a, props: { quoted: true } };
+    case 'nested': return { type: 'paragraph', content: a, children: [{ type: 'paragraph', content: b }] };
+    default: return { type: kind, content: a };
+  }
+}));
+
+/**
+ * Each line's reader letters.
+ * @param doc - The document.
+ * @returns One string per line that holds any.
+ */
+function readerLines(doc: PMNode): string[] {
+  const out: string[] = [];
+  doc.descendants((node) => {
+    if (node.isTextblock) {
+      const letters = node.textContent.match(READER)?.join('') ?? '';
+      if (letters !== '') out.push(letters);
+    }
+    return true;
+  });
+  return out;
+}
+
+describe('a drop, then deleting what it selected (design §5.4.1)', () => {
+  it('keeps every line the reader wrote, its words and its own line', () => {
+    fc.assert(
+      fc.property(
+        fc.record({ body: letteredBody, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
+        ({ body: blocks, pieces, at, source }) => {
+          const { editor } = open(blocks as never);
+          const view = editor.prosemirrorView;
+          const points = textPositions(view.state.doc);
+          const point = points[at % points.length]!;
+          const $point = view.state.doc.resolve(point);
+          let inCell = false;
+          for (let d = $point.depth; d > 0; d -= 1) if ($point.node(d).type.name === 'docTableCell') inCell = true;
+          // A table dropped in a cell fills or is refused (§5.4.7), not a drop of lines.
+          if (inCell && pieces.some((p) => p.kind === 'table')) {
+            unmountAll();
+            return;
+          }
+          const letters = (doc: PMNode): string => [...(doc.textContent.match(READER) ?? [])].sort().join('');
+          const before = letters(view.state.doc);
+          const html = editor.blocksToFullHTML(blocksOf(pieces) as never);
+          const formats: Record<string, string> = source === 'own' ? { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' } : { 'text/html': html, 'text/plain': 'copied' };
+          const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
+          for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
+          view.posAtCoords = (): { pos: number; inside: number } => ({ pos: point, inside: -1 });
+          const event = new Event('drop', { bubbles: true, cancelable: true });
+          Object.assign(event, { clientX: 1, clientY: 1 });
+          Object.defineProperty(event, 'dataTransfer', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' } });
+          view.dom.dispatchEvent(event);
+          view.dispatch(view.state.tr.deleteSelection());
+          const where = `${source} ${JSON.stringify(blocks)} ${JSON.stringify(pieces)} @${point} → ${shape(editor)}`;
+          expect(letters(view.state.doc), `words: ${where}`).toBe(before);
+          for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
           unmountAll();
         },
       ),
