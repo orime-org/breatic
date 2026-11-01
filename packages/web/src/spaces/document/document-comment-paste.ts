@@ -104,6 +104,26 @@ export function stripCommentMarks(slice: Slice, schema: Schema): Slice {
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
 }
 
+/** The drop a placement is putting as its paste, while it does. */
+let landing: 'move' | 'copy' | null = null;
+
+/**
+ * Runs the placement of a drag within the body, which puts the drop as its
+ * paste with no drag in flight, so the content it pastes lands as that drop
+ * would: a move with its comments and row ids, a copy without either.
+ * @param moved - Whether the drop moves the content.
+ * @param put - Puts the content.
+ * @returns What `put` returns.
+ */
+export function landingAsDrop<T>(moved: boolean, put: () => T): T {
+  landing = moved ? 'move' : 'copy';
+  try {
+    return put();
+  } finally {
+    landing = null;
+  }
+}
+
 /** What this needs of the view: the schema, and whether a drag is in flight. */
 interface LandingView {
   /** The editor state, for the schema the slice was parsed against. */
@@ -154,6 +174,7 @@ export function landingSlice(
   view: LandingView,
   dropCopies: boolean,
 ): Slice {
+  if (landing !== null) return landing === 'move' ? slice : withoutRowIds(stripCommentMarks(slice, view.state.schema));
   if (view.dragging === null) {
     return stripCommentMarks(slice, view.state.schema);
   }

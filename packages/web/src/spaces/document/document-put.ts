@@ -13,7 +13,7 @@
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
-import { Fragment, Node as PMNode, Slice, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { __insertCells as insertCells, __pastedCells as pastedCells, cellAround, CellSelection, selectedRect } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
@@ -25,7 +25,7 @@ import { toast } from '@web/lib/toast';
 import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { BODY_NODE, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeld, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
@@ -35,11 +35,7 @@ import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-sele
 export type JudgeMedium = (props: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>> | null;
 
 /** What is put: blocks, the media left out reading them, the plain text, and how words alone go in. */
-export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & {
-  readonly paste: Read['paste'] | null;
-  /** The table as the body's own nodes, its comments with it, when a drag within the body brings it. */
-  readonly table?: PMNode;
-};
+export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & { readonly paste: Read['paste'] | null };
 
 /** What a placement needs besides the content. */
 export interface PutOptions {
@@ -128,7 +124,32 @@ function withIds(block: ReadBlock): ReadBlock & { id: string } {
  * @returns The containers.
  */
 function containers(blocks: readonly ReadBlock[], state: EditorState): PMNode[] {
-  return blocks.map((block) => blockToNode(withIds(block) as never, state.schema));
+  return blocks.map((block) => {
+    const made = blockToNode(withIds(block) as never, state.schema);
+    const source = block[BODY_NODE];
+    return source === undefined ? made : asBodyNode(made, source);
+  });
+}
+
+/**
+ * A node made from a block read off the body's own content, given back what
+ * reading it lost: the source's row ids, and the source's own words wherever
+ * they are unchanged, their marks with them (the comments a move keeps).
+ * What the placement changed (a quoted attribute, a type) stays as made.
+ * @param made - The node made from the block.
+ * @param source - The body's own node it was read from.
+ * @returns The node.
+ */
+function asBodyNode(made: PMNode, source: PMNode): PMNode {
+  if (made.type !== source.type) return made;
+  if (made.isTextblock || made.type.name === DOC_TABLE) {
+    return made.textContent === source.textContent ? made.type.create(made.attrs, source.content, made.marks) : made;
+  }
+  const children: PMNode[] = [];
+  made.forEach((child, _offset, index) => children.push(index < source.childCount ? asBodyNode(child, source.child(index)) : child));
+  const id = source.attrs['id'] as unknown;
+  const attrs = typeof id === 'string' && id !== '' && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
+  return made.type.create(attrs, children, made.marks);
 }
 
 /**
@@ -449,14 +470,13 @@ export function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
 /**
  * Puts one source grid once from the target cell, growing the table as needed.
  * @param view - The editor view, with its target cell selected.
- * @param table - The source table, read or as the body's own node.
+ * @param table - The source table.
  * @returns The rectangle written.
  */
-function putTableInCells(view: EditorView, table: ReadBlock | PMNode): Placed | null {
+function putTableInCells(view: EditorView, table: ReadBlock): Placed | null {
   squareSelectedTable(view);
   const rect = selectedRect(view.state);
-  const made = table instanceof PMNode ? [table] : containers([table], view.state);
-  const cells = pastedCells(new Slice(Fragment.from(made), 0, 0));
+  const cells = pastedCells(new Slice(Fragment.from(containers([table], view.state)), 0, 0));
   if (cells === null) return null;
   insertCells(view.state, (tr) => view.dispatch(tr.scrollIntoView()), rect.tableStart, rect, cells);
   return cellsOf(view.state.selection as CellSelection);
@@ -567,7 +587,7 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
   const table = onlyTable(content.blocks);
   const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$from);
   if ($cell !== null && heldTables(selection) === null) {
-    if (table !== null) return putTableInCells(view, content.table ?? table);
+    if (table !== null) return putTableInCells(view, table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
   const words = !holdsBlocks(content.blocks);

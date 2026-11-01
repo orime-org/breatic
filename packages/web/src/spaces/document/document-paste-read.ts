@@ -14,6 +14,7 @@
  */
 
 import { audioParse, imageParse, isMarkdown, markdownToHTML, videoParse } from '@blocknote/core';
+import { DOMParser as SchemaParser, type Node as PMNode, type Schema } from '@tiptap/pm/model';
 
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
@@ -25,7 +26,16 @@ export interface ReadBlock {
   readonly props?: Readonly<Record<string, unknown>>;
   readonly content?: unknown;
   readonly children?: readonly ReadBlock[];
+  /** The body's own node the block was read from, when a drag within the body brings it. */
+  readonly [BODY_NODE]?: PMNode;
 }
+
+/**
+ * Where a block read off the body's own content keeps the node it came from.
+ * A symbol key, so the copies a placement makes of a block (`{ ...block }`)
+ * keep it too.
+ */
+export const BODY_NODE: unique symbol = Symbol('body node');
 
 /** What reads HTML into blocks and writes blocks out as HTML: the editor. */
 export interface BlockReader {
@@ -634,4 +644,36 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);
   const { blocks, lost } = readByMarkers(reader, source, lands);
   return { blocks, lost, plain: plainOnly, paste: (r) => r.pasteHTML(r.blocksToFullHTML(blocks as never), true) };
+}
+
+/**
+ * Reads the body's own content, as a drag within the body carries it: the
+ * blocks a paste of the same clipboard HTML reads, each keeping the body's
+ * own node it came from (its comments and its row id), read from the same
+ * HTML the same way BlockNote reads it, a block group of containers.
+ * @param reader - The editor.
+ * @param html - The content's clipboard HTML.
+ * @param schema - The body's schema.
+ * @returns The content read.
+ */
+export function readBodyContent(reader: BlockReader, html: string, schema: Schema): Read {
+  const blocks = reader.tryParseHTMLToBlocks(html) as ReadBlock[];
+  const dom = document.createElement('div');
+  dom.innerHTML = html;
+  const group = SchemaParser.fromSchema(schema).parse(dom, { topNode: schema.nodes['blockGroup']!.create() });
+  /**
+   * Keeps on each block the node it was read from, its nested ones too.
+   * @param list - The blocks.
+   * @param nodes - The nodes they were read from, in order.
+   * @returns The blocks.
+   */
+  const sourced = (list: readonly ReadBlock[], nodes: readonly PMNode[]): ReadBlock[] =>
+    list.length !== nodes.length
+      ? [...list]
+      : list.map((block, i) => {
+        const node = nodes[i]!;
+        const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
+        return { ...block, children: sourced(block.children ?? [], nested), [BODY_NODE]: node };
+      });
+  return { blocks: sourced(blocks, group.children), lost: 0, plain: null, paste: (r) => r.pasteHTML(html, true) };
 }
