@@ -1168,8 +1168,8 @@ export function renderProductGuide(): string {
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
       "followed after a · by the nearest heading at or above the passage, or " +
       `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. Its row of buttons ` +
-      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; in a narrow ` +
-      "column or a longer language a button that does not fit moves whole onto a second line. A comment card " +
+      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; a button that ` +
+      "does not fit moves whole onto a second line when a language's words do not fit side by side. A comment card " +
       "quotes the words the comment hangs on and shows the comment, with one " +
       `landing button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
       "taken out struck through in red and the new words in green, and two landing buttons: " +
@@ -1184,7 +1184,9 @@ export function renderProductGuide(): string {
     `Pressing ${quoted(t("chat.documentProposal.locate"))} opens the document, or switches to its tab, and ` +
       "scrolls to and outlines for a moment what the proposal points at, writing nothing: a comment's quoted " +
       "words, with a wide table scrolled sideways to them; the passage a rewrite replaces; the passage an insert " +
-      "goes after, or the last passage for an insert at the end. It works on a document the reader can only view " +
+      "goes after, or the last passage for an insert at the end. A proposal that already landed, as one may after " +
+      `a reload, is shown where it landed, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the ` +
+      "card then shows it landed. It works on a document the reader can only view " +
       "too. The card keeps its buttons, so the reader can locate again or press a landing button next; the " +
       "landing buttons wait while it spins. A passage that changed since the proposal is still shown, with the " +
       `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +

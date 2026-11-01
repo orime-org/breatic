@@ -708,6 +708,8 @@ test('Locate on a rewrite opens its document from another Space and outlines the
   const above = await page.locator(`${DOCUMENT_EDITOR} p`).first().boundingBox();
   expect(box !== null && words !== null && above !== null).toBe(true);
   expect(box!.x).toBeLessThan(words!.x);
+  expect(box!.y).toBeLessThanOrEqual(words!.y);
+  expect(box!.x + box!.width).toBeGreaterThanOrEqual(words!.x + words!.width);
   expect(box!.y + box!.height).toBeGreaterThan(words!.y + words!.height);
   // Only this passage: the outline starts below the middle of the one above it.
   expect(box!.y).toBeGreaterThan(above!.y + above!.height / 2);
