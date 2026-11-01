@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { compareTimelineIds } from "@shared/timeline/order.js";
 import type { TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from "@shared/timeline/schema.js";
 import { validateTimelineRange } from "@shared/timeline/time.js";
 
@@ -47,7 +48,7 @@ export function resolveTimelineArrangement(input: {
   fps?: TimelineRate;
 }): TimelineArrangement {
   const tracks = new Map(input.tracks.map((track) => [track.id, track]));
-  const records = [...input.clips].sort((a, b) => compareIds(a.id, b.id)).map((clip) => {
+  const records = [...input.clips].sort((a, b) => compareTimelineIds(a.id, b.id)).map((clip) => {
     const endFrame = clip.startFrame + clip.durationFrames;
     const reasons: TimelineArrangementReason[] = [];
     const detail = { relatedClipIds: [], startFrame: displayFrame(clip.startFrame), endFrame: displayFrame(endFrame) };
@@ -77,8 +78,8 @@ export function resolveTimelineArrangement(input: {
   const placements: TimelinePlacement[] = records.map(({ clip, reasons }) => ({
     clipId: clip.id,
     status: reasons.length > 0 ? "conflict" : "ready",
-    reasons: reasons.sort((a, b) => compareIds(a.code, b.code)
-      || compareIds(a.relatedClipIds[0] ?? "", b.relatedClipIds[0] ?? "")
+    reasons: reasons.sort((a, b) => compareTimelineIds(a.code, b.code)
+      || compareTimelineIds(a.relatedClipIds[0] ?? "", b.relatedClipIds[0] ?? "")
       || (a.startFrame ?? 0) - (b.startFrame ?? 0) || (a.endFrame ?? 0) - (b.endFrame ?? 0)),
   }));
   const conflicts = placements.filter((placement) => placement.status === "conflict");
@@ -97,17 +98,6 @@ function outsideSource(clip: TimelineArrangementClip, sources: Readonly<Record<s
   const source = clip.sourceId === undefined ? undefined : sources?.[clip.sourceId];
   if (source === undefined || fps === undefined || clip.sourceInFrame === undefined || clip.rate === undefined) return false;
   return !validateTimelineRange(clip as TimelineVideoClip, source, fps).valid;
-}
-
-/**
- * Compare identities in code-unit order, independent of a client's locale.
- * @param left - The first identity.
- * @param right - The second identity.
- * @returns Their stable order.
- * @throws {never} Never.
- */
-function compareIds(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 /**

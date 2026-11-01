@@ -26,7 +26,8 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
 }
 
 /**
- * The next frame after `frame` where the shown clip can change: the nearest ready clip start or end.
+ * The next frame after `frame` where the shown clip changes: an edge of a ready clip at which
+ * `activeTimelineClipAt` differs from the clip shown now; edges hidden under a higher track do not count.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The current Timeline frame.
@@ -35,10 +36,14 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
  * @throws {never} Never.
  */
 export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number, endFrame: number): number {
-  let next = endFrame;
+  const edges = new Set<number>();
   for (const clip of Object.values(document.clips)) {
     if (!readyClipIds.has(clip.id)) continue;
-    for (const edge of [clip.startFrame, clip.startFrame + clip.durationFrames]) if (edge > frame && edge < next) next = edge;
+    for (const edge of [clip.startFrame, clip.startFrame + clip.durationFrames]) if (edge > frame && edge < endFrame) edges.add(edge);
   }
-  return next;
+  const shown = activeTimelineClipAt(document, readyClipIds, frame);
+  for (const edge of [...edges].sort((left, right) => left - right)) {
+    if (activeTimelineClipAt(document, readyClipIds, edge) !== shown) return edge;
+  }
+  return endFrame;
 }
