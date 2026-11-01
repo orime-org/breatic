@@ -58,15 +58,12 @@ export function closeAfterRefusal(c: Context): void {
  */
 function lingeringClose(socket: Socket, incoming: IncomingMessage): () => void {
   let started = false;
-  let closing = false;
-  /** Close now, whatever is still unwritten. */
+  /** Close now, whatever is still unwritten; a second call finds the socket destroyed. */
   const destroy = (): void => {
     if (!socket.destroyed) socket.destroy();
   };
   /** Close once the 413 is fully written; a destroy before that drops what is left of it. */
   const closeWhenWritten = (): void => {
-    if (closing) return;
-    closing = true;
     if (socket.writableFinished) destroy();
     else socket.once("finish", destroy);
   };
