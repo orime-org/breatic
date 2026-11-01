@@ -81,6 +81,17 @@ function isWordsLine(block: ReadBlock | undefined): block is ReadBlock {
 }
 
 /**
+ * The last block of a block in reading order: itself, or the last of its
+ * nested blocks, all the way down.
+ * @param block - The block.
+ * @returns The block read last.
+ */
+function lastInReading(block: ReadBlock): ReadBlock {
+  const children = block.children ?? [];
+  return children.length === 0 ? block : lastInReading(children[children.length - 1]!);
+}
+
+/**
  * Blocks with every medium judged: those left out go, their nested blocks
  * taking their place.
  * @param blocks - The blocks.
@@ -676,14 +687,16 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
       tr.replaceWith(start, end, laid);
       caret = startOf(laid, laid.length - 1) + 2 + tail.firstChild!.content.size;
       to = caret;
-    } else if (!nonParagraph && nodes.length > 1 && WORDS.has(content[content.length - 1]!.type)) {
-      // An empty plain line becomes the last pasted line, its type, attributes
-      // and nested blocks, keeping the line's id and nested blocks (§5.4.3).
+    } else if (!nonParagraph && WORDS.has(lastInReading(content[content.length - 1]!).type)) {
+      // An empty plain line becomes the last pasted block when the content
+      // ends in words, its type, attributes and nested blocks, keeping the
+      // line's id and nested blocks (§5.4.3); content ending in a medium
+      // leaves the line for the caret.
       const tail = nodes[nodes.length - 1]!;
-      const own = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id: line.node.attrs['id'] }, tail.content)];
-      laid = nestLast(own, line.node);
+      const put = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id: line.node.attrs['id'] }, tail.content)];
+      laid = nestLast(put, line.node);
       tr.replaceWith(start, end, laid);
-      finishCaret(tr, own, start);
+      finishCaret(tr, put, start);
       to = tr.selection.head;
     } else {
       laid = [...nodes, line.node];
