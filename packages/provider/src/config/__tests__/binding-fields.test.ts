@@ -179,3 +179,16 @@ describe("reseller bindings against the catalog", () => {
     expect(found).toEqual([expect.stringMatching(/m.*fal.*voice_id/)]);
   });
 });
+
+describe("extra steps against the upstream's adapter", () => {
+  it("refuses an extra step kind the upstream's adapter does not speak, naming model, upstream and kind", () => {
+    const step = (kind: string): Record<string, unknown> => ({ extra_steps: [{ kind, endpoint: "e", at: "before", for_param: "p" }] });
+    expect(loadProblems([bind("fal", 2, step("speak"))])).toEqual([expect.stringMatching(/m.*fal.*speak/)]);
+    expect(loadProblems([bind("sandbase", 3, step("upload_reference"))])).toEqual([expect.stringMatching(/m.*sandbase.*upload_reference/)]);
+    expect(loadProblems([bind("fal", 2, step("upload_reference")), bind("wavespeed", 1, step("element"))])).toEqual([]);
+  });
+
+  it("refuses a clone binding (reused_by) on an upstream whose adapter has no voice step", () => {
+    expect(loadProblems([bind("fal", 2, { reused_by: "audio" })])).toEqual([expect.stringMatching(/m.*fal.*voice/)]);
+  });
+});
