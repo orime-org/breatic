@@ -222,7 +222,9 @@ function paste(editor: Editor, pieces: readonly Piece[], source: Source): void {
     return;
   }
   const html = editor.blocksToFullHTML(blocksOf(pieces) as never);
-  pasteFormats(editor, source === 'own' ? { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' } : { 'text/html': html, 'text/plain': 'copied' });
+  // The plain text a clipboard carries beside the HTML: the pieces' own words.
+  const plain = pieces.map((p) => ('words' in p ? p.words : '')).filter((w) => w !== '').join('\n') || 'z';
+  pasteFormats(editor, source === 'own' ? { 'blocknote/html': html, 'text/html': html, 'text/plain': plain } : { 'text/html': html, 'text/plain': plain });
 }
 
 /**
@@ -398,7 +400,8 @@ describe('a drop', () => {
           const html = dropped.blocksToFullHTML(blocksOf(pieces) as never);
           const own = source === 'own' ? html : '';
           view.posAtCoords = (): { pos: number; inside: number } => ({ pos: point, inside: -1 });
-          const formats: Record<string, string> = own === '' ? { 'text/html': html, 'text/plain': 'copied' } : { 'blocknote/html': own, 'text/html': html, 'text/plain': 'copied' };
+          const plain = pieces.map((p) => ('words' in p ? p.words : '')).filter((w) => w !== '').join('\n') || 'z';
+          const formats: Record<string, string> = own === '' ? { 'text/html': html, 'text/plain': plain } : { 'blocknote/html': own, 'text/html': html, 'text/plain': plain };
           const event = new Event('drop', { bubbles: true, cancelable: true });
           Object.assign(event, { clientX: 1, clientY: 1 });
           Object.defineProperty(event, 'dataTransfer', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' } });
@@ -446,7 +449,8 @@ describe('a drag within the body', () => {
 
           const dropped = ready();
           const view = dropped.editor.prosemirrorView;
-          (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: false };
+          // What ProseMirror's dragstart takes: the selection's content as its copy serializes it.
+          (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: false };
           // The pointer inside the body's box: a drop beside it is re-sent by BlockNote's side menu without its keys.
           const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
           for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
@@ -476,7 +480,7 @@ describe('a drag within the body that moves its content', () => {
           select(editor, { kind: 'range', from, to });
           const point = text[at % text.length]!;
           const { from: start, to: end } = view.state.selection;
-          const dragged = view.state.selection.content();
+          const dragged = view.serializeForClipboard(view.state.selection.content()).slice;
           if (start === end || (point >= start && point <= end)) {
             unmountAll();
             return;

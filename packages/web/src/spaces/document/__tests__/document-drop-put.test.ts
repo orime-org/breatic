@@ -394,7 +394,7 @@ describe('a drop between two blocks', () => {
 describe('a drop into a code block', () => {
   it.each([
     ['plain text that reads as Markdown goes in as it is', { 'text/plain': '# Title\n- item' }, 'codeBlock:x# Title\n- item'],
-    ['web content of words goes in one line each', { 'text/html': '<p>hello</p><p>world</p>', 'text/plain': 'hello\n\nworld' }, 'codeBlock:xhello\nworld'],
+    ['web content of words goes in as its plain text', { 'text/html': '<p>hello</p><p>world</p>', 'text/plain': 'hello\n\nworld' }, 'codeBlock:xhello\n\nworld'],
   ])('%s, the code block kept whole', async (_name, formats, code) => {
     const { editor } = await openReady([{ type: 'codeBlock', content: 'x' }, { type: 'paragraph', content: 'tail' }]);
     dropFormats(editor, caretIn(editor, 0), formats);
@@ -872,6 +872,134 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), emptyLine(editor));
     await settled();
     expect(lines(editor)).toEqual(['paragraph:leadtail', 'paragraph:mid', `image(${PIC})`, 'paragraph:', 'paragraph:end']);
+  });
+
+  /**
+   * The body's own copy of a range, as the clipboard carries it.
+   * @param editor - The editor.
+   * @param from - Where the range starts.
+   * @param to - Where it ends.
+   * @returns The clipboard HTML.
+   */
+  function copyOf(editor: Editor, from: number, to: number): string {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    return view.serializeForClipboard(view.state.selection.content()).dom.innerHTML;
+  }
+
+  /**
+   * Pastes clipboard formats with the caret at a point.
+   * @param editor - The editor.
+   * @param at - The caret.
+   * @param formats - The clipboard.
+   */
+  function pasteAtPoint(editor: Editor, at: number, formats: Readonly<Record<string, string>>): void {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+    view.focus();
+    pasteFormats(editor, formats);
+  }
+
+  /**
+   * The code blocks' words.
+   * @param editor - The editor.
+   * @returns Each code block's text.
+   */
+  function codeWords(editor: Editor): string[] {
+    const found: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'codeBlock') found.push(node.textContent);
+      return true;
+    });
+    return found;
+  }
+
+  it('pastes a picture framed from one line\'s end to the next line\'s start into a code block without touching its code', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC } }, { type: 'paragraph', content: 'tail' }, { type: 'codeBlock', content: 'xy' }]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0));
+    pasteAtPoint(editor, positionOf(editor, 'xy', 1), { 'blocknote/html': html, 'text/html': html, 'text/plain': '' });
+    await settled();
+    expect(codeWords(editor)).toEqual(['xy']);
+    expect(lines(editor).filter((label) => label === `image(${PIC})`)).toHaveLength(2);
+  });
+
+  it('pastes words copied from one line\'s end into an empty line as that line', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'foo' }, { type: 'paragraph', content: 'bar' }, { type: 'paragraph' }, { type: 'paragraph', content: 'abcd' }]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'foo', 3));
+    pasteAtPoint(editor, emptyLine(editor), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'foo' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', 'paragraph:foo', 'paragraph:bar', 'paragraph:foo', 'paragraph:abcd']);
+  });
+
+  it('pastes two line breaks copied together as at least one', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
+    const view = editor.prosemirrorView;
+    const at = positionOf(editor, 'abcd', 2);
+    view.dispatch(view.state.tr.insert(at, [view.state.schema.nodes['hardBreak']!.create(), view.state.schema.nodes['hardBreak']!.create()]));
+    const html = copyOf(editor, at, at + 2);
+    pasteAtPoint(editor, positionOf(editor, 'tail', 2), { 'blocknote/html': html, 'text/html': html, 'text/plain': '\n\n' });
+    await settled();
+    let breaks = 0;
+    view.state.doc.descendants((node) => {
+      if (node.type.name === 'hardBreak') breaks += 1;
+      return true;
+    });
+    expect(breaks).toBeGreaterThan(2);
+  });
+
+  it('changes nothing for a drag of line breaks alone into a code block', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'aa' }, { type: 'paragraph', content: 'bb' }, { type: 'codeBlock', content: 'const x' }]);
+    const before = editor.prosemirrorView.state.doc.toJSON();
+    dragWithin(editor, positionOf(editor, 'aa', 2), positionOf(editor, 'bb', 0), positionOf(editor, 'const x', 5));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before);
+  });
+
+  it('pastes a framed picture at a line\'s end with no empty line after it', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC } }, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'mid' }, { type: 'paragraph', content: 'end' }]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0));
+    pasteAtPoint(editor, positionOf(editor, 'mid', 3), { 'blocknote/html': html, 'text/html': html, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', `image(${PIC})`, 'paragraph:tail', 'paragraph:mid', `image(${PIC})`, 'paragraph:end']);
+  });
+
+  it('changes nothing when selected cells are dropped onto one of themselves', async () => {
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }, { cells: ['a3', 'b3'] }] })]);
+    const view = editor.prosemirrorView;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[4]!)));
+    const before = view.state.doc.toJSON();
+    view.focus();
+    view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    dropFormats(editor, positionOf(editor, 'a2', 1), { 'text/html': '<p>x</p>' });
+    await settled();
+    expect(view.state.doc.toJSON()).toEqual(before);
+  });
+
+  it('pastes a picture framed from a nested item\'s end with no empty item', async () => {
+    const { editor } = await openReady([
+      { type: 'bulletListItem', content: 'par', children: [{ type: 'bulletListItem', content: 'kid' }] },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'end' },
+    ]);
+    const html = copyOf(editor, positionOf(editor, 'kid', 3), positionOf(editor, 'tail', 0));
+    pasteAtPoint(editor, emptyLine(editor), { 'blocknote/html': html, 'text/html': html, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['bulletListItem:par', `image(${PIC})`, 'paragraph:tail', `image(${PIC})`, 'paragraph:', 'paragraph:end']);
+  });
+
+  it('pastes web content with no media into a code block as its plain text', async () => {
+    const { editor } = await openReady([{ type: 'codeBlock', content: 'code' }]);
+    pasteAtPoint(editor, positionOf(editor, 'code', 4), { 'text/html': '<h1>Title</h1><p>para</p><ul><li>x</li><li>y</li></ul>', 'text/plain': 'Title\n\npara\n\n- x\n- y' });
+    await settled();
+    expect(codeWords(editor)).toEqual(['codeTitle\n\npara\n\n- x\n- y']);
   });
 
   it('pastes a picture copied from one line\'s end to the next line\'s start as that picture alone', async () => {
