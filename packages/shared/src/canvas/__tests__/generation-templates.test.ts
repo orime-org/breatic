@@ -507,6 +507,11 @@ describe('character template layouts (inner#1846)', () => {
     }
   });
 
+  it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
+    expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds and tighten the identity sentence');
+    expect(byId('character-showcase-orbit')?.agentNote).toContain('check that it shows different sides of the character, not the character turning round');
+  });
+
   it('writes the inheritance list, the shot and move fields and the orbit the sources ask for', () => {
     const scene = raw('en', 'canvas.template.single-view-refs-scene.prompt') ?? '';
     for (const part of ['identity', 'facial features', 'face shape', 'skin tone', 'apparent age', 'hairstyle and hair colour', 'height', 'build and body proportions', 'every garment', 'the shoes and every accessory', 'overall bearing', 'no duplicates of the person, no blending of features']) {
