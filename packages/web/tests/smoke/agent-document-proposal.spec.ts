@@ -689,8 +689,13 @@ test('Locate brings a comment\'s quoted words in a long, wide table into view an
   await expect(page.locator(`${DOCUMENT_EDITOR} .bn-thread-mark`).filter({ hasText: 'DEEPCELL' })).toHaveCount(1);
 });
 
+/** Words that make the second paragraph run over several lines in the body column. */
+const LONG_TAIL = ' She stands in the hallway with her coat on, the taxi waiting outside, and neither of them says the thing they both came to say before the door closes.';
+
 test('Locate on a rewrite opens its document from another Space and outlines the passage, writing nothing (inner#1646)', async () => {
   const docId = await openDocumentWithText();
+  // A passage of several lines, so the outline can be told apart from its last line alone.
+  await page.keyboard.type(LONG_TAIL);
   await sendTheOpenSpace();
   await answerWith(onSecondBlock({ kind: 'rewrite', body: 'He opens the door. Her bags are packed.' }));
   const card = await askForTheCard();
@@ -707,6 +712,7 @@ test('Locate on a rewrite opens its document from another Space and outlines the
   const words = await page.locator(`${DOCUMENT_EDITOR} p`).last().boundingBox();
   const above = await page.locator(`${DOCUMENT_EDITOR} p`).first().boundingBox();
   expect(box !== null && words !== null && above !== null).toBe(true);
+  expect(words!.height).toBeGreaterThan(above!.height * 1.5);
   expect(box!.x).toBeLessThan(words!.x);
   expect(box!.y).toBeLessThanOrEqual(words!.y);
   expect(box!.x + box!.width).toBeGreaterThanOrEqual(words!.x + words!.width);
@@ -714,7 +720,7 @@ test('Locate on a rewrite opens its document from another Space and outlines the
   // Only this passage: the outline starts below the middle of the one above it.
   expect(box!.y).toBeGreaterThan(above!.y + above!.height / 2);
   await expect(card).toHaveAttribute('data-state', 'idle');
-  expect(await paragraphs()).toEqual(['Scene two opens.', 'He pushes the door open and sees her bags packed.']);
+  expect(await paragraphs()).toEqual(['Scene two opens.', `He pushes the door open and sees her bags packed.${LONG_TAIL}`]);
   expect(await undoStack(docId)).toBe(steps);
 
   await card.getByRole('button', { name: 'Replace' }).click();
