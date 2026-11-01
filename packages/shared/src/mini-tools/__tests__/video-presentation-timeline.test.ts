@@ -4,16 +4,21 @@
 /**
  * S6a pure timing rules of the unified presentation timeline (inner#1306,
  * test plan §87; frames-split design §4.2 audio sample grid, §4.2.1 frame ends,
- * empty intervals and composite end, §7.16 invariants).
+ * leading and empty intervals and the composite end, §7.16 invariants).
  *
  * Every expected value below is written from the approved design rows, never
  * from an implementation: declared ends first, Matroska Info.Duration is never a
  * frame end, an undeclared last frame of two or more takes the largest earlier
- * start difference, a lone undeclared frame takes `single_frame_duration_ms`,
- * every empty interval is exactly one `derived-empty` frame, audio beyond the
- * video extends the last real frame as `derived-hold`, and an explicit empty edit
- * wins over the hold. Audio endpoints land on a 48000 Hz grid rounded as FFmpeg
- * `av_rescale` with AV_ROUND_NEAR_INF (nearest, halves away from zero).
+ * start difference, a lone undeclared frame takes `single_frame_duration_ms`.
+ * The presentation origin is the earlier of the first video frame and the
+ * selected audio's effective start; presentation time 0 is that origin and the
+ * rebase amount is reported. The first real frame extends back to the origin as
+ * `derived-lead`, so the first frame is never empty. Every empty interval between
+ * frames, merged with its adjacent empty intervals, is one `derived-empty` frame;
+ * audio beyond the video extends the last real frame as `derived-hold`; an
+ * explicit trailing empty edit wins over the hold and extends to the composite
+ * end. Audio endpoints land on a 48000 Hz grid rounded as FFmpeg `av_rescale`
+ * with AV_ROUND_NEAR_INF (nearest, halves away from zero).
  */
 
 import fc from 'fast-check';
@@ -28,14 +33,18 @@ interface TimelineInput {
   frames: InputFrame[];
   emptyEdits: Interval[];
   segmentDuration: Rational | null;
+  audioStart: Rational | null;
   audioEnd: Rational | null;
   singleFrameDurationMs: number;
 }
 type SupportRule = 'declared' | 'next-start' | 'previous-max' | 'single-frame';
 type PlannedFrame =
-  | { kind: 'source'; occurrence: number; displayStart: Rational; displayEnd: Rational; support: { rule: SupportRule; end: Rational }; derivedHold: Interval | null }
+  | {
+    kind: 'source'; occurrence: number; displayStart: Rational; displayEnd: Rational;
+    support: { rule: SupportRule; start: Rational; end: Rational }; derivedLead: Interval | null; derivedHold: Interval | null;
+  }
   | { kind: 'derived-empty'; displayStart: Rational; displayEnd: Rational };
-interface Timeline { frames: PlannedFrame[]; end: Rational }
+interface Timeline { origin: Rational; frames: PlannedFrame[]; end: Rational }
 interface TimelineApi {
   planVideoPresentationTimeline: (input: TimelineInput) => Timeline;
   videoAudioSampleIndex: (time: Rational) => number;
@@ -81,17 +90,34 @@ function r(numerator: number | bigint, denominator: number | bigint = 1): Ration
 }
 
 /**
- * A planned source frame.
+ * Whether two reduced rationals are equal.
+ * @param a - First value.
+ * @param b - Second value.
+ * @returns Equality.
+ */
+function same(a: Rational, b: Rational): boolean {
+  return a.numerator === b.numerator && a.denominator === b.denominator;
+}
+
+/**
+ * A planned source frame; a lead or hold appears when its support is narrower than its window.
  * @param occurrence - Index of the input frame.
  * @param start - Display start.
  * @param end - Display end.
  * @param rule - How the support end was obtained.
- * @param supportEnd - The support end; defaults to the display end.
+ * @param support - The support interval when it differs from the window.
+ * @param support.start - The source support start; defaults to the display start.
+ * @param support.end - The support end; defaults to the display end.
  * @returns The expected frame.
  */
-function source(occurrence: number, start: Rational, end: Rational, rule: SupportRule, supportEnd: Rational = end): PlannedFrame {
-  const held = supportEnd.numerator !== end.numerator || supportEnd.denominator !== end.denominator;
-  return { kind: 'source', occurrence, displayStart: start, displayEnd: end, support: { rule, end: supportEnd }, derivedHold: held ? { start: supportEnd, end } : null };
+function source(occurrence: number, start: Rational, end: Rational, rule: SupportRule, support: { start?: Rational; end?: Rational } = {}): PlannedFrame {
+  const supportStart = support.start ?? start;
+  const supportEnd = support.end ?? end;
+  return {
+    kind: 'source', occurrence, displayStart: start, displayEnd: end, support: { rule, start: supportStart, end: supportEnd },
+    derivedLead: same(supportStart, start) ? null : { start, end: supportStart },
+    derivedHold: same(supportEnd, end) ? null : { start: supportEnd, end },
+  };
 }
 
 /**
@@ -111,7 +137,7 @@ function empty(start: Rational, end: Rational): PlannedFrame {
  * @returns The input.
  */
 function input(frames: InputFrame[], extra: Partial<TimelineInput> = {}): TimelineInput {
-  return { frames, emptyEdits: [], segmentDuration: null, audioEnd: null, singleFrameDurationMs: 5000, ...extra };
+  return { frames, emptyEdits: [], segmentDuration: null, audioStart: null, audioEnd: null, singleFrameDurationMs: 5000, ...extra };
 }
 
 /**
@@ -133,12 +159,11 @@ function bare(start: Rational): InputFrame {
   return { start, declaredEnd: null };
 }
 
-describe('PT §4.2.1 frame ends, empty intervals and the composite end', () => {
+describe('PT §4.2.1 frame ends, leading and empty intervals and the composite end', () => {
   it('PT01 a declared frame end is used as declared', () => {
     const plan = required('planVideoPresentationTimeline');
     expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))]))).toEqual({
-      frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared')],
-      end: r(1, 2),
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared')], end: r(1, 2),
     });
   });
 
@@ -147,6 +172,7 @@ describe('PT §4.2.1 frame ends, empty intervals and the composite end', () => {
     const plan = required('planVideoPresentationTimeline');
     const frames = [bare(r(0)), bare(r(7, 100)), bare(r(17, 100)), bare(r(233, 250))];
     expect(plan(input(frames, { segmentDuration: r(932267, 1_000_000) }))).toEqual({
+      origin: r(0),
       frames: [
         source(0, r(0), r(7, 100), 'next-start'),
         source(1, r(7, 100), r(17, 100), 'next-start'),
@@ -159,18 +185,19 @@ describe('PT §4.2.1 frame ends, empty intervals and the composite end', () => {
 
   it('PT03 a lone undeclared frame lasts single_frame_duration_ms (default 5000) and ignores a 1 ms Info.Duration', () => {
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([bare(r(0))], { segmentDuration: r(1, 1000) }))).toEqual({ frames: [source(0, r(0), r(5), 'single-frame')], end: r(5) });
-    expect(plan(input([bare(r(0))], { singleFrameDurationMs: 2500 }))).toEqual({ frames: [source(0, r(0), r(5, 2), 'single-frame')], end: r(5, 2) });
+    expect(plan(input([bare(r(0))], { segmentDuration: r(1, 1000) }))).toEqual({ origin: r(0), frames: [source(0, r(0), r(5), 'single-frame')], end: r(5) });
+    expect(plan(input([bare(r(0))], { singleFrameDurationMs: 2500 }))).toEqual({ origin: r(0), frames: [source(0, r(0), r(5, 2), 'single-frame')], end: r(5, 2) });
   });
 
   it('PT04 a lone frame with a declared end keeps the declaration instead of the single-frame policy', () => {
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([declared(r(0), r(1, 30))]))).toEqual({ frames: [source(0, r(0), r(1, 30), 'declared')], end: r(1, 30) });
+    expect(plan(input([declared(r(0), r(1, 30))]))).toEqual({ origin: r(0), frames: [source(0, r(0), r(1, 30), 'declared')], end: r(1, 30) });
   });
 
   it('PT05 a declared last frame ends where declared even when earlier frames are undeclared', () => {
     const plan = required('planVideoPresentationTimeline');
     expect(plan(input([bare(r(0)), bare(r(1, 10)), declared(r(3, 10), r(7, 20))]))).toEqual({
+      origin: r(0),
       frames: [source(0, r(0), r(1, 10), 'next-start'), source(1, r(1, 10), r(3, 10), 'next-start'), source(2, r(3, 10), r(7, 20), 'declared')],
       end: r(7, 20),
     });
@@ -180,62 +207,111 @@ describe('PT §4.2.1 frame ends, empty intervals and the composite end', () => {
     // Differences 1/2 and 1/10: maximum 1/2, last 1/10, average 3/10.
     const plan = required('planVideoPresentationTimeline');
     expect(plan(input([bare(r(0)), bare(r(1, 2)), bare(r(3, 5))]))).toEqual({
+      origin: r(0),
       frames: [source(0, r(0), r(1, 2), 'next-start'), source(1, r(1, 2), r(3, 5), 'next-start'), source(2, r(3, 5), r(11, 10), 'previous-max')],
       end: r(11, 10),
     });
   });
 
-  it('PT07 a leading interval without video is exactly one derived-empty frame starting at zero', () => {
+  it('PT07 video starting after 0 with no earlier audio rebases the origin to the first frame, which is never empty', () => {
+    // Design §4.2.1 leading row: an explicit leading empty edit and a first frame after 0 without an edit list.
     const plan = required('planVideoPresentationTimeline');
-    const expected = { frames: [empty(r(0), r(1, 4)), source(0, r(1, 4), r(1, 2), 'declared')], end: r(1, 2) };
+    const expected = { origin: r(1, 4), frames: [source(0, r(0), r(1, 4), 'declared')], end: r(1, 4) };
     expect(plan(input([declared(r(1, 4), r(1, 2))]))).toEqual(expected);
-    // An explicit leading empty edit over the same interval is still one frame.
     expect(plan(input([declared(r(1, 4), r(1, 2))], { emptyEdits: [{ start: r(0), end: r(1, 4) }] }))).toEqual(expected);
+    // Audio starting at or after the first frame does not move the origin earlier.
+    expect(plan(input([declared(r(1, 4), r(1, 2))], { audioStart: r(1, 4), audioEnd: r(1, 2) }))).toEqual(expected);
+    expect(plan(input([declared(r(1, 4), r(1, 2))], { audioStart: r(3, 8), audioEnd: r(1, 2) }))).toEqual(expected);
   });
 
-  it('PT08 an internal gap [0.25, 0.75) is exactly one 500 ms derived-empty frame', () => {
+  it('PT08 video starting after the selected audio extends the first real frame back to the audio start as derived-lead', () => {
+    const plan = required('planVideoPresentationTimeline');
+    const frames = [declared(r(1, 4), r(1, 2)), declared(r(1, 2), r(3, 4))];
+    // Audio from 0, with and without an explicit leading empty edit (the Chromium sample: playback from 0 shows the first frame).
+    const fromZero = {
+      origin: r(0),
+      frames: [source(0, r(0), r(1, 2), 'declared', { start: r(1, 4) }), source(1, r(1, 2), r(3, 4), 'declared')],
+      end: r(3, 4),
+    };
+    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(3, 4) }))).toEqual(fromZero);
+    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(3, 4), emptyEdits: [{ start: r(0), end: r(1, 4) }] }))).toEqual(fromZero);
+    // Audio from 1/10: the origin is 1/10 and every time is rebased by it.
+    expect(plan(input(frames, { audioStart: r(1, 10), audioEnd: r(3, 4) }))).toEqual({
+      origin: r(1, 10),
+      frames: [source(0, r(0), r(2, 5), 'declared', { start: r(3, 20) }), source(1, r(2, 5), r(13, 20), 'declared')],
+      end: r(13, 20),
+    });
+  });
+
+  it('PT09 an internal gap [0.25, 0.75) is exactly one 500 ms derived-empty frame', () => {
     const plan = required('planVideoPresentationTimeline');
     const frames = [declared(r(0), r(1, 4)), declared(r(3, 4), r(1))];
-    const expected = { frames: [source(0, r(0), r(1, 4), 'declared'), empty(r(1, 4), r(3, 4)), source(1, r(3, 4), r(1), 'declared')], end: r(1) };
+    const expected = { origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), empty(r(1, 4), r(3, 4)), source(1, r(3, 4), r(1), 'declared')], end: r(1) };
     expect(plan(input(frames))).toEqual(expected);
     expect(plan(input(frames, { emptyEdits: [{ start: r(1, 4), end: r(3, 4) }] }))).toEqual(expected);
   });
 
-  it('PT09 audio past the video extends the last real frame as derived-hold without a new frame', () => {
+  it.each([
+    ['two adjacent explicit empty edits', [{ start: r(1, 4), end: r(1, 2) }, { start: r(1, 2), end: r(3, 4) }]],
+    ['an explicit empty edit followed by an interval without video support', [{ start: r(1, 4), end: r(1, 2) }]],
+    ['an interval without video support followed by an explicit empty edit', [{ start: r(1, 2), end: r(3, 4) }]],
+  ])('PT10 %s between frames merge into one derived-empty frame', (_, emptyEdits) => {
+    const plan = required('planVideoPresentationTimeline');
+    expect(plan(input([declared(r(0), r(1, 4)), declared(r(3, 4), r(1))], { emptyEdits }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), empty(r(1, 4), r(3, 4)), source(1, r(3, 4), r(1), 'declared')], end: r(1),
+    });
+  });
+
+  it('PT11 audio past the video extends the last real frame as derived-hold without a new frame', () => {
     // Design §4.2.1 audio row: the second frame's support [0.25, 0.5) extends to 1 s.
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { audioEnd: r(1) }))).toEqual({
-      frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1), 'declared', r(1, 2))],
-      end: r(1),
+    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { audioStart: r(0), audioEnd: r(1) }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1), 'declared', { end: r(1, 2) })], end: r(1),
     });
   });
 
-  it.each([[r(1, 3)], [r(1, 2)]])('PT10 audio ending at %o, not after the video, cuts nothing and adds no hold', (audioEnd) => {
+  it.each([[r(1, 3)], [r(1, 2)]])('PT12 audio ending at %o, not after the video, cuts nothing and adds no hold', (audioEnd) => {
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { audioEnd }))).toEqual({
-      frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared')],
-      end: r(1, 2),
+    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { audioStart: r(0), audioEnd }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared')], end: r(1, 2),
     });
   });
 
-  it.each([[r(1)], [r(3, 4)], [r(1, 3)], [null]])('PT11 an explicit trailing empty edit wins over the hold (audio end %o)', (audioEnd) => {
+  it.each([[r(1), r(1)], [r(3, 4), r(1)], [r(1, 3), r(1)], [null, r(1)], [r(3, 2), r(3, 2)]])('PT13 an explicit trailing empty edit [1/2, 1) wins over the hold (audio end %o, composite end %o)', (audioEnd, end) => {
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { emptyEdits: [{ start: r(1, 2), end: r(1) }], audioEnd }))).toEqual({
-      frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared'), empty(r(1, 2), r(1))],
-      end: r(1),
+    const audio = audioEnd === null ? {} : { audioStart: r(0), audioEnd };
+    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { emptyEdits: [{ start: r(1, 2), end: r(1) }], ...audio }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared'), empty(r(1, 2), end)], end,
     });
   });
 
-  it('PT12 a lone frame takes the single-frame support and then holds to a longer audio end', () => {
+  it.each([
+    ['two adjacent trailing explicit empty edits', [{ start: r(1, 2), end: r(3, 4) }, { start: r(3, 4), end: r(1) }]],
+    ['an interval without video support before a trailing explicit empty edit', [{ start: r(3, 4), end: r(1) }]],
+  ])('PT14 %s merge into one trailing derived-empty frame', (_, emptyEdits) => {
     const plan = required('planVideoPresentationTimeline');
-    expect(plan(input([bare(r(0))], { audioEnd: r(8) }))).toEqual({ frames: [source(0, r(0), r(8), 'single-frame', r(5))], end: r(8) });
-    expect(plan(input([bare(r(0))], { audioEnd: r(2) }))).toEqual({ frames: [source(0, r(0), r(5), 'single-frame')], end: r(5) });
+    expect(plan(input([declared(r(0), r(1, 4)), declared(r(1, 4), r(1, 2))], { emptyEdits, audioStart: r(0), audioEnd: r(1) }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(1, 4), 'declared'), source(1, r(1, 4), r(1, 2), 'declared'), empty(r(1, 2), r(1))], end: r(1),
+    });
   });
 
-  it('PT13 the previous-max support holds to a longer audio end', () => {
+  it('PT15 a lone frame takes the single-frame support and then holds to a longer audio end', () => {
+    const plan = required('planVideoPresentationTimeline');
+    expect(plan(input([bare(r(0))], { audioStart: r(0), audioEnd: r(8) }))).toEqual({ origin: r(0), frames: [source(0, r(0), r(8), 'single-frame', { end: r(5) })], end: r(8) });
+    expect(plan(input([bare(r(0))], { audioStart: r(0), audioEnd: r(2) }))).toEqual({ origin: r(0), frames: [source(0, r(0), r(5), 'single-frame')], end: r(5) });
+  });
+
+  it('PT16 the previous-max support holds to a longer audio end', () => {
     const plan = required('planVideoPresentationTimeline');
     const frames = [bare(r(0)), bare(r(7, 100)), bare(r(17, 100)), bare(r(233, 250))];
-    expect(plan(input(frames, { audioEnd: r(2) })).frames.at(-1)).toEqual(source(3, r(233, 250), r(2), 'previous-max', r(847, 500)));
+    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(2) })).frames.at(-1)).toEqual(source(3, r(233, 250), r(2), 'previous-max', { end: r(847, 500) }));
+  });
+
+  it('PT17 one frame carries both a lead and a hold', () => {
+    const plan = required('planVideoPresentationTimeline');
+    expect(plan(input([bare(r(1, 2))], { audioStart: r(0), audioEnd: r(8) }))).toEqual({
+      origin: r(0), frames: [source(0, r(0), r(8), 'single-frame', { start: r(1, 2), end: r(11, 2) })], end: r(8),
+    });
   });
 
   it.each([
@@ -250,24 +326,25 @@ describe('PT §4.2.1 frame ends, empty intervals and the composite end', () => {
     ['a negative single-frame duration', input([bare(r(0))], { singleFrameDurationMs: -5000 })],
     ['a fractional single-frame duration', input([bare(r(0))], { singleFrameDurationMs: 1.5 })],
     ['a non-finite single-frame duration', input([bare(r(0))], { singleFrameDurationMs: Number.NaN })],
-  ])('PT14 rejects %s', (_, value) => {
+  ])('PT18 rejects %s', (_, value) => {
     const plan = required('planVideoPresentationTimeline');
     expect(() => plan(value)).toThrow(RangeError);
   });
 });
 
 interface GeneratedFrame { gap: number; length: number }
+interface GeneratedAudio { start: number; length: number }
 
 /**
- * The naive oracle for declared frames with gaps and an optional undeclared last frame, written from §4.2.1.
+ * The naive oracle for declared frames with gaps, an optional undeclared last frame and optional audio, written from §4.2.1.
  * @param frames - Gap before and length of each frame, in units of 1/denominator.
  * @param denominator - The unit.
  * @param lastUndeclared - Whether the last frame has no declared end.
- * @param audioEnd - Audio end in units, or null.
+ * @param audio - Audio start and length in units, or null.
  * @param singleFrameMs - The single-frame policy value.
  * @returns The input and the expected timeline.
  */
-function oracle(frames: readonly GeneratedFrame[], denominator: number, lastUndeclared: boolean, audioEnd: number | null, singleFrameMs: number): { input: TimelineInput; expected: Timeline } {
+function oracle(frames: readonly GeneratedFrame[], denominator: number, lastUndeclared: boolean, audio: GeneratedAudio | null, singleFrameMs: number): { input: TimelineInput; expected: Timeline } {
   // Ticks of 1/(denominator·1000) s, so the single-frame milliseconds stay integral.
   const d = BigInt(denominator) * 1000n;
   const starts: bigint[] = [];
@@ -284,54 +361,61 @@ function oracle(frames: readonly GeneratedFrame[], denominator: number, lastUnde
       ends[last] = starts[last]! + widest;
     }
   }
+  const audioStart = audio === null ? null : BigInt(audio.start) * 1000n;
+  const audioEnd = audio === null ? null : BigInt(audio.start + audio.length) * 1000n;
+  const origin = audioStart !== null && audioStart < starts[0]! ? audioStart : starts[0]!;
+  const t = (value: bigint): Rational => r(value - origin, d);
   const planned: PlannedFrame[] = [];
-  let cursor = 0n;
   starts.forEach((start, index) => {
-    if (start > cursor) planned.push(empty(r(cursor, d), r(start, d)));
-    planned.push(source(index, r(start, d), r(ends[index]!, d), index === last ? lastRule : 'declared'));
-    cursor = ends[index]!;
+    if (index > 0 && start > ends[index - 1]!) planned.push(empty(t(ends[index - 1]!), t(start)));
+    planned.push(source(index, t(index === 0 ? origin : start), t(ends[index]!), index === last ? lastRule : 'declared', { start: t(start) }));
   });
-  let end = cursor;
-  if (audioEnd !== null && BigInt(audioEnd) * 1000n > cursor) {
-    end = BigInt(audioEnd) * 1000n;
-    planned[planned.length - 1] = source(last, r(starts[last]!, d), r(end, d), lastRule, r(cursor, d));
+  let end = ends[last]!;
+  if (audioEnd !== null && audioEnd > end) {
+    end = audioEnd;
+    const first = last === 0 ? origin : starts[last]!;
+    planned[planned.length - 1] = source(last, t(first), t(end), lastRule, { start: t(starts[last]!), end: t(ends[last]!) });
   }
   const inputFrames = starts.map((start, index) => (index === last && lastUndeclared ? bare(r(start, d)) : declared(r(start, d), r(ends[index]!, d))));
   return {
-    input: input(inputFrames, { audioEnd: audioEnd === null ? null : r(audioEnd, denominator), singleFrameDurationMs: singleFrameMs }),
-    expected: { frames: planned, end: r(end, d) },
+    input: input(inputFrames, {
+      audioStart: audioStart === null ? null : r(audioStart, d), audioEnd: audioEnd === null ? null : r(audioEnd, d), singleFrameDurationMs: singleFrameMs,
+    }),
+    expected: { origin: r(origin, d), frames: planned, end: t(end) },
   };
 }
 
 const generatedFrame = fc.record({ gap: fc.integer({ min: 0, max: 6 }), length: fc.integer({ min: 1, max: 6 }) });
+const generatedAudio = fc.option(fc.record({ start: fc.integer({ min: 0, max: 10 }), length: fc.integer({ min: 1, max: 200 }) }), { nil: null });
 
 describe('PP §4.2.1 and §7.16 invariants (property)', () => {
-  it('PP01 equals the naive oracle for random declared frames, gaps, an undeclared last frame and audio ends', () => {
+  it('PP01 equals the naive oracle for random declared frames, gaps, an undeclared last frame and audio windows', () => {
     const plan = required('planVideoPresentationTimeline');
     fc.assert(fc.property(
-      fc.array(generatedFrame, { minLength: 1, maxLength: 12 }), fc.constantFrom(4, 25, 1000), fc.boolean(),
-      fc.option(fc.integer({ min: 0, max: 200 }), { nil: null }), fc.constantFrom(5000, 1000, 2500),
-      (frames, denominator, lastUndeclared, audioEnd, singleFrameMs) => {
-        const { input: value, expected } = oracle(frames, denominator, lastUndeclared, audioEnd, singleFrameMs);
+      fc.array(generatedFrame, { minLength: 1, maxLength: 12 }), fc.constantFrom(4, 25, 1000), fc.boolean(), generatedAudio, fc.constantFrom(5000, 1000, 2500),
+      (frames, denominator, lastUndeclared, audio, singleFrameMs) => {
+        const { input: value, expected } = oracle(frames, denominator, lastUndeclared, audio, singleFrameMs);
         expect(plan(value)).toEqual(expected);
       },
     ), { seed: 130687, numRuns: 300 });
   });
 
-  it('PP02 the output tiles [0, end): contiguous, positive, one derived-empty per gap, hold adds no frame', () => {
+  it('PP02 the output tiles [0, end): first frame real, contiguous, one derived-empty per gap, lead and hold add no frame', () => {
     const plan = required('planVideoPresentationTimeline');
     fc.assert(fc.property(
-      fc.array(generatedFrame, { minLength: 1, maxLength: 12 }), fc.boolean(), fc.option(fc.integer({ min: 0, max: 200 }), { nil: null }),
-      (frames, lastUndeclared, audioEnd) => {
-        const { input: value } = oracle(frames, 25, lastUndeclared, audioEnd, 5000);
+      fc.array(generatedFrame, { minLength: 1, maxLength: 12 }), fc.boolean(), generatedAudio,
+      (frames, lastUndeclared, audio) => {
+        const { input: value } = oracle(frames, 25, lastUndeclared, audio, 5000);
         const result = plan(value);
-        const gaps = frames.filter((frame) => frame.gap > 0).length;
+        const gaps = frames.slice(1).filter((frame) => frame.gap > 0).length;
         expect(result.frames.filter((frame) => frame.kind === 'source')).toHaveLength(frames.length);
         expect(result.frames.filter((frame) => frame.kind === 'derived-empty')).toHaveLength(gaps);
+        expect(result.frames[0]!.kind).toBe('source');
         expect(result.frames[0]!.displayStart).toEqual(r(0));
         result.frames.forEach((frame, index) => {
           if (index > 0) expect(frame.displayStart).toEqual(result.frames[index - 1]!.displayEnd);
           if (index > 0 && frame.kind === 'derived-empty') expect(result.frames[index - 1]!.kind).toBe('source');
+          if (index > 0 && frame.kind === 'source') expect(frame.derivedLead).toBeNull();
         });
         expect(result.frames.at(-1)!.displayEnd).toEqual(result.end);
         const held = result.frames.filter((frame) => frame.kind === 'source' && frame.derivedHold !== null);
@@ -369,8 +453,8 @@ describe('PP §4.2.1 and §7.16 invariants (property)', () => {
 
   it('PP05 is pure: frozen input is not mutated and repeated calls are equal', () => {
     const plan = required('planVideoPresentationTimeline');
-    const frames = Object.freeze([Object.freeze(bare(r(0))), Object.freeze(bare(r(7, 100)))]) as unknown as InputFrame[];
-    const value = Object.freeze(input(frames, { audioEnd: r(1) }));
+    const frames = Object.freeze([Object.freeze(bare(r(1, 10))), Object.freeze(bare(r(1, 5)))]) as unknown as InputFrame[];
+    const value = Object.freeze(input(frames, { audioStart: r(0), audioEnd: r(1) }));
     const first = plan(value);
     expect(plan(value)).toEqual(first);
   });

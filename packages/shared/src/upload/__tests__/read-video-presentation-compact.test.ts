@@ -7,7 +7,8 @@
  *
  * The compact object is the envelope sourceFingerprint/toolInputId/planSha256/
  * presentation. receipt.table's hash and size measure the whole envelope and its
- * frameCount counts the inner presentation. The reader validates the complete
+ * frameCount counts the inner presentation; the table receipt carries its own
+ * contentType. The reader validates the complete
  * envelope against the receipt first and only then hands back the S1 table;
  * a missing, extra or mismatching envelope field is refused as `content`.
  * Transport, deadline and cancellation behaviour are the existing measured read
@@ -20,9 +21,9 @@ import * as entry from '../../index.js';
 import type { VideoPresentationTable } from '../../mini-tools/video-presentation-table.js';
 
 interface Receipt {
-  schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: { jobId: string; deadlineAt: number };
+  schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; producerVersion: number; attempt: { jobId: string; deadlineAt: number };
   url: string; etag: string; size: number; sha256: string; contentType: 'application/json';
-  table: { url: string; sha256: string; size: number; frameCount: number };
+  table: { url: string; sha256: string; size: number; contentType: 'application/json'; frameCount: number };
 }
 type Read = (receipt: unknown, policy: { maxBytes: number }, options: { deadlineAt: number; signal?: AbortSignal }) => Promise<VideoPresentationTable>;
 const api = entry as unknown as { readVideoPresentationCompact?: Read };
@@ -64,9 +65,9 @@ function bytesOf(value: unknown): Uint8Array { return new TextEncoder().encode(J
 async function receiptFor(bytes: Uint8Array, frameCount = 4): Promise<Receipt> {
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return {
-    schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { jobId: 'video-presentation:job-1', deadlineAt: 1_800_000_900_000 },
+    schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, producerVersion: 2, attempt: { jobId: 'video-presentation:job-1', deadlineAt: 1_800_000_900_000 },
     url: fullURL, etag: 'etag-full', size: 900, sha256: 'f'.repeat(64), contentType: 'application/json',
-    table: { url: tableURL, size: bytes.length, frameCount, sha256: Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('') },
+    table: { url: tableURL, size: bytes.length, contentType: 'application/json', frameCount, sha256: Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('') },
   };
 }
 
@@ -144,7 +145,8 @@ describe('RC S6a compact envelope bounded read', () => {
   });
 
   it.each([
-    ['the earlier v2 receipt', (value: Receipt): unknown => ({ ...value, toolInputId: undefined, planSha256: undefined, producerVersion: 2 })],
+    ['the earlier v2 receipt', (value: Receipt): unknown => ({ ...value, toolInputId: undefined, planSha256: undefined, table: { ...value.table, contentType: undefined } })],
+    ['a table receipt without its contentType', (value: Receipt): unknown => ({ ...value, table: { ...value.table, contentType: undefined } })],
     ['a missing toolInputId', (value: Receipt): unknown => { const { toolInputId: _, ...rest } = value; return rest; }],
     ['a table at the ledger URL', (value: Receipt): unknown => ({ ...value, table: { ...value.table, url: fullURL } })],
     ['a bare table receipt', (value: Receipt): unknown => value.table],

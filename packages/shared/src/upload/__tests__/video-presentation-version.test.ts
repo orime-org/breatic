@@ -12,7 +12,10 @@
  * the resolved colour matrix and the display geometry, never carrier choices,
  * URLs or later object hashes. Each object has one strict schema; the earlier
  * shapes (v1 descriptor and manifest, v2 ledger and receipt, the bare compact
- * table) fail to parse because there is no legacy reader.
+ * table) fail to parse because there is no legacy reader. schemaVersion keeps
+ * its current values (descriptor and manifest 1, full and receipt 2); the compact
+ * envelope has exactly four fields. The receipt keeps producerVersion and the
+ * compact receipt carries its own contentType.
  */
 
 import fc from 'fast-check';
@@ -32,7 +35,9 @@ interface Plan {
   presentation: VideoPresentationTable;
   originMapping: {
     timeBase: Rational;
+    origin: Rational;
     entries: OriginEntry[];
+    firstSource: { supportStart: Rational; lead: null | { kind: 'derived-lead'; start: Rational } };
     lastSource: { support: 'declared' | 'previous-max' | 'single-frame'; supportEnd: Rational; hold: null | { kind: 'derived-hold'; end: Rational } };
   };
   videoSpans: EditSpan[] | null;
@@ -125,7 +130,10 @@ function cfrPlan(): Plan {
   return {
     display: { width: 64, height: 48, duration: r(17, 8) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
-    originMapping: { timeBase: r(1, 16384), entries: [{ kind: 'source', start: 4096, count: 17, step: 2048 }], lastSource: { support: 'declared', supportEnd: r(17, 8), hold: null } },
+    originMapping: {
+      timeBase: r(1, 16384), origin: r(0), entries: [{ kind: 'source', start: 4096, count: 17, step: 2048 }],
+      firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(17, 8), hold: null },
+    },
     videoSpans: [{ sourceStart: r(1, 4), sourceEnd: r(19, 8), presentationStart: r(0), rate: r(1) }],
     audioSpans: [{ sourceStart: r(8, 375), sourceEnd: r(6439, 3000), presentationStart: r(0), rate: r(1) }],
     segmentDuration: null,
@@ -133,21 +141,39 @@ function cfrPlan(): Plan {
 }
 
 /**
- * Transparent source: leading empty [0,1/4), frame, empty [1/2,3/4), frame supported to 1 s and held to 2 s by audio.
+ * Transparent source with audio from 0: the first frame (source 1/4) leads back to 0, an empty [1/2,3/4), a frame supported to 1 s and held to 2 s.
  * @returns A fresh valid plan.
  */
 function gapHoldPlan(): Plan {
   return {
     display: { width: 96, height: 64, duration: r(2) }, colorMatrix: 'bt709', policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' },
-    presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 3, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
+    presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 2, duration: 2 }, { start: 2, count: 1, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
     originMapping: {
-      timeBase: r(1, 1024),
-      entries: [{ kind: 'derived-empty' }, { kind: 'source', start: 0, count: 1, step: 0 }, { kind: 'derived-empty' }, { kind: 'source', start: 512, count: 1, step: 0 }],
+      timeBase: r(1, 1024), origin: r(0),
+      entries: [{ kind: 'source', start: 0, count: 1, step: 0 }, { kind: 'derived-empty' }, { kind: 'source', start: 512, count: 1, step: 0 }],
+      firstSource: { supportStart: r(1, 4), lead: { kind: 'derived-lead', start: r(0) } },
       lastSource: { support: 'declared', supportEnd: r(1), hold: { kind: 'derived-hold', end: r(2) } },
     },
     videoSpans: [{ sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(1, 4), rate: r(1) }, { sourceStart: r(1, 2), sourceEnd: r(3, 4), presentationStart: r(3, 4), rate: r(1) }],
     audioSpans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }],
     segmentDuration: null,
+  };
+}
+
+/**
+ * Opaque frames [0,1/4) and [3/4,1) around one empty [1/4,3/4), no audio; the first frame starts at movie time 1/8, rebased to 0.
+ * @returns A fresh valid plan.
+ */
+function gapPlan(): Plan {
+  return {
+    display: { width: 64, height: 48, duration: r(1) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 1, duration: 1 }, { start: 1, count: 1, step: 2, duration: 2 }, { start: 3, count: 1, step: 1, duration: 1 }] },
+    originMapping: {
+      timeBase: r(1, 1000), origin: r(1, 8),
+      entries: [{ kind: 'source', start: 125, count: 1, step: 0 }, { kind: 'derived-empty' }, { kind: 'source', start: 875, count: 1, step: 0 }],
+      firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(1), hold: null },
+    },
+    videoSpans: null, audioSpans: null, segmentDuration: null,
   };
 }
 
@@ -163,8 +189,8 @@ function matroskaPlan(): Plan {
       { displayStart: r(17, 100), displayEnd: r(233, 250) }, { displayStart: r(233, 250), displayEnd: r(847, 500) },
     ]),
     originMapping: {
-      timeBase: r(1, 1000), entries: [{ kind: 'source', start: 0, count: 2, step: 70 }, { kind: 'source', start: 170, count: 2, step: 762 }],
-      lastSource: { support: 'previous-max', supportEnd: r(847, 500), hold: null },
+      timeBase: r(1, 1000), origin: r(0), entries: [{ kind: 'source', start: 0, count: 2, step: 70 }, { kind: 'source', start: 170, count: 2, step: 762 }],
+      firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'previous-max', supportEnd: r(847, 500), hold: null },
     },
     videoSpans: null, audioSpans: null, segmentDuration: r(932267, 1_000_000),
   };
@@ -178,7 +204,10 @@ function singlePlan(): Plan {
   return {
     display: { width: 320, height: 240, duration: r(5) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: { schemaVersion: 1, timescale: 1, runs: [{ start: 0, count: 1, step: 5, duration: 5 }] },
-    originMapping: { timeBase: r(1, 1000), entries: [{ kind: 'source', start: 0, count: 1, step: 0 }], lastSource: { support: 'single-frame', supportEnd: r(5), hold: null } },
+    originMapping: {
+      timeBase: r(1, 1000), origin: r(0), entries: [{ kind: 'source', start: 0, count: 1, step: 0 }],
+      firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'single-frame', supportEnd: r(5), hold: null },
+    },
     videoSpans: null, audioSpans: null, segmentDuration: r(1, 1000),
   };
 }
@@ -192,7 +221,7 @@ function ledger(plan: Plan = cfrPlan()): Ledger {
   return { schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { ...ATTEMPT }, plan };
 }
 
-const PLANS = [['cfr', cfrPlan], ['gap and hold', gapHoldPlan], ['matroska previous-max', matroskaPlan], ['single frame', singlePlan]] as const;
+const PLANS = [['cfr', cfrPlan], ['lead, gap and hold', gapHoldPlan], ['rebased gap', gapPlan], ['matroska previous-max', matroskaPlan], ['single frame', singlePlan]] as const;
 
 /**
  * A carrier receipt.
@@ -212,7 +241,7 @@ function nativeVersion(): Record<string, unknown> {
   return {
     schemaVersion: 1, sourceFingerprint: H, versionId: VERSION, toolInputId: TOOL, planSha256: PLAN, policyVersion: 1,
     original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: r(17, 8) },
-    playback: { kind: 'native', carrier: carrier('original.mp4') },
+    playback: { kind: 'native', carrier: carrier('original.mp4'), displayRect: null },
     playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
   };
 }
@@ -225,7 +254,7 @@ function alphaVersion(): Record<string, unknown> {
   return {
     ...nativeVersion(), original: { width: null, height: null, duration: null }, display: { width: 96, height: 64, duration: r(2) },
     playback: { kind: 'alpha-packed', carrier: carrier('job-1.packed.mp4'), manifest: { ...carrier('job-1.alpha.json', 'application/json'), sha256: 'b'.repeat(64), size: 300 } },
-    playbackClock: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 3, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
+    playbackClock: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 2, duration: 2 }, { start: 2, count: 1, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
   };
 }
 
@@ -246,9 +275,9 @@ function manifest(): Record<string, unknown> {
  */
 function receipt(): Record<string, unknown> {
   return {
-    schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { ...ATTEMPT },
+    schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, producerVersion: 2, attempt: { ...ATTEMPT },
     url: 'https://assets.example.test/video/fixture/job-1.full.json', etag: 'etag-full', size: 900, sha256: BYTES, contentType: 'application/json',
-    table: { url: 'https://assets.example.test/video/fixture/job-1.compact.json', sha256: 'b'.repeat(64), size: 200, frameCount: 17 },
+    table: { url: 'https://assets.example.test/video/fixture/job-1.compact.json', sha256: 'b'.repeat(64), size: 200, contentType: 'application/json', frameCount: 17 },
   };
 }
 
@@ -380,11 +409,28 @@ describe('P §3.5 selected presentation version descriptor', () => {
     ['a zero-size carrier', ['playback', 'carrier', 'size'], 0], ['a bad carrier digest', ['playback', 'carrier', 'sha256'], 'F'.repeat(64)],
     ['a carrier without storage key', ['playback', 'carrier', 'storageKey'], undefined], ['a carrier without etag', ['playback', 'carrier', 'etag'], undefined],
     ['a native manifest', ['playback', 'manifest'], carrier('x.alpha.json', 'application/json')], ['an unknown playback kind', ['playback', 'kind'], 'hls'],
-    ['an invalid playback clock', ['playbackClock', 'runs'], []],
+    ['an invalid playback clock', ['playbackClock', 'runs'], []], ['a playback clock that is not an S1 table', ['playbackClock'], { timescale: 1000, offset: 0 }],
+    ['schemaVersion 2', ['schemaVersion'], 2], ['a native carrier without displayRect', ['playback', 'displayRect'], undefined],
+    ['a zero-width displayRect', ['playback', 'displayRect'], { x: 0, y: 0, width: 0, height: 97 }], ['a negative displayRect origin', ['playback', 'displayRect'], { x: -1, y: 0, width: 161, height: 97 }],
+    ['a fractional displayRect', ['playback', 'displayRect'], { x: 0, y: 0, width: 160.5, height: 97 }], ['a displayRect with extra fields', ['playback', 'displayRect'], { x: 0, y: 0, width: 161, height: 97, rotation: 0 }],
   ] as const)('P03 rejects %s', (_, path, value) => {
     const schema = required('videoPresentationVersionSchema');
     expect(schema.safeParse(nativeVersion()).success).toBe(true);
     expect(schema.safeParse(patched(nativeVersion(), path, value)).success).toBe(false);
+  });
+
+  it('P05 a native carrier padded to even records the actual picture rectangle; an unpadded one records null', () => {
+    const schema = required('videoPresentationVersionSchema');
+    const odd = { ...nativeVersion(), display: { width: 161, height: 97, duration: r(17, 8) }, playback: { kind: 'native', carrier: carrier('job-1.carrier.mp4'), displayRect: { x: 0, y: 0, width: 161, height: 97 } } };
+    expect(schema.parse(odd)).toEqual(odd);
+    expect(schema.parse(nativeVersion())).toEqual(nativeVersion());
+  });
+
+  it('P06 an alpha-packed version keeps its rectangles in the manifest, not in playback', () => {
+    const schema = required('videoPresentationVersionSchema');
+    expect(schema.safeParse(alphaVersion()).success).toBe(true);
+    expect(schema.safeParse(patched(alphaVersion(), ['playback', 'displayRect'], { x: 0, y: 0, width: 96, height: 64 })).success).toBe(false);
+    expect(schema.safeParse(patched(alphaVersion(), ['playback', 'displayRect'], null)).success).toBe(false);
   });
 
   it('P04 rejects an alpha-packed version without its manifest receipt', () => {
@@ -423,7 +469,7 @@ describe('M §3.5 alpha-packed manifest', () => {
     ['overlapping rectangles', patched(manifest(), ['alphaRect', 'x'], 0)],
     ['a rectangle outside the packed frame', patched(manifest(), ['packedHeight'], 63)],
     ['unequal colour and alpha sizes', patched(manifest(), ['alphaRect', 'width'], 48)],
-    ['a missing versionId', patched(manifest(), ['versionId'], undefined)],
+    ['a missing versionId', patched(manifest(), ['versionId'], undefined)], ['schemaVersion 2', patched(manifest(), ['schemaVersion'], 2)],
     ['an http packed object', patched(manifest(), ['packed', 'url'], 'http://assets.example.test/video/fixture/job-1.packed.mp4')],
   ])('M03 rejects %s', (_, value) => {
     const schema = required('alphaPackedManifestSchema');
@@ -449,7 +495,7 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
   });
 
   it.each([
-    ['a versionId', ['versionId'], VERSION], ['a policyVersion', ['policyVersion'], 1], ['a producerVersion', ['producerVersion'], 2],
+    ['a versionId', ['versionId'], VERSION], ['a policyVersion', ['policyVersion'], 1],
     ['a carrier strategy in the plan', ['plan', 'carrier'], { strategy: 'copy' }], ['an encoder setting in the plan', ['plan', 'crf'], 18],
     ['producer physical frames', ['plan', 'physical'], { frames: [] }], ['container blocks', ['plan', 'container'], { kind: 'matroska', blocks: [] }],
     ['a raw decode ordinal', ['plan', 'originMapping', 'entries', 0, 'rawDecodeOrdinal'], 0], ['the earlier videoEdits name', ['plan', 'videoEdits'], null],
@@ -460,21 +506,34 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
     expect(schema.safeParse(patched(ledger(), path, value)).success).toBe(false);
   });
 
+  // Frames [0,1/4), empty [1/4,1/2), empty [1/2,3/4), [3/4,1): only the two adjacent derived-empty frames are wrong.
+  const adjacent = patched(patched(gapPlan(), ['presentation', 'runs'], [{ start: 0, count: 4, step: 1, duration: 1 }]), ['originMapping', 'entries'], [
+    { kind: 'source', start: 125, count: 1, step: 0 }, { kind: 'derived-empty' }, { kind: 'derived-empty' }, { kind: 'source', start: 875, count: 1, step: 0 },
+  ]);
   const invalid: [string, Plan][] = [
-    ['fewer origin entries than frames', patched(gapHoldPlan(), ['originMapping', 'entries'], gapHoldPlan().originMapping.entries.slice(0, 3))],
+    ['fewer origin entries than frames', patched(gapHoldPlan(), ['originMapping', 'entries'], gapHoldPlan().originMapping.entries.slice(0, 2))],
     ['more origin frames than presented frames', patched(cfrPlan(), ['originMapping', 'entries', 0, 'count'], 18)],
-    ['two adjacent derived-empty frames', patched(gapHoldPlan(), ['originMapping', 'entries', 1], { kind: 'derived-empty' })],
+    ['two adjacent derived-empty frames', adjacent],
+    ['a derived-empty first frame', patched(patched(gapPlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }, { kind: 'source', start: 125, count: 1, step: 0 }, { kind: 'source', start: 875, count: 1, step: 0 }]), ['originMapping', 'firstSource', 'supportStart'], r(1, 4))],
     ['no source frame at all', patched(singlePlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }])],
-    ['a hold while a derived-empty frame is last', patched(gapHoldPlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }, { kind: 'source', start: 0, count: 1, step: 0 }, { kind: 'source', start: 512, count: 1, step: 0 }, { kind: 'derived-empty' }])],
+    ['a hold while a derived-empty frame is last', patched(gapHoldPlan(), ['originMapping', 'entries'], [{ kind: 'source', start: 0, count: 1, step: 0 }, { kind: 'source', start: 512, count: 1, step: 0 }, { kind: 'derived-empty' }])],
     ['a hold ending before the last display end', patched(gapHoldPlan(), ['originMapping', 'lastSource', 'hold', 'end'], r(7, 4))],
     ['a hold whose support reaches the display end', patched(gapHoldPlan(), ['originMapping', 'lastSource', 'supportEnd'], r(2))],
     ['a support end at the frame start', patched(gapHoldPlan(), ['originMapping', 'lastSource', 'supportEnd'], r(3, 4))],
     ['a support end short of the display end without a hold', patched(cfrPlan(), ['originMapping', 'lastSource', 'supportEnd'], r(2))],
     ['a hold kind other than derived-hold', patched(gapHoldPlan(), ['originMapping', 'lastSource', 'hold', 'kind'], 'hold')],
     ['a next-start rule on the last frame', patched(cfrPlan(), ['originMapping', 'lastSource', 'support'], 'next-start')],
+    ['a lead not starting at the presentation start', patched(gapHoldPlan(), ['originMapping', 'firstSource', 'lead', 'start'], r(1, 8))],
+    ['a lead whose support start reaches the first display end', patched(gapHoldPlan(), ['originMapping', 'firstSource', 'supportStart'], r(1, 2))],
+    ['a zero-length lead', patched(gapHoldPlan(), ['originMapping', 'firstSource', 'supportStart'], r(0))],
+    ['a support start after the display start without a lead', patched(gapHoldPlan(), ['originMapping', 'firstSource', 'lead'], null)],
+    ['a lead kind other than derived-lead', patched(gapHoldPlan(), ['originMapping', 'firstSource', 'lead', 'kind'], 'lead')],
+    ['a missing first-source record', patched(gapHoldPlan(), ['originMapping', 'firstSource'], undefined)],
+    ['a missing origin', patched(gapPlan(), ['originMapping', 'origin'], undefined)],
+    ['a negative origin', patched(gapPlan(), ['originMapping', 'origin'], r(-1, 8))],
     ['a display duration other than the presentation end', patched(cfrPlan(), ['display', 'duration'], r(2))],
     ['a presentation not starting at zero', patched(patched(patched(cfrPlan(), ['presentation', 'runs', 0, 'start'], 1), ['display', 'duration'], r(9, 4)), ['originMapping', 'lastSource', 'supportEnd'], r(9, 4))],
-    ['a gap between runs', patched(patched(gapHoldPlan(), ['presentation', 'runs', 1], { start: 4, count: 1, step: 4, duration: 4 }), ['originMapping', 'lastSource', 'supportEnd'], r(5, 4))],
+    ['a gap between runs', patched(patched(gapHoldPlan(), ['presentation', 'runs', 2], { start: 4, count: 1, step: 4, duration: 4 }), ['originMapping', 'lastSource', 'supportEnd'], r(5, 4))],
     ['a gap inside a run', patched(patched(patched(cfrPlan(), ['presentation', 'runs', 0], { start: 0, count: 17, step: 2, duration: 1 }), ['display', 'duration'], r(33, 8)), ['originMapping', 'lastSource', 'supportEnd'], r(33, 8))],
     ['a single-frame source run with a step', patched(singlePlan(), ['originMapping', 'entries', 0, 'step'], 40)],
     ['a multi-frame source run without a step', patched(cfrPlan(), ['originMapping', 'entries', 0, 'step'], 0)],
@@ -500,7 +559,8 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
 });
 
 /**
- * Build a valid plan from generated declared frames with gaps and an optional audio hold, as §4.2.1 and §7.16 lay them out.
+ * Build a valid plan from generated declared frames with gaps and an optional audio hold, as §4.2.1 and §7.16 lay them out:
+ * the first frame's gap is rebased away (no earlier audio), later gaps are derived-empty frames.
  * @param frames - Gap before and length of each frame, in units of 1/25 s.
  * @param audioEnd - Audio end in units, or null.
  * @returns The plan.
@@ -508,7 +568,8 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
 function generatedPlan(frames: readonly { gap: number; length: number }[], audioEnd: number | null): Plan {
   const windows: { displayStart: Rational; displayEnd: Rational; kind: 'source' | 'derived-empty' }[] = [];
   let cursor = 0;
-  for (const frame of frames) {
+  for (const [index, frame] of frames.entries()) {
+    if (index === 0) { windows.push({ displayStart: r(0), displayEnd: reduce(frame.length, 25), kind: 'source' }); cursor = frame.length; continue; }
     if (frame.gap > 0) windows.push({ displayStart: reduce(cursor, 25), displayEnd: reduce(cursor + frame.gap, 25), kind: 'derived-empty' });
     cursor += frame.gap;
     windows.push({ displayStart: reduce(cursor, 25), displayEnd: reduce(cursor + frame.length, 25), kind: 'source' });
@@ -522,8 +583,9 @@ function generatedPlan(frames: readonly { gap: number; length: number }[], audio
     display: { width: 64, height: 48, duration: end }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: projectPresentationTable(windows),
     originMapping: {
-      timeBase: r(1, 90000), entries: windows.map((window, index): OriginEntry => (window.kind === 'source' ? { kind: 'source', start: index * 3000, count: 1, step: 0 } : { kind: 'derived-empty' })),
-      lastSource: { support: 'declared', supportEnd, hold: held ? { kind: 'derived-hold', end } : null },
+      timeBase: r(1, 90000), origin: reduce(frames[0]!.gap, 25),
+      entries: windows.map((window, index): OriginEntry => (window.kind === 'source' ? { kind: 'source', start: index * 3000, count: 1, step: 0 } : { kind: 'derived-empty' })),
+      firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd, hold: held ? { kind: 'derived-hold', end } : null },
     },
     videoSpans: null, audioSpans: null, segmentDuration: null,
   };
@@ -571,8 +633,9 @@ describe('L/C ledger round trip and §7.16 compact projection (property)', () =>
       const sourced = value.plan.originMapping.entries.reduce((total, item) => total + (item.kind === 'source' ? item.count : 1), 0);
       expect(presentationFrameCount(compact.presentation)).toBe(sourced);
       expect(compact.presentation).toEqual(value.plan.presentation);
-      // Holds and derived-empty frames never add frames beyond the real frames plus one per gap.
-      expect(sourced).toBe(frames.length + frames.filter((frame) => frame.gap > 0).length);
+      // Leads and holds add no frame: the real frames plus one per gap after the first frame.
+      expect(sourced).toBe(frames.length + frames.slice(1).filter((frame) => frame.gap > 0).length);
+      expect(value.plan.originMapping.entries[0]!.kind).toBe('source');
     }), { seed: 130603, numRuns: 200 });
   });
 });
@@ -591,6 +654,7 @@ describe('C §3.5 compact body envelope', () => {
     ['missing planSha256', ['planSha256'], undefined], ['missing presentation', ['presentation'], undefined],
     ['frames', ['frames'], []], ['a versionId', ['versionId'], VERSION], ['a policyVersion', ['policyVersion'], 1], ['an origin mapping', ['originMapping'], {}],
     ['an invalid inner table', ['presentation', 'runs'], []], ['an uppercase toolInputId', ['toolInputId'], 'C'.repeat(64)],
+    ['a top-level schemaVersion', ['schemaVersion'], 1],
   ] as const)('C04 rejects an envelope with %s', (_, path, value) => {
     const schema = required('videoPresentationCompactSchema');
     expect(schema.safeParse(valid()).success).toBe(true);
@@ -607,7 +671,8 @@ describe('R §3.5 receipt of the full ledger and the compact object', () => {
     ['the earlier v2 receipt', { schemaVersion: 2, sourceFingerprint: H, producerVersion: 2, attempt: ATTEMPT, url: 'https://assets.example.test/a.json', etag: 'e', size: 900, sha256: BYTES, contentType: 'application/json', table: { url: 'https://assets.example.test/b.json', sha256: BYTES, size: 200, frameCount: 17 } }],
     ['a missing toolInputId', patched(receipt(), ['toolInputId'], undefined)], ['a missing planSha256', patched(receipt(), ['planSha256'], undefined)],
     ['a versionId', patched(receipt(), ['versionId'], VERSION)], ['a policyVersion', patched(receipt(), ['policyVersion'], 1)],
-    ['a producerVersion', patched(receipt(), ['producerVersion'], 2)], ['a missing attempt', patched(receipt(), ['attempt'], undefined)],
+    ['a missing attempt', patched(receipt(), ['attempt'], undefined)], ['schemaVersion 1', patched(receipt(), ['schemaVersion'], 1)],
+    ['a missing table contentType', patched(receipt(), ['table', 'contentType'], undefined)], ['a non-JSON table contentType', patched(receipt(), ['table', 'contentType'], 'text/plain')],
     ['the table at the ledger URL', patched(receipt(), ['table', 'url'], 'https://assets.example.test/video/fixture/job-1.full.json')],
     ['an http ledger URL', patched(receipt(), ['url'], 'http://assets.example.test/video/fixture/job-1.full.json')],
     ['a zero ledger size', patched(receipt(), ['size'], 0)], ['a non-JSON ledger type', patched(receipt(), ['contentType'], 'application/octet-stream')],
