@@ -36,14 +36,15 @@ async function openReady(blocks: Parameters<typeof open>[0]): Promise<ReturnType
  * @param editor - The editor.
  * @param at - Where the pointer is.
  * @param formats - Each format the drag carries, with its data.
+ * @param clientX - The pointer's x: inside the body's 0..100 box, or beside it.
  */
-function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>): void {
+function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>, clientX = 1): void {
   const view = editor.prosemirrorView;
   const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
   for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
   view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
   const event = new Event('drop', { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: 1, clientY: 1 });
+  Object.assign(event, { clientX, clientY: 1 });
   Object.defineProperty(event, 'dataTransfer', {
     value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' },
   });
@@ -136,7 +137,44 @@ describe('a drop selects what it put', () => {
     expect(media).toEqual([PIC]);
     expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
   });
+
+  const SECOND = `${OURS}q.png`;
+
+  it.each([
+    ['a picture then words, into the middle of a line', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 2, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
+    ['two pictures, into the middle of a line', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 2, `<img src="${PIC}"><img src="${SECOND}">`, '', [PIC, SECOND]],
+    ['a picture then words, into the middle of a cell', [TABLE, { type: 'paragraph', content: 'tail' }], 'cell', 2, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
+    ['a picture then words, at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 0, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
+  ] as const)('%s: the leading media and the words, none of the line\'s own', async (_name, blocks, line, offset, html, words, media) => {
+    const { editor } = await openReady(blocks as unknown as Parameters<typeof open>[0]);
+    dropFormats(editor, positionOf(editor, line, offset), { 'text/html': html, 'text/plain': words });
+    await settled();
+    expect(selectedContent(editor)).toEqual({ words, media });
+  });
+
+  it('beside the body: the words and media put, not a caret', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }]);
+    dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/html': `<p>x</p><img src="${PIC}"><p>y</p>`, 'text/plain': 'x y' }, 200);
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:abx', `image(${PIC})`, 'paragraph:ycd']);
+    expect(selectedContent(editor)).toEqual({ words: 'xy', media: [PIC] });
+  });
 });
+
+/**
+ * What the selection holds: its words, and the media inside it in order.
+ * @param editor - The editor.
+ * @returns The words and the media addresses.
+ */
+function selectedContent(editor: Editor): { words: string; media: string[] } {
+  const { doc, selection } = editor.prosemirrorView.state;
+  const media: string[] = [];
+  selection.content().content.descendants((node) => {
+    if (node.type.name === 'image') media.push(String(node.attrs['url']));
+    return true;
+  });
+  return { words: doc.textBetween(selection.from, selection.to, ''), media };
+}
 
 describe('a drop as an undo step', () => {
   it('one undo takes all of it out and puts the caret back where the reader left it', async () => {
