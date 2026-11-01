@@ -51,6 +51,8 @@ vi.mock("ai", () => ({
     usage: Promise.resolve({ totalTokens: 0 }),
   }),
   stepCountIs: (_n: number) => () => false,
+  // The streamText double above never applies a transform.
+  smoothStream: () => undefined,
   tool: (config: Record<string, unknown>) => config,
 }));
 
