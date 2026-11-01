@@ -352,10 +352,10 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     expect(root.getObjectByProperty('type', 'Mesh')).toBeDefined();
   });
 
-  it('names a texture a material uses when it has no source', async () => {
-    await expect(parseSceneModel(triangle({ textures: [{}], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
-      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }] }), new AbortController().signal, IMPORT_LIMITS))
-      .rejects.toMatchObject({ code: 'invalid', detail: 'textures[0]' });
+  it.each([['no source', {}], ['a missing image', { source: 7 }]])('names a texture a material uses when it has %s', (_label, texture) => {
+    expect(() => triangle({ textures: [texture], images: [{ uri: 'unused.png' }], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }] }, [['unused.png', geometry]]))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'textures[0]' }));
   });
 
   it('leaves out an image only an unsupported optional extension uses', () => {

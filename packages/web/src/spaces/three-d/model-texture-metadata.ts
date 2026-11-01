@@ -131,11 +131,8 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
  */
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const index of loadedResources(model.json).images) {
-    const image = model.json.images?.[index];
-    if (!image) throw new ModelImportError('invalid', 'Model texture names a missing image', { detail: `images[${index}]` });
-    checkImage({ model, decoded, location: imageLocation(model, index) }, image, limits);
-  }
+  // loadedResources lists only images that exist.
+  for (const index of loadedResources(model.json).images) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
 }
 
 /**

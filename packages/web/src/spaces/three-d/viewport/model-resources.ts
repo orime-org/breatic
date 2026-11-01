@@ -14,7 +14,6 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
-import type { LoadedTexture } from '@web/spaces/three-d/model-loaded-resources';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
@@ -275,17 +274,6 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
 }
 
 /**
- * Name a texture the loader uses by the image it decodes.
- * @param model - Checked entry and original resources.
- * @param texture - The loaded texture and its chosen image.
- * @returns The image's path or `images[N]`, or `textures[N]` when the texture names no existing image.
- * @throws {ModelImportError} When the image URI is malformed.
- */
-function textureLocation(model: ModelPackage, texture: LoadedTexture): string {
-  return texture.image !== undefined && model.json.images?.[texture.image] ? imageLocation(model, texture.image) : `textures[${texture.texture}]`;
-}
-
-/**
  * Parse the same closed model collection for import preview and registered use.
  * @param model - Checked entry and original resources.
  * @param signal - The owning operation or lease's signal.
@@ -299,9 +287,6 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
   validateModelTextureMetadata(model, textureLimits);
   const { textures } = loadedResources(model.json);
-  // GLTFLoader reads a used texture's image without checking it exists.
-  const sourceless = textures.find((texture) => texture.image === undefined || !model.json.images?.[texture.image]);
-  if (sourceless) throw new ModelImportError('invalid', 'Model texture names no image', { detail: textureLocation(model, sourceless) });
   const decoder = createModelDecoder(model, limits, renderer);
   const bytes = model.files.get(model.entry)!;
   // GLTFLoader only reads the buffer, so a view spanning its whole buffer is passed without a copy.
@@ -315,7 +300,8 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       const decoded = await Promise.all(textures.map(({ texture }) => result.parser.getDependency('texture', texture) as Promise<Texture | null>));
       signal.throwIfAborted();
       const failed = textures.find((_, position) => decoded[position] === null);
-      if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: textureLocation(model, failed) });
+      // inspectModelFiles refused every used texture that names no image.
+      if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: imageLocation(model, failed.image!) });
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {

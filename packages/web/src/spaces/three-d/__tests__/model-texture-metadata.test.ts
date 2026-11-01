@@ -49,16 +49,19 @@ function ktx2(width: number, height: number): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Make every declared image one that GLTFLoader loads: a texture per image and a material per texture.
+ * Make every declared image one that GLTFLoader loads: a texture per image, a material per texture and a scene mesh using every material.
  * @param json - The glTF declarations of a fixture.
- * @returns The declarations with textures and materials referencing each image.
+ * @returns The declarations with textures, materials and a mesh reaching each image.
  * @throws {never} Never.
  */
 function used(json: Record<string, unknown>): Record<string, unknown> {
   const images = Array.isArray(json.images) ? json.images : [];
-  if (json.textures !== undefined || !images.length) return json;
-  return { ...json, textures: images.map((_, source) => ({ source })),
+  const textured = json.textures !== undefined || !images.length ? json : { ...json, textures: images.map((_, source) => ({ source })),
     materials: images.map((_, index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) };
+  const materials = Array.isArray(textured.materials) ? textured.materials : [];
+  if (textured.meshes !== undefined || !materials.length) return textured;
+  return { ...textured, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: materials.map((_, material) => ({ attributes: {}, material })) }] };
 }
 
 /**
@@ -117,6 +120,7 @@ function embeddedGlb(image: Uint8Array<ArrayBuffer>): ModelPackage {
     ],
     images: [{ bufferView: 1, mimeType: 'image/png' }],
     textures: [{ source: 0 }], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+    scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
   }));
   const jsonLength = Math.ceil(json.byteLength / 4) * 4;
   const binaryLength = Math.ceil(binary.byteLength / 4) * 4;

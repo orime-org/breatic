@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from 'vitest';
+import { REVISION } from 'three';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
@@ -13,44 +14,166 @@ function doc(json: Record<string, unknown>): GltfDocument {
   return { asset: { version: '2.0' }, ...json } as GltfDocument;
 }
 
+/**
+ * Give every accessor its own bufferView and buffer, so the loaded buffers name the loaded accessors.
+ * @throws {never} Never.
+ */
+function views(count: number): Record<string, unknown> {
+  const indices = Array.from({ length: count }, (_, index) => index);
+  return { accessors: indices.map((index) => ({ bufferView: index })), bufferViews: indices.map((index) => ({ buffer: index })) };
+}
+
+/**
+ * Sort a set for comparison.
+ * @throws {never} Never.
+ */
+function sorted(values: ReadonlySet<number>): number[] {
+  return [...values].sort((a, b) => a - b);
+}
+
 describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
+  it('is derived from the installed loader revision', () => {
+    expect(REVISION).toBe('173');
+  });
+
+  it('walks only nodes reached from the scenes, their children and animation targets', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }, { nodes: [3] }],
+      nodes: [{ children: [1] }, { mesh: 0 }, { mesh: 1 }, { mesh: 2 }, { mesh: 3 }],
+      meshes: [0, 1, 2, 3].map((accessor) => ({ primitives: [{ attributes: { POSITION: accessor } }] })),
+      animations: [{ channels: [{ sampler: 0, target: { node: 4, path: 'translation' } }], samplers: [{ input: 4, output: 5 }] }],
+      ...views(6),
+    }));
+    expect(sorted(resources.buffers)).toEqual([0, 2, 3, 4, 5]);
+  });
+
+  it('loads skin joints shallowly: their mesh, not their children', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0, skin: 0 }, { mesh: 1, children: [2] }, { mesh: 2 }],
+      skins: [{ joints: [1], inverseBindMatrices: 3 }],
+      meshes: [0, 1, 2].map((accessor) => ({ primitives: [{ attributes: { POSITION: accessor } }] })),
+      ...views(4),
+    }));
+    expect(sorted(resources.buffers)).toEqual([0, 1, 3]);
+  });
+
+  it('reads instancing attributes of reached nodes', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 1, SCALE: 2 } } } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      ...views(3),
+    }));
+    expect(sorted(resources.buffers)).toEqual([0, 1, 2]);
+  });
+
+  it('skips animation channels without a target node and samplers no channel uses', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [] }],
+      nodes: [{}],
+      animations: [{
+        channels: [{ sampler: 0, target: { node: 0, path: 'translation' } }, { sampler: 1, target: { path: 'pointer' } }],
+        samplers: [{ input: 0, output: 1 }, { input: 2, output: 3 }, { input: 4, output: 5 }],
+      }],
+      ...views(6),
+    }));
+    expect(sorted(resources.buffers)).toEqual([0, 1]);
+  });
+
+  it('reads morph targets only for POSITION, NORMAL and COLOR_0', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 1 }, targets: [{ POSITION: 2, NORMAL: 3, COLOR_0: 4, TANGENT: 5, TEXCOORD_0: 6 }] }] }],
+      ...views(7),
+    }));
+    expect(sorted(resources.buffers)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('reads the compressed view of a Draco primitive in place of the attributes and indices it decodes', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [
+        { attributes: { POSITION: 0, _ID: 1 }, indices: 2, extensions: { KHR_draco_mesh_compression: { bufferView: 6, attributes: { POSITION: 0 } } } },
+        { mode: 0, attributes: { POSITION: 3 }, indices: 4, extensions: { KHR_draco_mesh_compression: { bufferView: 7, attributes: { POSITION: 0 } } } },
+      ] }],
+      ...views(8),
+    }));
+    expect(sorted(resources.buffers)).toEqual([1, 4, 6, 7]);
+  });
+
+  it('reads a meshopt view from the extension buffer', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      accessors: [{ bufferView: 0 }],
+      bufferViews: [{ buffer: 0, extensions: { EXT_meshopt_compression: { buffer: 1 } } }],
+    }));
+    expect(sorted(resources.buffers)).toEqual([1]);
+  });
+
+  it('reads textures only of materials reached primitives use, by the slots the loader assigns', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: {}, material: 0 }, { attributes: {}, material: 1 }] }],
+      materials: [
+        { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {}, KHR_materials_clearcoat: { clearcoatTexture: { index: 2 } } } },
+        { pbrMetallicRoughness: { metallicRoughnessTexture: { index: 3 } }, occlusionTexture: { index: 4 }, emissiveTexture: { index: 5 },
+          extras: { lightTexture: { index: 6 } },
+          extensions: { KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 7 }, extras: { bakedTexture: { index: 6 } } },
+            VENDOR_material: { someTexture: { index: 8 } } } },
+        { pbrMetallicRoughness: { baseColorTexture: { index: 9 } } },
+      ],
+      textures: Array.from({ length: 10 }, (_, source) => ({ source })),
+      images: Array.from({ length: 10 }, () => ({ uri: 'texture.png' })),
+    }));
+    expect(resources.textures.map(({ texture }) => texture)).toEqual([0, 3, 4, 5, 7]);
+  });
+
   it('picks the first supported source extension, in plugin order, over the texture source', () => {
     const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
       materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, emissiveTexture: { index: 2 } }],
       textures: [
         { source: 0, extensions: { EXT_texture_webp: { source: 1 }, KHR_texture_basisu: { source: 2 } } },
         { source: 3, extensions: { EXT_texture_avif: { source: 4 }, MSFT_texture_dds: { source: 5 } } },
         { source: 6, extensions: { MSFT_texture_dds: { source: 7 } } },
       ],
+      images: Array.from({ length: 8 }, () => ({ uri: 'texture.png' })),
     }));
     expect(resources.textures).toEqual([{ texture: 0, image: 2 }, { texture: 1, image: 4 }, { texture: 2, image: 6 }]);
-    expect([...resources.images].sort()).toEqual([2, 4, 6]);
+    expect(sorted(resources.images)).toEqual([2, 4, 6]);
   });
 
-  it('collects textures from supported material extensions and ignores unused or unsupported ones', () => {
+  it('reads the buffer of an image a loaded texture decodes from a bufferView', () => {
     const resources = loadedResources(doc({
-      materials: [{ occlusionTexture: { index: 0 }, extensions: {
-        KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 1 } },
-        VENDOR_unknown_material: { someTexture: { index: 2 } },
-      } }],
-      textures: [{ source: 0 }, { source: 1 }, { source: 2 }, { source: 3 }],
-    }));
-    expect(resources.textures.map(({ texture }) => texture)).toEqual([0, 1]);
-  });
-
-  it('reads buffers through geometry, skins, animations, image views and compression extensions', () => {
-    const resources = loadedResources(doc({
-      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, targets: [{ POSITION: 2 }],
-        extensions: { KHR_draco_mesh_compression: { bufferView: 3 } } }] }],
-      skins: [{ inverseBindMatrices: 4 }],
-      animations: [{ samplers: [{ input: 5, output: 5 }] }],
-      accessors: [{ bufferView: 0 }, { bufferView: 1 }, { bufferView: 2 }, {}, { bufferView: 4 }, { bufferView: 5 }],
-      bufferViews: [{ buffer: 0 }, { buffer: 1 }, { buffer: 2 }, { buffer: 3 }, { buffer: 4 },
-        { buffer: 5, extensions: { EXT_meshopt_compression: { buffer: 6 } } }, { buffer: 7 }, { buffer: 8 }],
-      images: [{ bufferView: 6 }],
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
       materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
       textures: [{ source: 0 }],
+      images: [{ bufferView: 0, mimeType: 'image/png' }],
+      bufferViews: [{ buffer: 2 }],
     }));
-    expect([...resources.buffers].sort()).toEqual([0, 1, 2, 3, 4, 6, 7]);
+    expect(sorted(resources.buffers)).toEqual([2]);
+  });
+
+  it('leaves the image undefined when a used texture names none or a missing one', () => {
+    const resources = loadedResources(doc({
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 } }],
+      textures: [{}, { source: 7 }],
+      images: [{ uri: 'texture.png' }],
+    }));
+    expect(resources.textures).toEqual([{ texture: 0, image: undefined }, { texture: 1, image: undefined }]);
+    expect(resources.images.size).toBe(0);
   });
 });

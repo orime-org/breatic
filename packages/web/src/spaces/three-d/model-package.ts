@@ -110,7 +110,7 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
 }
 
 /**
- * Check the buffers and images GLTFLoader loads against the same closed collection: present, and as long as declared.
+ * Check the textures, buffers and images GLTFLoader loads against the same closed collection: each texture names an image, each file is present and as long as declared.
  * @param files - Original selected resources indexed by normalized path.
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
@@ -126,6 +126,9 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
     if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);
   }
   const loaded = loadedResources(json);
+  // GLTFLoader reads a used texture's image without checking it exists.
+  const imageless = loaded.textures.find((texture) => texture.image === undefined);
+  if (imageless) throw new ModelImportError('invalid', 'Model texture names no image', { detail: `textures[${imageless.texture}]` });
   const resources = [...[...loaded.buffers].map((buffer) => json.buffers?.[buffer]), ...[...loaded.images].map((image) => json.images?.[image])];
   const missing = resources.flatMap((resource) => {
     if (resource?.uri === undefined || resource.uri.startsWith('data:')) return [];

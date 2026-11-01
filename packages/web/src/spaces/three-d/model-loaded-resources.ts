@@ -10,8 +10,10 @@ const MATERIAL_TEXTURE_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 /** Texture source extensions GLTFLoader r173 tries, in its plugin order, before a texture's own source. */
 const TEXTURE_SOURCE_EXTENSIONS = ['KHR_texture_basisu', 'EXT_texture_webp', 'EXT_texture_avif'] as const;
+/** Morph target attributes GLTFLoader r173 reads (addMorphTargets). */
+const MORPH_ATTRIBUTES = ['POSITION', 'NORMAL', 'COLOR_0'] as const;
 
-/** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names none. */
+/** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names no existing image. */
 export interface LoadedTexture {
   texture: number;
   image: number | undefined;
@@ -56,8 +58,8 @@ function index(value: unknown): number | undefined {
 }
 
 /**
- * Collect every texture index a material slot object refers to, at any depth.
- * @param value - A material or one of its supported extension objects.
+ * Collect every texture index a supported material extension refers to, at any depth.
+ * @param value - One supported material extension object.
  * @param into - Texture indices found so far.
  * @throws {never} Never.
  */
@@ -65,10 +67,31 @@ function collectTextureSlots(value: unknown, into: Set<number>): void {
   const node = object(value);
   if (!node) return;
   for (const [key, child] of Object.entries(node)) {
-    if (key === 'extensions') continue;
+    if (key === 'extensions' || key === 'extras') continue;
     const slot = key.endsWith('Texture') ? index(object(child)?.index) : undefined;
     if (slot !== undefined) into.add(slot);
     else collectTextureSlots(child, into);
+  }
+}
+
+/**
+ * Collect the textures GLTFLoader assigns for one material: an unlit material reads only its base colour.
+ * @param material - The material declaration.
+ * @param into - Texture indices found so far.
+ * @throws {never} Never.
+ */
+function collectMaterialTextures(material: JsonObject | undefined, into: Set<number>): void {
+  const pbr = object(material?.pbrMetallicRoughness);
+  const extensions = object(material?.extensions);
+  const slots = extensions?.KHR_materials_unlit ? [pbr?.baseColorTexture]
+    : [pbr?.baseColorTexture, pbr?.metallicRoughnessTexture, material?.normalTexture, material?.occlusionTexture, material?.emissiveTexture];
+  for (const slot of slots) {
+    const texture = index(object(slot)?.index);
+    if (texture !== undefined) into.add(texture);
+  }
+  if (extensions?.KHR_materials_unlit) return;
+  for (const [name, extension] of Object.entries(extensions ?? {})) {
+    if (MATERIAL_TEXTURE_EXTENSIONS.has(name)) collectTextureSlots(extension, into);
   }
 }
 
@@ -88,54 +111,92 @@ function textureImage(texture: JsonObject | undefined): number | undefined {
 }
 
 /**
- * Derive the resources GLTFLoader r173 loads: textures the materials use, the images those decode and the buffers geometry and images read.
+ * Derive the resources GLTFLoader r173 loads, by walking what it walks: every scene's nodes and every animation target, their children,
+ * skin joints (their own mesh only), the reached meshes, the materials their primitives use and the slots each material assigns.
  * Checks run on exactly these, so a declaration the loader never touches cannot refuse a model it renders.
  * @param json - The checked glTF document.
- * @returns The loaded textures, images and buffers by index.
+ * @returns The loaded textures (image undefined when the texture names no existing image), images and buffers by index.
  * @throws {never} Never.
  */
 export function loadedResources(json: GltfDocument): LoadedResources {
   const document = json as JsonObject;
-  const textureIndices = new Set<number>();
-  for (const material of array(document.materials)) {
-    const node = object(material);
-    collectTextureSlots(node, textureIndices);
-    for (const [name, extension] of Object.entries(object(node?.extensions) ?? {})) {
-      if (MATERIAL_TEXTURE_EXTENSIONS.has(name)) collectTextureSlots(extension, textureIndices);
-    }
-  }
-  const textureDefinitions = array(document.textures);
-  const textures = [...textureIndices].sort((a, b) => a - b).map((texture) => ({ texture, image: textureImage(object(textureDefinitions[texture])) }));
-  const images = new Set(textures.flatMap(({ image }) => image === undefined ? [] : [image]));
-  const views = new Set<number>();
-  for (const image of images) {
-    const view = index(object(array(document.images)[image])?.bufferView);
-    if (view !== undefined) views.add(view);
-  }
+  const nodes = array(document.nodes);
   const accessors = new Set<number>();
-  for (const mesh of array(document.meshes)) {
-    for (const primitive of array(object(mesh)?.primitives)) {
-      const node = object(primitive);
-      const draco = index(object(object(node?.extensions)?.KHR_draco_mesh_compression)?.bufferView);
-      if (draco !== undefined) views.add(draco);
-      for (const value of [...Object.values(object(node?.attributes) ?? {}), node?.indices,
-        ...array(node?.targets).flatMap((target) => Object.values(object(target) ?? {}))]) {
-        const accessor = index(value);
-        if (accessor !== undefined) accessors.add(accessor);
-      }
-    }
-  }
-  for (const skin of array(document.skins)) {
-    const accessor = index(object(skin)?.inverseBindMatrices);
+  const views = new Set<number>();
+  const materials = new Set<number>();
+  const meshes = new Set<number>();
+  /** Nodes loaded with their children and skin (true) or only their own mesh, as skin joints are (false). */
+  const reached = new Map<number, boolean>();
+  /**
+   * Record an accessor index when the value is one.
+   * @param value - A declared accessor reference.
+   * @throws {never} Never.
+   */
+  const addAccessor = (value: unknown): void => {
+    const accessor = index(value);
     if (accessor !== undefined) accessors.add(accessor);
+  };
+  /**
+   * Load a node as GLTFParser.loadNode (deep) or _loadNodeShallow (joints) does.
+   * @param nodeIndex - The node, when the reference is a valid index.
+   * @param deep - Whether its children and skin load too.
+   * @throws {never} Never.
+   */
+  const visitNode = (nodeIndex: number | undefined, deep: boolean): void => {
+    if (nodeIndex === undefined || reached.get(nodeIndex) === true || (!deep && reached.has(nodeIndex))) return;
+    reached.set(nodeIndex, deep);
+    const node = object(nodes[nodeIndex]);
+    const mesh = index(node?.mesh);
+    if (mesh !== undefined) meshes.add(mesh);
+    for (const value of Object.values(object(object(object(node?.extensions)?.EXT_mesh_gpu_instancing)?.attributes) ?? {})) addAccessor(value);
+    if (!deep) return;
+    for (const child of array(node?.children)) visitNode(index(child), true);
+    const skin = object(array(document.skins)[index(node?.skin) ?? -1]);
+    if (!skin) return;
+    addAccessor(skin.inverseBindMatrices);
+    for (const joint of array(skin.joints)) visitNode(index(joint), false);
+  };
+  for (const scene of array(document.scenes)) {
+    for (const node of array(object(scene)?.nodes)) visitNode(index(node), true);
   }
   for (const animation of array(document.animations)) {
-    for (const sampler of array(object(animation)?.samplers)) {
-      for (const value of [object(sampler)?.input, object(sampler)?.output]) {
-        const accessor = index(value);
-        if (accessor !== undefined) accessors.add(accessor);
-      }
+    const samplers = array(object(animation)?.samplers);
+    for (const channel of array(object(animation)?.channels)) {
+      const target = index(object(object(channel)?.target)?.node);
+      if (target === undefined) continue;
+      visitNode(target, true);
+      const sampler = object(samplers[index(object(channel)?.sampler) ?? -1]);
+      addAccessor(sampler?.input);
+      addAccessor(sampler?.output);
     }
+  }
+  for (const meshIndex of meshes) {
+    for (const primitive of array(object(array(document.meshes)[meshIndex])?.primitives)) {
+      const node = object(primitive);
+      const material = index(node?.material);
+      if (material !== undefined) materials.add(material);
+      const draco = object(object(node?.extensions)?.KHR_draco_mesh_compression);
+      const decoded = object(draco?.attributes) ?? {};
+      const dracoView = index(draco?.bufferView);
+      if (dracoView !== undefined) views.add(dracoView);
+      for (const [name, value] of Object.entries(object(node?.attributes) ?? {})) if (!(name in decoded)) addAccessor(value);
+      // Decoded Draco triangles carry their own index; a point cloud has none and still reads the declared indices.
+      if (!draco || node?.mode === 0) addAccessor(node?.indices);
+      for (const target of array(node?.targets)) for (const name of MORPH_ATTRIBUTES) addAccessor(object(target)?.[name]);
+    }
+  }
+  const textureIndices = new Set<number>();
+  for (const material of materials) collectMaterialTextures(object(array(document.materials)[material]), textureIndices);
+  const textureDefinitions = array(document.textures);
+  const imageDefinitions = array(document.images);
+  const textures = [...textureIndices].sort((a, b) => a - b).map((texture) => {
+    const image = textureImage(object(textureDefinitions[texture]));
+    return { texture, image: image !== undefined && object(imageDefinitions[image]) ? image : undefined };
+  });
+  const images = new Set(textures.flatMap(({ image }) => image === undefined ? [] : [image]));
+  for (const image of images) {
+    const view = index(object(imageDefinitions[image])?.bufferView);
+    if (view !== undefined) views.add(view);
   }
   for (const accessor of accessors) {
     const node = object(array(document.accessors)[accessor]);
