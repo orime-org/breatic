@@ -21,6 +21,8 @@ interface CatalogParam {
   type?: string;
   fields?: Record<string, { type?: string; values?: (string | number | boolean)[] }>;
   remote_source?: string;
+  /** The media kind of a single-file param. */
+  accepts?: string;
 }
 
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
@@ -81,7 +83,9 @@ function samplesOf(name: string, param: CatalogParam, binding: MediaBinding, sna
     values = bound.values !== undefined || bound.as !== undefined || !numeric ? everyStep(param) : [param.min, param.max, param.default ?? param.min];
   } else if (param.type === "items") values = [[sampleItem(param), sampleItem(param)]];
   else if (param.type === "list") values = [[SAMPLE_URL]];
-  else if (param.type === "text") values = [SAMPLE_TEXT];
+  else if (param.accepts !== undefined) values = [SAMPLE_URL];
+  else if (param.default !== undefined && param.default !== null) values = [param.default];
+  else if (param.remote_source === undefined) values = [SAMPLE_TEXT];
   else values = [];
   return bound.supported === undefined ? values : values.filter((v) => bound.supported!.includes(v as string | number | boolean));
 }
@@ -104,12 +108,12 @@ function sampleItem(param: CatalogParam): Record<string, unknown> {
  * @returns The value, or undefined.
  */
 function defaultOf(name: string, param: CatalogParam, binding: MediaBinding, snapshot: SchemaSnapshot): unknown {
-  return param.default ?? samplesOf(name, param, binding, snapshot)[0];
+  return param.default ?? samplesOf(name, param, binding, snapshot)[0] ?? (param.remote_source === undefined ? undefined : SAMPLE_TEXT);
 }
 
 const config = shipped();
 const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
-const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding: binding as MediaBinding })));
+const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 
 describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
   const kind = config.upstreams[binding.upstream]?.kind;
@@ -138,14 +142,15 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     const bad: string[] = [];
     for (const [name, param] of Object.entries(params)) {
       const field = binding.params?.[name]?.field;
-      if (field === undefined) continue;
+      // A param an extra step serves is sent as what that step made, not as the run's value.
+      if (field === undefined || binding.extra_steps?.some((step) => step.for_param === name)) continue;
       for (const value of samplesOf(name, param, binding, snapshot)) {
         const written = at(buildBody(binding, { prompt: "", params: { [name]: value } }), field);
         if (written === undefined) continue;
         if (!fieldFits(snapshot, field, written)) bad.push(`${name}=${JSON.stringify(value)} -> ${field}=${JSON.stringify(written)}`);
       }
     }
-    expect(bad).toEqual([]);
+    expect(bad, bad.join("\n")).toEqual([]);
   });
 
   it("sends every field the upstream requires", () => {
