@@ -11,15 +11,20 @@
  *
  * Run from the repository root with `pnpm exec tsx scripts/provider-config-migration.ts`.
  * It writes `config/provider/upstreams.yaml`, `config/provider/media/<modality>.yaml`,
- * `config/provider/llm.yaml` and `config/provider/routing.yaml.template`.
+ * `config/provider/llm.yaml` and `config/provider/routing.yaml.template`,
+ * merging into the files already there (`scripts/provider-config-merge.mjs`):
+ * it replaces only each model's WaveSpeed binding and its own upstream and LLM
+ * entries, so reseller bindings and the 3D prices `pnpm provider:prices` wrote
+ * survive a rerun.
  * It is a one-off: run it again when the catalog changes before the
  * application moves to the provider package, and delete it with the old
  * implementation.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { parse, stringify } from "yaml";
+import { mergeLlm, mergeMediaModels, mergeUpstreams } from "./provider-config-merge.mjs";
 
 interface RawPricing { base_price: number; formula: string; discount_rate: number }
 interface RawParam {
@@ -74,6 +79,16 @@ const TRANSFORMS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
  */
 function yaml<T>(path: string): T {
   return parse(readFileSync(resolve(ROOT, path), "utf8")) as T;
+}
+
+/**
+ * A yaml file under `config/provider/` as it is now.
+ * @param path - The path below `config/provider/`.
+ * @returns Its content, or undefined when it does not exist yet.
+ */
+function current<T>(path: string): T | undefined {
+  const file = resolve(ROOT, "config/provider", path);
+  return existsSync(file) ? (parse(readFileSync(file, "utf8")) as T) : undefined;
 }
 
 /**
@@ -134,11 +149,11 @@ const describe = {
 };
 
 /**
- * One model's WaveSpeed binding.
+ * One model's WaveSpeed binding, without `pricing` when the catalog has no WaveSpeed contract for it.
  * @param model - The catalog entry.
  * @param threeD - Whether it is a 3D model, whose family passes every param through.
  * @returns The binding.
- * @throws {Error} When the model has no WaveSpeed provider or no price.
+ * @throws {Error} When the model has no WaveSpeed provider.
  */
 function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   const provider = model.providers?.find((p) => p.name === "wavespeed");
@@ -176,14 +191,6 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       pricing: pricingOf(step.pricing),
     };
   });
-  // 3D models carry no WaveSpeed contract today; their per-call credit figure
-  // (cents) stands in as a flat price until the price sync writes the real one.
-  const pricing = provider.pricing ?? (model.cost_per_call === undefined ? undefined : {
-    base_price: model.cost_per_call * 10_000,
-    formula: "",
-    discount_rate: 100,
-  });
-  if (pricing === undefined) throw new Error(`${model.name} has no price`);
   return {
     upstream: "wavespeed",
     weight: 1,
@@ -195,8 +202,18 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
     ...(Object.keys(mentions).length === 0 ? {} : { mentions }),
-    pricing: pricingOf(pricing),
+    ...(provider.pricing === undefined ? {} : { pricing: pricingOf(provider.pricing) }),
   };
+}
+
+/**
+ * The flat price a model without a WaveSpeed contract stands in with until `pnpm provider:prices`
+ * writes its real one: 3D models carry only a per-call credit figure (cents).
+ * @param model - The catalog entry.
+ * @returns The rule, or undefined when the model has no such figure.
+ */
+function placeholderOf(model: RawModel): Record<string, unknown> | undefined {
+  return model.cost_per_call === undefined ? undefined : pricingOf({ base_price: model.cost_per_call * 10_000, formula: "", discount_rate: 100 });
 }
 
 const MEDIA_HEADER = `
@@ -224,12 +241,17 @@ const sources: [string, string[]][] = [
 ];
 for (const [modality, files] of sources) {
   const models: Record<string, { upstreams: Record<string, unknown>[] }> = {};
+  const placeholders: Record<string, unknown> = {};
   for (const file of files) {
     for (const model of yaml<{ models: RawModel[] }>(file).models) {
       models[model.name] = { upstreams: [bindingOf(model, modality === "three_d")] };
+      const placeholder = placeholderOf(model);
+      if (placeholder !== undefined) placeholders[model.name] = placeholder;
     }
   }
-  write(`media/${modality}.yaml`, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models });
+  const path = `media/${modality}.yaml`;
+  const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models, placeholders);
+  write(path, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models: merged });
 }
 
 const concurrency = new Set(
@@ -257,7 +279,7 @@ it, its address, the environment variable that holds its key, and for media
 upstreams how many requests one process sends it at once. An upstream whose
 key variable is empty is skipped, and the call says which variable is missing.
 `, {
-  upstreams: {
+  upstreams: mergeUpstreams(current<{ upstreams: Record<string, unknown> }>("upstreams.yaml")?.upstreams, {
     wavespeed: { kind: "wavespeed", base_url: wavespeed.base_url, key_env: wavespeed.api_key_env, concurrency: [...concurrency][0] },
     openrouter: { kind: "openrouter", base_url: "https://openrouter.ai/api/v1", key_env: capture(llmSource, /FALLBACK_ROUTE: Route = \{\s*keyName: "([^"]+)"/) },
     ...Object.fromEntries(direct.map((d) => {
@@ -265,7 +287,7 @@ key variable is empty is skipped, and the call says which variable is missing.
       if (base === undefined) throw new Error(`No default address for ${d.name}`);
       return [d.name, { kind: d.name, base_url: base, key_env: d.keyName }];
     })),
-  },
+  }),
 });
 
 const usagePricing = yaml<{ models: Record<string, Record<string, number>> }>("config/usage-pricing.yaml");
@@ -295,7 +317,7 @@ no cost of their own.
 gemini_inline_max_bytes is the request size past which media goes to Gemini
 through its Files API rather than inline; gemini_file_poll_ms is how often an
 uploaded file is asked about until it is ready.
-`, {
+`, mergeLlm(current<Record<string, unknown>>("llm.yaml"), {
   routes: [
     ...direct.map((d) => ({ prefix: d.prefix, upstreams: [{ upstream: d.name, weight: 0 }, { upstream: "openrouter", weight: 1 }] })),
     { prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }] },
@@ -308,7 +330,7 @@ uploaded file is asked about until it is ready.
   prices: { ...usagePricing.models, ...DIRECT_PRICES },
   gemini_inline_max_bytes: 20_000_000,
   gemini_file_poll_ms: 5_000,
-});
+}));
 
 write("routing.yaml.template", `
 This deployment's own upstream weights. Copy this file to
