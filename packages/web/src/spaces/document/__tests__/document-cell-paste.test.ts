@@ -300,6 +300,21 @@ describe('a single table pasted into a docTable cell (A12)', () => {
     },
   );
 
+  it.each([
+    ['a line break', '<p><br></p>'],
+    ['a no-break space', '<p>&nbsp;</p>'],
+    ['spaces and a line break', '<p> <br> </p>'],
+  ])('fills a table followed by a line holding only %s, as a table alone', async (_name, blank) => {
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'n'] }, { cells: ['c', 'd'] }] })]);
+    select(editor, cellsOf(editor)[0]!.pos + 3);
+
+    paste(editor, `${blank}<table><tr><td>s1</td><td>s2</td></tr></table>${blank}`, 's1 s2');
+    await settled();
+
+    expect(gridsOf(editor)).toEqual([[['s1', 's2'], ['c', 'd']]]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it('fills only once from the top-left of a larger reversed CellSelection', async () => {
     const { editor } = await openReady([tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
     selectCells(editor, 3, 0);
