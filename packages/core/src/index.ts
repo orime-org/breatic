@@ -23,6 +23,7 @@ export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
