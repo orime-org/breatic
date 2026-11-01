@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { MediaAdapter } from "@provider/media/adapter.js";
+import { falAdapter } from "@provider/media/fal/adapter.js";
 import { wavespeedAdapter } from "@provider/media/wavespeed/adapter.js";
 
 /** Every media upstream kind provider speaks to, by the kind the configuration names. */
-const ADAPTERS: Readonly<Record<string, MediaAdapter>> = { wavespeed: wavespeedAdapter };
+const ADAPTERS: Readonly<Record<string, MediaAdapter>> = { wavespeed: wavespeedAdapter, fal: falAdapter };
 
-// Configuration accepts fal and sandbase before their adapters are in ADAPTERS; adapterOf still
-// refuses them, so a run bound to one fails instead of speaking another upstream's protocol.
-// The entries go when the fal and SandBase adapters land (inner#1775).
-const PENDING_KINDS: ReadonlySet<string> = new Set(["fal", "sandbase"]);
+// Configuration accepts sandbase before its adapter is in ADAPTERS; adapterOf still refuses it,
+// so a run bound to it fails instead of speaking another upstream's protocol. The entry goes
+// when the SandBase adapter lands (inner#1775).
+const PENDING_KINDS: ReadonlySet<string> = new Set(["sandbase"]);
 
 /**
  * Whether configuration may bind media models to upstreams of a kind.

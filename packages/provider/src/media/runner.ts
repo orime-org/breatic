@@ -834,8 +834,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
         if (ticket.accepted || to === undefined) {
-          // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
-          if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
+          // The upstream lacking the model or the balance is a lasting answer: retrying the same ticket would get it again.
+          if (failure.kind === "model_not_found" || failure.kind === "insufficient_balance") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
           throw new SendNotAccepted(ticket.upstream, error);
         }
         const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
@@ -869,7 +869,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (at === undefined) return finish(ticket, bounds, {});
       let asked;
       try {
-        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle }));
+        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle, kind: at.step.kind }));
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent
           || (error instanceof HttpStatus && (error.status === 429 || isServerError(error.status)));

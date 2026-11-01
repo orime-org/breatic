@@ -88,12 +88,21 @@ export interface StepCodec {
 /** How a refused submit reads: a lasting answer of this upstream, or neither. */
 export type Refusal = "model_not_found" | "insufficient_balance" | undefined;
 
+/** What a question about a prediction needs besides its id. */
+export interface AskContext {
+  binding: MediaBinding;
+  /** What the submit handed back for later questions, if it did. */
+  handle: Record<string, string> | undefined;
+  /** The kind of step asked about: the model's own call reads output files, an extra step its own fields. */
+  kind: StepKind;
+}
+
 /** One media upstream kind. */
 export interface MediaAdapter {
   /** Submit one step; resent only when the HTTP module knows the upstream did not process it. */
   submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted>;
   /** Ask once about a prediction. */
-  ask(reach: Reach, predictionId: string, bounds: RequestBounds, context: { binding: MediaBinding; handle: Record<string, string> | undefined }): Promise<Asked>;
+  ask(reach: Reach, predictionId: string, bounds: RequestBounds, context: AskContext): Promise<Asked>;
   /** What a prediction cost: pending when billing has not said yet, missing on the last attempt. */
   billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }>;
   /** What a refused submit says, read this upstream's way. */
@@ -102,6 +111,21 @@ export interface MediaAdapter {
   gone(kind: string, message: string, id: string): boolean;
   /** The extra step kinds this upstream speaks, and how. */
   steps: Partial<Record<Exclude<StepKind, "generate" | "describe">, StepCodec>>;
+}
+
+/** The largest JSON answer read from a media upstream. */
+const MAX_JSON_BYTES = 10 * 1024 * 1024;
+/** How long a JSON answer may stall when no deadline bounds it (a final ask). */
+const FINAL_ASK_IDLE_MS = 60_000;
+
+/**
+ * The read limits of one JSON request to a media upstream.
+ * @param bounds - The request's bounds.
+ * @returns Byte and idle limits.
+ */
+export function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
+  const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
+  return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
 }
 
 /**

@@ -24,6 +24,8 @@ const upstreamSchema = z.strictObject({
   base_url: z.string().min(1),
   key_env: z.string().min(1),
   concurrency: z.number().int().positive().optional(),
+  /** Where the upstream answers billing questions, when that is not `base_url` (fal's platform API). */
+  billing_url: z.string().min(1).optional(),
 });
 
 /** How a written value is converted after its spelling: to a string, a number, or a one-item list. */

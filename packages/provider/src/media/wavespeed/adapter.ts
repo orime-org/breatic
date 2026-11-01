@@ -14,15 +14,10 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
-import { outputField, outputUrls, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type StepCodec, type Submitted } from "@provider/media/adapter.js";
+import { limits, outputField, outputUrls, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type StepCodec, type Submitted } from "@provider/media/adapter.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 import { buildBody } from "@provider/media/body.js";
-
-/** The largest JSON answer read from the upstream. */
-const MAX_JSON_BYTES = 10 * 1024 * 1024;
-/** How long a JSON answer may stall when no deadline bounds it (a final ask). */
-const FINAL_ASK_IDLE_MS = 60_000;
 
 /**
  * How the upstream says a cloned id it once gave is gone, by clone kind (the
@@ -35,15 +30,6 @@ const GONE: Readonly<Partial<Record<string, (message: string, id: string) => boo
   element: (message, id) => /Element id not found: (\S+)/.exec(message)?.[1] === id,
 };
 
-/**
- * The read limits of one JSON request.
- * @param bounds - The request's bounds.
- * @returns Byte and idle limits.
- */
-function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
-  const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
-  return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
-}
 
 /**
  * The headers of every request.

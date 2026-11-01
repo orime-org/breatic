@@ -192,11 +192,12 @@ describe("fal submit and queue", () => {
 
   it("asks again when the result answers 503, and finishes when it answers next", async () => {
     const { run } = runner();
+    // The HTTP module resends a read up to three deliveries within one poll; every one of the first poll answers 503.
     let resultAsks = 0;
     fal.answer(({ path }) => {
       if (path === "/bytedance/seedance-2.5/us/text-to-video") return queued("r5");
       if (path.endsWith("/r5/status")) return { status: 200, body: { status: "COMPLETED" } };
-      if (path.endsWith("/r5")) return ++resultAsks === 1 ? { status: 503, body: { detail: "busy" } } : { status: 200, body: { video: { url: "https://v/5.mp4" } } };
+      if (path.endsWith("/r5")) return ++resultAsks <= 3 ? { status: 503, body: { detail: "busy" } } : { status: 200, body: { video: { url: "https://v/5.mp4" } } };
       if (path === "/v1/models/billing-events") return events([0.1]);
       return undefined;
     });
