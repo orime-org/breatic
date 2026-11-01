@@ -714,7 +714,9 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     const rest = firstWords ? nodes.slice(1) : nodes;
     laid = [head, ...rest];
     tr.replaceWith(start, end, laid);
-    from = firstWords ? start + 2 + size : startOf(laid, 1);
+    // The words joined to the line and the blocks after it are apart when the
+    // line nests blocks of its own; what is put after them is the range.
+    from = firstWords && line.node.childCount < 2 ? start + 2 + size : startOf(laid, 1);
     to = startOf(laid, laid.length);
     finishCaret(tr, rest, startOf(laid, 1));
   } else {
@@ -733,9 +735,10 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     if (lastWords) caret = backStart + 2 + backWords.size;
     else finishCaret(tr, middle, startOf(laid, front === null ? 0 : 1));
     // A split line's own halves bound what went in: the front's end and the
-    // back's start, so a range over it takes leading and trailing media.
+    // back's start, so a range over it takes leading and trailing media. At
+    // the line's start nothing is split and both ends stay at block bounds.
     from = front === null ? start : start + 2 + offset;
-    to = lastWords ? backStart + 2 + backWords.size : backStart + 2;
+    to = lastWords ? backStart + 2 + backWords.size : front === null ? backStart : backStart + 2;
   }
   if (caret !== null) tr.setSelection(TextSelection.create(tr.doc, caret));
   view.dispatch(tr.scrollIntoView());

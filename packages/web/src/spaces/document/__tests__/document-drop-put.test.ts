@@ -177,6 +177,16 @@ describe('a drop selects what it put', () => {
     expect(lines(editor).filter((label) => label.startsWith('paragraph:') && label !== 'paragraph:')).toEqual(['paragraph:A', 'paragraph:B']);
   });
 
+  it('words then a picture at the end of a line with nested lines: never the nested lines', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'aaa', children: [{ type: 'paragraph', content: 'kid' }] }, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'aaa', 3), { 'text/html': `<p>n</p><img src="${PIC}">`, 'text/plain': 'n' });
+    await settled();
+    expect(selectedContent(editor)).toEqual({ oneCell: true, words: '', media: [PIC] });
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.deleteSelection());
+    expect(view.state.doc.textContent).toBe('aaankidtail');
+  });
+
   it('media then words at the end of a cell: deleting it keeps the cell\'s own words', async () => {
     const { editor } = await openReady([TWO_CELLS]);
     dropFormats(editor, positionOf(editor, 'c1', 2), { 'text/html': `<img src="${PIC}"><p>x</p>`, 'text/plain': 'x' });
