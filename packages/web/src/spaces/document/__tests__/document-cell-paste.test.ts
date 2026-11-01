@@ -551,6 +551,51 @@ it('hands an empty body paragraph\'s own nested blocks to the trailing line that
   expect(editor.prosemirrorView.state.selection.$head.parent.textContent).toBe('Title');
 });
 
+it.each([
+  ['one block', `<ul><li>x<img src="${PICTURE}"></li></ul>`],
+  ['words, then that block', `<p>a</p><ul><li>x<img src="${PICTURE}"></li></ul>`],
+])('leaves an empty body paragraph for the caret when content ending in a nested picture is pasted as %s', async (_name, html) => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }, { type: 'paragraph', content: 'tail' }]);
+  const lineId = (editor.document as { id: string }[])[1]!.id;
+  caretIn(editor, 1);
+
+  paste(editor, html, 'x');
+  await settled();
+
+  const blocks = editor.document as { id: string; type: string }[];
+  const kept = blocks[blocks.length - 2]!;
+  expect({ id: kept.id, type: kept.type, last: bodyBlocks(editor).at(-1) }).toEqual({ id: lineId, type: 'paragraph', last: 'paragraph:tail' });
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ parent: $head.parent.textContent, depth: $head.depth }).toEqual({ parent: '', depth: 3 });
+});
+
+it('leaves an empty cell paragraph for the caret when content ending in a nested picture is pasted', async () => {
+  const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
+  select(editor, cellsOf(editor)[0]!.pos + 3);
+
+  paste(editor, `<p>a</p><ul><li>x<img src="${PICTURE}"></li></ul>`, 'a x');
+  await settled();
+
+  const cell = cellsOf(editor)[0]!.node;
+  expect(blocksOf(cell)).toEqual(['paragraph:a', 'bulletListItem:x', 'paragraph:']);
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ parent: $head.parent.textContent, sameCell: $head.node($head.depth - 2) === cell }).toEqual({ parent: '', sameCell: true });
+});
+
+it('takes an empty body paragraph with one pasted list item whose nested words come last', async () => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }]);
+  const lineId = (editor.document as { id: string }[])[1]!.id;
+  caretIn(editor, 1);
+
+  paste(editor, `<ul><li>x<img src="${PICTURE}"><ul><li>y</li></ul></li></ul>`, 'x y');
+  await settled();
+
+  const last = (editor.document as { id: string; type: string }[]).at(-1)!;
+  expect({ id: last.id, type: last.type }).toEqual({ id: lineId, type: 'bulletListItem' });
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ parent: 'y', at: 1 });
+});
+
 it('takes an empty cell with a trailing list item that has nested items', async () => {
   const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
   select(editor, cellsOf(editor)[0]!.pos + 3);
