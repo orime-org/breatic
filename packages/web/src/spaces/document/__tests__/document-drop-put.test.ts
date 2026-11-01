@@ -1002,6 +1002,83 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     expect(codeWords(editor)).toEqual(['codeTitle\n\npara\n\n- x\n- y']);
   });
 
+  it('pastes a whole line copied to the next line\'s start into a line\'s end, an empty heading and a line\'s start as their words', async () => {
+    const whole = await openReady([{ type: 'paragraph', content: 'hello' }, { type: 'paragraph', content: 'next' }, { type: 'paragraph', content: 'xy' }]);
+    const line = copyOf(whole.editor, positionOf(whole.editor, 'hello', 0), positionOf(whole.editor, 'next', 0));
+    pasteAtPoint(whole.editor, positionOf(whole.editor, 'xy', 2), { 'blocknote/html': line, 'text/html': line, 'text/plain': 'hello' });
+    await settled();
+    expect(lines(whole.editor)).toEqual(['paragraph:hello', 'paragraph:next', 'paragraph:xyhello']);
+    unmountAll();
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'foo' }, { type: 'heading' }, { type: 'paragraph', content: 'ab' }]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'foo', 3));
+    let heading = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (heading < 0 && node.type.name === 'heading') heading = pos + 1;
+      return heading < 0;
+    });
+    pasteAtPoint(editor, heading, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'foo' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', 'paragraph:foo', 'heading:foo', 'paragraph:ab']);
+    pasteAtPoint(editor, positionOf(editor, 'ab', 0), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'foo' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', 'paragraph:foo', 'heading:foo', 'paragraph:fooab']);
+  });
+
+  it('gives blocks a copy drag puts no row id of the string "null"', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'foo' }, { type: 'image', props: { url: PIC } }, { type: 'paragraph', content: 'bar' }, { type: 'paragraph', content: 'xxxx' }]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'foo', 0), positionOf(editor, 'bar', 3))));
+    view.focus();
+    view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: false };
+    dropFormats(editor, positionOf(editor, 'xxxx', 2), { 'text/html': '<p>x</p>' }, 1, true);
+    await settled();
+    const ids: unknown[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.type.name === 'blockContainer') ids.push(node.attrs['id']);
+      return true;
+    });
+    expect(ids.filter((id) => id === 'null' || id === null)).toEqual([]);
+  });
+
+  it('pastes words copied from one line\'s end into a stored table\'s cell with no line break', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'Head' }, { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } }] as unknown as Parameters<typeof open>[0]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'Head', 4));
+    pasteAtPoint(editor, positionOf(editor, 'l1', 1), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'Head' });
+    await settled();
+    let breaks = 0;
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'hardBreak') breaks += 1;
+      return true;
+    });
+    expect(breaks).toBe(0);
+  });
+
+  it('pastes words copied from a nested item\'s end into a line\'s middle with no empty item', async () => {
+    const { editor } = await openReady([{ type: 'bulletListItem', content: 'par', children: [{ type: 'bulletListItem', content: 'kid' }] }, { type: 'paragraph', content: 'xx' }, { type: 'paragraph', content: 'abcd' }]);
+    const html = copyOf(editor, positionOf(editor, 'kid', 3), positionOf(editor, 'xx', 2));
+    pasteAtPoint(editor, positionOf(editor, 'abcd', 2), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'xx' });
+    await settled();
+    expect(lines(editor)).toEqual(['bulletListItem:par', 'paragraph:xx', 'paragraph:ab', 'paragraph:xxcd']);
+  });
+
+  it('pastes lines copied to a nested item\'s start with no empty nested item', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'bulletListItem', content: 'par', children: [{ type: 'bulletListItem', content: 'kid' }] }, { type: 'paragraph', content: 'abcd' }]);
+    const html = copyOf(editor, positionOf(editor, 'lead', 0), positionOf(editor, 'kid', 0));
+    pasteAtPoint(editor, positionOf(editor, 'abcd', 4), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'lead' });
+    await settled();
+    const last = (editor.document as { type: string; children: unknown[] }[]).at(-1)!;
+    expect(last.type).toBe('bulletListItem');
+    expect(last.children).toEqual([]);
+  });
+
+  it('fills cells from a code block in a cell with a web table, as A12 fills them', async () => {
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'codeBlock', content: 'code' }] }, 'n'] }] } as never)]);
+    pasteAtPoint(editor, positionOf(editor, 'code', 2), { 'text/html': '<table><tr><td>s1</td><td>s2</td></tr></table>', 'text/plain': 's1\ts2' });
+    await settled();
+    expect(codeWords(editor)).not.toContain('cos1\ts2de');
+  });
+
   it('pastes a picture copied from one line\'s end to the next line\'s start as that picture alone', async () => {
     const { editor } = await openReady([
       { type: 'paragraph', content: 'lead' },
