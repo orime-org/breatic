@@ -245,7 +245,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // its cells and cannot stand in for the whole table (inner#1619). A
     // located block takes its children with it, as a rewrite replaces them
     // and an insert goes after them (inner#1646).
-    const content = landed.how === 'source' ? block : block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
+    const own = block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content') ?? block;
+    const content = landed.how === 'source' ? block : own;
     const view = viewOf(handle.editor);
     const words = spot.ranges === null || view === null ? null : spot.ranges.map((r) => {
       const range = document.createRange();
@@ -265,7 +266,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
      * @returns Its rectangle on screen.
      */
     const outlined = (): DOMRect => {
-      if (words === null || words.length === 0) return content.getBoundingClientRect();
+      if (words === null || words.length === 0) {
+        // A located block's box takes in the margin above its first line;
+        // the outline starts at that line, so it stands off the words evenly.
+        const at = content.getBoundingClientRect();
+        const top = own.getBoundingClientRect().top;
+        return new DOMRect(at.left, top, at.width, at.bottom - top);
+      }
       const around = boxAround(words.map((w) => w.getBoundingClientRect()));
       return table === null ? around : cutTo(around, table.getBoundingClientRect());
     };

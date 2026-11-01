@@ -511,9 +511,11 @@ describe('DocumentEditor', () => {
       editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Before' }, { type: 'paragraph', content: 'Target' }] as never);
       const blockId = (editor.document[1] as { id: string }).id;
       const own = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+      const firstLine = own.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
       const viewport = bodyViewport();
       const spies = [
         vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+        vi.spyOn(firstLine, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 30)),
         vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
       ];
       const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
@@ -557,6 +559,35 @@ describe('DocumentEditor', () => {
 
         await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
           top: '92px', left: '27px', width: '316px', height: '176px',
+        }));
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        scroll.mockRestore();
+      }
+    });
+
+    it('starts a located block\'s outline at its first line, leaving the margin above it out (visual review)', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Before' }, { type: 'paragraph', content: 'Target' }] as never);
+      const location = located({ blockId: (editor.document[1] as { id: string }).id });
+      const outer = handle.surface.querySelector<HTMLElement>(`[data-id="${location.blockId!}"]`)!;
+      const own = outer.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+      const viewport = bodyViewport();
+      const spies = [
+        vi.spyOn(outer, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+        vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 102, 300, 30)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+      ];
+      const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      try {
+        rerender(<DocumentEditor handle={handle} landed={location} />);
+
+        await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '104px', left: '27px', width: '316px', height: '164px',
         }));
       } finally {
         for (const spy of spies) spy.mockRestore();
