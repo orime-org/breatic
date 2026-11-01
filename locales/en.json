@@ -1999,6 +1999,7 @@
         "errorInvalid": "The model or an accompanying file could not be read.",
         "errorDuplicate": "Some files have the same path. Choose a collection without conflicts.",
         "errorUpload": "The model could not be uploaded. Try again.",
+        "errorLoad": "The model could not be loaded. Try again.",
         "success": "Model imported.",
         "limit": {
           "input": "Selected files total {actual} MiB; the limit is {allowed} MiB.",

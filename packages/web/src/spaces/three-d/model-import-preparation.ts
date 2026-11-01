@@ -19,14 +19,14 @@ import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewp
  * @param limits - Configured input, artifact, decoder and texture budgets.
  * @returns Original artifact, parsed template, metadata and its idempotent release.
  * @throws {DOMException} When the owning import is aborted.
- * @throws {ModelImportError} When inspection, parsing or rendering fails.
+ * @throws {ModelImportError} When inspection or parsing refuses the model.
+ * @throws {Error} When a worker, decoder download or renderer fails, which a retry can resolve.
  */
 export async function prepareSceneModel(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<PreparedModel> {
   const selection = await inspectModelSelectionInWorker(files, entry, signal, limits);
   signal.throwIfAborted();
   const info = { entries: selection.entries, paths: selection.paths, missing: [] };
   const extensions = getUnsupportedModelExtensions(selection.model);
-  if (extensions.required.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: extensions.required.join(', '), info });
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;
   try {
@@ -76,7 +76,8 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     if (root) disposeModelTemplate(root);
     if (signal.aborted) signal.throwIfAborted();
     if (error instanceof ModelImportError) throw error.info ? error : error.withInfo(info);
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '', info });
+    // A decoder download, renderer or worker failure says nothing about the model, so it stays a retryable plain error.
+    throw error;
   } finally {
     renderer?.dispose();
     renderer?.forceContextLoss();

@@ -12,33 +12,30 @@ import type { ModelSource } from '@web/spaces/three-d/model-source';
 export type ModelImportWorkerRequest =
   | { kind: 'selection'; files: readonly ModelSource[]; entry: string | undefined; limits: SceneImportLimits }
   | { kind: 'registered'; bytes: Uint8Array<ArrayBuffer>; limits: SceneImportLimits };
-export interface SerializedModelImportError {
-  code: ModelImportErrorCode;
-  message: string;
-  info?: ModelInspectionInfo;
-  detail: string;
-  budget?: ModelImportBudget;
-}
-export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: true; model: ModelPackage } | { ok: false; error: SerializedModelImportError };
+/** A worker failure: a content verdict keeps its facts; any other failure keeps only its message and stays retryable. */
+export type SerializedWorkerError =
+  | { kind: 'import'; code: ModelImportErrorCode; message: string; info?: ModelInspectionInfo; detail: string; budget?: ModelImportBudget }
+  | { kind: 'error'; message: string };
+export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: true; model: ModelPackage } | { ok: false; error: SerializedWorkerError };
 
 /**
- * Carry inspection facts across the worker boundary without relying on Error cloning.
- * @param error - Inspection failure from the worker's model checker.
- * @returns A structured-cloneable diagnostic with separate display facts.
+ * Carry a worker failure across the boundary without relying on Error cloning.
+ * @param error - Any failure thrown inside the worker.
+ * @returns A structured-cloneable diagnostic.
  * @throws {never} Never directly.
  */
-export function serializeModelImportError(error: unknown): SerializedModelImportError {
+export function serializeWorkerError(error: unknown): SerializedWorkerError {
   return error instanceof ModelImportError
-    ? { code: error.code, message: error.message, ...(error.info ? { info: error.info } : {}), detail: error.detail, ...(error.budget ? { budget: error.budget } : {}) }
-    : { code: 'invalid', message: error instanceof Error ? error.message : String(error), detail: '' };
+    ? { kind: 'import', code: error.code, message: error.message, ...(error.info ? { info: error.info } : {}), detail: error.detail, ...(error.budget ? { budget: error.budget } : {}) }
+    : { kind: 'error', message: error instanceof Error ? error.message : String(error) };
 }
 
 /**
- * Recreate the typed failure used by the document import controller and UI.
+ * Recreate a worker failure: a content verdict as ModelImportError, anything else as a plain Error.
  * @param error - Worker-owned serialized diagnostic.
- * @returns A local inspection error retaining its paths and entry choices.
+ * @returns The local failure.
  * @throws {never} Never.
  */
-export function deserializeModelImportError(error: SerializedModelImportError): ModelImportError {
-  return restoreModelImportError(error.code, error.message, { detail: error.detail, info: error.info, budget: error.budget });
+export function deserializeWorkerError(error: SerializedWorkerError): Error {
+  return error.kind === 'import' ? restoreModelImportError(error.code, error.message, { detail: error.detail, info: error.info, budget: error.budget }) : new Error(error.message);
 }

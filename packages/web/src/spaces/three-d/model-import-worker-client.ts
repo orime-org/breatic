@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { SceneImportLimits } from '@breatic/shared';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { deserializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
+import { deserializeWorkerError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer, ModelImportWorkerRequest } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -16,7 +15,8 @@ import type { ModelSource } from '@web/spaces/three-d/model-source';
  * @param transfer - Buffers handed to the worker without copying.
  * @returns The worker's successful answer.
  * @throws {DOMException} When the owning operation is aborted.
- * @throws {ModelImportError} When worker setup, execution or the requested check fails.
+ * @throws {ModelImportError} When the requested check refuses the model.
+ * @throws {Error} When the worker cannot start, run or answer, which a retry can resolve.
  */
 function runModelImportWorker(request: ModelImportWorkerRequest, signal: AbortSignal, transfer: Transferable[] = []): Promise<Exclude<ModelImportWorkerAnswer, { ok: false }>> {
   return new Promise((resolve, reject) => {
@@ -25,7 +25,7 @@ function runModelImportWorker(request: ModelImportWorkerRequest, signal: AbortSi
     try {
       worker = new Worker(new URL('./model-import-worker.ts', import.meta.url), { type: 'module' });
     } catch (error) {
-      reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' }));
+      reject(new Error(error instanceof Error ? error.message : String(error)));
       return;
     }
     let settled = false;
@@ -52,17 +52,17 @@ function runModelImportWorker(request: ModelImportWorkerRequest, signal: AbortSi
     const abort = (): void => settle(() => reject(new DOMException('Model inspection cancelled', 'AbortError')));
     worker.onmessage = (event: MessageEvent<ModelImportWorkerAnswer>): void => {
       const answer = event.data;
-      settle(() => { if (answer.ok) resolve(answer); else reject(deserializeModelImportError(answer.error)); });
+      settle(() => { if (answer.ok) resolve(answer); else reject(deserializeWorkerError(answer.error)); });
     };
     worker.onerror = (event: ErrorEvent): void => {
       event.preventDefault();
-      settle(() => reject(new ModelImportError('invalid', event.message, { detail: '' })));
+      settle(() => reject(new Error(event.message)));
     };
-    worker.onmessageerror = (): void => settle(() => reject(new ModelImportError('invalid', 'Model inspection result could not be read', { detail: '' })));
+    worker.onmessageerror = (): void => settle(() => reject(new Error('Model inspection result could not be read')));
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) { abort(); return; }
     try { worker.postMessage(request, transfer); } catch (error) {
-      settle(() => reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' })));
+      settle(() => reject(new Error(error instanceof Error ? error.message : String(error))));
     }
   });
 }
@@ -75,11 +75,12 @@ function runModelImportWorker(request: ModelImportWorkerRequest, signal: AbortSi
  * @param limits - Project's import budgets.
  * @returns Checked resources and the deterministic registered artifact.
  * @throws {DOMException} When the owning operation is aborted.
- * @throws {ModelImportError} When worker setup, execution or inspection fails.
+ * @throws {ModelImportError} When inspection refuses the selection.
+ * @throws {Error} When the worker cannot start, run or answer.
  */
 export async function inspectModelSelectionInWorker(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelSelection> {
   const answer = await runModelImportWorker({ kind: 'selection', files, entry, limits }, signal);
-  if (!('selection' in answer)) throw new ModelImportError('invalid', 'Model inspection answered without a selection', { detail: '' });
+  if (!('selection' in answer)) throw new Error('Model inspection answered without a selection');
   return answer.selection;
 }
 
@@ -90,10 +91,11 @@ export async function inspectModelSelectionInWorker(files: readonly ModelSource[
  * @param limits - Project's import budgets.
  * @returns The package's checked entry and resources.
  * @throws {DOMException} When the lease is cancelled.
- * @throws {ModelImportError} When the package is invalid or the worker fails.
+ * @throws {ModelImportError} When the package is invalid.
+ * @throws {Error} When the worker cannot start, run or answer.
  */
 export async function readRegisteredModelPackageInWorker(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelPackage> {
   const answer = await runModelImportWorker({ kind: 'registered', bytes, limits }, signal, [bytes.buffer]);
-  if (!('model' in answer)) throw new ModelImportError('invalid', 'Model package answered without a model', { detail: '' });
+  if (!('model' in answer)) throw new Error('Model package answered without a model');
   return answer.model;
 }

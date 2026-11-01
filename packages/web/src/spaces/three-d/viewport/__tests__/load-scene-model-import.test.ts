@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { BufferGeometry, Group, Mesh, MeshBasicMaterial, Texture } from 'three';
+import type { WebGLRenderer } from 'three';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
@@ -12,6 +13,7 @@ import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
@@ -219,7 +221,7 @@ describe('registered model import containers (inner#1690)', () => {
 
   it('reports an unknown required extension before accepting its otherwise valid GLB', async () => {
     const bytes = triangleGlb('CharacterRoot', 'VENDOR_unknown_required');
-    await expect(loadRegistered(bytes.buffer, 'model/gltf-binary')).rejects.toThrow('VENDOR_unknown_required');
+    await expect(loadRegistered(bytes.buffer, 'model/gltf-binary')).rejects.toMatchObject({ code: 'unsupported', detail: 'VENDOR_unknown_required' });
   });
 
   it('rejects an oversized registered asset before downloading its bytes', async () => {
@@ -432,5 +434,23 @@ describe('declared buffer lengths are measured on the bytes the loader reads (in
     view.setUint32(20 + jsonLength, TRIANGLE.byteLength - 4, true);
     expect(() => inspectModelFiles(new Map([['scene.glb', glb.slice(0, glb.byteLength - 4)]]), 'scene.glb', IMPORT_LIMITS))
       .toThrow(expect.objectContaining({ code: 'invalid', detail: 'scene.glb' }));
+  });
+});
+
+describe('decoder downloads are not model content (inner#1690)', () => {
+  const directory = 'tests/fixtures/three-d-model-import';
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it.each([
+    ['Draco', 'draco.gltf', [] as string[]],
+    ['KTX2', 'ktx2.gltf', ['normal.ktx2']],
+  ])('keeps a failed %s decoder download a plain, retryable error', async (_label, entry, extra) => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const files = new Map([entry, ...extra].map((path) => [path, Uint8Array.from(readFileSync(`${directory}/${path}`))] as const));
+    const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
+    const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
+    const failure = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS, renderer).then(() => undefined, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ModelImportError);
   });
 });

@@ -1999,6 +1999,7 @@
         "errorInvalid": "无法读取模型或配套文件。",
         "errorDuplicate": "存在相同路径的文件，请重新选择无冲突的文件集合。",
         "errorUpload": "模型上传失败，请重试。",
+        "errorLoad": "模型加载失败，请重试。",
         "success": "模型已导入。",
         "limit": {
           "input": "所选文件共 {actual} MiB，上限 {allowed} MiB。",

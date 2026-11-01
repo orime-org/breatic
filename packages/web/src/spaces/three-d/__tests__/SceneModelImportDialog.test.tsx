@@ -259,3 +259,14 @@ describe('model import dialog controls', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 });
+
+describe('model import dialog failures outside the model (inner#1690)', () => {
+  it('asks to try again when preparing fails for a reason other than the model content', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new Error('Worker failed'));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    expect(screen.getByText('The model could not be loaded. Try again.')).toBeInTheDocument();
+    expect(screen.queryByText('The model or an accompanying file could not be read.')).toBeNull();
+  });
+});

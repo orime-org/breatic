@@ -31,6 +31,8 @@ const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
 
 export interface ModelDecoder {
   loader: GLTFLoader;
+  /** Download the decoders the model declares, so a failed download surfaces before parsing as a plain, retryable error. */
+  prepare: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -53,11 +55,12 @@ export function getUnsupportedModelExtensions(model: ModelPackage): { required: 
  * @param limits - Configured decoder concurrency.
  * @param renderer - Current device used to choose a KTX2 transcode format.
  * @returns A loader with explicitly owned workers and object URLs.
- * @throws {Error} When a required extension or local resource is unsupported.
+ * @throws {ModelImportError} When the model requires an extension this loader lacks.
+ * @throws {Error} When KTX2 textures need a renderer that was not given.
  */
 export function createModelDecoder(model: ModelPackage, limits: SceneImportLimits, renderer?: WebGLRenderer): ModelDecoder {
   const unsupported = getUnsupportedModelExtensions(model).required;
-  if (unsupported.length) throw new Error(`Unsupported required model extensions: ${unsupported.join(', ')}`);
+  if (unsupported.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: unsupported.join(', ') });
   if (model.json.extensionsUsed?.includes('KHR_texture_basisu') && !renderer) throw new Error('KTX2 decoding requires the current viewport capabilities');
   const decoderAssets = new Map([
     ['https://model-decoder.invalid/draco/draco_wasm_wrapper.js', dracoWrapper],
@@ -87,8 +90,14 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
   const loader = new GLTFLoader(manager).setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder);
   if (ktx2) loader.setKTX2Loader(ktx2);
   let disposed = false;
+  const used = new Set(model.json.extensionsUsed ?? []);
   return {
     loader,
+    prepare: async () => {
+      // r173 DRACOLoader exposes its decoder download promise only through _initDecoder.
+      if (used.has('KHR_draco_mesh_compression')) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
+      if (ktx2 && used.has('KHR_texture_basisu')) await ktx2.init();
+    },
     dispose: () => {
       if (disposed) return;
       disposed = true;

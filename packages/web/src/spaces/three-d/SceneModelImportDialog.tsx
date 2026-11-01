@@ -69,7 +69,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const error = snapshot.error;
   const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
   const errorText = error instanceof ModelImportError ? t(importErrorKey(error.code))
-    : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : t(importErrorKey('invalid'));
+    : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : t('spaces.threeD.importModel.errorLoad');
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
 
   /**

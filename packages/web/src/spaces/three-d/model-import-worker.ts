@@ -4,7 +4,7 @@
 import { readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { inspectModelSelection } from '@web/spaces/three-d/model-selection';
-import { serializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
+import { serializeWorkerError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer, ModelImportWorkerRequest } from '@web/spaces/three-d/model-import-worker-protocol';
 
 /**
@@ -30,7 +30,7 @@ self.onmessage = (event: MessageEvent<ModelImportWorkerRequest>): void => {
     const answer: ModelImportWorkerAnswer = { ok: true, selection };
     self.postMessage(answer, { transfer: [...modelBuffers(selection.model).add(selection.artifact.buffer)] });
   })().catch((error: unknown) => {
-    const answer: ModelImportWorkerAnswer = { ok: false, error: serializeModelImportError(error) };
+    const answer: ModelImportWorkerAnswer = { ok: false, error: serializeWorkerError(error) };
     self.postMessage(answer);
   });
 };

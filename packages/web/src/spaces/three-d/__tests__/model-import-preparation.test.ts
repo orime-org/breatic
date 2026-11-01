@@ -6,7 +6,7 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { prepareSceneModel } from '@web/spaces/three-d/model-import-preparation';
 import { inspectModelSelectionInWorker, readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { serializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
+import { serializeWorkerError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 
@@ -104,7 +104,7 @@ describe('operation-owned model inspection worker', () => {
     const budget = { limit: 'expanded', allowed: 1000, actual: 2000 } as const;
     const failure = new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '', budget });
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
-    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeModelImportError(failure) } }));
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(failure) } }));
     await expect(running).rejects.toMatchObject({ code: 'budget', budget });
   });
 
@@ -113,7 +113,7 @@ describe('operation-owned model inspection worker', () => {
     const failure = new ModelImportError('entry', 'Choose a model entry', { detail: 'one.glb', info });
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
     const worker = ControlledWorker.instances[0];
-    worker.onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeModelImportError(failure) } }));
+    worker.onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(failure) } }));
     await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'entry', info, detail: 'one.glb' });
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
@@ -154,14 +154,14 @@ describe('operation-owned model inspection worker', () => {
   it.each([new Error('Worker unavailable'), 'Worker unavailable'])('normalizes construction failure %s', async (error) => {
     ControlledWorker.constructorError = error;
     await expect(inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS))
-      .rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid', message: 'Worker unavailable' });
+      .rejects.toMatchObject({ name: 'Error', message: 'Worker unavailable' });
     expect(ControlledWorker.instances).toHaveLength(0);
   });
 
   it.each([new Error('Input cannot be cloned'), 'Input cannot be cloned'])('releases a worker after postMessage failure %s', async (error) => {
     ControlledWorker.postError = error;
     await expect(inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS))
-      .rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid', message: 'Input cannot be cloned' });
+      .rejects.toMatchObject({ name: 'Error', message: 'Input cannot be cloned' });
     expect(ControlledWorker.instances[0].terminate).toHaveBeenCalledTimes(1);
   });
 
@@ -171,13 +171,24 @@ describe('operation-owned model inspection worker', () => {
     const event = new ErrorEvent('error', { message: 'Worker failed', cancelable: true });
     if (type === 'error') worker.onerror?.(event);
     else worker.onmessageerror?.();
-    await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid',
+    await expect(running).rejects.toMatchObject({ name: 'Error',
       message: type === 'error' ? 'Worker failed' : 'Model inspection result could not be read' });
     expect(worker.terminate).toHaveBeenCalledTimes(1);
     if (type === 'error') expect(event.defaultPrevented).toBe(true);
   });
 
-  it.each([new Error('Inspection failed'), 'Inspection failed'])('serializes an untyped worker failure %s', (error) => {
-    expect(serializeModelImportError(error)).toEqual({ code: 'invalid', message: 'Inspection failed', detail: '' });
+  it.each([new Error('Inspection failed'), 'Inspection failed'])('carries an untyped worker failure %s as a plain error', async (error) => {
+    expect(serializeWorkerError(error)).toEqual({ kind: 'error', message: 'Inspection failed' });
+    const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(error) } }));
+    await expect(running).rejects.toMatchObject({ name: 'Error', message: 'Inspection failed' });
+  });
+
+  it('keeps a preview failure that is not about the model content a plain error', async () => {
+    parse.mockRejectedValueOnce(new Error('Decoder could not be fetched'));
+    const running = prepareSceneModel(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
+    await expect(running).rejects.toMatchObject({ name: 'Error', message: 'Decoder could not be fetched' });
   });
 });

@@ -1999,6 +1999,7 @@
         "errorInvalid": "無法讀取模型或配套檔案。",
         "errorDuplicate": "存在相同路徑的檔案，請重新選擇沒有衝突的檔案集合。",
         "errorUpload": "模型上傳失敗，請重試。",
+        "errorLoad": "模型載入失敗，請重試。",
         "success": "模型已匯入。",
         "limit": {
           "input": "所選檔案共 {actual} MiB，上限 {allowed} MiB。",

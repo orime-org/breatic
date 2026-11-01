@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page, type Route } from 'playwright/test';
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
@@ -439,6 +440,33 @@ for (const [codec, label] of [['draco', 'Draco'], ['meshopt', 'EXT Meshopt'], ['
     }
   });
 }
+
+test('a registered model whose decoder download fails offers Retry and loads once the download succeeds @needs-storage @needs-ingest', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `Decoder retry ${crypto.randomUUID()}`);
+  /**
+   * Fail only the decoder binary download; the module exporting its URL still loads.
+   * @param url - A requested URL.
+   * @returns Whether the request is the Draco decoder binary.
+   */
+  const decoder = (url: URL): boolean => url.pathname.endsWith('draco_decoder.wasm') && !url.search.includes('import');
+  try {
+    await importModel(page, { name: 'draco.gltf', mimeType: 'model/gltf+json', buffer: readFileSync('tests/fixtures/three-d-model-import/draco.gltf') }, 'Compressed character');
+    await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
+    await page.route(decoder, (route) => route.abort('internetdisconnected'));
+    await page.reload();
+    const banner = visibleSpace(page).getByText('A model could not be loaded.', { exact: true });
+    await expect(banner).toBeVisible({ timeout: test.info().timeout });
+    await expect(visibleSpace(page).getByText('The model or an accompanying file could not be read.', { exact: true })).toHaveCount(0);
+    await page.unroute(decoder);
+    await visibleSpace(page).getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(banner).toHaveCount(0, { timeout: test.info().timeout });
+    await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(1);
+  } finally {
+    await page.unrouteAll();
+    await deleteSpace(page, id);
+  }
+});
 
 test('closing an import during registration preserves its Studio asset without writing a reopened scene @needs-storage @needs-ingest', async ({ page }) => {
   await openSmokeProject(page);

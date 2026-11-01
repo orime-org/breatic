@@ -280,7 +280,9 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
  * @param limits - Configured metadata, decoder and texture budgets.
  * @param renderer - Current renderer supplying KTX2 device capabilities.
  * @returns A template whose scenes belong to disposeModelTemplate.
- * @throws {Error} When parsing, required extensions, textures or cancellation fail.
+ * @throws {ModelImportError} When the model content, its textures or its budgets are refused.
+ * @throws {Error} When a decoder download fails, which a retry can resolve.
+ * @throws {DOMException} When the load is cancelled.
  */
 export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, limits: SceneImportLimits, renderer?: WebGLRenderer): Promise<Group> {
   signal.throwIfAborted();
@@ -292,7 +294,8 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   // GLTFLoader only reads the buffer, so a view spanning its whole buffer is passed without a copy.
   const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes)
     : bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
-  const parsed = decoder.loader.parseAsync(input, '').then(async (result) => {
+  // A decoder download failure is not about the model, so it bypasses the content handler below and stays retryable.
+  const parsed = decoder.prepare().then(() => decoder.loader.parseAsync(input, '').then(async (result) => {
     ownedScenes.set(result.scene, result.scenes);
     try {
       signal.throwIfAborted();
@@ -310,7 +313,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
     }
   }, (error: unknown) => {
     throw error instanceof ModelImportError ? error : new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
-  });
+  }));
   let abort: (() => void) | undefined;
   try {
     return await new Promise<Group>((resolve, reject) => {
