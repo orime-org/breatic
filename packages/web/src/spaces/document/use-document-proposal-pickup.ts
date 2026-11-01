@@ -24,7 +24,14 @@ import * as React from 'react';
 import { readDocConnection, type WriteAccess } from '@web/data/yjs/collab-socket';
 import { peekDocumentEditor, type DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { requestCommentLocation } from '@web/spaces/document/document-comment-selection';
-import { landedAt, landProposal, sourceAt, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import {
+  landedAt,
+  landProposal,
+  sourceAt,
+  type Landed,
+  type ProposalAdmission,
+  type SourceTarget,
+} from '@web/spaces/document/document-proposal-landing';
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { pendingFor, useDocumentProposals, type PendingDocumentProposal } from '@web/stores/document-proposals';
 
@@ -121,13 +128,25 @@ export function useDocumentProposalPickup(
           if (next === undefined) break;
           const id = next.proposal.proposalId;
 
+          /**
+           * Hands the body where this request's proposal is, a comment's thread
+           * selected in its panel.
+           * @param at - Where it landed, or where it points.
+           */
+          const publish = (at: Landed | SourceTarget): void => {
+            const location: ProposalLocation = Object.freeze({ ...at, documentName: name, handle, pending: next, owner });
+            if (location.how === 'comment') requestCommentLocation(handle.editor, location);
+            setLanded(location);
+          };
+
           // A locate press only reads where the proposal points, so it is read
           // and reported at once, whatever the connection may write (inner#1646).
+          // A proposal that already landed is shown where it landed: a rewrite
+          // has replaced the block it named.
           if (next.action === 'locate') {
-            const found = sourceAt(handle, next.proposal);
-            if (found.outcome !== 'blockGone') {
-              setLanded(Object.freeze({ ...found.target, documentName: name, handle, pending: next, owner }));
-            }
+            const landedNow = landedAt(handle, next.proposal);
+            const found = landedNow === null ? sourceAt(handle, next.proposal) : { outcome: 'located', target: landedNow } as const;
+            if (found.outcome !== 'blockGone') publish(found.target);
             report(id, found.outcome);
             continue;
           }
@@ -150,15 +169,8 @@ export function useDocumentProposalPickup(
           let outcome = result.outcome;
           if (outcome === 'applied') {
             const at = landedAt(handle, next.proposal);
-            if (at === null) {
-              outcome = 'gone';
-            } else {
-              const location: ProposalLocation = Object.freeze({
-                ...at, documentName: name, handle, pending: next, owner,
-              });
-              if (location.how === 'comment') requestCommentLocation(handle.editor, location);
-              setLanded(location);
-            }
+            if (at === null) outcome = 'gone';
+            else publish(at);
           }
           report(id, outcome, 'leftOut' in result ? result.leftOut : 0);
         }

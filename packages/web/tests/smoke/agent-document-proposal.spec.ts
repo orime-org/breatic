@@ -705,9 +705,12 @@ test('Locate on a rewrite opens its document from another Space and outlines the
   await expect(mark).toBeVisible();
   const box = await mark.boundingBox();
   const words = await page.locator(`${DOCUMENT_EDITOR} p`).last().boundingBox();
-  expect(box !== null && words !== null).toBe(true);
+  const above = await page.locator(`${DOCUMENT_EDITOR} p`).first().boundingBox();
+  expect(box !== null && words !== null && above !== null).toBe(true);
   expect(box!.x).toBeLessThan(words!.x);
   expect(box!.y + box!.height).toBeGreaterThan(words!.y + words!.height);
+  // Only this passage: the outline starts below the middle of the one above it.
+  expect(box!.y).toBeGreaterThan(above!.y + above!.height / 2);
   await expect(card).toHaveAttribute('data-state', 'idle');
   expect(await paragraphs()).toEqual(['Scene two opens.', 'He pushes the door open and sees her bags packed.']);
   expect(await undoStack(docId)).toBe(steps);

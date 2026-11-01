@@ -240,10 +240,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const block = spot === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(spot.blockId)}"]`);
     if (viewport === null || spot === null || block === null || block === undefined) return undefined;
     shown.current = landed;
-    // A regular block's own content leaves its indented children out. A
+    // A landed block's own content leaves its indented children out. A
     // layout table is already its own content frame; descendants belong to
-    // its cells and cannot stand in for the whole table (inner#1619).
-    const content = block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
+    // its cells and cannot stand in for the whole table (inner#1619). A
+    // located block takes its children with it, as a rewrite replaces them
+    // and an insert goes after them (inner#1646).
+    const content = landed.how === 'source' ? block : block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
     const view = viewOf(handle.editor);
     const words = spot.ranges === null || view === null ? null : spot.ranges.map((r) => {
       const range = document.createRange();

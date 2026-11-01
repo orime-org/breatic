@@ -561,6 +561,29 @@ describe('locating a proposal in its document (inner#1646)', () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
+  it('shows where a rewrite already landed when the card is located after a reload (implementation review round 1)', async () => {
+    const handle = open();
+    vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue(CONFIG);
+    const rewrite: DocumentProposal = { ...proposal(), kind: 'rewrite' };
+    useDocumentProposals.getState().start(rewrite, 'write');
+    const first = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
+    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
+    first.unmount();
+    // A reload: the store forgets the press; the document keeps the rewrite.
+    useDocumentProposals.getState().reset();
+    const steps = handle.undoManager.undoStack.length;
+
+    useDocumentProposals.getState().locate(rewrite);
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
+    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
+
+    expect(result.current).toMatchObject({ how: 'write', blockId: deriveId(`document-proposal:${PROPOSAL_ID}:0`) });
+    expect(textOf(handle)).toBe('AGENT OUTPUT');
+    expect(handle.undoManager.undoStack).toHaveLength(steps);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('does not run a locate the reader left before the hidden body took it up', async () => {
     render(<CollabSocketProvider userId='reader-1'>{null}</CollabSocketProvider>);
     const handle = open();

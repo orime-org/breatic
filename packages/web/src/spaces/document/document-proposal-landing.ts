@@ -230,10 +230,7 @@ export function sourceAt(
 ): { outcome: 'located' | 'changed'; target: SourceTarget } | { outcome: 'blockGone' } {
   const problem = blockProblem(handle, proposal);
   if (problem === 'blockGone') return { outcome: 'blockGone' };
-  const target: SourceTarget = proposal.quote === undefined
-    ? { how: 'source', blockId: proposal.blockId }
-    : { how: 'source', blockId: proposal.blockId, quote: proposal.quote };
-  return { outcome: problem ?? 'located', target };
+  return { outcome: problem ?? 'located', target: { how: 'source', blockId: proposal.blockId, quote: proposal.quote } };
 }
 
 /**

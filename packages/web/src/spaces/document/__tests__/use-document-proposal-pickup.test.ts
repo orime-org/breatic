@@ -327,6 +327,27 @@ describe('a card located in its document (inner#1646)', () => {
     expect(result.current).toMatchObject({ how: 'source', blockId: 'b3' });
   });
 
+  it.each([
+    ['write', { how: 'write', blockId: 'w1' }],
+    ['comment', { how: 'comment', blockId: 'b2', threadId: 't1' }],
+  ] as const)('shows where a proposal already landed as a %s, without saying its passage is gone (implementation review round 1)', async (how, at) => {
+    landedAt.mockReturnValue(at);
+    sourceAt.mockReturnValue({ outcome: 'blockGone' });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => {
+      expect(pending().p1).toBeUndefined();
+    });
+    expect(result.current).toMatchObject(at);
+    expect(sourceAt).not.toHaveBeenCalled();
+    expect(bindings.locate).toHaveBeenCalledTimes(how === 'comment' ? 1 : 0);
+    expect(cards().p1).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('says it could not locate when the editor cannot be built', async () => {
     useDocumentProposals.getState().locate(proposal('p1'));
 
