@@ -12,6 +12,7 @@ import { toast } from '@web/lib/toast';
 import { ModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
@@ -75,6 +76,24 @@ describe('model import dialog controls', () => {
     expect(onPlaced).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledTimes(1);
     expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['storage', 'Studio storage is full. Uploading is unavailable.', false],
+    ['hash', 'Couldn\'t verify this file. Reload the page and try again.', false],
+    ['rateLimited', 'Uploading too often. Try again later.', true],
+    ['transfer', 'The model could not be uploaded. Try again.', true],
+  ] as const)('states a %s upload failure and offers Retry only when retrying can succeed', async (reason, message, retryable) => {
+    const { controller, upload } = await readyImport();
+    upload.mockRejectedValueOnce(new UploadFailedError(reason));
+    await controller.confirm();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(screen.getByText(message)).toBeInTheDocument();
+    if (retryable) expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    else {
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    }
   });
 
   it('keeps an uploading operation reachable through its hidden-dialog opener', async () => {

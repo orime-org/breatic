@@ -15,6 +15,7 @@ import { ModelImportPreview } from '@web/spaces/three-d/ModelImportPreview';
 import type { ModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
+import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
 interface SceneModelImportDialogProps {
   open: boolean;
@@ -61,7 +62,10 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     duplicate: t('spaces.threeD.importModel.errorDuplicate'),
     upload: t('spaces.threeD.importModel.errorUpload'),
   };
-  const errorText = error instanceof ModelImportError ? errorMessages[error.code] : failedUpload ? errorMessages.upload : errorMessages.invalid;
+  const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
+  const errorText = error instanceof ModelImportError ? errorMessages[error.code]
+    : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : errorMessages.invalid;
+  const retryable = failedUpload && (uploadFailure?.retryable ?? true);
 
   /**
    * Ask for a fresh source collection through the browser's hidden file input.
@@ -189,7 +193,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
           </div>}
         </div>
       </ScrollArea>
-      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button><Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || !canEdit || !snapshot.name.trim()}>{failedUpload ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button></DialogFooter>
+      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button><Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim()}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 });

@@ -28,6 +28,7 @@ import type { SceneModelState, SceneTransformMode, SceneView, SceneViewportProps
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelBounds, ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
+import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
@@ -216,7 +217,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     try {
       return await uploadMedia(file, { projectId, purpose: 'scene_model' }, onProgress, signal, onRegistering);
     } catch (error) {
-      if (!signal.aborted) toast.error(t('spaces.threeD.importModel.errorUpload'));
+      if (!signal.aborted) {
+        const failure = modelUploadFailure(error, file.name);
+        toast.error(t(failure.key, failure.params));
+      }
       throw error;
     }
   }, [projectId, t]);
