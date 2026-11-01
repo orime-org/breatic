@@ -13,7 +13,8 @@ import type { VideoSourceLedgerStateV2 } from '@breatic/shared';
 import { bytesFor, fixture, ORIGINAL, putClaim, receipt, tableKeyFor, type LedgerFixture } from './helpers/source-ledger-fixture.js';
 
 const opaque = { codecName: 'vp9', pixelFormat: 'yuv420p', pixelAlpha: 0 as const, alphaMode: null, formatName: 'matroska,webm', videoStreamIndex: 0 };
-const events = ['admit', 'produce', 'invalidate', 'expired', 'resource_limit', 'unsupported_rate', 'no_presented_frames'] as const;
+// Design §10.6: limits frozen at admission (`resource_limit`) are content; real exhaustion (`resource_exhausted`) is transient.
+const events = ['admit', 'produce', 'invalidate', 'expired', 'resource_exhausted', 'resource_limit', 'unsupported_rate', 'no_presented_frames'] as const;
 
 /** Make playback ready while the independently owned ledger remains pending. @throws {Error} When the real store refuses the probe. */
 async function playbackReady(value: LedgerFixture): Promise<void> {
@@ -67,7 +68,7 @@ describe('source ledger state properties (inner#1306 fact A)', () => {
       for (const [index, event] of sequence.entries()) {
         if (event === 'admit') {
           const nextJob = `${value.identity.jobId}-retry-${index}`;
-          const retryable = expected.state === 'failed' && ['expired', 'resource_limit', 'source_ledger_missing'].includes(expected.errorCode);
+          const retryable = expected.state === 'failed' && ['expired', 'resource_exhausted', 'source_ledger_missing'].includes(expected.errorCode);
           const accepted = await value.owner.accept({ ...value.admission, jobId: nextJob });
           expect(accepted.attempt?.jobId).toBe(retryable ? nextJob : value.identity.jobId);
           if (retryable) {
