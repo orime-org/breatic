@@ -6,6 +6,7 @@ import type { SceneImportLimits } from '@breatic/shared';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 
 const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -122,7 +123,7 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
 }
 
 /**
- * Check declared image dimensions before the browser decodes texture pixels.
+ * Check the dimensions of the images GLTFLoader decodes, before the browser decodes their pixels.
  * A failure names the image by its file path, or by its index when the image is embedded.
  * @param model - Checked original glTF resources.
  * @param limits - Configured and device-adjusted texture dimension budget.
@@ -130,7 +131,11 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
  */
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const [index, image] of (model.json.images ?? []).entries()) checkImage({ model, decoded, location: imageLocation(model, index) }, image, limits);
+  for (const index of loadedResources(model.json).images) {
+    const image = model.json.images?.[index];
+    if (!image) throw new ModelImportError('invalid', 'Model texture names a missing image', { detail: `images[${index}]` });
+    checkImage({ model, decoded, location: imageLocation(model, index) }, image, limits);
+  }
 }
 
 /**

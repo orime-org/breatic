@@ -13,6 +13,7 @@ import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spac
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 
 // jsdom has no Worker; the mocked client runs the same package reader the worker runs.
 vi.mock('@web/spaces/three-d/model-import-worker-client', async () => {
@@ -241,7 +242,8 @@ describe('registered model import containers (inner#1690)', () => {
     const geometry = btoa(String.fromCharCode(...new Uint8Array(TRIANGLE.buffer)));
     const json = Uint8Array.from(strToU8(JSON.stringify({
       ...triangleJson('CharacterRoot', `data:application/octet-stream;base64,${geometry}`),
-      images: [{ uri: `data:image/png;base64,${btoa(String.fromCharCode(...png))}` }],
+      images: [{ uri: `data:image/png;base64,${btoa(String.fromCharCode(...png))}` }], textures: [{ source: 0 }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
     })));
     const loading = entryPoint === 'registered'
       ? loadRegistered(modelPackage('files/scene.gltf', { 'files/scene.gltf': json }), 'application/zip')
@@ -325,5 +327,43 @@ describe('decoder failures name model resources (inner#1690)', () => {
     expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
       code: 'budget', budget: { limit: 'textureBytes', allowed: 64 * 64 * 4, actual: 64 * 64 * 4 * 3 },
     }));
+  });
+});
+
+describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
+  const geometry = new Uint8Array(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer);
+  const embedded = `data:application/octet-stream;base64,${btoa(String.fromCharCode(...geometry))}`;
+  /**
+   * Build a triangle glTF with extra declarations, parsed from its own collection.
+   * @throws {Error} When the fixture cannot be parsed.
+   */
+  function triangle(extra: Record<string, unknown>, files: [string, Uint8Array<ArrayBuffer>][] = [], buffer: Record<string, unknown> = { byteLength: geometry.byteLength, uri: embedded }): ReturnType<typeof inspectModelFiles> {
+    const json = Uint8Array.from(strToU8(JSON.stringify({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }], buffers: [buffer],
+      bufferViews: [{ buffer: 0, byteLength: geometry.byteLength }],
+      accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 3, min: [0, 0, 0], max: [1, 1, 0] }], ...extra })));
+    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS);
+  }
+
+  it('loads a model whose unused texture has no source', async () => {
+    const root = await parseSceneModel(triangle({ textures: [{ sampler: 0 }], samplers: [{}] }), new AbortController().signal, IMPORT_LIMITS);
+    templates.add(root);
+    expect(root.getObjectByProperty('type', 'Mesh')).toBeDefined();
+  });
+
+  it('names a texture a material uses when it has no source', async () => {
+    await expect(parseSceneModel(triangle({ textures: [{}], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }] }), new AbortController().signal, IMPORT_LIMITS))
+      .rejects.toMatchObject({ code: 'invalid', detail: 'textures[0]' });
+  });
+
+  it('leaves out an image only an unsupported optional extension uses', () => {
+    const model = triangle({ extensionsUsed: ['MSFT_texture_dds'], images: [{ uri: 'tex.dds' }] }, [['tex.dds', new Uint8Array([0x44, 0x44, 0x53, 0x20])]]);
+    expect(() => validateModelTextureMetadata(model, IMPORT_LIMITS)).not.toThrow();
+  });
+
+  it('names a geometry buffer shorter than its declared length', () => {
+    expect(() => triangle({}, [['mesh.bin', geometry.slice(0, 12)]], { byteLength: geometry.byteLength, uri: 'mesh.bin' }))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'mesh.bin' }));
   });
 });

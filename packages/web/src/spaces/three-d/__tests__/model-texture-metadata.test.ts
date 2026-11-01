@@ -49,6 +49,19 @@ function ktx2(width: number, height: number): Uint8Array<ArrayBuffer> {
 }
 
 /**
+ * Make every declared image one that GLTFLoader loads: a texture per image and a material per texture.
+ * @param json - The glTF declarations of a fixture.
+ * @returns The declarations with textures and materials referencing each image.
+ * @throws {never} Never.
+ */
+function used(json: Record<string, unknown>): Record<string, unknown> {
+  const images = Array.isArray(json.images) ? json.images : [];
+  if (json.textures !== undefined || !images.length) return json;
+  return { ...json, textures: images.map((_, source) => ({ source })),
+    materials: images.map((_, index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) };
+}
+
+/**
  * Pass every fixture through the real glTF envelope and dependency checker.
  * @param json - The glTF declarations relevant to metadata lookup.
  * @param resources - Original resources beside the model entry.
@@ -56,7 +69,7 @@ function ktx2(width: number, height: number): Uint8Array<ArrayBuffer> {
  * @throws {Error} When the fixture's entry or dependencies are invalid.
  */
 function model(json: Record<string, unknown>, resources: readonly (readonly [string, Uint8Array<ArrayBuffer>])[] = []): ModelPackage {
-  const entry = Uint8Array.from(new TextEncoder().encode(JSON.stringify({ asset: { version: '2.0' }, ...json })));
+  const entry = Uint8Array.from(new TextEncoder().encode(JSON.stringify({ asset: { version: '2.0' }, ...used(json) })));
   return inspectModelFiles(new Map([[ENTRY, entry], ...resources]), ENTRY, IMPORT_LIMITS);
 }
 
@@ -103,6 +116,7 @@ function embeddedGlb(image: Uint8Array<ArrayBuffer>): ModelPackage {
       { buffer: 0, byteOffset: offset, byteLength: image.byteLength },
     ],
     images: [{ bufferView: 1, mimeType: 'image/png' }],
+    textures: [{ source: 0 }], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
   }));
   const jsonLength = Math.ceil(json.byteLength / 4) * 4;
   const binaryLength = Math.ceil(binary.byteLength / 4) * 4;
@@ -192,7 +206,7 @@ describe('model texture metadata dimensions before decoding', () => {
     expect(() => validateModelTextureMetadata(source, { ...limits, maxTextureEdge: 31 })).toThrow(Error);
   });
 
-  it('checks an image even when no material or texture references it', () => {
+  it('checks every image a material uses through a texture', () => {
     const source = model({ images: [{ uri: 'small.png' }, { uri: 'unused.png' }] }, [
       ['models/small.png', png(1, 1)], ['models/unused.png', png(32, 16)],
     ]);
@@ -240,9 +254,9 @@ describe('model texture buffer metadata validation', () => {
 
   it('rejects an actual buffer shorter than its declaration', () => {
     const image = png(1, 1);
-    const source = model({ buffers: [{ uri: 'image.bin', byteLength: image.length + 1 }],
-      bufferViews: [{ buffer: 0, byteLength: image.length }], images: [{ bufferView: 0 }] }, [['models/image.bin', image]]);
-    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+    expect(() => validateModelTextureMetadata(model({ buffers: [{ uri: 'image.bin', byteLength: image.length + 1 }],
+      bufferViews: [{ buffer: 0, byteLength: image.length }], images: [{ bufferView: 0 }] }, [['models/image.bin', image]]), IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ detail: 'models/image.bin' }));
   });
 
   it.each(['missing-bin', 'truncated-header', 'unaligned-bin', 'oversized-bin'] as const)('rejects a GLB image with %s', (problem) => {
@@ -255,8 +269,7 @@ describe('model texture buffer metadata validation', () => {
     header.setUint32(8, bytes.length, true);
     if (problem === 'unaligned-bin') header.setUint32(end, 1, true);
     if (problem === 'oversized-bin') header.setUint32(end, bytes.length, true);
-    const source = inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS);
-    expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
+    expect(() => validateModelTextureMetadata(inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS), IMPORT_LIMITS)).toThrow(Error);
   });
 
   it('reads percent-encoded image bytes without changing the original URI', () => {

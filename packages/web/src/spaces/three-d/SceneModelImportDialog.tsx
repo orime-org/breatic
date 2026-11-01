@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { SceneObjectValuesSchema, getLocale } from '@breatic/shared';
+import { SceneObjectValuesSchema } from '@breatic/shared';
 import { Box, Check, ChevronRight, FolderOpen, Loader2, Lock, TriangleAlert, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -15,7 +15,7 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { ModelImportPreview } from '@web/spaces/three-d/ModelImportPreview';
 import type { ModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import type { ModelImportBudget, ModelImportLimit } from '@web/spaces/three-d/model-import-errors';
+import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
@@ -30,29 +30,6 @@ interface SceneModelImportDialogProps {
 const NAME_MAX_LENGTH = SceneObjectValuesSchema.shape.name.maxLength ?? undefined;
 const uploadIcon = <Upload className='size-4' />;
 const folderIcon = <FolderOpen className='size-4' />;
-
-const BYTE_LIMITS: ReadonlySet<ModelImportLimit> = new Set(['input', 'expanded', 'entryJson', 'artifact', 'textureBytes']);
-
-/**
- * State an exceeded import limit with the measured value, sizes in megabytes rounded up to one decimal.
- * @param t - The current translator.
- * @param budget - The exceeded limit and both values.
- * @returns The localized sentence.
- * @throws {never} Never.
- */
-function budgetText(t: ReturnType<typeof useTranslation>, budget: ModelImportBudget): string {
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
-  /**
-   * Show a measured value in the unit its limit uses.
-   * @param value - Bytes, a count or pixels.
-   * @param round - Rounds a megabyte size to one decimal in the direction that keeps the comparison true.
-   * @returns The formatted number.
-   * @throws {never} Never.
-   */
-  const size = (value: number, round: (value: number) => number): string =>
-    format.format(BYTE_LIMITS.has(budget.limit) ? round(value / 1024 / 1024 * 10) / 10 : value);
-  return t(`spaces.threeD.importModel.limit.${budget.limit}`, { actual: size(budget.actual, Math.ceil), allowed: size(budget.allowed, Math.floor) });
-}
 
 /**
  * Let the drop zone receive dropped files.
@@ -90,18 +67,9 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const failedUpload = snapshot.phase === 'failed' && prepared !== null;
   const hasInput = snapshot.phase !== 'idle' && snapshot.phase !== 'placed';
   const error = snapshot.error;
-  const errorMessages = {
-    missing: t('spaces.threeD.importModel.errorMissing'),
-    entry: t('spaces.threeD.importModel.errorEntry'),
-    unsupported: t('spaces.threeD.importModel.errorUnsupported'),
-    empty: t('spaces.threeD.importModel.errorEmpty'),
-    budget: t('spaces.threeD.importModel.errorBudget'),
-    invalid: t('spaces.threeD.importModel.errorInvalid'),
-    duplicate: t('spaces.threeD.importModel.errorDuplicate'),
-  };
   const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
-  const errorText = error instanceof ModelImportError ? errorMessages[error.code]
-    : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : errorMessages.invalid;
+  const errorText = error instanceof ModelImportError ? t(importErrorKey(error.code))
+    : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : t(importErrorKey('invalid'));
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
 
   /**

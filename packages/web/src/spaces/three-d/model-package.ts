@@ -5,6 +5,7 @@ import { strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js'
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 
 /** Model bytes and their closed, normalized resource collection. */
 export interface ModelPackage {
@@ -109,25 +110,67 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
 }
 
 /**
- * Check every declared buffer and image against the same closed collection.
+ * Check the buffers and images GLTFLoader loads against the same closed collection: present, and as long as declared.
  * @param files - Original selected resources indexed by normalized path.
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
  * @returns A model package ready for the installed loader.
- * @throws {Error} When the entry or one of its dependencies is missing.
+ * @throws {ModelImportError} When the entry or a loaded dependency is missing or shorter than declared.
  */
 export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): ModelPackage {
   const bytes = files.get(entry);
   if (!bytes) throw new ModelImportError('invalid', `Missing model entry: ${entry}`, { detail: entry });
   const json = readModelJson(bytes, entry, limits);
-  const missing = [...json.buffers ?? [], ...json.images ?? []].flatMap((resource) => {
-    if (resource.uri === undefined || resource.uri.startsWith('data:')) return [];
+  // Every declared URI must stay inside the selection; presence and length matter only for what the loader reads.
+  for (const resource of [...json.buffers ?? [], ...json.images ?? []]) {
+    if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);
+  }
+  const loaded = loadedResources(json);
+  const resources = [...[...loaded.buffers].map((buffer) => json.buffers?.[buffer]), ...[...loaded.images].map((image) => json.images?.[image])];
+  const missing = resources.flatMap((resource) => {
+    if (resource?.uri === undefined || resource.uri.startsWith('data:')) return [];
     const path = resolveModelDependency(entry, resource.uri);
     return files.has(path) ? [] : [path];
   });
   if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${[...new Set(missing)].join(', ')}`,
     { detail: '', info: { entries: [], paths: [...files.keys()], missing: [...new Set(missing)] } });
+  for (const index of loaded.buffers) {
+    const buffer = json.buffers?.[index];
+    if (buffer?.byteLength === undefined) continue;
+    const location = buffer.uri === undefined ? entry : buffer.uri.startsWith('data:') ? `buffers[${index}]` : resolveModelDependency(entry, buffer.uri);
+    if (bufferLength(files, entry, buffer.uri, location) < buffer.byteLength) {
+      throw new ModelImportError('invalid', 'Model buffer is shorter than its declared length', { detail: location });
+    }
+  }
   return { entry, files, json };
+}
+
+/**
+ * Measure the bytes a buffer actually provides: its file, its embedded data URI, or the GLB's binary chunk.
+ * @param files - Original selected resources.
+ * @param entry - The model entry.
+ * @param uri - The buffer's URI, absent for the GLB binary chunk.
+ * @param location - The buffer's path or index, resolved by the caller.
+ * @returns The available byte length.
+ * @throws {never} Never.
+ */
+function bufferLength(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, uri: string | undefined, location: string): number {
+  if (uri === undefined) {
+    const bytes = files.get(entry)!;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let offset = 12; offset + 8 <= bytes.byteLength; offset += 8 + view.getUint32(offset, true)) {
+      if (view.getUint32(offset + 4, true) === 0x004e4942) return Math.min(view.getUint32(offset, true), bytes.byteLength - offset - 8);
+    }
+    return 0;
+  }
+  if (!uri.startsWith('data:')) return files.get(location)?.byteLength ?? 0;
+  const comma = uri.indexOf(',');
+  const payload = uri.slice(comma + 1);
+  if (!/;base64$/i.test(uri.slice(0, comma))) {
+    try { return decodeURIComponent(payload).length; } catch { return payload.length; }
+  }
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+  return Math.floor(payload.length * 3 / 4) - padding;
 }
 
 /**
@@ -174,6 +217,21 @@ function usesZip64(bytes: Uint8Array): boolean {
 }
 
 /**
+ * Visit every central-directory record without inflating anything, naming a damaged directory as an unreadable archive.
+ * @param bytes - The complete archive.
+ * @param visit - Receives each record; it may throw to refuse the archive.
+ * @throws {ModelImportError} When the directory cannot be read or a record is refused.
+ */
+function readDirectory(bytes: Uint8Array, visit: (file: { name: string; originalSize: number; compression: number }) => void): void {
+  try {
+    unzipSync(bytes, { filter: (file) => { visit(file); return false; } });
+  } catch (error) {
+    if (error instanceof ModelImportError) throw error;
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
+  }
+}
+
+/**
  * Expand bounded ZIP entries by the sizes their central directory declares.
  * Entries written with data descriptors have no reliable end in the local stream, so offsets come from the directory.
  * The directory is read once to check names, methods and totals, and once more to inflate the accepted entries.
@@ -193,7 +251,7 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
   const declared = new Map<string, { path: string; size: number }>();
   const paths = new Set<string>();
   let expanded = 0;
-  unzipSync(bytes, { filter: (file) => {
+  readDirectory(bytes, (file) => {
     if (file.name.endsWith('/')) return false;
     const path = normalizeModelPath(registered ? file.name : utf8EntryName(file.name));
     if (!registered && isArchiverMetadata(path)) return false;
@@ -202,8 +260,7 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
     paths.add(path);
     expanded += file.originalSize;
     declared.set(file.name, { path, size: file.originalSize });
-    return false;
-  } });
+  });
   const count = paths.size - (registered && paths.has('manifest.json') ? 1 : 0);
   if (count > limits.maxFiles) {
     throw new ModelImportError('budget', 'Model archive exceeds its configured file count', { detail: '', budget: { limit: 'files', allowed: limits.maxFiles, actual: count } });
@@ -212,7 +269,14 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
     throw new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '',
       budget: { limit: 'expanded', allowed: limits.maxExpandedBytes, actual: expanded } });
   }
-  const entries = unzipSync(bytes, { filter: (file) => declared.has(file.name) });
+  // fflate inflates each accepted entry right after the filter accepts it, so the last accepted name is the one that failed.
+  let current = '';
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes, { filter: (file) => { current = declared.get(file.name)?.path ?? ''; return declared.has(file.name); } });
+  } catch (error) {
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: current });
+  }
   const files = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const [name, { path, size }] of declared) {
     const output = entries[name] as Uint8Array<ArrayBuffer> | undefined;

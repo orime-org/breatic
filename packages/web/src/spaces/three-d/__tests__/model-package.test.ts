@@ -420,3 +420,12 @@ describe('model-package entry reading names its failures (inner#1690)', () => {
     expect(() => unpackModelArchive(bytes, { ...IMPORT_LIMITS, maxExpandedBytes: 999 })).toThrow(expect.objectContaining({ code: 'budget' }));
   });
 });
+
+describe('model-package names a damaged archive entry (inner#1690)', () => {
+  it('names the entry whose compressed data is damaged', () => {
+    const bytes = archive(new Map([['m/a.bin', new Uint8Array(1000)]]), 6);
+    const header = new DataView(bytes.buffer);
+    bytes[30 + header.getUint16(26, true) + header.getUint16(28, true)] = 0xff;
+    expect(() => unpackModelArchive(bytes, IMPORT_LIMITS)).toThrow(expect.objectContaining({ code: 'invalid', detail: 'm/a.bin' }));
+  });
+});

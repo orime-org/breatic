@@ -13,6 +13,8 @@ import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-im
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import type { LoadedTexture } from '@web/spaces/three-d/model-loaded-resources';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
@@ -222,9 +224,12 @@ export async function loadSceneModel(
 ): Promise<Group> {
   if (source.kind === 'builtin') return createBuiltinModel(source.id, builtinColor);
   const asset = await resolveAsset(source.assetId, signal);
-  if (!isSceneModelMediaType(asset.mimeType)) throw new Error('Scene asset has an unsupported model type');
+  if (!isSceneModelMediaType(asset.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: asset.mimeType });
   if (signal.aborted) throw new DOMException('Scene model load cancelled', 'AbortError');
-  if (asset.sizeBytes > limits.maxArtifactBytes) throw new Error('Registered model exceeds its configured asset budget');
+  if (asset.sizeBytes > limits.maxArtifactBytes) {
+    throw new ModelImportError('budget', 'Registered model exceeds its configured asset budget', { detail: '',
+      budget: { limit: 'artifact', allowed: limits.maxArtifactBytes, actual: asset.sizeBytes } });
+  }
   const response = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true, signal });
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
@@ -253,7 +258,10 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
       const result = await reader.read();
       if (result.done) break;
       size += result.value.byteLength;
-      if (size > maxBytes) throw new Error('Registered model exceeds its configured asset budget');
+      if (size > maxBytes) {
+        throw new ModelImportError('budget', 'Registered model exceeds its configured asset budget', { detail: '',
+          budget: { limit: 'artifact', allowed: maxBytes, actual: size } });
+      }
       chunks.push(result.value);
     }
     const bytes = new Uint8Array(size);
@@ -266,31 +274,15 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
   }
 }
 
-/** The glTF texture declarations whose source image GLTFLoader resolves, directly or through an image extension. */
-type GltfTexture = { source?: number; extensions?: Record<string, { source?: number } | undefined> };
-
 /**
- * Read the model's texture declarations.
+ * Name a texture the loader uses by the image it decodes.
  * @param model - Checked entry and original resources.
- * @returns The declared textures, in index order.
- * @throws {never} Never.
+ * @param texture - The loaded texture and its chosen image.
+ * @returns The image's path or `images[N]`, or `textures[N]` when the texture names no existing image.
+ * @throws {ModelImportError} When the image URI is malformed.
  */
-function gltfTextures(model: ModelPackage): GltfTexture[] {
-  const textures: unknown = (model.json as { textures?: unknown }).textures;
-  return Array.isArray(textures) ? textures as GltfTexture[] : [];
-}
-
-/**
- * Name a texture by the image it is decoded from, the way the texture metadata check names images.
- * @param model - Checked entry and original resources.
- * @param index - The texture's index.
- * @returns The image's path, or its `images[N]` index when it is embedded.
- * @throws {never} Never.
- */
-function textureLocation(model: ModelPackage, index: number): string {
-  const texture = gltfTextures(model)[index];
-  const source = Object.values(texture?.extensions ?? {}).find((extension) => extension?.source !== undefined)?.source ?? texture?.source;
-  return source === undefined ? `textures[${index}]` : imageLocation(model, source);
+function textureLocation(model: ModelPackage, texture: LoadedTexture): string {
+  return texture.image !== undefined && model.json.images?.[texture.image] ? imageLocation(model, texture.image) : `textures[${texture.texture}]`;
 }
 
 /**
@@ -306,6 +298,10 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   signal.throwIfAborted();
   const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
   validateModelTextureMetadata(model, textureLimits);
+  const { textures } = loadedResources(model.json);
+  // GLTFLoader reads a used texture's image without checking it exists.
+  const sourceless = textures.find((texture) => texture.image === undefined || !model.json.images?.[texture.image]);
+  if (sourceless) throw new ModelImportError('invalid', 'Model texture names no image', { detail: textureLocation(model, sourceless) });
   const decoder = createModelDecoder(model, limits, renderer);
   const bytes = model.files.get(model.entry)!;
   // GLTFLoader only reads the buffer, so a view spanning its whole buffer is passed without a copy.
@@ -316,9 +312,10 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
     try {
       signal.throwIfAborted();
       // GLTFLoader turns a texture that fails to decode or transcode into null and still resolves the model.
-      const textures = await Promise.all(gltfTextures(model).map((_, index) => result.parser.getDependency('texture', index) as Promise<Texture | null>));
-      const failed = textures.findIndex((texture) => texture === null);
-      if (failed >= 0) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: textureLocation(model, failed) });
+      const decoded = await Promise.all(textures.map(({ texture }) => result.parser.getDependency('texture', texture) as Promise<Texture | null>));
+      signal.throwIfAborted();
+      const failed = textures.find((_, position) => decoded[position] === null);
+      if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: textureLocation(model, failed) });
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {

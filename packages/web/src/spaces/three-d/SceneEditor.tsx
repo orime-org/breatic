@@ -29,6 +29,8 @@ import { getModelImportController } from '@web/spaces/three-d/model-import-contr
 import type { ModelBounds, ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
+import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
@@ -79,6 +81,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const [rendererRevision, setRendererRevision] = React.useState(0);
   const [rendererFailed, setRendererFailed] = React.useState(false);
   const [modelStates, setModelStates] = React.useState<ReadonlyMap<string, SceneModelState>>(new Map());
+  const [modelErrors, setModelErrors] = React.useState<ReadonlyMap<string, Error>>(new Map());
   const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
   /**
    * Retain temporary field input for this Activity's lifetime, outside its floating panel.
@@ -104,6 +107,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
   const allSelectedLocked = selected.length > 0 && selected.every((object) => object.locked);
   const failedModels = snapshot.objects.some((object) => modelStates.get(object.id) === 'failed');
+  const failures = snapshot.objects.flatMap((object) => {
+    const error = modelStates.get(object.id) === 'failed' ? modelErrors.get(object.id) : undefined;
+    return error ? [error] : [];
+  });
+  // A model whose content was refused fails again on retry; only transport failures can succeed.
+  const cause = failures.find((error): error is ModelImportError => error instanceof ModelImportError);
+  const modelRetryable = !failures.length || failures.some((error) => !(error instanceof ModelImportError));
 
   React.useEffect(() => {
     session.setVisible(true);
@@ -177,8 +187,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, [userId, projectId, spaceId, t]);
 
   /** Show model failures and finish a placement's requested focus after asynchronous loading. */
-  const onModelStateChange = React.useCallback((id: string, state: SceneModelState): void => {
+  const onModelStateChange = React.useCallback((id: string, state: SceneModelState, error?: Error): void => {
     setModelStates((previous) => previous.get(id) === state ? previous : new Map(previous).set(id, state));
+    setModelErrors((previous) => {
+      if (state === 'failed' && error) return new Map(previous).set(id, error);
+      if (!previous.has(id)) return previous;
+      const next = new Map(previous);
+      next.delete(id);
+      return next;
+    });
     if (state === 'ready' && pendingFocusIds.current.delete(id)) setFocusRevision((value) => value + 1);
   }, []);
 
@@ -400,7 +417,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} />
               </React.Suspense>}
       {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%-6rem)] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
-        <span>{t('spaces.threeD.modelFailed')}</span><Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>
+        <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget)}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
+        {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
     </div>
     <SceneCreationMenu canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport} />
