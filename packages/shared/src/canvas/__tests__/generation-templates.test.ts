@@ -568,8 +568,8 @@ describe('character template layouts (inner#1846)', () => {
       en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of every section, written exactly as that section\'s capitalised name below', 'no blending of features'],
       'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '一个清晰的英文小标签（只写下文大写的区块名，无衬线大写）', '不把五官混在一起'],
       'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '一個清晰的英文小標籤（只寫下文大寫的區塊名，無襯線大寫）', '不把五官混在一起'],
-      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '下に大文字で書いたセクション名だけを書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
-      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '아래에 대문자로 적은 섹션 이름만 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨', '이목구비를 섞지 않는다'],
+      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '各セクションの左上に、以下で大文字で示したセクション名をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
+      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '각 섹션 왼쪽 위에, 이 글에서 대문자로 적은 섹션 이름 그대로 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨', '이목구비를 섞지 않는다'],
     };
     expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
     for (const locale of LOCALES) {
