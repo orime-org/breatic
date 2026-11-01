@@ -21,12 +21,12 @@ self.onmessage = (event: MessageEvent<ModelImportWorkerRequest>): void => {
   const request = event.data;
   void (async (): Promise<void> => {
     if (request.kind === 'registered') {
-      const model = readRegisteredModelPackage(request.bytes, request.limits);
+      const model = readRegisteredModelPackage(request.bytes, request.limits, request.support);
       const answer: ModelImportWorkerAnswer = { ok: true, model };
       self.postMessage(answer, { transfer: [...modelBuffers(model)] });
       return;
     }
-    const selection = await inspectModelSelection(request.files, request.entry, request.limits);
+    const selection = await inspectModelSelection(request.files, request.entry, request.limits, request.support);
     const answer: ModelImportWorkerAnswer = { ok: true, selection };
     self.postMessage(answer, { transfer: [...modelBuffers(selection.model).add(selection.artifact.buffer)] });
   })().catch((error: unknown) => {

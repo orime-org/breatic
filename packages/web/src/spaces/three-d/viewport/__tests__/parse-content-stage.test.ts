@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'three/addons/libs/fflate.module.js';
-import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { IMPORT_LIMITS, TEXTURE_FORMATS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
@@ -19,7 +19,7 @@ describe('failures after GLTFLoader parsed the model (inner#1690)', () => {
       meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
       buffers: [{ byteLength: 36, uri: `data:application/octet-stream;base64,${btoa(String.fromCharCode(...triangle))}` }],
       bufferViews: [{ buffer: 0, byteLength: 36 }], accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 3, min: [0, 0, 0], max: [1, 1, 0] }] };
-    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS);
+    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
     await expect(parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS))
       .rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid', message: 'Invalid typed array length' });
   });

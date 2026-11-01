@@ -5,9 +5,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'three/addons/libs/fflate.module.js';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
-import { resolveModelDependency } from '@web/spaces/three-d/model-package';
+import { loadedFilePaths } from '@web/spaces/three-d/model-package';
+import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 import type { GltfDocument, ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder } from '@web/spaces/three-d/viewport/model-decoder-173';
+
+/** The texture slot each GLTFLoader r173 material plugin assigns, copied from GLTFLoader.js 784-1367 independently of the code under test. */
+const PLUGIN_SLOTS: Record<string, string[]> = {
+  KHR_materials_clearcoat: ['clearcoatTexture', 'clearcoatRoughnessTexture', 'clearcoatNormalTexture'],
+  KHR_materials_iridescence: ['iridescenceTexture', 'iridescenceThicknessTexture'],
+  KHR_materials_sheen: ['sheenColorTexture', 'sheenRoughnessTexture'],
+  KHR_materials_transmission: ['transmissionTexture'],
+  KHR_materials_volume: ['thicknessTexture'],
+  KHR_materials_specular: ['specularTexture', 'specularColorTexture'],
+  KHR_materials_anisotropy: ['anisotropyTexture'],
+  EXT_materials_bump: ['bumpTexture'],
+};
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
 
@@ -53,16 +66,40 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
   const triangle = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   /** @throws {never} Never. */
   const position = (name: string): number => accessor(name, 'VEC3', triangle, { min: [0, 0, 0], max: [1, 1, 0] });
-  const images = ['base', 'unlitNormal', 'unused', 'clearcoat', 'extras'].map((name) => {
+  const images: Record<string, unknown>[] = ['base', 'unlitNormal', 'unused', 'clearcoat', 'extras'].map((name) => {
     files.set(`${name}.png`, PNG);
     return { uri: `${name}.png` };
   });
+  const textures: Record<string, unknown>[] = images.map((_, source) => ({ source }));
+  /**
+   * Add a texture decoding its own new image file.
+   * @throws {never} Never.
+   */
+  const texture = (name: string): number => {
+    files.set(`${name}.png`, PNG);
+    images.push({ uri: `${name}.png` });
+    textures.push({ source: images.length - 1 });
+    return textures.length - 1;
+  };
+  const slots = Object.fromEntries(Object.entries(PLUGIN_SLOTS).map(([name, slotNames]) =>
+    [name, Object.fromEntries(slotNames.map((slot) => [slot, { index: texture(slot) }]))]));
+  // An AVIF source this browser cannot decode: GLTFLoader falls back to the texture's own source.
+  const avifFallback = texture('avifFallback');
+  images.push({ uri: 'undecodable.avif' });
+  textures[avifFallback].extensions = { EXT_texture_avif: { source: images.length - 1 } };
+  // An image declaring both: GLTFLoader reads the bufferView and never the URI.
+  files.set('shadowImage.bin', PNG);
+  buffers.push({ uri: 'shadowImage.bin', byteLength: PNG.byteLength });
+  bufferViews.push({ buffer: buffers.length - 1, byteLength: PNG.byteLength });
+  images.push({ uri: 'namedShadow.png', bufferView: bufferViews.length - 1, mimeType: 'image/png' });
+  textures.push({ source: images.length - 1 });
+  const shadow = textures.length - 1;
   const instances = accessor('instances', 'VEC3', new Float32Array(3));
   const pointInstances = accessor('pointInstances', 'VEC3', new Float32Array(3));
   const meshlessInstances = accessor('meshlessInstances', 'VEC3', new Float32Array(3));
   const json = {
     asset: { version: '2.0' },
-    extensionsUsed: ['KHR_materials_unlit', 'KHR_materials_clearcoat', 'EXT_mesh_gpu_instancing'],
+    extensionsUsed: ['KHR_materials_unlit', 'EXT_mesh_gpu_instancing', 'EXT_texture_avif', ...Object.keys(PLUGIN_SLOTS)],
     scene: 0,
     scenes: [{ nodes: [0, 6, 7] }],
     nodes: [
@@ -88,9 +125,10 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
     materials: [
       { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {} } },
       { pbrMetallicRoughness: { baseColorTexture: { index: 2 } } },
-      { extras: { lightTexture: { index: 4 } }, extensions: { KHR_materials_clearcoat: { clearcoatTexture: { index: 3 }, vendorData: { bakedTexture: { index: 4 } }, bakedTexture: { index: 4 } } } },
+      { extras: { lightTexture: { index: 4 } }, normalTexture: { index: avifFallback }, occlusionTexture: { index: shadow },
+        extensions: { ...slots, KHR_materials_clearcoat: { ...slots.KHR_materials_clearcoat, vendorData: { bakedTexture: { index: 4 } }, bakedTexture: { index: 4 } } } },
     ],
-    textures: images.map((_, source) => ({ source })),
+    textures,
     images,
     skins: [{ joints: [2], inverseBindMatrices: accessor('inverseBind', 'MAT4', new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])) }],
     animations: [{
@@ -117,20 +155,36 @@ describe('loadedResources matches what the installed GLTFLoader requests (inner#
       static revokeObjectURL = vi.fn();
     });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(await blobs.get(input instanceof Request ? input.url : String(input))?.arrayBuffer())));
+    vi.stubGlobal('Image', class {
+      height = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      /** Decode GLTFLoader's probe images as a browser with WebP and without AVIF support does. */
+      set src(value: string) {
+        queueMicrotask(() => {
+          if (value.startsWith('data:image/webp')) { this.height = 1; this.onload?.(); } else this.onerror?.();
+        });
+      }
+    });
+    const support = await detectTextureFormatSupport();
     const { json, files } = everyPath();
-    const model: ModelPackage = { entry: 'model.gltf', files, json };
-    const decoder = createModelDecoder(model, IMPORT_LIMITS);
+    const model: ModelPackage = { entry: 'model.gltf', files, json, support };
+    const resources = loadedResources(json, support);
+    const decoder = createModelDecoder(model, IMPORT_LIMITS, undefined, resources);
     try {
       await decoder.loader.parseAsync(new TextDecoder().decode(files.get('model.gltf')), '');
     } finally {
       decoder.dispose();
     }
-    const resources = loadedResources(json);
-    const derived = [...[...resources.buffers].map((index) => json.buffers![index].uri!), ...[...resources.images].map((index) => json.images![index].uri!)]
-      .map((uri) => resolveModelDependency('model.gltf', uri));
+    const derived = loadedFilePaths(json, 'model.gltf', resources);
     files.requested.delete('model.gltf');
     expect(new Set(derived)).toEqual(files.requested);
-    expect([...files.requested].sort()).toEqual(['animated.bin', 'animationInput.bin', 'animationOutput.bin', 'base.png', 'clearcoat.png',
-      'instances.bin', 'inverseBind.bin', 'joint.bin', 'joints.bin', 'morphPosition.bin', 'points.bin', 'skinned.bin', 'weights.bin']);
+    expect([...files.requested].sort()).toEqual([
+      'animated.bin', 'animationInput.bin', 'animationOutput.bin', 'anisotropyTexture.png', 'avifFallback.png', 'base.png',
+      'bumpTexture.png', 'clearcoatNormalTexture.png', 'clearcoatRoughnessTexture.png', 'clearcoatTexture.png',
+      'instances.bin', 'inverseBind.bin', 'iridescenceTexture.png', 'iridescenceThicknessTexture.png', 'joint.bin', 'joints.bin',
+      'morphPosition.bin', 'points.bin', 'shadowImage.bin', 'sheenColorTexture.png', 'sheenRoughnessTexture.png', 'skinned.bin',
+      'specularColorTexture.png', 'specularTexture.png', 'thicknessTexture.png', 'transmissionTexture.png', 'weights.bin',
+    ]);
   });
 });

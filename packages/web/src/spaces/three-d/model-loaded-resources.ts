@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /** The texture slots each GLTFLoader r173 material plugin reads (GLTFLoader.js 784-1367). */
 const MATERIAL_TEXTURE_SLOTS: Readonly<Record<string, readonly string[]>> = {
@@ -33,6 +34,8 @@ export interface LoadedResources {
   buffers: ReadonlySet<number>;
   /** Whether a loaded texture decodes through KHR_texture_basisu, which GLTFLoader uses whether or not extensionsUsed lists it. */
   basisu: boolean;
+  /** Whether a reached primitive is Draco compressed, the only case in which GLTFLoader waits for the Draco decoder. */
+  draco: boolean;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -93,14 +96,16 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
 }
 
 /**
- * Pick the image GLTFLoader decodes for a texture: the first supported source extension, otherwise the texture's source.
+ * Pick the image GLTFLoader decodes for a texture: the first source extension this browser decodes, otherwise the texture's source.
  * @param texture - The texture declaration.
+ * @param support - The browser's WebP and AVIF support, which GLTFLoader probes before using those extensions.
  * @returns The image index, or undefined when none is declared, and the source extension that supplies it.
  * @throws {never} Never.
  */
-function textureImage(texture: JsonObject | undefined): { image: number | undefined; extension: string | undefined } {
+function textureImage(texture: JsonObject | undefined, support: TextureFormatSupport): { image: number | undefined; extension: string | undefined } {
   const extensions = object(texture?.extensions);
   for (const name of TEXTURE_SOURCE_EXTENSIONS) {
+    if ((name === 'EXT_texture_webp' && !support.webp) || (name === 'EXT_texture_avif' && !support.avif)) continue;
     const source = index(object(extensions?.[name])?.source);
     if (source !== undefined) return { image: source, extension: name };
   }
@@ -112,10 +117,11 @@ function textureImage(texture: JsonObject | undefined): { image: number | undefi
  * skin joints (their own mesh only), the reached meshes, the materials their primitives use and the slots each material assigns.
  * Checks run on exactly these, so a declaration the loader never touches cannot refuse a model it renders.
  * @param json - The checked glTF document.
- * @returns The loaded textures (image undefined when the texture names no existing image), images and buffers by index, and whether KTX2 decoding is needed.
+ * @param support - The browser's WebP and AVIF support.
+ * @returns The loaded textures (image undefined when the texture names no existing image), images and buffers by index, and whether KTX2 or Draco decoding is needed.
  * @throws {never} Never.
  */
-export function loadedResources(json: GltfDocument): LoadedResources {
+export function loadedResources(json: GltfDocument, support: TextureFormatSupport): LoadedResources {
   const document = json as JsonObject;
   const nodes = array(document.nodes);
   const accessors = new Set<number>();
@@ -171,12 +177,14 @@ export function loadedResources(json: GltfDocument): LoadedResources {
       addAccessor(sampler?.output);
     }
   }
+  let dracoUsed = false;
   for (const meshIndex of meshes) {
     for (const primitive of array(object(array(document.meshes)[meshIndex])?.primitives)) {
       const node = object(primitive);
       const material = index(node?.material);
       if (material !== undefined) materials.add(material);
       const draco = object(object(node?.extensions)?.KHR_draco_mesh_compression);
+      if (draco) dracoUsed = true;
       const decoded = object(draco?.attributes) ?? {};
       const dracoView = index(draco?.bufferView);
       if (dracoView !== undefined) views.add(dracoView);
@@ -192,7 +200,7 @@ export function loadedResources(json: GltfDocument): LoadedResources {
   const imageDefinitions = array(document.images);
   let basisu = false;
   const textures = [...textureIndices].sort((a, b) => a - b).map((texture) => {
-    const { image, extension } = textureImage(object(textureDefinitions[texture]));
+    const { image, extension } = textureImage(object(textureDefinitions[texture]), support);
     if (extension === 'KHR_texture_basisu') basisu = true;
     return { texture, image: image !== undefined && object(imageDefinitions[image]) ? image : undefined };
   });
@@ -216,5 +224,5 @@ export function loadedResources(json: GltfDocument): LoadedResources {
     const buffer = index(meshopt ? meshopt.buffer : node?.buffer);
     if (buffer !== undefined) buffers.add(buffer);
   }
-  return { textures, images, buffers, basisu };
+  return { textures, images, buffers, basisu, draco: dracoUsed };
 }

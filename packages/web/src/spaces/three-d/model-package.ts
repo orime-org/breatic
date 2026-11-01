@@ -6,12 +6,16 @@ import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import type { LoadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /** Model bytes and their closed, normalized resource collection. */
 export interface ModelPackage {
   entry: string;
   files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>;
   json: GltfDocument;
+  /** The browser's WebP and AVIF support, which decides which image GLTFLoader decodes for a texture. */
+  support: TextureFormatSupport;
 }
 
 const gltfSchema = z.object({
@@ -114,10 +118,11 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
  * @param files - Original selected resources indexed by normalized path.
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
+ * @param support - The browser's WebP and AVIF support.
  * @returns A model package ready for the installed loader.
  * @throws {ModelImportError} When the entry or a loaded dependency is missing, unreadable or shorter than declared.
  */
-export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): ModelPackage {
+export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits, support: TextureFormatSupport): ModelPackage {
   const bytes = files.get(entry);
   if (!bytes) throw new ModelImportError('invalid', `Missing model entry: ${entry}`, { detail: entry });
   const json = readModelJson(bytes, entry, limits);
@@ -125,16 +130,11 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
   for (const resource of [...json.buffers ?? [], ...json.images ?? []]) {
     if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);
   }
-  const loaded = loadedResources(json);
+  const loaded = loadedResources(json, support);
   // GLTFLoader reads a used texture's image without checking it exists.
   const imageless = loaded.textures.find((texture) => texture.image === undefined);
   if (imageless) throw new ModelImportError('invalid', 'Model texture names no image', { detail: `textures[${imageless.texture}]` });
-  const resources = [...[...loaded.buffers].map((buffer) => json.buffers?.[buffer]), ...[...loaded.images].map((image) => json.images?.[image])];
-  const missing = resources.flatMap((resource) => {
-    if (resource?.uri === undefined || resource.uri.startsWith('data:')) return [];
-    const path = resolveModelDependency(entry, resource.uri);
-    return files.has(path) ? [] : [path];
-  });
+  const missing = loadedFilePaths(json, entry, loaded).filter((path) => !files.has(path));
   if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${[...new Set(missing)].join(', ')}`,
     { detail: '', info: { entries: [], paths: [...files.keys()], missing: [...new Set(missing)] } });
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
@@ -149,7 +149,21 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
       throw new ModelImportError('invalid', 'Model buffer is shorter than its declared length', { detail: location });
     }
   }
-  return { entry, files, json };
+  return { entry, files, json, support };
+}
+
+/**
+ * Name the files GLTFLoader reads for the loaded buffers and images; an image with a bufferView is read from that view, never its URI.
+ * @param json - The checked glTF document.
+ * @param entry - The model entry, which relative URIs resolve against.
+ * @param loaded - The resources GLTFLoader loads.
+ * @returns Each external file path once, in declaration order.
+ * @throws {ModelImportError} When a URI is malformed or leaves the collection.
+ */
+export function loadedFilePaths(json: GltfDocument, entry: string, loaded: LoadedResources): string[] {
+  const uris = [...[...loaded.buffers].map((buffer) => json.buffers?.[buffer]?.uri),
+    ...[...loaded.images].map((image) => json.images?.[image]?.bufferView === undefined ? json.images?.[image]?.uri : undefined)];
+  return [...new Set(uris.flatMap((uri) => uri === undefined || uri.startsWith('data:') ? [] : [resolveModelDependency(entry, uri)]))];
 }
 
 /**
@@ -323,10 +337,11 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
  * Read the versioned manifest of a registered model container.
  * @param bytes - Stored model package bytes.
  * @param limits - The configured import budgets.
+ * @param support - The browser's WebP and AVIF support.
  * @returns The selected entry and its closed resource collection.
  * @throws {ModelImportError} When the manifest, its version, entry or resource collection is invalid.
  */
-export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImportLimits): ModelPackage {
+export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImportLimits, support: TextureFormatSupport): ModelPackage {
   const files = unpackModelArchive(bytes, limits, true);
   const manifest = files.get('manifest.json');
   if (!manifest || manifest.byteLength > limits.maxEntryJsonBytes) throw new ModelImportError('invalid', 'Missing or oversized model manifest', { detail: 'manifest.json' });
@@ -344,7 +359,7 @@ export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImpor
     if (path !== 'manifest.json' && !path.startsWith('files/')) throw new ModelImportError('invalid', `Invalid model package resource path: ${path}`, { detail: path });
   }
   files.delete('manifest.json');
-  return inspectModelFiles(files, entry, limits);
+  return inspectModelFiles(files, entry, limits, support);
 }
 
 /**
@@ -352,11 +367,12 @@ export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImpor
  * @param files - Original resources under their relative paths.
  * @param entry - The user's chosen model entry.
  * @param limits - Configured output budgets.
+ * @param support - The browser's WebP and AVIF support.
  * @returns An original self-contained GLB or the versioned ZIP bytes.
  * @throws {Error} When dependencies or output budgets are invalid.
  */
-export function packModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): Uint8Array<ArrayBuffer> {
-  const model = inspectModelFiles(files, entry, limits);
+export function packModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits, support: TextureFormatSupport): Uint8Array<ArrayBuffer> {
+  const model = inspectModelFiles(files, entry, limits, support);
   if (files.size > limits.maxFiles) {
     throw new ModelImportError('budget', 'Model exceeds its configured file count', { detail: '', budget: { limit: 'files', allowed: limits.maxFiles, actual: files.size } });
   }

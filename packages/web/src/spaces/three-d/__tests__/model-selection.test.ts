@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
-import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { IMPORT_LIMITS, TEXTURE_FORMATS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import { inspectModelSelection } from '@web/spaces/three-d/model-selection';
@@ -88,7 +88,7 @@ async function expectFailure(operation: Promise<unknown>, code: ModelImportError
  * @throws {ModelImportError} When the selection fails inspection.
  */
 function inspect(files: readonly File[], entry: string | undefined, limits: typeof IMPORT_LIMITS): ReturnType<typeof inspectModelSelection> {
-  return inspectModelSelection(sourcesFromFiles(files), entry, limits);
+  return inspectModelSelection(sourcesFromFiles(files), entry, limits, TEXTURE_FORMATS);
 }
 
 describe('model-selection supplements and archiver metadata (inner#1690)', () => {
@@ -99,11 +99,11 @@ describe('model-selection supplements and archiver metadata (inner#1690)', () =>
   async function supplemented(first: readonly File[], entry: string, added: readonly File[]): ReturnType<typeof inspectModelSelection> {
     const sources = sourcesFromFiles(first);
     let missing: readonly string[] = [];
-    try { await inspectModelSelection(sources, entry, IMPORT_LIMITS); } catch (error) {
+    try { await inspectModelSelection(sources, entry, IMPORT_LIMITS, TEXTURE_FORMATS); } catch (error) {
       if (error instanceof ModelImportError) missing = error.info?.missing ?? [];
     }
     expect(missing.length).toBeGreaterThan(0);
-    return inspectModelSelection([...sources, ...supplementSources(added, missing)], entry, IMPORT_LIMITS);
+    return inspectModelSelection([...sources, ...supplementSources(added, missing)], entry, IMPORT_LIMITS, TEXTURE_FORMATS);
   }
 
   it('places a supplemented file at the missing path of a folder selection', async () => {
@@ -131,11 +131,11 @@ describe('model-selection supplements and archiver metadata (inner#1690)', () =>
   it('keeps the missing list after an ambiguous supplement and can be supplemented again', async () => {
     const entry = inputFile('hero.gltf', modelJson('body/color.png'));
     const sources = [...sourcesFromFiles([entry]), ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png', 'head/color.png'])];
-    await expectFailure(inspectModelSelection(sources, 'hero.gltf', IMPORT_LIMITS), 'missing', {
+    await expectFailure(inspectModelSelection(sources, 'hero.gltf', IMPORT_LIMITS, TEXTURE_FORMATS), 'missing', {
       entries: ['hero.gltf'], paths: ['hero.gltf'], missing: ['body/color.png'],
     });
     const again = [...sources, ...supplementSources([inputFile('color.png', GEOMETRY.slice())], ['body/color.png'])];
-    expect([...(await inspectModelSelection(again, 'hero.gltf', IMPORT_LIMITS)).paths]).toEqual(['body/color.png', 'hero.gltf']);
+    expect([...(await inspectModelSelection(again, 'hero.gltf', IMPORT_LIMITS, TEXTURE_FORMATS)).paths]).toEqual(['body/color.png', 'hero.gltf']);
   });
 
   it('expands a ZIP chosen in a folder that also holds Finder metadata', async () => {
@@ -420,7 +420,7 @@ describe('model-selection with nothing left after Finder metadata (inner#1690)',
 describe('a damaged archive names itself (inner#1690)', () => {
   it('reports the selected ZIP when its directory cannot be read', async () => {
     const damaged = new File([new Uint8Array([0x50, 0x4b, 0x05, 0x06, 1, 2, 3])], 'models.zip');
-    await expect(inspectModelSelection(sourcesFromFiles([damaged]), undefined, IMPORT_LIMITS))
+    await expect(inspectModelSelection(sourcesFromFiles([damaged]), undefined, IMPORT_LIMITS, TEXTURE_FORMATS))
       .rejects.toMatchObject({ code: 'invalid', detail: 'models.zip' });
   });
 });

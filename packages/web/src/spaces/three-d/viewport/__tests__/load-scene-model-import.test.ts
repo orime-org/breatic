@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { BufferGeometry, Group, Mesh, MeshBasicMaterial, Texture } from 'three';
 import type { WebGLRenderer } from 'three';
-import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { IMPORT_LIMITS, TEXTURE_FORMATS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
@@ -21,8 +21,12 @@ import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-
 // jsdom has no Worker; the mocked client runs the same package reader the worker runs.
 vi.mock('@web/spaces/three-d/model-import-worker-client', async () => {
   const { readRegisteredModelPackage: read } = await vi.importActual<typeof import('@web/spaces/three-d/model-package')>('@web/spaces/three-d/model-package');
-  return { readRegisteredModelPackageInWorker: vi.fn(async (bytes: Uint8Array<ArrayBuffer>, _signal: AbortSignal, limits: SceneImportLimits) => read(bytes, limits)) };
+  return { readRegisteredModelPackageInWorker: vi.fn(async (bytes: Uint8Array<ArrayBuffer>, _signal: AbortSignal, limits: SceneImportLimits) => read(bytes, limits, { webp: true, avif: true })) };
 });
+
+// jsdom never decodes the format probe images; the browser under test decodes WebP and AVIF.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
+
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...await importOriginal<typeof SharedModule>(),
@@ -250,7 +254,7 @@ describe('registered model import containers (inner#1690)', () => {
     })));
     const loading = entryPoint === 'registered'
       ? loadRegistered(modelPackage('files/scene.gltf', { 'files/scene.gltf': json }), 'application/zip')
-      : parseSceneModel(inspectModelFiles(new Map([['scene.gltf', json]]), 'scene.gltf', IMPORT_LIMITS), new AbortController().signal, IMPORT_LIMITS)
+      : parseSceneModel(inspectModelFiles(new Map([['scene.gltf', json]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS), new AbortController().signal, IMPORT_LIMITS)
         .then((root) => { templates.add(root); return root; });
 
     await expect(loading).rejects.toThrow(/texture.*dimension/i);
@@ -288,7 +292,7 @@ describe('line and point primitive release (inner#1690)', () => {
       meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }, { primitives: [{ attributes: { POSITION: 0 }, mode: 1 }] }],
       buffers: [{ byteLength: geometry.byteLength, uri }], bufferViews: [{ buffer: 0, byteLength: geometry.byteLength }],
       accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 3, min: [0, 0, 0], max: [1, 1, 0] }] })));
-    const root = await parseSceneModel(inspectModelFiles(new Map([['lines.gltf', json]]), 'lines.gltf', IMPORT_LIMITS), new AbortController().signal, IMPORT_LIMITS);
+    const root = await parseSceneModel(inspectModelFiles(new Map([['lines.gltf', json]]), 'lines.gltf', IMPORT_LIMITS, TEXTURE_FORMATS), new AbortController().signal, IMPORT_LIMITS);
     const released: string[] = [];
     root.traverse((child) => {
       if (!('geometry' in child && 'material' in child)) return;
@@ -345,7 +349,7 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
       meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }], buffers: [buffer],
       bufferViews: [{ buffer: 0, byteLength: geometry.byteLength }],
       accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 3, min: [0, 0, 0], max: [1, 1, 0] }], ...extra })));
-    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS);
+    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
   }
 
   it('loads a model whose unused texture has no source', async () => {
@@ -374,7 +378,7 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
 describe('meshopt fallback buffers (inner#1690)', () => {
   it('previews the shipped EXT_meshopt fixture, whose fallback buffer has no data', async () => {
     const json = Uint8Array.from(readFileSync('tests/fixtures/three-d-model-import/meshopt.gltf'));
-    expect(() => inspectModelFiles(new Map([['meshopt.gltf', json]]), 'meshopt.gltf', IMPORT_LIMITS)).not.toThrow();
+    expect(() => inspectModelFiles(new Map([['meshopt.gltf', json]]), 'meshopt.gltf', IMPORT_LIMITS, TEXTURE_FORMATS)).not.toThrow();
   });
 });
 
@@ -390,7 +394,7 @@ describe('declared buffer lengths are measured on the bytes the loader reads (in
       bufferViews: [{ buffer: 0, byteLength: TRIANGLE.byteLength }, { buffer: 1, byteLength: 4 }],
       accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }, { bufferView: 1, componentType: 5121, count: 4, type: 'SCALAR' }],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, _ID: 1 }, material: 0 }] }] })));
-    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS);
+    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
   }
 
   it('counts percent-encoded data URI bytes, not characters', () => {
@@ -423,7 +427,7 @@ describe('declared buffer lengths are measured on the bytes the loader reads (in
     view.setUint32(20 + jsonLength, TRIANGLE.byteLength, true);
     view.setUint32(24 + jsonLength, 0x004e4942, true);
     glb.set(triangleBytes, 28 + jsonLength);
-    expect(() => inspectModelFiles(new Map([['scene.glb', glb]]), 'scene.glb', IMPORT_LIMITS))
+    expect(() => inspectModelFiles(new Map([['scene.glb', glb]]), 'scene.glb', IMPORT_LIMITS, TEXTURE_FORMATS))
       .toThrow(expect.objectContaining({ code: 'invalid', detail: 'buffers[1]' }));
   });
 
@@ -432,7 +436,7 @@ describe('declared buffer lengths are measured on the bytes the loader reads (in
     const view = new DataView(glb.buffer);
     const jsonLength = view.getUint32(12, true);
     view.setUint32(20 + jsonLength, TRIANGLE.byteLength - 4, true);
-    expect(() => inspectModelFiles(new Map([['scene.glb', glb.slice(0, glb.byteLength - 4)]]), 'scene.glb', IMPORT_LIMITS))
+    expect(() => inspectModelFiles(new Map([['scene.glb', glb.slice(0, glb.byteLength - 4)]]), 'scene.glb', IMPORT_LIMITS, TEXTURE_FORMATS))
       .toThrow(expect.objectContaining({ code: 'invalid', detail: 'scene.glb' }));
   });
 });
@@ -457,7 +461,7 @@ describe('decoder downloads are not model content (inner#1690)', () => {
       delete json.extensionsRequired;
       files.set(entry, Uint8Array.from(strToU8(JSON.stringify(json))));
     }
-    const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
+    const model = inspectModelFiles(files, entry, IMPORT_LIMITS, TEXTURE_FORMATS);
     const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
     const failure = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS, renderer).then(() => undefined, (error: unknown) => error);
     expect(fetched).toHaveBeenCalled();
@@ -474,13 +478,13 @@ describe('content found after parsing is a content verdict (inner#1690)', () => 
   ])('refuses a model with %s as having nothing to display', async (_label, edit) => {
     const json = triangleJson('Root', embedded);
     edit(json);
-    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS);
+    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
     await expect(parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS)).rejects.toMatchObject({ name: 'ModelImportError', code: 'empty' });
   });
 
   it('names a registered manifest that is not JSON', () => {
     const bytes = Uint8Array.from(zipSync({ 'files/m.gltf': Uint8Array.from(strToU8('{"asset":{"version":"2.0"}}')), 'manifest.json': Uint8Array.from(strToU8('{not json')) }, { level: 0 }));
-    expect(() => readRegisteredModelPackage(bytes, IMPORT_LIMITS)).toThrow(expect.objectContaining({ name: 'ModelImportError', code: 'invalid', detail: 'manifest.json' }));
+    expect(() => readRegisteredModelPackage(bytes, IMPORT_LIMITS, TEXTURE_FORMATS)).toThrow(expect.objectContaining({ name: 'ModelImportError', code: 'invalid', detail: 'manifest.json' }));
   });
 
   it('names a decoded texture that is not a 2D image', () => {
@@ -513,7 +517,7 @@ describe('cancelling while a decoder downloads (inner#1690)', () => {
     const workers = vi.fn();
     vi.stubGlobal('Worker', class { constructor() { workers(); } postMessage(): void {} terminate(): void {} addEventListener(): void {} });
     const files = new Map([entry, ...extra].map((path) => [path, Uint8Array.from(readFileSync(`tests/fixtures/three-d-model-import/${path}`))] as const));
-    const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
+    const model = inspectModelFiles(files, entry, IMPORT_LIMITS, TEXTURE_FORMATS);
     const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
     const abort = new AbortController();
     const loading = parseSceneModel(model, abort.signal, IMPORT_LIMITS, renderer);
@@ -524,5 +528,24 @@ describe('cancelling while a decoder downloads (inner#1690)', () => {
     await vi.waitFor(() => expect(revoked).toContain('blob:decoder-worker-source'));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(workers).not.toHaveBeenCalled();
+  });
+});
+
+describe('Draco declared but not used by a loaded primitive (inner#1690)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('loads without the Draco decoder, as GLTFLoader does', async () => {
+    vi.stubGlobal('Request', class { constructor(readonly url: string) {} });
+    // The embedded buffer still loads; only the decoder download fails.
+    const fetched = vi.fn(async (input: { url: string }) => {
+      if (!input.url.startsWith('data:')) throw new TypeError('Failed to fetch');
+      return new Response(Uint8Array.from(atob(input.url.slice(input.url.indexOf(',') + 1)), (value) => value.charCodeAt(0)));
+    });
+    vi.stubGlobal('fetch', fetched);
+    const json = { ...triangleJson('Root', `data:application/octet-stream;base64,${btoa(String.fromCharCode(...new Uint8Array(TRIANGLE.buffer)))}`), extensionsUsed: ['KHR_draco_mesh_compression'] };
+    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
+    const root = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS);
+    templates.add(root);
+    expect(root.getObjectByName('Surface')).toBeDefined();
   });
 });

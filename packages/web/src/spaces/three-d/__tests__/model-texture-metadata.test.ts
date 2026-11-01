@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { IMPORT_LIMITS, TEXTURE_FORMATS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
@@ -73,7 +73,7 @@ function used(json: Record<string, unknown>): Record<string, unknown> {
  */
 function model(json: Record<string, unknown>, resources: readonly (readonly [string, Uint8Array<ArrayBuffer>])[] = []): ModelPackage {
   const entry = Uint8Array.from(new TextEncoder().encode(JSON.stringify({ asset: { version: '2.0' }, ...used(json) })));
-  return inspectModelFiles(new Map([[ENTRY, entry], ...resources]), ENTRY, IMPORT_LIMITS);
+  return inspectModelFiles(new Map([[ENTRY, entry], ...resources]), ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS);
 }
 
 /**
@@ -136,7 +136,7 @@ function embeddedGlb(image: Uint8Array<ArrayBuffer>): ModelPackage {
   view.setUint32(20 + jsonLength, binaryLength, true);
   view.setUint32(24 + jsonLength, 0x004e4942, true);
   bytes.set(binary, 28 + jsonLength);
-  return inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS);
+  return inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS, TEXTURE_FORMATS);
 }
 
 describe('model texture metadata dimensions before decoding', () => {
@@ -273,7 +273,7 @@ describe('model texture buffer metadata validation', () => {
     header.setUint32(8, bytes.length, true);
     if (problem === 'unaligned-bin') header.setUint32(end, 1, true);
     if (problem === 'oversized-bin') header.setUint32(end, bytes.length, true);
-    expect(() => validateModelTextureMetadata(inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS), IMPORT_LIMITS)).toThrow(Error);
+    expect(() => validateModelTextureMetadata(inspectModelFiles(new Map([['scene.glb', bytes]]), 'scene.glb', IMPORT_LIMITS, TEXTURE_FORMATS), IMPORT_LIMITS)).toThrow(Error);
   });
 
   it('reads percent-encoded image bytes without changing the original URI', () => {
@@ -364,5 +364,25 @@ describe('model texture metadata decodes each embedded buffer once (inner#1690)'
     validateModelTextureMetadata(source, IMPORT_LIMITS);
     expect(decode).toHaveBeenCalledTimes(1);
     decode.mockRestore();
+  });
+});
+
+describe('an image declaring both a URI and a bufferView (inner#1690)', () => {
+  /**
+   * Declare one image whose bytes sit in a bufferView and whose URI names another file.
+   * @throws {ModelImportError} When inspection refuses the declarations.
+   */
+  function both(embedded: Uint8Array<ArrayBuffer>, resources: readonly (readonly [string, Uint8Array<ArrayBuffer>])[] = []): ModelPackage {
+    return model({ buffers: [{ uri: dataUri(embedded, 'application/octet-stream'), byteLength: embedded.byteLength }],
+      bufferViews: [{ buffer: 0, byteLength: embedded.byteLength }], images: [{ uri: 'named.png', bufferView: 0, mimeType: 'image/png' }] }, resources);
+  }
+
+  it('does not require the URI file, which GLTFLoader never reads', () => {
+    expect(() => both(png(1, 1))).not.toThrow();
+  });
+
+  it('measures the bufferView bytes GLTFLoader decodes', () => {
+    const source = both(png(64, 64), [['models/named.png', png(1, 1)]]);
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 32 })).toThrow(expect.objectContaining({ code: 'budget', detail: 'images[0]' }));
   });
 });

@@ -51,8 +51,9 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
  */
 function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
   const { location } = read;
-  const bytes = image.uri !== undefined ? readModelResource(read.model, image.uri, read.location, read.decoded)
-    : image.bufferView !== undefined ? readImageView(read, image.bufferView) : undefined;
+  // GLTFLoader.loadImageSource reads an image's bufferView whenever it has one, and its URI only otherwise.
+  const bytes = image.bufferView !== undefined ? readImageView(read, image.bufferView)
+    : image.uri !== undefined ? readModelResource(read.model, image.uri, read.location, read.decoded) : undefined;
   if (!bytes) throw new ModelImportError('invalid', 'Model image has no source', { detail: location });
   let dimensions: { width: number; height: number } | undefined;
   if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
@@ -78,7 +79,7 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   // loadedResources lists only images that exist.
-  for (const index of loadedResources(model.json).images) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
+  for (const index of loadedResources(model.json, model.support).images) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
 }
 
 /**
@@ -90,5 +91,5 @@ export function validateModelTextureMetadata(model: ModelPackage, limits: SceneI
  */
 export function imageLocation(model: ModelPackage, index: number): string {
   const uri = model.json.images?.[index]?.uri;
-  return uri !== undefined && !uri.startsWith('data:') ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
+  return uri !== undefined && !uri.startsWith('data:') && model.json.images?.[index]?.bufferView === undefined ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
 }

@@ -13,6 +13,8 @@ import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 
 /** A controlled transport retains callbacks that may already be queued. */
 const parse = vi.hoisted(() => vi.fn());
+// jsdom never decodes the format probe images; this browser decodes WebP and not AVIF.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: false })) }));
 /** The preview context the stand-in renderer reports after a render. */
 const gl = vi.hoisted(() => ({ lost: false, error: 0, renderError: undefined as Error | undefined }));
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => ({
@@ -62,7 +64,7 @@ class ControlledWorker {
 }
 
 const FILES = [{ path: 'model.gltf', file: new File(['model source'], 'model.gltf') }];
-const SELECTION: ModelSelection = { model: { entry: 'model.gltf', files: new Map(), json: { asset: { version: '2.0' } } },
+const SELECTION: ModelSelection = { model: { entry: 'model.gltf', files: new Map(), json: { asset: { version: '2.0' } }, support: { webp: true, avif: false } },
   artifact: new Uint8Array([1]), entries: ['model.gltf'], paths: ['model.gltf'] };
 
 beforeEach(() => {
@@ -85,9 +87,10 @@ describe('operation-owned model inspection worker', () => {
   it('transfers the selected entry and configured budgets, then releases its worker', async () => {
     const abort = new AbortController();
     const running = inspectModelSelectionInWorker(FILES, 'model.gltf', abort.signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     const worker = ControlledWorker.instances[0];
     const reply = worker.onmessage;
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'selection', files: FILES, entry: 'model.gltf', limits: IMPORT_LIMITS }, []);
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'selection', files: FILES, entry: 'model.gltf', limits: IMPORT_LIMITS, support: { webp: true, avif: false } }, []);
     reply?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
     await expect(running).resolves.toBe(SELECTION);
     abort.abort();
@@ -102,8 +105,9 @@ describe('operation-owned model inspection worker', () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const lease = new AbortController();
     const running = readRegisteredModelPackageInWorker(bytes, lease.signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     const worker = ControlledWorker.instances[0];
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'registered', bytes, limits: IMPORT_LIMITS }, [bytes.buffer]);
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'registered', bytes, limits: IMPORT_LIMITS, support: { webp: true, avif: false } }, [bytes.buffer]);
     lease.abort();
     await expect(running).rejects.toMatchObject({ name: 'AbortError' });
     expect(worker.terminate).toHaveBeenCalledTimes(1);
@@ -113,6 +117,7 @@ describe('operation-owned model inspection worker', () => {
     const budget = { limit: 'expanded', allowed: 1000, actual: 2000 } as const;
     const failure = new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '', budget });
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(failure) } }));
     await expect(running).rejects.toMatchObject({ code: 'budget', budget });
   });
@@ -121,6 +126,7 @@ describe('operation-owned model inspection worker', () => {
     const info = { entries: ['one.glb', 'two.glb'], paths: ['one.glb', 'two.glb'], missing: [] };
     const failure = new ModelImportError('entry', 'Choose a model entry', { detail: 'one.glb', info });
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     const worker = ControlledWorker.instances[0];
     worker.onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(failure) } }));
     await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'entry', info, detail: 'one.glb' });
@@ -141,6 +147,7 @@ describe('operation-owned model inspection worker', () => {
     const first = new AbortController();
     const cancelled = inspectModelSelectionInWorker(FILES, undefined, first.signal, IMPORT_LIMITS);
     const retained = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(2));
     const [oldWorker, currentWorker] = ControlledWorker.instances;
     const lateReply = oldWorker.onmessage;
     first.abort();
@@ -176,6 +183,7 @@ describe('operation-owned model inspection worker', () => {
 
   it.each(['error', 'messageerror'] as const)('releases its worker on %s', async (type) => {
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     const worker = ControlledWorker.instances[0];
     const event = new ErrorEvent('error', { message: 'Worker failed', cancelable: true });
     if (type === 'error') worker.onerror?.(event);
@@ -188,6 +196,7 @@ describe('operation-owned model inspection worker', () => {
 
   it.each([new Error('Inspection failed'), 'Inspection failed'])('carries a failure thrown inside the worker %s as a content verdict', async (error) => {
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(error) } }));
     await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid', message: 'Inspection failed' });
   });

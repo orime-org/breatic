@@ -17,7 +17,6 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
-import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 
 /** Capabilities registered by the installed r173 GLTFLoader and its decoders. */
 const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -55,14 +54,17 @@ export function getUnsupportedModelExtensions(model: ModelPackage): { required: 
  * @param model - Checked entry and original resources.
  * @param limits - Configured decoder concurrency.
  * @param renderer - Current device used to choose a KTX2 transcode format.
+ * @param decoders - Which decoders the model needs, from loadedResources.
+ * @param decoders.basisu - Whether a loaded texture decodes through KHR_texture_basisu.
+ * @param decoders.draco - Whether a reached primitive is Draco compressed.
  * @returns A loader with explicitly owned workers and object URLs.
  * @throws {ModelImportError} When the model requires an extension this loader lacks.
  * @throws {Error} When KTX2 textures need a renderer that was not given.
  */
-export function createModelDecoder(model: ModelPackage, limits: SceneImportLimits, renderer?: WebGLRenderer): ModelDecoder {
+export function createModelDecoder(model: ModelPackage, limits: SceneImportLimits, renderer: WebGLRenderer | undefined, decoders: { basisu: boolean; draco: boolean }): ModelDecoder {
   const unsupported = getUnsupportedModelExtensions(model).required;
   if (unsupported.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: unsupported.join(', ') });
-  const { basisu } = loadedResources(model.json);
+  const { basisu, draco: dracoUsed } = decoders;
   if (basisu && !renderer) throw new Error('KTX2 decoding requires the current viewport capabilities');
   const decoderAssets = new Map([
     ['https://model-decoder.invalid/draco/draco_wasm_wrapper.js', dracoWrapper],
@@ -92,13 +94,12 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
   const loader = new GLTFLoader(manager).setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder);
   if (ktx2) loader.setKTX2Loader(ktx2);
   let disposed = false;
-  const used = new Set(model.json.extensionsUsed ?? []);
   return {
     loader,
     prepare: async () => {
       try {
         // r173 DRACOLoader exposes its decoder download promise only through _initDecoder.
-        if (used.has('KHR_draco_mesh_compression')) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
+        if (dracoUsed) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
         if (ktx2 && basisu) await ktx2.init();
       } finally {
         // A dispose during the download found nothing to release; the finished download created the worker source URL.

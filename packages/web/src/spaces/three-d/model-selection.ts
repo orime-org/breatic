@@ -7,6 +7,7 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 export interface ModelSelection {
   model: ModelPackage;
@@ -34,10 +35,11 @@ async function readSource(source: ModelSource): Promise<Uint8Array<ArrayBuffer>>
  * @param sources - Original files under their paths in the user's collection.
  * @param entry - Explicit selected model entry when several are present.
  * @param limits - Project's model import budgets.
+ * @param support - The browser's WebP and AVIF support, probed on the main thread.
  * @returns Checked original resources and their deterministic artifact.
  * @throws {ModelImportError} When input, entries or resources need correction.
  */
-export async function inspectModelSelection(sources: readonly ModelSource[], entry: string | undefined, limits: SceneImportLimits): Promise<ModelSelection> {
+export async function inspectModelSelection(sources: readonly ModelSource[], entry: string | undefined, limits: SceneImportLimits, support: TextureFormatSupport): Promise<ModelSelection> {
   let info: ModelInspectionInfo | undefined;
   try {
     const kept = sources.filter((source) => !isArchiverMetadata(normalizeModelPath(source.path)));
@@ -68,8 +70,8 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
       throw new ModelImportError('entry', 'Choose a model entry', { detail: '' });
     }
     const selected = entry ?? entries[0];
-    const model = inspectModelFiles(collection, selected, limits);
-    return { model, artifact: packModelFiles(collection, selected, limits), entries, paths };
+    const model = inspectModelFiles(collection, selected, limits, support);
+    return { model, artifact: packModelFiles(collection, selected, limits, support), entries, paths };
   } catch (error) {
     const failure = contentFailure(error);
     throw info ? failure.withInfo({ ...info, missing: failure.info?.missing ?? [] }) : failure;

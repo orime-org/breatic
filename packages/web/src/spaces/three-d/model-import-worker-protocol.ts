@@ -7,11 +7,12 @@ import type { ModelImportBudget, ModelImportError, ModelImportErrorCode, ModelIn
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /** Inspect a user's selection, or unpack a registered package, away from the page's main thread. */
 export type ModelImportWorkerRequest =
-  | { kind: 'selection'; files: readonly ModelSource[]; entry: string | undefined; limits: SceneImportLimits }
-  | { kind: 'registered'; bytes: Uint8Array<ArrayBuffer>; limits: SceneImportLimits };
+  | { kind: 'selection'; files: readonly ModelSource[]; entry: string | undefined; limits: SceneImportLimits; support: TextureFormatSupport }
+  | { kind: 'registered'; bytes: Uint8Array<ArrayBuffer>; limits: SceneImportLimits; support: TextureFormatSupport };
 /** A worker failure; everything the worker throws judges the model, so it always carries a verdict. */
 export interface SerializedWorkerError {
   code: ModelImportErrorCode;

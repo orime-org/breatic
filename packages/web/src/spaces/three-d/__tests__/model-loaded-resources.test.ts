@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { REVISION } from 'three';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /**
  * Build a document from declarations alone; loadedResources reads nothing else.
@@ -12,6 +13,14 @@ import type { GltfDocument } from '@web/spaces/three-d/model-package';
  */
 function doc(json: Record<string, unknown>): GltfDocument {
   return { asset: { version: '2.0' }, ...json } as GltfDocument;
+}
+
+/**
+ * Derive with every texture format decodable, as current desktop browsers report.
+ * @throws {never} Never.
+ */
+function derive(json: Record<string, unknown>, support: TextureFormatSupport = { webp: true, avif: true }): ReturnType<typeof loadedResources> {
+  return loadedResources(doc(json), support);
 }
 
 /**
@@ -37,7 +46,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('walks only nodes reached from the scenes, their children and animation targets', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }, { nodes: [3] }],
       nodes: [{ children: [1] }, { mesh: 0 }, { mesh: 1 }, { mesh: 2 }, { mesh: 3 }],
       meshes: [0, 1, 2, 3].map((accessor) => ({ primitives: [{ attributes: { POSITION: accessor } }] })),
@@ -48,7 +57,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('loads skin joints shallowly: their mesh, not their children', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0, skin: 0 }, { mesh: 1, children: [2] }, { mesh: 2 }],
       skins: [{ joints: [1], inverseBindMatrices: 3 }],
@@ -59,7 +68,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads instancing attributes only of reached nodes whose mesh draws triangles', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0, 1, 2, 3] }],
       nodes: [
         { mesh: 0, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 2, SCALE: 3 } } } },
@@ -78,7 +87,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('skips animation channels without a target node and samplers no channel uses', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [] }],
       nodes: [{}],
       animations: [{
@@ -91,7 +100,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads morph targets only for POSITION, NORMAL and COLOR_0', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 1 }, targets: [{ POSITION: 2, NORMAL: 3, COLOR_0: 4, TANGENT: 5, TEXCOORD_0: 6 }] }] }],
@@ -101,7 +110,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads the compressed view of a Draco primitive in place of the attributes and indices it decodes', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [
@@ -114,7 +123,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads a meshopt view from the extension buffer', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
@@ -125,7 +134,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads textures only of materials reached primitives use, by the slots the loader assigns', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: {}, material: 0 }, { attributes: {}, material: 1 }] }],
@@ -144,7 +153,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('picks the first supported source extension, in plugin order, over the texture source', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
@@ -161,7 +170,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('reads the buffer of an image a loaded texture decodes from a bufferView', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
@@ -174,7 +183,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
   });
 
   it('leaves the image undefined when a used texture names none or a missing one', () => {
-    const resources = loadedResources(doc({
+    const resources = derive(({
       scenes: [{ nodes: [0] }],
       nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
@@ -184,5 +193,23 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
     }));
     expect(resources.textures).toEqual([{ texture: 0, image: undefined }, { texture: 1, image: undefined }]);
     expect(resources.images.size).toBe(0);
+  });
+
+  it('falls back to the texture source when the browser cannot decode the source extension, as GLTFLoader does', () => {
+    const json = {
+      scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 } }],
+      textures: [{ source: 0, extensions: { EXT_texture_avif: { source: 1 } } }, { source: 2, extensions: { EXT_texture_webp: { source: 3 } } }],
+      images: Array.from({ length: 4 }, () => ({ uri: 'texture.png' })),
+    };
+    expect(derive(json).textures).toEqual([{ texture: 0, image: 1 }, { texture: 1, image: 3 }]);
+    expect(derive(json, { webp: false, avif: false }).textures).toEqual([{ texture: 0, image: 0 }, { texture: 1, image: 2 }]);
+  });
+
+  it('reports Draco only when a reached primitive is Draco compressed', () => {
+    const draco = { KHR_draco_mesh_compression: { bufferView: 0, attributes: {} } };
+    expect(derive({ scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: {}, extensions: draco }] }] }).draco).toBe(true);
+    expect(derive({ extensionsUsed: ['KHR_draco_mesh_compression'], scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: {} }] }, { primitives: [{ attributes: {}, extensions: draco }] }] }).draco).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { SceneImportLimits } from '@breatic/shared';
+import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /** Approved runtime values supplied explicitly at the model-loading boundary. */
 export const IMPORT_LIMITS: SceneImportLimits = {
@@ -14,3 +15,6 @@ export const IMPORT_LIMITS: SceneImportLimits = {
   maxTextureEdge: 8192,
   maxTextureBytes: 268435456,
 };
+
+/** A browser that decodes WebP and AVIF, as current desktop browsers do. */
+export const TEXTURE_FORMATS: TextureFormatSupport = { webp: true, avif: true };

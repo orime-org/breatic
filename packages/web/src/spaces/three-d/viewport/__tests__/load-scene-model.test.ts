@@ -8,6 +8,8 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { disposeModelTemplate, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
+// jsdom never decodes the format probe images; the browser under test decodes WebP and AVIF.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
 /** Encode the glTF 2 binary container around a real minimal scene.
  * @throws {never} Never.

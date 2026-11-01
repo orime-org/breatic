@@ -7,6 +7,7 @@ import { deserializeWorkerError } from '@web/spaces/three-d/model-import-worker-
 import type { ModelImportWorkerAnswer, ModelImportWorkerRequest } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
+import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
 /**
  * Run one request in its own worker, terminated as soon as it answers or its owner cancels.
@@ -79,7 +80,9 @@ function runModelImportWorker(request: ModelImportWorkerRequest, signal: AbortSi
  * @throws {Error} When the worker cannot start, run or answer.
  */
 export async function inspectModelSelectionInWorker(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelSelection> {
-  const answer = await runModelImportWorker({ kind: 'selection', files, entry, limits }, signal);
+  // GLTFLoader probes WebP and AVIF with an Image, which only the main thread has.
+  const support = await detectTextureFormatSupport();
+  const answer = await runModelImportWorker({ kind: 'selection', files, entry, limits, support }, signal);
   if (!('selection' in answer)) throw new Error('Model inspection answered without a selection');
   return answer.selection;
 }
@@ -95,7 +98,8 @@ export async function inspectModelSelectionInWorker(files: readonly ModelSource[
  * @throws {Error} When the worker cannot start, run or answer.
  */
 export async function readRegisteredModelPackageInWorker(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelPackage> {
-  const answer = await runModelImportWorker({ kind: 'registered', bytes, limits }, signal, [bytes.buffer]);
+  const support = await detectTextureFormatSupport();
+  const answer = await runModelImportWorker({ kind: 'registered', bytes, limits, support }, signal, [bytes.buffer]);
   if (!('model' in answer)) throw new Error('Model package answered without a model');
   return answer.model;
 }

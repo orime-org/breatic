@@ -15,6 +15,7 @@ import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/v
 import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
 /** Additional parsed scenes stay owned until the active template is released. */
@@ -234,7 +235,7 @@ export async function loadSceneModel(
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
   const model = asset.mimeType === 'application/zip'
     ? await readRegisteredModelPackageInWorker(bytes, signal, limits)
-    : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits);
+    : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits, await detectTextureFormatSupport());
   return parseSceneModel(model, signal, limits, renderer);
 }
 
@@ -288,8 +289,8 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   signal.throwIfAborted();
   const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
   validateModelTextureMetadata(model, textureLimits);
-  const { textures } = loadedResources(model.json);
-  const decoder = createModelDecoder(model, limits, renderer);
+  const { textures, basisu, draco } = loadedResources(model.json, model.support);
+  const decoder = createModelDecoder(model, limits, renderer, { basisu, draco });
   const bytes = model.files.get(model.entry)!;
   // GLTFLoader only reads the buffer, so a view spanning its whole buffer is passed without a copy.
   const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes)
