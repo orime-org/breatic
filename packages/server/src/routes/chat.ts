@@ -126,7 +126,7 @@ function assertSayable(
   for (const one of shared?.decision === "shared" ? shared.spaces : []) {
     if (one.state === "read" && one.content.length > current_space_max_chars) {
       throw new ValidationError(
-        t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: one.content.length }),
+        t("server.chat.shared_space_too_long", { name: one.name, limit: current_space_max_chars, actual: one.content.length }),
       );
     }
   }

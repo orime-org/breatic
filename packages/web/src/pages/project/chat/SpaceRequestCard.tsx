@@ -133,7 +133,7 @@ function RequestActions({ request }: SpaceRequestCardProps): React.JSX.Element {
 
 /**
  * The Agent's request to look at Spaces (inner#1552): each Space asked for,
- * with the part asked for, and why; 「拒绝查看」 on the left and 「同意查看」
+ * with the part asked for, and why; Decline on the left and Allow
  * on the right. Settled, a heading says how it was answered; a shared card
  * lists the Spaces and marks only those that could not be read.
  * @param root0 - The component props.
