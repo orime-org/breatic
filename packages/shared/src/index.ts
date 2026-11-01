@@ -434,7 +434,7 @@ export type {
   TimelineEditPlacement,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
-export { planTimelineEdit, timelineSourceOverflow } from "@shared/timeline/edit.js";
+export { planTimelineEdit, timelineInsertionIndex, timelineSourceOverflow } from "@shared/timeline/edit.js";
 export type { TimelineEditPlan, TimelineEditRefusal } from "@shared/timeline/edit.js";
 export { activeTimelineClipAt, nextTimelinePlaybackBoundary } from "@shared/timeline/layers.js";
 export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";

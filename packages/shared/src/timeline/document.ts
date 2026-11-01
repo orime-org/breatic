@@ -7,6 +7,7 @@ import {
   type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
 } from "@shared/timeline/schema.js";
 import { planTimelineEdit, type TimelineEditPlan } from "@shared/timeline/edit.js";
+import { newId as createId } from "@shared/ids.js";
 
 /**
  * Attach a child map before populating it, preserving Yjs field-level merges.
@@ -84,7 +85,7 @@ export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
  * @returns The applied plan, or why nothing was written.
  * @throws {Error} When the document or command is structurally invalid.
  */
-export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = () => crypto.randomUUID()): TimelineEditPlan {
+export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = createId): TimelineEditPlan {
   const normalized = TimelineEditCommandSchema.parse(command);
   const current = readTimelineDocument(doc);
   const plan = planTimelineEdit(current, normalized, newId);

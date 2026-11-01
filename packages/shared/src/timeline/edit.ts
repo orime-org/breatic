@@ -107,7 +107,7 @@ export function timelineSourceOverflow(clip: TimelineVideoClip, source: Timeline
  * @returns The insertion index.
  * @throws {never} Never.
  */
-function insertionIndex(sequence: readonly TimelineVideoClip[], frame: number): number {
+export function timelineInsertionIndex(sequence: readonly TimelineVideoClip[], frame: number): number {
   return sequence.filter((clip) => clip.startFrame * 2 + clip.durationFrames <= frame * 2).length;
 }
 
@@ -327,7 +327,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
       let index: number;
       if (command.operation === "set_range" && leftMain) index = clipsOn(current.clips, TIMELINE_MAIN_TRACK_ID).findIndex((clip) => clip.id === subject.id);
       else if (command.operation === "duplicate" && original?.trackId === TIMELINE_MAIN_TRACK_ID) index = sequence.findIndex((clip) => clip.id === original.id) + 1;
-      else index = insertionIndex(sequence, subject.startFrame);
+      else index = timelineInsertionIndex(sequence, subject.startFrame);
       clips[subject.id] = subject;
       sequence.splice(index, 0, subject);
       pack(clips, sequence);
