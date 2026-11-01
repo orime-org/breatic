@@ -113,8 +113,9 @@ textTools.post(
     return streamUntilClientLeaves(c, async (s, stopped) => {
       for await (const event of textToolService.executeTextTool(
         user.id,
+        projectId,
         tool,
-        { ...params, project_id: projectId },
+        params,
         stopped,
         operationKey,
       )) {

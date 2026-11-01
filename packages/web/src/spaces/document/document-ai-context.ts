@@ -10,17 +10,23 @@
 
 import * as React from 'react';
 
-import type { TextToolTone } from '@web/data/api/text-tools';
+import { TEXT_TOOL_TONES, type TextToolTone } from '@breatic/shared';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
 
+/** The catalog key of each tone's label, written out for the catalog scan. */
+const TONE_LABEL_KEYS: Record<TextToolTone, string> = {
+  professional: 'spaces.document.ai.tone.professional',
+  casual: 'spaces.document.ai.tone.casual',
+  straightforward: 'spaces.document.ai.tone.straightforward',
+  confident: 'spaces.document.ai.tone.confident',
+  friendly: 'spaces.document.ai.tone.friendly',
+};
+
 /** The five tones the change-tone level offers, in its order. */
-export const AI_TONES: ReadonlyArray<{ readonly id: TextToolTone; readonly labelKey: string }> = [
-  { id: 'professional', labelKey: 'spaces.document.ai.tone.professional' },
-  { id: 'casual', labelKey: 'spaces.document.ai.tone.casual' },
-  { id: 'straightforward', labelKey: 'spaces.document.ai.tone.straightforward' },
-  { id: 'confident', labelKey: 'spaces.document.ai.tone.confident' },
-  { id: 'friendly', labelKey: 'spaces.document.ai.tone.friendly' },
-];
+export const AI_TONES: ReadonlyArray<{ readonly id: TextToolTone; readonly labelKey: string }> = TEXT_TOOL_TONES.map((id) => ({
+  id,
+  labelKey: TONE_LABEL_KEYS[id],
+}));
 
 /**
  * Opens the dialog on a command, over the reader's current selection.

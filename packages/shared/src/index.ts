@@ -396,6 +396,7 @@ export {
 export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
 
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
+export { TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES, type TextToolLanguage, type TextToolTone } from "@shared/text-tools.js";
 
 export {
   addressWithoutQuery,

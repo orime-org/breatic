@@ -36,7 +36,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
-import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS } from "@breatic/shared";
+import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
@@ -46,10 +46,6 @@ import { creditLotService } from "@breatic/domain";
  * in the route, so operations can change them without a release.
  */
 const TEXT_TOOL_HARD_CEILING = 2_000_000;
-/** The five UI locales a selection can be translated into. */
-const TRANSLATE_TARGETS = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
-/** The five tones the tone submenu offers. */
-const REWRITE_TONES = ["professional", "casual", "straightforward", "confident", "friendly"] as const;
 /** The most a custom request may say. */
 const CUSTOM_INSTRUCTIONS_MAX = 2_000;
 
@@ -72,8 +68,8 @@ export const textToolSchema = z.discriminatedUnion("tool", [
   textToolBase.extend({ tool: z.literal("expand"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("shorten"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("summarize"), ...onSelection }),
-  textToolBase.extend({ tool: z.literal("translate"), ...onSelection, language: z.enum(TRANSLATE_TARGETS) }),
-  textToolBase.extend({ tool: z.literal("rewrite"), ...onSelection, style: z.enum(REWRITE_TONES).optional() }),
+  textToolBase.extend({ tool: z.literal("translate"), ...onSelection, language: z.enum(TEXT_TOOL_LANGUAGES) }),
+  textToolBase.extend({ tool: z.literal("rewrite"), ...onSelection, style: z.enum(TEXT_TOOL_TONES).optional() }),
   textToolBase.extend({
     tool: z.literal("custom"),
     ...onSelection,

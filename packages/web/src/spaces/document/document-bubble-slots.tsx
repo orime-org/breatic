@@ -31,7 +31,7 @@ import {
   BubbleMenuRule,
   BubbleMenuSubmenuRow,
 } from '@web/spaces/document/document-bubble-rows';
-import { TEXT_TOOL_LANGUAGES } from '@web/data/api/text-tools';
+import { TEXT_TOOL_LANGUAGES } from '@breatic/shared';
 import { langFor } from '@web/features/preferences/supported-langs';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
 import { AI_TONES, useDocumentAiLaunch } from '@web/spaces/document/document-ai-context';

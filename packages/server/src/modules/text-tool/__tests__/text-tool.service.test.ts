@@ -143,8 +143,9 @@ async function run(): Promise<{ type: string }[]> {
   const events: { type: string }[] = [];
   for await (const event of executeTextTool(
     "u-1",
+    PROJECT,
     "generate",
-    { instructions: "写点什么", project_id: PROJECT },
+    { instructions: "写点什么" },
     new AbortController().signal,
     "key-1",
   )) {
@@ -231,8 +232,9 @@ describe("一次跑到一半就死掉的运行", () => {
     // 模型的账已经产生，谁读走了结果不改变这件事。
     const gen = executeTextTool(
       "u-1",
+      PROJECT,
       "generate",
-      { instructions: "写点什么", project_id: PROJECT },
+      { instructions: "写点什么" },
       new AbortController().signal,
       "key-1",
     );

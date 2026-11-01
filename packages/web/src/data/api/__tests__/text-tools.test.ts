@@ -163,6 +163,15 @@ describe('the frames', () => {
     expect(errors).toHaveLength(1);
   });
 
+  it('reads a frame it does not know as nothing, so the stream closing after it is one failure', async () => {
+    serverSends([{ event: 'aborted', data: JSON.stringify({ type: 'aborted' }) }]);
+
+    const { events, errors } = await runPolish();
+
+    expect(events).toEqual([]);
+    expect(errors).toHaveLength(1);
+  });
+
   it('reports nothing more after done', async () => {
     serverSends([{ event: 'done', data: JSON.stringify({ type: 'done', tokens: 1, creditsUsed: '0' }) }]);
 

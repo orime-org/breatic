@@ -14,7 +14,7 @@
  * can never reach the dialog.
  */
 
-import type { TextToolLanguage, TextToolTone } from '@web/data/api/text-tools';
+import type { TextToolLanguage, TextToolTone } from '@breatic/shared';
 
 /** A command the AI menu runs. */
 export type AiCommand =

@@ -10,7 +10,7 @@
  * response arrives, and the run is charged what the record adds up to.
  */
 
-import { serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
+import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
@@ -27,10 +27,10 @@ export type TextToolEvent =
   | { type: "text_delta"; text: string }
   | { type: "done"; tokens: number; creditsUsed: CreditDecimal }
   | { type: "aborted"; tokens: number; creditsUsed: CreditDecimal }
-  | { type: "error"; message: string; err: unknown };
+  | { type: "error"; err: unknown };
 
 /** The UI locales a selection can be translated into, as the model reads them. */
-const TRANSLATE_TARGET_NAMES: Record<string, string> = {
+const TRANSLATE_TARGET_NAMES: Record<TextToolLanguage, string> = {
   en: "English",
   "zh-CN": "Simplified Chinese",
   "zh-TW": "Traditional Chinese",
@@ -60,7 +60,7 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
 
     // Tool-specific extras
     if (tool === "translate" && typeof params.language === "string") {
-      msg += `\nTranslate into: ${TRANSLATE_TARGET_NAMES[params.language] ?? params.language}`;
+      msg += `\nTranslate into: ${TRANSLATE_TARGET_NAMES[params.language as TextToolLanguage]}`;
     }
     if (tool === "rewrite" && params.style) {
       msg += `\nTarget style: ${params.style as string}`;
@@ -101,9 +101,9 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
 /**
  * Execute a text mini-tool with streaming output.
  * @param userId - Authenticated user ID
+ * @param projectId - The project whose studio pays for the run.
  * @param tool - Tool name (e.g. "polish", "generate")
- * @param params - Tool parameters (document, selection, etc.) and the
- *   `project_id` whose studio pays for the run.
+ * @param params - Tool parameters (document, selection, etc.).
  * @param signal - AbortSignal for cancellation on client disconnect
  * @param operationKey - The key the run is recorded and charged under, minted
  *   by the route for every request.
@@ -111,12 +111,12 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
  */
 export async function* executeTextTool(
   userId: string,
+  projectId: string,
   tool: string,
   params: Record<string, unknown>,
   signal: AbortSignal,
   operationKey: string,
 ): AsyncGenerator<TextToolEvent> {
-  const projectId = typeof params.project_id === "string" ? params.project_id : null;
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
   // when its response arrives. A run that died before that is recorded later
@@ -209,10 +209,9 @@ export async function* executeTextTool(
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
     } else {
-      const message = err instanceof Error ? err.message : String(err);
-      // Embed the raw error on the event so the application caller
-      // (server SSE route) can log it with full request context.
-      yield { type: "error", message, err };
+      // The raw error rides the event so the application caller (the SSE
+      // route) can log it with full request context.
+      yield { type: "error", err };
     }
   }
 }
@@ -235,7 +234,7 @@ export async function* executeTextTool(
  */
 async function chargeRecorded(
   userId: string,
-  projectId: string | null,
+  projectId: string,
   usage: UsageRecorder,
   calls: ModelCallWatch | undefined,
   tool: string,

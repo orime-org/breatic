@@ -10,17 +10,10 @@
  * is a new run.
  */
 
+import type { TextToolLanguage, TextToolTone } from '@breatic/shared';
+
 import { apiGet } from '@web/data/api/request';
 import { sseStream } from '@web/data/stream/sse';
-
-/** The languages a selection can be translated into, in the order they are offered. */
-export const TEXT_TOOL_LANGUAGES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as const;
-
-/** A language a selection can be translated into. */
-export type TextToolLanguage = (typeof TEXT_TOOL_LANGUAGES)[number];
-
-/** The tones a selection can be rewritten in. */
-export type TextToolTone = 'professional' | 'casual' | 'straightforward' | 'confident' | 'friendly';
 
 /** What every document command sends: its project, the selection and the context around it. */
 interface OnSelection {
@@ -41,8 +34,7 @@ export type TextToolRequest =
 /** One frame of the stream, as the caller hears it. */
 export type TextStreamEvent =
   | { readonly type: 'text_delta'; readonly text: string }
-  | { readonly type: 'done'; readonly tokens?: number; readonly creditsUsed?: string }
-  | { readonly type: 'aborted'; readonly tokens?: number; readonly creditsUsed?: string }
+  | { readonly type: 'done' }
   | { readonly type: 'error'; readonly message: string };
 
 /** The budgets the browser windows a request to. */
@@ -75,7 +67,7 @@ function parseFrame(data: string, event: string): TextStreamEvent | null {
     return null;
   }
   if (event === 'text_delta') return typeof payload['text'] === 'string' ? { type: 'text_delta', text: payload['text'] } : null;
-  if (event === 'done' || event === 'aborted') return { ...payload, type: event } as TextStreamEvent;
+  if (event === 'done') return { type: 'done' };
   if (event === 'error') return { type: 'error', message: typeof payload['message'] === 'string' ? payload['message'] : '' };
   return null;
 }
