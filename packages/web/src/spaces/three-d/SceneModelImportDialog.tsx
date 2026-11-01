@@ -71,6 +71,8 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const errorText = error instanceof ModelImportError ? t(importErrorKey(error.code))
     : uploadFailure ? t(uploadFailure.key, uploadFailure.params) : t('spaces.threeD.importModel.errorLoad');
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
+  // A check that failed outside the model content can succeed on the same retained collection.
+  const retryCheck = snapshot.phase === 'failed' && prepared === null && error !== null && !(error instanceof ModelImportError) && snapshot.files.length > 0;
 
   /**
    * Ask for a fresh source collection through the browser's hidden file input.
@@ -149,6 +151,11 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    */
   const confirm = React.useCallback((): void => { void controller.confirm(); }, [controller]);
   /**
+   * Check the retained collection and main file again.
+   * @throws {never} Never directly.
+   */
+  const checkAgain = React.useCallback((): void => { void controller.select(snapshot.files, snapshot.entry); }, [controller, snapshot.files, snapshot.entry]);
+  /**
    * Hide this view while the document retains any active import.
    * @throws {never} Never directly.
    */
@@ -205,7 +212,8 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
           </div>}
         </div>
       </ScrollArea>
-      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button><Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim()}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button></DialogFooter>
+      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck ? <Button onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
+        : <Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim()}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button>}</DialogFooter>
     </DialogContent>
   </Dialog>;
 });

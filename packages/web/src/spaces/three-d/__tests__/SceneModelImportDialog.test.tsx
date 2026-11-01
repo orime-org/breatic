@@ -268,5 +268,18 @@ describe('model import dialog failures outside the model (inner#1690)', () => {
     await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
     expect(screen.getByText('The model could not be loaded. Try again.')).toBeInTheDocument();
     expect(screen.queryByText('The model or an accompanying file could not be read.')).toBeNull();
+    const sources = failing.prepare.mock.calls[0][0] as unknown;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
+    expect(failing.prepare).toHaveBeenCalledTimes(2);
+    expect(failing.prepare.mock.calls[1][0]).toEqual(sources);
+    expect(failing.prepare.mock.calls[1][1]).toBe(failing.prepare.mock.calls[0][1]);
+  });
+
+  it('offers no check Retry for a content verdict', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('invalid', 'Unreadable', { detail: '' }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
