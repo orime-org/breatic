@@ -1593,10 +1593,11 @@ test('a picture dragged by itself moves like a row dragged by its handle (A10)',
   await page.keyboard.type('alpha');
   await page.keyboard.press('Enter');
   await page.keyboard.type('beta');
-  await page.keyboard.press('ArrowUp');
-  // From the end of `beta` the caret lands before the last letter of `alpha`;
-  // at the end of the line a picture pasted goes below it (design §5.4.3).
-  await page.keyboard.press('ArrowRight');
+  // A click right of the words puts the caret at the end of `alpha`, where a
+  // picture pasted goes below the line (design §5.4.3).
+  const alpha = page.locator(`${EDITOR} .bn-inline-content`).filter({ hasText: /^alpha$/ });
+  const line = (await alpha.boundingBox())!;
+  await alpha.click({ position: { x: line.width - 2, y: line.height / 2 } });
   await pastePicture(page, 'move.png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
