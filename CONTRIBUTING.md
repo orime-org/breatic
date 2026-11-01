@@ -47,6 +47,7 @@ Before a code change, read the repository and affected package's `AGENTS.md`.
 Keep the first PR focused on one agreed outcome, link its issue, and include
 the checks and tests appropriate to that change. New model integrations,
 cross-package changes and changes to stored data require scope discussion first.
+
 ---
 
 ## Commit author / trailer policy
