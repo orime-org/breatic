@@ -1211,18 +1211,37 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Timeline spaces",
-    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
-      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+    `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
-      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
-      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
-      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
-      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+      `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
+      `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the clip on the highest track at the playhead. ` +
+      "Click a clip to select it; the bottom properties row shows its source name, " +
+      `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
+      `${quoted(t("timeline.edit.duration"))}. Type a whole frame and press Enter or leave the field to apply it. ` +
+      "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
+      "new visual track. Drag the edges of the selected clip to trim it. " +
+      `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
+      `${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), ` +
+      `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and ${quoted(t("timeline.edit.delete"))}, ` +
+      `then the switches ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
+      `${quoted(t("timeline.edit.linkage"))} and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account. ` +
+      `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
+      "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +
+      `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
+      "covers it: the covered part is trimmed away, a clip covered in the middle splits in two, and a deleted clip leaves a gap. " +
+      `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip move or are deleted with it. ` +
+      `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges and the playhead. ` +
+      `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
+      "Keys: Left and Right move the selected clip one frame (Shift one second), or the playhead when nothing is selected; " +
+      "Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
+      "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
+      `Clips marked ${quoted(t("timeline.conflict"))} also appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
     `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
       `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
       `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
       `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
-      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
+      `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
       `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
       `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
       `A permission change requires another confirmation after editing is available. ` +
