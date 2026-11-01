@@ -279,7 +279,7 @@ describe("an answer held to the request it answers", () => {
 
   it("fits a refusal whatever was asked", () => {
     const asked = request({ id: "d1", blocks: { from: 2 } }, { id: "c1", node_ids: ["n1"] });
-    expect(spaceAnswerMismatch(asked, { toolCallId: "r1", decision: "declined" } as SpaceRequestAnswer)).toBeNull();
+    expect(spaceAnswerMismatch(asked, { toolCallId: "r1", decision: "declined" })).toBeNull();
   });
 
   it("does not fit when a Space asked for is missing", () => {

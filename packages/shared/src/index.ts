@@ -301,6 +301,9 @@ export {
   STUDIO_SLUG_BOUNDS,
   loginSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -337,6 +340,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -387,6 +393,7 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
@@ -612,6 +619,7 @@ export {
   readQuestionnaire,
 } from "@shared/agent/ask-user.js";
 export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from "@shared/agent/ask-user.js";
+export { spaceAnswerMismatch } from "@shared/agent/space-request.js";
 export {
   carrying,
   FAILURE_LINES,
