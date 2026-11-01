@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { AskUserAnswer, ChatAttachedChip, SpaceRequestAnswer } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 
 import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -305,8 +305,8 @@ export function useChatSession(
     [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
-  const answer = React.useCallback(
-    async (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> => {
+  const answerCard = React.useCallback(
+    async (send: (opened: string, spaces: ChatSpaceContext) => Promise<void>): Promise<void> => {
       // The card is in the conversation on screen, which is where it goes.
       // The Spaces are read at the press, as for a typed message.
       const opened = conversationId;
@@ -317,26 +317,21 @@ export function useChatSession(
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
-      await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));
+      await send(opened, clipSpaceContext(spaces, limits, []));
     },
     [conversationId, readSpaces],
   );
 
+  const answer = React.useCallback(
+    (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> =>
+      answerCard((opened, spaces) => answerInSession(opened, toolCallId, answers, spaces)),
+    [answerCard],
+  );
+
   const shareSpaces = React.useCallback(
-    async (shared: SpaceRequestAnswer): Promise<void> => {
-      // As for a questionnaire: the card is in the conversation on screen,
-      // and the Spaces go as they stand at the press.
-      const opened = conversationId;
-      if (opened === undefined) return;
-      const spaces = readSpaces();
-      const limits = await chatApi.streamConfig().catch(() => null);
-      if (limits === null) {
-        chatAttachments.say({ key: 'sendUnavailable' });
-        return;
-      }
-      await shareSpacesInSession(opened, shared, clipSpaceContext(spaces, limits, []));
-    },
-    [conversationId, readSpaces],
+    (shared: SpaceRequestAnswer): Promise<void> =>
+      answerCard((opened, spaces) => shareSpacesInSession(opened, shared, spaces)),
+    [answerCard],
   );
 
   const abort = React.useCallback((): void => {

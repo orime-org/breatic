@@ -795,12 +795,34 @@ export async function sendInSession(
 }
 
 /**
- * Answer the questionnaire a conversation's turn stopped at, and watch the
- * stream the resumed turn comes back on (inner#1542).
+ * Answer the card a conversation's turn stopped at, and watch the stream the
+ * resumed turn comes back on.
  *
  * Sent with no message, the way the SDK's own human-in-the-loop carries on a
  * paused reply: what the turn says next follows the card in that message, and
  * nothing of the reader's is added to the list.
+ * @param conversationId - The conversation.
+ * @param toolCallId - The call the card answers.
+ * @param card - The answer, under the key the route reads it from.
+ * @param spaces - The reader's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+async function answerCardInSession(
+  conversationId: string,
+  toolCallId: string,
+  card: { answer: AskUserAnswer } | { shared_spaces: SpaceRequestAnswer },
+  spaces: ChatSpaceContext,
+): Promise<void> {
+  const chat = sessions.get(conversationId);
+  // One request at a time on a conversation: the turn in flight settles the
+  // card one way or the other, and the card's button waits on it meanwhile.
+  if (!chat || runningTurn.has(conversationId)) return;
+  answering.set(conversationId, toolCallId);
+  await runTurn(conversationId, chat, (session) => session.sendMessage(undefined, { body: { ...spaces, ...card } }));
+}
+
+/**
+ * Answer the questionnaire a conversation's turn stopped at (inner#1542).
  * @param conversationId - The conversation.
  * @param toolCallId - The questionnaire call answered.
  * @param answers - The answers given on the card.
@@ -813,22 +835,11 @@ export async function answerInSession(
   answers: AskUserAnswer['answers'],
   spaces: ChatSpaceContext = {},
 ): Promise<void> {
-  const chat = sessions.get(conversationId);
-  // One request at a time on a conversation: the turn in flight settles the
-  // card one way or the other, and the card's button waits on it meanwhile.
-  if (!chat || runningTurn.has(conversationId)) return;
-  answering.set(conversationId, toolCallId);
-  await runTurn(conversationId, chat, (session) =>
-    session.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } }),
-  );
+  await answerCardInSession(conversationId, toolCallId, { answer: { toolCallId, answers } }, spaces);
 }
 
 /**
- * Answer the request to look at Spaces a conversation's turn stopped at, and
- * watch the stream the resumed turn comes back on (inner#1552).
- *
- * Sent the way a questionnaire's answer is: no message of the reader's, the
- * paused reply carried on, one request at a time on a conversation.
+ * Answer the request to look at Spaces a conversation's turn stopped at (inner#1552).
  * @param conversationId - The conversation.
  * @param answer - What the reader shared, or that they declined.
  * @param spaces - The reader's Spaces, sent beside the answer and not kept.
@@ -839,12 +850,7 @@ export async function shareSpacesInSession(
   answer: SpaceRequestAnswer,
   spaces: ChatSpaceContext = {},
 ): Promise<void> {
-  const chat = sessions.get(conversationId);
-  if (!chat || runningTurn.has(conversationId)) return;
-  answering.set(conversationId, answer.toolCallId);
-  await runTurn(conversationId, chat, (session) =>
-    session.sendMessage(undefined, { body: { ...spaces, shared_spaces: answer } }),
-  );
+  await answerCardInSession(conversationId, answer.toolCallId, { shared_spaces: answer }, spaces);
 }
 
 /**
