@@ -1650,27 +1650,30 @@ describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)
     showTimeline();
     await screen.findByTestId('timeline-clip-' + X);
     act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
-    await waitFor(() => expect(screen.getByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_track')));
+    await waitFor(() => expect(screen.getByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_track')));
   });
 
   it('names an overlap as the reason both merged clips conflict (F2)', async () => {
     const secondId = seedConflictingClips();
-    showTimeline();
+    const { view } = showTimeline();
     for (const id of [CLIP.id, secondId]) {
-      expect(await screen.findByTestId('timeline-conflict-reason-' + id)).toHaveTextContent(t('timeline.conflictReason.overlap'));
+      expect(await screen.findByTestId('timeline-reason-' + id)).toHaveTextContent(t('timeline.conflictReason.overlap'));
     }
+    // Specs count conflict rows by this prefix, so the reason must not match it.
+    const rows = [...view.container.querySelectorAll('[data-testid^="timeline-conflict-"]')].map((element) => element.getAttribute('data-testid'));
+    expect(rows.sort()).toEqual([`timeline-conflict-${CLIP.id}`, `timeline-conflict-${secondId}`].sort());
   });
 
   it('names a range outside the video as the reason a clip conflicts (F2)', async () => {
     seedLayout([clipAt(X, 'v2', 0, 14, { sourceInFrame: 40 })]);
     showTimeline();
-    expect(await screen.findByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.invalid_range'));
+    expect(await screen.findByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.invalid_range'));
   });
 
   it('names an incompatible track as the reason a clip conflicts (F2)', async () => {
     seedLayout([clipAt(X, 'a1', 0, 14)], [track(MAIN, 0), track('v2', 1), { id: 'a1', kind: 'audio', order: 2 }]);
     showTimeline();
-    expect(await screen.findByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.incompatible_track'));
+    expect(await screen.findByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.incompatible_track'));
   });
 
   it('explains how to resolve conflicts including changing the track (F2)', () => {
