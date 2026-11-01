@@ -612,6 +612,22 @@ it('puts the caret on the next line after content ending in a nested table, open
   expect({ empty, parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ empty: [], parent: 'tail', at: 0 });
 });
 
+it.each([
+  ['a code block', `<img src="${PICTURE}"><pre><code>x = 1</code></pre>`],
+  ['a table', `<img src="${PICTURE}"><table><tr><td>t</td></tr></table>`],
+])('keeps an empty body paragraph and the caret in it when content ends in %s', async (_name, html) => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }, { type: 'paragraph', content: 'tail' }]);
+  const lineId = (editor.document as { id: string }[])[1]!.id;
+  caretIn(editor, 1);
+
+  paste(editor, html, 'x');
+  await settled();
+
+  const { $head } = editor.prosemirrorView.state.selection;
+  const container = $head.node($head.depth - 1);
+  expect({ id: container.attrs['id'], type: $head.parent.type.name, words: $head.parent.textContent }).toEqual({ id: lineId, type: 'paragraph', words: '' });
+});
+
 it('takes an empty cell with a trailing list item that has nested items', async () => {
   const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
   select(editor, cellsOf(editor)[0]!.pos + 3);
