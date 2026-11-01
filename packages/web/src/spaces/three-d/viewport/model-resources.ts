@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { SkinnedMesh, Texture } from 'three';
+import { InstancedMesh, SkinnedMesh, Texture } from 'three';
 import type { BufferGeometry, Group, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
@@ -40,12 +40,16 @@ interface ResourceEntry {
 function disposeInstance(root: Group): void {
   const materials = new Set<Material>();
   const skeletons = new Set<Skeleton>();
+  const instanced = new Set<InstancedMesh>();
   root.traverse((child) => {
     if (isDrawable(child)) for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
     if (child instanceof SkinnedMesh) skeletons.add(child.skeleton);
+    if (child instanceof InstancedMesh) instanced.add(child);
   });
   for (const skeleton of skeletons) skeleton.dispose();
   for (const material of materials) material.dispose();
+  // Each copy owns its instance matrix and colours; dispose releases those buffers, not the shared geometry.
+  for (const mesh of instanced) mesh.dispose();
   root.removeFromParent();
 }
 
@@ -59,8 +63,10 @@ export function disposeModelTemplate(root: Group): void {
   const textures = new Set<Texture>();
   const materials = new Set<Material>();
   const skeletons = new Set<Skeleton>();
+  const instanced = new Set<InstancedMesh>();
   for (const scene of ownedScenes.get(root) ?? [root]) scene.traverse((child) => {
     if (!isDrawable(child)) return;
+    if (child instanceof InstancedMesh) instanced.add(child);
     geometries.add(child.geometry);
     for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
       materials.add(material);
@@ -69,6 +75,7 @@ export function disposeModelTemplate(root: Group): void {
     if (child instanceof SkinnedMesh) skeletons.add(child.skeleton);
   });
   for (const skeleton of skeletons) skeleton.dispose();
+  for (const mesh of instanced) mesh.dispose();
   ownedScenes.delete(root);
   for (const geometry of geometries) geometry.dispose();
   const images = new Set<ImageBitmap>();

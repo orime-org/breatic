@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it, vi } from 'vitest';
-import { Bone, BoxGeometry, BufferGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, Skeleton, SkinnedMesh, Texture } from 'three';
+import { Bone, BoxGeometry, BufferGeometry, Group, InstancedMesh, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, Skeleton, SkinnedMesh, Texture } from 'three';
 import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Make a real Three model whose ownership can be inspected.
@@ -76,6 +76,23 @@ describe('scene model resource ownership (inner#1689)', () => {
     b.release();
     expect(geometryDispose).toHaveBeenCalledTimes(1);
     expect(templateDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the per-instance buffers of instanced meshes with each copy and with the template', async () => {
+    const root = new Group();
+    const template = new InstancedMesh(new BoxGeometry(), new MeshStandardMaterial(), 3);
+    root.add(template);
+    const templateDisposed = vi.fn();
+    template.addEventListener('dispose', templateDisposed);
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const lease = cache.acquire({ kind: 'asset', assetId: 'forest' });
+    const copy = (await lease.ready).children[0] as InstancedMesh;
+    expect(copy.instanceMatrix).not.toBe(template.instanceMatrix);
+    const copyDisposed = vi.fn();
+    copy.addEventListener('dispose', copyDisposed);
+    lease.release();
+    expect(copyDisposed).toHaveBeenCalledTimes(1);
+    expect(templateDisposed).toHaveBeenCalledTimes(1);
   });
 
   it('releases a late model instead of attaching it after its holder left', async () => {

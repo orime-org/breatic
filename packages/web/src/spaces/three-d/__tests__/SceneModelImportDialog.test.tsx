@@ -27,7 +27,7 @@ const disposers: (() => void)[] = [];
  * @returns The ready import operation and its original prepared input.
  * @throws {Error} When the scene session cannot be constructed.
  */
-async function readyImport(): Promise<{ controller: ModelImportController; prepared: PreparedModel; upload: ReturnType<typeof vi.fn> }> {
+async function readyImport(): Promise<{ controller: ModelImportController; prepared: PreparedModel; upload: ReturnType<typeof vi.fn>; session: SceneSession }> {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', 1);
   const session = new SceneSession(doc);
@@ -39,7 +39,7 @@ async function readyImport(): Promise<{ controller: ModelImportController; prepa
     prepare: async () => prepared, upload, position: () => [0, 0, 0] });
   disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
   await controller.select([{ path: prepared.file.name, file: prepared.file }]);
-  return { controller, prepared, upload };
+  return { controller, prepared, upload, session };
 }
 
 afterEach(() => {
@@ -179,6 +179,26 @@ describe('model import dialog controls', () => {
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     expect(screen.getByText('The model exceeds an import limit.')).toBeInTheDocument();
     expect(screen.getByText('Unpacked size 300 MB; the limit is 256 MB.')).toBeInTheDocument();
+  });
+
+  it('shows no floating opener for a cancelled ready or failed import, as the approved demo does', async () => {
+    const { controller } = await readyImport();
+    const { rerender } = render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(controller.getSnapshot().phase).toBe('ready');
+    expect(screen.queryByRole('button')).toBeNull();
+    await act(async () => { await controller.select([]); });
+    rerender(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('keeps a registered model reachable while editing is unavailable', async () => {
+    const { controller, upload, session } = await readyImport();
+    upload.mockResolvedValueOnce({ assetId: '44444444-4444-4444-8444-444444444444' });
+    session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
+    await controller.confirm();
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'ready', assetId: '44444444-4444-4444-8444-444444444444' });
+    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit={false} maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(screen.getByRole('button', { name: 'Import model' })).toBeEnabled();
   });
 
   it('keeps an uploading operation reachable through its hidden-dialog opener', async () => {
