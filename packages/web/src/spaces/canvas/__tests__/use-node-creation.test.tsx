@@ -20,7 +20,7 @@ import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/s
 import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
-import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
 import { canvasApi } from '@web/data/api/canvas';
@@ -1289,11 +1289,7 @@ describe('useNodeCreation', () => {
       const STYLE_PATH = 'templates/fx/style.png';
 
       /** What the caller says about one proposal index already on the canvas. */
-      type ExistingEntry = {
-        nodeId: string;
-        mention: ProposalMention;
-        paramsByModel?: Record<string, Record<string, unknown>>;
-      };
+      type ExistingEntry = ExistingNode;
 
       /**
        * The anchor placeholder a template rewrites.
@@ -1786,7 +1782,7 @@ describe('useNodeCreation', () => {
         const before = idsNow('p-again', 's-again');
         const existing = new Map<number, ExistingEntry>([
           [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
-          [1, { nodeId: up, mention: mentionOf(up, 'Sketch') }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
         ]);
         const { result } = renderHook(() => useNodeCreation('p-again', 's-again'));
 
@@ -1811,11 +1807,47 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.readCanvasGraph('p-again', 's-again').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
       });
 
-      it('leaves a reader\'s own group around a wired reference alone, and groups the new nodes under the template\'s name', () => {
+      it('on a second apply that only puts back an input, puts it into the group the reused template nodes sit in', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-input', 's-input', { x: 1000, y: 500 });
+        const up = seed('p-input', 's-input', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const groupId = seedGroup(
+          'p-input',
+          's-input',
+          { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: up, position: { x: PAD, y: PAD } }],
+        );
+        canvasSpace.addEdge('p-input', 's-input', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-input', 's-input');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-input', 's-input'));
+
+        // The only new node is the input put back, which carries no template tag.
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-input', 's-input', before);
+        expect(added).toHaveLength(1);
+        expect(added[0]!.parentId).toBe(groupId);
+      });
+
+      it('leaves another template\'s group around a wired reference alone, and groups the new nodes under the template\'s name', () => {
         const PAD = GROUP_PADDING;
         const anchor = seedAnchor('p-ref', 's-ref', { x: 1000, y: 500 });
-        // The reader's photo, kept in a group of their own far from the anchor.
-        // Placed by another template, in that template's group.
+        // Placed by another template, in that template's group, far from the anchor.
         const input = seed('p-ref', 's-ref', 'image', { x: PAD, y: PAD }, { name: 'Hero photo', templateNode: { template: 'other', key: 'up' } });
         const theirs = { x: -2000, y: -2000, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
         const groupId = seedGroup('p-ref', 's-ref', theirs, [{ id: input, position: { x: PAD, y: PAD } }]);

@@ -178,6 +178,8 @@ export interface ExistingNode {
   mention: ProposalMention;
   /** Its params by model, written whole when the proposal sets its mode and model. */
   paramsByModel?: Record<string, Record<string, unknown>>;
+  /** True for a node of the template instance being applied, reused from an earlier apply. */
+  instance?: boolean;
 }
 
 /** Where a proposal's new nodes go, and the group they join or make. */
@@ -266,21 +268,11 @@ function arrangeProposal(
   // nodes the group this template's reused nodes sit in, which a first apply
   // made, so the instance stays one piece the reader drags as one. A
   // reference the reader wired in keeps its own group to itself.
-  const template = proposal.nodes.find((node) => node.templateNode)?.templateNode?.template;
-  /**
-   * Whether a node already on the canvas was placed by this template.
-   * @param nodeId - The node.
-   * @returns True when it carries this template's tag.
-   */
-  const placedByTemplate = (nodeId: string): boolean => {
-    const view = views.get(nodeId);
-    return template !== undefined && view !== undefined && view.type !== 'group' && view.type !== 'annotation' && view.data.templateNode?.template === template;
-  };
   const anchorInGroup = anchorId !== undefined && views.get(anchorId)?.parentId !== undefined;
   const joinGroup = anchorInGroup
     ? unlockedGroupOf(anchorId)
     : [...existing.values()]
-      .filter((node) => placedByTemplate(node.nodeId))
+      .filter((node) => node.instance === true)
       .map((node) => unlockedGroupOf(node.nodeId))
       .find((group) => group !== undefined);
   const aimedGroup = !anchorInGroup && joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;

@@ -36,13 +36,10 @@ import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** What the panel hands `placeTemplate` for one canvas node it reuses. */
-interface Existing {
-  nodeId: string;
-  mention?: unknown;
-  paramsByModel?: Record<string, Record<string, unknown>>;
-}
+type Existing = ExistingNode;
 
 /** The callback `CanvasSpace` passes the panels (6.5). */
 type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>) => unknown;
@@ -504,6 +501,8 @@ describe('useApplyTemplate', () => {
       );
       // The guide already there is neither duplicated nor rewritten.
       expect(indexOf(existing, 'target-guide')).toBe(-1);
+      // The template's own nodes are marked as this instance; the reader's inputs and the anchor are not.
+      expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
       // Two same-type inputs each @ the node first given them.
       expect(refsOf(proposal, existing, 0)).toEqual(['target-front', 'target-back', 'target-character']);

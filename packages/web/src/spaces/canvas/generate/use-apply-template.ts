@@ -129,6 +129,8 @@ export function useApplyTemplate(
         return;
       }
 
+      // The template's own nodes found on the canvas, so the new ones can join their group.
+      const instance = new Set(reuse.values());
       const existing = new Map<number, ExistingNode>();
       const proposalNodes: ProposalNode[] = held.map((id, index) => {
         const view = views.get(id) as CanvasNodeView;
@@ -142,6 +144,7 @@ export function useApplyTemplate(
           nodeId: id,
           mention: mentionOf(id, view, rails),
           ...(paramsByModel === undefined ? {} : { paramsByModel }),
+          ...(instance.has(index) ? { instance: true } : {}),
         });
         return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view) };
       });
