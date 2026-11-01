@@ -132,7 +132,7 @@ describe("reseller bindings against the catalog", () => {
   const everything = {
     params: { duration: { field: "duration" }, shots: { field: "multi_prompt", item_fields: { prompt: { field: "prompt" }, duration: { field: "duration" } } }, voice_id: { field: "voice" } },
     drops: { web: [false], seed: { all_values: "sampling only" } },
-    voice_map: { Alicia: "alicia" },
+    voice_map: { voice_id: { Alicia: "alicia" } },
   };
 
   it("passes a binding that puts every catalog param in params or drops and maps voices", () => {
