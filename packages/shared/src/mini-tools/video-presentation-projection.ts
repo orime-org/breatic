@@ -21,7 +21,7 @@ const INTEGER = /^-?\d+$/;
  * @returns Their greatest common divisor.
  * @throws {never} Never.
  */
-function gcd(a: bigint, b: bigint): bigint {
+export function gcd(a: bigint, b: bigint): bigint {
   while (b !== 0n) [a, b] = [b, a % b];
   return a;
 }
@@ -32,7 +32,7 @@ function gcd(a: bigint, b: bigint): bigint {
  * @returns Its numerator and denominator.
  * @throws {RangeError} When either part is not an integer or the denominator is not positive.
  */
-function rational(value: PresentationRational): [bigint, bigint] {
+export function rational(value: PresentationRational): [bigint, bigint] {
   if (!INTEGER.test(value.numerator) || !INTEGER.test(value.denominator)) throw new RangeError("Presentation times must be integer rationals");
   const numerator = BigInt(value.numerator);
   const denominator = BigInt(value.denominator);

@@ -5,11 +5,11 @@ import { z } from 'zod';
 import type { AlphaManifest, VideoPresentation } from '@shared/upload/video-presentation-types.js';
 export type { AlphaManifest, VideoPresentation, VideoPresentationRect } from '@shared/upload/video-presentation-types.js';
 
-const pixel = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-const coordinate = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+export const pixel = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+export const coordinate = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
 const httpsURL = z.url().refine((value) => value.startsWith('https://'), 'Expected HTTPS storage URL');
-const rect = z.strictObject({ x: coordinate, y: coordinate, width: pixel, height: pixel });
+export const rect = z.strictObject({ x: coordinate, y: coordinate, width: pixel, height: pixel });
 /** Complete trusted canonical display geometry and format duration. */
 export const videoPresentationOriginalSchema = z.strictObject({ width: pixel, height: pixel, duration: z.number().finite().positive() });
 
@@ -37,11 +37,13 @@ export const videoPresentationSchema: z.ZodType<VideoPresentation> = z.strictObj
   }
 });
 
-/** The packed derivative geometry permits encoding alignment padding. */
-export const alphaManifestSchema: z.ZodType<AlphaManifest> = z.strictObject({
-  schemaVersion: z.literal(1), sourceFingerprint: fingerprint, packedURL: httpsURL,
-  packedWidth: pixel, packedHeight: pixel, colorRect: rect, alphaRect: rect,
-}).superRefine((value, ctx) => {
+/**
+ * Check packed geometry: both rectangles inside the packed frame, equal in size and not overlapping; alignment padding is allowed.
+ * @param value - Structurally valid packed geometry.
+ * @param ctx - The refinement context receiving issues.
+ * @throws {never} Never.
+ */
+export function checkPackedGeometry(value: Pick<AlphaManifest, 'packedWidth' | 'packedHeight' | 'colorRect' | 'alphaRect'>, ctx: z.RefinementCtx): void {
   const { colorRect: color, alphaRect: alpha, packedWidth, packedHeight } = value;
   for (const [name, area] of [['colorRect', color], ['alphaRect', alpha]] as const) {
     if (area.x > packedWidth - area.width || area.y > packedHeight - area.height) {
@@ -54,7 +56,13 @@ export const alphaManifestSchema: z.ZodType<AlphaManifest> = z.strictObject({
   if (!(color.x + color.width <= alpha.x || alpha.x + alpha.width <= color.x || color.y + color.height <= alpha.y || alpha.y + alpha.height <= color.y)) {
     ctx.addIssue({ code: 'custom', path: ['alphaRect'], message: 'Color and alpha rectangles must not overlap' });
   }
-});
+}
+
+/** The packed derivative geometry permits encoding alignment padding. */
+export const alphaManifestSchema: z.ZodType<AlphaManifest> = z.strictObject({
+  schemaVersion: z.literal(1), sourceFingerprint: fingerprint, packedURL: httpsURL,
+  packedWidth: pixel, packedHeight: pixel, colorRect: rect, alphaRect: rect,
+}).superRefine(checkPackedGeometry);
 
 /**
  * Derives a descriptor key from its registered canonical key.

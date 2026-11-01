@@ -959,9 +959,30 @@ export {
 } from "@shared/upload/video-source-ledger.js";
 export {
   readVideoPresentationTable,
+  readVideoPresentationCompact,
   videoPresentationTableReadLimitsSchema,
   type VideoPresentationTableReadLimits,
 } from "@shared/upload/read-video-presentation-table.js";
+export {
+  videoPresentationVersionSchema,
+  alphaPackedManifestSchema,
+  alphaPackedManifestMatchesVersion,
+  videoPresentationLedgerSchema,
+  videoPresentationLedgerReceiptSchema,
+  videoPresentationCompactSchema,
+  projectVideoPresentationCompact,
+  videoPresentationRefSchema,
+  videoPresentationPlanSha256,
+  videoPresentationToolInputId,
+  videoPresentationVersionId,
+  type VideoPresentationVersion,
+  type AlphaPackedManifest,
+  type VideoPresentationPlan,
+  type VideoPresentationLedger,
+  type VideoPresentationLedgerReceipt,
+  type VideoPresentationCompact,
+  type VideoPresentationRef,
+} from "@shared/upload/video-presentation-version.js";
 export {
   readVideoSourceLedger,
   VideoSourceLedgerReadRefused,

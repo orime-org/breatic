@@ -9,13 +9,13 @@ import type {
 } from '@shared/upload/video-source-ledger-types.js';
 
 const ordinal = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const positiveCount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+export const positiveCount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const uint32 = ordinal.max(0xffffffff);
 const signedDecimal = z.string().regex(/^-?\d+$/);
 const unsignedDecimal = z.string().regex(/^\d+$/);
 const positiveDecimal = z.string().refine(value => /^\d+$/.test(value) && BigInt(value) > 0n);
-const hash = z.string().regex(/^[a-f0-9]{64}$/);
-const attempt = z.strictObject({ jobId: z.string().min(1), deadlineAt: positiveCount });
+export const hash = z.string().regex(/^[a-f0-9]{64}$/);
+export const attempt = z.strictObject({ jobId: z.string().min(1), deadlineAt: positiveCount });
 const strategy = z.enum(['iso_explicit_rate_one', 'iso_unedited_rate_one', 'matroska_rate_one']);
 const identity = { schemaVersion: z.literal(1), sourceFingerprint: hash, producerVersion: z.literal(1), attempt };
 
@@ -40,13 +40,13 @@ function reduced(value: ExactPresentationTime): boolean {
  * @returns The signed cross-product difference.
  * @throws {never} Both fractions have validated integer components.
  */
-function compare(left: ExactPresentationTime, right: ExactPresentationTime): bigint {
+export function compare(left: ExactPresentationTime, right: ExactPresentationTime): bigint {
   return BigInt(left.numerator) * BigInt(right.denominator) - BigInt(right.numerator) * BigInt(left.denominator);
 }
 
 // Transforms run only after their complete input schema succeeds. Invalid
 // integer strings never reach BigInt or the cross-reference checks.
-const exactTime = z.strictObject({
+export const exactTime = z.strictObject({
   numerator: z.string().regex(/^(?:0|[1-9]\d*|-[1-9]\d*)$/), denominator: z.string().regex(/^[1-9]\d*$/),
 }).transform((value, ctx) => {
   if (!reduced(value)) { ctx.addIssue({ code: 'custom', message: 'Expected a reduced exact fraction' }); return z.NEVER; }
@@ -64,7 +64,7 @@ const occurrence = z.strictObject({
   return value;
 });
 const presentation = z.strictObject({ edits: z.array(editInterval), frames: z.array(occurrence) });
-const sourceClock = z.strictObject({ numerator: positiveDecimal, denominator: positiveDecimal });
+export const sourceClock = z.strictObject({ numerator: positiveDecimal, denominator: positiveDecimal });
 const physicalFrame = z.strictObject({ rawDecodeOrdinal: ordinal, ptsTicks: signedDecimal });
 const isoEdit = z.strictObject({ segmentDurationMovieTicks: unsignedDecimal, mediaTimeTrackTicks: signedDecimal, mediaRateFixed16_16: signedDecimal });
 const sampleTiming = z.strictObject({
@@ -162,10 +162,10 @@ export const videoSourceLedgerReceiptSchema: z.ZodType<VideoSourceLedgerReceipt>
   sha256: hash, contentType: z.literal('application/json'), physicalFrameCount: positiveCount, occurrenceCount: ordinal,
 });
 
-const safeTick = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
-const httpsUrl = z.url().refine(value => value.startsWith('https://'));
+export const safeTick = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+export const httpsUrl = z.url().refine(value => value.startsWith('https://'));
 const identityV2 = { schemaVersion: z.literal(2), sourceFingerprint: hash, producerVersion: z.literal(2), attempt };
-const editSpan = z.strictObject({ sourceStart: exactTime, sourceEnd: exactTime, presentationStart: exactTime, rate: exactTime });
+export const editSpan = z.strictObject({ sourceStart: exactTime, sourceEnd: exactTime, presentationStart: exactTime, rate: exactTime });
 
 /**
  * Check that every run steps forward (a single frame steps by 0) and its last tick stays safe.
@@ -173,7 +173,7 @@ const editSpan = z.strictObject({ sourceStart: exactTime, sourceEnd: exactTime, 
  * @returns Whether the runs are well formed.
  * @throws {never} Never.
  */
-function sourceRunsValid(runs: readonly VideoSourceRun[]): boolean {
+export function sourceRunsValid(runs: readonly VideoSourceRun[]): boolean {
   return runs.every(run => (run.count === 1 ? run.step === 0 : run.step > 0) &&
     BigInt(run.start) + BigInt(run.count - 1) * BigInt(run.step) <= BigInt(Number.MAX_SAFE_INTEGER));
 }
@@ -197,7 +197,7 @@ function presentationEnd(span: VideoEditSpan): ExactPresentationTime {
  * @returns Whether the spans are well formed.
  * @throws {never} Never.
  */
-function spansValid(spans: readonly VideoEditSpan[]): boolean {
+export function spansValid(spans: readonly VideoEditSpan[]): boolean {
   let previousEnd: ExactPresentationTime = { numerator: '0', denominator: '1' };
   for (const span of spans) {
     if (BigInt(span.rate.numerator) <= 0n || compare(span.sourceStart, span.sourceEnd) >= 0n || compare(span.presentationStart, previousEnd) < 0n) return false;
@@ -250,14 +250,18 @@ export const videoSourceLedgerStateSchema: z.ZodType<VideoSourceLedgerState> = z
   ]),
 ]);
 
-// Codes the source bytes decide: producing again from the same bytes fails the same way.
+// Codes the source bytes and the frozen policy decide: producing again fails the same way. Limits frozen at admission
+// (`resource_limit`, `source_ledger_over_cap`) are content; real exhaustion is the transient `resource_exhausted`.
+// The presentation candidate codes on the last line share the rule and are never written into ledger state.
 const CONTENT_FAILURES: ReadonlySet<string> = new Set([
   'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
   'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
+  'resource_limit', 'source_ledger_over_cap',
+  'too_long', 'packed_over_cap', 'packed_clock_mismatch',
 ]);
 
 /**
- * Classify a source ledger failure code; every code outside the content list is transient.
+ * Classify a source ledger or presentation candidate failure code; every code outside the content list is transient.
  * @param errorCode - The producer's or the store's failure code.
  * @returns `content` when the source bytes decide the failure, otherwise `transient`.
  * @throws {never} Never.
