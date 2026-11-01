@@ -82,12 +82,13 @@ function isWordsLine(block: ReadBlock | undefined): block is ReadBlock {
 
 /**
  * The last block of a block in reading order: itself, or the last of its
- * nested blocks, all the way down.
+ * nested blocks, all the way down. A table is a block of its own: its rows
+ * are not nested lines.
  * @param block - The block.
  * @returns The block read last.
  */
 function lastInReading(block: ReadBlock): ReadBlock {
-  const children = block.children ?? [];
+  const children = block.type === DOC_TABLE ? [] : block.children ?? [];
   return children.length === 0 ? block : lastInReading(children[children.length - 1]!);
 }
 
