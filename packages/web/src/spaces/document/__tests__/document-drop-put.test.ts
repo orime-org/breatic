@@ -145,13 +145,51 @@ describe('a drop selects what it put', () => {
     ['a picture then words, into the middle of a line', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 2, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
     ['two pictures, into the middle of a line', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 2, `<img src="${PIC}"><img src="${SECOND}">`, '', [PIC, SECOND]],
     ['a picture then words, into the middle of a cell', [TABLE, { type: 'paragraph', content: 'tail' }], 'cell', 2, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
-    ['a picture then words, at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 0, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
-    ['a picture then words, at the start of a second cell', [TWO_CELLS], 'c2', 0, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
   ] as const)('%s: the leading media and the words, none of the line\'s own', async (_name, blocks, line, offset, html, words, media) => {
     const { editor } = await openReady(blocks as unknown as Parameters<typeof open>[0]);
     dropFormats(editor, positionOf(editor, line, offset), { 'text/html': html, 'text/plain': words });
     await settled();
     expect(selectedContent(editor)).toEqual({ oneCell: true, words, media });
+  });
+
+  it.each([
+    ['at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 0],
+    ['at the start of a second cell', [TWO_CELLS], 'c2', 0],
+  ] as const)('a picture then words %s: the words, the picture outside the line\'s own text', async (_name, blocks, line, offset) => {
+    const { editor } = await openReady(blocks as unknown as Parameters<typeof open>[0]);
+    dropFormats(editor, positionOf(editor, line, offset), { 'text/html': `<img src="${PIC}"><p>v</p>`, 'text/plain': 'v' });
+    await settled();
+    expect(selectedContent(editor)).toEqual({ oneCell: true, words: 'v', media: [] });
+  });
+
+  it.each([
+    ['media then words, at the end of a line', 'A', 1, `<img src="${PIC}"><p>x</p>`],
+    ['media then words, at the start of a line', 'B', 0, `<img src="${PIC}"><p>x</p>`],
+    ['words then media, at the end of a line', 'A', 1, `<p>x</p><img src="${PIC}">`],
+  ] as const)('%s: deleting what it selected leaves the two lines apart', async (_name, line, offset, html) => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'A' }, { type: 'paragraph', content: 'B' }]);
+    dropFormats(editor, positionOf(editor, line, offset), { 'text/html': html, 'text/plain': 'x' });
+    await settled();
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.deleteSelection());
+    expect(lines(editor).filter((label) => label.startsWith('paragraph:'))).toEqual(['paragraph:A', 'paragraph:B']);
+  });
+
+  it('media then words at the end of a cell: deleting it keeps the cell\'s own words', async () => {
+    const { editor } = await openReady([TWO_CELLS]);
+    dropFormats(editor, positionOf(editor, 'c1', 2), { 'text/html': `<img src="${PIC}"><p>x</p>`, 'text/plain': 'x' });
+    await settled();
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.deleteSelection());
+    expect(view.state.doc.textContent).toBe('c1c2');
+  });
+
+  it('two pictures between two blocks: a caret, not a range into either line', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'lead', 4) + 2, { 'text/html': `<img src="${PIC}"><img src="${SECOND}">`, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', `image(${PIC})`, `image(${SECOND})`, 'paragraph:tail']);
+    expect(editor.prosemirrorView.state.selection.empty).toBe(true);
   });
 
   it('beside the body: the words and media put, not a caret', async () => {
