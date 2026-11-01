@@ -1079,8 +1079,9 @@ test('web content opening on a picture, pasted mid-line, splits the line around 
   await openFreshDocument(page);
   await holdFetches(page);
   await page.keyboard.type('Lead');
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator(EDITOR)).toContainText('Lead');
+  await pressAndSettle(page, 'ArrowLeft');
+  await pressAndSettle(page, 'ArrowLeft');
   await page.evaluate((url) => {
     return navigator.clipboard.write([
       new ClipboardItem({
