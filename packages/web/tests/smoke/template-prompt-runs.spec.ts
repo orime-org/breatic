@@ -343,8 +343,10 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     test.setTimeout(3_600_000);
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
+    // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
+    const photo = run.photo ? await dropCharacter() : undefined;
     const anchor = await addNode(run.type, 600);
-    if (run.photo) await wire(await dropCharacter(), anchor);
+    if (photo !== undefined) await wire(photo, anchor);
     await openPanel(anchor);
     await applyTemplate(id);
     for (const key of run.first) {
