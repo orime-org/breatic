@@ -79,7 +79,8 @@ request_body_max_bytes: 1048576
 # request_body_linger_seconds: after a body over a limit is refused, how
 #   long the server keeps reading and discarding the rest of it before it
 #   closes the connection (inner#1782). The 413 says `Connection: close`;
-#   the server half-closes, reads on, and closes once the body ends, the
-#   client closes, or this many seconds pass. Shared by the public app and
-#   the internal API. 30 is nginx's `lingering_time` default.
+#   the server half-closes, reads on, and closes once the body ends or this
+#   many seconds pass; a client that closes first is closed by Node. Shared
+#   by the public app and the internal API. 30 is nginx's `lingering_time`
+#   default; at most 300, Node's own limit on how long a request may take.
 request_body_linger_seconds: 30

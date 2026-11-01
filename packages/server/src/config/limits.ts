@@ -40,7 +40,8 @@ export const limitsConfigSchema = z.object({
   decision_window_days: z.number().int().positive().default(7),
   storage_notice_window_seconds: z.number().int().positive().default(86400),
   request_body_max_bytes: z.number().int().positive().default(1048576),
-  request_body_linger_seconds: z.number().int().positive().default(30),
+  // At most Node's own requestTimeout default; a timer cannot hold more than 2^31-1 ms.
+  request_body_linger_seconds: z.number().int().positive().max(300).default(30),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */

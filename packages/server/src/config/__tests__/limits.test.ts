@@ -190,6 +190,11 @@ describe("request body linger", () => {
   it.each([0, 1.5])("C3: refuses %s", (value) => {
     expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: value }).success).toBe(false);
   });
+
+  it("C4: refuses more than 300 seconds, so the deadline always fits a timer", () => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 300 }).success).toBe(true);
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 301 }).success).toBe(false);
+  });
 });
 
 /**
