@@ -298,3 +298,61 @@ describe('model import dialog failures outside the model (inner#1690)', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
+
+describe('model import dialog footer during checks and after refusals (inner#1690)', () => {
+  it('keeps Import to scene disabled, with no Retry, during a first check', async () => {
+    const pending = idleImport();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={pending.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { void pending.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('shows Retry only for the check Retry started, not for a main file chosen afterwards', async () => {
+    const failing = idleImport();
+    const files = [{ path: 'a.glb', file: new File(['a'], 'a.glb') }, { path: 'b.glb', file: new File(['b'], 'b.glb') }];
+    failing.prepare.mockRejectedValueOnce(new Error('Worker failed'));
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose a model entry', { detail: '', info: { entries: ['a.glb', 'b.glb'], paths: ['a.glb', 'b.glb'], missing: [] } }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select(files); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
+    await act(async () => { void failing.controller.select(failing.controller.getSnapshot().files, 'b.glb'); });
+    expect(failing.controller.getSnapshot().phase).toBe('checking');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+  });
+
+  it('moves focus to Choose files when the retried check ends in a content verdict', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new Error('Worker failed'));
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('invalid', 'Unreadable', { detail: '' }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    retry.focus();
+    await act(async () => { fireEvent.click(retry); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
+  });
+
+  it('moves focus to Add resources when the retried check finds files missing', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new Error('Worker failed'));
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('missing', 'Missing model resources: mesh.bin', { detail: '', info: { entries: [], paths: ['a.gltf'], missing: ['mesh.bin'] } }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.gltf', file: new File(['{}'], 'a.gltf') }]); });
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    retry.focus();
+    await act(async () => { fireEvent.click(retry); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add accompanying files' })));
+  });
+
+  it('moves focus to Choose files when an upload fails for a reason a retry cannot change', async () => {
+    const { controller, upload } = await readyImport();
+    upload.mockRejectedValueOnce(new UploadFailedError('storage'));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const confirm = screen.getByRole('button', { name: 'Import to scene' });
+    confirm.focus();
+    await act(async () => { fireEvent.click(confirm); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
+  });
+});

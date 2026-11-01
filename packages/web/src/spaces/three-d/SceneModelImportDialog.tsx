@@ -18,7 +18,6 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
-import type { ModelSource } from '@web/spaces/three-d/model-source';
 
 interface SceneModelImportDialogProps {
   open: boolean;
@@ -74,9 +73,19 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
   // A check that failed outside the model content can succeed on the same retained collection.
   const retryCheck = snapshot.phase === 'failed' && prepared === null && error !== null && !(error instanceof ModelImportError) && snapshot.files.length > 0;
-  // The pressed Retry stays mounted and focusable while the check it started runs on the same retained files.
-  const [retriedFiles, setRetriedFiles] = React.useState<readonly ModelSource[] | null>(null);
-  const checkRetrying = checking && retriedFiles === snapshot.files;
+  // The pressed Retry stays mounted and focusable while the check it started runs; any later select publishes a new snapshot.
+  const [retried, setRetried] = React.useState<typeof snapshot | null>(null);
+  const checkRetrying = checking && retried === snapshot;
+  const confirmDisabled = !prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim();
+  const primaryUnavailable = !retryCheck && !checkRetrying && !busy && confirmDisabled;
+  const primaryButton = React.useRef<HTMLButtonElement>(null);
+  const chooseFilesButton = React.useRef<HTMLButtonElement>(null);
+  const addResourcesButton = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    // A focused button that turns natively disabled drops keyboard focus to the body; hand it to the control that remedies the refusal.
+    if (!primaryUnavailable || (document.activeElement !== primaryButton.current && document.activeElement !== document.body)) return;
+    (addResourcesButton.current ?? chooseFilesButton.current)?.focus();
+  }, [primaryUnavailable]);
 
   /**
    * Ask for a fresh source collection through the browser's hidden file input.
@@ -159,8 +168,8 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    * @throws {never} Never directly.
    */
   const checkAgain = React.useCallback((): void => {
-    setRetriedFiles(snapshot.files);
     void controller.select(snapshot.files, snapshot.entry);
+    setRetried(controller.getSnapshot());
   }, [controller, snapshot.files, snapshot.entry]);
   /**
    * Hide this view while the document retains any active import.
@@ -180,7 +189,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
       <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)] p-4'>
         <div className='space-y-4'>
           <div className='flex items-center gap-2'>
-            <Button variant='outline' icon={uploadIcon} onClick={chooseFiles} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFiles')}</Button>
+            <Button ref={chooseFilesButton} variant='outline' icon={uploadIcon} onClick={chooseFiles} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFiles')}</Button>
             <Button variant='outline' icon={folderIcon} onClick={chooseFolder} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFolder')}</Button>
             <span className='ml-auto shrink-0 text-xs text-muted-foreground'>{t('spaces.threeD.importModel.inputLimit', { size: Math.floor(maxInputBytes / 1024 / 1024) })}</span>
             <input ref={fileInput} type='file' multiple hidden onChange={selectedFiles} />
@@ -211,7 +220,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
                   : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
                     : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
               {!canEdit && <p className='text-sm text-muted-foreground'>{snapshot.assetId ? t('spaces.threeD.importModel.registeredReadOnly') : t('spaces.threeD.importModel.readOnlyHint')}</p>}
-              {snapshot.missing.length > 0 && <Button variant='outline' className='w-fit' onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
+              {snapshot.missing.length > 0 && <Button ref={addResourcesButton} variant='outline' className='w-fit' onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
               {prepared?.warnings?.length ? <div className='space-y-1 text-xs text-muted-foreground'><p>{t('spaces.threeD.importModel.optionalExtensions')}</p>{prepared.warnings.map((warning) => <p key={warning} className='break-all'>{warning}</p>)}</div> : null}
               {snapshot.paths.length > 0 && <Button variant='outline' size='compact' className='w-fit text-xs text-muted-foreground' icon={detailsIcon} onClick={toggleDetails}>{details ? t('spaces.threeD.importModel.hideFiles') : t('spaces.threeD.importModel.showFiles')}</Button>}
               {details && <ScrollArea className='h-[70px]' viewportClassName='space-y-1'><div className='space-y-1 text-xs text-muted-foreground'>{snapshot.paths.map((path) => <p key={path} className='break-all'>{path}</p>)}</div></ScrollArea>}
@@ -219,8 +228,8 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
           </div>}
         </div>
       </ScrollArea>
-      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck || checkRetrying ? <Button loading={checkRetrying} onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
-        : <Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim()}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button>}</DialogFooter>
+      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck || checkRetrying ? <Button ref={primaryButton} loading={checkRetrying} onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
+        : <Button ref={primaryButton} loading={busy} onClick={confirm} disabled={confirmDisabled}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button>}</DialogFooter>
     </DialogContent>
   </Dialog>;
 });
