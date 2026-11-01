@@ -153,11 +153,13 @@ describe('a drop selects what it put', () => {
   });
 
   it.each([
-    ['at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 0],
-    ['at the start of a second cell', [TWO_CELLS], 'c2', 0],
-  ] as const)('a picture then words %s: the words, the picture outside the line\'s own text', async (_name, blocks, line, offset) => {
+    ['a picture then words at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', `<img src="${PIC}"><p>v</p>`],
+    ['a picture then words at the start of a second cell', [TWO_CELLS], 'c2', `<img src="${PIC}"><p>v</p>`],
+    ['words then a picture at the start of a line', [{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'abcd' }], 'abcd', `<p>v</p><img src="${PIC}">`],
+    ['words then a picture at the start of a second cell', [TWO_CELLS], 'c2', `<p>v</p><img src="${PIC}">`],
+  ] as const)('%s: the words, the picture at the line\'s edge outside', async (_name, blocks, line, html) => {
     const { editor } = await openReady(blocks as unknown as Parameters<typeof open>[0]);
-    dropFormats(editor, positionOf(editor, line, offset), { 'text/html': `<img src="${PIC}"><p>v</p>`, 'text/plain': 'v' });
+    dropFormats(editor, positionOf(editor, line, 0), { 'text/html': html, 'text/plain': 'v' });
     await settled();
     expect(selectedContent(editor)).toEqual({ oneCell: true, words: 'v', media: [] });
   });
