@@ -248,4 +248,21 @@ describe('replace', () => {
     expect(await replaceAiResult(handle, rangeOf(handle, 'quick'), 'slow', () => ({ available: true, writeAccess: 'denied' }))).toEqual({ outcome: 'readOnly' });
     expect(texts(handle)).toEqual(['The quick brown fox.']);
   });
+
+  it('reports a failure as a rejection, where the caller hears it', async () => {
+    const handle = await open('The quick brown fox.');
+    const range = rangeOf(handle, 'quick');
+    const unmounted = { ...handle, editor: Object.create(handle.editor, { prosemirrorView: { value: null } }) as typeof handle.editor };
+
+    let thrown: unknown = null;
+    let promise: Promise<unknown> | null = null;
+    try {
+      promise = replaceAiResult(unmounted, range, 'slow', WRITABLE);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeNull();
+    await expect(promise).rejects.toThrow();
+  });
 });

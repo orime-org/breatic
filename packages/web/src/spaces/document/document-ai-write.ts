@@ -86,19 +86,19 @@ export async function insertAiResult(
  * @returns How it ended.
  * @throws {Error} If the editor is not mounted or the paste fails.
  */
-export function replaceAiResult(
+export async function replaceAiResult(
   handle: AiWritable,
   range: { from: number; to: number },
   markdown: string,
   readAdmission: () => ProposalAdmission,
 ): Promise<AiWriteResult> {
   const refusal = writeRefusal(readAdmission(), handle.editor);
-  if (refusal !== null) return Promise.resolve({ outcome: refusal });
+  if (refusal !== null) return { outcome: refusal };
   const view = handle.editor.prosemirrorView;
   if (view === null) throw new Error('the document editor is not mounted');
   asOneUndoStep(undoOf(handle), () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)));
     handle.editor.pasteMarkdown(markdown);
   });
-  return Promise.resolve({ outcome: 'written' });
+  return { outcome: 'written' };
 }

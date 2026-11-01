@@ -86,13 +86,12 @@ function sessionIn(state: AiSessionState, command: AiCommand = REFINE): AiSessio
   }
 }
 
-/** The four stream events, each for the given request. */
+/** The three stream events, each for the given request. */
 function streamEvents(seq: number): AiSessionEvent[] {
   return [
     { type: 'delta', seq, text: 'late' },
     { type: 'done', seq },
     { type: 'error', seq },
-    { type: 'endedEarly', seq },
   ];
 }
 
@@ -112,7 +111,7 @@ describe('opening a session', () => {
     const step = run([{ type: 'open', command: REFINE }]);
     const session = sessionOf(step);
 
-    expect(session).toMatchObject({ state: 'streaming', command: REFINE, result: '', instructions: null, rangeGone: false });
+    expect(session).toMatchObject({ state: 'streaming', command: REFINE, result: '', instructions: null });
     expect(step.effects).toEqual([{ kind: 'request', seq: session.seq }]);
   });
 
@@ -146,8 +145,8 @@ describe('composing (custom instruction, not started)', () => {
     const session = sessionIn('composing');
     expectUnchanged(session, { type: 'stop' });
     expectUnchanged(session, { type: 'retry' });
-    expectUnchanged(session, { type: 'insert', writable: true, targetPresent: true });
-    expectUnchanged(session, { type: 'replace', writable: true, targetPresent: true });
+    expectUnchanged(session, { type: 'insert', writable: true });
+    expectUnchanged(session, { type: 'replace', writable: true });
   });
 
   it('E9 / E11: closes, with no request to abort', () => {
@@ -167,12 +166,6 @@ describe('composing (custom instruction, not started)', () => {
     expect(step.effects).toEqual([{ kind: 'request', seq: session.seq }]);
   });
 
-  it('E12: stays composing and records that replace is no longer possible', () => {
-    const step = reduceAiSession(sessionIn('composing'), { type: 'rangeGone' });
-
-    expect(sessionOf(step)).toMatchObject({ state: 'composing', rangeGone: true });
-    expect(step.effects).toEqual([]);
-  });
 });
 
 describe('streaming', () => {
@@ -218,8 +211,8 @@ describe('streaming', () => {
   it('E6 E7 E8: impossible, their buttons are not there', () => {
     const session = sessionIn('streaming');
     expectUnchanged(session, { type: 'retry' });
-    expectUnchanged(session, { type: 'insert', writable: true, targetPresent: true });
-    expectUnchanged(session, { type: 'replace', writable: true, targetPresent: true });
+    expectUnchanged(session, { type: 'insert', writable: true });
+    expectUnchanged(session, { type: 'replace', writable: true });
   });
 
   it('E9 / E11: closes and aborts the request', () => {
@@ -240,21 +233,6 @@ describe('streaming', () => {
     expect(step.effects).toContainEqual({ kind: 'abort', seq: before.seq });
     expect(step.effects).toContainEqual({ kind: 'request', seq: session.seq });
     expect(step.effects).toHaveLength(2);
-  });
-
-  it('E12: stays streaming and records that replace is no longer possible', () => {
-    const step = reduceAiSession(sessionIn('streaming'), { type: 'rangeGone' });
-
-    expect(sessionOf(step)).toMatchObject({ state: 'streaming', rangeGone: true });
-    expect(step.effects).toEqual([]);
-  });
-
-  it('E14: a stream closing with neither done nor error fails and toasts once', () => {
-    const before = sessionIn('streaming');
-    const step = reduceAiSession(before, { type: 'endedEarly', seq: before.seq });
-
-    expect(sessionOf(step)).toMatchObject({ state: 'failed', result: '' });
-    expect(step.effects).toEqual([{ kind: 'toastFailure' }]);
   });
 
   it('discards events of an earlier request', () => {
@@ -294,7 +272,7 @@ describe.each(['stopped', 'done'] as const)('%s', (state) => {
   });
 
   it.each(['insert', 'replace'] as const)('E7 / E8 %s: writes the result once and closes', (how) => {
-    const step = reduceAiSession(sessionIn(state), { type: how, writable: true, targetPresent: true });
+    const step = reduceAiSession(sessionIn(state), { type: how, writable: true });
 
     expect(sessionOf(step).state).toBe('closed');
     expect(step.effects).toEqual([{ kind: 'write', how, result: 'Hi' }]);
@@ -302,14 +280,10 @@ describe.each(['stopped', 'done'] as const)('%s', (state) => {
 
   it.each(['insert', 'replace'] as const)('E13 then %s: says it cannot write and stays', (how) => {
     const before = sessionIn(state);
-    const step = reduceAiSession(before, { type: how, writable: false, targetPresent: true });
+    const step = reduceAiSession(before, { type: how, writable: false });
 
     expect(step.session).toEqual(before);
     expect(step.effects).toEqual([{ kind: 'toastNotWritable' }]);
-  });
-
-  it.each(['insert', 'replace'] as const)('E7 / E8 %s: nothing happens when its target is gone', (how) => {
-    expectUnchanged(sessionIn(state), { type: how, writable: true, targetPresent: false });
   });
 
   it('E9 / E11: closes with nothing left to abort', () => {
@@ -328,12 +302,6 @@ describe.each(['stopped', 'done'] as const)('%s', (state) => {
     expect(step.effects).toEqual([{ kind: 'request', seq: session.seq }]);
   });
 
-  it('E12: replace becomes unavailable, the state stays', () => {
-    const step = reduceAiSession(sessionIn(state), { type: 'rangeGone' });
-
-    expect(sessionOf(step)).toMatchObject({ state, rangeGone: true, result: 'Hi' });
-    expect(step.effects).toEqual([]);
-  });
 });
 
 describe('stopped with nothing received', () => {
@@ -342,14 +310,14 @@ describe('stopped with nothing received', () => {
     const stopped = sessionOf(reduceAiSession(opened, { type: 'stop' }));
 
     expect(stopped).toMatchObject({ state: 'stopped', result: '' });
-    expectUnchanged(stopped, { type: how, writable: true, targetPresent: true });
+    expectUnchanged(stopped, { type: how, writable: true });
   });
 
   it.each(['insert', 'replace'] as const)('E7 / E8 %s: a result of only blanks writes nothing', (how) => {
     const opened = sessionIn('streaming');
     const blank = sessionOf(run([{ type: 'delta', seq: opened.seq, text: ' \n ' }, { type: 'done', seq: opened.seq }], opened));
 
-    expectUnchanged(blank, { type: how, writable: true, targetPresent: true });
+    expectUnchanged(blank, { type: how, writable: true });
   });
 });
 
@@ -373,8 +341,8 @@ describe('failed', () => {
 
   it('E7 E8: impossible, their buttons are not there', () => {
     const session = sessionIn('failed');
-    expectUnchanged(session, { type: 'insert', writable: true, targetPresent: true });
-    expectUnchanged(session, { type: 'replace', writable: true, targetPresent: true });
+    expectUnchanged(session, { type: 'insert', writable: true });
+    expectUnchanged(session, { type: 'replace', writable: true });
   });
 
   it('E9 / E11: closes', () => {
@@ -391,12 +359,6 @@ describe('failed', () => {
     expect(step.effects).toEqual([{ kind: 'request', seq: sessionOf(step).seq }]);
   });
 
-  it('E12: records it and stays failed', () => {
-    const step = reduceAiSession(sessionIn('failed'), { type: 'rangeGone' });
-
-    expect(sessionOf(step)).toMatchObject({ state: 'failed', rangeGone: true });
-    expect(step.effects).toEqual([]);
-  });
 });
 
 describe('closed', () => {
@@ -405,15 +367,14 @@ describe('closed', () => {
     for (const event of streamEvents(session.seq)) expectUnchanged(session, event);
   });
 
-  it('E1 E5 E6 E7 E8 E9 E11 E12: nothing happens', () => {
+  it('E1 E5 E6 E7 E8 E9 E11: nothing happens', () => {
     const session = sessionIn('closed');
     expectUnchanged(session, { type: 'submit', instructions: 'x' });
     expectUnchanged(session, { type: 'stop' });
     expectUnchanged(session, { type: 'retry' });
-    expectUnchanged(session, { type: 'insert', writable: true, targetPresent: true });
-    expectUnchanged(session, { type: 'replace', writable: true, targetPresent: true });
+    expectUnchanged(session, { type: 'insert', writable: true });
+    expectUnchanged(session, { type: 'replace', writable: true });
     expectUnchanged(session, { type: 'close' });
-    expectUnchanged(session, { type: 'rangeGone' });
   });
 
   it('E10: opens a new session whose requests are told apart from the old one', () => {
@@ -421,7 +382,7 @@ describe('closed', () => {
     const step = reduceAiSession(before, { type: 'open', command: EXPAND });
     const session = sessionOf(step);
 
-    expect(session).toMatchObject({ state: 'streaming', command: EXPAND, result: '', rangeGone: false });
+    expect(session).toMatchObject({ state: 'streaming', command: EXPAND, result: '' });
     expect(session.seq).toBeGreaterThan(before.seq);
     expect(step.effects).toEqual([{ kind: 'request', seq: session.seq }]);
     // A delta of the closed session's request does not reach the new one.
@@ -433,16 +394,15 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
   const all = { resultEmpty: false, rangePresent: true, insertBlockPresent: true };
 
   it('composing: close only', () => {
-    expect(aiDialogButtons({ state: 'composing', ...all })).toEqual({ close: true, stop: false, retry: false, insert: null, replace: null });
+    expect(aiDialogButtons({ state: 'composing', ...all })).toEqual({ stop: false, retry: false, insert: null, replace: null });
   });
 
   it('streaming: close and stop', () => {
-    expect(aiDialogButtons({ state: 'streaming', ...all })).toEqual({ close: true, stop: true, retry: false, insert: null, replace: null });
+    expect(aiDialogButtons({ state: 'streaming', ...all })).toEqual({ stop: true, retry: false, insert: null, replace: null });
   });
 
   it.each(['stopped', 'done'] as const)('%s with a result: close, retry, insert and replace, all usable', (state) => {
     expect(aiDialogButtons({ state, ...all })).toEqual({
-      close: true,
       stop: false,
       retry: true,
       insert: { disabled: false, reason: null },
@@ -451,15 +411,15 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
   });
 
   it.each(['stopped', 'done'] as const)('%s with an empty result: close and retry only', (state) => {
-    expect(aiDialogButtons({ state, ...all, resultEmpty: true })).toEqual({ close: true, stop: false, retry: true, insert: null, replace: null });
+    expect(aiDialogButtons({ state, ...all, resultEmpty: true })).toEqual({ stop: false, retry: true, insert: null, replace: null });
   });
 
   it('failed: close and retry only', () => {
-    expect(aiDialogButtons({ state: 'failed', ...all })).toEqual({ close: true, stop: false, retry: true, insert: null, replace: null });
+    expect(aiDialogButtons({ state: 'failed', ...all })).toEqual({ stop: false, retry: true, insert: null, replace: null });
   });
 
   it('closed: nothing', () => {
-    expect(aiDialogButtons({ state: 'closed', ...all })).toEqual({ close: false, stop: false, retry: false, insert: null, replace: null });
+    expect(aiDialogButtons({ state: 'closed', ...all })).toEqual({ stop: false, retry: false, insert: null, replace: null });
   });
 
   it('A7: the selected words gone, their block still there: replace disabled, insert usable', () => {
@@ -490,7 +450,6 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
       fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, rangePresent, insertBlockPresent) => {
         const buttons = aiDialogButtons({ state, resultEmpty, rangePresent, insertBlockPresent });
         const finished = state === 'stopped' || state === 'done';
-        expect(buttons.close).toBe(state !== 'closed');
         expect(buttons.stop).toBe(state === 'streaming');
         expect(buttons.retry).toBe(finished || state === 'failed');
         const writable = finished && !resultEmpty;
@@ -510,9 +469,9 @@ type EventTemplate =
   | { readonly kind: 'open'; readonly command: AiCommand }
   | { readonly kind: 'submit'; readonly instructions: string }
   | { readonly kind: 'delta'; readonly offset: number; readonly text: string }
-  | { readonly kind: 'done' | 'error' | 'endedEarly'; readonly offset: number }
-  | { readonly kind: 'stop' | 'retry' | 'close' | 'rangeGone' }
-  | { readonly kind: 'insert' | 'replace'; readonly writable: boolean; readonly targetPresent: boolean };
+  | { readonly kind: 'done' | 'error'; readonly offset: number }
+  | { readonly kind: 'stop' | 'retry' | 'close' }
+  | { readonly kind: 'insert' | 'replace'; readonly writable: boolean };
 
 const commands: fc.Arbitrary<AiCommand> = fc.constantFrom<AiCommand>(
   { id: 'refine' },
@@ -529,9 +488,9 @@ const templates: fc.Arbitrary<EventTemplate> = fc.oneof(
   commands.map((command) => ({ kind: 'open' as const, command })),
   fc.constantFrom('', ' ', 'Rhyme').map((instructions) => ({ kind: 'submit' as const, instructions })),
   fc.tuple(offsets, fc.constantFrom('a', ' ', 'bc')).map(([offset, text]) => ({ kind: 'delta' as const, offset, text })),
-  fc.tuple(fc.constantFrom('done' as const, 'error' as const, 'endedEarly' as const), offsets).map(([kind, offset]) => ({ kind, offset })),
-  fc.constantFrom('stop' as const, 'retry' as const, 'close' as const, 'rangeGone' as const).map((kind) => ({ kind })),
-  fc.tuple(fc.constantFrom('insert' as const, 'replace' as const), fc.boolean(), fc.boolean()).map(([kind, writable, targetPresent]) => ({ kind, writable, targetPresent })),
+  fc.tuple(fc.constantFrom('done' as const, 'error' as const), offsets).map(([kind, offset]) => ({ kind, offset })),
+  fc.constantFrom('stop' as const, 'retry' as const, 'close' as const).map((kind) => ({ kind })),
+  fc.tuple(fc.constantFrom('insert' as const, 'replace' as const), fc.boolean()).map(([kind, writable]) => ({ kind, writable })),
 );
 
 /**
@@ -546,9 +505,9 @@ function eventFor(template: EventTemplate, session: AiSession | null): AiSession
     case 'open': return { type: 'open', command: template.command };
     case 'submit': return { type: 'submit', instructions: template.instructions };
     case 'delta': return { type: 'delta', seq, text: template.text };
-    case 'done': case 'error': case 'endedEarly': return { type: template.kind, seq };
-    case 'stop': case 'retry': case 'close': case 'rangeGone': return { type: template.kind };
-    case 'insert': case 'replace': return { type: template.kind, writable: template.writable, targetPresent: template.targetPresent };
+    case 'done': case 'error': return { type: template.kind, seq };
+    case 'stop': case 'retry': case 'close': return { type: template.kind };
+    case 'insert': case 'replace': return { type: template.kind, writable: template.writable };
   }
 }
 
@@ -595,7 +554,7 @@ describe('the invariants of §6.2, over any sequence of events', () => {
             }
           }
 
-          const finishes = event.type === 'done' || event.type === 'error' || event.type === 'endedEarly';
+          const finishes = event.type === 'done' || event.type === 'error';
           if (finishes && before?.state === 'streaming' && event.seq === before.seq) inFlight.delete(event.seq);
           if (event.type === 'delta' && before?.state === 'streaming' && event.seq === before.seq) streamed += event.text;
 
@@ -618,7 +577,7 @@ describe('the invariants of §6.2, over any sequence of events', () => {
           const toasts = effects.filter((effect) => effect.kind === 'toastFailure').length;
           const intoFailed = now.state === 'failed' && before?.state !== 'failed';
           expect(toasts).toBe(intoFailed ? 1 : 0);
-          if (intoFailed) expect(event.type === 'error' || event.type === 'endedEarly').toBe(true);
+          if (intoFailed) expect(event.type).toBe('error');
           if (now.state === 'failed') expect(now.result).toBe('');
         }
       }),

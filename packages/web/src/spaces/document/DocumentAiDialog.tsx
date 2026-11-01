@@ -336,9 +336,6 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   }, [state, editor]);
 
   const range = React.useSyncExternalStore(onAiRangeChange, () => aiRangeIn(editor.prosemirrorState));
-  React.useEffect(() => {
-    if (range?.kind === 'gone') dispatch({ type: 'rangeGone' });
-  }, [range, dispatch]);
 
   const insertBlockId = opened?.insertBlockId ?? null;
   const readInsertBlock = React.useCallback(
@@ -525,7 +522,7 @@ function AiPanel({
       toast.warning(t(reasonKey(button.reason)));
       return;
     }
-    dispatch({ type: how, writable: writable && editor.isEditable, targetPresent: true });
+    dispatch({ type: how, writable: writable && editor.isEditable });
   };
 
   return (
@@ -559,18 +556,16 @@ function AiPanel({
             <Sparkles className='h-3.5 w-3.5 shrink-0 text-muted-foreground' />
             <span className='truncate'>{title}</span>
           </span>
-          {buttons.close && (
-            <Button
-              variant='ghost'
-              size='compact'
-              data-testid='doc-ai-close'
-              aria-label={t('spaces.document.ai.close')}
-              className='w-[var(--btn-compact)] px-0 text-muted-foreground'
-              onClick={close}
-            >
-              <X className='h-4 w-4' />
-            </Button>
-          )}
+          <Button
+            variant='ghost'
+            size='compact'
+            data-testid='doc-ai-close'
+            aria-label={t('spaces.document.ai.close')}
+            className='w-[var(--btn-compact)] px-0 text-muted-foreground'
+            onClick={close}
+          >
+            <X className='h-4 w-4' />
+          </Button>
         </div>
         {session.state === 'composing' ? (
           <Composer dispatch={dispatch} shown={isPositioned} />

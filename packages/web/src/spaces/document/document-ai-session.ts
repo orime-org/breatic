@@ -33,8 +33,6 @@ export interface AiSession {
   readonly result: string;
   /** The custom instruction once submitted; null for every other command. */
   readonly instructions: string | null;
-  /** Whether the original range is gone; replace is no longer possible. */
-  readonly rangeGone: boolean;
   /** The number of the session's current request, growing across sessions. */
   readonly seq: number;
 }
@@ -44,9 +42,9 @@ export type AiSessionEvent =
   | { readonly type: 'open'; readonly command: AiCommand }
   | { readonly type: 'submit'; readonly instructions: string }
   | { readonly type: 'delta'; readonly seq: number; readonly text: string }
-  | { readonly type: 'done' | 'error' | 'endedEarly'; readonly seq: number }
-  | { readonly type: 'stop' | 'retry' | 'close' | 'rangeGone' }
-  | { readonly type: 'insert' | 'replace'; readonly writable: boolean; readonly targetPresent: boolean };
+  | { readonly type: 'done' | 'error'; readonly seq: number }
+  | { readonly type: 'stop' | 'retry' | 'close' }
+  | { readonly type: 'insert' | 'replace'; readonly writable: boolean };
 
 /** What the reducer asks the world to do. */
 export type AiEffect =
@@ -84,7 +82,6 @@ function open(before: AiSession | null, command: AiCommand): AiStep {
     command,
     result: '',
     instructions: null,
-    rangeGone: false,
     seq,
   };
   return { session, effects: composing ? aborts : [...aborts, { kind: 'request', seq }] };
@@ -107,14 +104,13 @@ function request(session: AiSession, instructions: string | null): AiStep {
  * @param event - The event.
  * @returns The step.
  */
-function streamed(session: AiSession, event: AiSessionEvent & { type: 'delta' | 'done' | 'error' | 'endedEarly' }): AiStep {
+function streamed(session: AiSession, event: AiSessionEvent & { type: 'delta' | 'done' | 'error' }): AiStep {
   switch (event.type) {
     case 'delta':
       return unchanged({ ...session, result: session.result + event.text });
     case 'done':
       return unchanged({ ...session, state: 'done' });
     case 'error':
-    case 'endedEarly':
       // The one place a failure toasts (§6.2 invariant).
       return { session: { ...session, state: 'failed', result: '' }, effects: [{ kind: 'toastFailure' }] };
   }
@@ -127,7 +123,7 @@ function streamed(session: AiSession, event: AiSessionEvent & { type: 'delta' | 
  * @returns The write and the closed session, a toast, or nothing.
  */
 function written(session: AiSession, event: AiSessionEvent & { type: 'insert' | 'replace' }): AiStep {
-  if (session.result.trim() === '' || !event.targetPresent) return unchanged(session);
+  if (session.result.trim() === '') return unchanged(session);
   if (!event.writable) return { session, effects: [{ kind: 'toastNotWritable' }] };
   return {
     session: { ...session, state: 'closed' },
@@ -152,7 +148,6 @@ export function reduceAiSession(session: AiSession | null, event: AiSessionEvent
     case 'delta':
     case 'done':
     case 'error':
-    case 'endedEarly':
       return state === 'streaming' && event.seq === session.seq ? streamed(session, event) : unchanged(session);
     case 'stop':
       return state === 'streaming'
@@ -168,8 +163,6 @@ export function reduceAiSession(session: AiSession | null, event: AiSessionEvent
         session: { ...session, state: 'closed' },
         effects: state === 'streaming' ? [{ kind: 'abort', seq: session.seq }] : [],
       };
-    case 'rangeGone':
-      return unchanged(session.rangeGone ? session : { ...session, rangeGone: true });
   }
 }
 
@@ -184,7 +177,6 @@ export interface AiWriteButton {
 
 /** The dialog's buttons; null for insert or replace means not shown. */
 export interface AiDialogButtons {
-  readonly close: boolean;
   readonly stop: boolean;
   readonly retry: boolean;
   readonly insert: AiWriteButton | null;
@@ -214,7 +206,6 @@ export function aiDialogButtons({ state, resultEmpty, rangePresent, insertBlockP
   // The block gone says more than the words gone: neither can be written.
   const replaceReason: AiButtonReason | null = rangePresent ? null : insertBlockPresent ? 'rangeGone' : 'insertBlockGone';
   return {
-    close: state !== 'closed',
     stop: state === 'streaming',
     retry: finished || state === 'failed',
     insert: writable ? { disabled: !insertBlockPresent, reason: insertBlockPresent ? null : 'insertBlockGone' } : null,
