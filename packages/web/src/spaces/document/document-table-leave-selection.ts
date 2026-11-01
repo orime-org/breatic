@@ -192,7 +192,7 @@ interface SwapsTables {
  * Turns the tables the editor's selection takes whole into empty lines and
  * leaves the selection over what is left, for an input the body then handles
  * as its own: a pasted table, text the browser inserts, a paste over ends in
- * code blocks (`document-table-paste.ts`).
+ * code blocks (`putContent` in `document-put.ts`).
  * @param view - The editor view.
  */
 export function swapHeldTables(view: EditorView): void {

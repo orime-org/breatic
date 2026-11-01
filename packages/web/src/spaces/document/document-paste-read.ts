@@ -17,7 +17,7 @@ import { audioParse, imageParse, isMarkdown, markdownToHTML, videoParse } from '
 
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
-import { evenTables } from '@web/spaces/document/document-table-paste';
+import { evenPastedTables, evenTables } from '@web/spaces/document/document-table-paste';
 
 /** A block as BlockNote's JSON writes one. */
 export interface ReadBlock {
@@ -574,17 +574,6 @@ function readByMarkers(reader: BlockReader, html: string, lands: (url: string) =
 }
 
 /**
- * HTML with its tables evened, or the same HTML when it has none.
- * @param html - The HTML.
- * @returns The HTML.
- */
-function evened(html: string): string {
-  if (!/<table\b/i.test(html)) return html;
-  const body = new DOMParser().parseFromString(html, 'text/html').body;
-  return evenTables(body) ? body.innerHTML : html;
-}
-
-/**
  * HTML escaped as text.
  * @param text - The text.
  * @returns The HTML.
@@ -622,7 +611,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const markdown = data.types.includes('text/markdown');
   const withMedia = HTML_MEDIA.test(html);
   if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
-    const even = evened(html);
+    const even = evenPastedTables(html);
     return { blocks: reader.tryParseHTMLToBlocks(even) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(even) };
   }
   if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: null, paste: () => undefined };

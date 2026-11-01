@@ -15,7 +15,7 @@
  * its end to the widest row, the shape the reader saw on the page; a table
  * holding no cell at all goes, since ProseMirror builds no table from it. The
  * paste and the drop both do it while the HTML is made ready to read
- * (`document-paste-html.ts`).
+ * (`document-paste-read.ts`).
  */
 
 /**
@@ -77,7 +77,7 @@ export function evenTables(root: Element): boolean {
  * @returns The evened HTML, unchanged when its tables were already even.
  */
 export function evenPastedTables(html: string): string {
-  if (!/<table/i.test(html)) return html;
+  if (!/<table\b/i.test(html)) return html;
   const body = new DOMParser().parseFromString(html, 'text/html').body;
   return evenTables(body) ? body.innerHTML : html;
 }
