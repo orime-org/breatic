@@ -49,6 +49,11 @@ test('an Editor drags a clip onto a new track, trims, splits, duplicates, delete
     const tracks = outlet.locator('[data-testid^="timeline-track-"]');
     await expect(tracks).toHaveCount(1);
     await expect(clipOf(second)).toHaveAttribute('data-track-id', 'visual-1');
+    // Zoom out to the minimum, which fits the whole Timeline, so every clip and handle is on screen.
+    const zoom = outlet.getByTestId('timeline-zoom').getByRole('slider');
+    await zoom.focus();
+    await zoom.press('Home');
+    await expect(clipOf(second)).toBeInViewport();
 
     // Drag the second clip into the new-track zone.
     const zone = await outlet.getByTestId('timeline-new-track-zone').boundingBox();
