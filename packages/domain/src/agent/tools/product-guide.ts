@@ -1172,10 +1172,12 @@ export function renderProductGuide(): string {
     "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
       "followed after a · by the nearest heading at or above the passage, or " +
-      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. Its row of buttons ` +
+      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; a button that ` +
+      "does not fit moves whole onto a second line when a language's words do not fit side by side. A comment card " +
       "quotes the words the comment hangs on and shows the comment, with one " +
-      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
-      "taken out struck through in red and the new words in green, and two buttons: " +
+      `landing button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two landing buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
@@ -1184,7 +1186,19 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
       `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+    `Pressing ${quoted(t("chat.documentProposal.locate"))} opens the document, or switches to its tab, and ` +
+      "scrolls to and outlines for a moment what the proposal points at, writing nothing: a comment's quoted " +
+      "words, with a wide table scrolled sideways to them; the passage a rewrite replaces; the passage an insert " +
+      "goes after, or the last passage for an insert at the end. It works on a document the reader can only view " +
+      "too. The card keeps its buttons, so the reader can locate again or press a landing button next; the " +
+      "landing buttons wait while it spins. A proposal that already landed, as one may after a reload, is shown " +
+      `where it landed instead, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the card then ` +
+      "shows it landed. A passage that changed since the proposal is still shown, with the " +
+      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +
+      `when locating fails the toast says ${quoted(t("chat.documentProposal.failedLocate"))} Switching to another ` +
+      "Space, or closing the document's tab, while it still waits for the document ends the wait without a word; " +
+      `the same holds for ${quoted(t("chat.documentProposal.view"))}.`,
+    "Pressing a landing button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
       "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
       "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
       "meanwhile. A rewrite or an insert is one step " +
