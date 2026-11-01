@@ -574,6 +574,22 @@ function readByMarkers(reader: BlockReader, html: string, lands: (url: string) =
 }
 
 /**
+ * The language VS Code says copied code is in, as BlockNote's
+ * `handleVSCodePaste` reads it: none when the data is broken or names none,
+ * as a copy too large to highlight writes `"mode": null`.
+ * @param data - The `vscode-editor-data` format's text.
+ * @returns The language, or null.
+ */
+function editorLanguage(data: string): string | null {
+  try {
+    const mode = (JSON.parse(data) as { mode?: unknown } | null)?.mode;
+    return typeof mode === 'string' && mode !== '' ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * HTML escaped as text.
  * @param text - The text.
  * @returns The HTML.
@@ -603,8 +619,8 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
     return { blocks: reader.tryParseHTMLToBlocks(own) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(own, true) };
   }
   const plainOnly = html === '' && plain !== '' ? plain : null;
-  const mode = data.types.includes('vscode-editor-data') ? (JSON.parse(data.getData('vscode-editor-data') || '{}') as { mode?: string }).mode : undefined;
-  if (mode !== undefined && plain !== '') {
+  const mode = data.types.includes('vscode-editor-data') ? editorLanguage(data.getData('vscode-editor-data')) : null;
+  if (mode !== null && plain !== '') {
     const code = `<pre><code class="language-${escapeHTML(mode)}">${escapeHTML(plain.replace(/\r\n?/g, '\n'))}</code></pre>`;
     return { blocks: reader.tryParseHTMLToBlocks(code) as ReadBlock[], lost: 0, plain: plainOnly, paste: (r) => r.pasteHTML(code) };
   }
