@@ -1476,14 +1476,7 @@
         "exit": "종료"
       },
       "row": {
-        "undo": "실행 취소",
-        "redo": "다시 실행",
-        "copy": "복사",
-        "paste": "붙여넣기",
-        "duplicate": "복제",
         "delete": "삭제",
-        "group": "그룹으로 묶기",
-        "ungroup": "그룹 해제",
         "marquee": "영역 선택",
         "toggleSelect": "선택에 추가 또는 제거",
         "nudge": "선택 항목 조금 이동",

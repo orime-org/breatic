@@ -55,7 +55,7 @@ export function CanvasShortcutsDialog({
             label, keys), each column as wide as its longest entry, so the
             columns line up across groups and the dialog is as wide as its
             words in every language. */}
-        <DialogBody className='grid grid-cols-[repeat(4,max-content)] items-center gap-x-6 gap-y-0 px-6 pb-4 pt-0'>
+        <DialogBody className='grid grid-cols-[repeat(4,max-content)] items-center gap-x-6 gap-y-0 pb-4 pt-0'>
           {visibleShortcutGroups(readOnly).map((group, groupIndex) => (
             <React.Fragment key={group.id}>
               <h3
@@ -94,9 +94,21 @@ export function CanvasShortcutsDialog({
  * @returns The keys text.
  */
 function formatKeys(row: ShortcutRow, t: (key: string) => string): string {
-  return row.keys
-    .map((k) => formatShortcut(isGesture(k) ? { mod: k.mod, shift: k.shift, key: t(k.gestureKey) } : k))
-    .join(' / ');
+  return row.keys.map((k) => (isGesture(k) ? formatGesture(k, t) : formatShortcut(k))).join(' / ');
+}
+
+/**
+ * Write a gesture with the modifiers held for it: "⌘ Click" on a Mac (the
+ * glyphs stand apart from the word), "Ctrl+Click" elsewhere.
+ * @param gesture - The gesture.
+ * @param t - The translator.
+ * @returns The text.
+ */
+function formatGesture(gesture: ShortcutGesture, t: (key: string) => string): string {
+  const word = t(gesture.gestureKey);
+  if (gesture.mod !== true && gesture.shift !== true) return word;
+  const chord = formatShortcut({ mod: gesture.mod, shift: gesture.shift, key: word });
+  return chord.endsWith(`+${word}`) ? chord : `${chord.slice(0, -word.length)} ${word}`;
 }
 
 /**

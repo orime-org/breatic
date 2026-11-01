@@ -137,7 +137,7 @@ function AuthPageFooter(): React.JSX.Element {
       <a href={TUTORIALS_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('chrome.help.manual')}
       </a>
-      <a href={`mailto:${SUPPORT_EMAIL}`} className={FOOTER_LINK_CLASS}>
+      <a href={`mailto:${SUPPORT_EMAIL}`} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('chrome.help.contact')}
       </a>
       {COOKIE_SETTINGS_AVAILABLE ? (

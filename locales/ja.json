@@ -1476,14 +1476,7 @@
         "exit": "終了"
       },
       "row": {
-        "undo": "元に戻す",
-        "redo": "やり直し",
-        "copy": "コピー",
-        "paste": "貼り付け",
-        "duplicate": "複製",
         "delete": "削除",
-        "group": "グループ化",
-        "ungroup": "グループ解除",
         "marquee": "範囲選択",
         "toggleSelect": "選択に追加・選択から外す",
         "nudge": "選択を少し移動",

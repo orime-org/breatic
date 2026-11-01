@@ -34,7 +34,7 @@ export interface ShortcutGesture {
   shift?: boolean;
 }
 
-/** One line of the shortcuts dialog. */
+/** One line of the shortcuts dialog. An action the canvas already names elsewhere uses that key. */
 export interface ShortcutRow {
   id: string;
   labelKey: string;
@@ -59,11 +59,11 @@ export const CANVAS_SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     id: 'edit',
     titleKey: 'canvas.shortcuts.group.edit',
     rows: [
-      { id: 'undo', labelKey: 'canvas.shortcuts.row.undo', keys: [K.undo], requiresEdit: true },
-      { id: 'redo', labelKey: 'canvas.shortcuts.row.redo', keys: [K.redo, K.redoAlt], requiresEdit: true },
-      { id: 'copy', labelKey: 'canvas.shortcuts.row.copy', keys: [K.copy], requiresEdit: true },
-      { id: 'paste', labelKey: 'canvas.shortcuts.row.paste', keys: [K.paste], requiresEdit: true },
-      { id: 'duplicate', labelKey: 'canvas.shortcuts.row.duplicate', keys: [K.duplicate], requiresEdit: true },
+      { id: 'undo', labelKey: 'viewportToolbar.undo', keys: [K.undo], requiresEdit: true },
+      { id: 'redo', labelKey: 'viewportToolbar.redo', keys: [K.redo, K.redoAlt], requiresEdit: true },
+      { id: 'copy', labelKey: 'canvas.contextMenu.copy', keys: [K.copy], requiresEdit: true },
+      { id: 'paste', labelKey: 'canvas.contextMenu.paste', keys: [K.paste], requiresEdit: true },
+      { id: 'duplicate', labelKey: 'canvas.contextMenu.duplicate', keys: [K.duplicate], requiresEdit: true },
       { id: 'delete', labelKey: 'canvas.shortcuts.row.delete', keys: [K.delete], requiresEdit: true },
     ],
   },
@@ -71,8 +71,8 @@ export const CANVAS_SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     id: 'group',
     titleKey: 'canvas.shortcuts.group.group',
     rows: [
-      { id: 'group', labelKey: 'canvas.shortcuts.row.group', keys: [K.group], requiresEdit: true },
-      { id: 'ungroup', labelKey: 'canvas.shortcuts.row.ungroup', keys: [K.ungroup], requiresEdit: true },
+      { id: 'group', labelKey: 'canvas.group.group', keys: [K.group], requiresEdit: true },
+      { id: 'ungroup', labelKey: 'canvas.group.ungroup', keys: [K.ungroup], requiresEdit: true },
     ],
   },
   {

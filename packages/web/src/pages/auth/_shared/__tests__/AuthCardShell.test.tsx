@@ -87,6 +87,7 @@ describe('AuthCardShell', () => {
     expect(manual).toHaveAttribute('target', '_blank');
     expect(manual.getAttribute('rel')).toContain('noreferrer');
     expect(contact).toHaveAttribute('href', `mailto:${SUPPORT_EMAIL}`);
+    expect(contact).toHaveAttribute('target', '_blank');
     const privacy = within(footer).getByRole('link', { name: 'Privacy Policy' });
     expect(privacy.compareDocumentPosition(manual) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

@@ -115,3 +115,40 @@ describe('context-menu hints', () => {
     },
   );
 });
+
+describe('shortcut text', () => {
+  const localesDir = path.join(import.meta.dirname, '..', '..', '..', '..', '..', '..', '..', 'locales');
+  const keys = CANVAS_SHORTCUT_GROUPS.flatMap((g) => [
+    g.titleKey,
+    ...g.rows.flatMap((r) => [
+      r.labelKey,
+      ...r.keys.flatMap((k) => ('gestureKey' in k ? [k.gestureKey] : [])),
+    ]),
+  ]);
+
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('every title, label and gesture has %s text', (locale) => {
+    const catalog = JSON.parse(readFileSync(path.join(localesDir, `${locale}.json`), 'utf8')) as Record<string, unknown>;
+    for (const key of keys) {
+      const value = key.split('.').reduce<unknown>(
+        (node, part) => (node !== null && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined),
+        catalog,
+      );
+      expect(typeof value, key).toBe('string');
+    }
+  });
+
+  it('names the actions the context menus and view bar already name with the same keys', () => {
+    const labelOf = Object.fromEntries(
+      CANVAS_SHORTCUT_GROUPS.flatMap((g) => g.rows).map((r) => [r.id, r.labelKey]),
+    );
+    expect(labelOf).toMatchObject({
+      undo: 'viewportToolbar.undo',
+      redo: 'viewportToolbar.redo',
+      copy: 'canvas.contextMenu.copy',
+      paste: 'canvas.contextMenu.paste',
+      duplicate: 'canvas.contextMenu.duplicate',
+      group: 'canvas.group.group',
+      ungroup: 'canvas.group.ungroup',
+    });
+  });
+});

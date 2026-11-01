@@ -57,7 +57,7 @@ describe('CanvasShortcutsDialog', () => {
     expect(screen.getByTestId('shortcut-keys-undo')).toHaveTextContent('⌘Z');
     expect(screen.getByTestId('shortcut-keys-redo')).toHaveTextContent('⌘⇧Z / ⌘Y');
     expect(screen.getByTestId('shortcut-keys-delete')).toHaveTextContent('⌫');
-    expect(screen.getByTestId('shortcut-keys-toggleSelect')).toHaveTextContent('⌘Click');
+    expect(screen.getByTestId('shortcut-keys-toggleSelect')).toHaveTextContent('⌘ Click');
   });
 
   it('writes the keys with Ctrl and Shift on Windows', () => {

@@ -44,7 +44,9 @@ export function HelpMenu(): React.JSX.Element {
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <a href={`mailto:${SUPPORT_EMAIL}`} className='items-start'>
+          {/* Opened beside this page: a mail link in this document would run the
+              project page's leave guard and ask the reader to leave first. */}
+          <a href={`mailto:${SUPPORT_EMAIL}`} target='_blank' rel='noopener noreferrer' className='items-start'>
             <Mail className='mt-0.5' aria-hidden='true' />
             <span className='flex flex-col'>
               <span>{t('chrome.help.contact')}</span>

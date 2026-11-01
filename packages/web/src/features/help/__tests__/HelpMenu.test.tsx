@@ -42,6 +42,9 @@ describe('HelpMenu', () => {
     const contact = await screen.findByRole('menuitem', { name: /Contact support/ });
     expect(contact).toHaveAttribute('href', `mailto:${SUPPORT_EMAIL}`);
     expect(contact).toHaveTextContent(SUPPORT_EMAIL);
+    // A mail link in this document would run the project page's leave guard.
+    expect(contact).toHaveAttribute('target', '_blank');
+    expect(contact.getAttribute('rel')).toContain('noopener');
   });
 
   it('has no a11y violations', async () => {
