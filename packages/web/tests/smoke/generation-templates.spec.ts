@@ -144,29 +144,29 @@ async function graph(): Promise<{ names: string[]; edges: string[] }> {
 /**
  * The group a template's new nodes formed beside an anchor, read from the open Space's document.
  * @param anchorId - The anchor.
- * @returns The distance from the group's right edge to the anchor's left edge, the layer step, and how many members it holds.
+ * @returns The distance from the group's right edge to the anchor's left edge, the anchor card's width, and how many members the group holds.
  */
-async function groupBesideAnchor(anchorId: string): Promise<{ gap: number; step: number; members: number }> {
+async function groupBesideAnchor(anchorId: string): Promise<{ gap: number; card: number; members: number }> {
   const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  const flowAt = await liveModuleUrl(page, 'spaces/canvas/lib/place-flow.ts');
   return page.evaluate(
-    async ([pid, sid, anchor, at, flow]: [string, string, string, string, string]) => {
+    async ([pid, sid, anchor, at]: [string, string, string, string]) => {
       const canvas = (await import(/* @vite-ignore */ at)) as {
         readNodePlacements: (p: string, s: string) => { id: string; type: string; x: number; width?: number }[];
         readCanvasGraph: (p: string, s: string) => { nodes: { parentId?: string }[] };
       };
-      const { LAYER_STEP_PX } = (await import(/* @vite-ignore */ flow)) as { LAYER_STEP_PX: number };
       const placements = canvas.readNodePlacements(pid, sid);
       const group = placements.find((p) => p.type === 'group');
       const anchorAt = placements.find((p) => p.id === anchor);
-      if (!group || !anchorAt) throw new Error('no group or no anchor');
+      // offsetWidth ignores the viewport's scale, so it is the card's width on the canvas.
+      const card = (document.querySelector(`.react-flow__node[data-id="${anchor}"]`) as HTMLElement | null)?.offsetWidth;
+      if (!group || !anchorAt || !card) throw new Error('no group, anchor or anchor card');
       return {
         gap: anchorAt.x - (group.x + (group.width ?? 0)),
-        step: LAYER_STEP_PX,
+        card,
         members: canvas.readCanvasGraph(pid, sid).nodes.filter((n) => n.parentId === group.id).length,
       };
     },
-    [projectId, spaceId, anchorId, canvasAt, flowAt] as [string, string, string, string, string],
+    [projectId, spaceId, anchorId, canvasAt] as [string, string, string, string],
   );
 }
 
@@ -281,10 +281,10 @@ test('picking the single-view scene places the three views it generates first, a
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(4);
   await expectNodesInView(page, 5);
   // The group holds the four new nodes and stands right beside the anchor, left of it.
-  const { gap, step, members } = await groupBesideAnchor(nodeId);
+  const { gap, card, members } = await groupBesideAnchor(nodeId);
   expect(members).toBe(4);
   expect(gap).toBeGreaterThanOrEqual(0);
-  expect(gap).toBeLessThanOrEqual(step);
+  expect(gap).toBeLessThan(card);
   await page.screenshot({ path: test.info().outputPath('single-view-scene-applied.png') });
   expect(await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).count()).toBe(1);
 });
