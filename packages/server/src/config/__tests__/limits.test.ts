@@ -174,7 +174,7 @@ describe("request body limit", () => {
 });
 
 /**
- * inner#1782 test spec C1–C3: how long a refused connection keeps reading.
+ * inner#1782 test spec C1–C4: how long a refused connection keeps reading.
  */
 describe("request body linger", () => {
   it("C1: defaults to 30 seconds when the key is absent", () => {

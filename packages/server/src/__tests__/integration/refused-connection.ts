@@ -349,8 +349,8 @@ function freshGetStatus(baseUrl: string, path: string): Promise<number> {
 }
 
 /**
- * Over several rounds on one keep-alive socket, send a chunked body the
- * server refuses, then a GET through the same agent, and check each refusal
+ * Over several rounds through one keep-alive agent that holds one socket at
+ * a time, send a chunked body the server refuses, then a GET through the same agent, and check each refusal
  * says `Connection: close` and each GET goes out on a new connection.
  * @param baseUrl - The server.
  * @param postPath - Where the refused body goes.
