@@ -184,9 +184,9 @@ export interface ExistingNode {
 interface Arrangement {
   /** Each index's top-left and size; meaningful for new nodes only. */
   spots: Rect[];
-  /** Where the batch landed: the new group's rect, or the one node's for a proposal placed on its own. */
+  /** Where a proposal placed on its own landed: its group's rect, or the one node's. */
   bounds?: Rect;
-  /** The rect of a new group, for two or more new nodes that join no group already there. */
+  /** Where a new group goes, for two or more new nodes that join no group already there. */
   aimedGroup: Rect | null;
   /** The unlocked group already on the canvas the new nodes join. */
   joinGroup?: { id: string; rect: Rect };
@@ -228,7 +228,7 @@ function arrangeProposal(
     return {
       spots: aimed.map((spot) => ({ ...spot, x: spot.x + dx })),
       ...(footprint ? { bounds: { ...footprint, x: footprint.x + dx } } : {}),
-      aimedGroup,
+      aimedGroup: aimedGroup && { ...aimedGroup, x: aimedGroup.x + dx },
     };
   }
   const graph = readCanvasGraph(projectId, spaceId);
@@ -263,17 +263,30 @@ function arrangeProposal(
     return { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } };
   };
   // The anchor's own group first. An anchor outside any group lends the new
-  // nodes the group its reused template nodes sit in, which a first apply
-  // made, so the instance stays one piece the reader drags as one.
+  // nodes the group this template's reused nodes sit in, which a first apply
+  // made, so the instance stays one piece the reader drags as one. A
+  // reference the reader wired in keeps its own group to itself.
+  const template = proposal.nodes.find((node) => node.templateNode)?.templateNode?.template;
+  /**
+   * Whether a node already on the canvas was placed by this template.
+   * @param nodeId - The node.
+   * @returns True when it carries this template's tag.
+   */
+  const placedByTemplate = (nodeId: string): boolean => {
+    const view = views.get(nodeId);
+    return template !== undefined && view !== undefined && view.type !== 'group' && view.type !== 'annotation' && view.data.templateNode?.template === template;
+  };
   const anchorInGroup = anchorId !== undefined && views.get(anchorId)?.parentId !== undefined;
   const joinGroup = anchorInGroup
     ? unlockedGroupOf(anchorId)
-    : [...existing.values()].map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
+    : [...existing.values()]
+      .filter((node) => placedByTemplate(node.nodeId))
+      .map((node) => unlockedGroupOf(node.nodeId))
+      .find((group) => group !== undefined);
   const aimedGroup = !anchorInGroup && joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
   return {
     spots: lined,
     aimedGroup,
-    ...(aimedGroup ? { bounds: aimedGroup } : {}),
     ...(joinGroup ? { joinGroup } : {}),
   };
 }
@@ -513,7 +526,7 @@ export function useNodeCreation(
             // nodes were written a moment ago and the render buffer has not
             // seen them yet. Only the new nodes become members: an anchor or
             // a reused node already on the canvas stays where it is.
-            const rect = aimedGroup && bounds;
+            const rect = aimedGroup;
             if (rect) {
               const id = newId();
               groupId = id;
@@ -603,7 +616,7 @@ export function useNodeCreation(
                 });
               }
             });
-            // The new nodes join the anchor's group last, and its frame grows
+            // The new nodes join that group last, and its frame grows
             // to keep its padding around them.
             if (joinGroup) {
               const added = proposal.nodes.flatMap((_, i) => (fresh[i] && spots[i] ? [{ id: nodeIds[i], rect: spots[i] }] : []));

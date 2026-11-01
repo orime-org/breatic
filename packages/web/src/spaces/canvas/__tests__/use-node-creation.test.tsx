@@ -1811,6 +1811,44 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.readCanvasGraph('p-again', 's-again').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
       });
 
+      it('leaves a reader\'s own group around a wired reference alone, and groups the new nodes under the template\'s name', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-ref', 's-ref', { x: 1000, y: 500 });
+        // The reader's photo, kept in a group of their own far from the anchor.
+        const input = seed('p-ref', 's-ref', 'image', { x: PAD, y: PAD }, { name: 'Hero photo' });
+        const theirs = { x: -2000, y: -2000, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-ref', 's-ref', theirs, [{ id: input, position: { x: PAD, y: PAD } }]);
+        canvasSpace.addEdge('p-ref', 's-ref', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const before = idsNow('p-ref', 's-ref');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [3, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
+
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, { role: 'source', type: 'image', name: 'Hero photo' }],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }, { fromIndex: 3, toIndex: 1, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ref', 's-ref', before);
+        const group = added.find((n) => n.type === 'group');
+        expect(group).toBeDefined();
+        if (group?.type !== 'group') throw new Error('no group was placed');
+        expect(group.data.name).toBe('Fixture template');
+        expect(added.filter((n) => n.type !== 'group').every((n) => n.parentId === group.id)).toBe(true);
+        const [frame] = canvasSpace.readNodePlacements('p-ref', 's-ref').filter((p) => p.id === groupId);
+        expect({ x: frame!.x, y: frame!.y, width: frame!.width, height: frame!.height }).toEqual(theirs);
+      });
+
       it('takes the new nodes and their group back with one undo, leaving the anchor', () => {
         const undo = canvasSpace.createCanvasUndoManager(getDoc(docName.canvasSpace('p-exundo', 's-exundo')));
         const anchor = seedAnchor('p-exundo', 's-exundo', { x: 1000, y: 500 });
