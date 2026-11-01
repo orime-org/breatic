@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { formatShortcut, type ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
 import {
   visibleShortcutGroups,
@@ -45,34 +46,40 @@ export function CanvasShortcutsDialog({
         aria-describedby={undefined}
         onCloseAutoFocus={onCloseAutoFocus}
         data-testid='canvas-shortcuts-dialog'
-        className='max-w-[720px]'
+        className='w-fit max-w-none'
       >
         <DialogHeader>
           <DialogTitle>{t('canvas.shortcuts.title')}</DialogTitle>
         </DialogHeader>
-        <DialogBody className='gap-4 pb-4 pt-0'>
-          {visibleShortcutGroups(readOnly).map((group) => (
-            <section key={group.id} className='flex flex-col'>
-              <h3 className='px-2 pb-1 text-xs font-medium text-muted-foreground'>{t(group.titleKey)}</h3>
-              {/* Two actions per line keeps the whole list on one screen. */}
-              <div className='grid grid-cols-2 gap-x-6'>
-                {group.rows.map((row) => (
-                  <div
-                    key={row.id}
-                    data-testid={`shortcut-row-${row.id}`}
-                    className='flex h-8 items-center justify-between gap-4 rounded-chrome px-2 text-sm'
+        {/* One grid for every group, two actions to a line (label, keys,
+            label, keys), each column as wide as its longest entry, so the
+            columns line up across groups and the dialog is as wide as its
+            words in every language. */}
+        <DialogBody className='grid grid-cols-[repeat(4,max-content)] items-center gap-x-6 gap-y-0 px-6 pb-4 pt-0'>
+          {visibleShortcutGroups(readOnly).map((group, groupIndex) => (
+            <React.Fragment key={group.id}>
+              <h3
+                className={cn(
+                  'col-span-full pb-1 text-xs font-medium text-muted-foreground',
+                  groupIndex > 0 && 'pt-3',
+                )}
+              >
+                {t(group.titleKey)}
+              </h3>
+              {group.rows.map((row, rowIndex) => (
+                <div key={row.id} data-testid={`shortcut-row-${row.id}`} className='contents'>
+                  <span className={cn('flex h-8 items-center text-sm', rowIndex % 2 === 1 && 'pl-6')}>
+                    {t(row.labelKey)}
+                  </span>
+                  <span
+                    data-testid={`shortcut-keys-${row.id}`}
+                    className='justify-self-end whitespace-nowrap text-xs text-muted-foreground'
                   >
-                    <span>{t(row.labelKey)}</span>
-                    <span
-                      data-testid={`shortcut-keys-${row.id}`}
-                      className='whitespace-nowrap text-xs tracking-widest text-muted-foreground'
-                    >
-                      {formatKeys(row, t)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
+                    {formatKeys(row, t)}
+                  </span>
+                </div>
+              ))}
+            </React.Fragment>
           ))}
         </DialogBody>
       </DialogContent>
