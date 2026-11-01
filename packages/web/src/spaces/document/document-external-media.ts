@@ -26,22 +26,17 @@
  * through {@link ownMediaOnly}.
  */
 
-import { createExtension, selectedFragmentToHTML, type ExtensionFactoryInstance } from '@blocknote/core';
-import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
-import { cellAround } from '@tiptap/pm/tables';
-import type { EditorView } from '@tiptap/pm/view';
 
-import { newId, t } from '@breatic/shared';
+import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
-import { toast } from '@web/lib/toast';
-import { rowInFlight } from '@web/spaces/document/document-drag-drop';
-import { carriesTable } from '@web/spaces/document/document-drag-move';
 import { addressLanding } from '@web/spaces/document/document-media-address';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
-import { readTransfer, type ReadBlock } from '@web/spaces/document/document-paste-read';
-import { onlyTable, putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
+import { readTransfer } from '@web/spaces/document/document-paste-read';
+import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** The key the pasted-media extension registers under. */
@@ -219,53 +214,15 @@ export function documentPastedMediaExtension(
       },
     };
 
-    /**
-     * A drag within the body that holds a table and lands in a table cell,
-     * as its paste there would go (design §5.4.1, §5.4.7): one table alone
-     * is taken from where it was and fills cells from the drop (A12); a
-     * table with other content is refused with the paste's warning (A14). A
-     * cell holds no table, and ProseMirror's own drop would split the target
-     * table around it. What is dragged is read as its copy is, so a stored
-     * (legacy) table reads as ours. A row's own drag is the row extension's;
-     * anything else is ProseMirror's own drop.
-     * @param view - The view.
-     * @param slice - The dragged content, which a drag within the body takes from the selection.
-     * @param moved - Whether the drop moves it, as ProseMirror reads the keys at the drop.
-     * @param event - The drop.
-     * @returns True when this drop was handled here.
-     */
-    const tableIntoCell = (view: EditorView, slice: Slice, moved: boolean, event: DragEvent): boolean => {
-      if (rowInFlight() || !carriesTable(slice.content)) return false;
-      const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
-      if (at === undefined || cellAround(view.state.doc.resolve(at)) === null) return false;
-      const blocks = editor.tryParseHTMLToBlocks(selectedFragmentToHTML(view, editor).clipboardHTML) as ReadBlock[];
-      if (onlyTable(blocks) === null) {
-        toast.warning(t('spaces.document.paste.unsupportedInCell'));
-        return true;
-      }
-      let point = at;
-      if (moved) {
-        const tr = view.state.tr.deleteSelection();
-        point = tr.mapping.map(at);
-        view.dispatch(tr);
-      }
-      const placed = putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: true, judge: (props) => props, dropAt: point });
-      if (placed !== null) selectPlaced(view, placed);
-      return true;
-    };
-
     return {
       key: PASTED_MEDIA_KEY,
       ...media,
       prosemirrorPlugins: [
         new Plugin({
           props: {
-            // Only a drag within the body reaches here: outside content is
-            // taken by the drop below, and files by the file drop entry.
-            handleDrop: (view, event, slice, moved) => tableIntoCell(view, slice, moved, event),
             handleDOMEvents: {
-              // A drag within the body is ProseMirror's own drop, except one
-              // holding a table that lands in a cell (handleDrop above).
+              // A drag within the body is the drag-drop extension's; files go
+              // to the file drop entry.
               drop: (view, event) => {
                 if (event.defaultPrevented || view.dragging !== null) return false;
                 const data = event.dataTransfer;

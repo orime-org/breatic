@@ -13,7 +13,7 @@
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
-import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Node as PMNode, Slice, type ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { __insertCells as insertCells, __pastedCells as pastedCells, cellAround, CellSelection, selectedRect } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
@@ -35,7 +35,11 @@ import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-sele
 export type JudgeMedium = (props: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>> | null;
 
 /** What is put: blocks, the media left out reading them, the plain text, and how words alone go in. */
-export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & { readonly paste: Read['paste'] | null };
+export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & {
+  readonly paste: Read['paste'] | null;
+  /** The table as the body's own nodes, its comments with it, when a drag within the body brings it. */
+  readonly table?: PMNode;
+};
 
 /** What a placement needs besides the content. */
 export interface PutOptions {
@@ -144,7 +148,7 @@ function lineAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
  * @param $at - The position.
  * @returns It, or null when the position is in neither.
  */
-function textOnlyAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
+export function textOnlyAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
   for (let depth = $at.depth; depth > 1; depth -= 1) {
     const name = $at.node(depth).type.name;
     if (name === 'table' || name === 'codeBlock') return { node: $at.node(depth - 1), pos: $at.before(depth - 1) };
@@ -445,13 +449,14 @@ export function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
 /**
  * Puts one source grid once from the target cell, growing the table as needed.
  * @param view - The editor view, with its target cell selected.
- * @param block - The source table.
+ * @param table - The source table, read or as the body's own node.
  * @returns The rectangle written.
  */
-function putTableInCells(view: EditorView, block: ReadBlock): Placed | null {
+function putTableInCells(view: EditorView, table: ReadBlock | PMNode): Placed | null {
   squareSelectedTable(view);
   const rect = selectedRect(view.state);
-  const cells = pastedCells(new Slice(Fragment.from(containers([block], view.state)), 0, 0));
+  const made = table instanceof PMNode ? [table] : containers([table], view.state);
+  const cells = pastedCells(new Slice(Fragment.from(made), 0, 0));
   if (cells === null) return null;
   insertCells(view.state, (tr) => view.dispatch(tr.scrollIntoView()), rect.tableStart, rect, cells);
   return cellsOf(view.state.selection as CellSelection);
@@ -562,7 +567,7 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
   const table = onlyTable(content.blocks);
   const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$from);
   if ($cell !== null && heldTables(selection) === null) {
-    if (table !== null) return putTableInCells(view, table);
+    if (table !== null) return putTableInCells(view, content.table ?? table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
   const words = !holdsBlocks(content.blocks);

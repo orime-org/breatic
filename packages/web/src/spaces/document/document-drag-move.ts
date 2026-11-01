@@ -43,12 +43,16 @@ import {
 } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
-/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
-const TABLES = new Set([DOC_TABLE, 'table']);
+/**
+ * Table nodes: ours, the stored (legacy) one documents from before hold, and
+ * our rows, which a drag of selected cells carries without their table.
+ */
+const TABLES = new Set([DOC_TABLE, 'table', 'docTableRow']);
 
 /**
- * Whether content holds a table of either kind, itself or anywhere inside:
- * a cell holds no table (inner#1312 A14), whichever drag brings it.
+ * Whether content holds a table of either kind, or rows of one, itself or
+ * anywhere inside: a cell holds no table (inner#1312 A14), whichever drag
+ * brings it.
  * @param content - A block or a dragged slice's content.
  * @returns True when it does.
  */
