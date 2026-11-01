@@ -688,10 +688,11 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
       finishCaret(tr, put, start);
       to = tr.selection.head;
     } else {
+      // The empty line stays for the caret (inner#1127 A3).
       laid = [...nodes, line.node];
       tr.replaceWith(start, end, laid);
-      finishCaret(tr, nodes, start);
       to = startOf(laid, laid.length - 1);
+      caret = to + 2;
     }
   } else if (offset === size) {
     // At the end of the line: it does not split, its nested blocks stay.
