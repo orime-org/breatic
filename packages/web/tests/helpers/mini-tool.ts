@@ -69,6 +69,27 @@ export async function seedNode(
 }
 
 /**
+ * Wire one node into another straight in the live canvas document.
+ * @param page - The page.
+ * @param where - The project and Space.
+ * @param from - The source node.
+ * @param to - The target node.
+ * @returns Nothing; resolves once the document holds the edge.
+ */
+export async function wire(page: Page, where: SeedTarget, from: string, to: string): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addEdge: (p: string, s: string, e: unknown) => boolean;
+      };
+      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
+    },
+    [where.projectId, where.spaceId, from, to, canvasAt] as [string, string, string, string, string],
+  );
+}
+
+/**
  * Open a tool on a node from its menu.
  * @param page - The page.
  * @param nodeId - The node.

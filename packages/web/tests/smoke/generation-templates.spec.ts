@@ -20,6 +20,7 @@ import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { wire } from '../helpers/mini-tool';
 
 test.use({ viewport: { width: 1440, height: 1080 } });
 
@@ -79,24 +80,6 @@ test.afterEach(async () => {
   await deleteSpace(page, spaceId);
   await page.close();
 });
-
-/**
- * Wire one node into another through the live canvas module.
- * @param from - The node wired in.
- * @param to - The node it goes into.
- */
-async function wire(from: string, to: string): Promise<void> {
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ at)) as {
-        addEdge: (p: string, s: string, e: unknown) => boolean;
-      };
-      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
-    },
-    [projectId, spaceId, from, to, canvasAt] as [string, string, string, string, string],
-  );
-}
 
 /**
  * Move the pointer onto one goal's row the way a hand does, in steps, which
@@ -242,7 +225,7 @@ test('picking a template @s the reference already wired in and places nothing ne
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await pickStoryboard();
 
   const prompt = page.getByTestId('generate-prompt-editor');
@@ -307,7 +290,7 @@ test('picking the single-view scene feeds a photo already wired into the video n
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await openGoal('character');
   await page.getByTestId('generate-template-single-view-refs-scene').click();
 

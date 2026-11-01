@@ -23,6 +23,7 @@ import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
 import { startNewConversation } from '../helpers/conversation';
+import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
 const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(__dirname, '../fixtures/character.jpg');
@@ -80,37 +81,6 @@ async function graph(): Promise<{ nodes: NodeView[]; edges: { source: string; ta
       return JSON.parse(JSON.stringify(canvas.readCanvasGraph(pid, sid)));
     },
     [projectId, spaceId, at] as [string, string, string],
-  );
-}
-
-/** Write an empty node and return its id. */
-async function addNode(type: string, x: number): Promise<string> {
-  const id = crypto.randomUUID();
-  const at = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, nid, kind, url, px]: [string, string, string, string, string, number]) => {
-      const canvas = (await import(/* @vite-ignore */ url)) as { addNode: (p: string, s: string, n: unknown) => void };
-      canvas.addNode(pid, sid, {
-        id: nid,
-        type: kind,
-        position: { x: px, y: 0 },
-        data: { name: `${kind}-run`, createdAt: Date.now(), createdBy: 'template-run', locked: false, state: 'idle', attachments: [] },
-      });
-    },
-    [projectId, spaceId, id, type, at, x] as [string, string, string, string, string, number],
-  );
-  return id;
-}
-
-/** Wire one node into another. */
-async function wire(from: string, to: string): Promise<void> {
-  const at = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, source, target, url]: [string, string, string, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ url)) as { addEdge: (p: string, s: string, e: unknown) => boolean };
-      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
-    },
-    [projectId, spaceId, from, to, at] as [string, string, string, string, string],
   );
 }
 
@@ -349,8 +319,9 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     if (run === undefined) throw new Error(`no run settings for ${id}`);
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
     const photo = run.photo ? await dropCharacter() : undefined;
-    const anchor = await addNode(run.type, 600);
-    if (photo !== undefined) await wire(photo, anchor);
+    const anchor = crypto.randomUUID();
+    await seedNode(page, { projectId, spaceId }, anchor, run.type, 600, { name: `${run.type}-run`, state: 'idle' });
+    if (photo !== undefined) await wire(page, { projectId, spaceId }, photo, anchor);
     await openPanel(anchor);
     await applyTemplate(id);
     for (const key of run.first) {
