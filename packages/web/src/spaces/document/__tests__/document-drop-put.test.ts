@@ -744,8 +744,9 @@ describe('a drag within the body, put as its paste at the drop point (design §5
    * @param from - Where the selection starts.
    * @param to - Where it ends.
    * @param at - Where it is dropped.
+   * @param collapsed - Whether the selection is collapsed to the drop point before the drop, as Safari does while hovering.
    */
-  function dragWithin(editor: Editor, from: number, to: number, at: number): void {
+  function dragWithin(editor: Editor, from: number, to: number, at: number, collapsed = false): void {
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
     view.focus();
@@ -753,8 +754,144 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     // `UniqueID` reads to keep the row ids a move carries.
     view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
     (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    if (collapsed) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
     dropFormats(editor, at, { 'text/html': '<p>x</p>' });
   }
+
+  /**
+   * How many row ids appear more than once.
+   * @param editor - The editor.
+   * @returns The count.
+   */
+  function repeatedIds(editor: Editor): number {
+    const ids: unknown[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'blockContainer') ids.push(node.attrs['id']);
+      return true;
+    });
+    return ids.length - new Set(ids).size;
+  }
+
+  /**
+   * Every run of words carrying a comment.
+   * @param editor - The editor.
+   * @returns The words.
+   */
+  function commentedWords(editor: Editor): string[] {
+    const found: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === COMMENT_MARK)) found.push(node.text!);
+      return true;
+    });
+    return found;
+  }
+
+  /**
+   * Where the first empty plain line's words would start.
+   * @param editor - The editor.
+   * @returns The position.
+   */
+  function emptyLine(editor: Editor): number {
+    let at = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.type.name === 'paragraph' && node.content.size === 0) at = pos + 1;
+      return at < 0;
+    });
+    return at;
+  }
+
+  it('gives a line left partly behind its own row id, never to the words moved out of it', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'efgh' }, { type: 'paragraph', content: 'tail' }]);
+    dragWithin(editor, positionOf(editor, 'abcd', 0), positionOf(editor, 'efgh', 2), positionOf(editor, 'tail', 4));
+    await settled();
+    expect(repeatedIds(editor)).toBe(0);
+  });
+
+  it('gives no row id twice when lines around a picture are moved into an empty line', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'abcd' },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'end' },
+    ]);
+    dragWithin(editor, positionOf(editor, 'abcd', 2), positionOf(editor, 'tail', 2), emptyLine(editor));
+    await settled();
+    expect(repeatedIds(editor)).toBe(0);
+  });
+
+  it('lands as a copy when nothing was taken from where the drag began', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'aa' }, { type: 'paragraph', content: 'bb' }, { type: 'paragraph', content: 'cc' }, { type: 'paragraph', content: 'tail' }]);
+    const view = editor.prosemirrorView;
+    const from = positionOf(editor, 'bb', 0);
+    view.dispatch(view.state.tr.addMark(from, from + 2, view.state.schema.marks[COMMENT_MARK]!.create({ threadId: 'th1', orphan: false })));
+    dragWithin(editor, positionOf(editor, 'aa', 2), positionOf(editor, 'cc', 2), positionOf(editor, 'tail', 4), true);
+    await settled();
+    expect(repeatedIds(editor)).toBe(0);
+    expect(commentedWords(editor)).toEqual(['bb']);
+  });
+
+  it('fills cells from the drop with a table whose cells are empty', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['', ''] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:leadtail', 'table']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps a lone line break it moves', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
+    const view = editor.prosemirrorView;
+    const at = positionOf(editor, 'abcd', 2);
+    view.dispatch(view.state.tr.insert(at, view.state.schema.nodes['hardBreak']!.create()));
+    dragWithin(editor, at, at + 1, positionOf(editor, 'tail', 2));
+    await settled();
+    let breaks = 0;
+    view.state.doc.descendants((node) => {
+      if (node.type.name === 'hardBreak') breaks += 1;
+      return true;
+    });
+    expect(breaks).toBe(1);
+  });
+
+  it('puts a picture selected from one line\'s end to the next line\'s start as that picture alone', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'paragraph', content: 'mid' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'end' },
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), emptyLine(editor));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:leadtail', 'paragraph:mid', `image(${PIC})`, 'paragraph:', 'paragraph:end']);
+  });
+
+  it('pastes a picture copied from one line\'s end to the next line\'s start as that picture alone', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'paragraph', content: 'mid' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'end' },
+    ]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0))));
+    const html = view.serializeForClipboard(view.state.selection.content()).dom.innerHTML;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, emptyLine(editor))));
+    view.focus();
+    pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', `image(${PIC})`, 'paragraph:tail', 'paragraph:mid', `image(${PIC})`, 'paragraph:', 'paragraph:end']);
+  });
 
   it('puts words into an empty heading as that heading\'s words', async () => {
     const { editor } = await openReady([{ type: 'heading' }, { type: 'paragraph', content: 'abcd' }]);

@@ -464,6 +464,46 @@ describe('a drag within the body', () => {
   });
 });
 
+describe('a drag within the body that moves its content', () => {
+  it('leaves no row id twice and takes the content from where it was', () => {
+    fc.assert(
+      fc.property(
+        fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
+        ({ body, from, to, at }) => {
+          const editor = open(body).editor;
+          const view = editor.prosemirrorView;
+          const text = textPositions(view.state.doc);
+          select(editor, { kind: 'range', from, to });
+          const point = text[at % text.length]!;
+          const { from: start, to: end } = view.state.selection;
+          const dragged = view.state.selection.content();
+          if (start === end || (point >= start && point <= end)) {
+            unmountAll();
+            return;
+          }
+          view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
+          (view as unknown as { dragging: unknown }).dragging = { slice: dragged, move: true };
+          const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
+          for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
+          view.posAtCoords = (): { pos: number; inside: number } => ({ pos: point, inside: -1 });
+          const event = new Event('drop', { bubbles: true, cancelable: true });
+          Object.assign(event, { clientX: 1, clientY: 1 });
+          Object.defineProperty(event, 'dataTransfer', { value: { types: ['text/html'], files: [], items: [], getData: (): string => '<p>x</p>' } });
+          view.dom.dispatchEvent(event);
+          const ids: unknown[] = [];
+          view.state.doc.descendants((node) => {
+            if (node.type.name === 'blockContainer') ids.push(node.attrs['id']);
+            return true;
+          });
+          expect(ids.length - new Set(ids).size, `${JSON.stringify(body)} ${from}..${to} @${point}`).toBe(0);
+          unmountAll();
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
 describe('content put on an empty plain line (design §5.4.3)', () => {
   it('becomes that line when it ends in words, and leaves the line for the caret otherwise', () => {
     fc.assert(
