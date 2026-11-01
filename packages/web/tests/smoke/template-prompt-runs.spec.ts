@@ -161,7 +161,7 @@ async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
   const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
   await expect(button).toBeEnabled({ timeout: 20_000 });
-  await button.evaluate((el) => (el as HTMLButtonElement).click());
+  await button.click();
   let content = '';
   let state = '';
   // Stops on the first answer, done or failed, so a failed task does not wait out the whole timeout.
@@ -193,7 +193,7 @@ async function promptText(): Promise<string> {
  * @param file - The file name to save it as.
  */
 async function save(url: string, file: string): Promise<void> {
-  writeFileSync(`${OUT}/${file}`, Buffer.from(await (await page.request.get(url, { timeout: 0 })).body()));
+  writeFileSync(`${OUT}/${file}`, Buffer.from(await (await page.request.get(url, { timeout: 0, failOnStatusCode: true })).body()));
 }
 
 /** Append one record line. */
