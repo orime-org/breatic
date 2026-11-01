@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** Width of the track name column left of every lane. */
+export const TIMELINE_TRACK_HEADER_PX = 112;
+
 /** The closest zoom, in pixels per frame. */
 export const TIMELINE_MAX_PIXELS_PER_FRAME = 12;
 

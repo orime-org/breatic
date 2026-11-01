@@ -1,22 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { planTimelineEdit, TIMELINE_MAIN_TRACK_ID, timelineSourceRoom, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement } from '@breatic/shared';
+import { orderedTimelineClips, TIMELINE_MAIN_TRACK_ID, timelineInsertionIndex, timelineHeadRoom, timelineSourceRoom, timelineTrimHead, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement } from '@breatic/shared';
 import { snapTimelineEdges, timelineSnapTargets, TIMELINE_SNAP_PX } from '@web/spaces/timeline/timeline-snap';
 
 /** What a pointer drag on a clip changes. */
 export type TimelineGestureMode = 'move' | 'trim-start' | 'trim-end';
 
-/**
- * Where a drag would put the clip if released now; `trackId` null is the new-track zone. `startFrame` is where the
- * clip lands; `dropFrame` is the pointer's frame the move command carries (they differ on the magnetic main track,
- * where the planner inserts by drop frame and packs).
- */
+/** Where a drag would put the clip if released now; `trackId` null is the new-track zone. */
 export interface TimelineGesturePreview {
   clipId: string;
   trackId: string | null;
   startFrame: number;
-  dropFrame: number;
   sourceInFrame: number;
   durationFrames: number;
   snapFrame: number | null;
@@ -38,20 +33,18 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Where the planner puts a clip moved to the magnetic main track at `dropFrame`.
+ * Where the insertion marker sits while a clip is dragged along the magnetic main track: the gap in the current
+ * layout before which the planner inserts it.
  * @param document - The current document.
- * @param clipId - The moved clip.
- * @param dropFrame - The drop frame.
- * @param trackId - The main track.
- * @returns The packed start frame, or the drop frame when the planner refuses the move.
+ * @param clipId - The dragged clip.
+ * @param dropFrame - The pointer's drop frame.
+ * @returns The marker frame.
  * @throws {never} Never.
  */
-function landingFrame(document: TimelineDocumentV1, clipId: string, dropFrame: number, trackId: string): number {
-  const clip = document.clips[clipId];
-  const command: TimelineEditCommand = { operation: 'move', parameters: { clipId, startFrame: dropFrame, ...(clip?.trackId === trackId ? {} : { trackId }) }, placement: { magnet: true, linkage: false } };
-  let next = 0;
-  const plan = planTimelineEdit(document, command, () => `preview-${next++}`);
-  return plan.ok ? plan.next.clips[clipId]?.startFrame ?? dropFrame : dropFrame;
+export function timelineInsertMarkerFrame(document: TimelineDocumentV1, clipId: string, dropFrame: number): number {
+  const sequence = orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID).filter((clip) => clip.id !== clipId);
+  const before = sequence[timelineInsertionIndex(sequence, dropFrame) - 1];
+  return before === undefined ? 0 : before.startFrame + before.durationFrames;
 }
 
 /**
@@ -81,7 +74,9 @@ export function previewTimelineGesture(
   function snapTo(edges: number[]): { shift: number; frame: number } | null {
     return snapTimelineEdges(edges, targets, options.pixelsPerFrame, TIMELINE_SNAP_PX);
   }
-  const base = { clipId, trackId: clip.trackId, startFrame: clip.startFrame, dropFrame: clip.startFrame, sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, snapFrame: null };
+  const base = { clipId, trackId: clip.trackId, startFrame: clip.startFrame, sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, snapFrame: null };
+  const source = document.sources[clip.sourceId];
+  const fps = document.settings.fps;
   const packed = options.magnet === true;
 
   if (mode === 'move') {
@@ -93,13 +88,15 @@ export function previewTimelineGesture(
       startFrame += snapped.shift;
       snapFrame = snapped.frame;
     }
-    return { ...base, trackId, startFrame: packed && trackId === TIMELINE_MAIN_TRACK_ID ? landingFrame(document, clipId, startFrame, trackId) : startFrame, dropFrame: startFrame, snapFrame };
+    return { ...base, trackId, startFrame, snapFrame };
   }
 
   if (mode === 'trim-start') {
     // On the magnetic main track the clip keeps its packed start, so only the source in-point bounds the head.
+    if (source === undefined) return base;
     const keepsStart = packed && clip.trackId === TIMELINE_MAIN_TRACK_ID;
-    const lowest = -(keepsStart ? clip.sourceInFrame : Math.min(clip.sourceInFrame, clip.startFrame));
+    const headRoom = timelineHeadRoom(clip, source, fps);
+    const lowest = -(keepsStart ? headRoom : Math.min(headRoom, clip.startFrame));
     const highest = clip.durationFrames - 1;
     let shift = clamp(deltaFrames, lowest, highest);
     let snapFrame: number | null = null;
@@ -108,12 +105,18 @@ export function previewTimelineGesture(
       shift += snapped.shift;
       snapFrame = snapped.frame;
     }
-    const startFrame = keepsStart ? clip.startFrame : clip.startFrame + shift;
-    return { ...base, startFrame, dropFrame: startFrame, sourceInFrame: clip.sourceInFrame + shift, durationFrames: clip.durationFrames - shift, snapFrame };
+    const target = shift;
+    // A head that lands between source frames moves back toward its start to the nearest whole one.
+    let sourceInFrame = timelineTrimHead(clip, source, fps, shift);
+    while (sourceInFrame === null && shift !== 0) {
+      shift -= Math.sign(shift);
+      sourceInFrame = timelineTrimHead(clip, source, fps, shift);
+    }
+    if (sourceInFrame === null || shift === 0) return base;
+    return { ...base, startFrame: keepsStart ? clip.startFrame : clip.startFrame + shift, sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
   }
 
-  const source = document.sources[clip.sourceId];
-  const longest = Math.max(1, source === undefined ? clip.durationFrames : timelineSourceRoom(clip, source, document.settings.fps));
+  const longest = Math.max(1, source === undefined ? clip.durationFrames : timelineSourceRoom(clip, source, fps));
   let durationFrames = clamp(clip.durationFrames + deltaFrames, 1, longest);
   let snapFrame: number | null = null;
   const snapped = snapTo([clip.startFrame + durationFrames]);
@@ -142,11 +145,11 @@ export function timelineGestureCommand(
   if (clip === undefined) return null;
   if (mode === 'move') {
     if (preview.trackId === null) {
-      return { operation: 'move', parameters: { clipId: clip.id, startFrame: preview.dropFrame, newTrackId: newTrackId() }, placement };
+      return { operation: 'move', parameters: { clipId: clip.id, startFrame: preview.startFrame, newTrackId: newTrackId() }, placement };
     }
     const otherTrack = preview.trackId !== clip.trackId && document.tracks[preview.trackId] !== undefined;
     if (!otherTrack && preview.startFrame === clip.startFrame) return null;
-    return { operation: 'move', parameters: { clipId: clip.id, startFrame: preview.dropFrame, ...(otherTrack ? { trackId: preview.trackId } : {}) }, placement };
+    return { operation: 'move', parameters: { clipId: clip.id, startFrame: preview.startFrame, ...(otherTrack ? { trackId: preview.trackId } : {}) }, placement };
   }
   if (preview.startFrame === clip.startFrame && preview.sourceInFrame === clip.sourceInFrame && preview.durationFrames === clip.durationFrames) return null;
   return {

@@ -148,7 +148,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (!active || state.current.intent !== 'play' || state.current.state !== 'playing' || anchor === null) return;
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
-      // Any ready clip edge can change which layer is shown, so playback stops at each one.
+      // Playback stops where the shown clip changes; edges hidden under a higher track do not count.
       const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClipIds, position, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {

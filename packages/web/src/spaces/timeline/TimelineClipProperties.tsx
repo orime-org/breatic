@@ -89,24 +89,24 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
 
   /**
    * One numeric field, or its value as text when it cannot be edited.
-   * @param name - The field.
+   * @param which - The field.
    * @param label - Its label key.
    * @param editable - Whether it can be edited.
    * @returns The field.
    * @throws {never} Never.
    */
-  function field(name: Field, label: string, editable: boolean): React.JSX.Element {
-    const id = `timeline-clip-${name}-${spaceId}`;
-    const testId = `timeline-clip-${name}`;
+  function field(which: Field, label: string, editable: boolean): React.JSX.Element {
+    const id = `timeline-clip-${which}-${spaceId}`;
+    const testId = `timeline-clip-${which}`;
     return <div className='flex flex-col gap-1'>
       <Label htmlFor={editable ? id : undefined}>{t(label)}</Label>
       {editable
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current.values[name]} className='h-8 w-28'
-          onChange={(event) => change(name, event.target.value)} onBlur={() => commit(name)}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(name); } }} />
-        : <span data-testid={testId} className='text-sm tabular-nums'>{current.values[name]}</span>}
-      {name === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
-      {current.error === name && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
+        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current.values[which]} className='h-8 w-28'
+          onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
+          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
+        : <span data-testid={testId} className='text-sm tabular-nums'>{current.values[which]}</span>}
+      {which === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
+      {current.error === which && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
     </div>;
   }
 

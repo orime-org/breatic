@@ -17,7 +17,7 @@ import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
-import { TIMELINE_MAX_PIXELS_PER_FRAME, timelineMinZoom } from '@web/spaces/timeline/timeline-zoom';
+import { TIMELINE_MAX_PIXELS_PER_FRAME, TIMELINE_TRACK_HEADER_PX, timelineMinZoom } from '@web/spaces/timeline/timeline-zoom';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
@@ -49,7 +49,6 @@ interface TimelineConflictRowProps {
 }
 
 const DEFAULT_PIXELS_PER_FRAME = 2;
-const TRACK_HEADER_PX = 112;
 // The zoom slider moves in powers of two so every zoom level is equally reachable.
 const ZOOM_STEP = 0.1;
 
@@ -137,7 +136,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const seekValue = React.useMemo(() => [Math.min(frame, Math.max(0, duration - 1))], [frame, duration]);
   const onSeek = React.useCallback((value: number[]): void => seek(value[0] ?? 0), [seek]);
   const seekTo = React.useCallback((target: number): void => seek(Math.max(0, Math.min(target, Math.max(0, duration - 1)))), [seek, duration]);
-  const selectClip = React.useCallback((clipId: string): void => session.select(clipId), [session]);
+  const selectClip = React.useCallback((clipId: string | null): void => session.select(clipId), [session]);
 
   const commit = React.useCallback((command: TimelineEditCommand, options?: { joinPrevious?: boolean }): TimelineEditPlan | null => {
     if (readOnly) return null;
@@ -223,7 +222,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   React.useEffect(() => {
     const element = root.current;
     if (element === null) return;
-    const observer = new ResizeObserver(() => setTrackWidth(Math.max(0, element.clientWidth - TRACK_HEADER_PX)));
+    const observer = new ResizeObserver(() => setTrackWidth(Math.max(0, element.clientWidth - TIMELINE_TRACK_HEADER_PX)));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
