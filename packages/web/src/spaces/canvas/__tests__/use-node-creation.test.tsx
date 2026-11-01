@@ -1804,6 +1804,39 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.readCanvasGraph('p-again', 's-again').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
       });
 
+      it('puts an input back into its place in the instance when the anchor shares the instance\'s group and was moved inside it', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-share', 's-share', { x: 2000, y: 2000 });
+        const up = seed('p-share', 's-share', 'image', { x: PAD + LAYER_STEP_PX, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        // The first apply joined the anchor's group; the reader then dragged the anchor further inside it.
+        const groupId = seedGroup('p-share', 's-share', { x: 0, y: 0, width: 3000, height: 3000 }, [
+          { id: up, position: { x: PAD + LAYER_STEP_PX, y: PAD } },
+          { id: anchor, position: { x: 2000, y: 2000 } },
+        ]);
+        canvasSpace.addEdge('p-share', 's-share', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-share', 's-share');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-share', 's-share'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-share', 's-share', before);
+        expect(fresh!.parentId).toBe(groupId);
+        // One layer left of the reused node it feeds, back in its place in the instance.
+        expect(absolute('p-share', 's-share').get(fresh!.id)).toEqual({ x: PAD, y: PAD });
+      });
+
       it('on a second apply, prefers the anchor\'s own group to the group the reused template nodes sit in', () => {
         const PAD = GROUP_PADDING;
         // The reader dragged the anchor into a group of its own after the first apply.

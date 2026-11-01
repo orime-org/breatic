@@ -266,15 +266,15 @@ function arrangeProposal(
   // nodes the group this template's reused nodes sit in, which a first apply
   // made, so the instance stays one piece the reader drags as one. A
   // reference the reader wired in keeps its own group to itself.
-  const anchorGroup = unlockedGroupOf(anchorId);
-  const instanceInGroup = anchorGroup
+  const joinGroup = unlockedGroupOf(anchorId)
+    ?? [...existing.values()].filter((node) => node.instance === true).map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
+  // When a reused node of this instance sits in the group the new nodes join,
+  // the flow lines up on it, so a node put back lands in its place in the
+  // instance wherever the reader has since moved the anchor.
+  const alignOn = joinGroup === undefined
     ? undefined
-    : [...existing].find(([, node]) => node.instance === true && unlockedGroupOf(node.nodeId) !== undefined);
-  const joinGroup = anchorGroup ?? unlockedGroupOf(instanceInGroup?.[1].nodeId);
-  // Joining the instance's group, the flow lines up on that reused node, so a
-  // node put back lands in its place in the instance even after the anchor
-  // was moved away from it.
-  const [alignIndex, alignId] = instanceInGroup ? [instanceInGroup[0], instanceInGroup[1].nodeId] : [anchorIndex, anchorId];
+    : [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id);
+  const [alignIndex, alignId] = alignOn ? [alignOn[0], alignOn[1].nodeId] : [anchorIndex, anchorId];
   const alignAt = placements.find((p) => p.id === alignId) ?? start;
   const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
   const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
