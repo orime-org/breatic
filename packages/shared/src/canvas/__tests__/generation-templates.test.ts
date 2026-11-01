@@ -462,7 +462,8 @@ describe('character template layouts (inner#1846)', () => {
    */
   const givesInOrder = (text: string, counts: readonly number[]): boolean => {
     let next = 0;
-    for (const n of (text.match(/\d+/g) ?? []).map(Number)) if (n === counts[next]) next += 1;
+    // A view label such as 3/4 is not a count.
+    for (const n of (text.replace(/\d+\/\d+/g, '').match(/\d+/g) ?? []).map(Number)) if (n === counts[next]) next += 1;
     return next === counts.length;
   };
 

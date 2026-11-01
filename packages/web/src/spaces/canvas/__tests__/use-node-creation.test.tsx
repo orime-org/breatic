@@ -1815,7 +1815,8 @@ describe('useNodeCreation', () => {
         const PAD = GROUP_PADDING;
         const anchor = seedAnchor('p-ref', 's-ref', { x: 1000, y: 500 });
         // The reader's photo, kept in a group of their own far from the anchor.
-        const input = seed('p-ref', 's-ref', 'image', { x: PAD, y: PAD }, { name: 'Hero photo' });
+        // Placed by another template, in that template's group.
+        const input = seed('p-ref', 's-ref', 'image', { x: PAD, y: PAD }, { name: 'Hero photo', templateNode: { template: 'other', key: 'up' } });
         const theirs = { x: -2000, y: -2000, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
         const groupId = seedGroup('p-ref', 's-ref', theirs, [{ id: input, position: { x: PAD, y: PAD } }]);
         canvasSpace.addEdge('p-ref', 's-ref', { id: `${input}->${anchor}`, source: input, target: anchor });

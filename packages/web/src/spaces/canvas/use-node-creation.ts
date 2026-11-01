@@ -156,7 +156,7 @@ export interface NodeCreation {
    * (inner#1345): those indices are written over rather than placed, and the
    * new nodes line up left of the anchor (the lowest existing index) where
    * the flow puts them, over whatever is there (inner#1846). They join the
-   * anchor's unlocked group, else the unlocked group a reused node sits in,
+   * anchor's unlocked group, else the unlocked group a reused node of this template sits in,
    * else two or more of them make a group of their own under
    * `proposal.groupName`. If a write fails part way, everything this press wrote is taken
    * back, out of undo history, and the error is rethrown.
@@ -340,7 +340,7 @@ export interface PlacedProposal {
   nodeIds: string[];
   /** The group they landed in, when there were two or more of them. */
   groupId?: string;
-  /** Where the batch landed: the group's rect, or the one node's. */
+  /** Where a proposal placed on its own landed: its group's rect, or the one node's; unset for a template built on nodes already there. */
   bounds?: Rect;
   /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas is not moved, and its entry is where the layout would put it. */
   rects: Rect[];
