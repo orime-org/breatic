@@ -520,7 +520,7 @@ describe('character template layouts (inner#1846)', () => {
 
   it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
     expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots');
-    expect(byId('character-showcase-orbit')?.agentNote).toContain('check that it shows different sides of the character, not the character turning round');
+    expect(byId('character-showcase-orbit')?.agentNote).toContain('when the reader comes back with the result, check that it shows different sides of the character, not the character turning round');
   });
 
   it('keeps the inheritance list, the unseen-parts rule and the 180-degree orbit in every language', () => {
@@ -532,12 +532,31 @@ describe('character template layouts (inner#1846)', () => {
       ja: ['すべての衣服、靴とすべてのアクセサリー', '人物を複製しない', '参照に写っていない部分'],
       ko: ['모든 옷, 신발과 모든 액세서리', '인물을 복제하지 않고', '참고 이미지에 보이지 않는 부분'],
     };
+    expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
     for (const locale of LOCALES) {
-      const [inherit, single, unseen] = PHRASES[locale] ?? ['', '', ''];
+      const [inherit, single, unseen] = PHRASES[locale]!;
       expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(inherit);
       expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(single);
       expect(raw(locale, 'canvas.template.single-view-refs-scene.node.side.prompt'), locale).toContain(unseen);
       expect(raw(locale, 'canvas.template.character-showcase-orbit.prompt'), locale).toContain('180');
+    }
+  });
+
+  it('keeps the silent scene free of speaking and the sheets to items worn, on the back or over a shoulder, in every language', () => {
+    // The scene's same-face clause, and the sheets' main-views clause, in each language.
+    const PHRASES: Record<string, [string, string]> = {
+      en: ['The same face when turning, looking down or with a hand near the face', 'wearing everything the reference shows on the body, including anything on the back or over a shoulder'],
+      'zh-CN': ['转身、低头、手靠近脸时都是同一张脸', '参考图里穿戴、背着和挎在肩上的东西都画上'],
+      'zh-TW': ['轉身、低頭、手靠近臉時都是同一張臉', '參考圖裡穿戴、背著和掛在肩上的東西都畫上'],
+      ja: ['振り向いても、うつむいても、手が顔に近づいても同じ顔にする', '参照にある身に着けている物、背負っている物、肩に掛けている物はすべて描き'],
+      ko: ['돌아설 때, 고개를 숙일 때, 손이 얼굴 가까이 있을 때도 같은 얼굴', '몸에 걸치거나 메고 있는 것을 모두 갖추고'],
+    };
+    expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
+    for (const locale of LOCALES) {
+      const [sameFace, carried] = PHRASES[locale]!;
+      expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(sameFace);
+      expect(raw(locale, 'canvas.template.character-bible.prompt'), locale).toContain(carried);
+      expect(raw(locale, 'canvas.template.character-design-from-text.prompt'), locale).toContain(carried);
     }
   });
 
