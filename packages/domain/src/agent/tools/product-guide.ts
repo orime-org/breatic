@@ -408,6 +408,22 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
       `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
       `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
+    "A reply can also end with a card asking to look at Spaces other than the open one, headed " +
+      `${quoted(t("chat.spaceRequest.title"))}, with why the assistant asks and one line per Space: its icon and ` +
+      "name, and the part asked for when it asks for only part: a range of a Document's blocks, such as " +
+      `${quoted(t("chat.spaceRequest.partBlocks", { from: 3, to: 7 }))} or one running from a block to the end, ` +
+      `or some of a Canvas's nodes, such as ${quoted(t("chat.spaceRequest.partNodes", { count: 3 }))}; a Space ` +
+      "no longer in the Project reads " +
+      `${quoted(t("chat.spaceRequest.state.gone"))}. Two buttons sit under it: ` +
+      `${quoted(t("chat.spaceRequest.decline"))} on the left and ${quoted(t("chat.spaceRequest.allow"))} on the ` +
+      "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
+      "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
+      `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
+      `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
+      `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
+      `which then reads ${quoted(t("chat.spaceRequest.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
