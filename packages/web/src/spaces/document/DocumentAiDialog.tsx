@@ -196,6 +196,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   // What the last failure said, when the server said something for this reader.
   const failure = React.useRef<string | null>(null);
   const config = React.useRef<Promise<TextToolsConfig> | null>(null);
+  const endsWithEditor = React.useRef<(() => void) | null>(null);
 
   // The effects carried out for the reducer, held in a ref so `dispatch` keeps
   // one identity while they read the current state.
@@ -308,6 +309,14 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       };
       openedRef.current = next;
       setOpened(next);
+      // The editor going away ends the session, and its request with it
+      // (E11). Held on the editor, outside any effect: a Space tab that is
+      // only hidden runs every effect's cleanup and keeps its editor, and the
+      // session with it.
+      endsWithEditor.current?.();
+      endsWithEditor.current = editor.onUnmount(() => {
+        dispatch({ type: 'close' });
+      });
       view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos }))));
       dispatch({ type: 'open', command });
     }, () => {
@@ -320,16 +329,11 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const state = session?.state ?? null;
   React.useEffect(() => {
     if (state !== 'closed') return;
+    endsWithEditor.current?.();
+    endsWithEditor.current = null;
     const view = viewOf(editor);
     if (view !== null && aiRangeIn(view.state) !== null) view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
   }, [state, editor]);
-
-  // The editor going away ends the session, and its request with it (E11).
-  React.useEffect(() => () => {
-    dispatch({ type: 'close' });
-    const view = viewOf(editor);
-    if (view !== null && aiRangeIn(view.state) !== null) view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
-  }, [dispatch, editor]);
 
   const range = React.useSyncExternalStore(onAiRangeChange, () => aiRangeIn(editor.prosemirrorState));
   React.useEffect(() => {
@@ -506,24 +510,6 @@ function AiPanel({
     dispatch({ type: 'close' });
   }), [editor, dispatch]);
 
-  // Escape closes, unless something else already took the key.
-  React.useEffect(() => {
-    /**
-     * Closes on Escape.
-     * @param event - The key.
-     */
-    const onKey = (event: KeyboardEvent): void => {
-      // An input method's own Escape cancels its composition, not the dialog.
-      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
-      event.preventDefault();
-      dispatch({ type: 'close' });
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [dispatch]);
-
   const title = titleOf(session.command, t);
   const close = React.useCallback(() => {
     dispatch({ type: 'close' });
@@ -544,6 +530,9 @@ function AiPanel({
 
   return (
     <FloatingPortal root={opened.frozen === null ? viewport : undefined}>
+      {/* A dialog closes on Escape (the WAI-ARIA dialog pattern); the lint
+          rule's allow-list leaves the dialog role out. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         ref={setPanel}
         style={floatingStyles}
@@ -551,6 +540,15 @@ function AiPanel({
         aria-labelledby='doc-ai-title'
         data-testid='doc-ai-dialog'
         tabIndex={-1}
+        // Escape inside the dialog closes it, unless something in it already
+        // took the key; Escape in the body comes through the editor's own
+        // shortcut (`onAiEscape`), and anywhere else it is not the dialog's.
+        onKeyDown={(event) => {
+          // An input method's own Escape cancels its composition, not the dialog.
+          if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          dispatch({ type: 'close' });
+        }}
         className={cn(
           'z-20 flex w-[min(560px,calc(100%-2rem))] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md outline-none',
           !isPositioned && 'invisible',
