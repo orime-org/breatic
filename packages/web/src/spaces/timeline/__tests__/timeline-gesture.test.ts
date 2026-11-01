@@ -20,7 +20,7 @@ import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode } from '@web/spaces/timeline/timeline-gesture';
 import {
   MAIN, OFF, ON, SHORT_SOURCE, SOURCE, cid, clip, idFactory, timeline, track,
-} from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
+} from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const A = cid(1);
 const B = cid(2);
@@ -108,7 +108,7 @@ describe('previewTimelineGesture trims', () => {
   });
 
   it('stops the end edge at the source extent', () => {
-    const document = timeline([clip(A, MAIN, 0, 30, { sourceId: SHORT_SOURCE.id, sourceInFrame: 10 })]);
+    const document = timeline([clip(A, MAIN, 0, 30, { sourceId: SHORT_SOURCE.id, sourceInFrame: 10 })], undefined, [SOURCE, SHORT_SOURCE]);
     expect(previewTimelineGesture(document, A, 'trim-end', 50, null, FREE)).toMatchObject({ durationFrames: SHORT_SOURCE.extentFrames - 10 });
     expect(previewTimelineGesture(DOC, B, 'trim-end', 5000, null, FREE)).toMatchObject({ durationFrames: SOURCE.extentFrames - 10 });
   });

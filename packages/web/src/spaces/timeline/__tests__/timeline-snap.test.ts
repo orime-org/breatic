@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
 import { TIMELINE_SNAP_PX, snapTimelineEdges, timelineSnapTargets } from '@web/spaces/timeline/timeline-snap';
-import { MAIN, cid, clip, timeline } from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
+import { MAIN, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 describe('snapTimelineEdges', () => {
   it('uses an 8px threshold', () => {

@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import * as sharedIndex from '@web/data/yjs/timeline-time';
 import { durationToFrames } from '@breatic/shared';
 import {
   timelineSourceSeconds,
@@ -162,10 +161,5 @@ describe('timelineTrimHead (inner#1708 D4)', () => {
     // One Timeline frame at 25 fps is 24/25 of a frame of a 24 fps source.
     expect(timelineTrimHead(placed, source, fps25, 1)).toBe(null);
     expect(timelineTrimHead(placed, source, fps25, 25)).toBe(24);
-  });
-
-  it('is exported from the shared entry', () => {
-    expect(typeof sharedIndex.timelineTrimHead).toBe('function');
-    expect(sharedIndex.timelineTrimHead).toBe(timelineTrimHead);
   });
 });

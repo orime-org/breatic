@@ -20,7 +20,7 @@ import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manag
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
   MAIN, OFF, ON, SOURCE, cid, clip, connect, seededDoc, starts, timeline, track,
-} from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
+} from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const A = cid(1);
 const B = cid(2);

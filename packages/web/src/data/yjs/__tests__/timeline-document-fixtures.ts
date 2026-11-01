@@ -2,19 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Valid Timeline fixtures for the edit, layer and document tests (inner#1708).
+ * Valid Timeline fixtures for every web Timeline test (inner#1708): documents, edits, layers, the edit session,
+ * gestures and the Space body.
  *
  * Every document is passed through `TimelineDocumentV1Schema`, so a fixture with a
  * bad uuid or a source whose `durationSeconds` does not conform to `extentFrames`
  * fails here with a schema error instead of masquerading as an edit refusal.
  */
 
+import * as Y from 'yjs';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
 import type {
   TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoClip, TimelineVideoSource,
 } from '@breatic/shared';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
+
+import type { TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 export const FPS: TimelineRate = { num: 24, den: 1 };
+export const SETTINGS = { width: 1920, height: 1080, fps: FPS };
 export const MAIN = 'visual-1';
 export const V2 = 'v2';
 export const V3 = 'v3';
@@ -42,10 +48,10 @@ export const SHORT_SOURCE: TimelineVideoSource = {
   durationOrigin: 'registered',
 };
 
-export const ON = { magnet: true, linkage: true } as const;
-export const OFF = { magnet: false, linkage: false } as const;
-export const MAGNET_ONLY = { magnet: true, linkage: false } as const;
-export const LINK_ONLY = { magnet: false, linkage: true } as const;
+export const ON: TimelineEditPlacement = { magnet: true, linkage: true };
+export const OFF: TimelineEditPlacement = { magnet: false, linkage: false };
+export const MAGNET_ONLY: TimelineEditPlacement = { magnet: true, linkage: false };
+export const LINK_ONLY: TimelineEditPlacement = { magnet: false, linkage: true };
 
 /**
  * A stable clip uuid whose code-unit order follows `n`.
@@ -128,7 +134,7 @@ export function timeline(
 ): TimelineDocumentV1 {
   return TimelineDocumentV1Schema.parse({
     schemaVersion: 1,
-    settings: { width: 1920, height: 1080, fps: FPS },
+    settings: SETTINGS,
     tracks: Object.fromEntries(tracks.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),
     sources: Object.fromEntries(sources.map((item) => [item.id, item])),
@@ -210,4 +216,50 @@ export function overlapSpans(document: TimelineDocumentV1, trackId: string): Arr
     else spans.push([frame, frame + 1]);
   }
   return spans;
+}
+
+/**
+ * Attach a record map before setting its fields, as the production writer does.
+ * @param parent - The collection map.
+ * @param value - The record.
+ * @param value.id - Its key.
+ * @throws {Error} When Yjs cannot attach the map.
+ */
+function attach(parent: Y.Map<unknown>, value: { id: string }): void {
+  const child = new Y.Map<unknown>();
+  parent.set(value.id, child);
+  for (const [key, item] of Object.entries(value)) child.set(key, item);
+}
+
+/**
+ * A seeded Y.Doc holding `document`'s tracks, clips and sources, written by a setup origin no session tracks.
+ * @param document - The layout to hold.
+ * @returns The document.
+ * @throws {Error} When the seed fails.
+ */
+export function seededDoc(document: TimelineDocumentV1 = timeline([])): Y.Doc {
+  const doc = new Y.Doc();
+  initializeTimelineDocument(doc, document.settings);
+  doc.transact(() => {
+    const tracks = doc.getMap<unknown>('tracks');
+    for (const item of Object.values(document.tracks)) if (!tracks.has(item.id)) attach(tracks, item);
+    const sources = doc.getMap<unknown>('sources');
+    for (const item of Object.values(document.sources)) sources.set(item.id, item);
+    const clips = doc.getMap<unknown>('clips');
+    for (const item of Object.values(document.clips)) attach(clips, item);
+  }, 'setup');
+  return doc;
+}
+
+/**
+ * Relay every update between two replicas, as a provider would.
+ * @param left - One replica.
+ * @param right - The other replica.
+ * @throws {never} Never.
+ */
+export function connect(left: Y.Doc, right: Y.Doc): void {
+  Y.applyUpdate(right, Y.encodeStateAsUpdate(left), 'remote');
+  Y.applyUpdate(left, Y.encodeStateAsUpdate(right), 'remote');
+  left.on('update', (update: Uint8Array, origin: unknown) => { if (origin !== 'remote') Y.applyUpdate(right, update, 'remote'); });
+  right.on('update', (update: Uint8Array, origin: unknown) => { if (origin !== 'remote') Y.applyUpdate(left, update, 'remote'); });
 }

@@ -25,7 +25,7 @@ import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { toast } from '@web/lib/toast';
 import { writeUserPreference } from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
-import { MAIN, clip as clipAt, seededDoc, timeline, track } from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
+import { MAIN, clip as clipAt, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';

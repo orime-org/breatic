@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import * as sharedIndex from '@web/data/yjs/timeline-order';
 import { activeTimelineClipAt, nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineTracks, timelineTrackRank } from '@web/data/yjs/timeline-order';
 import type { TimelineVideoClip } from '@breatic/shared';
@@ -118,7 +117,6 @@ describe('tracks sharing an order (inner#1708 E3)', () => {
     const rank = timelineTrackRank(tracks);
     expect([...rank.entries()].sort((x, y) => x[1] - y[1])).toEqual([[MAIN, 0], ['a', 1], ['b', 2], ['c', 3]]);
     expect(orderedTimelineTracks(tracks).map((item) => rank.get(item.id))).toEqual([0, 1, 2, 3]);
-    expect(sharedIndex.timelineTrackRank).toBe(timelineTrackRank);
   });
 
   it('shows the clip on the later of two tied tracks, whatever the clip ids', () => {

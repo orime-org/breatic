@@ -6,7 +6,8 @@ import fc from 'fast-check';
 import * as Y from 'yjs';
 
 import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
-import * as spaceContent from '@web/data/yjs/timeline-document';
+import * as sharedIndex from '@breatic/shared';
+import * as spaceContent from '@breatic/shared/space-content';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
 import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineRecord } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
@@ -833,9 +834,11 @@ describe('Timeline content with damaged records (inner#1708 F1b)', () => {
     expect(readTimelineContent(doc).damaged).toEqual({ clips: [], tracks: [] });
   });
 
-  it('is exported from the space-content entry', () => {
-    expect(spaceContent.readTimelineContent).toBe(readTimelineContent);
-    expect(spaceContent.removeTimelineRecord).toBe(removeTimelineRecord);
+  it('reads through the shared space-content entry that integration tests use, and edits only in web', () => {
     expect(typeof spaceContent.readTimelineContent).toBe('function');
+    expect(typeof spaceContent.readTimelineDocument).toBe('function');
+    expect(readTimelineContent).toBe(spaceContent.readTimelineContent);
+    expect(readTimelineDocument).toBe(spaceContent.readTimelineDocument);
+    expect(sharedIndex).not.toHaveProperty('planTimelineEdit');
   });
 });
