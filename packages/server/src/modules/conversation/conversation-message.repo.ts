@@ -280,7 +280,7 @@ export async function addReaderMessage(
 
 /** How an answer to a waiting question was taken. */
 export type AnswerOutcome =
-  | { kind: "answered"; turnIndex: number }
+  | { kind: "answered"; turnIndex: number; output: unknown }
   | { kind: "settled"; status: string; output: unknown }
   | { kind: "mismatch"; reason: string }
   | { kind: "missing" };
@@ -335,7 +335,7 @@ export async function answerWaitingAsk(
     const checked = check(part.input);
     if ("reason" in checked) return { kind: "mismatch", reason: checked.reason };
     await settleInRow(tx, row, toolCallId, checked);
-    return { kind: "answered", turnIndex: row.turnIndex };
+    return { kind: "answered", turnIndex: row.turnIndex, output: checked.output };
   });
 }
 

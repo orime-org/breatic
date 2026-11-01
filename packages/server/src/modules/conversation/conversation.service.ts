@@ -483,16 +483,6 @@ export async function answerAsk(
 }
 
 /**
- * What a Space request is settled with for an answer: the Spaces as read, or
- * the refusal.
- * @param answer - What the browser sent.
- * @returns The call's result, in full.
- */
-export function spaceRequestResultOf(answer: SpaceRequestAnswer): SpaceRequestResult {
-  return answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
-}
-
-/**
  * Take the reader's answer to the request to read Spaces the agent is waiting
  * on (inner#1552), once.
  *
@@ -514,7 +504,7 @@ export async function answerSpaceRequest(
     if (!asked.success) return { reason: "The call is not a request to read Spaces." };
     const reason = spaceAnswerMismatch(asked.data, answer);
     if (reason !== null) return { reason };
-    const result = spaceRequestResultOf(answer);
+    const result: SpaceRequestResult = answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
     return { output: cardOutputOf(result), forModel: askResultForModel(answer.toolCallId, result, REQUEST_SPACE_CONTENT) };
   });
 }

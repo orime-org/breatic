@@ -128,18 +128,19 @@ function pausedTurn(): Array<MessageData & { forModel: unknown }> {
   ];
 }
 
+/** The card's output as the store holds it after the share: a summary, no content. */
+const SUMMARY = { spaces: [{ id: "c1", name: "Cast", kind: "canvas", state: "read" }] };
+
 /**
  * Run the resumed segment to its end.
- * @param result - What the call was answered with.
+ * @param output - The call's output as the store holds it.
  * @returns Every chunk of its stream.
  */
-async function resume(result: unknown): Promise<Array<Record<string, unknown>>> {
+async function resume(output: unknown): Promise<Array<Record<string, unknown>>> {
   modelSays.parts = saying("Ada and Ben.");
   const chunks: Array<Record<string, unknown>> = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    // `as never`: the parameter is the questionnaire result until the
-    // implementation widens it to both tools' results.
-    const turn = await new MainAgent().answer("req-1", result as never, 3, undefined, "UTC");
+    const turn = await new MainAgent().answer("req-1", output, 3, undefined, "UTC");
     for await (const chunk of turn) chunks.push(chunk);
   });
   return chunks;
@@ -153,27 +154,27 @@ beforeEach(() => {
 });
 
 describe("the segment resumed by shared Spaces", () => {
-  it("tells the browser the call is answered with the card's summary, no content", async () => {
-    const chunks = await resume(FULL);
+  it("tells the browser the call is answered with what the store holds, ahead of the reply", async () => {
+    const chunks = await resume(SUMMARY);
     const first = chunks.findIndex((c) => c.type === "tool-output-available");
     expect(chunks[first]).toEqual({
       type: "tool-output-available",
       toolCallId: "req-1",
-      output: { spaces: [{ id: "c1", name: "Cast", kind: "canvas", state: "read" }] },
+      output: SUMMARY,
     });
     expect(JSON.stringify(chunks)).not.toContain("THE CAST LIST");
     expect(first).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
   });
 
   it("sends the model the shared content, from the paused reply's kept copy", async () => {
-    await resume(FULL);
+    await resume(SUMMARY);
     const prompt = JSON.stringify(modelSays.prompts[0]);
     expect(prompt).toContain("THE CAST LIST: Ada, Ben");
     expect(prompt).toContain('"toolName":"request_space_content"');
   });
 
   it("is charged under the key every answered card is", async () => {
-    await resume(FULL);
+    await resume(SUMMARY);
     expect(usageKeys.keys).toEqual(["turn:c1:3:answer:req-1"]);
   });
 });

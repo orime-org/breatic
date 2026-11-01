@@ -287,15 +287,10 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   const { answer, shared_spaces: sharedSpaces } = body;
   const card =
     answer !== undefined
-      ? {
-        toolCallId: answer.toolCallId,
-        result: { answers: answer.answers },
-        take: () => conversationService.answerAsk(conversation.id, answer),
-      }
+      ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer) }
       : sharedSpaces !== undefined
         ? {
           toolCallId: sharedSpaces.toolCallId,
-          result: conversationService.spaceRequestResultOf(sharedSpaces),
           take: () => conversationService.answerSpaceRequest(conversation.id, sharedSpaces),
         }
         : undefined;
@@ -321,7 +316,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       c,
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
       (signal) =>
-        new MainAgent().answer(card.toolCallId, card.result, taken.turnIndex, signal, body.time_zone, body),
+        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body),
     );
   }
 

@@ -55,7 +55,7 @@ import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type Settle
 import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
-import { askResultForModel, cardOutputOf, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
+import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
 import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
 
@@ -77,7 +77,8 @@ type Opening =
       clockNote: string;
       space: ChatSpaceContext;
       toolCallId: string;
-      result: CardResult;
+      /** The call's output as the store now holds it. */
+      output: unknown;
     };
 
 /** What a waiting card is settled with when the reader writes a message instead. */
@@ -209,8 +210,8 @@ export class MainAgent {
    * this -- so what runs here is the turn's next segment: the paused turn as
    * history, the answer as the call's result, and the model asked again.
    * @param toolCallId - The call answered.
-   * @param result - What it was answered with, in full; the browser is told
-   *   only what the card draws of it.
+   * @param output - The call's output as the store now holds it, which is
+   *   what the card draws; the model's copy of the result is in the store.
    * @param turnIndex - The turn that asked.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param timeZone - The zone the reader's browser reported, if any.
@@ -219,7 +220,7 @@ export class MainAgent {
    */
   async answer(
     toolCallId: string,
-    result: CardResult,
+    output: unknown,
     turnIndex: number,
     signal?: AbortSignal,
     timeZone?: string,
@@ -230,7 +231,7 @@ export class MainAgent {
       clockNote: readerClockNote(new Date(), timeZone),
       space,
       toolCallId,
-      result,
+      output,
     };
     return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
   }
@@ -1333,7 +1334,7 @@ export class MainAgent {
     const answered: UIMessageChunk = {
       type: "tool-output-available",
       toolCallId: opening.toolCallId,
-      output: cardOutputOf(opening.result),
+      output: opening.output,
     };
     return stream.pipeThrough(
       new TransformStream<UIMessageChunk, UIMessageChunk>({
