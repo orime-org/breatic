@@ -22,8 +22,9 @@ interface CanvasShortcutsDialogProps {
 }
 
 /**
- * The canvas keyboard shortcuts and pointer gestures, grouped, with the keys
- * written for the reader's platform the way the context-menu hints are.
+ * The canvas keyboard shortcuts and pointer gestures, grouped, two actions to
+ * a line, with the keys written for the reader's platform the way the
+ * context-menu hints are.
  * @param props - Dialog props.
  * @param props.open - Whether the dialog shows.
  * @param props.onOpenChange - Called when the dialog asks to open or close.
@@ -44,7 +45,7 @@ export function CanvasShortcutsDialog({
         aria-describedby={undefined}
         onCloseAutoFocus={onCloseAutoFocus}
         data-testid='canvas-shortcuts-dialog'
-        className='max-w-[440px]'
+        className='max-w-[720px]'
       >
         <DialogHeader>
           <DialogTitle>{t('canvas.shortcuts.title')}</DialogTitle>
@@ -53,21 +54,24 @@ export function CanvasShortcutsDialog({
           {visibleShortcutGroups(readOnly).map((group) => (
             <section key={group.id} className='flex flex-col'>
               <h3 className='px-2 pb-1 text-xs font-medium text-muted-foreground'>{t(group.titleKey)}</h3>
-              {group.rows.map((row) => (
-                <div
-                  key={row.id}
-                  data-testid={`shortcut-row-${row.id}`}
-                  className='flex h-8 items-center justify-between gap-4 rounded-chrome px-2 text-sm'
-                >
-                  <span>{t(row.labelKey)}</span>
-                  <span
-                    data-testid={`shortcut-keys-${row.id}`}
-                    className='whitespace-nowrap text-xs tracking-widest text-muted-foreground'
+              {/* Two actions per line keeps the whole list on one screen. */}
+              <div className='grid grid-cols-2 gap-x-6'>
+                {group.rows.map((row) => (
+                  <div
+                    key={row.id}
+                    data-testid={`shortcut-row-${row.id}`}
+                    className='flex h-8 items-center justify-between gap-4 rounded-chrome px-2 text-sm'
                   >
-                    {formatKeys(row, t)}
-                  </span>
-                </div>
-              ))}
+                    <span>{t(row.labelKey)}</span>
+                    <span
+                      data-testid={`shortcut-keys-${row.id}`}
+                      className='whitespace-nowrap text-xs tracking-widest text-muted-foreground'
+                    >
+                      {formatKeys(row, t)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </section>
           ))}
         </DialogBody>
