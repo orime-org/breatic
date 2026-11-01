@@ -153,10 +153,12 @@ export interface NodeCreation {
    * worse than no flow at all. The flow is aimed at `start` and moved right
    * past `occupied` until it covers none of it (inner#1443). With `existing`,
    * the proposal is a template landing around nodes already on the canvas
-   * (inner#1345): those indices are written over rather than placed, the new
-   * nodes line up left of the anchor (the lowest existing index) and move
-   * left past `occupied`, and they join the anchor's group when it is
-   * unlocked. If a write fails part way, everything this press wrote is taken
+   * (inner#1345): those indices are written over rather than placed, and the
+   * new nodes line up left of the anchor (the lowest existing index) where
+   * the flow puts them, over whatever is there (inner#1846). They join the
+   * anchor's unlocked group, else the unlocked group a reused node sits in,
+   * else two or more of them make a group of their own under
+   * `proposal.groupName`. If a write fails part way, everything this press wrote is taken
    * back, out of undo history, and the error is rethrown.
    * @throws {Error} When a write fails part way; nothing is left on the canvas
    *   or in undo history.
@@ -182,24 +184,24 @@ export interface ExistingNode {
 interface Arrangement {
   /** Each index's top-left and size; meaningful for new nodes only. */
   spots: Rect[];
-  /** Where the batch landed, for a proposal placed on its own. */
+  /** Where the batch landed: the new group's rect, or the one node's for a proposal placed on its own. */
   bounds?: Rect;
-  /** The rect of a new group, for two or more nodes placed on their own. */
+  /** The rect of a new group, for two or more new nodes that join no group already there. */
   aimedGroup: Rect | null;
-  /** The unlocked group around the anchor the new nodes join. */
+  /** The unlocked group already on the canvas the new nodes join. */
   joinGroup?: { id: string; rect: Rect };
 }
 
 /**
  * Where a proposal's new nodes go. On its own, the flow is aimed at `start`
  * and moved right past `occupied`. Around nodes already there, it is lined up
- * on the anchor's real position, so the new nodes stand left of it, and moved
- * left as one block past `occupied` -- the same walk, mirrored.
+ * on the anchor's real position, so the new nodes stand left of it, close to
+ * the anchor even where that covers other nodes: they work on the same thing.
  * @param projectId - Owning project id.
  * @param spaceId - Canvas space id.
  * @param proposal - The proposal.
  * @param start - Where a proposal placed on its own is aimed.
- * @param occupied - What the new nodes must not cover.
+ * @param occupied - What a proposal placed on its own must not cover.
  * @param existing - The indices already on the canvas.
  * @returns The arrangement.
  * @throws {never} Never.
@@ -248,26 +250,31 @@ function arrangeProposal(
   const cell = aimed[anchorIndex] ?? { x: 0, y: 0 };
   const lined = aimed.map((spot) => ({ ...spot, x: spot.x + anchorAt.x - cell.x, y: spot.y + anchorAt.y - cell.y }));
   const added = lined.filter((_, i) => !existing.has(i));
-  const searched = groupRectForMembers(added.map(withTaskCounts), 0);
-  // Mirrored, a walk to the right is a walk to the left.
   /**
-   * A rect reflected across the vertical axis.
-   * @param r - The rect.
-   * @returns It, mirrored.
+   * The unlocked group a node sits in.
+   * @param nodeId - The node.
+   * @returns The group's id and rect, or undefined when it sits in none or in a locked one.
    */
-  const mirror = (r: Rect): Rect => ({ ...r, x: -(r.x + r.width) });
-  const back = searched ? shiftRightPastOccupied(mirror(searched), occupied.map(mirror), ROW_GAP_PX) : 0;
-  const spots = lined.map((spot) => ({ ...spot, x: spot.x - back }));
-  const anchorView = anchorId === undefined ? undefined : views.get(anchorId);
-  const group = anchorView?.parentId === undefined ? undefined : placements.find((p) => p.id === anchorView.parentId);
-  const groupView = group === undefined ? undefined : views.get(group.id);
-  const unlocked = groupView?.type === 'group' && groupView.data.locked !== true;
+  const unlockedGroupOf = (nodeId: string | undefined): { id: string; rect: Rect } | undefined => {
+    const parentId = nodeId === undefined ? undefined : views.get(nodeId)?.parentId;
+    const group = parentId === undefined ? undefined : placements.find((p) => p.id === parentId);
+    const groupView = group === undefined ? undefined : views.get(group.id);
+    if (!group || groupView?.type !== 'group' || groupView.data.locked === true) return undefined;
+    return { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } };
+  };
+  // The anchor's own group first. An anchor outside any group lends the new
+  // nodes the group its reused template nodes sit in, which a first apply
+  // made, so the instance stays one piece the reader drags as one.
+  const anchorInGroup = anchorId !== undefined && views.get(anchorId)?.parentId !== undefined;
+  const joinGroup = anchorInGroup
+    ? unlockedGroupOf(anchorId)
+    : [...existing.values()].map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
+  const aimedGroup = !anchorInGroup && joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
   return {
-    spots,
-    aimedGroup: null,
-    ...(group && unlocked
-      ? { joinGroup: { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } } }
-      : {}),
+    spots: lined,
+    aimedGroup,
+    ...(aimedGroup ? { bounds: aimedGroup } : {}),
+    ...(joinGroup ? { joinGroup } : {}),
   };
 }
 
@@ -504,9 +511,8 @@ export function useNodeCreation(
             // Two or more new nodes are one piece of work, and a group is how
             // the canvas says so. Built from the arrangement's own rects: the
             // nodes were written a moment ago and the render buffer has not
-            // seen them yet. A template landing around nodes already there
-            // makes no group of its own: its new nodes join the anchor's
-            // group when that one is unlocked, and land ungrouped otherwise.
+            // seen them yet. Only the new nodes become members: an anchor or
+            // a reused node already on the canvas stays where it is.
             const rect = aimedGroup && bounds;
             if (rect) {
               const id = newId();
@@ -515,10 +521,9 @@ export function useNodeCreation(
                 projectId,
                 spaceId,
                 createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
-                nodeIds.map((member, i) => ({
-                  id: member,
-                  position: toRelativePosition(spots[i] ?? rect, rect),
-                })),
+                nodeIds.flatMap((member, i) =>
+                  fresh[i] ? [{ id: member, position: toRelativePosition(spots[i] ?? rect, rect) }] : [],
+                ),
               );
               if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
               setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));

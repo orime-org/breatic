@@ -149,6 +149,8 @@ export function useApplyTemplate(
         nodes: [...proposalNodes, ...expansion.appended],
         edges: expansion.edges,
         rationale: '',
+        // The group two or more new nodes may form is named after the template.
+        groupName: t(`canvas.template.${template.id}.name`),
       };
       try {
         placeTemplate(proposal, existing);

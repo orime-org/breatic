@@ -1621,7 +1621,8 @@ describe('useNodeCreation', () => {
         expect(groups).toHaveLength(1);
         const group = groups[0]!;
         expect(placed.groupId).toBe(group.id);
-        expect(contentAt(canvasSpace.readCanvasGraph('p-ex4', 's-ex4').nodes, group.id).name).toBe('Fixture template');
+        if (group.type !== 'group') throw new Error('no group was placed');
+        expect(group.data.name).toBe('Fixture template');
         expect(fresh.map((n) => n.type).sort()).toEqual(['image', 'image', 'text']);
         expect(fresh.every((n) => n.parentId === group.id)).toBe(true);
         // The anchor stays where it was, outside the group.

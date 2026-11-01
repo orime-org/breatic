@@ -1399,23 +1399,17 @@ function CanvasSpaceInner({
     [getInternalNode, rfStoreApi, setViewport],
   );
 
-  // A template picked in a generate panel lands around that panel's node
-  // (inner#1345 6.5): every other node is in the way, and so is every group
-  // but the one the node sits in, which grows around what joins it.
+  // A template picked in a generate panel lands beside that panel's node
+  // (inner#1345 6.5) where its flow puts it, over whatever is there: close to
+  // the node it builds on comes first (inner#1846).
   const placeTemplate = React.useCallback(
     (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
-      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
-      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
-      const occupied = occupiedRects(around, (id) => {
-        const measured = getInternalNode(id)?.measured;
-        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
-      });
-      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing);
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
-    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+    [placeProposalAt, showPlaced],
   );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
