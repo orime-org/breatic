@@ -16,6 +16,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
+import { markedSegments } from '@breatic/shared';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
@@ -34,16 +35,24 @@ const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`
 mkdirSync(OUT, { recursive: true });
 
 /**
- * A prompt as the locale file on disk holds it, cut at every chip and brace into the literal pieces the
- * editor must show in order. A dev server started before a locale edit serves the old sentence.
- * @param key - The prompt's key, e.g. `canvas.template.character-bible.prompt`.
+ * A string as the locale file on disk holds it. A dev server started before a locale edit serves the old one.
+ * @param key - The message key, e.g. `canvas.template.character-bible.prompt`.
+ * @returns The string.
+ */
+function fromLocale(key: string): string {
+  let at: unknown = JSON.parse(readFileSync(LOCALE_FILE, 'utf8'));
+  for (const part of key.split('.')) at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[part] : undefined;
+  if (typeof at !== 'string') throw new Error(`no string at ${key} in the locale file`);
+  return at;
+}
+
+/**
+ * A prompt cut at every chip and brace into the literal pieces the editor must show in order.
+ * @param key - The prompt's key.
  * @returns The pieces.
  */
 function draftPieces(key: string): string[] {
-  let at: unknown = JSON.parse(readFileSync(LOCALE_FILE, 'utf8'));
-  for (const part of key.split('.')) at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[part] : undefined;
-  if (typeof at !== 'string') throw new Error(`no prompt at ${key} in the locale file`);
-  return at.split(/\[📎[^\]]*\]|\{✏️[^}]*\}|\(💡[^)]*\)/).map((piece) => piece.trim()).filter((piece) => piece !== '');
+  return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text?.trim() ? [segment.text.trim()] : []));
 }
 
 /**
@@ -87,7 +96,7 @@ async function graph(): Promise<{ nodes: NodeView[]; edges: { source: string; ta
 /** Fit every node into view. */
 async function fit(): Promise<void> {
   await page.keyboard.press('Escape');
-  await page.getByTestId('viewport-toolbar').getByRole('button', { name: /^(Fit to viewport|适应窗口)$/ }).click();
+  await page.getByTestId('viewport-toolbar').getByRole('button', { name: fromLocale('viewportToolbar.fitAria'), exact: true }).click();
   await page.waitForTimeout(600);
 }
 
@@ -153,17 +162,22 @@ async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await button.evaluate((el) => (el as HTMLButtonElement).click());
   let content = '';
+  let state = '';
+  // Stops on the first answer, done or failed, so a failed task does not wait out the whole timeout.
   await expect
     .poll(
       async () => {
         const node = (await graph()).nodes.find((n) => n.id === nodeId);
-        if ((node?.data.taskCounts?.failed ?? 0) > 0) return 'failed';
         content = node?.data.content ?? '';
-        return content !== '' && content !== before && (node?.data.taskCounts?.running ?? 0) === 0 ? 'done' : 'waiting';
+        state = (node?.data.taskCounts?.failed ?? 0) > 0
+          ? 'failed'
+          : content !== '' && content !== before && (node?.data.taskCounts?.running ?? 0) === 0 ? 'done' : 'waiting';
+        return state;
       },
       { timeout: 1_500_000, intervals: [5_000] },
     )
-    .toBe('done');
+    .not.toBe('waiting');
+  expect(state).toBe('done');
   return content;
 }
 
@@ -215,7 +229,7 @@ test.beforeEach(async ({ browser }) => {
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   spaceId = await createSpace(page, 'canvas', `template-run-${Date.now()}`);
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
-  const hide = page.getByTestId('viewport-toolbar').getByRole('button', { name: /^(Hide minimap|隐藏缩略图)$/ });
+  const hide = page.getByTestId('viewport-toolbar').getByRole('button', { name: fromLocale('viewportToolbar.minimap.hide'), exact: true });
   if ((await hide.count()) > 0) await hide.click();
 });
 

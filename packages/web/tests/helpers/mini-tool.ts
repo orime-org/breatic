@@ -83,7 +83,9 @@ export async function wire(page: Page, where: SeedTarget, from: string, to: stri
       const canvas = (await import(/* @vite-ignore */ at)) as {
         addEdge: (p: string, s: string, e: unknown) => boolean;
       };
-      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
+      if (!canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() })) {
+        throw new Error(`edge ${source}->${target} was refused`);
+      }
     },
     [where.projectId, where.spaceId, from, to, canvasAt] as [string, string, string, string, string],
   );
