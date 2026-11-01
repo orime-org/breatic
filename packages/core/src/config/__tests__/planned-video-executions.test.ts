@@ -8,8 +8,9 @@ import { getMiniToolsConfig, miniToolsConfigSchema } from "../mini-tools.js";
 function configured(): Record<string, unknown> {
   const current = structuredClone(getMiniToolsConfig());
   return { ...current, executions: { ...current.executions,
-    "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 3 },
-    "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 4 } } };
+    // Design §5.4 (S6b) adds max_outputs_per_job, bounded by the job contract; values here are test overrides.
+    "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 3, max_outputs_per_job: 2 },
+    "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 4, max_outputs_per_job: 3 } } };
 }
 
 describe("S5 planned container execution configuration", () => {
@@ -23,7 +24,7 @@ describe("S5 planned container execution configuration", () => {
   });
   it.each(["video.extract-frames", "video.split"])("S5-K01 loads a configured %s default without a test-authored capacity constant", (tool) => {
     const value: unknown = Reflect.get(getMiniToolsConfig().executions, tool);
-    expect(value).toMatchObject({ container_class: "MiniToolContainerStd4", precheck_seconds: expect.any(Number), max_outputs: expect.any(Number) });
+    expect(value).toMatchObject({ container_class: "MiniToolContainerStd4", precheck_seconds: expect.any(Number), max_outputs: expect.any(Number), max_outputs_per_job: expect.any(Number) });
     expect(miniToolsConfigSchema.parse(getMiniToolsConfig()).executions).toEqual(getMiniToolsConfig().executions);
   });
   it.each([
