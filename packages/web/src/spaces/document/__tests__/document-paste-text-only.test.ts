@@ -268,6 +268,18 @@ describe('code from an editor, pasted', () => {
     await settled();
     expect(lines(editor)).toContain('codeBlock:const el = <div>hi</div>;\nif (a<b) x();');
   });
+
+  it.each([
+    ['no mode', '{"version":1,"mode":null}'],
+    ['broken data', '{not json'],
+    ['a null object', 'null'],
+  ])('with %s, pastes the text as plain text', async (_name, data) => {
+    const { editor } = open([{ type: 'paragraph' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    pasteFormats(editor, { 'text/plain': 'const a = 1;', 'vscode-editor-data': data });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:const a = 1;', 'paragraph:tail']);
+  });
 });
 
 describe('words selected in a table cell, a picture alone pasted', () => {
