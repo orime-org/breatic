@@ -13,6 +13,9 @@ import { createRule } from "#rules/create-rule";
  * stated reason becomes a place to park violations.
  */
 const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
+  ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
+  ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
+  ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
   [
     "membershipTierChanges",

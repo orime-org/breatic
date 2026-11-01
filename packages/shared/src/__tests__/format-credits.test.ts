@@ -43,3 +43,38 @@ describe("formatCredits", () => {
     expect(formatCredits(1234.5, "de-DE")).toBe("1.234,5");
   });
 });
+
+
+describe("exact credit display contract (inner#1411)", () => {
+  it("formats the existing large-number counterexample without adding a cent", () => {
+    expect(formatCredits(9_007_199_254.70, "en", 2)).toBe("9,007,199,254.70");
+    expect(formatCredits(18_014_398_509.47, "en", 2)).toBe("18,014,398,509.47");
+  });
+
+  it.each(["en", "zh-CN", "zh-TW", "ja", "ko"])("formats an exact decimal in %s", (locale) => {
+    expect(formatCredits("9007199254.700000", locale, 2)).toBe("9,007,199,254.70");
+    expect(formatCredits("-0.000001", locale, 2)).toBe("-0.01");
+    expect(formatCredits("0.000000", locale)).toBe("0");
+    expect(formatCredits("0.000000", locale, 2)).toBe("0.00");
+  });
+
+  it("retains the exact pair aggregate before display rounding", () => {
+    expect(formatCredits("18014398509.470000", "en", 2)).toBe("18,014,398,509.47");
+  });
+
+  it("carries a maximal stored row into the next displayed credit cent", () => {
+    expect(formatCredits("99999999999999.999999", "en", 2)).toBe("100,000,000,000,000.00");
+  });
+
+  it("formats a multi-row aggregate above a stored row's upper bound", () => {
+    expect(formatCredits("199999999999999.999998", "en", 2)).toBe("200,000,000,000,000.00");
+  });
+
+  it("keeps fixed and optional fractional digits on exact decimal inputs", () => {
+    expect(formatCredits("47.500000", "en")).toBe("47.5");
+    expect(formatCredits("47.500000", "en", 2)).toBe("47.50");
+    expect(formatCredits("-0.100000", "en", 2)).toBe("-0.10");
+    expect(formatCredits("-0.000000", "en", 2)).toBe("0.00");
+    expect(formatCredits("1234.500000", "de-DE", 2)).toBe("1.234,50");
+  });
+});

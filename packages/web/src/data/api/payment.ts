@@ -10,6 +10,8 @@
  * afterwards.
  */
 
+import { CREDIT_AMOUNT_FORMAT, purchasePageSchema } from '@breatic/shared';
+
 import type { CreditPage, PurchaseRow } from '@breatic/shared';
 
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
@@ -126,10 +128,10 @@ export const paymentApi = {
    * @param cursor - Where the previous page ended.
    * @returns The page.
    */
-  history(cursor?: string): Promise<CreditPage<PurchaseRow>> {
-    return apiGet<CreditPage<PurchaseRow>>('/payment/history', {
-      params: cursor === undefined ? undefined : { cursor },
-    });
+  async history(cursor?: string): Promise<CreditPage<PurchaseRow>> {
+    return purchasePageSchema.parse(await apiGet<unknown>('/payment/history', {
+      params: { amountFormat: CREDIT_AMOUNT_FORMAT, ...(cursor === undefined ? {} : { cursor }) },
+    }));
   },
 
   /**

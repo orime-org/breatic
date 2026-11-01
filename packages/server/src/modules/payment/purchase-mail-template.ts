@@ -34,6 +34,8 @@
  * given.
  */
 
+import { formatCredits } from "@breatic/shared";
+
 import { refundWindowCloses, t } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
 import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
@@ -179,13 +181,13 @@ export function renderPurchaseConfirmation(
       value,
     });
     const money = [
-      fact("credits", t("server.purchase_mail.credits_amount", { credits: String(view.creditsGranted) })),
+      fact("credits", t("server.purchase_mail.credits_amount", { credits: formatCredits(view.creditsGranted, locale) })),
       fact("subtotal", formatMoney(view.amountCents, view.currency, locale)),
       fact("tax", formatMoney(view.taxCents ?? 0, view.currency, locale)),
     ];
     const total = fact("total", formatMoney(charged, view.currency, locale));
     const reference = [
-      fact("balance", t("server.purchase_mail.credits_amount", { credits: String(view.balanceCredits) })),
+      fact("balance", t("server.purchase_mail.credits_amount", { credits: formatCredits(view.balanceCredits, locale) })),
       fact("purchased_at", bothZones(paidAt, timeZone, locale)),
       fact("refund_by", bothZones(refundBy, timeZone, locale)),
       fact("order_ref", view.paymentId),
