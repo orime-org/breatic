@@ -1837,6 +1837,9 @@ describe('useNodeCreation', () => {
         const fresh = addedSince('p-both', 's-both', before);
         expect(fresh).toHaveLength(2);
         expect(fresh.every((n) => n.parentId === anchorGroupId)).toBe(true);
+        // Lined up on the anchor, so they stand within a few layers left of it, far from the reused node.
+        const abs = absolute('p-both', 's-both');
+        for (const n of fresh) expect(abs.get(n.id)!.x).toBeGreaterThan(3000 - 3 * LAYER_STEP_PX);
         const [kept] = canvasSpace.readNodePlacements('p-both', 's-both').filter((pl) => pl.id === 'grp-first-apply');
         expect({ x: kept!.x, y: kept!.y, width: kept!.width, height: kept!.height }).toEqual(instanceFrame);
       });

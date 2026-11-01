@@ -5192,7 +5192,7 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
 
 /**
  * Where a template picked in a panel is aimed. Unused while the panel's node
- * is on the canvas: the template lines up on that node.
+ * is on the canvas: the template lines up on the nodes already there.
  */
 const TEMPLATE_AIM = { x: 0, y: 0 };
 
