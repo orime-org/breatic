@@ -72,6 +72,32 @@ describe("snapshotOf", () => {
   });
 });
 
+describe("snapshotOf on an object whose anyOf names alternative required fields", () => {
+  const either = snapshotOf(
+    {
+      type: "object",
+      properties: { prompt: { type: "string" }, draft_id: { type: "string" }, duration: { type: "integer", minimum: 4, maximum: 30 } },
+      anyOf: [{ required: ["prompt"] }, { required: ["draft_id"] }],
+    },
+    { root: {}, source: "inline" },
+  );
+
+  it("keeps the object's own fields", () => {
+    expect(Object.keys(either.fields).sort()).toEqual(["draft_id", "duration", "prompt"]);
+    expect(fieldFits(either, "duration", 5)).toBe(true);
+  });
+
+  it("asks for one alternative, not all of them", () => {
+    expect(missingRequired(either, { prompt: "a fox" })).toEqual([]);
+    expect(missingRequired(either, { draft_id: "d1" })).toEqual([]);
+    expect(missingRequired(either, { duration: 5 })).not.toEqual([]);
+  });
+
+  it("survives a JSON round trip unchanged", () => {
+    expect(JSON.parse(JSON.stringify(either))).toEqual(either);
+  });
+});
+
 describe("fieldFits", () => {
   const flux = (): SchemaSnapshot => falInput("fal-ai_flux_dev", "FluxDevInput");
   const speech = (): SchemaSnapshot => falInput("fal-ai_minimax_speech-2.8-hd", "MinimaxSpeech28HdInput");

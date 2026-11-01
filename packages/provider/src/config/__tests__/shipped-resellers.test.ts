@@ -153,7 +153,7 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(premade).toHaveLength(23);
     for (const upstream of ["fal", "sandbase"]) {
       const binding = bindingOf("elevenlabs-v3", upstream);
-      expect(binding?.voice_map?.voice).toEqual(Object.fromEntries(premade.map((v) => [v, v])));
+      expect(binding?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v, v])));
       expect(binding?.drops?.similarity).toHaveProperty("all_values");
     }
   });

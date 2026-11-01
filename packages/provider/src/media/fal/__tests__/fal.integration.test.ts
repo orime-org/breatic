@@ -360,7 +360,7 @@ describe("a MiniMax voice clone on fal", () => {
     return { last: answer, clones };
   }
 
-  it("clones without naming an id, reads the id fal made, and speaks with it", async () => {
+  it("clones without naming an id or a preview text, reads the id fal made, and speaks with it", async () => {
     const { run } = runner(undefined, VOICE);
     fal.answer(({ method, path }) => {
       if (method === "POST" && path === "/fal-ai/minimax/voice-clone") return queued("c1", "fal-ai/minimax");
@@ -376,7 +376,7 @@ describe("a MiniMax voice clone on fal", () => {
     const { last, clones } = await driven(run, planned);
     const done = expectState(last, "done");
     expect(submits(fal.seen).map((s) => [s.path, s.body])).toEqual([
-      ["/fal-ai/minimax/voice-clone", { audio_url: "https://cdn.example/voice.mp3", text: "hello there" }],
+      ["/fal-ai/minimax/voice-clone", { audio_url: "https://cdn.example/voice.mp3" }],
       ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1" } }],
     ]);
     expect(clones).toEqual([{ upstream: "fal", kind: "voice", sourceKey: "sha-a", upstreamId: "fal-voice-1" }]);

@@ -289,7 +289,7 @@ describe("a MiniMax voice clone on SandBase", () => {
   const speech = { prompt: "hello there", params: { audio: "https://cdn.example/voice.mp3" } };
   const keyed = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/voice.mp3": "sha-a" } };
 
-  it("clones without naming an id, reads the id SandBase made, and speaks with it", async () => {
+  it("clones without naming an id or a preview text, reads the id SandBase made, and speaks with it", async () => {
     const { run } = runner(undefined, VOICE);
     sb.answer(({ method, path, body }) => {
       const model = (body as { model?: string } | undefined)?.model;
@@ -309,7 +309,7 @@ describe("a MiniMax voice clone on SandBase", () => {
     }
     const done = expectState(answer, "done");
     expect(submits(sb.seen).map((s) => s.body)).toEqual([
-      { model: "minimax/voice-clone", audio: "https://cdn.example/voice.mp3", text: "hello there" },
+      { model: "minimax/voice-clone", audio: "https://cdn.example/voice.mp3" },
       { model: "minimax/speech/2.8/hd", text: "hello there", voice_id: "sb-voice-1" },
     ]);
     expect(clones).toEqual([{ upstream: "sandbase", kind: "voice", sourceKey: "sha-a", upstreamId: "sb-voice-1" }]);
