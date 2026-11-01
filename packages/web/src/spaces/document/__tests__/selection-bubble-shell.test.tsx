@@ -408,7 +408,9 @@ describe('the bubble bar shell', () => {
     });
 
     it.each([
-      ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
+      // Translate opens a second level and reaches the text tool (inner#1860);
+      // the storyboard row still reaches nothing (inner#1130).
+      ['doc-bubble-ai', 'doc-bubble-ai-item-storyboard'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const editor = openSharedBody('<p>hello world</p>');
