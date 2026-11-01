@@ -1844,6 +1844,39 @@ describe('useNodeCreation', () => {
         expect(added[0]!.parentId).toBe(groupId);
       });
 
+      it('puts an input back into its place in the instance when the anchor was moved away from the instance\'s group', () => {
+        const PAD = GROUP_PADDING;
+        // The anchor was dragged far below the group its first apply made.
+        const anchor = seedAnchor('p-moved', 's-moved', { x: 1000, y: 3000 });
+        const up = seed('p-moved', 's-moved', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const frame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-moved', 's-moved', frame, [{ id: up, position: { x: PAD, y: PAD } }]);
+        canvasSpace.addEdge('p-moved', 's-moved', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-moved', 's-moved');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-moved', 's-moved'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-moved', 's-moved', before);
+        expect(fresh!.parentId).toBe(groupId);
+        // Lined up on the reused node it feeds, one layer to its left, so the group stays as tall as it was.
+        expect(absolute('p-moved', 's-moved').get(fresh!.id)).toEqual({ x: 1000 - 2 * LAYER_STEP_PX, y: 500 });
+        const [grown] = canvasSpace.readNodePlacements('p-moved', 's-moved').filter((pl) => pl.id === groupId);
+        expect(grown!.height).toBe(frame.height);
+      });
+
       it('leaves another template\'s group around a wired reference alone, and groups the new nodes under the template\'s name', () => {
         const PAD = GROUP_PADDING;
         const anchor = seedAnchor('p-ref', 's-ref', { x: 1000, y: 500 });

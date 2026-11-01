@@ -248,10 +248,6 @@ function arrangeProposal(
   const anchorIndex = Math.min(...existing.keys());
   const anchorId = existing.get(anchorIndex)?.nodeId;
   const placements = readNodePlacements(projectId, spaceId);
-  const anchorAt = placements.find((p) => p.id === anchorId) ?? start;
-  const cell = aimed[anchorIndex] ?? { x: 0, y: 0 };
-  const lined = aimed.map((spot) => ({ ...spot, x: spot.x + anchorAt.x - cell.x, y: spot.y + anchorAt.y - cell.y }));
-  const added = lined.filter((_, i) => !existing.has(i));
   /**
    * The unlocked group a node sits in.
    * @param nodeId - The node.
@@ -269,12 +265,18 @@ function arrangeProposal(
   // made, so the instance stays one piece the reader drags as one. A
   // reference the reader wired in keeps its own group to itself.
   const anchorInGroup = anchorId !== undefined && views.get(anchorId)?.parentId !== undefined;
-  const joinGroup = anchorInGroup
-    ? unlockedGroupOf(anchorId)
-    : [...existing.values()]
-      .filter((node) => node.instance === true)
-      .map((node) => unlockedGroupOf(node.nodeId))
-      .find((group) => group !== undefined);
+  const instanceInGroup = anchorInGroup
+    ? undefined
+    : [...existing].find(([, node]) => node.instance === true && unlockedGroupOf(node.nodeId) !== undefined);
+  const joinGroup = anchorInGroup ? unlockedGroupOf(anchorId) : unlockedGroupOf(instanceInGroup?.[1].nodeId);
+  // Joining the instance's group, the flow lines up on that reused node, so a
+  // node put back lands in its place in the instance even after the anchor
+  // was moved away from it.
+  const [alignIndex, alignId] = instanceInGroup ? [instanceInGroup[0], instanceInGroup[1].nodeId] : [anchorIndex, anchorId];
+  const alignAt = placements.find((p) => p.id === alignId) ?? start;
+  const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
+  const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
+  const added = lined.filter((_, i) => !existing.has(i));
   const aimedGroup = !anchorInGroup && joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
   return {
     spots: lined,
@@ -330,7 +332,7 @@ function fetchTemplateResources(
 export interface PlacedProposal {
   /** The new node ids, in the proposal's own order. */
   nodeIds: string[];
-  /** The group they landed in, when there were two or more of them. */
+  /** The group this press made for the new nodes, when it made one; unset when they joined a group already there. */
   groupId?: string;
   /** Where a proposal placed on its own landed: its group's rect, or the one node's; unset for a template built on nodes already there. */
   bounds?: Rect;
@@ -518,16 +520,15 @@ export function useNodeCreation(
             // nodes were written a moment ago and the render buffer has not
             // seen them yet. Only the new nodes become members: an anchor or
             // a reused node already on the canvas stays where it is.
-            const rect = aimedGroup;
-            if (rect) {
+            if (aimedGroup) {
               const id = newId();
               groupId = id;
               createGroup(
                 projectId,
                 spaceId,
-                createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
+                createGroupNode(id, { x: aimedGroup.x, y: aimedGroup.y }, aimedGroup.width, aimedGroup.height, userId),
                 nodeIds.flatMap((member, i) =>
-                  fresh[i] ? [{ id: member, position: toRelativePosition(spots[i] ?? rect, rect) }] : [],
+                  fresh[i] ? [{ id: member, position: toRelativePosition(spots[i] ?? aimedGroup, aimedGroup) }] : [],
                 ),
               );
               if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
