@@ -9,7 +9,7 @@ import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, isServerError } from "@provider/http/request.js";
 import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
-import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
+import { isPresent, orderByPrice, rejectedInput } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -697,7 +697,11 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
   const route = async (model: string, input: MediaInput, chosen: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
-    let candidates = candidatesOf(config, model, keyOf);
+    const rules = provider.pricingRules(model);
+    let candidates = candidatesOf(config, model, keyOf).map((c) => {
+      const unsupported = rejectedInput(rules, c.upstream, input.params);
+      return unsupported === undefined ? c : { ...c, unsupported };
+    });
     if (chosen.mode === "cheapest") {
       const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
         params: input.params,
@@ -816,7 +820,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     } catch (error) {
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
-        const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.failure === "model_not_found");
+        const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.kind === "unsupported_input" || r.failure === "model_not_found");
         if (lasting) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
         // The error stays as the cause: it carries what the answers it moved past cost.
         throw new SendNotAccepted(ticket.upstream, error);

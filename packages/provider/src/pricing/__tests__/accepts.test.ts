@@ -59,40 +59,41 @@ function bound(prices: readonly number[] = [300, 100, 200], configured: readonly
 const run = (params: Record<string, unknown>): EstimateInput => ({ params, prompt: "hi", durations: {}, placeholders: [], durationsMissing: [] });
 
 /**
- * The pricing entry of one upstream.
+ * What one upstream refuses of a run's params.
  * @param p - The provider.
  * @param upstream - The upstream.
- * @returns The entry.
+ * @param params - Our params.
+ * @returns The refused param and value, if any.
  */
-const ruleOf = (p: ReturnType<typeof createProvider>, upstream: string) => p.pricingRules("m").upstreams.find((u) => u.upstream === upstream)!;
+const refused = (p: ReturnType<typeof createProvider>, upstream: string, params: Record<string, unknown>) => rejectedInput(p.pricingRules("m"), upstream, params);
 
 describe("rejectedInput", () => {
   it("takes a run that leaves a limited param out or empty", () => {
     const p = bound();
-    expect(rejectedInput(ruleOf(p, "fal"), {})).toBeUndefined();
-    expect(rejectedInput(ruleOf(p, "fal"), { duration: null, voice_id: "" })).toBeUndefined();
+    expect(refused(p, "fal", {})).toBeUndefined();
+    expect(refused(p, "fal", { duration: null, voice_id: "" })).toBeUndefined();
   });
 
   it("names the param and value a supported list refuses", () => {
     const p = bound();
-    expect(rejectedInput(ruleOf(p, "fal"), { duration: 10 })).toBeUndefined();
-    expect(rejectedInput(ruleOf(p, "fal"), { duration: 15 })).toEqual({ param: "duration", value: 15 });
+    expect(refused(p, "fal", { duration: 10 })).toBeUndefined();
+    expect(refused(p, "fal", { duration: 15 })).toEqual({ param: "duration", value: 15 });
   });
 
   it("names a voice the voice map does not have", () => {
     const p = bound();
-    expect(rejectedInput(ruleOf(p, "fal"), { voice_id: "Alicia" })).toBeUndefined();
-    expect(rejectedInput(ruleOf(p, "fal"), { voice_id: "Warren" })).toEqual({ param: "voice_id", value: "Warren" });
+    expect(refused(p, "fal", { voice_id: "Alicia" })).toBeUndefined();
+    expect(refused(p, "fal", { voice_id: "Warren" })).toEqual({ param: "voice_id", value: "Warren" });
   });
 
   it("takes a dropped param only at the listed values", () => {
     const p = bound();
-    expect(rejectedInput(ruleOf(p, "sandbase"), { web: false })).toBeUndefined();
-    expect(rejectedInput(ruleOf(p, "sandbase"), { web: true })).toEqual({ param: "web", value: true });
+    expect(refused(p, "sandbase", { web: false })).toBeUndefined();
+    expect(refused(p, "sandbase", { web: true })).toEqual({ param: "web", value: true });
   });
 
   it("takes anything on an upstream with no limits", () => {
-    expect(rejectedInput(ruleOf(bound(), "wavespeed"), { duration: 15, voice_id: "Warren", web: true })).toBeUndefined();
+    expect(refused(bound(), "wavespeed", { duration: 15, voice_id: "Warren", web: true })).toBeUndefined();
   });
 });
 
@@ -120,16 +121,16 @@ describe("estimates skip an upstream that cannot take the run", () => {
     await fc.assert(fc.asyncProperty(valueArb, flags, prices, fc.constantFrom("default", "cheapest"), async (params, configured, cost, mode) => {
       const p = bound(cost, configured);
       const rules = p.pricingRules("m");
-      const estimate = await estimateCost(rules, p.availability("m"), run(params), { mode } as { mode: "default" | "cheapest" });
+      const estimate = await estimateCost(rules, p.availability("m"), run(params), { mode });
       const order = await orderByPrice(rules, p.availability("m"), run(params));
       const candidates: Candidate[] = p.availability("m").upstreams.map((u) => ({
         ...u,
         estimateUsd: order.find((e) => e.upstream === u.upstream)?.usd,
-        unsupported: rejectedInput(rules.upstreams.find((r) => r.upstream === u.upstream)!, params),
+        unsupported: rejectedInput(rules, u.upstream, params),
       }));
       let first: string | undefined;
       try {
-        first = planRoute("m", { mode } as { mode: "default" | "cheapest" }, candidates).order[0]?.upstream;
+        first = planRoute("m", { mode }, candidates).order[0]?.upstream;
       } catch {
         first = undefined;
       }

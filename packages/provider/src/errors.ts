@@ -6,6 +6,8 @@ import type { Cost } from "@provider/cost.js";
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
   | { upstream: string; kind: "missing_key"; envVar: string }
+  /** The run sets a param to a value this upstream cannot take. */
+  | { upstream: string; kind: "unsupported_input"; param: string; value: unknown }
   | { upstream: string; kind: "failed"; failure: string; /** The status, for an `http_status` failure. */ status?: number };
 
 /** No upstream of a model could serve the call; each one says why. */

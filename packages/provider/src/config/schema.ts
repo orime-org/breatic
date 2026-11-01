@@ -91,7 +91,8 @@ const bindingSchema = z.strictObject({
   /** The param a clone made by this binding is reused by; the model's own call is then a clone. */
   reused_by: z.string().optional(),
   mentions: z.record(z.string(), z.string()).optional(),
-  voice_map: z.record(z.string(), z.string()).optional(),
+  /** Per param holding voices: our voice id to this upstream's; a voice not listed keeps the upstream out of the candidates. */
+  voice_map: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   /** Upstream fields sent with the same value on every call. */
   fixed: z.record(z.string(), z.unknown()).optional(),
   /**
@@ -450,7 +451,7 @@ function coverageProblems(model: string, binding: MediaBinding, params: CatalogS
         }
       }
     }
-    if (declared.remote_source === "voices" && bound !== undefined && kind !== "wavespeed" && binding.voice_map === undefined) {
+    if (declared.remote_source === "voices" && bound !== undefined && kind !== "wavespeed" && binding.voice_map?.[param] === undefined) {
       problems.push(`${at} takes voices in "${param}" without a voice_map`);
     }
   }

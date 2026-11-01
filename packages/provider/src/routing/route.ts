@@ -17,6 +17,8 @@ export interface Candidate {
   envVar: string;
   /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
   estimateUsd?: number;
+  /** The param and value of this run the upstream cannot take; it is then skipped. */
+  unsupported?: { param: string; value: unknown };
 }
 
 /** The upstreams to try, in order, and the ones skipped before trying. */
@@ -32,7 +34,7 @@ export interface RoutePlan {
  * @param route - The caller's mode.
  * @param candidates - Every upstream the model is bound to.
  * @returns The configured upstreams in try order, and the unconfigured ones as reasons.
- * @throws {NoUpstreamAvailable} When no upstream of the route is configured.
+ * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
  * @throws {UpstreamRequestRejected} When the route names an upstream the model has no binding for.
  */
 export function planRoute(model: string, route: Route, candidates: readonly Candidate[]): RoutePlan {
@@ -47,10 +49,12 @@ export function planRoute(model: string, route: Route, candidates: readonly Cand
   if (route.mode === "cheapest") {
     pool.sort((a, b) => (a.estimateUsd ?? Infinity) - (b.estimateUsd ?? Infinity) || a.weight - b.weight);
   }
-  const skipped: UnavailableReason[] = pool
-    .filter((c) => !c.configured)
-    .map((c) => ({ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }));
-  const order = pool.filter((c) => c.configured);
+  const skipped: UnavailableReason[] = pool.flatMap((c): UnavailableReason[] => {
+    if (!c.configured) return [{ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }];
+    if (c.unsupported !== undefined) return [{ upstream: c.upstream, kind: "unsupported_input", ...c.unsupported }];
+    return [];
+  });
+  const order = pool.filter((c) => c.configured && c.unsupported === undefined);
   if (order.length === 0) throw new NoUpstreamAvailable(model, skipped);
   return { model, order, skipped };
 }

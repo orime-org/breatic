@@ -119,7 +119,8 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
   for (const [param, value] of Object.entries(input.params)) {
     const bound = binding.params?.[param];
     if (bound === undefined) continue;
-    const out = written(bound, value, binding.send_empty === true);
+    const voices = binding.voice_map?.[param];
+    const out = written(bound, voices !== undefined && typeof value === "string" ? (voices[value] ?? value) : value, binding.send_empty === true);
     if (out !== undefined) writeAt(body, bound.field, out);
   }
   if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
