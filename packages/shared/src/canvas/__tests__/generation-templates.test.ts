@@ -546,9 +546,9 @@ describe('character template layouts (inner#1846)', () => {
     // The scene's same-face clause, and the sheets' main-views clause, in each language.
     const PHRASES: Record<string, [string, string]> = {
       en: ['The same face when turning, looking down or with a hand near the face', 'wearing everything the reference shows on the body, including anything on the back or over a shoulder'],
-      'zh-CN': ['转身、低头、手靠近脸时都是同一张脸', '参考图里穿戴、背着和挎在肩上的东西都画上'],
-      'zh-TW': ['轉身、低頭、手靠近臉時都是同一張臉', '參考圖裡穿戴、背著和掛在肩上的東西都畫上'],
-      ja: ['振り向いても、うつむいても、手が顔に近づいても同じ顔にする', '参照にある身に着けている物、背負っている物、肩に掛けている物はすべて描き'],
+      'zh-CN': ['转身、低头、手靠近脸时都是同一张脸', '参考图里有的，身上穿戴的、背着的、挎在肩上的都画上，参考图里没有的不添加'],
+      'zh-TW': ['轉身、低頭、手靠近臉時都是同一張臉', '參考圖裡有的，身上穿戴的、背著的、掛在肩上的都畫上，參考圖裡沒有的不添加'],
+      ja: ['振り向いても、うつむいても、手が顔に近づいても同じ顔にする', '参照にある身に着けている物、背負っている物、肩に掛けている物はすべて描き、参照にない物は描き足さず'],
       ko: ['돌아설 때, 고개를 숙일 때, 손이 얼굴 가까이 있을 때도 같은 얼굴', '몸에 걸치거나 메고 있는 것을 모두 갖추고'],
     };
     expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
