@@ -375,3 +375,62 @@ describe('meshopt fallback buffers (inner#1690)', () => {
     expect(() => inspectModelFiles(new Map([['meshopt.gltf', json]]), 'meshopt.gltf', IMPORT_LIMITS)).not.toThrow();
   });
 });
+
+describe('declared buffer lengths are measured on the bytes the loader reads (inner#1690)', () => {
+  const triangleBytes = new Uint8Array(TRIANGLE.buffer);
+  /**
+   * Inspect a triangle whose second buffer feeds a byte attribute.
+   * @throws {ModelImportError} When inspection refuses the model.
+   */
+  function withSecondBuffer(buffer: Record<string, unknown>, files: [string, Uint8Array<ArrayBuffer>][] = []): unknown {
+    const json = Uint8Array.from(strToU8(JSON.stringify({ ...triangleJson('Root', `data:application/octet-stream;base64,${btoa(String.fromCharCode(...triangleBytes))}`),
+      buffers: [{ byteLength: TRIANGLE.byteLength, uri: `data:application/octet-stream;base64,${btoa(String.fromCharCode(...triangleBytes))}` }, buffer],
+      bufferViews: [{ buffer: 0, byteLength: TRIANGLE.byteLength }, { buffer: 1, byteLength: 4 }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }, { bufferView: 1, componentType: 5121, count: 4, type: 'SCALAR' }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, _ID: 1 }, material: 0 }] }] })));
+    return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS);
+  }
+
+  it('counts percent-encoded data URI bytes, not characters', () => {
+    expect(() => withSecondBuffer({ uri: 'data:application/octet-stream,%C3%A9%C3%A9', byteLength: 4 })).not.toThrow();
+    expect(() => withSecondBuffer({ uri: 'data:application/octet-stream,%C3%A9%C3', byteLength: 4 }))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'buffers[1]' }));
+  });
+
+  it('names a base64 data URI buffer shorter than declared', () => {
+    expect(() => withSecondBuffer({ uri: 'data:application/octet-stream;base64,AAAA', byteLength: 4 }))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'buffers[1]' }));
+  });
+
+  it('names a buffer after the first that has no URI, in a glTF and in a GLB', () => {
+    expect(() => withSecondBuffer({ byteLength: 4 })).toThrow(expect.objectContaining({ code: 'invalid', detail: 'buffers[1]' }));
+    const json = strToU8(JSON.stringify({ ...triangleJson('Root'), buffers: [{ byteLength: TRIANGLE.byteLength }, { byteLength: 4 }],
+      bufferViews: [{ buffer: 0, byteLength: TRIANGLE.byteLength }, { buffer: 1, byteLength: 4 }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }, { bufferView: 1, componentType: 5121, count: 4, type: 'SCALAR' }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, _ID: 1 }, material: 0 }] }] }));
+    const jsonLength = Math.ceil(json.byteLength / 4) * 4;
+    const glb = new Uint8Array(28 + jsonLength + TRIANGLE.byteLength);
+    const view = new DataView(glb.buffer);
+    view.setUint32(0, 0x46546c67, true);
+    view.setUint32(4, 2, true);
+    view.setUint32(8, glb.byteLength, true);
+    view.setUint32(12, jsonLength, true);
+    view.setUint32(16, 0x4e4f534a, true);
+    glb.fill(0x20, 20, 20 + jsonLength);
+    glb.set(json, 20);
+    view.setUint32(20 + jsonLength, TRIANGLE.byteLength, true);
+    view.setUint32(24 + jsonLength, 0x004e4942, true);
+    glb.set(triangleBytes, 28 + jsonLength);
+    expect(() => inspectModelFiles(new Map([['scene.glb', glb]]), 'scene.glb', IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'buffers[1]' }));
+  });
+
+  it('names a GLB whose binary chunk is shorter than its buffer', () => {
+    const glb = triangleGlb('Root');
+    const view = new DataView(glb.buffer);
+    const jsonLength = view.getUint32(12, true);
+    view.setUint32(20 + jsonLength, TRIANGLE.byteLength - 4, true);
+    expect(() => inspectModelFiles(new Map([['scene.glb', glb.slice(0, glb.byteLength - 4)]]), 'scene.glb', IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'scene.glb' }));
+  });
+});

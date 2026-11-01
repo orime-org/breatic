@@ -115,7 +115,7 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
  * @returns A model package ready for the installed loader.
- * @throws {ModelImportError} When the entry or a loaded dependency is missing or shorter than declared.
+ * @throws {ModelImportError} When the entry or a loaded dependency is missing, unreadable or shorter than declared.
  */
 export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): ModelPackage {
   const bytes = files.get(entry);
@@ -137,11 +137,15 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
   });
   if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${[...new Set(missing)].join(', ')}`,
     { detail: '', info: { entries: [], paths: [...files.keys()], missing: [...new Set(missing)] } });
+  const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const index of loaded.buffers) {
     const buffer = json.buffers?.[index];
-    if (buffer?.byteLength === undefined) continue;
-    const location = buffer.uri === undefined ? entry : buffer.uri.startsWith('data:') ? `buffers[${index}]` : resolveModelDependency(entry, buffer.uri);
-    if (bufferLength(files, entry, buffer.uri, location) < buffer.byteLength) {
+    if (!buffer) continue;
+    const location = buffer.uri === undefined ? index === 0 ? entry : `buffers[${index}]`
+      : buffer.uri.startsWith('data:') ? `buffers[${index}]` : resolveModelDependency(entry, buffer.uri);
+    // GLTFLoader reads only the first buffer from the GLB body; any other buffer needs a URI.
+    if (buffer.uri === undefined && index !== 0) throw new ModelImportError('invalid', 'Only the first model buffer can be embedded', { detail: location });
+    if (buffer.byteLength !== undefined && readModelResource({ entry, files }, buffer.uri, location, decoded).byteLength < buffer.byteLength) {
       throw new ModelImportError('invalid', 'Model buffer is shorter than its declared length', { detail: location });
     }
   }
@@ -149,31 +153,55 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
 }
 
 /**
- * Measure the bytes a buffer actually provides: its file, its embedded data URI, or the GLB's binary chunk.
- * @param files - Original selected resources.
- * @param entry - The model entry.
- * @param uri - The buffer's URI, absent for the GLB binary chunk.
- * @param location - The buffer's path or index, resolved by the caller.
- * @returns The available byte length.
- * @throws {never} Never.
+ * Read the bytes GLTFLoader reads for a buffer or image URI: an embedded data URI, a file in the closed collection, or, for no URI, the GLB binary chunk.
+ * @param model - The model entry and its original files.
+ * @param uri - The resource URI, absent for the GLB binary chunk.
+ * @param location - The resource's location named in failures.
+ * @param decoded - Data URIs decoded so far by this check; resources sharing one decode it once.
+ * @returns A view of the resource bytes, empty when an external file is absent.
+ * @throws {ModelImportError} When an embedded resource or the GLB container cannot be read.
  */
-function bufferLength(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, uri: string | undefined, location: string): number {
-  if (uri === undefined) {
-    const bytes = files.get(entry)!;
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let offset = 12; offset + 8 <= bytes.byteLength; offset += 8 + view.getUint32(offset, true)) {
-      if (view.getUint32(offset + 4, true) === 0x004e4942) return Math.min(view.getUint32(offset, true), bytes.byteLength - offset - 8);
-    }
-    return 0;
-  }
-  if (!uri.startsWith('data:')) return files.get(location)?.byteLength ?? 0;
+export function readModelResource(model: Pick<ModelPackage, 'entry' | 'files'>, uri: string | undefined, location: string,
+  decoded: Map<string, Uint8Array<ArrayBuffer>>): Uint8Array<ArrayBuffer> {
+  if (uri === undefined) return readBinaryChunk(model, location);
+  if (!uri.startsWith('data:')) return model.files.get(resolveModelDependency(model.entry, uri)) ?? new Uint8Array();
+  const cached = decoded.get(uri);
+  if (cached) return cached;
   const comma = uri.indexOf(',');
-  const payload = uri.slice(comma + 1);
-  if (!/;base64$/i.test(uri.slice(0, comma))) {
-    try { return decodeURIComponent(payload).length; } catch { return payload.length; }
+  if (comma < 0) throw new ModelImportError('invalid', 'Invalid embedded model resource', { detail: location });
+  const encoded = uri.slice(comma + 1).replace(/%([a-f\d]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  let binary: string;
+  try {
+    binary = /;base64$/i.test(uri.slice(0, comma)) ? atob(encoded) : encoded;
+  } catch {
+    throw new ModelImportError('invalid', 'Invalid embedded model resource', { detail: location });
   }
-  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
-  return Math.floor(payload.length * 3 / 4) - padding;
+  const bytes = Uint8Array.from(binary, (value) => value.charCodeAt(0));
+  decoded.set(uri, bytes);
+  return bytes;
+}
+
+/**
+ * Locate the GLB BIN chunk without copying it.
+ * @param model - The model entry and its original files.
+ * @param location - The location named in failures.
+ * @returns A byte view of the embedded buffer.
+ * @throws {ModelImportError} When the entry is no GLB or its chunks are invalid.
+ */
+function readBinaryChunk(model: Pick<ModelPackage, 'entry' | 'files'>, location: string): Uint8Array<ArrayBuffer> {
+  const bytes = model.files.get(model.entry);
+  if (!bytes || !model.entry.toLowerCase().endsWith('.glb')) throw new ModelImportError('invalid', 'Model has no embedded binary buffer', { detail: location });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let offset = 12; offset < bytes.byteLength;) {
+    if (bytes.byteLength - offset < 8) throw new ModelImportError('invalid', 'Truncated binary model chunk', { detail: location });
+    const length = view.getUint32(offset, true);
+    const type = view.getUint32(offset + 4, true);
+    offset += 8;
+    if (length % 4 !== 0 || length > bytes.byteLength - offset) throw new ModelImportError('invalid', 'Invalid binary model chunk length', { detail: location });
+    if (type === 0x004e4942) return bytes.subarray(offset, offset + length);
+    offset += length;
+  }
+  throw new ModelImportError('invalid', 'Model has no embedded binary buffer', { detail: location });
 }
 
 /**
