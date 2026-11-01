@@ -596,6 +596,22 @@ it('takes an empty body paragraph with one pasted list item whose nested words c
   expect({ parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ parent: 'y', at: 1 });
 });
 
+it('puts the caret on the next line after content ending in a nested table, opening none', async () => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+  caretIn(editor, 0);
+
+  paste(editor, '<p>a</p><ul><li>x<table><tr><td>t</td></tr></table></li></ul>', 'a x t');
+  await settled();
+
+  const empty: number[] = [];
+  editor.prosemirrorView.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'paragraph' && node.content.size === 0) empty.push(pos);
+    return true;
+  });
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ empty, parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ empty: [], parent: 'tail', at: 0 });
+});
+
 it('takes an empty cell with a trailing list item that has nested items', async () => {
   const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
   select(editor, cellsOf(editor)[0]!.pos + 3);
