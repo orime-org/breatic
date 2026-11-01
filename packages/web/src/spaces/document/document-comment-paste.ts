@@ -142,9 +142,9 @@ interface LandingView {
  */
 function withoutRowIds(slice: Slice, drops: (id: unknown) => boolean = () => true): Slice {
   /**
-   * Rebuilds one fragment, clearing ids at every depth.
+   * Rebuilds one fragment, clearing the picked ids at every depth.
    * @param fragment - The fragment to rebuild.
-   * @returns The fragment with no ids.
+   * @returns The fragment, those ids null.
    */
   const rebuild = (fragment: Fragment): Fragment => {
     const out: PMNode[] = [];

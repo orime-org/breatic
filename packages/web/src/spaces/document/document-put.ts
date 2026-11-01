@@ -35,7 +35,7 @@ import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-sele
 export type JudgeMedium = (props: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>> | null;
 
 /** What is put: blocks, the media left out reading them, the plain text, and how words alone go in. */
-export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & { readonly paste: Read['paste'] | null };
+export type Content = Pick<Read, 'blocks' | 'lost' | 'plain' | 'codeText'> & { readonly paste: Read['paste'] | null };
 
 /** What a placement needs besides the content. */
 export interface PutOptions {
@@ -163,9 +163,19 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
  */
 function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: boolean): ReadBlock[] {
   const out = [...blocks];
-  if (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
-  if (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
+  while (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
+  while (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
   return out;
+}
+
+/**
+ * Whether content holds an open end of a copy with no words, which only a
+ * placement by blocks leaves out where it would stand alone.
+ * @param blocks - The blocks.
+ * @returns True when it does.
+ */
+function hasOpenEdge(blocks: readonly ReadBlock[]): boolean {
+  return blocks.some((block) => block[OPEN_EDGE] === true);
 }
 
 /**
@@ -242,7 +252,7 @@ function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
 
 /**
  * Whether blocks put anything in: a block that is not words, or any words
- * besides line breaks, nested ones too. Empty lines alone, such as what is
+ * besides a last line break, nested ones too. Empty lines alone, such as what is
  * left of a paragraph whose only medium did not land, put nothing.
  * @param blocks - The blocks.
  * @returns True when they do.
@@ -250,8 +260,8 @@ function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
 export function holdsContent(blocks: readonly ReadBlock[]): boolean {
   return blocks.some((block) => {
     const words = wordsIn(block.content);
-    // A line break alone reads as a trailing break and pastes as nothing.
-    return words === null || words.replace(/\n/g, '') !== '' || holdsContent(block.children ?? []);
+    // A block's last line break reads as a trailing break and pastes as nothing.
+    return words === null || words.replace(/\n$/, '') !== '' || holdsContent(block.children ?? []);
   });
 }
 
@@ -391,7 +401,8 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
   const view = editor.prosemirrorView!;
   const id = target.node.attrs['id'] as string;
   const code = target.node.firstChild!.type.name === 'codeBlock';
-  const { beside, inside } = wordsIntoTarget ? takeMedia(content.blocks) : { beside: content.blocks, inside: [] };
+  const blocks = withoutOpenEdges(content.blocks, true, true);
+  const { beside, inside } = wordsIntoTarget ? takeMedia(blocks) : { beside: blocks, inside: [] };
   const from = view.state.selection.from;
   if (inside.length > 0) {
     if (code) editor.pasteText(wordsOf(inside));
@@ -585,7 +596,11 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
     view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
     return placed;
   };
-  const plain = content.plain;
+  // HTML with no media takes a code block's plain-text paste where the paste
+  // stands in one code block, as BlockNote's default paste puts it there
+  // (`pasteExtension.ts`).
+  const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
+  const plain = content.plain ?? (startsInCode ? content.codeText ?? null : null);
   if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;
@@ -622,7 +637,7 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
     if (table !== null) return putTableInCells(view, table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
-  const words = !holdsBlocks(content.blocks);
+  const words = !holdsBlocks(content.blocks) && !hasOpenEdge(content.blocks);
   if (selection instanceof NodeSelection && !selection.node.isInline) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
   if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);
   const replaced = !selection.empty || opened;
@@ -700,8 +715,9 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
   if (line === null || own === undefined || own === null || !own.isTextblock) return null;
   const offset = $caret.parentOffset;
   const size = own.content.size;
-  // An empty line joins neither open end of a copy, a line's start only the trailing one.
-  const put = withoutOpenEdges(blocks, offset === 0, size === 0);
+  // An empty line joins neither open end of a copy, a line's start only the
+  // trailing one, a line's end only the leading one.
+  const put = withoutOpenEdges(blocks, offset === 0, offset === size);
   const content = own.attrs[QUOTED] === true ? quotedAs(put, true) : put;
   const { state } = view;
   const nodes = containers(content, state);

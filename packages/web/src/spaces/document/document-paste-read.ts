@@ -60,6 +60,11 @@ export interface Read {
   readonly lost: number;
   /** The plain text, when the clipboard holds no HTML: what a code block takes as it is. */
   readonly plain: string | null;
+  /**
+   * The clipboard's plain text when its HTML holds no media: what a code block
+   * the paste starts in takes, as BlockNote's default paste puts it there.
+   */
+  readonly codeText?: string | null;
   /** How the content goes into a line when it is lines of words alone: the way BlockNote pastes this format. */
   readonly paste: (reader: BlockReader) => void;
 }
@@ -644,14 +649,15 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   }
   const markdown = data.types.includes('text/markdown');
   const withMedia = HTML_MEDIA.test(html);
+  const codeText = !withMedia && plain !== '' ? plain : null;
   if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
     const even = evenPastedTables(html);
-    return { blocks: reader.tryParseHTMLToBlocks(even) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(even) };
+    return { blocks: reader.tryParseHTMLToBlocks(even) as ReadBlock[], lost: 0, plain: null, codeText, paste: (r) => r.pasteHTML(even) };
   }
   if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: null, paste: () => undefined };
   const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);
   const { blocks, lost } = readByMarkers(reader, source, lands);
-  return { blocks, lost, plain: plainOnly, paste: (r) => r.pasteHTML(r.blocksToFullHTML(blocks as never), true) };
+  return { blocks, lost, plain: plainOnly, codeText, paste: (r) => r.pasteHTML(r.blocksToFullHTML(blocks as never), true) };
 }
 
 /**
@@ -704,9 +710,16 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
    * @param block - The block.
    * @returns True for such a line.
    */
-  const blank = (block: ReadBlock): boolean => wordsIn(block.content) === '' && (block.children ?? []).length === 0;
-  const last = out.length - 1;
-  if (Number(marker[1]) > 0 && blank(out[0]!)) out[0] = { ...out[0]!, [OPEN_EDGE]: true };
-  if (Number(marker[2]) > 0 && blank(out[last]!)) out[last] = { ...out[last]!, [OPEN_EDGE]: true };
+  const blank = (block: ReadBlock | undefined): boolean => block !== undefined && wordsIn(block.content) === '' && (block.children ?? []).length === 0;
+  /**
+   * How many lines an end opens through: each block group and block container
+   * it opens is one level, so a slice opened into a nested item's line ends in
+   * one empty line per level.
+   * @param open - The end's open depth, as `data-pm-slice` records it.
+   * @returns The lines.
+   */
+  const levels = (open: string): number => Math.floor((Number(open) - 1) / 2);
+  for (let i = 0, n = levels(marker[1]!); i < n && i < out.length - 1 && blank(out[i]); i += 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
+  for (let i = out.length - 1, n = levels(marker[2]!); out.length - 1 - i < n && i > 0 && blank(out[i]); i -= 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
   return out;
 }

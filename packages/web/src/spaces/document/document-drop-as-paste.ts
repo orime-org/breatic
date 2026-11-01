@@ -11,23 +11,21 @@
  * block split it, a table in a cell splits that table.
  *
  * What is put is the drag's own content as ProseMirror took it at dragstart,
- * read as its paste reads the body's own copy: a move keeps its comments and
- * row ids, a copy drops both (`document-comment-paste.ts`, `landingSlice`,
- * `landingAsDrop`). It is read as its paste
- * reads the body's own copy, each block keeping the node it came from, so the
- * placement puts the body's own words back with their marks.
+ * read as its paste reads the body's own copy, each block keeping the node it
+ * came from, so the placement puts the body's own words back with their
+ * marks: a move keeps its comments and row ids, a copy drops both
+ * (`document-comment-paste.ts`, `landingSlice`, `landingAsDrop`). A line the
+ * move takes only part of keeps its row id where it stays, and the part that
+ * moved gets a new one.
  *
  * A drop onto the dragged content itself changes nothing, as in CKEditor 5
- * and Lexical; a drag the paste would put nothing of (a line break, empty
- * lines) lands as ProseMirror's own drop puts it. A line the move takes only
- * part of keeps its row id where it stays, and the part that moved gets a new
- * one.
+ * and Lexical, and so does a drag its paste would put nothing of (line breaks
+ * alone, empty lines): nothing is taken away for it.
  */
 
 import type { Slice } from '@tiptap/pm/model';
-import { TextSelection, type Transaction } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
-import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { t } from '@breatic/shared';
@@ -53,7 +51,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
   if (at === undefined) return false;
   const { selection } = view.state;
-  if (!selection.empty && at >= selection.from && at <= selection.to) return true;
+  if (!selection.empty && selection.ranges.some(({ $from, $to }) => at >= $from.pos && at <= $to.pos)) return true;
   // A node drag carries the node selection it picked up (prosemirror-view
   // `Dragging.node`), which its public type leaves out; ProseMirror's own drop
   // deletes that, else the selection. With neither (the selection already
@@ -71,7 +69,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const dragged = view.dragging?.slice ?? slice;
   const content = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
   const read = readBodyContent(editor, view.serializeForClipboard(content).dom.innerHTML, view.state.schema);
-  if (!holdsContent(read.blocks)) return dropAsItIs(view, tr, content, at);
+  if (!holdsContent(read.blocks)) return true;
   if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, read.blocks)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return true;
@@ -94,24 +92,3 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   return true;
 }
 
-/**
- * Puts a drag its paste would put nothing of (a line break, empty lines) as
- * ProseMirror's own drop puts it (prosemirror-view `input.ts` drop): the
- * slice as it is, at the point `dropPoint` finds, then selected.
- * @param view - The view.
- * @param tr - The transaction, its source already taken away when the drop moves it.
- * @param slice - The content, without the row ids the document still holds.
- * @param at - The drop point, in the document before the transaction.
- * @returns True.
- */
-function dropAsItIs(view: EditorView, tr: Transaction, slice: Slice, at: number): boolean {
-  const insertAt = dropPoint(view.state.doc, at, slice) ?? at;
-  const pos = tr.mapping.map(insertAt);
-  tr.replaceRange(pos, pos, slice);
-  let end = tr.mapping.map(insertAt);
-  tr.mapping.maps[tr.mapping.maps.length - 1]?.forEach((_from, _to, _newFrom, newTo) => {
-    end = newTo;
-  });
-  view.dispatch(tr.setSelection(TextSelection.between(tr.doc.resolve(pos), tr.doc.resolve(end))).setMeta('uiEvent', 'drop'));
-  return true;
-}
