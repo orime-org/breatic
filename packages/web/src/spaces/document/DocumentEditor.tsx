@@ -41,7 +41,7 @@ import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-bo
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { sourceSpot } from '@web/spaces/document/document-proposal-landing';
-import { TABLE_VIEWPORT_CLASS } from '@web/spaces/document/DocumentTableScroller';
+import { revealInTable, tableViewportOf } from '@web/spaces/document/document-table-reveal';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -253,8 +253,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       range.setEnd(to.node, to.offset);
       return range;
     });
-    const first = words?.[0]?.startContainer;
-    const table = (first instanceof Element ? first : first?.parentElement)?.closest<HTMLElement>(`.${TABLE_VIEWPORT_CLASS}`) ?? null;
+    const start = words?.[0]?.startContainer;
+    const first = start instanceof HTMLElement ? start : start?.parentElement ?? null;
+    const table = first === null ? null : tableViewportOf(first);
     const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
     /**
      * What the outline goes around: the block's own content, or the quoted
@@ -267,14 +268,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       return table === null ? around : cutTo(around, table.getBoundingClientRect());
     };
     // A table scrolls sideways in its own frame, which the body's scroll
-    // does not move: bring the quoted words in there first.
-    if (table !== null && words !== null && words.length > 0) {
-      const around = boxAround(words.map((w) => w.getBoundingClientRect()));
-      const frame = table.getBoundingClientRect();
-      if (around.left < frame.left || around.right > frame.right) {
-        table.scrollTo({ left: table.scrollLeft + around.left - frame.left - gap, behavior: 'instant' });
-      }
-    }
+    // does not move: bring the quoted words' cell in there first, the way a
+    // comment's card does.
+    if (first !== null) revealInTable(first);
     /**
      * Measures the layout after asynchronously committed table chrome changes it.
      * @returns The outline's current coordinates and dimensions in its viewport.

@@ -543,6 +543,7 @@ describe('DocumentEditor', () => {
       const viewport = bodyViewport();
       const spies: MockInstance[] = [
         rangeRects({ Close: new DOMRect(100, 200, 40, 20), 'She turns': new DOMRect(200, 210, 70, 20) }),
+        vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 200, 90, 30)),
         vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
         vi.spyOn(table, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
       ];
@@ -573,8 +574,9 @@ describe('DocumentEditor', () => {
       const viewport = bodyViewport();
       const order: string[] = [];
       const spies: MockInstance[] = [
-        // The words run past the frame's right edge; the stubs do not move them when it scrolls.
+        // The words and their cell run past the frame's right edge; the stubs do not move them when it scrolls.
         rangeRects({ 'She turns': new DOMRect(250, 210, 130, 20) }),
+        vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(250, 210, 130, 20)),
         vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
         vi.spyOn(table, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 300, 400)),
       ];
@@ -585,7 +587,7 @@ describe('DocumentEditor', () => {
         rerender(<DocumentEditor handle={handle} landed={located({ blockId, quote: 'She turns' })} />);
 
         await waitFor(() => expect(down).toHaveBeenCalled());
-        expect(sideways).toHaveBeenCalledWith({ left: 232, behavior: 'instant' });
+        expect(sideways).toHaveBeenCalledWith({ left: 70, behavior: 'instant' });
         expect(order).toEqual(['table', 'body']);
         expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({ left: '232px', width: '76px', top: '182px', height: '36px' });
       } finally {
