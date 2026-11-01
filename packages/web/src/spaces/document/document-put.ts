@@ -739,5 +739,22 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
   // back and would leave the last medium outside the range.
   const $to = doc.resolve(to);
   const $head = $to.parent.inlineContent ? $to : (Selection.findFrom($to, 1, true)?.$head ?? $to);
-  view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $head) as Selection));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, anchorBefore($from), $head.pos)));
+}
+
+/**
+ * Where a range that starts at a block boundary is anchored so a leading
+ * medium is inside it: the end of the text just before, in the same cell or
+ * the same body, which takes none of that text; with no such text, inside the
+ * first block before its content, as the body's start edge is
+ * (`document-body-edge-pos.ts`). between() would look forward instead and
+ * leave the leading media out.
+ * @param $from - The range's start.
+ * @returns The anchor.
+ */
+function anchorBefore($from: ResolvedPos): number {
+  if ($from.parent.inlineContent) return $from.pos;
+  const $text = Selection.findFrom($from, -1, true)?.$head;
+  const same = $text !== undefined && cellAround($text)?.pos === cellAround($from)?.pos;
+  return same ? $text.pos : $from.pos + 1;
 }

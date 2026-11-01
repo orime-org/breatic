@@ -11,6 +11,7 @@
 import { act } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { cellAround } from '@tiptap/pm/tables';
 
 import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
@@ -145,11 +146,12 @@ describe('a drop selects what it put', () => {
     ['two pictures, into the middle of a line', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 2, `<img src="${PIC}"><img src="${SECOND}">`, '', [PIC, SECOND]],
     ['a picture then words, into the middle of a cell', [TABLE, { type: 'paragraph', content: 'tail' }], 'cell', 2, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
     ['a picture then words, at the start of the body', [{ type: 'paragraph', content: 'abcd' }], 'abcd', 0, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
+    ['a picture then words, at the start of a second cell', [TWO_CELLS], 'c2', 0, `<img src="${PIC}"><p>v</p>`, 'v', [PIC]],
   ] as const)('%s: the leading media and the words, none of the line\'s own', async (_name, blocks, line, offset, html, words, media) => {
     const { editor } = await openReady(blocks as unknown as Parameters<typeof open>[0]);
     dropFormats(editor, positionOf(editor, line, offset), { 'text/html': html, 'text/plain': words });
     await settled();
-    expect(selectedContent(editor)).toEqual({ words, media });
+    expect(selectedContent(editor)).toEqual({ oneCell: true, words, media });
   });
 
   it('beside the body: the words and media put, not a caret', async () => {
@@ -157,23 +159,25 @@ describe('a drop selects what it put', () => {
     dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/html': `<p>x</p><img src="${PIC}"><p>y</p>`, 'text/plain': 'x y' }, 200);
     await settled();
     expect(lines(editor)).toEqual(['paragraph:abx', `image(${PIC})`, 'paragraph:ycd']);
-    expect(selectedContent(editor)).toEqual({ words: 'xy', media: [PIC] });
+    expect(selectedContent(editor)).toEqual({ oneCell: true, words: 'xy', media: [PIC] });
   });
 });
 
 /**
- * What the selection holds: its words, and the media inside it in order.
+ * What the selection holds: whether both its ends are in one cell (or both
+ * outside any), its words, and the media inside it in order.
  * @param editor - The editor.
- * @returns The words and the media addresses.
+ * @returns Whether the ends share a cell, the words and the media addresses.
  */
-function selectedContent(editor: Editor): { words: string; media: string[] } {
+function selectedContent(editor: Editor): { oneCell: boolean; words: string; media: string[] } {
   const { doc, selection } = editor.prosemirrorView.state;
   const media: string[] = [];
   selection.content().content.descendants((node) => {
     if (node.type.name === 'image') media.push(String(node.attrs['url']));
     return true;
   });
-  return { words: doc.textBetween(selection.from, selection.to, ''), media };
+  const oneCell = cellAround(selection.$anchor)?.pos === cellAround(selection.$head)?.pos;
+  return { oneCell, words: doc.textBetween(selection.from, selection.to, ''), media };
 }
 
 describe('a drop as an undo step', () => {
