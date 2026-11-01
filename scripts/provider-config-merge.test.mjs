@@ -73,3 +73,9 @@ test("writes the generated content as it is when nothing exists yet", () => {
   assert.deepEqual(mergeMediaModels(undefined, generated, {}), generated);
   assert.deepEqual(mergeUpstreams(undefined, { w: { kind: "wavespeed", base_url: "u", key_env: "W" } }), { w: { kind: "wavespeed", base_url: "u", key_env: "W" } });
 });
+
+test("drops the WaveSpeed binding of a model the catalog no longer binds to WaveSpeed and keeps the others", () => {
+  const existing = { "m": { upstreams: [ws("gone/id", price(1)), fal] } };
+  const generated = { "m": { upstreams: [] } };
+  assert.deepEqual(mergeMediaModels(existing, generated, {}), { "m": { upstreams: [fal] } });
+});
