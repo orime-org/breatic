@@ -256,8 +256,8 @@ describe("扣费", () => {
       referenceId: `task-${Date.now()}`,
     });
 
-    expect(outcome.charged).toBe(50);
-    expect(outcome.shortfall).toBe(0);
+    expect(Number(outcome.charged)).toBe(50);
+    expect(Number(outcome.shortfall)).toBe(0);
     expect(outcome.lotIds).toEqual([first, second]);
 
     // 花光的那笔转 depleted —— 剩余为零和「不能再从它取」是同一件事，
@@ -299,7 +299,7 @@ describe("扣费", () => {
         actorUserId: fx.userId,
         amount,
       });
-      expect(outcome.charged).toBe(charged);
+      expect(Number(outcome.charged)).toBe(charged);
     }
 
     expect((await readLot(lotId)).remaining).toBe("84.560000");
@@ -316,9 +316,9 @@ describe("扣费", () => {
       amount: 7.000000000000001,
     });
 
-    expect(outcome).toMatchObject({ charged: 7, shortfall: 0 });
+    expect(outcome).toMatchObject({ charged: "7.000000", shortfall: "0.000000" });
     expect(await readLot(lotId)).toMatchObject({ remaining: "0.000000", lifecycle: "depleted" });
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
   });
 
   it("leaves a shortfall in whole cents when a part-cent charge runs short", async () => {
@@ -331,8 +331,8 @@ describe("扣费", () => {
       amount: 1.234,
     });
 
-    expect(outcome).toMatchObject({ charged: 1, shortfall: 0.24 });
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0.24);
+    expect(outcome).toMatchObject({ charged: "1.000000", shortfall: "0.240000" });
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0.24);
   });
 
   it("不取未指定的笔——列为 null 的那一条腿", async () => {
@@ -345,8 +345,8 @@ describe("扣费", () => {
       amount: 10,
     });
 
-    expect(outcome.charged).toBe(0);
-    expect(outcome.shortfall).toBe(10);
+    expect(Number(outcome.charged)).toBe(0);
+    expect(Number(outcome.shortfall)).toBe(10);
     expect((await readLot(unassigned)).remaining).toBe("500.000000");
   });
 
@@ -358,10 +358,10 @@ describe("扣费", () => {
     const lotId = await seedLot(fx, 500, other.studioId);
     await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${other.studioId}`;
 
-    const spendable = await creditLotService.getSpendableCredits(other.studioId);
+    const spendable = Number(await creditLotService.getSpendableCredits(other.studioId));
     expect(spendable).toBe(0);
 
-    const unassigned = await creditLotService.getUnassignedCredits(fx.userId);
+    const unassigned = Number(await creditLotService.getUnassignedCredits(fx.userId));
     expect(unassigned).toBe(500);
     expect((await readLot(lotId)).remaining).toBe("500.000000");
   });
@@ -389,8 +389,8 @@ describe("扣费", () => {
       amount: 100,
     });
 
-    expect(outcome.charged).toBe(30);
-    expect(outcome.shortfall).toBe(70);
+    expect(Number(outcome.charged)).toBe(30);
+    expect(Number(outcome.shortfall)).toBe(70);
     expect((await readLot(lotId)).lifecycle).toBe("depleted");
   });
 
@@ -438,7 +438,7 @@ describe("扣不到笔时的记账", () => {
       referenceId: `gone-${Date.now()}`,
     });
 
-    expect(outcome).toMatchObject({ billed: false, charged: 0, shortfall: 10 });
+    expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "10.000000" });
     const [row] = await sql<{ lot_id: string | null; studio_id: string | null }[]>`
       SELECT lot_id, studio_id FROM credit_ledger
       WHERE payer_user_id = ${fx.userId} AND entry_type = 'spend'
@@ -469,7 +469,7 @@ describe("总览的两个数", () => {
 
     const overview = await creditLotService.getOverview(fx.userId);
     const mine = overview.studios.find((s) => s.studioId === fx.studioId);
-    expect(mine?.spent).toBe(30);
+    expect(Number(mine?.spent)).toBe(30);
   });
 
   it("抵掉欠账的那部分算在「花了多少」里，两个数加起来等于买的数", async () => {
@@ -491,8 +491,8 @@ describe("总览的两个数", () => {
 
     const overview = await creditLotService.getOverview(fx.userId);
     const mine = overview.studios.find((s) => s.studioId === fx.studioId);
-    expect(mine?.spent).toBe(300);
-    expect((mine?.spendable ?? 0) + (mine?.spent ?? 0)).toBe(1000);
+    expect(Number(mine?.spent)).toBe(300);
+    expect(Number(mine?.spendable ?? "0") + Number(mine?.spent ?? "0")).toBe(1000);
   });
 
   it("充值记录照样列出已经花光的笔", async () => {
@@ -538,11 +538,11 @@ describe("总览的两个数", () => {
     const addUp = async (): Promise<number> => {
       const purchases = await creditLotRepo.listLotsByStudio(fx.studioId);
       const lots = purchases.reduce((n, lot) => n + Number(lot.remainingCredits), 0);
-      return lots - (await creditLotService.getStudioDebt(fx.studioId));
+      return lots - (Number(await creditLotService.getStudioDebt(fx.studioId)));
     };
 
     // A lot fully drained, one partly drained, no debt.
-    expect(await addUp()).toBe(await creditLotService.getSpendableCredits(fx.studioId));
+    expect(await addUp()).toBe(Number(await creditLotService.getSpendableCredits(fx.studioId)));
 
     // And once the studio owes: every lot at zero, the debt line carrying it.
     await creditLotService.chargeForGeneration({
@@ -551,8 +551,8 @@ describe("总览的两个数", () => {
       amount: 400,
       referenceId: `sum-b-${Date.now()}`,
     });
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBeGreaterThan(0);
-    expect(await addUp()).toBe(await creditLotService.getSpendableCredits(fx.studioId));
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBeGreaterThan(0);
+    expect(await addUp()).toBe(Number(await creditLotService.getSpendableCredits(fx.studioId)));
   });
 
   it("充值记录带着每一笔是谁买的", async () => {
@@ -592,7 +592,7 @@ describe("指定", () => {
       studioId: fx.studioId,
     });
     expect(lot.designatedStudioId).toBe(fx.studioId);
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(100);
   });
 
   it("改指定之后原 studio 立刻失去这一笔", async () => {
@@ -606,8 +606,8 @@ describe("指定", () => {
       studioId: secondStudioId,
     });
 
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(0);
-    expect(await creditLotService.getSpendableCredits(secondStudioId)).toBe(100);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(0);
+    expect(Number(await creditLotService.getSpendableCredits(secondStudioId))).toBe(100);
   });
 
   it("指给自己不是 admin 的 studio 会被拒", async () => {
@@ -819,8 +819,8 @@ describe("并发", () => {
     await open();
     const [a, b] = await Promise.all([first, second]);
 
-    expect(a.charged + b.charged).toBe(100);
-    expect(a.shortfall + b.shortfall).toBe(20);
+    expect(Number(a.charged) + Number(b.charged)).toBe(100);
+    expect(Number(a.shortfall) + Number(b.shortfall)).toBe(20);
     expect(await readLot(lotId)).toMatchObject({
       remaining: "0.000000",
       lifecycle: "depleted",
@@ -853,8 +853,8 @@ describe("并发", () => {
     await designating;
     const outcome = await charging;
 
-    expect(outcome.charged).toBe(0);
-    expect(outcome.shortfall).toBe(40);
+    expect(Number(outcome.charged)).toBe(0);
+    expect(Number(outcome.shortfall)).toBe(40);
     expect(await readLot(lotId)).toMatchObject({
       remaining: "100.000000",
       studio: secondStudioId,
@@ -898,7 +898,7 @@ describe("欠账：状态转移表逐格", () => {
     });
 
     expect(await readDebt(fx.studioId)).toBe("0.000000");
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
   });
 
   it("无欠账 + 扣不满 → 欠账等于差额", async () => {
@@ -914,9 +914,9 @@ describe("欠账：状态转移表逐格", () => {
       referenceId: `short-${Date.now()}`,
     });
 
-    expect(outcome.charged).toBe(30);
-    expect(outcome.shortfall).toBe(320);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(320);
+    expect(Number(outcome.charged)).toBe(30);
+    expect(Number(outcome.shortfall)).toBe(320);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(320);
   });
 
   it("无欠账 + 指定一笔进来 → 仍无欠账，这笔一分不动", async () => {
@@ -929,7 +929,7 @@ describe("欠账：状态转移表逐格", () => {
       studioId: fx.studioId,
     });
 
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
     expect((await readLot(lotId)).remaining).toBe("100.000000");
   });
 
@@ -954,7 +954,7 @@ describe("欠账：状态转移表逐格", () => {
     // empty list can only mean the designation is gone.
     expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
     expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(0);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
   });
 
   it("refuses to leave a lot designated once a refund is asked for", async () => {
@@ -1016,9 +1016,9 @@ describe("欠账：状态转移表逐格", () => {
       referenceId: `reject-charge-${Date.now()}`,
     });
 
-    expect(outcome.charged).toBe(0);
-    expect(outcome.shortfall).toBe(5);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(5);
+    expect(Number(outcome.charged)).toBe(0);
+    expect(Number(outcome.shortfall)).toBe(5);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(5);
   });
 
   it("欠账中 + 又扣不满 → 累加", async () => {
@@ -1038,7 +1038,7 @@ describe("欠账：状态转移表逐格", () => {
       referenceId: `second-${Date.now()}`,
     });
 
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(400);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(400);
   });
 
   it("欠账中 + 指定进来抵不完 → 这笔归零，仍欠着", async () => {
@@ -1061,7 +1061,7 @@ describe("欠账：状态转移表逐格", () => {
     const lot = await readLot(fresh);
     expect(lot.remaining).toBe("0.000000");
     expect(lot.lifecycle).toBe("depleted");
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(120);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(120);
   });
 
   it("欠账中 + 指定进来抵完有剩 → 债清零，余下的能花", async () => {
@@ -1084,7 +1084,7 @@ describe("欠账：状态转移表逐格", () => {
     const lot = await readLot(fresh);
     expect(lot.remaining).toBe("180.000000");
     expect(lot.lifecycle).toBe("active");
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
   });
 
   it("欠账中 + 把一笔撤走 → 欠的还是那么多", async () => {
@@ -1109,7 +1109,7 @@ describe("欠账：状态转移表逐格", () => {
       amount: 1000,
       referenceId: `owe4-${Date.now()}`,
     });
-    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
+    const owedBefore = Number(await creditLotService.getStudioDebt(fx.studioId));
 
     const another = await seedLot(fx, 10);
     await creditLotService.designateLot({
@@ -1123,7 +1123,7 @@ describe("欠账：状态转移表逐格", () => {
       studioId: null,
     });
 
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(
       owedBefore - 10,
     );
   });
@@ -1159,8 +1159,8 @@ describe("欠账：状态转移表逐格", () => {
       amount: 5,
       referenceId: `imposs2-${Date.now()}`,
     });
-    expect(outcome.charged).toBe(0);
-    expect(outcome.shortfall).toBe(5);
+    expect(Number(outcome.charged)).toBe(0);
+    expect(Number(outcome.shortfall)).toBe(5);
   });
 });
 
@@ -1180,7 +1180,7 @@ describe("欠账：不变量", () => {
     const afterCharge = await debtLedgerSums(fx.studioId);
     expect(
       Number(afterCharge.repayment) - Number(afterCharge.incurred),
-    ).toBe(await creditLotService.getStudioDebt(fx.studioId));
+    ).toBe(Number(await creditLotService.getStudioDebt(fx.studioId)));
 
     const fresh = await seedLot(fx, 150);
     await creditLotService.designateLot({
@@ -1191,9 +1191,9 @@ describe("欠账：不变量", () => {
 
     const afterRepay = await debtLedgerSums(fx.studioId);
     expect(Number(afterRepay.repayment) - Number(afterRepay.incurred)).toBe(
-      await creditLotService.getStudioDebt(fx.studioId),
+      Number(await creditLotService.getStudioDebt(fx.studioId)),
     );
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(170);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(170);
   });
 
   it("不变量 4：同一次生成的流水行加起来等于这次消耗的全额", async () => {
@@ -1602,7 +1602,7 @@ describe("欠账：任意序列下的两条不变量", () => {
               });
             }
 
-            const debt = await creditLotService.getStudioDebt(fx.studioId);
+            const debt = Number(await creditLotService.getStudioDebt(fx.studioId));
             const spendable = Number(
               await creditLotRepo.sumSpendableForStudio(fx.studioId),
             );
@@ -1641,7 +1641,7 @@ describe("欠账：并发", () => {
     await open();
     await Promise.all([first, second]);
 
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(100);
   });
 
   it("首次欠账的两个并发都要成功，一条都不能丢", async () => {
@@ -1676,10 +1676,10 @@ describe("欠账：并发", () => {
     await open();
     const outcomes = await Promise.all([first, second]);
 
-    expect(outcomes.map((o) => o.shortfall).sort((a, b) => a - b)).toEqual([
+    expect(outcomes.map((o) => Number(o.shortfall)).sort((a, b) => a - b)).toEqual([
       40, 60,
     ]);
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(100);
   });
 
   it("一次扣费撞一次指定，两者排队而不是各持一半", async () => {
@@ -1715,7 +1715,7 @@ describe("欠账：并发", () => {
     await charging;
 
     // 先抵掉 320 的债，剩 180 能花；那次扣费拿走 100，剩 80，无欠账。
-    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getStudioDebt(fx.studioId))).toBe(0);
     expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(
       80,
     );

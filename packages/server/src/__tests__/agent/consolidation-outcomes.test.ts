@@ -22,7 +22,7 @@ import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 // The one door into the memory module: what a turn is injected with is what
@@ -384,8 +384,8 @@ describe("a consolidation that works", () => {
 
   it("logs a charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
-      billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
-    } as never);
+      billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+    });
     await consolidate();
 
     expect(logger.error).toHaveBeenCalledWith(
@@ -641,5 +641,28 @@ describe("two tabs that consolidated the same conversation", () => {
     expect(chargeOnceForGeneration.mock.calls[0]?.[0]).toBe(
       `consolidate:${CONVERSATION}:7`,
     );
+  });
+});
+
+
+describe("decimal shortfall consumption", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await consolidate();
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
+  });
+
+  it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await consolidate();
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
+      [expect.objectContaining({ userId: USER, conversationId: CONVERSATION, studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
+    ]);
   });
 });

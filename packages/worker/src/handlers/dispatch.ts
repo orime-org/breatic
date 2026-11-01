@@ -12,6 +12,8 @@
  * Anything else throws.
  */
 
+import { parseCreditDecimal } from "@breatic/shared";
+
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
@@ -1183,7 +1185,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
       provider: run.provider,
       releaseHold: taskId,
     });
-    if (outcome.shortfall > 0) {
+    if (parseCreditDecimal(outcome.shortfall) > 0n) {
       // The studio's pool ran out mid-flight, or its credits were reassigned
       // while the task ran. The result is already delivered, so what is left
       // uncharged goes to reconciliation.

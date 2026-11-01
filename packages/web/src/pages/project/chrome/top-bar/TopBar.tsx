@@ -38,7 +38,7 @@ const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-4)' })
  * answers that are not a balance would otherwise be printed as one.
  */
 export type CreditsReadout =
-  | { status: 'ready'; value: number }
+  | { status: 'ready'; value: string }
   | { status: 'pending' }
   | { status: 'error' };
 

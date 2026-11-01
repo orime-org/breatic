@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { CREDIT_AMOUNT_FORMAT, creditLotViewSchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, projectCreditsViewSchema, studioCreditsViewSchema } from '@breatic/shared';
+
 import type {
   CreditLedgerView,
   CreditLotView,
@@ -17,7 +19,7 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * @returns The totals, plus a line per studio it has money in or spent in.
  */
 export async function fetchCreditOverview(): Promise<CreditOverview> {
-  return apiGet<CreditOverview>('/credits/overview');
+  return creditOverviewSchema.parse(await apiGet<unknown>('/credits/overview', { params: { amountFormat: CREDIT_AMOUNT_FORMAT } }));
 }
 
 /**
@@ -31,12 +33,12 @@ export async function fetchCreditLots(options?: {
   lifecycle?: string;
   cursor?: string;
 }): Promise<CreditPage<CreditLotView>> {
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { amountFormat: CREDIT_AMOUNT_FORMAT };
   if (options?.lifecycle !== undefined) params['lifecycle'] = options.lifecycle;
   if (options?.cursor !== undefined) params['cursor'] = options.cursor;
-  return apiGet<CreditPage<CreditLotView>>('/credits/lots', {
-    params: Object.keys(params).length > 0 ? params : undefined,
-  });
+  return creditLotPageSchema.parse(await apiGet<unknown>('/credits/lots', {
+    params,
+  }));
 }
 
 /**
@@ -50,12 +52,12 @@ export async function fetchCreditLedger(options?: {
   studioId?: string;
   cursor?: string;
 }): Promise<CreditPage<CreditLedgerView>> {
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { amountFormat: CREDIT_AMOUNT_FORMAT };
   if (options?.studioId !== undefined) params['studioId'] = options.studioId;
   if (options?.cursor !== undefined) params['cursor'] = options.cursor;
-  return apiGet<CreditPage<CreditLedgerView>>('/credits/ledger', {
-    params: Object.keys(params).length > 0 ? params : undefined,
-  });
+  return creditLedgerPageSchema.parse(await apiGet<unknown>('/credits/ledger', {
+    params,
+  }));
 }
 
 /**
@@ -74,10 +76,10 @@ export async function designateCreditLot(
   lotId: string,
   studioId: string | null,
 ): Promise<void> {
-  await apiPatch<unknown>(
+  creditLotViewSchema.parse(await apiPatch<unknown>(
     `/credits/lots/${encodeURIComponent(lotId)}/designation`,
     { studioId },
-  );
+  ));
 }
 
 /**
@@ -89,7 +91,7 @@ export async function designateCreditLot(
  * @returns What its studio has, holds and has left.
  */
 export async function fetchProjectCredits(projectId: string): Promise<ProjectCreditsView> {
-  return apiGet<ProjectCreditsView>(`/projects/${encodeURIComponent(projectId)}/credits`);
+  return projectCreditsViewSchema.parse(await apiGet<unknown>(`/projects/${encodeURIComponent(projectId)}/credits`, { params: { amountFormat: CREDIT_AMOUNT_FORMAT } }));
 }
 
 /** Who wants to hear that a project's credits may have moved. */
@@ -126,9 +128,9 @@ export async function fetchStudioCredits(
   slug: string,
   cursor?: string,
 ): Promise<StudioCreditsView> {
-  return apiGet<StudioCreditsView>(`/studio/${encodeURIComponent(slug)}/credits`, {
-    params: cursor ? { cursor } : undefined,
-  });
+  return studioCreditsViewSchema.parse(await apiGet<unknown>(`/studio/${encodeURIComponent(slug)}/credits`, {
+    params: { amountFormat: CREDIT_AMOUNT_FORMAT, ...(cursor ? { cursor } : {}) },
+  }));
 }
 
 /**

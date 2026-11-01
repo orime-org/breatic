@@ -45,7 +45,6 @@ import { creditLotService } from "@breatic/domain";
 import { transitionOperation, type NewOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import * as mailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import {
-  CREDITS,
   PAID_CENTS,
   inTx,
   reId,
@@ -355,7 +354,7 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
       locale: "ja",
       timeZone: "Asia/Tokyo",
       paymentId: lot.paymentId,
-      credits: CREDITS,
+      credits: "880.000000",
     });
     expect(view!.kind === "refund_rejected" && view!.requestedAt.getTime()).toBe(asked.at.getTime());
     // Which column the purchase time is read from is not decided by the
@@ -384,7 +383,7 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
       kind: "refund_completed",
       email: await emailOf(lot),
       paymentId: lot.paymentId,
-      credits: CREDITS,
+      credits: "880.000000",
       amountCents: PAID_CENTS,
       currency: "usd",
     });
@@ -409,7 +408,7 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
       kind: "refund_restored",
       email: await emailOf(lot),
       paymentId: lot.paymentId,
-      credits: CREDITS,
+      credits: "880.000000",
     });
     expect((view as unknown as { requestedAt: Date }).requestedAt.toISOString()).toBe(REJECTED_ASK.toISOString());
   });

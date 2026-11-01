@@ -2659,6 +2659,7 @@
     "source": {
       "payment": "購入",
       "gift": "体験クレジット",
+      "operatorGift": "ギフトクレジット",
       "compensation": "補償",
       "discount": "割引"
     },
@@ -2709,7 +2710,7 @@
     "deletedStudio": "削除された Studio",
     "deletedBadge": "削除済み",
     "deletedStudioHint": "この Studio は存在しないため、残高は使えません",
-    "assignedLots": "{count} 件の購入を割り当て済み",
+    "assignedLots": "{count} 個のクレジットパックを割り当て済み",
     "noLotsHere": "割り当てられたクレジットはありません",
     "debtAndSpent": "未払い {debt} · 消費 {spent}",
     "spentOnly": "消費 {spent}",

@@ -10,6 +10,8 @@
  * hold on its own, so the credits are not held for a run that is over.
  */
 
+import type * as SharedModule from "@breatic/shared";
+
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -48,7 +50,8 @@ vi.mock("@breatic/domain", () => ({
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...await importOriginal<typeof SharedModule>(),
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),
 }));
@@ -66,7 +69,7 @@ const RUN = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 7, shortfall: 0, studioId: "s", lotIds: [] });
+  h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
   h.releaseHold.mockResolvedValue(undefined);
 });
 
@@ -92,16 +95,16 @@ describe("settleRunCharge", () => {
   });
 
   it("logs a charge that could not be covered", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 2, shortfall: 5, studioId: "s", lotIds: [] });
+    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "2.000000", shortfall: "5.000000", studioId: "s", lotIds: [] });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
     expect(h.error).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "task-1", shortfall: 5 }),
+      expect.objectContaining({ taskId: "task-1", shortfall: "5.000000" }),
       expect.stringContaining("CREDIT_SHORTFALL_AFTER_COMPLETION"),
     );
   });
 
   it("logs a charge whose readers could not be told", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 7, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down") });
+    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down") });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
     expect(h.error).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "task-1", projectId: "proj-1" }),
@@ -123,5 +126,27 @@ describe("settleRunCharge", () => {
     h.releaseHold.mockRejectedValue(new Error("db down"));
     await expect(settleRunCharge({ ...RUN, wasFirst: false, creditsUsed: 0 })).resolves.toBeUndefined();
     expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task-1" }), "credit_hold_release_failed");
+  });
+});
+
+
+describe("decimal charge outcomes", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
+    expect(h.error).toHaveBeenCalledTimes(0);
+    expect(h.chargeForGeneration).toHaveBeenCalledTimes(1);
+    expect(h.releaseHold).toHaveBeenCalledTimes(0);
+  });
+
+  it("M20 logs an exact one-micro-credit shortfall", async () => {
+    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
+    expect(h.error).toHaveBeenCalledTimes(1);
+    expect(h.error).toHaveBeenCalledWith(
+      { taskId: "task-1", userId: "user-1", studioId: "s", charged: "6.999999", shortfall: "0.000001" },
+      "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+    );
+    expect(h.releaseHold).toHaveBeenCalledTimes(0);
   });
 });

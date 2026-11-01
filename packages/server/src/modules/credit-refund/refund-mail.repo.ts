@@ -5,6 +5,8 @@
  * Data access for `refund_mail_outbox` (inner#1410 §6.5).
  */
 
+import { parseCreditDecimal, serializeCreditMicro } from "@breatic/shared";
+
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import {
   creditLots,
@@ -230,7 +232,7 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
     locale: typeof locale === "string" && locale.length > 0 ? locale : "en",
     timeZone: typeof timeZone === "string" && timeZone.length > 0 ? timeZone : "UTC",
     paymentId: row.paymentId,
-    credits: Number(row.credits),
+    credits: serializeCreditMicro(parseCreditDecimal(row.credits)),
     purchasedAt: row.purchasedAt,
   };
   const requestedAt = row.requestedAt ?? row.operationCreatedAt;
