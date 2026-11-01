@@ -7,6 +7,7 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import { inspectModelSelection } from '@web/spaces/three-d/model-selection';
+import { sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
 
 const GEOMETRY = new Uint8Array(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer);
 const ENTRY = 'hero/model.gltf';
@@ -82,14 +83,69 @@ async function expectFailure(operation: Promise<unknown>, code: ModelImportError
   throw new Error(`Expected model selection to fail with ${code}`);
 }
 
+/**
+ * Inspect browser picker files through the same path mapping the dialog uses.
+ * @throws {ModelImportError} When the selection fails inspection.
+ */
+function inspect(files: readonly File[], entry: string | undefined, limits: typeof IMPORT_LIMITS): ReturnType<typeof inspectModelSelection> {
+  return inspectModelSelection(sourcesFromFiles(files), entry, limits);
+}
+
+describe('model-selection supplements and archiver metadata (inner#1690)', () => {
+  /**
+   * Inspect a first selection, then add bare picker files the way the dialog supplements them.
+   * @throws {Error} When the first selection does not report missing resources.
+   */
+  async function supplemented(first: readonly File[], entry: string, added: readonly File[]): ReturnType<typeof inspectModelSelection> {
+    const sources = sourcesFromFiles(first);
+    let missing: readonly string[] = [];
+    try { await inspectModelSelection(sources, entry, IMPORT_LIMITS); } catch (error) {
+      if (error instanceof ModelImportError) missing = error.info?.missing ?? [];
+    }
+    expect(missing.length).toBeGreaterThan(0);
+    return inspectModelSelection([...sources, ...supplementSources(added, missing)], entry, IMPORT_LIMITS);
+  }
+
+  it('places a supplemented file at the missing path of a folder selection', async () => {
+    const selected = await supplemented([inputFile('model.gltf', modelJson('mesh.bin'), ENTRY)], ENTRY, [inputFile('mesh.bin', GEOMETRY.slice())]);
+    expect([...selected.paths].sort()).toEqual(['hero/mesh.bin', ENTRY]);
+  });
+
+  it('places a supplemented file at a missing path in a subdirectory of the entry', async () => {
+    const selected = await supplemented([inputFile('model.gltf', modelJson('bin/mesh.bin'))], 'model.gltf', [inputFile('mesh.bin', GEOMETRY.slice())]);
+    expect([...selected.paths].sort()).toEqual(['bin/mesh.bin', 'model.gltf']);
+  });
+
+  it('adds supplemented files to the expanded resources of a selected ZIP', async () => {
+    const zipped = archive(new Map([[ENTRY, modelJson('mesh.bin')]]));
+    const selected = await supplemented([inputFile('character.zip', zipped)], ENTRY, [inputFile('mesh.bin', GEOMETRY.slice())]);
+    expect([...selected.paths].sort()).toEqual(['hero/mesh.bin', ENTRY]);
+  });
+
+  it('keeps a supplemented file under its own name when several missing paths share that name', () => {
+    const file = inputFile('a.png', GEOMETRY.slice());
+    expect(supplementSources([file], ['one/a.png', 'two/a.png'])).toEqual([{ path: 'a.png', file }]);
+  });
+
+  it('leaves Finder metadata out of a folder selection and its single entry', async () => {
+    const selected = await inspect([
+      inputFile('model.glb', modelGlb(), 'hero/model.glb'),
+      inputFile('._model.glb', new Uint8Array([0, 5, 22, 7]), 'hero/._model.glb'),
+      inputFile('.DS_Store', new Uint8Array([0, 0, 0, 1]), 'hero/.DS_Store'),
+    ], undefined, IMPORT_LIMITS);
+    expect([...selected.entries]).toEqual(['hero/model.glb']);
+    expect([...selected.paths]).toEqual(['hero/model.glb']);
+  });
+});
+
 describe('model-selection file and entry contract (inner#1690)', () => {
   it('reports an empty selection', async () => {
-    await expectFailure(inspectModelSelection([], undefined, IMPORT_LIMITS), 'empty');
+    await expectFailure(inspect([], undefined, IMPORT_LIMITS), 'empty');
   });
 
   it.each(['application/octet-stream', 'text/plain', 'application/zip'])('recognizes a valid single GLB regardless of File.type %s', async (type) => {
     const bytes = modelGlb();
-    const selected = await inspectModelSelection([inputFile('character.glb', bytes, '', type)], undefined, IMPORT_LIMITS);
+    const selected = await inspect([inputFile('character.glb', bytes, '', type)], undefined, IMPORT_LIMITS);
 
     expect(selected.model.entry).toBe('character.glb');
     expect([...selected.entries]).toEqual(['character.glb']);
@@ -99,7 +155,7 @@ describe('model-selection file and entry contract (inner#1690)', () => {
   });
 
   it('reports a collection that contains no supported model entry', async () => {
-    await expectFailure(inspectModelSelection([inputFile('notes.txt', new Uint8Array([65]))], undefined, IMPORT_LIMITS), 'unsupported', {
+    await expectFailure(inspect([inputFile('notes.txt', new Uint8Array([65]))], undefined, IMPORT_LIMITS), 'unsupported', {
       entries: [], paths: ['notes.txt'], missing: [],
     });
   });
@@ -107,12 +163,12 @@ describe('model-selection file and entry contract (inner#1690)', () => {
   it.each([new Error('File unavailable'), new DOMException('File unavailable', 'NotReadableError')])('reports an unreadable original file: %s', async (error) => {
     const file = inputFile('character.glb', modelGlb());
     vi.spyOn(file, 'arrayBuffer').mockRejectedValueOnce(error);
-    await expectFailure(inspectModelSelection([file], undefined, IMPORT_LIMITS), 'invalid');
+    await expectFailure(inspect([file], undefined, IMPORT_LIMITS), 'invalid');
   });
 
   it('returns every entry and source path when several GLBs need an explicit choice', async () => {
     const files = [inputFile('first.glb', modelGlb('First')), inputFile('second.glb', modelGlb('Second'))];
-    await expectFailure(inspectModelSelection(files, undefined, IMPORT_LIMITS), 'entry', {
+    await expectFailure(inspect(files, undefined, IMPORT_LIMITS), 'entry', {
       entries: ['first.glb', 'second.glb'], paths: ['first.glb', 'second.glb'], missing: [],
     });
   });
@@ -121,7 +177,7 @@ describe('model-selection file and entry contract (inner#1690)', () => {
     const first = modelGlb('First');
     const second = modelGlb('Second');
     const files = [inputFile('first.glb', first), inputFile('second.glb', second)];
-    const selected = await inspectModelSelection(files, entry, IMPORT_LIMITS);
+    const selected = await inspect(files, entry, IMPORT_LIMITS);
     const artifact = unzipSync(selected.artifact);
 
     expect(selected.model.entry).toBe(entry);
@@ -134,14 +190,14 @@ describe('model-selection file and entry contract (inner#1690)', () => {
 
   it('reports current entry choices when the requested entry is absent', async () => {
     const files = [inputFile('first.glb', modelGlb('First')), inputFile('second.glb', modelGlb('Second'))];
-    await expectFailure(inspectModelSelection(files, 'absent.glb', IMPORT_LIMITS), 'entry', {
+    await expectFailure(inspect(files, 'absent.glb', IMPORT_LIMITS), 'entry', {
       entries: ['first.glb', 'second.glb'], paths: ['first.glb', 'second.glb'], missing: [],
     });
   });
 
   it('uses webkitRelativePath to retain a folder model and its original buffer', async () => {
     const source = modelJson('mesh.bin');
-    const selected = await inspectModelSelection([
+    const selected = await inspect([
       inputFile('model.gltf', source, ENTRY, 'text/plain'),
       inputFile('mesh.bin', GEOMETRY, 'hero/mesh.bin'),
     ], undefined, IMPORT_LIMITS);
@@ -159,7 +215,7 @@ describe('model-selection file and entry contract (inner#1690)', () => {
     const source = modelJson('mesh.bin');
     const note = Uint8Array.from(strToU8('Original source note\n'));
     const zipped = archive(new Map([[ENTRY, source], ['hero/mesh.bin', GEOMETRY], ['notes.txt', note]]));
-    const selected = await inspectModelSelection([inputFile('character.zip', zipped)], undefined, IMPORT_LIMITS);
+    const selected = await inspect([inputFile('character.zip', zipped)], undefined, IMPORT_LIMITS);
     const artifact = unzipSync(selected.artifact);
 
     expect(selected.model.entry).toBe(ENTRY);
@@ -171,7 +227,7 @@ describe('model-selection file and entry contract (inner#1690)', () => {
   });
 
   it('returns the precise missing dependency with the available source and entry paths', async () => {
-    await expectFailure(inspectModelSelection([
+    await expectFailure(inspect([
       inputFile('model.gltf', modelJson('mesh.bin'), ENTRY),
     ], undefined, IMPORT_LIMITS), 'missing', {
       entries: [ENTRY], paths: [ENTRY], missing: ['hero/mesh.bin'],
@@ -180,7 +236,7 @@ describe('model-selection file and entry contract (inner#1690)', () => {
 
   it('rejects two selected files whose folder paths normalize to the same model', async () => {
     const bytes = modelGlb();
-    await expectFailure(inspectModelSelection([
+    await expectFailure(inspect([
       inputFile('model.glb', bytes, 'hero/model.glb'),
       inputFile('model.glb', bytes, 'hero/./model.glb'),
     ], undefined, IMPORT_LIMITS), 'duplicate');
@@ -192,11 +248,11 @@ describe('model-selection file and entry contract (inner#1690)', () => {
       ['hero/mesh.bin', GEOMETRY],
       ['hero/./mesh.bin', Uint8Array.from(GEOMETRY)],
     ]));
-    await expectFailure(inspectModelSelection([inputFile('character.zip', zipped)], undefined, IMPORT_LIMITS), 'duplicate');
+    await expectFailure(inspect([inputFile('character.zip', zipped)], undefined, IMPORT_LIMITS), 'duplicate');
   });
 
   it('reports invalid bytes even when the file advertises a model MIME type', async () => {
-    await expectFailure(inspectModelSelection([
+    await expectFailure(inspect([
       inputFile('character.glb', new Uint8Array([1, 2, 3, 4]), '', 'model/gltf-binary'),
     ], undefined, IMPORT_LIMITS), 'invalid');
   });
@@ -208,12 +264,12 @@ describe('model-selection metadata budget admission', () => {
     const file = inputFile('character.glb', bytes);
     const read = vi.spyOn(file, 'arrayBuffer');
     const limits = { ...IMPORT_LIMITS, maxInputBytes: file.size };
-    const selected = await inspectModelSelection([file], undefined, limits);
+    const selected = await inspect([file], undefined, limits);
     expect(Array.from(selected.artifact)).toEqual(Array.from(bytes));
     expect(read).toHaveBeenCalledTimes(1);
     read.mockClear();
 
-    await expectFailure(inspectModelSelection([file], undefined, { ...limits, maxInputBytes: file.size - 1 }), 'budget');
+    await expectFailure(inspect([file], undefined, { ...limits, maxInputBytes: file.size - 1 }), 'budget');
     expect(read).toHaveBeenCalledTimes(0);
   });
 
@@ -224,14 +280,14 @@ describe('model-selection metadata budget admission', () => {
     const secondRead = vi.spyOn(second, 'arrayBuffer');
     const total = first.size + second.size;
     const limits = { ...IMPORT_LIMITS, maxInputBytes: total };
-    const selected = await inspectModelSelection([first, second], 'first.glb', limits);
+    const selected = await inspect([first, second], 'first.glb', limits);
     expect([...selected.paths].sort()).toEqual(['first.glb', 'second.glb']);
     expect(firstRead).toHaveBeenCalledTimes(1);
     expect(secondRead).toHaveBeenCalledTimes(1);
     firstRead.mockClear();
     secondRead.mockClear();
 
-    await expectFailure(inspectModelSelection([first, second], 'first.glb', { ...limits, maxInputBytes: total - 1 }), 'budget');
+    await expectFailure(inspect([first, second], 'first.glb', { ...limits, maxInputBytes: total - 1 }), 'budget');
     expect(firstRead).toHaveBeenCalledTimes(0);
     expect(secondRead).toHaveBeenCalledTimes(0);
   });
@@ -242,12 +298,12 @@ describe('model-selection metadata budget admission', () => {
     const firstRead = vi.spyOn(first, 'arrayBuffer');
     const secondRead = vi.spyOn(second, 'arrayBuffer');
     const limits = { ...IMPORT_LIMITS, maxFiles: 2 };
-    const selected = await inspectModelSelection([first, second], 'first.glb', limits);
+    const selected = await inspect([first, second], 'first.glb', limits);
     expect([...selected.paths].sort()).toEqual(['first.glb', 'second.glb']);
     firstRead.mockClear();
     secondRead.mockClear();
 
-    await expectFailure(inspectModelSelection([first, second], 'first.glb', { ...limits, maxFiles: 1 }), 'budget');
+    await expectFailure(inspect([first, second], 'first.glb', { ...limits, maxFiles: 1 }), 'budget');
     expect(firstRead).toHaveBeenCalledTimes(0);
     expect(secondRead).toHaveBeenCalledTimes(0);
   });
@@ -256,14 +312,14 @@ describe('model-selection metadata budget admission', () => {
     const zipped = archive(new Map([[ENTRY, modelJson('mesh.bin')], ['hero/mesh.bin', GEOMETRY]]));
     const file = inputFile('character.zip', zipped);
     const limits = { ...IMPORT_LIMITS, maxFiles: 2 };
-    const selected = await inspectModelSelection([file], undefined, limits);
+    const selected = await inspect([file], undefined, limits);
     expect([...selected.paths].sort()).toEqual(['hero/mesh.bin', ENTRY]);
 
-    await expectFailure(inspectModelSelection([file], undefined, { ...limits, maxFiles: 1 }), 'budget');
+    await expectFailure(inspect([file], undefined, { ...limits, maxFiles: 1 }), 'budget');
   });
 
   it('reports an artifact budget failure through the typed selection error', async () => {
-    await expectFailure(inspectModelSelection([
+    await expectFailure(inspect([
       inputFile('character.glb', modelGlb()),
     ], undefined, { ...IMPORT_LIMITS, maxArtifactBytes: 1 }), 'budget');
   });

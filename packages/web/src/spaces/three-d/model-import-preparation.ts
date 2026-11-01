@@ -9,12 +9,13 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { deserializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer, ModelImportWorkerRequest } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { getUnsupportedModelExtensions } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
 /**
  * Inspect one original file collection in its own cancellable worker.
- * @param files - Original browser files, including folder-relative paths.
+ * @param files - Original files under their paths in the user's collection.
  * @param entry - Explicit selected entry when the collection contains several models.
  * @param signal - Owning import operation's cancellation signal.
  * @param limits - Project's import budgets.
@@ -22,7 +23,7 @@ import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewp
  * @throws {DOMException} When the owning operation is aborted.
  * @throws {ModelImportError} When worker setup, execution or inspection fails.
  */
-export function inspectModelSelectionInWorker(files: readonly File[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelSelection> {
+export function inspectModelSelectionInWorker(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelSelection> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(new DOMException('Model inspection cancelled', 'AbortError')); return; }
     let worker: Worker;
@@ -82,7 +83,7 @@ export function inspectModelSelectionInWorker(files: readonly File[], entry: str
  * @throws {DOMException} When the owning import is aborted.
  * @throws {ModelImportError} When inspection, parsing or rendering fails.
  */
-export async function prepareSceneModel(files: readonly File[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<PreparedModel> {
+export async function prepareSceneModel(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<PreparedModel> {
   const selection = await inspectModelSelectionInWorker(files, entry, signal, limits);
   signal.throwIfAborted();
   const info = { entries: selection.entries, paths: selection.paths, missing: [] };

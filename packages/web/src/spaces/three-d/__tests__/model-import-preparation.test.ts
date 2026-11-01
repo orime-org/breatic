@@ -32,7 +32,7 @@ class ControlledWorker {
   }
 }
 
-const FILES = [new File(['model source'], 'model.gltf')];
+const FILES = [{ path: 'model.gltf', file: new File(['model source'], 'model.gltf') }];
 const SELECTION: ModelSelection = { model: { entry: 'model.gltf', files: new Map(), json: { asset: { version: '2.0' } } },
   artifact: new Uint8Array([1]), entries: ['model.gltf'], paths: ['model.gltf'] };
 

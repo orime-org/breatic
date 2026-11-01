@@ -9,6 +9,7 @@ import { docName, destroyDoc, getDoc } from '@web/data/yjs/manager';
 import { readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, SceneSession } from '@web/data/yjs/scene-session';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 import {
   evictModelImportController, getModelImportController,
 } from '@web/spaces/three-d/model-import-controller';
@@ -30,7 +31,7 @@ interface ImportHarness {
   session: SceneSession;
   inputs: ModelImportInputs;
   controller: ReturnType<typeof getModelImportController>;
-  files: readonly File[];
+  files: readonly ModelSource[];
   prepared: PreparedModel;
   prepare: Mock<ModelImportInputs['prepare']>;
   upload: Mock<ModelImportInputs['upload']>;
@@ -78,7 +79,7 @@ function harness(): ImportHarness {
   const inputs: ModelImportInputs = { userId: USER_ID, projectId: PROJECT_ID, spaceId: SPACE_ID,
     session, prepare, upload, position };
   const controller = getModelImportController(doc, name, inputs);
-  const files = [new File([new Uint8Array([1])], 'character.glb', { type: 'model/gltf-binary' })];
+  const files = [{ path: 'character.glb', file: new File([new Uint8Array([1])], 'character.glb', { type: 'model/gltf-binary' }) }];
   return { doc, name, session, inputs, controller, files, prepared, prepare, upload, position };
 }
 
@@ -401,7 +402,7 @@ describe('document-owned model imports (inner#1690)', () => {
     if (phase === 'registering') h.upload.mock.calls[0][3]();
     const before = h.controller.getSnapshot();
     h.controller.reset();
-    await h.controller.select([new File(['next'], 'next.glb')]);
+    await h.controller.select([{ path: 'next.glb', file: new File(['next'], 'next.glb') }]);
     expect(h.controller.getSnapshot()).toBe(before);
     expect(h.prepare).toHaveBeenCalledTimes(1);
     expect(h.prepared.dispose).not.toHaveBeenCalled();

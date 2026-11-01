@@ -6,6 +6,7 @@ import type { Group } from 'three';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { SceneSession } from '@web/data/yjs/scene-session';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 
 export interface ModelBounds {
   center: readonly [number, number, number];
@@ -28,7 +29,7 @@ export interface ModelImportInputs {
   projectId: string;
   spaceId: string;
   session: SceneSession;
-  prepare: (files: readonly File[], entry: string | undefined, signal: AbortSignal) => Promise<PreparedModel>;
+  prepare: (files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal) => Promise<PreparedModel>;
   upload: (file: File, signal: AbortSignal, onProgress: (fraction: number) => void, onRegistering: () => void) => Promise<{ assetId: string }>;
   position: (bounds: ModelBounds) => [number, number, number];
 }
@@ -40,7 +41,7 @@ export interface ModelImportSnapshot {
   prepared: PreparedModel | null;
   assetId: string | null;
   objectId: string | null;
-  files: readonly File[];
+  files: readonly ModelSource[];
   entry: string | undefined;
   entries: readonly string[];
   paths: readonly string[];
@@ -92,12 +93,12 @@ export class ModelImportController {
 
   /**
    * Replace the source selection and release superseded preview resources.
-   * @param files - Original local files selected by the user.
+   * @param files - Original files under their paths in the user's collection.
    * @param entry - Explicit entry when several models are present.
    * @returns Completion of this inspection; obsolete completions are ignored.
    * @throws {never} Inspection failures are retained in the snapshot.
    */
-  async select(files: readonly File[], entry?: string): Promise<void> {
+  async select(files: readonly ModelSource[], entry?: string): Promise<void> {
     if (['disposed', 'uploading', 'registering'].includes(this.snapshot.phase)) return;
     this.operation.abort();
     this.snapshot.prepared?.dispose();

@@ -14,7 +14,7 @@ import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
 import { roomForUploads, watchUploadTickets } from '../helpers/upload-budget';
 import { dataOf } from '../helpers/api';
-import { incompleteScene, sceneFiles, sceneGlb, sceneZip } from '../helpers/scene-model';
+import { incompleteScene, incompleteSceneZip, sceneFiles, sceneGlb, sceneZip } from '../helpers/scene-model';
 import type { SceneModelInput } from '../helpers/scene-model';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SessionModule from '../../src/data/yjs/scene-session';
@@ -231,6 +231,25 @@ test('model import checks original dependencies and retains a prepared model acr
     await page.keyboard.press('Escape');
     await expect(reopened).toHaveCount(0);
     await expect(visibleSpace(page).getByRole('button', { name: 'Add', exact: true })).toBeFocused();
+    expect(await sceneObjects(page, id)).toEqual([]);
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
+test('a ZIP missing resources inside its folder is completed with accompanying files', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `Model zip supplement ${crypto.randomUUID()}`);
+  try {
+    const dialog = await openImport(page);
+    await dialog.locator('input[type="file"]').first().setInputFiles(incompleteSceneZip());
+    await expect(dialog.getByText('models/mesh.bin', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('models/color.png', { exact: true })).toBeVisible();
+    const chooserPromise = page.waitForEvent('filechooser');
+    await dialog.getByRole('button', { name: 'Add accompanying files', exact: true }).click();
+    await (await chooserPromise).setFiles(sceneFiles('zip-supplement').slice(1));
+    await previewReady(dialog);
+    await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
     expect(await sceneObjects(page, id)).toEqual([]);
   } finally {
     await deleteSpace(page, id);

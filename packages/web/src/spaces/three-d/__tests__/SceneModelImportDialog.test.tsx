@@ -36,7 +36,7 @@ async function readyImport(): Promise<{ controller: ModelImportController; prepa
   const controller = new ModelImportController({ userId: 'user', projectId: 'project', spaceId: 'space', session,
     prepare: async () => prepared, upload, position: () => [0, 0, 0] });
   disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
-  await controller.select([prepared.file]);
+  await controller.select([{ path: prepared.file.name, file: prepared.file }]);
   return { controller, prepared, upload };
 }
 

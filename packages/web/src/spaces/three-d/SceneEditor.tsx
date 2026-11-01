@@ -27,6 +27,7 @@ import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneModelState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelBounds, ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
@@ -203,7 +204,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const [importController, setImportController] = React.useState<ModelImportController | null>(null);
   const importLimits = controls.data?.import;
   /** Inspect in an operation-owned worker and validate a real native preview. */
-  const prepareImport = React.useCallback(async (files: readonly File[], entry: string | undefined, signal: AbortSignal): Promise<PreparedModel> => {
+  const prepareImport = React.useCallback(async (files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal): Promise<PreparedModel> => {
     if (!importLimits) throw new Error('Scene model import configuration is unavailable');
     const { prepareSceneModel } = await import('@web/spaces/three-d/model-import-preparation');
     signal.throwIfAborted();

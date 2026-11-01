@@ -5,9 +5,10 @@ import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 
 export interface ModelImportWorkerRequest {
-  files: readonly File[];
+  files: readonly ModelSource[];
   entry: string | undefined;
   limits: SceneImportLimits;
 }

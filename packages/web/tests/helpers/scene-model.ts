@@ -112,3 +112,13 @@ export function incompleteScene(): SceneModelInput {
   const { json } = sourceModel('missing-resources');
   return { name: 'scene.gltf', mimeType: 'model/gltf+json', buffer: Buffer.from(JSON.stringify(json)) };
 }
+
+/**
+ * Expose a ZIP whose entry sits in a folder and lacks its local geometry and texture.
+ * @returns An ordinary archive holding only `models/scene.gltf`.
+ * @throws {Error} When the archive cannot be written.
+ */
+export function incompleteSceneZip(): SceneModelInput {
+  const { json } = sourceModel('missing-zip-resources');
+  return { name: 'character.zip', mimeType: 'application/zip', buffer: Buffer.from(zipSync({ 'models/scene.gltf': strToU8(JSON.stringify(json)) }, { level: 0 })) };
+}
