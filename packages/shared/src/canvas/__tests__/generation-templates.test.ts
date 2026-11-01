@@ -540,6 +540,8 @@ describe('character template layouts (inner#1846)', () => {
       expect(raw(locale, 'canvas.template.single-view-refs-scene.node.side.prompt'), locale).toContain(unseen);
       expect(raw(locale, 'canvas.template.character-showcase-orbit.prompt'), locale).toContain('180');
     }
+    // The ko orbit keeps its around-verb, so the camera circles the character rather than turning in place.
+    expect(raw('ko', 'canvas.template.character-showcase-orbit.prompt')).toContain('캐릭터 주위를 180도 돌아');
   });
 
   it('keeps the silent scene free of speaking and the sheets to items worn, on the back or over a shoulder, in every language', () => {
@@ -563,11 +565,11 @@ describe('character template layouts (inner#1846)', () => {
   it('joins the breathing note into one phrase, keeps labels to the section name and blending out of the faces, in every language', () => {
     // The breathing note, the sheets' label clause, and the scene's no-blending clause, in each language.
     const PHRASES: Record<string, [string, string, string]> = {
-      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label, the section name only, in small sans-serif capitals', 'no blending of features'],
-      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '一个清晰的英文小标签（只写区块名，无衬线大写）', '不把五官混在一起'],
-      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '一個清晰的英文小標籤（只寫區塊名，無襯線大寫）', '不把五官混在一起'],
-      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', 'セクション名だけを書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
-      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '섹션 이름만 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨', '이목구비를 섞지 않는다'],
+      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of every section, written exactly as that section\'s capitalised name below', 'no blending of features'],
+      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '一个清晰的英文小标签（只写下文大写的区块名，无衬线大写）', '不把五官混在一起'],
+      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '一個清晰的英文小標籤（只寫下文大寫的區塊名，無襯線大寫）', '不把五官混在一起'],
+      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '下に大文字で書いたセクション名だけを書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
+      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '아래에 대문자로 적은 섹션 이름만 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨', '이목구비를 섞지 않는다'],
     };
     expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
     for (const locale of LOCALES) {
