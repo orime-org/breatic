@@ -162,6 +162,31 @@ describe('while the result streams in', () => {
     expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-stop']);
   });
 
+  it('shows the waiting dot until the first words arrive, and only the words after', async () => {
+    const { call } = await polishing();
+    const dialog = screen.getByTestId('doc-ai-dialog');
+
+    expect(dialog.querySelectorAll('[data-testid="chat-waiting-dot"]')).toHaveLength(1);
+
+    await streams(call, ['Hi']);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi');
+    });
+    expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
+  it('shows no waiting dot once the run has ended without words', async () => {
+    const { call } = await polishing();
+
+    await streams(call, [], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+    });
+    expect(screen.getByTestId('doc-ai-dialog').querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
   it('shows each piece as it arrives and leaves the body as it was', async () => {
     const { call } = await polishing();
     const before = sharedBodyMarkup();
@@ -280,6 +305,22 @@ describe('closing', () => {
 
     expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
     expect(call.signal?.aborted).toBe(true);
+  });
+
+  it('one Escape in the body closes the dialog and the body keeps the keyboard', async () => {
+    const { editor, call } = await polishing();
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(view.dom, { key: 'Escape' });
+    });
+
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(call.signal?.aborted).toBe(true);
+    expect(view.hasFocus()).toBe(true);
   });
 
   it('the close button closes the dialog and aborts the fetch', async () => {

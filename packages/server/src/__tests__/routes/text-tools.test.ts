@@ -22,6 +22,7 @@ import fc from "fast-check";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
+  smoothStream: vi.fn((options: unknown) => ({ smoothing: options })),
 }));
 
 /** Budgets written into this suite's copy of `config/text-tools.yaml`. */
@@ -111,6 +112,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import { callOptionsFor, getModel } from "@breatic/domain";
+import { smoothStream } from "ai";
+import { parse } from "yaml";
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 
@@ -470,6 +473,21 @@ describe("the model call", () => {
     );
     expect(model.calls[0]?.providerOptions).toEqual({ marker: { from: "callOptionsFor" } });
     expect(model.calls[0]).not.toHaveProperty("temperature");
+  });
+
+  it("evens out bursts of text: word by word, at the configured stream_delay_ms", async () => {
+    const shipped = parse(readFileSync(join(roots.real, "config", "text-tools.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(typeof shipped.stream_delay_ms).toBe("number");
+
+    await run(bodyFor("polish"));
+
+    expect(vi.mocked(smoothStream)).toHaveBeenCalledWith({
+      delayInMs: shipped.stream_delay_ms,
+      chunking: expect.any(Intl.Segmenter),
+    });
+    const chunking = vi.mocked(smoothStream).mock.calls.at(-1)?.[0]?.chunking as Intl.Segmenter;
+    expect(chunking.resolvedOptions().granularity).toBe("word");
+    expect(model.calls[0]?.experimental_transform).toBe(vi.mocked(smoothStream).mock.results.at(-1)?.value);
   });
 
   it.each([
