@@ -30,6 +30,8 @@ export interface ReadBlock {
   readonly [BODY_NODE]?: PMNode;
   /** Whether the block is an open end of the body's own copy with no words. */
   readonly [OPEN_EDGE]?: true;
+  /** Whether the copy's end opens into this block's nested lines. */
+  readonly [OPEN_NESTED]?: true;
 }
 
 /**
@@ -37,6 +39,12 @@ export interface ReadBlock {
  * words: a placement that would put it as a line of its own leaves it out.
  */
 export const OPEN_EDGE: unique symbol = Symbol('open edge');
+
+/**
+ * Marks the last block of a copy whose end opens into nested lines: its own
+ * HTML pasted as it is puts an empty nested line back, so it goes by blocks.
+ */
+export const OPEN_NESTED: unique symbol = Symbol('open nested end');
 
 /**
  * Where a block read off the body's own content keeps the node it came from.
@@ -721,5 +729,21 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
   const levels = (open: string): number => Math.floor((Number(open) - 1) / 2);
   for (let i = 0, n = levels(marker[1]!); i < n && i < out.length - 1 && blank(out[i]); i += 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
   for (let i = out.length - 1, n = levels(marker[2]!); out.length - 1 - i < n && i > 0 && blank(out[i]); i -= 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
+  /**
+   * A block without the empty line an end opened into its nested lines reads
+   * as: the deepest last nested line, when it has no words.
+   * @param block - The block.
+   * @returns The block.
+   */
+  const withoutOpenNestedEnd = (block: ReadBlock): ReadBlock => {
+    const children = block.children ?? [];
+    const last = children[children.length - 1];
+    if (last === undefined) return block;
+    if ((last.children ?? []).length > 0) return { ...block, children: [...children.slice(0, -1), withoutOpenNestedEnd(last)] };
+    return blank(last) ? { ...block, children: children.slice(0, -1) } : block;
+  };
+  // An end opened into nested lines reads as an empty nested line, which its
+  // own HTML pasted as it is puts back too, so such content goes by blocks.
+  if (levels(marker[2]!) > 1) out[out.length - 1] = { ...withoutOpenNestedEnd(out[out.length - 1]!), [OPEN_NESTED]: true };
   return out;
 }

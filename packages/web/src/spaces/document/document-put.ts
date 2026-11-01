@@ -25,7 +25,7 @@ import { toast } from '@web/lib/toast';
 import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { BODY_NODE, OPEN_EDGE, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { BODY_NODE, OPEN_EDGE, OPEN_NESTED, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeld, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
@@ -148,7 +148,8 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
   const children: PMNode[] = [];
   made.forEach((child, _offset, index) => children.push(index < source.childCount ? asBodyNode(child, source.child(index)) : child));
   const id = source.attrs['id'] as unknown;
-  const attrs = typeof id === 'string' && id !== '' && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
+  // A copy's ids are null, which its clipboard HTML writes as "null".
+  const attrs = typeof id === 'string' && id !== '' && id !== 'null' && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
   return made.type.create(attrs, children, made.marks);
 }
 
@@ -163,6 +164,9 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
  */
 function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: boolean): ReadBlock[] {
   const out = [...blocks];
+  // The open ends of one side are one boundary, however many levels deep.
+  while (out[0]?.[OPEN_EDGE] === true && out[1]?.[OPEN_EDGE] === true) out.splice(1, 1);
+  while (out.length > 1 && out[out.length - 1]?.[OPEN_EDGE] === true && out[out.length - 2]?.[OPEN_EDGE] === true) out.splice(-2, 1);
   while (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
   while (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
   return out;
@@ -175,7 +179,7 @@ function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: bo
  * @returns True when it does.
  */
 function hasOpenEdge(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => block[OPEN_EDGE] === true);
+  return blocks.some((block) => block[OPEN_EDGE] === true || block[OPEN_NESTED] === true);
 }
 
 /**
@@ -406,7 +410,7 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
   const from = view.state.selection.from;
   if (inside.length > 0) {
     if (code) editor.pasteText(wordsOf(inside));
-    else pasteWordsOf(editor, content, inside);
+    else pasteWordsOf(editor, hasOpenEdge(content.blocks) ? { ...content, paste: null } : content, inside);
   }
   const after = view.state.selection;
   const words: Placed | null = inside.length > 0 ? { kind: 'range', from: Math.min(from, after.head), to: after.head } : null;
@@ -600,7 +604,8 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   // stands in one code block, as BlockNote's default paste puts it there
   // (`pasteExtension.ts`).
   const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
-  const plain = content.plain ?? (startsInCode ? content.codeText ?? null : null);
+  // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
+  const plain = content.plain ?? (startsInCode && !(inCell && includesTable(content.blocks)) ? content.codeText ?? null : null);
   if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;
@@ -721,8 +726,11 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
   const content = own.attrs[QUOTED] === true ? quotedAs(put, true) : put;
   const { state } = view;
   const nodes = containers(content, state);
-  const firstWords = nodes.length > 1 && isWordsLine(content[0]);
-  const lastWords = nodes.length > 1 && isWordsLine(content[content.length - 1]);
+  // A line of words joins the line it lands in where it has company, or
+  // where an open end it came with was left out (a whole line copied).
+  const joins = nodes.length > 1 || put.length < blocks.length;
+  const firstWords = joins && isWordsLine(content[0]);
+  const lastWords = joins && isWordsLine(content[content.length - 1]);
   const start = line.pos;
   const end = line.pos + line.node.nodeSize;
   const tr = state.tr;
@@ -782,7 +790,8 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     // words land after those nested lines, apart from the words: the range is
     // the joined words alone, and the rest stays unselected.
     to = firstWords && line.node.childCount > 1 ? from + nodes[0]!.firstChild!.content.size : startOf(laid, laid.length);
-    finishCaret(tr, rest, startOf(laid, 1));
+    if (rest.length > 0) finishCaret(tr, rest, startOf(laid, 1));
+    else caret = from + nodes[0]!.firstChild!.content.size;
   } else {
     const lineId = line.node.attrs['id'] as string;
     const front = offset === 0 ? null : own.content.cut(0, offset).append(firstWords ? nodes[0]!.firstChild!.content : Fragment.empty);
