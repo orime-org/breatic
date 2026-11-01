@@ -250,9 +250,19 @@ function containerById(doc: PMNode, id: string): { node: PMNode; pos: number } |
  */
 function caretAfter(tr: Transaction, end: number): void {
   const $end = tr.doc.resolve(end);
-  const quoted = $end.parent.firstChild?.attrs[QUOTED] === true;
   // The only thing after a block's own content in its container is its group of nested lines.
-  const slot = $end.nodeAfter === null ? $end.after() : end + 1;
+  caretFrom(tr, $end.nodeAfter === null ? $end.after() : end + 1, $end.parent.firstChild?.attrs[QUOTED] === true);
+}
+
+/**
+ * Puts the caret at the start of the line that follows a position between
+ * blocks in reading order, leaving nested groups upward, when that line
+ * holds words; else in an empty line opened there, quoted as asked.
+ * @param tr - The transaction.
+ * @param slot - The position right after the last block put.
+ * @param quoted - Whether an opened line is quoted.
+ */
+function caretFrom(tr: Transaction, slot: number, quoted: boolean): void {
   let $next = tr.doc.resolve(slot);
   // Past the end of a nested group, the line that follows is the next one after its parent.
   while ($next.nodeAfter === null && $next.depth > 1 && !isTableCell($next.parent)) $next = tr.doc.resolve($next.after($next.depth - 1));
@@ -282,14 +292,7 @@ function finishCaret(tr: Transaction, nodes: readonly PMNode[], start: number): 
     last = group.lastChild!;
   }
   if (last.type.name === DOC_TABLE) {
-    const end = pos + last.nodeSize;
-    const next = tr.doc.resolve(end).nodeAfter;
-    if (next?.type.name === 'blockContainer' && next.firstChild?.isTextblock === true) {
-      tr.setSelection(TextSelection.create(tr.doc, end + 2));
-    } else {
-      tr.insert(end, blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: last.attrs[QUOTED] === true } } as never, tr.doc.type.schema));
-      tr.setSelection(TextSelection.create(tr.doc, end + 2));
-    }
+    caretFrom(tr, pos + last.nodeSize, last.attrs[QUOTED] === true);
     return;
   }
   const own = last.firstChild!;
