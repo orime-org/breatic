@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import type { MediaBinding } from "../../../config/schema.js";
 import { buildBody } from "../../body.js";
+import { DEPARTURES, OFF_WAVESPEED } from "./departures.js";
 
 interface BodyFixture {
   cases: { model: string; kind: "catalog" | "three_d"; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
@@ -28,27 +29,6 @@ for (const modality of ["image", "video", "audio", "tts", "three_d"]) {
     if (wavespeed !== undefined) bindings.set(model, wavespeed);
   }
 }
-
-/** Models WaveSpeed no longer serves (absent from `/api/v3/models` on 2026-11-01): they carry no WaveSpeed binding. */
-const OFF_WAVESPEED: ReadonlySet<string> = new Set(["meshy6-t23d", "veed-clean-audio", "recraft-v4-style-text-to-image", "sfx-1.6-extend-audio"]);
-
-/**
- * Where a binding departs from today's body on purpose, by model: a field renamed to the
- * name WaveSpeed's schema gives it (WaveSpeed takes both and echoes the schema's name,
- * probed 2026-11-01), or a field left out because WaveSpeed's schema has none and it
- * ignores the field (inner#1872, inner#1873).
- */
-const DEPARTURES: Readonly<Record<string, { rename?: Record<string, string>; omit?: string[] }>> = {
-  "flux-3-start-end-to-video": { rename: { start_image: "image", end_image: "last_image" } },
-  "muse-image-edit": { rename: { image_urls: "images" } },
-  "wan-3.0-text-to-video": { rename: { enable_audio: "generate_audio" } },
-  "wan-3.0-image-to-video": { rename: { enable_audio: "generate_audio" } },
-  "wan-3.0-reference-to-video": { rename: { enable_audio: "generate_audio" } },
-  "elevenlabs-v3": { omit: ["similarity"] },
-  "sfx-1.6-text-to-audio": { omit: ["ambience"] },
-  "hunyuan3d-v3-i23d": { omit: ["prompt"] },
-  "hunyuan3d-v3.1-rapid": { omit: ["prompt"] },
-};
 
 /** Params the application writes into the prompt (`into_prompt`); a run never sends them as fields. */
 const intoPrompt = new Map<string, Set<string>>();

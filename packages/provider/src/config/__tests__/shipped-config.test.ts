@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { OFF_WAVESPEED } from "../../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../../provider.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
@@ -14,9 +15,9 @@ describe("the shipped provider configuration", () => {
     expect(() => assertBindsCatalog(config, catalog())).not.toThrow();
   });
 
-  it("puts every catalog model on WaveSpeed at weight 1", () => {
+  it("puts every catalog model WaveSpeed still serves on WaveSpeed at weight 1", () => {
     const { models } = parseProviderConfig(shipped());
-    const off = Object.entries(models).filter(([, bindings]) => bindings.find((b) => b.upstream === "wavespeed")?.weight !== 1);
+    const off = Object.entries(models).filter(([name, bindings]) => !OFF_WAVESPEED.has(name) && bindings.find((b) => b.upstream === "wavespeed")?.weight !== 1);
     expect(off.map(([name]) => name)).toEqual([]);
   });
 
