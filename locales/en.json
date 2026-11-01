@@ -2874,6 +2874,7 @@
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
       "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
+      "clip_removed": "This clip was removed by another member.",
       "upload": "Upload failed. Retry with the selected file.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
       "track_missing": "The target track was removed. Choose another track.",

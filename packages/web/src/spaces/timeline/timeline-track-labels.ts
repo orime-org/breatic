@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineTrack } from '@breatic/shared';
+import * as React from 'react';
+import { getLocale, orderedTimelineTracks, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -19,11 +20,13 @@ export interface TimelineTrackLabels { visual: TimelineTrackLabel[]; nameOf: (tr
  */
 export function useTimelineTrackLabels(document: TimelineDocumentV1): TimelineTrackLabels {
   const t = useTranslation();
-  // Names are rebuilt on every render: `t` keeps its identity when the language changes, so a memo keyed on
-  // it would keep the previous language's names.
-  const visual = Object.values(document.tracks).filter((track: TimelineTrack) => track.kind === 'visual')
-    .sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1))
-    .map((track, index) => ({ id: track.id, order: track.order, label: track.id === TIMELINE_MAIN_TRACK_ID ? t('timeline.mainTrack') : t('timeline.track', { index: index + 1 }) }));
-  const names = new Map(visual.map((track) => [track.id, track.label]));
-  return { visual, nameOf: (trackId: string) => names.get(trackId) ?? null };
+  // `t` keeps its identity across language changes, so the memo is keyed on the active locale.
+  const locale = getLocale();
+  return React.useMemo(() => {
+    const visual = orderedTimelineTracks(document.tracks).filter((track) => track.kind === 'visual')
+      .map((track, index) => ({ id: track.id, order: track.order, label: track.id === TIMELINE_MAIN_TRACK_ID ? t('timeline.mainTrack') : t('timeline.track', { index: index + 1 }) }));
+    const names = new Map(visual.map((track) => [track.id, track.label]));
+    return { visual, nameOf: (trackId: string) => names.get(trackId) ?? null };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- locale stands in for the translations `t` returns.
+  }, [document.tracks, t, locale]);
 }

@@ -6,7 +6,7 @@ import type * as Y from 'yjs';
 import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  activeTimelineClipAt, newId, resolveTimelineArrangement, TIMELINE_MAIN_TRACK_ID,
+  activeTimelineClipAt, newId, orderedTimelineClips, resolveTimelineArrangement, TIMELINE_MAIN_TRACK_ID,
   type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlan, type TimelineVideoClip,
 } from '@breatic/shared';
 
@@ -17,6 +17,7 @@ import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { TIMELINE_MAX_PIXELS_PER_FRAME, timelineMinZoom } from '@web/spaces/timeline/timeline-zoom';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
@@ -47,10 +48,10 @@ interface TimelineConflictRowProps {
   onSelect: (clipId: string) => void;
 }
 
-const MIN_PIXELS_PER_FRAME = 0.25;
-const MAX_PIXELS_PER_FRAME = 12;
 const DEFAULT_PIXELS_PER_FRAME = 2;
-const ZOOM_STEP = 0.25;
+const TRACK_HEADER_PX = 112;
+// The zoom slider moves in powers of two so every zoom level is equally reachable.
+const ZOOM_STEP = 0.1;
 
 /**
  * List one conflicting placement; selecting it shows its properties.
@@ -92,7 +93,8 @@ function TimelineConflictRow({ projectId, clip, assetId, selected, onSelect }: T
 function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }: TimelineEditorProps): React.JSX.Element {
   const t = useTranslation();
   const [frame, setFrame] = React.useState(0);
-  const [pixelsPerFrame, setPixelsPerFrame] = React.useState(DEFAULT_PIXELS_PER_FRAME);
+  const [zoom, setZoom] = React.useState(DEFAULT_PIXELS_PER_FRAME);
+  const [trackWidth, setTrackWidth] = React.useState(0);
   const name = docName.timelineSpace(projectId, spaceId);
   const session = React.useMemo(() => getTimelineEditSession(doc, name), [doc, name]);
   const history = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -110,7 +112,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     if (materialState.open && !materialOpen) material.close();
   }, [materialState.open, materialOpen, setMaterialOpen, material]);
   const [media, setMedia] = React.useState<HTMLVideoElement | null>(null);
-  const clips = React.useMemo(() => Object.values(document.clips).sort((left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id)), [document.clips]);
+  const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
   const arrangement = React.useMemo(() => resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips, sources: document.sources, fps: document.settings.fps }), [document.tracks, clips, document.sources, document.settings.fps]);
   const readyIds = React.useMemo(() => new Set(arrangement.readyClipIds), [arrangement.readyClipIds]);
   const selectedId = history.selectedClipId;
@@ -126,7 +128,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const resourceFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
   const resource = useQuery({ queryKey: resourceKey, queryFn: resourceFn, enabled: source !== null });
   const resourceState = source === null ? 'ready' : resource.isError ? 'failed' : resource.isPending ? 'loading' : 'ready';
-  const playback = useTimelinePlayback({ document, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState });
+  const playback = useTimelinePlayback({ document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState });
   const { seek, retry: retryPlayback } = playback;
   const { refetch: refetchResource } = resource;
   const duration = Math.max(0, ...clips.map((clip) => clip.startFrame + clip.durationFrames));
@@ -145,7 +147,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     return plan;
   }, [readOnly, session, t]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
-  const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.target_missing')); }, [t]);
+  const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 
   const needSelection = React.useCallback((): TimelineVideoClip | null => {
     if (selected === undefined) { toast.warning(t('timeline.edit.selectFirst')); return null; }
@@ -172,8 +174,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const toggleMagnet = React.useCallback((): void => prefs.set({ magnet: !prefs.magnet }), [prefs]);
   const toggleSnap = React.useCallback((): void => prefs.set({ snap: !prefs.snap }), [prefs]);
   const toggleLinkage = React.useCallback((): void => prefs.set({ linkage: !prefs.linkage }), [prefs]);
-  const zoomValue = React.useMemo(() => [pixelsPerFrame], [pixelsPerFrame]);
-  const changeZoom = React.useCallback((value: number[]): void => setPixelsPerFrame(value[0] ?? DEFAULT_PIXELS_PER_FRAME), []);
+  const minZoom = timelineMinZoom(extent, trackWidth);
+  const pixelsPerFrame = Math.min(TIMELINE_MAX_PIXELS_PER_FRAME, Math.max(minZoom, zoom));
+  const zoomValue = React.useMemo(() => [Math.log2(pixelsPerFrame)], [pixelsPerFrame]);
+  const changeZoom = React.useCallback((value: number[]): void => setZoom(2 ** (value[0] ?? Math.log2(DEFAULT_PIXELS_PER_FRAME))), []);
 
   const nudge = React.useCallback((frames: number, repeat: boolean): void => {
     if (readOnly || selected === undefined) { seekTo(frame + frames); return; }
@@ -182,7 +186,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
       const index = sequence.findIndex((clip) => clip.id === selected.id);
       const neighbour = sequence[index + (frames > 0 ? 1 : -1)];
       if (neighbour === undefined) return;
-      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement });
+      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement }, { joinPrevious: repeat });
       return;
     }
     commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { joinPrevious: repeat });
@@ -197,10 +201,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   }, [readOnly, selected, labels.visual, commit, placement, t]);
 
   const onKeyDown = React.useCallback((event: KeyboardEvent): void => {
-    if (!regionOwnsKeyboard(event.target, 'space') || (event.target instanceof Element && isEditableTarget(event.target))) return;
+    // Text fields and Select triggers answer their own keys (a trigger's typeahead does not mark them handled).
+    if (!regionOwnsKeyboard(event.target, 'space') || (event.target instanceof Element && (isEditableTarget(event.target) || event.target.closest('[role="combobox"]') !== null))) return;
     const action = timelineKeyAction(event, fps);
     if (action === null) return;
-    const editing = action.kind !== 'nudge' && action.kind !== 'toggle_snap' && action.kind !== 'cancel_gesture';
+    const editing = action.kind !== 'nudge' && action.kind !== 'toggle_snap';
     if (editing && readOnly) return;
     event.preventDefault();
     switch (action.kind) {
@@ -212,22 +217,29 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
       case 'toggle_snap': toggleSnap(); break;
       case 'nudge': nudge(action.frames, action.repeat); break;
       case 'change_track': changeTrack(action.direction); break;
-      case 'cancel_gesture': break;
     }
   }, [fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
   const root = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const element = root.current;
+    if (element === null) return;
+    const observer = new ResizeObserver(() => setTrackWidth(Math.max(0, element.clientWidth - TRACK_HEADER_PX)));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const keyHandler = React.useRef(onKeyDown);
   keyHandler.current = onKeyDown;
   React.useEffect(() => {
     // Listening on window runs after React's root listener, so a focused control (slider, select) has
-    // already handled and marked the key; the handler skips keys from outside this Space body.
+    // already handled and marked the key. Keys reach the handler from inside this Space body, or from
+    // <body> after the focused clip was removed; hidden Spaces have no listener (Activity removes effects).
     /**
      * Forward a key press inside this Timeline to the current handler.
      * @param event - The key press.
      * @throws {never} Never.
      */
     const listener = (event: KeyboardEvent): void => {
-      if (event.target instanceof Node && root.current?.contains(event.target) === true) keyHandler.current(event);
+      if (event.target === window.document.body || (event.target instanceof Node && root.current?.contains(event.target) === true)) keyHandler.current(event);
     };
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
@@ -274,7 +286,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
       <Button data-testid='timeline-toggle-snap' variant='outline' size='sm' aria-pressed={prefs.snap} className={cn(prefs.snap && 'border-active-border bg-accent')} onClick={toggleSnap}>{t('timeline.edit.snap')} <kbd className='text-muted-foreground'>N</kbd></Button>
       <Button data-testid='timeline-toggle-linkage' variant='outline' size='sm' aria-pressed={prefs.linkage} className={cn(prefs.linkage && 'border-active-border bg-accent')} onClick={toggleLinkage} icon={<Link2 className='size-4' />}>{t('timeline.edit.linkage')}</Button>
       <span className='text-xs text-muted-foreground'>{t('timeline.edit.zoom')}</span>
-      <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={MIN_PIXELS_PER_FRAME} max={MAX_PIXELS_PER_FRAME} step={ZOOM_STEP} className='w-28' />
+      <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
     </div>
     <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent}
       pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} />

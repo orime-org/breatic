@@ -8,7 +8,7 @@ import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut
 /** What one key press asks the Timeline editor to do. */
 export type TimelineKeyAction =
   | { kind: 'undo' } | { kind: 'redo' } | { kind: 'duplicate' } | { kind: 'split' } | { kind: 'delete' }
-  | { kind: 'toggle_snap' } | { kind: 'cancel_gesture' }
+  | { kind: 'toggle_snap' }
   | { kind: 'nudge'; frames: number; repeat: boolean }
   | { kind: 'change_track'; direction: 1 | -1 };
 
@@ -52,7 +52,6 @@ export function timelineKeyAction(event: TimelineKeyEvent, fps: TimelineRate): T
   }
   if (event.shiftKey || event.altKey) return null;
   if (event.key === 'Delete' || event.key === 'Backspace') return { kind: 'delete' };
-  if (event.key === 'n') return { kind: 'toggle_snap' };
-  if (event.key === 'Escape') return { kind: 'cancel_gesture' };
+  if (event.key.toLowerCase() === 'n') return { kind: 'toggle_snap' };
   return null;
 }

@@ -98,6 +98,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.material.insertAfter": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.material.insertFirst": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.errors.target_missing": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "timeline.errors.clip_removed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.upload": { excluded: REASONS.SAYS_TRY_AGAIN },
   "timeline.errors.permission_changed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "applicationError.title": { excluded: REASONS.SAYS_WHAT_HAPPENED },

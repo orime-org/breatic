@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { nextTimelinePlaybackBoundary, resolveTimelineArrangement, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import { nextTimelinePlaybackBoundary, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
 /** The current document projection and its authorized preview resource. */
 export interface TimelinePlaybackInput {
   document: TimelineDocumentV1;
+  readyClipIds: ReadonlySet<string>;
   frame: number;
   onFrame: (frame: number) => void;
   clip: TimelineVideoClip | null;
@@ -39,12 +40,8 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry'>;
  * @throws {never} Never.
  */
 export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayback {
-  const readyClips = React.useMemo(() => new Set(resolveTimelineArrangement({
-    tracks: Object.values(input.document.tracks), clips: Object.values(input.document.clips),
-    sources: input.document.sources, fps: input.document.settings.fps,
-  }).readyClipIds), [input.document.clips, input.document.tracks, input.document.sources, input.document.settings.fps]);
-  const latest = React.useRef({ ...input, readyClips });
-  latest.current = { ...input, readyClips };
+  const latest = React.useRef(input);
+  latest.current = input;
   const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused' });
   const [snapshot, setSnapshot] = React.useState(state.current);
   const actions = React.useRef<PlaybackActions | null>(null);
@@ -152,7 +149,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
       // Any ready clip edge can change which layer is shown, so playback stops at each one.
-      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClips, position, end);
+      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClipIds, position, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));

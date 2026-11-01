@@ -2874,6 +2874,7 @@
       "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
       "invalid_range": "请输入视频范围内的帧。",
       "target_missing": "目标已变化。请检查位置后重试。",
+      "clip_removed": "该片段已被其他成员移除。",
       "upload": "上传失败。可以使用已选文件重试。",
       "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
       "track_missing": "目标轨道已被移除，请选择其他轨道。",

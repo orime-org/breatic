@@ -20,6 +20,9 @@ function readPrefs(userId: string | undefined): TimelineEditPrefs {
   return { magnet: stored.timelineMagnet, snap: stored.timelineSnap, linkage: stored.timelineLinkage };
 }
 
+// Every mounted Timeline hears a change any of them makes, so open tabs show the same switches.
+const listeners = new Set<(owner: string | undefined, patch: Partial<TimelineEditPrefs>) => void>();
+
 /**
  * The signed-in account's main-track magnet, auto snap and linkage switches, stored per account.
  * @returns The switches and a setter that stores a change for this account.
@@ -32,14 +35,27 @@ export function useTimelineEditPrefs(): TimelineEditPrefs & { set: (patch: Parti
   if (current !== held) setHeld(current);
   const latest = React.useRef(current);
   latest.current = current;
+  React.useEffect(() => {
+    /**
+     * Apply a change made by any Timeline for this account.
+     * @param owner - The account that changed its switches.
+     * @param patch - The changed switches.
+     * @throws {never} Never.
+     */
+    const hear = (owner: string | undefined, patch: Partial<TimelineEditPrefs>): void => {
+      setHeld((previous) => previous.userId === owner ? { userId: owner, prefs: { ...previous.prefs, ...patch } } : previous);
+    };
+    listeners.add(hear);
+    return () => { listeners.delete(hear); };
+  }, []);
   const set = React.useCallback((patch: Partial<TimelineEditPrefs>): void => {
-    const { userId: owner, prefs } = latest.current;
+    const owner = latest.current.userId;
     const stored: Partial<UserPreferences> = {};
     if (patch.magnet !== undefined) stored.timelineMagnet = patch.magnet;
     if (patch.snap !== undefined) stored.timelineSnap = patch.snap;
     if (patch.linkage !== undefined) stored.timelineLinkage = patch.linkage;
     writeUserPreference(owner, stored);
-    setHeld({ userId: owner, prefs: { ...prefs, ...patch } });
+    for (const listener of listeners) listener(owner, patch);
   }, []);
   return React.useMemo(() => ({ ...current.prefs, set }), [current.prefs, set]);
 }

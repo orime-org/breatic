@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
+import { newId, TIMELINE_MAIN_TRACK_ID, timelineSourceOverflow, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
 
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
@@ -56,7 +56,8 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
   const key = `${clip.id}:${clip.startFrame}:${clip.sourceInFrame}:${clip.durationFrames}`;
   const current = draft.key === key ? draft : { key, values: draftOf(clip), error: null };
   if (current !== draft) setDraft(current);
-  const extent = document.sources[clip.sourceId]?.extentFrames ?? 0;
+  const source = document.sources[clip.sourceId];
+  const fps = document.settings.fps;
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const trackName = labels.nameOf(clip.trackId);
 
@@ -70,14 +71,15 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
     const duration = Number(values.duration);
     const valid = field === 'start'
       ? Number.isSafeInteger(start) && start >= 0
-      : [sourceIn, duration].every(Number.isSafeInteger) && sourceIn >= 0 && duration >= 1 && sourceIn + duration <= extent;
+      : [sourceIn, duration].every(Number.isSafeInteger) && sourceIn >= 0 && duration >= 1 && source !== undefined
+        && timelineSourceOverflow({ ...clip, sourceInFrame: sourceIn, durationFrames: duration }, source, fps) === 0;
     if (!valid) { setDraft((previous) => ({ ...previous, error: field })); return; }
     if (field === 'start') {
       if (start !== clip.startFrame) onCommit({ operation: 'move', parameters: { clipId: clip.id, startFrame: start }, placement });
     } else if (sourceIn !== clip.sourceInFrame || duration !== clip.durationFrames) {
       onCommit({ operation: 'set_range', parameters: { clipId: clip.id, startFrame: clip.startFrame, sourceInFrame: sourceIn, durationFrames: duration }, placement });
     }
-  }, [current.values, extent, clip, onCommit, placement]);
+  }, [current.values, source, fps, clip, onCommit, placement]);
   const changeTrack = React.useCallback((value: string): void => {
     if (value === clip.trackId) return;
     onCommit(value === 'new'
@@ -87,24 +89,24 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
 
   /**
    * One numeric field, or its value as text when it cannot be edited.
-   * @param field - The field.
+   * @param name - The field.
    * @param label - Its label key.
    * @param editable - Whether it can be edited.
    * @returns The field.
    * @throws {never} Never.
    */
-  function field(field: Field, label: string, editable: boolean): React.JSX.Element {
-    const id = `timeline-clip-${field}-${spaceId}`;
-    const testId = `timeline-clip-${field === 'in' ? 'in' : field}`;
+  function field(name: Field, label: string, editable: boolean): React.JSX.Element {
+    const id = `timeline-clip-${name}-${spaceId}`;
+    const testId = `timeline-clip-${name}`;
     return <div className='flex flex-col gap-1'>
       <Label htmlFor={editable ? id : undefined}>{t(label)}</Label>
       {editable
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current.values[field]} className='h-8 w-28'
-          onChange={(event) => change(field, event.target.value)} onBlur={() => commit(field)}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(field); } }} />
-        : <span data-testid={testId} className='text-sm tabular-nums'>{current.values[field]}</span>}
-      {field === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
-      {current.error === field && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
+        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current.values[name]} className='h-8 w-28'
+          onChange={(event) => change(name, event.target.value)} onBlur={() => commit(name)}
+          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(name); } }} />
+        : <span data-testid={testId} className='text-sm tabular-nums'>{current.values[name]}</span>}
+      {name === 'start' && startLocked && !readOnly && <span className='text-2xs text-muted-foreground'>{t('timeline.edit.magnetStartHint')}</span>}
+      {current.error === name && <span data-testid='timeline-clip-field-error' className='text-2xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
     </div>;
   }
 

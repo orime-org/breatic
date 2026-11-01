@@ -5,7 +5,7 @@ import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { useQuery } from '@tanstack/react-query';
 import { Film, Trash2 } from 'lucide-react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
+import { newId, orderedTimelineTracks, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -14,11 +14,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { previewTimelineGesture, timelineGestureCommand, type TimelineGestureMode, type TimelineGesturePreview } from '@web/spaces/timeline/timeline-gesture';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+import { timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
 
 const HEADER_WIDTH = 112;
 const DRAG_ACTIVATION_PX = 3;
-const RULER_LABEL_GAP_PX = 48;
-const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
@@ -108,7 +107,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const style = React.useMemo(() => ({ left: clip.startFrame * pixelsPerFrame, width: Math.max(2, clip.durationFrames * pixelsPerFrame) }), [clip.startFrame, clip.durationFrames, pixelsPerFrame]);
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-track-id={clip.trackId} type='button' variant={null} size={null}
-      aria-pressed={selected} onClick={select}
+      aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-border bg-muted px-2 text-xs hover-enabled:bg-accent',
         !readOnly && 'cursor-grab', conflict && 'border-status-error-border bg-status-error-bg', selected && 'border-active-border')}>
       <Film className='size-4 shrink-0' />
@@ -149,6 +148,25 @@ function DropRow({ id, className, testId, children }: { id: string; className: s
   return <div ref={setNodeRef} data-testid={testId} className={cn('flex border-b border-border', className, isOver && id === 'new' && 'bg-muted')}>{children}</div>;
 }
 
+/** The editor facts a drag preview reads at the moment it is computed. */
+interface DragView { document: TimelineDocumentV1; frame: number; pixelsPerFrame: number; snap: boolean; placement: TimelineEditPlacement }
+
+/**
+ * The preview of a drag at its current pointer travel and hovered row.
+ * @param view - The editor facts.
+ * @param data - The dragged clip and mode.
+ * @param data.mode - Move, or trim one edge.
+ * @param data.clipId - The dragged clip.
+ * @param event - The dnd-kit move or end event.
+ * @returns The preview, or null when the clip no longer exists.
+ * @throws {never} Never.
+ */
+function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: string }, event: DragMoveEvent | DragEndEvent): TimelineGesturePreview | null {
+  const hover = (event.over?.data.current as { hover?: string } | undefined)?.hover ?? null;
+  return previewTimelineGesture(view.document, data.clipId, data.mode, Math.round(event.delta.x / view.pixelsPerFrame), hover,
+    { snap: view.snap, pixelsPerFrame: view.pixelsPerFrame, playhead: view.frame, magnet: view.placement.magnet });
+}
+
 /**
  * The ruler, the track rows and their clips, with drag, trim, snap and the new-track zone.
  * @param props - The document view and editing callbacks.
@@ -159,10 +177,10 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
-  const latest = React.useRef({ document, frame, pixelsPerFrame, snap, placement });
-  latest.current = { document, frame, pixelsPerFrame, snap, placement };
+  const latest = React.useRef({ document, frame, pixelsPerFrame, snap, placement, readOnly });
+  latest.current = { document, frame, pixelsPerFrame, snap, placement, readOnly };
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_PX } }));
-  const rows = React.useMemo(() => Object.values(document.tracks).sort((a, b) => b.order - a.order || (a.id < b.id ? 1 : -1)), [document.tracks]);
+  const rows = React.useMemo(() => orderedTimelineTracks(document.tracks).reverse(), [document.tracks]);
   const width = extent * pixelsPerFrame;
 
   const startDrag = React.useCallback((event: DragStartEvent): void => {
@@ -173,22 +191,16 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   }, [onSelect, readOnly]);
   const moveDrag = React.useCallback((event: DragMoveEvent): void => {
     const data = event.active.data.current as { mode: TimelineGestureMode; clipId: string } | undefined;
-    if (data === undefined) return;
-    const view = latest.current;
-    const hover = (event.over?.data.current as { hover?: string } | undefined)?.hover ?? null;
-    const preview = previewTimelineGesture(view.document, data.clipId, data.mode, Math.round(event.delta.x / view.pixelsPerFrame), hover,
-      { snap: view.snap, pixelsPerFrame: view.pixelsPerFrame, playhead: view.frame });
-    setGesture({ mode: data.mode, clipId: data.clipId, preview });
+    if (data === undefined || latest.current.readOnly) return;
+    setGesture({ mode: data.mode, clipId: data.clipId, preview: previewOf(latest.current, data, event) });
   }, []);
   const endDrag = React.useCallback((event: DragEndEvent): void => {
     const data = event.active.data.current as { mode: TimelineGestureMode; clipId: string } | undefined;
     setGesture(null);
     if (data === undefined || readOnly) return;
     const view = latest.current;
-    const hover = (event.over?.data.current as { hover?: string } | undefined)?.hover ?? null;
     if (view.document.clips[data.clipId] === undefined) { onVanished(); return; }
-    const preview = previewTimelineGesture(view.document, data.clipId, data.mode, Math.round(event.delta.x / view.pixelsPerFrame), hover,
-      { snap: view.snap, pixelsPerFrame: view.pixelsPerFrame, playhead: view.frame });
+    const preview = previewOf(view, data, event);
     if (preview === null) return;
     const command = timelineGestureCommand(view.document, preview, data.mode, view.placement, newId);
     if (command !== null) onCommit(command);
@@ -203,8 +215,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
 
   const fps = document.settings.fps.num / document.settings.fps.den;
   const seconds = Math.ceil(extent / fps);
-  // Label every Nth second so labels keep at least RULER_LABEL_GAP_PX apart at any zoom.
-  const labelStep = RULER_STEPS.find((step) => step * fps * pixelsPerFrame >= RULER_LABEL_GAP_PX) ?? RULER_STEPS[RULER_STEPS.length - 1] ?? 1;
+  const labelStep = timelineRulerStep(fps, pixelsPerFrame, extent);
   const preview = gesture?.preview ?? null;
   const ghostStyle = React.useMemo(() => preview === null ? undefined : { left: preview.startFrame * pixelsPerFrame, width: Math.max(2, preview.durationFrames * pixelsPerFrame) }, [preview, pixelsPerFrame]);
   const header = 'sticky left-0 z-20 flex w-28 shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
@@ -237,6 +248,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
                 selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} onSelect={onSelect} />)}
               {showGhost && <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle} />}
+              {showGhost && isMain && placement.magnet && gesture?.mode === 'move' && <div data-testid='timeline-insert-marker' className='pointer-events-none absolute -inset-y-1 w-px bg-active-border' style={{ left: (preview?.startFrame ?? 0) * pixelsPerFrame }} />}
               {showGhost && preview?.snapFrame !== null && preview !== null && <div className='pointer-events-none absolute -inset-y-1 w-px bg-status-warning-foreground' style={{ left: (preview.snapFrame ?? 0) * pixelsPerFrame }} />}
               <div className='pointer-events-none absolute inset-y-0 w-px bg-active-border' style={{ left: frame * pixelsPerFrame }} />
             </div>

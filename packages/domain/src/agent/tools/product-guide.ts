@@ -1232,7 +1232,8 @@ export function renderProductGuide(): string {
       `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip move or are deleted with it. ` +
       `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges and the playhead. ` +
       `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
-      "Keys: Left and Right move the selected clip one frame (Shift one second), or the playhead when nothing is selected; " +
+      "Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with the magnet on they swap it with the clip before or after it; " +
+      "with nothing selected they move the playhead; " +
       "Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
       `Clips marked ${quoted(t("timeline.conflict"))} also appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
