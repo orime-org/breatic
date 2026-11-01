@@ -1390,13 +1390,13 @@ export function renderProductGuide(): string {
       "their original words, and each picture, video or audio carries the node's name as its caption, in " +
       "reading order from the canvas. Inside a table cell, ordinary content keeps its block types and media " +
       "stay in the cell. A single pasted table fills cells once from the target cell, growing the table " +
-      "when needed; a table mixed with other content is refused with " +
+      "when needed; a table mixed with other content, or more than one table, is refused with " +
       `${quoted(t("spaces.document.paste.unsupportedInCell"))}. A cell selection receives a copy of ordinary ` +
       "content in each cell. In a code block, plain text is inserted verbatim; web text goes into the code " +
       "and its media beside the code block, while canvas content carrying media lands together beside it. " +
       "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
-      "a web page's content in does the same. Each picture, video or audio " +
-      "first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
+      "a web page's content in does the same. Each picture, video or audio that still has to be fetched " +
+      "or uploaded first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
       "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
       "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
       "it back without uploading again. An upload that fails turns the box red with the reason, with " +
