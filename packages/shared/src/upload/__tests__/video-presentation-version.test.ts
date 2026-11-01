@@ -514,7 +514,8 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
     ['fewer origin entries than frames', patched(gapHoldPlan(), ['originMapping', 'entries'], gapHoldPlan().originMapping.entries.slice(0, 2))],
     ['more origin frames than presented frames', patched(cfrPlan(), ['originMapping', 'entries', 0, 'count'], 18)],
     ['two adjacent derived-empty frames', adjacent],
-    ['a derived-empty first frame', patched(patched(gapPlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }, { kind: 'source', start: 125, count: 1, step: 0 }, { kind: 'source', start: 875, count: 1, step: 0 }]), ['originMapping', 'firstSource', 'supportStart'], r(1, 4))],
+    // Frame 0 [0,1/4) is derived-empty while firstSource (supportStart 0, no lead) agrees with frame 0: only the first-frame rule is wrong.
+    ['a derived-empty first frame', patched(gapPlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }, { kind: 'source', start: 125, count: 1, step: 0 }, { kind: 'source', start: 875, count: 1, step: 0 }])],
     ['no source frame at all', patched(singlePlan(), ['originMapping', 'entries'], [{ kind: 'derived-empty' }])],
     ['a hold while a derived-empty frame is last', patched(gapHoldPlan(), ['originMapping', 'entries'], [{ kind: 'source', start: 0, count: 1, step: 0 }, { kind: 'source', start: 512, count: 1, step: 0 }, { kind: 'derived-empty' }])],
     ['a hold ending before the last display end', patched(gapHoldPlan(), ['originMapping', 'lastSource', 'hold', 'end'], r(7, 4))],
