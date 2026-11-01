@@ -11,9 +11,10 @@
 import { act } from '@testing-library/react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
-import { cellAround } from '@tiptap/pm/tables';
+import { cellAround, CellSelection } from '@tiptap/pm/tables';
 
 import { toast } from '@web/lib/toast';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import { tableBlock } from './table-fixtures';
 
 import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
@@ -463,15 +464,59 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
    * @param from - Where the selection starts.
    * @param to - Where it ends.
    * @param at - Where it is dropped.
-   * @param keys - Whether the drag started as a move, and whether the copy key is held at the drop.
+   * @param keys - As {@link dragSelection} takes them.
    * @param keys.started - Whether the drag started as a move.
    * @param keys.copyKey - Whether the copy key is held at the drop.
+   * @param keys.collapsed - Whether the selection is collapsed to the drop point before the drop.
    */
-  function dragWithin(editor: Editor, from: number, to: number, at: number, keys = { started: true, copyKey: false }): void {
+  function dragWithin(editor: Editor, from: number, to: number, at: number, keys = { started: true, copyKey: false, collapsed: false }): void {
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    dragSelection(editor, at, keys);
+  }
+
+  /**
+   * Drags the current selection to a point.
+   * @param editor - The editor.
+   * @param at - Where it is dropped.
+   * @param keys - Whether the drag started as a move, whether the copy key is held at the drop, and whether the selection was collapsed to the drop point before it, as Safari does while hovering.
+   * @param keys.started - Whether the drag started as a move.
+   * @param keys.copyKey - Whether the copy key is held at the drop.
+   * @param keys.collapsed - Whether the selection is collapsed to the drop point before the drop.
+   */
+  function dragSelection(editor: Editor, at: number, keys = { started: true, copyKey: false, collapsed: false }): void {
+    const view = editor.prosemirrorView;
+    view.focus();
     (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: keys.started };
+    if (keys.collapsed) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
     dropFormats(editor, at, { 'text/html': '<p>x</p>' }, 1, keys.copyKey);
+  }
+
+  /**
+   * Puts a comment on words.
+   * @param editor - The editor.
+   * @param words - The words, as they stand in one line.
+   * @param threadId - The comment's thread.
+   */
+  function comment(editor: Editor, words: string, threadId: string): void {
+    const view = editor.prosemirrorView;
+    const from = positionOf(editor, words, 0);
+    view.dispatch(view.state.tr.addMark(from, from + words.length, view.state.schema.marks[COMMENT_MARK]!.create({ threadId, orphan: false })));
+  }
+
+  /**
+   * Every run of words carrying a comment, with its thread.
+   * @param editor - The editor.
+   * @returns `words:thread`.
+   */
+  function commented(editor: Editor): string[] {
+    const found: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      const mark = node.isText ? node.marks.find((m) => m.type.name === COMMENT_MARK) : undefined;
+      if (mark !== undefined) found.push(`${node.text}:${String(mark.attrs['threadId'])}`);
+      return true;
+    });
+    return found;
   }
 
   /**
@@ -531,7 +576,7 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
       { type: 'paragraph', content: 'tail' },
       tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
     ]);
-    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: true, copyKey: true });
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: true, copyKey: true, collapsed: false });
     await settled();
     expect(grids(editor)).toEqual(['docTable:t1,t2', 'docTable:c1,c2,t1,t2']);
   });
@@ -543,7 +588,7 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
       { type: 'paragraph', content: 'tail' },
       tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
     ]);
-    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: false, copyKey: false });
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: false, copyKey: false, collapsed: false });
     await settled();
     expect(grids(editor)).toEqual(['docTable:c1,c2,t1,t2']);
   });
@@ -585,6 +630,55 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('fills cells from the drag\'s own content when the selection has moved to the drop point, as Safari moves it while hovering', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: true, copyKey: false, collapsed: true });
+    await settled();
+    expect(grids(editor)).toContain('docTable:c1,c2,t1,t2');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the comments of a table it moves into cells, and drops them from a copy', async () => {
+    for (const copyKey of [false, true]) {
+      const { editor } = await openReady([
+        { type: 'paragraph', content: 'lead' },
+        tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+        { type: 'paragraph', content: 'tail' },
+        tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+      ]);
+      comment(editor, 't1', 'th1');
+      dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1), { started: true, copyKey, collapsed: false });
+      await settled();
+      expect(grids(editor).at(-1)).toBe('docTable:c1,c2,t1,t2');
+      expect(commented(editor)).toEqual(['t1:th1']);
+      unmountAll();
+    }
+  });
+
+  it('fills cells from the drop with cells selected in another table, each row as wide as before', async () => {
+    const { editor } = await openReady([
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
+      { type: 'paragraph', content: 'mid' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    const view = editor.prosemirrorView;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    dragSelection(editor, positionOf(editor, 'c3', 1));
+    await settled();
+    expect(grids(editor)).toEqual(['docTable:,,a2,b2', 'docTable:c1,c2,a1,b1']);
+  });
+
   it('moves words into the cell as before', async () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
     const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, tableBlock({ rows: [{ cells: ['c1', 'c2'] }] })]);
@@ -592,5 +686,53 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
     await settled();
     expect(editor.prosemirrorView.state.doc.textContent).toBe('ldcea1c2');
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a drag within the body into a block that takes only words (design §5.4.1, A7)', () => {
+  /**
+   * Drags the selection between two words to a point, as ProseMirror's own
+   * text drag does.
+   * @param editor - The editor.
+   * @param from - Where the selection starts.
+   * @param to - Where it ends.
+   * @param at - Where it is dropped.
+   */
+  function dragWithin(editor: Editor, from: number, to: number, at: number): void {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    view.focus();
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    dropFormats(editor, at, { 'text/html': '<p>x</p>' });
+  }
+
+  it('puts two lines into a code block as its words, the code block kept whole', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'codeBlock', content: 'const x = 1;' },
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 2), positionOf(editor, 'tail', 2), positionOf(editor, 'const x = 1;', 5));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:leil', 'codeBlock:constad\nta x = 1;']);
+  });
+
+  it('puts content holding a table into a stored table\'s cell as its words, the stored table kept whole', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['l1', 'l2'] }] } },
+    ] as unknown as Parameters<typeof open>[0]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'l1', 1));
+    await settled();
+    const stored: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'table') stored.push(node.textContent);
+      return node.type.name !== 'table';
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toContain('t1');
+    expect(lines(editor).filter((label) => label === 'table')).toHaveLength(1);
   });
 });
