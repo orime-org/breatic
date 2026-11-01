@@ -17,6 +17,8 @@ import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-la
 
 const HEADER_WIDTH = 112;
 const DRAG_ACTIVATION_PX = 3;
+const RULER_LABEL_GAP_PX = 48;
+const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
@@ -201,6 +203,8 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
 
   const fps = document.settings.fps.num / document.settings.fps.den;
   const seconds = Math.ceil(extent / fps);
+  // Label every Nth second so labels keep at least RULER_LABEL_GAP_PX apart at any zoom.
+  const labelStep = RULER_STEPS.find((step) => step * fps * pixelsPerFrame >= RULER_LABEL_GAP_PX) ?? RULER_STEPS[RULER_STEPS.length - 1] ?? 1;
   const preview = gesture?.preview ?? null;
   const ghostStyle = React.useMemo(() => preview === null ? undefined : { left: preview.startFrame * pixelsPerFrame, width: Math.max(2, preview.durationFrames * pixelsPerFrame) }, [preview, pixelsPerFrame]);
   const header = 'sticky left-0 z-20 flex w-28 shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
@@ -211,7 +215,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
         <div className='sticky top-0 z-30 flex h-6 border-b border-border bg-background'>
           <div className={header} />
           <div data-testid='timeline-ruler' className='relative flex-1 cursor-pointer' onPointerDown={seekFromRuler}>
-            {Array.from({ length: seconds + 1 }, (_, second) => <span key={second} className='absolute inset-y-0 border-l border-border pl-1 text-2xs tabular-nums text-muted-foreground' style={{ left: second * fps * pixelsPerFrame }}>{second}s</span>)}
+            {Array.from({ length: Math.floor(seconds / labelStep) + 1 }, (_, index) => index * labelStep).map((second) => <span key={second} className='absolute inset-y-0 border-l border-border pl-1 text-2xs tabular-nums text-muted-foreground' style={{ left: second * fps * pixelsPerFrame }}>{second}s</span>)}
           </div>
         </div>
         {!readOnly && <DropRow id='new' testId='timeline-new-track-zone' className='h-7 border-dashed'>
