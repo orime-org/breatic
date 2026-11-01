@@ -471,6 +471,35 @@ function AiPanel({
   // Edits move the anchor; `autoUpdate` hears only scrolls and resizes.
   React.useEffect(() => onEditorSettled(editor, update), [editor, update]);
 
+  // The dialog takes the keyboard as it shows, so Tab reaches its buttons (the
+  // bar's menus take none, user 2026-08-26); the instruction box takes it
+  // itself. It keeps it when the instruction box goes, and gives it back to
+  // the body as it closes.
+  const panel = React.useRef<HTMLDivElement | null>(null);
+  const setPanel = React.useCallback((element: HTMLDivElement | null) => {
+    panel.current = element;
+    refs.setFloating(element);
+  }, [refs]);
+  const composing = session.state === 'composing';
+  React.useEffect(() => {
+    const element = panel.current;
+    if (!isPositioned || composing || element === null) return;
+    const active = element.ownerDocument.activeElement;
+    if (active === null || active === element.ownerDocument.body || !element.contains(active)) {
+      element.focus({ preventScroll: true });
+    }
+  }, [isPositioned, composing]);
+  React.useLayoutEffect(() => {
+    // Read as the panel goes, not as it mounts: the portal renders the panel
+    // one pass after this component, and its ref is let go only after this
+    // cleanup has run.
+    const live = panel;
+    return () => {
+      const element = live.current;
+      if (element?.contains(element.ownerDocument.activeElement)) viewOf(editor)?.focus();
+    };
+  }, [editor]);
+
   // Escape typed in the body reaches the dialog through the editor's own
   // shortcut, which keeps it from blurring the body.
   React.useEffect(() => onAiEscape(editor, () => {
@@ -516,13 +545,14 @@ function AiPanel({
   return (
     <FloatingPortal root={opened.frozen === null ? viewport : undefined}>
       <div
-        ref={refs.setFloating}
+        ref={setPanel}
         style={floatingStyles}
         role='dialog'
         aria-labelledby='doc-ai-title'
         data-testid='doc-ai-dialog'
+        tabIndex={-1}
         className={cn(
-          'z-20 flex w-[min(560px,calc(100%-2rem))] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
+          'z-20 flex w-[min(560px,calc(100%-2rem))] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md outline-none',
           !isPositioned && 'invisible',
         )}
       >
@@ -555,30 +585,21 @@ function AiPanel({
         {session.state !== 'composing' && (
           <div className='flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 py-1.5'>
             <div className='flex items-center gap-2'>
-              {buttons.stop && (
+              {(buttons.stop || buttons.retry) && (
+                // One element for both, so the keyboard stays on it as stop
+                // turns into retry.
                 <Button
                   variant='outline'
                   size='sm'
-                  data-testid='doc-ai-stop'
-                  icon={<Square className='mr-1.5 h-3.5 w-3.5' />}
+                  data-testid={buttons.stop ? 'doc-ai-stop' : 'doc-ai-retry'}
+                  icon={buttons.stop
+                    ? <Square className='mr-1.5 h-3.5 w-3.5' />
+                    : <RotateCcw className='mr-1.5 h-3.5 w-3.5' />}
                   onClick={() => {
-                    dispatch({ type: 'stop' });
+                    dispatch({ type: buttons.stop ? 'stop' : 'retry' });
                   }}
                 >
-                  {t('spaces.document.ai.stop')}
-                </Button>
-              )}
-              {buttons.retry && (
-                <Button
-                  variant='outline'
-                  size='sm'
-                  data-testid='doc-ai-retry'
-                  icon={<RotateCcw className='mr-1.5 h-3.5 w-3.5' />}
-                  onClick={() => {
-                    dispatch({ type: 'retry' });
-                  }}
-                >
-                  {t('spaces.document.ai.retry')}
+                  {t(buttons.stop ? 'spaces.document.ai.stop' : 'spaces.document.ai.retry')}
                 </Button>
               )}
             </div>

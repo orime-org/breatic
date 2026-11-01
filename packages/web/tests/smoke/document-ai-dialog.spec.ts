@@ -4,7 +4,8 @@
 /**
  * The document AI output dialog in a real browser (inner#1860, design §5.3):
  * what only a browser shows. The panel stays hidden until it is positioned,
- * and a browser ignores focus on a hidden element; it hangs under the last
+ * and a browser ignores focus on a hidden element; it takes the keyboard as it
+ * shows and gives it back to the body as it closes; it hangs under the last
  * line of the selection whichever end was dragged from; it waits with the
  * Agent's dot; Escape typed in the body reaches it past BlockNote's own.
  *
@@ -138,10 +139,35 @@ test('one Escape in the body closes the dialog and the body keeps the keyboard',
   await selectParagraph(page, 0);
 
   await pressAi(page, 'refine');
+  // The reader goes back to the body while the dialog stays open.
+  await page.locator(BODY).click();
   await expect(page.locator(BODY)).toBeFocused();
 
   await page.keyboard.press('Escape');
 
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  await expect(page.locator(BODY)).toBeFocused();
+});
+
+test('the dialog takes the keyboard, Tab reaches its buttons, and Escape hands it back to the body', async ({ page }) => {
+  const release = await holdTextTool(page);
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'refine');
+  await expect(page.locator(DIALOG)).toBeFocused();
+  release('Alpha, bravo.');
+  await expect(page.getByTestId('doc-ai-replace')).toBeVisible({ timeout: 10_000 });
+
+  const reached: string[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('Tab');
+    reached.push(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''));
+  }
+  expect(reached).toEqual(expect.arrayContaining(['doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace']));
+
+  await page.keyboard.press('Escape');
   await expect(page.locator(DIALOG)).toHaveCount(0);
   await expect(page.locator(BODY)).toBeFocused();
 });
