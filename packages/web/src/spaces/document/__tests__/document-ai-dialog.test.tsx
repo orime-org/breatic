@@ -579,6 +579,26 @@ describe('when the original words or their block go (A7)', () => {
     });
     expect(isDisabled('doc-ai-replace')).toBe(true);
   });
+
+  it('the block deleted and then undone: insert is available again, replace stays off', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['Hi.'], true);
+    act(() => {
+      editor.removeBlocks([(editor.document as Array<{ id: string }>)[0]!.id]);
+    });
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-insert')).toBe(true);
+    });
+
+    act(() => {
+      editor.undo();
+    });
+
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-insert')).toBe(false);
+    });
+    expect(isDisabled('doc-ai-replace')).toBe(true);
+  });
 });
 
 describe('the preview', () => {

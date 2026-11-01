@@ -17,6 +17,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import { TextSelection } from '@tiptap/pm/state';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -203,6 +204,88 @@ describe('the AI dialog\'s range', () => {
     sync(docA, docB);
 
     expect(aiRangeIn(a.prosemirrorState)).toEqual({ kind: 'gone' });
+  });
+});
+
+describe('the AI range under any mix of edits (property)', () => {
+  /** One edit: by the reader (local) or a collaborator (through Yjs), or an undo / redo of the reader's. */
+  type Edit =
+    | { readonly by: 'reader' | 'collaborator'; readonly kind: 'insert'; readonly at: number; readonly text: string }
+    | { readonly by: 'reader' | 'collaborator'; readonly kind: 'delete'; readonly at: number; readonly length: number }
+    | { readonly by: 'reader'; readonly kind: 'undo' | 'redo' };
+
+  const edit: fc.Arbitrary<Edit> = fc.oneof(
+    fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('insert' as const), at: fc.nat(), text: fc.constantFrom('x', 'yz', ' ') }),
+    fc.record({ by: fc.constantFrom('reader' as const, 'collaborator' as const), kind: fc.constant('delete' as const), at: fc.nat(), length: fc.integer({ min: 1, max: 6 }) }),
+    fc.record({ by: fc.constant('reader' as const), kind: fc.constantFrom('undo' as const, 'redo' as const) }),
+  );
+
+  /**
+   * The capital letters of a text: only the original words have any.
+   * @param text - The text.
+   * @returns Its capitals, in order.
+   */
+  const capitals = (text: string): string => text.replace(/[^A-Z]/g, '');
+
+  it('covers exactly the original letters still in the body, and once gone stays gone', () => {
+    fc.assert(
+      fc.property(fc.array(edit, { minLength: 1, maxLength: 25 }), (edits) => {
+        const docA = new Y.Doc();
+        Y.applyUpdate(docA, encodeInitialSpaceContent('document'));
+        const docB = new Y.Doc();
+        Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+        const undo = createDocumentUndo(docA);
+        const a = buildDocumentEditor({ fragment: documentBodyFragment(docA), extensions: [undo.extension] });
+        const rootA = document.createElement('div');
+        document.body.appendChild(rootA);
+        a.mount(rootA);
+        mounted.push(a);
+        const b = openClient(docB);
+        a.replaceBlocks(a.document, [{ type: 'paragraph', content: 'left ABCDEF right' }] as never);
+        sync(docA, docB);
+        undo.manager.clear();
+        const viewA = a.prosemirrorView!;
+        viewA.dispatch(viewA.state.tr.setMeta(DOCUMENT_AI_RANGE, [rangeOf(a, 'ABCDEF')]));
+
+        let wasGone = false;
+        for (const step of edits) {
+          if (step.kind === 'undo' || step.kind === 'redo') {
+            undo.manager.stopCapturing();
+            if (step.kind === 'undo') undo.manager.undo();
+            else undo.manager.redo();
+          } else {
+            const view = step.by === 'reader' ? viewA : b.prosemirrorView!;
+            const size = view.state.doc.content.size;
+            // Positions inside the paragraph's text: 1 past the block wrappers.
+            const textStart = 3;
+            const textEnd = Math.max(textStart, size - 3);
+            const at = textStart + (step.at % (textEnd - textStart + 1));
+            const tr = step.kind === 'insert'
+              ? view.state.tr.insertText(step.text, at)
+              : view.state.tr.delete(at, Math.min(textEnd, at + step.length));
+            if (step.kind === 'insert' || tr.docChanged) {
+              if (step.by === 'reader') undo.manager.stopCapturing();
+              view.dispatch(tr);
+            }
+          }
+          sync(docA, docB);
+
+          const range = aiRangeIn(a.prosemirrorState);
+          const left = capitals(a.prosemirrorState.doc.textContent);
+          if (wasGone) expect(range).toEqual({ kind: 'gone' });
+          if (range?.kind === 'present') {
+            expect(capitals(aiWords(a))).toBe(left);
+          } else {
+            wasGone = true;
+          }
+          if (left === '') {
+            expect(range).toEqual({ kind: 'gone' });
+            wasGone = true;
+          }
+        }
+      }),
+      { numRuns: 40 },
+    );
   });
 });
 
