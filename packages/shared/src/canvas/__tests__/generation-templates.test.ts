@@ -504,7 +504,7 @@ describe('character template layouts (inner#1846)', () => {
 
   it('keeps the worn and carried items on the character sheet, and its rendering only where no style is picked', () => {
     const bible = raw('en', 'canvas.template.character-bible.prompt') ?? '';
-    expect(bible).toContain('wearing and carrying everything the reference shows');
+    expect(bible).toContain('wearing everything the reference shows on the body, including anything on the back or over a shoulder');
     expect(bible).not.toContain("keeps the reference's rendering");
     expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
   });
@@ -521,6 +521,24 @@ describe('character template layouts (inner#1846)', () => {
   it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
     expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds and tighten the identity sentence');
     expect(byId('character-showcase-orbit')?.agentNote).toContain('check that it shows different sides of the character, not the character turning round');
+  });
+
+  it('keeps the inheritance list, the unseen-parts rule and the 180-degree orbit in every language', () => {
+    // One phrase per clause in each language: the scene's inheritance list and its no-duplicates rule, the side view's unseen parts.
+    const PHRASES: Record<string, [string, string, string]> = {
+      en: ['every garment, the shoes and every accessory', 'no duplicates of the person', 'Build the parts the reference does not show'],
+      'zh-CN': ['每一件衣服、鞋和每一件饰品', '不出现分身', '参考图里看不到的部分'],
+      'zh-TW': ['每一件衣服、鞋子和每一件飾品', '不出現分身', '參考圖裡看不到的部分'],
+      ja: ['すべての衣服、靴とすべてのアクセサリー', '人物を複製しない', '参照に写っていない部分'],
+      ko: ['모든 옷, 신발과 모든 액세서리', '인물을 복제하지 않고', '참고 이미지에 보이지 않는 부분'],
+    };
+    for (const locale of LOCALES) {
+      const [inherit, single, unseen] = PHRASES[locale] ?? ['', '', ''];
+      expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(inherit);
+      expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(single);
+      expect(raw(locale, 'canvas.template.single-view-refs-scene.node.side.prompt'), locale).toContain(unseen);
+      expect(raw(locale, 'canvas.template.character-showcase-orbit.prompt'), locale).toContain('180');
+    }
   });
 
   it('writes the inheritance list, the shot and move fields and the orbit the sources ask for', () => {

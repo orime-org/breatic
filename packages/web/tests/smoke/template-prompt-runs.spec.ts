@@ -326,7 +326,7 @@ const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: str
   'character-showcase-orbit': { type: 'video', photo: true, first: [], fills: { anchor: ['a rooftop with railings in front and city towers far away'] } },
 };
 
-if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : ['character-bible', 'expression-sheet']) for (let n = 1; n <= REPEAT; n += 1) {
+if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (let n = 1; n <= REPEAT; n += 1) {
   test(`${id} ${n} @needs-model`, async () => {
     test.setTimeout(3_600_000);
     const run = RUNS[id];
