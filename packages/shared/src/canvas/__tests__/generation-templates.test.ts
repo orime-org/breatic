@@ -454,6 +454,18 @@ describe('character template layouts (inner#1846)', () => {
    */
   const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => (s.slot ? [s.slot.kind] : []));
 
+  /**
+   * Whether a text gives these panel counts in this order, read as whole numbers so 48% is not an 8.
+   * @param text - The prompt.
+   * @param counts - The counts, in the order the rows give them.
+   * @returns True when every count turns up after the one before it.
+   */
+  const givesInOrder = (text: string, counts: readonly number[]): boolean => {
+    let next = 0;
+    for (const n of (text.match(/\d+/g) ?? []).map(Number)) if (n === counts[next]) next += 1;
+    return next === counts.length;
+  };
+
   it('names every section of the character sheet with its English label in every language', () => {
     for (const key of SHEET_PROMPTS) {
       for (const locale of LOCALES) {
@@ -470,10 +482,8 @@ describe('character template layouts (inner#1846)', () => {
       expect(raw('en', key), key).toMatch(/Row 1, EXPRESSIONS, exactly 8 /);
       expect(raw('en', key), key).toMatch(/Row 2, exactly 9 panels/);
       expect(raw('en', key), key).toMatch(/Row 3, exactly 12 panels/);
-      for (const locale of LOCALES) {
-        const text = raw(locale, key) ?? '';
-        for (const count of ['8', '4', '9', '5', '12', '3']) expect(text, `${key} ${locale} ${count}`).toContain(count);
-      }
+      // Palette, main views, then the bottom rows: 8 expressions, 9 = 5 + 4, 12 = 3 + 4 + 5.
+      for (const locale of LOCALES) expect(givesInOrder(raw(locale, key) ?? '', [8, 4, 8, 9, 5, 4, 12, 3, 4, 5]), `${key} ${locale}`).toBe(true);
     }
   });
 
@@ -487,7 +497,7 @@ describe('character template layouts (inner#1846)', () => {
     for (const locale of LOCALES) {
       const text = raw(locale, EXPRESSION_PROMPT) ?? '';
       for (const label of EXPRESSION_LABELS) expect(text, `${locale} ${label}`).toContain(label);
-      for (const count of ['8', '5', '4']) expect(text, `${locale} ${count}`).toContain(count);
+      expect(givesInOrder(text, [8, 5, 4]), locale).toBe(true);
     }
   });
 
