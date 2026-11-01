@@ -52,8 +52,8 @@ function draftOf(clip: TimelineVideoClip): Record<Field, string> {
  */
 export function TimelineClipProperties({ spaceId, document, clip, name, conflict, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
-  const [draft, setDraft] = React.useState(() => ({ key: `${clip.id}:${clip.startFrame}:${clip.sourceInFrame}:${clip.durationFrames}`, values: draftOf(clip), error: null as Field | null }));
   const key = `${clip.id}:${clip.startFrame}:${clip.sourceInFrame}:${clip.durationFrames}`;
+  const [draft, setDraft] = React.useState(() => ({ key, values: draftOf(clip), error: null as Field | null }));
   const current = draft.key === key ? draft : { key, values: draftOf(clip), error: null };
   if (current !== draft) setDraft(current);
   const source = document.sources[clip.sourceId];

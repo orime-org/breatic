@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   activeTimelineClipAt, newId, orderedTimelineClips, resolveTimelineArrangement, TIMELINE_MAIN_TRACK_ID,
   type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlan, type TimelineVideoClip,
@@ -13,7 +13,6 @@ import {
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
-import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -35,6 +34,7 @@ import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labe
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
+import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** The existing content document and its supported native projection. */
 interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1 }
@@ -65,9 +65,7 @@ const ZOOM_STEP = 0.1;
  */
 function TimelineConflictRow({ projectId, clip, assetId, selected, onSelect }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
-  const queryKey = React.useMemo(() => ['timeline-asset', projectId, assetId], [projectId, assetId]);
-  const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
-  const asset = useQuery({ queryKey, queryFn, enabled: assetId !== '' });
+  const asset = useTimelineAsset(projectId, assetId);
   const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={select}
     className={cn('flex w-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-2 text-xs hover-enabled:bg-accent', selected && 'border-active-border')}>
@@ -101,7 +99,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const placement = React.useMemo(() => ({ magnet: prefs.magnet, linkage: prefs.linkage }), [prefs.magnet, prefs.linkage]);
   const labels = useTimelineTrackLabels(document);
   const queryClient = useQueryClient();
-  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: session.edit }), [doc, name, projectId, spaceId, queryClient, session]);
+  // Every edit, including one placed from the Add media dialog, says when linkage moved clips to a track above.
+  const editWithNotice = React.useCallback((command: TimelineEditCommand, options?: { joinPrevious?: boolean }): TimelineEditPlan => {
+    const plan = session.edit(command, options);
+    if (plan.ok && plan.bumped.length > 0) toast.info(t('timeline.edit.bumped', { count: plan.bumped.length }));
+    return plan;
+  }, [session, t]);
+  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice }), [doc, name, projectId, spaceId, queryClient, editWithNotice]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
   // Activity suspends effects while hidden; uploads read the current rendered role.
@@ -117,15 +121,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
   const selectedAssetId = selected === undefined ? '' : document.sources[selected.sourceId]?.assetId ?? '';
-  const selectedResourceKey = React.useMemo(() => ['timeline-asset', projectId, selectedAssetId], [projectId, selectedAssetId]);
-  const selectedResourceFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, selectedAssetId, signal), [projectId, selectedAssetId]);
-  const selectedResource = useQuery({ queryKey: selectedResourceKey, queryFn: selectedResourceFn, enabled: selectedAssetId !== '' });
+  const selectedResource = useTimelineAsset(projectId, selectedAssetId);
   const active = activeTimelineClipAt(document, readyIds, frame);
   const source = active === null ? null : document.sources[active.sourceId] ?? null;
   const assetId = source?.assetId ?? '';
-  const resourceKey = React.useMemo(() => ['timeline-asset', projectId, assetId], [projectId, assetId]);
-  const resourceFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
-  const resource = useQuery({ queryKey: resourceKey, queryFn: resourceFn, enabled: source !== null });
+  const resource = useTimelineAsset(projectId, assetId, source !== null);
   const resourceState = source === null ? 'ready' : resource.isError ? 'failed' : resource.isPending ? 'loading' : 'ready';
   const playback = useTimelinePlayback({ document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState });
   const { seek, retry: retryPlayback } = playback;
@@ -140,11 +140,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
 
   const commit = React.useCallback((command: TimelineEditCommand, options?: { joinPrevious?: boolean }): TimelineEditPlan | null => {
     if (readOnly) return null;
-    const plan = session.edit(command, options);
+    const plan = editWithNotice(command, options);
     if (!plan.ok) toast.warning(t(`timeline.errors.${plan.reason}`));
-    else if (plan.bumped.length > 0) toast.info(t('timeline.edit.bumped', { count: plan.bumped.length }));
     return plan;
-  }, [readOnly, session, t]);
+  }, [readOnly, editWithNotice, t]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 
@@ -190,11 +189,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     }
     commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { joinPrevious: repeat });
   }, [readOnly, selected, seekTo, frame, placement, clips, commit]);
-  const changeTrack = React.useCallback((direction: 1 | -1): void => {
+  const changeTrack = React.useCallback((direction: 1 | -1, repeat: boolean): void => {
     if (readOnly || selected === undefined) return;
     const index = labels.visual.findIndex((track) => track.id === selected.trackId);
     const target = labels.visual[index + direction];
-    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }); return; }
+    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }, { joinPrevious: repeat }); return; }
+    // A held key stops at the top track; only a fresh press creates a track above it.
+    if (repeat) return;
     if (direction === 1 && index >= 0) commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, newTrackId: newId() }, placement });
     else toast.warning(t('timeline.edit.lowestTrack'));
   }, [readOnly, selected, labels.visual, commit, placement, t]);
@@ -215,7 +216,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
       case 'delete': remove(); break;
       case 'toggle_snap': toggleSnap(); break;
       case 'nudge': nudge(action.frames, action.repeat); break;
-      case 'change_track': changeTrack(action.direction); break;
+      case 'change_track': changeTrack(action.direction, action.repeat); break;
     }
   }, [fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
   const root = React.useRef<HTMLDivElement>(null);

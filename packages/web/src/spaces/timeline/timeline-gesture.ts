@@ -92,7 +92,7 @@ export function previewTimelineGesture(
   }
 
   if (mode === 'trim-start') {
-    // On the magnetic main track the clip keeps its packed start, so only the source in-point bounds the head.
+    // On the magnetic main track the planner keeps the clip packed, so only the source in-point bounds the head.
     if (source === undefined) return base;
     const keepsStart = packed && clip.trackId === TIMELINE_MAIN_TRACK_ID;
     const headRoom = timelineHeadRoom(clip, source, fps);
@@ -113,7 +113,7 @@ export function previewTimelineGesture(
       sourceInFrame = timelineTrimHead(clip, source, fps, shift);
     }
     if (sourceInFrame === null || shift === 0) return base;
-    return { ...base, startFrame: keepsStart ? clip.startFrame : clip.startFrame + shift, sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
+    return { ...base, startFrame: Math.max(0, clip.startFrame + shift), sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
   }
 
   const longest = Math.max(1, source === undefined ? clip.durationFrames : timelineSourceRoom(clip, source, fps));

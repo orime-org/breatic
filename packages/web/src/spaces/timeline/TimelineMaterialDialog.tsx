@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { orderedTimelineClips, TIMELINE_MAIN_TRACK_ID, timelineInsertionIndex, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineEditPlacement } from '@breatic/shared';
 import { Film, Upload } from 'lucide-react';
 
@@ -18,6 +18,7 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -92,9 +93,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
   const beforeAssetId = before === undefined ? '' : document.sources[before.sourceId]?.assetId ?? '';
-  const beforeKey = React.useMemo(() => ['timeline-asset', projectId, beforeAssetId], [projectId, beforeAssetId]);
-  const beforeFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, beforeAssetId, signal), [projectId, beforeAssetId]);
-  const beforeAsset = useQuery({ queryKey: beforeKey, queryFn: beforeFn, enabled: beforeAssetId !== '' });
+  const beforeAsset = useTimelineAsset(projectId, beforeAssetId);
   const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>

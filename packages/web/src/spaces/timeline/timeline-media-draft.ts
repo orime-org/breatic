@@ -10,6 +10,7 @@ import { uploadMedia } from '@web/data/upload/media-upload';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
 /** The current material form and upload facts held by an open document. */
 export interface TimelineMediaDraftSnapshot {
@@ -233,7 +234,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         if (active !== attempt) return;
         if (assetId === null || assetId === undefined) { publish({ errorKey: 'source_unavailable' }); return; }
         failure = 'source_unavailable';
-        const asset = await inputs.queryClient.fetchQuery({ queryKey: ['timeline-asset', inputs.projectId, assetId], queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
+        const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
         if (active !== attempt) return;
         failure = 'metadata_unavailable';
         const decodedDurationSeconds = asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined;

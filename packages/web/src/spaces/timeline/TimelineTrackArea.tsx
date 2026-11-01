@@ -3,20 +3,20 @@
 
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
-import { useQuery } from '@tanstack/react-query';
 import { Film, Trash2 } from 'lucide-react';
 import { newId, orderedTimelineTracks, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineEditCommand, type TimelineEditPlacement, type TimelineVideoClip } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { timelineApi } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode, type TimelineGesturePreview } from '@web/spaces/timeline/timeline-gesture';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { TIMELINE_TRACK_HEADER_PX, timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
+import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 const DRAG_ACTIVATION_PX = 3;
+const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
@@ -39,20 +39,6 @@ interface TimelineTrackAreaProps {
 
 /** The active pointer gesture and its latest preview. */
 interface Gesture { mode: TimelineGestureMode; clipId: string; preview: TimelineGesturePreview | null }
-
-/**
- * A clip's display name from its registered asset.
- * @param projectId - The authorizing Project.
- * @param assetId - The registered asset.
- * @returns The display name, or null while unknown.
- * @throws {never} Never.
- */
-function useAssetName(projectId: string, assetId: string): string | null {
-  const queryKey = React.useMemo(() => ['timeline-asset', projectId, assetId], [projectId, assetId]);
-  const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
-  const asset = useQuery({ queryKey, queryFn, enabled: assetId !== '' });
-  return asset.data?.displayName || null;
-}
 
 /** One clip on its track row. */
 interface ClipProps {
@@ -98,7 +84,7 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  */
 const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, selected, conflict, dragging, readOnly, pixelsPerFrame, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
-  const name = useAssetName(projectId, assetId);
+  const name = useTimelineAsset(projectId, assetId).data?.displayName || null;
   // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
   // attributes would mark a read-only clip aria-disabled although it stays selectable.
   const { listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
@@ -208,7 +194,10 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   React.useEffect(() => { if (readOnly) setGesture(null); }, [readOnly]);
 
   const clearOnBlank = React.useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
-    if (event.target === event.currentTarget) onSelect(null);
+    if (event.target !== event.currentTarget) return;
+    // Blur first so a property field commits what was typed before its panel unmounts with the selection.
+    if (window.document.activeElement instanceof HTMLElement) window.document.activeElement.blur();
+    onSelect(null);
   }, [onSelect]);
   const seekFromRuler = React.useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -220,20 +209,19 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
   const labelStep = timelineRulerStep(fps, pixelsPerFrame, extent);
   const preview = gesture?.preview ?? null;
   const ghostStyle = React.useMemo(() => preview === null ? undefined : { left: preview.startFrame * pixelsPerFrame, width: Math.max(2, preview.durationFrames * pixelsPerFrame) }, [preview, pixelsPerFrame]);
-  const headerStyle = React.useMemo(() => ({ width: TIMELINE_TRACK_HEADER_PX }), []);
   const header = 'sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-border bg-background px-2 text-xs';
 
   return <DndContext sensors={sensors} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onDragCancel={cancelDrag} autoScroll={false}>
     <ScrollArea scrollbars='both' className='h-48 shrink-0 border-t border-border'>
       <div style={{ width: width + TIMELINE_TRACK_HEADER_PX }} className='relative min-w-full'>
         <div className='sticky top-0 z-30 flex h-6 border-b border-border bg-background'>
-          <div className={header} style={headerStyle} />
+          <div className={header} style={HEADER_STYLE} />
           <div data-testid='timeline-ruler' className='relative flex-1 cursor-pointer' onPointerDown={seekFromRuler}>
             {Array.from({ length: Math.floor(seconds / labelStep) + 1 }, (_, index) => index * labelStep).map((second) => <span key={second} className='absolute inset-y-0 border-l border-border pl-1 text-2xs tabular-nums text-muted-foreground' style={{ left: second * fps * pixelsPerFrame }}>{second}s</span>)}
           </div>
         </div>
         {!readOnly && <DropRow id='new' testId='timeline-new-track-zone' className='h-7 border-dashed'>
-          <div className={header} style={headerStyle} />
+          <div className={header} style={HEADER_STYLE} />
           <div className='flex flex-1 items-center px-2 text-2xs text-muted-foreground'>{gesture?.mode === 'move' ? t('timeline.edit.newTrackZone') : null}</div>
         </DropRow>}
         {rows.map((track) => {
@@ -241,7 +229,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
           const isMain = track.id === TIMELINE_MAIN_TRACK_ID;
           const showGhost = preview !== null && (preview.trackId ?? '') === track.id;
           return <DropRow key={track.id} id={track.id} testId={`timeline-track-${track.id}`} className={isMain ? 'h-16' : 'h-12'}>
-            <div className={header} style={headerStyle}>
+            <div className={header} style={HEADER_STYLE}>
               <span className='min-w-0 truncate'>{labels.nameOf(track.id) ?? track.id}</span>
               {isMain && <span className='rounded-chrome border border-border px-1 text-2xs text-muted-foreground'>{placement.magnet ? t('timeline.edit.magnetOn') : t('timeline.edit.magnetOff')}</span>}
               {!isMain && !readOnly && clips.length === 0 && <DeleteTrackButton trackId={track.id} placement={placement} onCommit={onCommit} />}

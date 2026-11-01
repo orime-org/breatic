@@ -10,7 +10,7 @@ export type TimelineKeyAction =
   | { kind: 'undo' } | { kind: 'redo' } | { kind: 'duplicate' } | { kind: 'split' } | { kind: 'delete' }
   | { kind: 'toggle_snap' }
   | { kind: 'nudge'; frames: number; repeat: boolean }
-  | { kind: 'change_track'; direction: 1 | -1 };
+  | { kind: 'change_track'; direction: 1 | -1; repeat: boolean };
 
 /** The key event facts the mapper reads, testable without a DOM event. */
 export interface TimelineKeyEvent {
@@ -48,7 +48,7 @@ export function timelineKeyAction(event: TimelineKeyEvent, fps: TimelineRate): T
     return { kind: 'nudge', frames: event.key === 'ArrowRight' ? step : -step, repeat: event.repeat };
   }
   if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-    return event.altKey && !event.shiftKey ? { kind: 'change_track', direction: event.key === 'ArrowUp' ? 1 : -1 } : null;
+    return event.altKey && !event.shiftKey ? { kind: 'change_track', direction: event.key === 'ArrowUp' ? 1 : -1, repeat: event.repeat } : null;
   }
   if (event.shiftKey || event.altKey) return null;
   if (event.key === 'Delete' || event.key === 'Backspace') return { kind: 'delete' };
