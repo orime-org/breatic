@@ -1,0 +1,78 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "description": [
+      {
+        "type": "string"
+      }
+    ],
+    "element_refer_list": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "name": [
+      {
+        "type": "string"
+      }
+    ],
+    "tag_list": [
+      {
+        "type": "array",
+        "maxItems": 8,
+        "items": {
+          "fields": {
+            "tag_id": [
+              {
+                "type": "string",
+                "enum": [
+                  "o_101",
+                  "o_102",
+                  "o_103",
+                  "o_104",
+                  "o_105",
+                  "o_106",
+                  "o_107",
+                  "o_108"
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "name",
+    "description",
+    "image",
+    "element_refer_list"
+  ]
+}

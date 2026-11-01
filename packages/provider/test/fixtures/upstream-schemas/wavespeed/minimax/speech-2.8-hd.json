@@ -1,0 +1,177 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ]
+      }
+    ],
+    "channel": [
+      {
+        "type": "string",
+        "enum": [
+          "1",
+          "2"
+        ]
+      }
+    ],
+    "emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "fearful",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      }
+    ],
+    "enable_base64_output": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "enable_sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "english_normalization": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "wav",
+          "pcm",
+          "flac"
+        ]
+      }
+    ],
+    "language_boost": [
+      {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans",
+          "auto"
+        ]
+      }
+    ],
+    "pitch": [
+      {
+        "type": "number",
+        "minimum": -12,
+        "maximum": 12
+      }
+    ],
+    "pronunciation_dict": [
+      {
+        "type": "array",
+        "maxItems": 100,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ]
+      }
+    ],
+    "speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "volume": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 10
+      }
+    ]
+  },
+  "required": [
+    "text",
+    "voice_id"
+  ]
+}

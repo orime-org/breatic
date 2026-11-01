@@ -1,0 +1,27 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "duration": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 60
+      }
+    ],
+    "num_samples": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4
+      }
+    ],
+    "text_prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "text_prompt"
+  ]
+}

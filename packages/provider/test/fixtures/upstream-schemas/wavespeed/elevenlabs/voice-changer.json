@@ -1,0 +1,66 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "remove_background_noise": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string",
+        "enum": [
+          "Adam",
+          "Alice",
+          "Alicia",
+          "Aria",
+          "Baxter",
+          "Bella",
+          "Bill",
+          "Brian",
+          "Caleb",
+          "Callum",
+          "Charlie",
+          "Charlotte",
+          "Chris",
+          "Daniel",
+          "Darian",
+          "Eddie",
+          "Elara",
+          "Eldrin",
+          "Elowen",
+          "Eric",
+          "Finley",
+          "Florence",
+          "George",
+          "Harry",
+          "Jade",
+          "Jessica",
+          "Kaelen",
+          "Laura",
+          "Lawrence",
+          "Liam",
+          "Lily",
+          "Maisie",
+          "Matilda",
+          "River",
+          "Roger",
+          "Sarah",
+          "Sawyer",
+          "Talia",
+          "Warren",
+          "Will",
+          "Wyatt"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "audio"
+  ]
+}

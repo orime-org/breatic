@@ -1,0 +1,23 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "enable_base64_output": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "enable_sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ]
+}

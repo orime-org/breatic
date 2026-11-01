@@ -1,0 +1,116 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "enable_sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "MP3",
+          "LINEAR16",
+          "OGG_OPUS",
+          "FLAC",
+          "WAV"
+        ]
+      }
+    ],
+    "speaking_rate": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 1.5
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0.7,
+        "maximum": 1.5
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string",
+        "enum": [
+          "Alex",
+          "Ashley",
+          "Craig",
+          "Deborah",
+          "Dennis",
+          "Edward",
+          "Elizabeth",
+          "Hades",
+          "Julia",
+          "Pixie",
+          "Mark",
+          "Olivia",
+          "Priya",
+          "Ronald",
+          "Sarah",
+          "Shaun",
+          "Theodore",
+          "Timothy",
+          "Wendy",
+          "Dominus",
+          "Hana",
+          "Clive",
+          "Carter",
+          "Blake",
+          "Luna",
+          "Yichen",
+          "Xiaoyin",
+          "Xinyi",
+          "Jing",
+          "Erik",
+          "Katrien",
+          "Lennart",
+          "Lore",
+          "Alain",
+          "Hélène",
+          "Mathieu",
+          "Étienne",
+          "Johanna",
+          "Josef",
+          "Gianni",
+          "Orietta",
+          "Asuka",
+          "Satoshi",
+          "Hyunwoo",
+          "Minji",
+          "Seojun",
+          "Yoona",
+          "Szymon",
+          "Wojciech",
+          "Heitor",
+          "Maitê",
+          "Diego",
+          "Lupita",
+          "Miguel",
+          "Rafael",
+          "Svetlana",
+          "Elena",
+          "Dmitry",
+          "Nikolai",
+          "Riya",
+          "Manoj",
+          "Yael",
+          "Oren",
+          "Nour",
+          "Omar"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "text"
+  ]
+}

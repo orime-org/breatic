@@ -1,0 +1,51 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "2:1",
+          "1:2",
+          "19.5:9",
+          "9:19.5",
+          "20:9",
+          "9:20"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium"
+        ]
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "2k"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ]
+}

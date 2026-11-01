@@ -1,0 +1,147 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "language": [
+      {
+        "type": "string",
+        "enum": [
+          "Arabic (Egypt)",
+          "Bangla (Bangladesh)",
+          "Dutch (Netherlands)",
+          "English (India)",
+          "English (United States)",
+          "French (France)",
+          "German (Germany)",
+          "Hindi (India)",
+          "Indonesian (Indonesia)",
+          "Italian (Italy)",
+          "Japanese (Japan)",
+          "Korean (South Korea)",
+          "Marathi (India)",
+          "Polish (Poland)",
+          "Portuguese (Brazil)",
+          "Romanian (Romania)",
+          "Russian (Russia)",
+          "Spanish (Spain)",
+          "Tamil (India)",
+          "Telugu (India)",
+          "Thai (Thailand)",
+          "Turkish (Turkey)",
+          "Ukrainian (Ukraine)",
+          "Vietnamese (Vietnam)"
+        ]
+      }
+    ],
+    "speakers": [
+      {
+        "type": "array",
+        "maxItems": 2,
+        "items": {
+          "fields": {
+            "speaker": [
+              {
+                "type": "string"
+              }
+            ],
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Puck",
+                  "Pulcherrima",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "speaker",
+                  "voice"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "speaker",
+            "voice"
+          ]
+        }
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Puck",
+          "Pulcherrima",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "text",
+    "language"
+  ]
+}

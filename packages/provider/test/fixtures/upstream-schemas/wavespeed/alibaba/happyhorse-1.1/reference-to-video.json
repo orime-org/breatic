@@ -1,0 +1,68 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4",
+          "4:5",
+          "5:4",
+          "9:21",
+          "21:9"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 15
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "maxItems": 9,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  },
+  "required": [
+    "images",
+    "prompt"
+  ]
+}

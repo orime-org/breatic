@@ -1,0 +1,52 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "gender": [
+      {
+        "type": "string",
+        "enum": [
+          "female",
+          "male"
+        ]
+      }
+    ],
+    "lyrics": [
+      {
+        "type": "string"
+      }
+    ],
+    "melody_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "wav",
+          "flac"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "reference_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "vocal_id": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "lyrics"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "last_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "768p",
+          "2k"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "image"
+  ]
+}

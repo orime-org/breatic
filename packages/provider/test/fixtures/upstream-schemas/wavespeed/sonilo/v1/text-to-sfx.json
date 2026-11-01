@@ -1,0 +1,32 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "audio_format": [
+      {
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "aac",
+          "flac"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 180
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "duration"
+  ]
+}

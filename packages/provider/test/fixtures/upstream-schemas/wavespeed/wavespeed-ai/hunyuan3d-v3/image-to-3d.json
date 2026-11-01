@@ -1,0 +1,49 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "back_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_pbr": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000
+      }
+    ],
+    "generate_type": [
+      {
+        "type": "string",
+        "enum": [
+          "Normal",
+          "Geometry"
+        ]
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "left_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "right_image": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ]
+}

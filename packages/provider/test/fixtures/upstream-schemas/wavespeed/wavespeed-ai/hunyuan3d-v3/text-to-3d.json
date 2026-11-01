@@ -1,0 +1,34 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "enable_pbr": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000
+      }
+    ],
+    "generate_type": [
+      {
+        "type": "string",
+        "enum": [
+          "Normal",
+          "Geometry"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ]
+}

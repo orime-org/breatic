@@ -1,0 +1,43 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "motion_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "video"
+  ]
+}

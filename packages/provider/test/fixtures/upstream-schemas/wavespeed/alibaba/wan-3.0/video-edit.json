@@ -1,0 +1,83 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 15
+      }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "reference_audios": [
+      {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "reference_images": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "video"
+  ]
+}

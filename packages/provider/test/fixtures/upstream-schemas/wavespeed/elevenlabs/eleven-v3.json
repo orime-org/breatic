@@ -1,0 +1,26 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "stability": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "text",
+    "voice_id"
+  ]
+}

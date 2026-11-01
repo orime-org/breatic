@@ -1,0 +1,48 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ]
+}

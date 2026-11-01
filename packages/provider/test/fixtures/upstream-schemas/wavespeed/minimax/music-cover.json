@@ -1,0 +1,19 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "audio"
+  ]
+}

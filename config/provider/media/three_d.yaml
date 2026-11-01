@@ -54,8 +54,8 @@ models:
             field: face_count
         pricing:
           kind: formula
-          base_price: 250000
-          formula: ""
+          base_price: 450000
+          formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0)}'
           discount_rate: 100
   hunyuan3d-v3-i23d:
     upstreams:
@@ -81,8 +81,8 @@ models:
             field: face_count
         pricing:
           kind: formula
-          base_price: 230000
-          formula: ""
+          base_price: 450000
+          formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0) + ((back_image or left_image or right_image) ? 180000 : 0)}'
           discount_rate: 100
   hunyuan3d-v3.1-rapid:
     upstreams:
@@ -96,6 +96,6 @@ models:
             field: image
         pricing:
           kind: formula
-          base_price: 20000
+          base_price: 270000
           formula: ""
           discount_rate: 100

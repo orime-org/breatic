@@ -1,0 +1,64 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "character_orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "image",
+          "video"
+        ]
+      }
+    ],
+    "element_list": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "element_id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "keep_original_sound": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "negative_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "video"
+  ]
+}
