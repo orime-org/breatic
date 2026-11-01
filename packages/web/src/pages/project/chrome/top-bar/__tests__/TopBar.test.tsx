@@ -203,6 +203,20 @@ describe('TopBar', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it.each(['owner', 'editor', 'viewer'] as const)('puts the Help menu right before the bell in the icon-only group (%s)', (role) => {
+    setup({ role, actualRole: role });
+    const group = screen.getByTestId('topbar-group-icon-only');
+    const help = within(group).getByTestId('help-menu-trigger');
+    expect(help.nextElementSibling).toBe(within(group).getByTestId('bell-trigger'));
+  });
+
+  it('draws the logo at 24px, the size the Studio top bar uses', () => {
+    setup();
+    const logo = screen.getByTestId('top-bar-logo');
+    expect(logo).toHaveAttribute('width', '24');
+    expect(logo).toHaveAttribute('height', '24');
+  });
+
   it('renders both topbar groups (text-icon + icon-only)', () => {
     setup();
     expect(screen.getByTestId('topbar-group-text-icon')).toBeInTheDocument();

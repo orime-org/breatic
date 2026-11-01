@@ -1464,6 +1464,40 @@
     },
     "promptMark": {
       "reference": "請用 @ 選擇 {label}"
+    },
+    "shortcuts": {
+      "title": "鍵盤快捷鍵",
+      "group": {
+        "edit": "編輯",
+        "group": "群組",
+        "select": "選取與移動",
+        "view": "檢視",
+        "drawing": "繪製工具",
+        "exit": "退出"
+      },
+      "row": {
+        "delete": "刪除",
+        "marquee": "框選",
+        "toggleSelect": "加選或減選",
+        "nudge": "微移所選",
+        "nudgeFar": "移得更遠",
+        "pan": "平移",
+        "zoom": "縮放",
+        "brushSize": "畫筆或備註大小",
+        "deleteMark": "刪除選取的備註",
+        "closePanel": "關閉面板",
+        "exitPick": "退出選取",
+        "cancelNote": "取消放置註解"
+      },
+      "gesture": {
+        "dragEmpty": "拖曳空白處",
+        "click": "點擊",
+        "arrowKeys": "方向鍵",
+        "scroll": "捲動",
+        "spaceDrag": "空白鍵 + 拖曳",
+        "pinch": "雙指捏合",
+        "wheel": "滾輪"
+      }
     }
   },
   "auth": {
@@ -1949,7 +1983,7 @@
       "add": "新增",
       "generate": "AI 生成",
       "annotationsLater": "批註（稍後提供）",
-      "help": "說明",
+      "controls": "操作說明",
       "tasks": "生成任務",
       "minimap": "場景小地圖",
       "generationDev": "3D 模型生成正在開發中",
@@ -1967,9 +2001,7 @@
       "nodes": "節點庫",
       "upload": "上傳素材(多檔案混合)",
       "comment": "在 Canvas 加註解",
-      "collection": "Collection(敬請期待)",
-      "help": "說明(敬請期待)",
-      "feedback": "意見回饋 / 客服(敬請期待)"
+      "shortcuts": "鍵盤快捷鍵"
     },
     "disabledTooltip": "需要 Editor 權限"
   },
@@ -2443,7 +2475,12 @@
       "language": "語言：{name}",
       "theme": "主題：{theme}"
     },
-    "languageNotSaved": "語言未儲存到帳號"
+    "languageNotSaved": "語言未儲存到帳號",
+    "help": {
+      "trigger": "說明",
+      "manual": "使用手冊",
+      "contact": "聯絡支援"
+    }
   },
   "projectJoin": {
     "title": "你還不是這個 Project 的成員",

@@ -91,6 +91,14 @@ describe('StudioTopBar', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('puts the Help menu between the theme switch and the bell', async () => {
+    setup();
+    await flushInbox();
+    const help = screen.getByTestId('help-menu-trigger');
+    expect(screen.getByTestId('theme-toggle').nextElementSibling).toBe(help);
+    expect(help.nextElementSibling).toBe(screen.getByTestId('bell-trigger'));
+  });
+
   it('has no a11y violations', async () => {
     const { container } = setup();
     await flushInbox();

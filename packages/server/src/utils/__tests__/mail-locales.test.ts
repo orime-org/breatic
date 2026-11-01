@@ -357,3 +357,9 @@ describe("the language actually changes", () => {
     expect(mail.text).not.toContain("They said");
   });
 });
+
+describe("mail contact address", () => {
+  it("sends readers who need help to the support mailbox", () => {
+    expect(getMailLayout().contactEmail).toBe("support@breatic.ai");
+  });
+});

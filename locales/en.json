@@ -1464,6 +1464,40 @@
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "group": {
+        "edit": "Edit",
+        "group": "Group",
+        "select": "Select and move",
+        "view": "View",
+        "drawing": "Drawing tools",
+        "exit": "Exit"
+      },
+      "row": {
+        "delete": "Delete",
+        "marquee": "Box select",
+        "toggleSelect": "Add to or remove from selection",
+        "nudge": "Nudge selection",
+        "nudgeFar": "Nudge further",
+        "pan": "Pan",
+        "zoom": "Zoom",
+        "brushSize": "Brush or mark size",
+        "deleteMark": "Delete selected mark",
+        "closePanel": "Close panel",
+        "exitPick": "Stop picking",
+        "cancelNote": "Cancel placing a note"
+      },
+      "gesture": {
+        "dragEmpty": "Drag empty space",
+        "click": "Click",
+        "arrowKeys": "Arrow keys",
+        "scroll": "Scroll",
+        "spaceDrag": "Space + drag",
+        "pinch": "Pinch",
+        "wheel": "Wheel"
+      }
     }
   },
   "auth": {
@@ -1949,7 +1983,7 @@
       "add": "Add",
       "generate": "AI generation",
       "annotationsLater": "Annotations (coming later)",
-      "help": "Help",
+      "controls": "Controls",
       "tasks": "Generation tasks",
       "minimap": "Scene minimap",
       "generationDev": "3D model generation is in development",
@@ -1967,9 +2001,7 @@
       "nodes": "Node library",
       "upload": "Upload assets (mixed files)",
       "comment": "Annotate on canvas",
-      "collection": "Collection (coming soon)",
-      "help": "Help (coming soon)",
-      "feedback": "Feedback / Support (coming soon)"
+      "shortcuts": "Keyboard shortcuts"
     },
     "disabledTooltip": "Requires editor permission"
   },
@@ -2443,7 +2475,12 @@
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
     },
-    "languageNotSaved": "Language not saved to your account"
+    "languageNotSaved": "Language not saved to your account",
+    "help": {
+      "trigger": "Help",
+      "manual": "User manual",
+      "contact": "Contact support"
+    }
   },
   "projectJoin": {
     "title": "You're not a member of this project",
