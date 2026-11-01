@@ -81,7 +81,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         request_space_content: tools.makeRequestSpaceContentTool({ spaces: SPACES }),
       },
     }),
-    finalizeTurn: async () => [],
+    // The real one, so the reply is stored the way production stores it.
+    finalizeTurn: actual.finalizeTurn,
     getModel: () =>
       new MockLanguageModelV4({
         doStream: async () => {

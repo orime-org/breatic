@@ -240,14 +240,15 @@ async function settleInRow(
  * result makes every later request in the conversation fail.
  * @param id - Conversation UUID.
  * @param message - The reader's message.
- * @param settle - The settlement for a waiting call, given its id.
+ * @param settle - The settlement for a waiting call, given its id and its
+ *   tool's name, which the result the model reads is filed under.
  * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
 export async function addReaderMessage(
   id: string,
   message: MessageInput,
-  settle: (toolCallId: string) => AskSettlement,
+  settle: (toolCallId: string, toolName: string) => AskSettlement,
 ): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
     const turnIndex = await insertIn(tx, id, message);
@@ -269,7 +270,7 @@ export async function addReaderMessage(
       let current = row;
       for (const part of row.parts) {
         if (part.type !== "tool" || part.status !== "awaiting") continue;
-        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId));
+        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId, part.toolName));
         closedAsks.push(part.toolCallId);
       }
     }

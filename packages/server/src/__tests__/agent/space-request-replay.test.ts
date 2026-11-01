@@ -46,7 +46,7 @@ function stored(parts: MessageData["parts"]): MessageData {
  * @returns The part.
  */
 function requestPart(over: Record<string, unknown>): MessageData["parts"][number] {
-  return { type: "tool", toolCallId: "req-1", toolName: "request_space_content", input: REQUEST, ...over } as MessageData["parts"][number];
+  return { type: "tool", toolCallId: "req-1", toolName: "request_space_content", input: REQUEST, ...over } as unknown as MessageData["parts"][number];
 }
 
 /**
