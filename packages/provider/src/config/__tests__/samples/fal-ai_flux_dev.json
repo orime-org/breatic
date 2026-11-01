@@ -1,0 +1,448 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Queue OpenAPI for fal-ai/flux/dev",
+  "version": "1.0.0",
+  "description": "The OpenAPI schema for the fal-ai/flux/dev queue.",
+  "x-fal-metadata": {
+   "endpointId": "fal-ai/flux/dev",
+   "category": "text-to-image",
+   "thumbnailUrl": "https://storage.googleapis.com/fal_cdn/fal/Upscale-1.jpeg",
+   "playgroundUrl": "https://fal.ai/models/fal-ai/flux/dev",
+   "documentationUrl": "https://fal.ai/models/fal-ai/flux/dev/api",
+   "about": "FLUX.1 [dev], next generation text-to-image model."
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "apiKeyAuth": {
+    "type": "apiKey",
+    "in": "header",
+    "name": "Authorization",
+    "description": "Fal Key"
+   }
+  },
+  "schemas": {
+   "QueueStatus": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "IN_QUEUE",
+       "IN_PROGRESS",
+       "COMPLETED"
+      ]
+     },
+     "request_id": {
+      "type": "string",
+      "description": "The request id."
+     },
+     "response_url": {
+      "type": "string",
+      "description": "The response url."
+     },
+     "status_url": {
+      "type": "string",
+      "description": "The status url."
+     },
+     "cancel_url": {
+      "type": "string",
+      "description": "The cancel url."
+     },
+     "logs": {
+      "type": "object",
+      "description": "The logs.",
+      "additionalProperties": true
+     },
+     "metrics": {
+      "type": "object",
+      "description": "The metrics.",
+      "additionalProperties": true
+     },
+     "queue_position": {
+      "type": "integer",
+      "description": "The queue position."
+     }
+    },
+    "required": [
+     "status",
+     "request_id"
+    ]
+   },
+   "FluxDevInput": {
+    "properties": {
+     "output_format": {
+      "default": "jpeg",
+      "enum": [
+       "jpeg",
+       "png"
+      ],
+      "title": "Output Format",
+      "type": "string",
+      "description": "The format of the generated image."
+     },
+     "sync_mode": {
+      "default": false,
+      "title": "Sync Mode",
+      "type": "boolean",
+      "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+     },
+     "enable_safety_checker": {
+      "default": true,
+      "title": "Enable Safety Checker",
+      "type": "boolean",
+      "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images."
+     },
+     "guidance_scale": {
+      "default": 3.5,
+      "title": "Guidance scale (CFG)",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "\n        The CFG (Classifier Free Guidance) scale is a measure of how close you want\n        the model to stick to your prompt when looking for a related image to show you.\n    "
+     },
+     "image_size": {
+      "default": "landscape_4_3",
+      "title": "Image Size",
+      "description": "The size of the generated image.",
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ImageSize"
+       },
+       {
+        "enum": [
+         "square_hd",
+         "square",
+         "portrait_4_3",
+         "portrait_16_9",
+         "landscape_4_3",
+         "landscape_16_9"
+        ],
+        "type": "string"
+       }
+      ]
+     },
+     "seed": {
+      "title": "Seed",
+      "description": "\n        The same seed and the same prompt given to the same version of the model\n        will output the same image every time.\n    ",
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "prompt": {
+      "examples": [
+       "Extreme close-up of a single tiger eye, direct frontal view. Detailed iris and pupil. Sharp focus on eye texture and color. Natural lighting to capture authentic eye shine and depth. The word \"FLUX\" is painted over it in big, white brush strokes with visible texture."
+      ],
+      "title": "Prompt",
+      "type": "string",
+      "description": "The prompt to generate an image from."
+     },
+     "num_inference_steps": {
+      "default": 28,
+      "title": "Num Inference Steps",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "The number of inference steps to perform."
+     },
+     "num_images": {
+      "default": 1,
+      "title": "Num Images",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "The number of images to generate."
+     },
+     "acceleration": {
+      "default": "none",
+      "enum": [
+       "none",
+       "regular",
+       "high"
+      ],
+      "title": "Acceleration",
+      "type": "string",
+      "description": "The speed of the generation. The higher the speed, the faster the generation."
+     }
+    },
+    "title": "BaseInput",
+    "type": "object",
+    "x-fal-order-properties": [
+     "prompt",
+     "image_size",
+     "num_inference_steps",
+     "seed",
+     "guidance_scale",
+     "sync_mode",
+     "num_images",
+     "enable_safety_checker",
+     "output_format",
+     "acceleration"
+    ],
+    "required": [
+     "prompt"
+    ]
+   },
+   "FluxDevOutput": {
+    "properties": {
+     "timings": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Timings",
+      "type": "object"
+     },
+     "images": {
+      "title": "Images",
+      "type": "array",
+      "description": "The generated image files info.",
+      "items": {
+       "$ref": "#/components/schemas/Image"
+      }
+     },
+     "has_nsfw_concepts": {
+      "title": "Has Nsfw Concepts",
+      "type": "array",
+      "description": "Whether the generated images contain NSFW concepts.",
+      "items": {
+       "type": "boolean"
+      }
+     },
+     "prompt": {
+      "title": "Prompt",
+      "type": "string",
+      "description": "The prompt used for generating the image."
+     },
+     "seed": {
+      "title": "Seed",
+      "type": "integer",
+      "description": "\n            Seed of the generated Image. It will be the same value of the one passed in the\n            input or the randomly generated that was used in case none was passed.\n        "
+     }
+    },
+    "title": "Output",
+    "type": "object",
+    "x-fal-order-properties": [
+     "images",
+     "timings",
+     "seed",
+     "has_nsfw_concepts",
+     "prompt"
+    ],
+    "required": [
+     "images",
+     "timings",
+     "seed",
+     "has_nsfw_concepts",
+     "prompt"
+    ]
+   },
+   "ImageSize": {
+    "properties": {
+     "width": {
+      "default": 512,
+      "title": "Width",
+      "type": "integer",
+      "description": "The width of the generated image.",
+      "maximum": 14142,
+      "exclusiveMinimum": 0
+     },
+     "height": {
+      "default": 512,
+      "title": "Height",
+      "type": "integer",
+      "description": "The height of the generated image.",
+      "maximum": 14142,
+      "exclusiveMinimum": 0
+     }
+    },
+    "title": "ImageSize",
+    "type": "object",
+    "x-fal-order-properties": [
+     "width",
+     "height"
+    ]
+   },
+   "Image": {
+    "properties": {
+     "content_type": {
+      "default": "image/jpeg",
+      "title": "Content Type",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     },
+     "width": {
+      "title": "Width",
+      "type": "integer"
+     },
+     "height": {
+      "title": "Height",
+      "type": "integer"
+     }
+    },
+    "title": "Image",
+    "type": "object",
+    "x-fal-order-properties": [
+     "url",
+     "width",
+     "height",
+     "content_type"
+    ],
+    "required": [
+     "url",
+     "width",
+     "height"
+    ]
+   }
+  }
+ },
+ "paths": {
+  "/fal-ai/flux/dev/requests/{request_id}/status": {
+   "get": {
+    "parameters": [
+     {
+      "name": "request_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "description": "Request ID"
+      }
+     },
+     {
+      "name": "logs",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "number",
+       "description": "Whether to include logs (`1`) in the response or not (`0`)."
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The request status.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fal-ai/flux/dev/requests/{request_id}/cancel": {
+   "put": {
+    "parameters": [
+     {
+      "name": "request_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "description": "Request ID"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The request was cancelled.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "description": "Whether the request was cancelled successfully."
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fal-ai/flux/dev": {
+   "post": {
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FluxDevInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The request status.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/fal-ai/flux/dev/requests/{request_id}": {
+   "get": {
+    "parameters": [
+     {
+      "name": "request_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "description": "Request ID"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Result of the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FluxDevOutput"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "servers": [
+  {
+   "url": "https://queue.fal.run"
+  }
+ ],
+ "security": [
+  {
+   "apiKeyAuth": []
+  }
+ ]
+}
