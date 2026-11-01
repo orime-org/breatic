@@ -10,7 +10,7 @@
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
- * TEMPLATE_RUN_LOCALE sets the browser locale. TEMPLATE_RUN_ASK instead sends that request to the
+ * TEMPLATE_RUN_LOCALE switches the interface language for the run. TEMPLATE_RUN_ASK instead sends that request to the
  * Agent with the picture attached and generates the node its proposal places.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -222,9 +222,22 @@ async function dropCharacter(): Promise<string> {
 
 const STYLE = '3D cartoon';
 
+/**
+ * Switch the interface language through its menu; the account's choice outranks the browser's.
+ * @param p - The page.
+ * @param code - The locale to switch to.
+ */
+async function switchLanguage(p: Page, code: string): Promise<void> {
+  await p.getByTestId('lang-trigger').click();
+  await expect(p.getByTestId('lang-popover')).toBeVisible();
+  await p.getByTestId(`lang-option-${code}`).click();
+  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
+}
+
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage(LOCALE ? { locale: LOCALE } : {});
+  page = await browser.newPage();
   await openSmokeProject(page);
+  if (LOCALE) await switchLanguage(page, LOCALE);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   spaceId = await createSpace(page, 'canvas', `template-run-${Date.now()}`);
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
@@ -236,6 +249,8 @@ test.afterEach(async () => {
   await fit();
   await page.screenshot({ path: `${OUT}/${test.info().title.replace(/\s*@needs-model/, '').replace(/\s+/g, '-')}-${LABEL}-canvas.png` });
   await deleteSpace(page, spaceId);
+  // The smoke account is shared, so its language goes back to English.
+  if (LOCALE) await switchLanguage(page, 'en');
   await page.close();
 });
 
