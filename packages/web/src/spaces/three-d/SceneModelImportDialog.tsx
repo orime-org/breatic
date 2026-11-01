@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { SceneObjectValuesSchema } from '@breatic/shared';
 import { Box, Check, ChevronRight, FolderOpen, Loader2, Lock, TriangleAlert, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -23,6 +24,19 @@ interface SceneModelImportDialogProps {
   controller: ModelImportController;
   canEdit: boolean;
   maxInputBytes: number;
+}
+
+const NAME_MAX_LENGTH = SceneObjectValuesSchema.shape.name.maxLength ?? undefined;
+const uploadIcon = <Upload className='size-4' />;
+const folderIcon = <FolderOpen className='size-4' />;
+
+/**
+ * Let the drop zone receive dropped files.
+ * @param event - Drag over the drop zone.
+ * @throws {never} Never.
+ */
+function allowDrop(event: React.DragEvent<HTMLDivElement>): void {
+  event.preventDefault();
 }
 
 /**
@@ -147,6 +161,12 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    * @throws {never} Never directly.
    */
   const hide = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
+  /**
+   * Show or hide the selected collection's file list.
+   * @throws {never} Never.
+   */
+  const toggleDetails = React.useCallback((): void => setDetails((value) => !value), []);
+  const detailsIcon = React.useMemo(() => <ChevronRight className={details ? 'size-3 rotate-90' : 'size-3'} />, [details]);
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className='max-w-[760px]' onCloseAutoFocus={returnFocus} data-testid='model-import-dialog'>
@@ -154,13 +174,13 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
       <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)] p-4'>
         <div className='space-y-4'>
           <div className='flex items-center gap-2'>
-            <Button variant='outline' icon={<Upload className='size-4' />} onClick={chooseFiles} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFiles')}</Button>
-            <Button variant='outline' icon={<FolderOpen className='size-4' />} onClick={chooseFolder} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFolder')}</Button>
+            <Button variant='outline' icon={uploadIcon} onClick={chooseFiles} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFiles')}</Button>
+            <Button variant='outline' icon={folderIcon} onClick={chooseFolder} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.chooseFolder')}</Button>
             <span className='ml-auto shrink-0 text-xs text-muted-foreground'>{t('spaces.threeD.importModel.inputLimit', { size: Math.floor(maxInputBytes / 1024 / 1024) })}</span>
             <input ref={fileInput} type='file' multiple hidden onChange={selectedFiles} />
             <input ref={folderInput} type='file' multiple hidden {...{ webkitdirectory: '' }} onChange={selectedFiles} />
           </div>
-          {!hasInput ? <div className='grid h-[300px] place-items-center rounded-chrome border border-dashed border-border bg-muted/30 p-4' onDragOver={(event) => event.preventDefault()} onDrop={dropFiles} data-testid='model-import-dropzone'>
+          {!hasInput ? <div className='grid h-[300px] place-items-center rounded-chrome border border-dashed border-border bg-muted/30 p-4' onDragOver={allowDrop} onDrop={dropFiles} data-testid='model-import-dropzone'>
             <div className='space-y-3 text-center'>
               {canEdit ? <Upload className='mx-auto size-7 text-muted-foreground' /> : <Lock className='mx-auto size-6 text-muted-foreground' />}
               <p>{canEdit ? t('spaces.threeD.importModel.dropFiles') : t('spaces.threeD.importModel.readOnly')}</p>
@@ -175,7 +195,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
             </div>
             <div className='flex min-w-0 flex-col gap-4'>
               {snapshot.entries.length > 1 && <div className='min-w-0 space-y-2'><Label htmlFor={`${id}:entry`}>{t('spaces.threeD.importModel.entry')}</Label><Select value={snapshot.entry ?? ''} onValueChange={changeEntry} disabled={busy || !canEdit}><SelectTrigger id={`${id}:entry`}><SelectValue placeholder={t('spaces.threeD.importModel.chooseEntry')} /></SelectTrigger><SelectContent>{snapshot.entries.map((entry) => <SelectItem key={entry} value={entry}><span className='break-all'>{entry}</span></SelectItem>)}</SelectContent></Select></div>}
-              <div className='space-y-2'><Label htmlFor={`${id}:name`}>{t('spaces.threeD.importModel.name')}</Label><Input id={`${id}:name`} value={snapshot.name} autoComplete='off' maxLength={256} onChange={changeName} disabled={busy || checking || !canEdit} /></div>
+              <div className='space-y-2'><Label htmlFor={`${id}:name`}>{t('spaces.threeD.importModel.name')}</Label><Input id={`${id}:name`} value={snapshot.name} autoComplete='off' maxLength={NAME_MAX_LENGTH} onChange={changeName} disabled={busy || checking || !canEdit} /></div>
               <div className='space-y-2 text-xs text-muted-foreground'>
                 {snapshot.entry && <p className='break-all'>{snapshot.entry}</p>}
                 <p>{t('spaces.threeD.importModel.fileCount', { count: snapshot.paths.length })}{prepared?.meshCount !== undefined && <> · {t('spaces.threeD.importModel.meshCount', { count: prepared.meshCount })}</>}{prepared?.skinned && <> · {t('spaces.threeD.importModel.skinned')}</>}</p>
@@ -187,7 +207,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
               {!canEdit && <p className='text-sm text-muted-foreground'>{snapshot.assetId ? t('spaces.threeD.importModel.registeredReadOnly') : t('spaces.threeD.importModel.readOnlyHint')}</p>}
               {snapshot.missing.length > 0 && <Button variant='outline' className='w-fit' onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
               {prepared?.warnings?.length ? <div className='space-y-1 text-xs text-muted-foreground'><p>{t('spaces.threeD.importModel.optionalExtensions')}</p>{prepared.warnings.map((warning) => <p key={warning} className='break-all'>{warning}</p>)}</div> : null}
-              {snapshot.paths.length > 0 && <Button variant='outline' size='compact' className='w-fit text-xs text-muted-foreground' icon={<ChevronRight className={`size-3 ${details ? 'rotate-90' : ''}`} />} onClick={() => setDetails((value) => !value)}>{details ? t('spaces.threeD.importModel.hideFiles') : t('spaces.threeD.importModel.showFiles')}</Button>}
+              {snapshot.paths.length > 0 && <Button variant='outline' size='compact' className='w-fit text-xs text-muted-foreground' icon={detailsIcon} onClick={toggleDetails}>{details ? t('spaces.threeD.importModel.hideFiles') : t('spaces.threeD.importModel.showFiles')}</Button>}
               {details && <ScrollArea className='h-[70px]' viewportClassName='space-y-1'><div className='space-y-1 text-xs text-muted-foreground'>{snapshot.paths.map((path) => <p key={path} className='break-all'>{path}</p>)}</div></ScrollArea>}
             </div>
           </div>}

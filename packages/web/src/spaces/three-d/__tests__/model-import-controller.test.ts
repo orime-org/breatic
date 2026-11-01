@@ -17,7 +17,6 @@ import type {
   ModelImportInputs, PreparedModel,
 } from '@web/spaces/three-d/model-import-controller';
 
-const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const SPACE_ID = '33333333-3333-4333-8333-333333333333';
 const ASSET_ID = '44444444-4444-4444-8444-444444444444';
@@ -76,8 +75,7 @@ function harness(): ImportHarness {
   const prepare = vi.fn<ModelImportInputs['prepare']>().mockResolvedValue(prepared);
   const upload = vi.fn<ModelImportInputs['upload']>().mockResolvedValue({ assetId: ASSET_ID });
   const position = vi.fn<ModelImportInputs['position']>().mockReturnValue([4, 1, 8]);
-  const inputs: ModelImportInputs = { userId: USER_ID, projectId: PROJECT_ID, spaceId: SPACE_ID,
-    session, prepare, upload, position };
+  const inputs: ModelImportInputs = { session, prepare, upload, position };
   const controller = getModelImportController(doc, name, inputs);
   const files = [{ path: 'character.glb', file: new File([new Uint8Array([1])], 'character.glb', { type: 'model/gltf-binary' }) }];
   return { doc, name, session, inputs, controller, files, prepared, prepare, upload, position };

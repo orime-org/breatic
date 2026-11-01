@@ -231,10 +231,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   React.useEffect(() => {
     if (!importLimits) return;
     setImportController(getModelImportController(session.doc, docName.threeDSpace(projectId, spaceId), {
-      userId, projectId, spaceId, session, prepare: prepareImport, upload: uploadImport, position: positionImport,
+      session, prepare: prepareImport, upload: uploadImport, position: positionImport,
     }));
     return (): void => { setImportOpen(false); };
-  }, [session, userId, projectId, spaceId, importLimits, prepareImport, uploadImport, positionImport, setImportOpen]);
+  }, [session, projectId, spaceId, importLimits, prepareImport, uploadImport, positionImport, setImportOpen]);
   /** Show the current document's retained operation, including registered read-only results. */
   const showImport = React.useCallback((): void => {
     if (importController?.getSnapshot().phase === 'placed') importController.reset();

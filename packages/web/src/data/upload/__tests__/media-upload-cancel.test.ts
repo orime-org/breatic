@@ -228,9 +228,9 @@ describe('runMediaUpload cancellation ownership', () => {
 
     await runMediaUpload(FILE, CONTEXT, deps);
 
-    expect(deps.hashFile).toHaveBeenCalledWith(FILE);
-    expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG);
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey);
+    expect(deps.hashFile).toHaveBeenCalledWith(FILE, undefined);
+    expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, undefined, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(COMPLETED.result);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });

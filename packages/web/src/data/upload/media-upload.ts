@@ -249,7 +249,7 @@ export async function runMediaUpload(
   try {
     cfg = await deps.getUploadConfig();
     signal?.throwIfAborted();
-    const hash = await (signal ? deps.hashFile(file, signal) : deps.hashFile(file));
+    const hash = await deps.hashFile(file, signal);
     signal?.throwIfAborted();
     if (hash === null) {
       // Refused up front: nothing asked for, nothing sent, no bandwidth burnt.
@@ -264,7 +264,7 @@ export async function runMediaUpload(
           contentType: file.type,
           size: file.size,
           hash,
-        }, ...(signal ? [signal] as const : [])),
+        }, signal),
       {
         attempts: cfg.clientMaxAttempts,
         baseDelayMs: cfg.clientRetryBaseDelayMs,
@@ -337,14 +337,9 @@ async function deliverTicket(
   let queued: QueuedFinish;
   try {
     const { onProgress } = sinks;
-    queued =
-      signal
-        ? await deps.sendToIngest(file, answer, cfg, onProgress ? (landed) => {
-          if (!signal.aborted) onProgress(landed / file.size);
-        } : undefined, signal)
-        : onProgress === undefined
-          ? await deps.sendToIngest(file, answer, cfg)
-          : await deps.sendToIngest(file, answer, cfg, (landed) => { onProgress(landed / file.size); });
+    queued = await deps.sendToIngest(file, answer, cfg, onProgress && ((landed) => {
+      if (!signal?.aborted) onProgress(landed / file.size);
+    }), signal);
     signal?.throwIfAborted();
   } catch (err) {
     signal?.throwIfAborted();
@@ -358,7 +353,7 @@ async function deliverTicket(
   sinks.onRegistering?.();
   signal?.throwIfAborted();
   const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
-  const ending = signal ? waitForEnding(queued.storageKey, signal) : waitForEnding(queued.storageKey);
+  const ending = waitForEnding(queued.storageKey, signal);
   if (taskId !== undefined) {
     void ending.then((end) => {
       if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });

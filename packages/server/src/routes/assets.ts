@@ -215,10 +215,8 @@ const uploadTicketSchema = z
       project_id: z.string().uuid(),
       studio_id: z.never().optional(),
       purpose: z.enum(["project_cover", "scene_model"]).optional(),
-      content_type: declaredContentTypeSchema.refine(
-        (value) => isUploadableMediaType(value) || isSceneModelMediaType(value),
-        "content_type is not an uploadable kind",
-      ),
+      // The purpose decides which kinds a project upload takes; superRefine below is that gate.
+      content_type: declaredContentTypeSchema,
     }),
     uploadTicketFields.extend({
       studio_id: z.string().uuid(),

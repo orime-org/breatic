@@ -34,7 +34,7 @@ async function readyImport(): Promise<{ controller: ModelImportController; prepa
   const prepared: PreparedModel = { file: new File(['model'], 'model.glb'), entry: 'model.glb', entries: ['model.glb'],
     paths: ['model.glb'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() };
   const upload = vi.fn().mockResolvedValue({ assetId: '44444444-4444-4444-8444-444444444444' });
-  const controller = new ModelImportController({ userId: 'user', projectId: 'project', spaceId: 'space', session,
+  const controller = new ModelImportController({ session,
     prepare: async () => prepared, upload, position: () => [0, 0, 0] });
   disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
   await controller.select([{ path: prepared.file.name, file: prepared.file }]);

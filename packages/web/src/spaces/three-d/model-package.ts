@@ -202,7 +202,8 @@ export function packModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer
     if (normalizeModelPath(path) !== path) throw new ModelImportError('invalid', `Invalid model resource path: ${path}`);
     entries[`files/${path}`] = files.get(path)!;
   }
-  const bytes = Uint8Array.from(zipSync(entries, { level: 0, mtime: new Date(1980, 0, 1) }));
+  // zipSync returns a fresh array over its own ArrayBuffer.
+  const bytes = zipSync(entries, { level: 0, mtime: new Date(1980, 0, 1) }) as Uint8Array<ArrayBuffer>;
   if (bytes.byteLength > limits.maxArtifactBytes) throw new ModelImportError('budget', 'Model asset exceeds its configured budget');
   return bytes;
 }

@@ -25,9 +25,6 @@ export interface PreparedModel {
   warnings?: readonly string[];
 }
 export interface ModelImportInputs {
-  userId: string;
-  projectId: string;
-  spaceId: string;
   session: SceneSession;
   prepare: (files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal) => Promise<PreparedModel>;
   upload: (file: File, signal: AbortSignal, onProgress: (fraction: number) => void, onRegistering: () => void) => Promise<{ assetId: string }>;
