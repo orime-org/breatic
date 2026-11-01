@@ -426,7 +426,8 @@
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
         "other": "Calling {tool}",
-        "readTemplate": "Reading the template"
+        "readTemplate": "Reading the template",
+        "requestSpace": "Asking to look at Spaces"
       }
     },
     "loadEarlier": "Load earlier messages",
@@ -523,6 +524,22 @@
       "show": "Show",
       "hide": "Hide",
       "atLeastOne": "Answer at least one question."
+    },
+    "spaceRequest": {
+      "title": "Agent wants to look at",
+      "allow": "Allow",
+      "decline": "Decline",
+      "shared": "Shared with Agent",
+      "declined": "Not shared with Agent",
+      "replied": "You replied in the chat",
+      "partBlocks": "{to, select, end {From block {from}} other {Blocks {from}–{to}}}",
+      "partNodes": "{count, plural, one {# node} other {# nodes}}",
+      "state": {
+        "unreadable": "Can't be read",
+        "gone": "Deleted",
+        "timedOut": "Timed out",
+        "failed": "Couldn't read"
+      }
     }
   },
   "canvas": {

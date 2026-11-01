@@ -426,7 +426,8 @@
         "readNodeHistory": "노드 기록 확인",
         "readActivity": "Project 활동 확인",
         "other": "{tool} 실행",
-        "readTemplate": "템플릿 확인"
+        "readTemplate": "템플릿 확인",
+        "requestSpace": "Space 보기 요청"
       }
     },
     "loadEarlier": "이전 메시지 불러오기",
@@ -523,6 +524,22 @@
       "show": "펼치기",
       "hide": "접기",
       "atLeastOne": "적어도 한 문제에 답해 주세요"
+    },
+    "spaceRequest": {
+      "title": "Agent가 다음 내용을 보려고 합니다",
+      "allow": "보기 허용",
+      "decline": "보기 거부",
+      "shared": "Agent에게 공유함",
+      "declined": "Agent에게 공유하지 않음",
+      "replied": "채팅에서 답장했습니다",
+      "partBlocks": "{to, select, end {{from}번 블록부터} other {{from}–{to}번 블록}}",
+      "partNodes": "노드 {count}개",
+      "state": {
+        "unreadable": "읽을 수 없음",
+        "gone": "삭제됨",
+        "timedOut": "시간 초과",
+        "failed": "읽기 실패"
+      }
     }
   },
   "canvas": {

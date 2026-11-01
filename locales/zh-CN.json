@@ -426,7 +426,8 @@
         "readNodeHistory": "查节点的历史",
         "readActivity": "查 Project 活动",
         "other": "调用 {tool}",
-        "readTemplate": "读模板"
+        "readTemplate": "读模板",
+        "requestSpace": "请求查看 Space"
       }
     },
     "loadEarlier": "加载更早的消息",
@@ -523,6 +524,22 @@
       "show": "展开",
       "hide": "收起",
       "atLeastOne": "至少答一题"
+    },
+    "spaceRequest": {
+      "title": "Agent 想查看这些内容",
+      "allow": "同意查看",
+      "decline": "拒绝查看",
+      "shared": "已给 Agent 查看",
+      "declined": "没有给 Agent 查看",
+      "replied": "你在对话中回复了",
+      "partBlocks": "{to, select, end {第 {from} 块起} other {第 {from}–{to} 块}}",
+      "partNodes": "{count} 个节点",
+      "state": {
+        "unreadable": "读不了",
+        "gone": "已删除",
+        "timedOut": "读取超时",
+        "failed": "读取失败"
+      }
     }
   },
   "canvas": {
