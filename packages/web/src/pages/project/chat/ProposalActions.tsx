@@ -7,11 +7,11 @@ import { Button, type ButtonProps } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 
 /**
- * The row a proposal card's land buttons sit in, for the Canvas and the
+ * The row a proposal card's buttons sit in, for the Canvas and the
  * Document card alike (inner#1602). 270px is the card's inner width at the
  * narrowest Agent column, so the row fills the card there and stops growing
- * as the column widens (inner#1372); its buttons share it equally. A row of
- * three, on the Document card, wraps whole buttons onto a second line when a
+ * as the column widens (inner#1372); its buttons share it equally. On the
+ * Document card the row wraps whole buttons onto a second line when a
  * language's words do not fit side by side (inner#1646).
  * @param props - The buttons.
  * @param props.children - One or more {@link ProposalAction}s.

@@ -106,8 +106,9 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
  * (inner#1509). It says which document and passage, what would change, and
  * offers the press, with Locate first to see the passage in the document
  * before choosing (inner#1646); the project page opens the document and the document
- * Space lands it. A press that landed shows its result on the card; any other
- * ending is told in a toast and the card goes back to its buttons.
+ * Space lands it. A landing press that landed shows its result on the card;
+ * any other ending of a landing press is told in a toast and the card goes
+ * back to its buttons; a locate press leaves the card as it was.
  *
  * Whether it landed is read off the open document whenever the document
  * changes, so a reload knows once the document is open and undoing a rewrite

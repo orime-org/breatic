@@ -261,8 +261,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const table = first === null ? null : tableViewportOf(first);
     const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
     /**
-     * What the outline goes around: the block's own content, or the quoted
-     * words, cut to the part of their table's sideways frame on screen.
+     * What the outline goes around: a landed block's own content, a located
+     * block with the blocks nested under it from its first line down, or the
+     * quoted words, cut to the part of their table's sideways frame on screen.
      * @returns Its rectangle on screen.
      */
     const outlined = (): DOMRect => {
