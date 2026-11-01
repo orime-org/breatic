@@ -4,9 +4,11 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 
+import * as sharedIndex from "../../index.js";
 import {
   durationToFrames,
   timelineSourceSeconds,
+  timelineTrimHead,
   validateTimelineRange,
 } from "../time.js";
 
@@ -132,5 +134,38 @@ describe("Timeline source sampling", () => {
     { rate: { num: 1, den: 0 } },
   ])("rejects invalid clip bounds %j", (changes) => {
     expect(validateTimelineRange({ ...clip, ...changes }, source, fps)).toEqual({ valid: false, reason: "invalid_range" });
+  });
+});
+
+describe("timelineTrimHead (inner#1708 D4)", () => {
+  const fps25 = { num: 25, den: 1 };
+  /** 4 s at 50 frames per second. */
+  const source50 = { ...source, timebase: { num: 50, den: 1 }, extentFrames: 200, durationSeconds: "4" };
+  const placed = { ...clip, startFrame: 0, sourceInFrame: 0, durationFrames: 100 };
+
+  it("converts a head move in Timeline frames to source frames", () => {
+    expect(timelineTrimHead(placed, source50, fps25, 10)).toBe(20);
+    expect(timelineTrimHead({ ...placed, sourceInFrame: 20 }, source50, fps25, -10)).toBe(0);
+    expect(timelineTrimHead(placed, source50, fps25, 0)).toBe(0);
+  });
+
+  it("applies the clip speed", () => {
+    expect(timelineTrimHead({ ...placed, rate: { num: 2, den: 1 } }, source50, fps25, 10)).toBe(40);
+  });
+
+  it("returns null for a head before the source start", () => {
+    expect(timelineTrimHead({ ...placed, sourceInFrame: 20 }, source50, fps25, -11)).toBe(null);
+    expect(timelineTrimHead(placed, source50, fps25, -1)).toBe(null);
+  });
+
+  it("returns null when the move is not a whole source frame", () => {
+    // One Timeline frame at 25 fps is 24/25 of a frame of a 24 fps source.
+    expect(timelineTrimHead(placed, source, fps25, 1)).toBe(null);
+    expect(timelineTrimHead(placed, source, fps25, 25)).toBe(24);
+  });
+
+  it("is exported from the shared entry", () => {
+    expect(typeof sharedIndex.timelineTrimHead).toBe("function");
+    expect(sharedIndex.timelineTrimHead).toBe(timelineTrimHead);
   });
 });

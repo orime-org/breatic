@@ -4,14 +4,18 @@
 /**
  * Drag and trim previews and the single command a release commits (inner#1708 E1, E2, E9, design §2.4, §5.1).
  *
- * Every source here runs at rate 1/1, so a source offset equals the timeline offset.
+ * Sources run at rate 1/1 on the Timeline's own timebase, so a source offset equals the timeline offset,
+ * except in the last block, whose source timebase differs from the Timeline rate.
  */
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { planTimelineEdit, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import {
+  orderedTimelineClips, planTimelineEdit, timelineInsertionIndex, TimelineDocumentV1Schema,
+  type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource,
+} from '@breatic/shared';
 
-import { previewTimelineGesture, timelineGestureCommand, type TimelineGestureMode } from '@web/spaces/timeline/timeline-gesture';
+import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode } from '@web/spaces/timeline/timeline-gesture';
 import {
   MAIN, OFF, ON, SHORT_SOURCE, SOURCE, cid, clip, idFactory, timeline, track,
 } from '@web/spaces/timeline/__tests__/timeline-edit-fixtures';
@@ -37,7 +41,7 @@ function newTrack(): string {
 describe('previewTimelineGesture move', () => {
   it('keeps the track when nothing is hovered and adds the delta', () => {
     expect(previewTimelineGesture(DOC, B, 'move', 30, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 130, dropFrame: 130, sourceInFrame: 10, durationFrames: 48, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 130, sourceInFrame: 10, durationFrames: 48, snapFrame: null,
     });
   });
 
@@ -77,7 +81,7 @@ describe('previewTimelineGesture move', () => {
 describe('previewTimelineGesture trims', () => {
   it('moves the start edge with the source in-point and keeps the end', () => {
     expect(previewTimelineGesture(DOC, B, 'trim-start', 5, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 105, dropFrame: 105, sourceInFrame: 15, durationFrames: 43, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 105, sourceInFrame: 15, durationFrames: 43, snapFrame: null,
     });
     expect(previewTimelineGesture(DOC, B, 'trim-start', -4, null, FREE)).toMatchObject({ startFrame: 96, sourceInFrame: 6, durationFrames: 52 });
   });
@@ -97,7 +101,7 @@ describe('previewTimelineGesture trims', () => {
 
   it('moves only the end edge', () => {
     expect(previewTimelineGesture(DOC, B, 'trim-end', 12, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 100, dropFrame: 100, sourceInFrame: 10, durationFrames: 60, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 100, sourceInFrame: 10, durationFrames: 60, snapFrame: null,
     });
   });
 
@@ -283,42 +287,97 @@ describe('gestures on the magnetic main track (inner#1708 C3, C4)', () => {
     expect(next.clips[B]?.startFrame).toBe(30);
   });
 
-  it('previews a same-track move at the packed slot the planner gives it', () => {
-    // Dropping A at 60 puts it after B (midpoint 60) and before C: B then A from frame 0.
-    const document = timeline([clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 24), clip(C, MAIN, 72, 48)], [track(MAIN, 0), track('v2', 1)]);
-    const { preview, planned } = roundTrip(document, A, 'move', 60, null);
-    expect(preview).toMatchObject({ startFrame: 24, dropFrame: 60 });
-    expect(planned.startFrame).toBe(preview.startFrame);
+  it('previews a same-track move at the drop frame and marks the gap the planner inserts it into (D2)', () => {
+    // A[0,10) B[10,20) C[20,30); dragging A by 15 drops it past B's midpoint: the gap after B, landing at 10.
+    const document = timeline([clip(A, MAIN, 0, 10), clip(B, MAIN, 10, 10), clip(C, MAIN, 20, 10)], [track(MAIN, 0)]);
+    const preview = previewTimelineGesture(document, A, 'move', 15, null, MAGNET);
+    expect(preview).toMatchObject({ trackId: MAIN, startFrame: 15 });
+    expect(preview).not.toHaveProperty('dropFrame');
+    expect(timelineInsertMarkerFrame(document, A, 15)).toBe(20);
+    if (preview === null) return;
+    expect(timelineGestureCommand(document, preview, 'move', ON, newTrack)).toMatchObject({ operation: 'move', parameters: { clipId: A, startFrame: 15 } });
+    const { planned, next } = roundTrip(document, A, 'move', 15, null);
+    expect(planned.startFrame).toBe(10);
+    expect(next.clips[B]?.startFrame).toBe(0);
   });
 
-  it('previews a move from a sub track onto the main track at its packed slot', () => {
+  it('previews a move from a sub track onto the main track at the drop frame (D2)', () => {
     const document = timeline([clip(A, MAIN, 0, 48), clip(C, MAIN, 48, 48), clip(B, 'v2', 100, 48)], [track(MAIN, 0), track('v2', 1)]);
     const { preview, planned } = roundTrip(document, B, 'move', -40, MAIN);
-    expect(preview).toMatchObject({ trackId: MAIN, startFrame: 48 });
-    expect(planned).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame });
+    expect(preview).toMatchObject({ trackId: MAIN, startFrame: 60 });
+    expect(timelineInsertMarkerFrame(document, B, 60)).toBe(48);
+    expect(planned).toMatchObject({ trackId: MAIN, startFrame: 48 });
   });
 
-  it('previews every main-track move where the planner places it', () => {
+  it('marks frame 0 when the drop comes before every main clip (D2)', () => {
+    const document = timeline([clip(A, MAIN, 0, 10), clip(B, MAIN, 10, 10), clip(C, MAIN, 20, 10)], [track(MAIN, 0)]);
+    expect(timelineInsertMarkerFrame(document, C, 0)).toBe(0);
+    expect(timelineInsertMarkerFrame(document, C, 4)).toBe(0);
+  });
+
+  it('previews every main-track move at its drop frame, commits it and marks where the planner inserts it (D2)', () => {
     fc.assert(fc.property(
       conflictFreeDocument(),
       fc.nat(),
       fc.integer({ min: -200, max: 200 }),
-      fc.boolean(),
-      fc.integer({ min: 0, max: 400 }),
-      (document, pick, delta, snap, playhead) => {
+      (document, pick, delta) => {
         const ids = Object.keys(document.clips);
         const clipId = ids[pick % ids.length] ?? '';
-        const options = { snap, pixelsPerFrame: 1, playhead, magnet: true };
-        const preview = previewTimelineGesture(document, clipId, 'move', delta, MAIN, options);
+        const moved = document.clips[clipId];
+        if (moved === undefined) return;
+        const preview = previewTimelineGesture(document, clipId, 'move', delta, MAIN, { ...FREE, magnet: true });
         if (preview === null) return;
+        expect(preview.startFrame).toBe(Math.max(0, moved.startFrame + delta));
+        // Reference: the gap before the insertion index in the current layout, and the packed landing.
+        const sequence = orderedTimelineClips(document.clips, MAIN).filter((item) => item.id !== clipId);
+        const index = timelineInsertionIndex(sequence, preview.startFrame);
+        const before = sequence[index - 1];
+        expect(timelineInsertMarkerFrame(document, clipId, preview.startFrame)).toBe(before === undefined ? 0 : before.startFrame + before.durationFrames);
         const command = timelineGestureCommand(document, preview, 'move', ON, newTrack);
-        // No command means the release changes nothing, so the preview must show the clip where it already is.
-        if (command === null) { expect(document.clips[clipId]).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame }); return; }
+        if (command === null) return;
+        expect(command).toMatchObject({ operation: 'move', parameters: { clipId, startFrame: preview.startFrame } });
         const plan = planTimelineEdit(document, command, idFactory('60000000'));
         expect(plan).toMatchObject({ ok: true });
         if (!plan.ok) return;
-        expect(plan.next.clips[clipId]).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame });
+        const landing = sequence.slice(0, index).reduce((at, item) => at + item.durationFrames, 0);
+        expect(plan.next.clips[clipId]).toMatchObject({ trackId: MAIN, startFrame: landing });
       },
     ), { numRuns: 400 });
+  });
+});
+
+describe('head trims when the source timebase differs from the Timeline rate (inner#1708 D4)', () => {
+  /** 4 s at 50 frames per second on a 25 fps Timeline. */
+  const SOURCE50: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000050', timebase: { num: 50, den: 1 }, extentFrames: 200, durationSeconds: '4' };
+
+  /**
+   * A 25 fps Timeline holding one clip of the 50 fps source on v2.
+   * @param placed - The clip.
+   * @returns The document.
+   * @throws {Error} When the fixture is invalid.
+   */
+  function at25(placed: TimelineVideoClip): TimelineDocumentV1 {
+    return TimelineDocumentV1Schema.parse({ ...timeline([placed], [track(MAIN, 0), track('v2', 1)], [SOURCE50]), settings: { width: 1920, height: 1080, fps: { num: 25, den: 1 } } });
+  }
+
+  it('moves the in-point by the source frames the head travels', () => {
+    const document = at25(clip(A, 'v2', 0, 100, { sourceId: SOURCE50.id }));
+    expect(previewTimelineGesture(document, A, 'trim-start', 10, null, FREE)).toMatchObject({ startFrame: 10, sourceInFrame: 20, durationFrames: 90 });
+  });
+
+  it('stops the head at the source start in Timeline frames', () => {
+    const document = at25(clip(A, 'v2', 20, 80, { sourceId: SOURCE50.id, sourceInFrame: 20 }));
+    expect(previewTimelineGesture(document, A, 'trim-start', -15, null, FREE)).toMatchObject({ startFrame: 10, sourceInFrame: 0, durationFrames: 90 });
+  });
+
+  it('commits a head trim the planner accepts', () => {
+    const document = at25(clip(A, 'v2', 0, 100, { sourceId: SOURCE50.id }));
+    const preview = previewTimelineGesture(document, A, 'trim-start', 10, null, FREE);
+    if (preview === null) throw new Error('Expected a preview');
+    const command = timelineGestureCommand(document, preview, 'trim-start', OFF, newTrack);
+    if (command === null) throw new Error('Expected a command');
+    const plan = planTimelineEdit(document, command, idFactory('60000000'));
+    if (!plan.ok) throw new Error(`Expected an accepted plan, got ${plan.reason}`);
+    expect(plan.next.clips[A]).toMatchObject({ startFrame: 10, sourceInFrame: 20, durationFrames: 90 });
   });
 });

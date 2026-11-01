@@ -94,3 +94,17 @@ describe("nextTimelinePlaybackBoundary under an upper layer (inner#1708 C2)", ()
     }), { numRuns: 300 });
   });
 });
+
+describe("nextTimelinePlaybackBoundary cost (inner#1708 D5)", () => {
+  it("answers 60 calls over 1000 covered main clips in under 60 ms", () => {
+    const clips: TimelineVideoClip[] = Array.from({ length: 1000 }, (_item, index) => clip(cid(index + 2), MAIN, index * 2, 2));
+    const cover = clip(cid(1), V2, 0, 2000);
+    const document = timeline([...clips, cover], [track(MAIN, 0), track(V2, 1)]);
+    const ready = new Set([cover.id, ...clips.map((item) => item.id)]);
+    // Warm the code paths so the measurement is not dominated by compilation.
+    expect(nextTimelinePlaybackBoundary(document, ready, 0, 2010)).toBe(2000);
+    const started = performance.now();
+    for (let call = 0; call < 60; call += 1) nextTimelinePlaybackBoundary(document, ready, 0, 2010);
+    expect(performance.now() - started).toBeLessThan(60);
+  });
+});

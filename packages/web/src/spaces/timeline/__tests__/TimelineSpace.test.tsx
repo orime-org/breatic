@@ -1422,6 +1422,30 @@ describe('TimelineSpace keyboard focus and selection (inner#1708 G1, G3, C1, C5)
   });
 });
 
+describe('TimelineSpace empty-lane press (inner#1708 D1)', () => {
+  it('clears the selection on a press in an empty part of a lane, so arrows move the playhead', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    const lane = screen.getByTestId('timeline-lane-v2');
+    expect(lane).toContainElement(clip);
+    // A press on the clip itself keeps it selected.
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerUp', 0);
+    expect(clip).toHaveAttribute('aria-pressed', 'true');
+    const before = Y.encodeStateAsUpdate(doc);
+    pointer(lane, 'pointerDown', 200);
+    pointer(document, 'pointerUp', 200);
+    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + X)).toHaveAttribute('aria-pressed', 'false'));
+    expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-clip-start')).toBe(null);
+    press(screen.getByTestId('timeline-space'), 'ArrowRight');
+    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 1, total: 24 }))).toBeInTheDocument());
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+});
+
 describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
   it('draws no drag preview once the role turns Viewer during a drag', async () => {
     seedLayout([clipAt(X, 'v2', 10, 14)]);
@@ -1453,7 +1477,7 @@ describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
     expect(t('timeline.errors.clip_removed')).toBe('This clip was removed by another member.');
   });
 
-  it('marks where a clip dragged along the magnetic main track will land', async () => {
+  it('draws the ghost at the drop frame and the insertion marker at the gap the clip will fill (D2)', async () => {
     const A = '30000000-0000-4000-8000-000000000041';
     const B = '30000000-0000-4000-8000-000000000042';
     const C = '30000000-0000-4000-8000-000000000043';
@@ -1462,13 +1486,14 @@ describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
     showTimeline();
     const clip = await screen.findByTestId('timeline-clip-' + A);
     fireEvent.click(clip);
-    // Default zoom is 2 px per frame: 30 px is 15 frames, past B's midpoint, so A lands after B at frame 10.
+    // Default zoom is 2 px per frame: 30 px is 15 frames, past B's midpoint, so the gap is B's end at 20 and A lands at 10.
     pointer(clip, 'pointerDown', 0);
     pointer(document, 'pointerMove', 10);
     pointer(document, 'pointerMove', 30);
     const marker = await screen.findByTestId('timeline-insert-marker');
     expect(screen.getByTestId('timeline-track-' + MAIN)).toContainElement(marker);
-    expect(marker.style.left).toBe('20px');
+    expect(marker.style.left).toBe('40px');
+    expect((dragGhost(MAIN) as HTMLElement | null)?.style.left).toBe('30px');
     pointer(document, 'pointerUp', 30);
     await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(10));
     expect(layout().clips[B]?.startFrame).toBe(0);

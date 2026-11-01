@@ -3,7 +3,8 @@
 
 /** The editing user's magnet, snap and linkage switches (inner#1708 E13, design §2.5, §5.3). */
 
-import { act, renderHook } from '@testing-library/react';
+import * as React from 'react';
+import { act, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
@@ -80,6 +81,42 @@ describe('useTimelineEditPrefs', () => {
     expect(tabB.result.current.magnet).toBe(false);
     act(() => tabB.result.current.set({ snap: false }));
     expect(tabA.result.current).toMatchObject({ magnet: false, snap: false, linkage: true });
+  });
+
+  it('shows a change made in one Timeline tab when a hidden tab is shown again (D3)', () => {
+    const seen: Record<'a' | 'b', ReturnType<typeof useTimelineEditPrefs> | null> = { a: null, b: null };
+    /**
+     * One Timeline tab's switches.
+     * @param props - The tab.
+     * @param props.name - Which tab.
+     * @returns Its magnet state as text.
+     * @throws {never} Never.
+     */
+    function Tab({ name }: { name: 'a' | 'b' }): React.JSX.Element {
+      const prefs = useTimelineEditPrefs();
+      seen[name] = prefs;
+      return <span data-testid={`magnet-${name}`}>{String(prefs.magnet)}</span>;
+    }
+    /**
+     * Two tabs inside Activity boundaries, as the Project page keeps Space tabs.
+     * @param props - Which tab is shown.
+     * @param props.shown - The visible tab.
+     * @returns Both tabs.
+     * @throws {never} Never.
+     */
+    function Tabs({ shown }: { shown: 'a' | 'b' }): React.JSX.Element {
+      return <>
+        <React.Activity mode={shown === 'a' ? 'visible' : 'hidden'}><Tab name='a' /></React.Activity>
+        <React.Activity mode={shown === 'b' ? 'visible' : 'hidden'}><Tab name='b' /></React.Activity>
+      </>;
+    }
+    const view = render(<Tabs shown='b' />);
+    view.rerender(<Tabs shown='a' />);
+    act(() => seen.a?.set({ magnet: false }));
+    expect(seen.a?.magnet).toBe(false);
+    view.rerender(<Tabs shown='b' />);
+    expect(seen.b?.magnet).toBe(false);
+    expect(view.getByTestId('magnet-b')).toHaveTextContent('false');
   });
 
   it('keeps the value in memory when storage refuses the write', () => {
