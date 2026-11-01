@@ -116,7 +116,9 @@
       "unavailable": "この環境ではクレジットを販売していません。"
     },
     "text_tool": {
-      "already_running": "別のテキストツールが実行中です。お待ちください。"
+      "selection_too_long": "選択範囲が長すぎて AI で処理できません：{actual} 文字（上限 {limit} 文字）。",
+      "document_too_long": "選択範囲と一緒に送る文脈が長すぎます：{actual} 文字（上限 {limit} 文字）。",
+      "failed": "AI がこのリクエストを完了できませんでした。もう一度お試しください。"
     },
     "conversation": {
       "not_found": "会話が見つかりません",

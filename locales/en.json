@@ -90,7 +90,9 @@
       "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "text_tool": {
-      "already_running": "Another text tool is already running. Please wait."
+      "selection_too_long": "The selection is too long for AI: {actual} characters, the limit is {limit}.",
+      "document_too_long": "The text sent with the selection is too long: {actual} characters, the limit is {limit}.",
+      "failed": "AI couldn't finish this request. Please try again."
     },
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",

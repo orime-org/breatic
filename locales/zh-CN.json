@@ -30,7 +30,9 @@
       "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
     },
     "text_tool": {
-      "already_running": "另一个文本工具正在运行,请稍候。"
+      "selection_too_long": "选中的内容太长，AI 处理不了：{actual} 个字符，上限是 {limit}。",
+      "document_too_long": "随选中内容发送的上下文太长：{actual} 个字符，上限是 {limit}。",
+      "failed": "AI 没能完成这次请求，请重试。"
     },
     "auth": {
       "invalid_credentials": "邮箱或密码错误",

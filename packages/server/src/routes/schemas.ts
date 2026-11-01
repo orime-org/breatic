@@ -40,21 +40,46 @@ import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SOR
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
+/**
+ * A hard ceiling on any text a text tool receives, against abuse only. The
+ * budgets users actually meet live in `config/text-tools.yaml` and are checked
+ * in the route, so operations can change them without a release.
+ */
+const TEXT_TOOL_HARD_CEILING = 2_000_000;
+/** The five UI locales a selection can be translated into. */
+const TRANSLATE_TARGETS = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+/** The five tones the tone submenu offers. */
+const REWRITE_TONES = ["professional", "casual", "straightforward", "confident", "friendly"] as const;
+/** The most a custom request may say. */
+const CUSTOM_INSTRUCTIONS_MAX = 2_000;
+
 const textToolBase = z.object({
-  document: z.string().optional(),
-  selection: z.string().optional(),
+  project_id: z.string().uuid(),
+  document: z.string().max(TEXT_TOOL_HARD_CEILING).optional(),
+  selection: z.string().max(TEXT_TOOL_HARD_CEILING).optional(),
   instructions: z.string().optional(),
   node_ids: z.array(z.string()).min(1).optional(),
-  project_id: z.string().optional(),
 });
 
+/** What every document command carries: the selection and the context around it. */
+const onSelection = {
+  document: z.string().max(TEXT_TOOL_HARD_CEILING),
+  selection: z.string().min(1).max(TEXT_TOOL_HARD_CEILING),
+};
+
 export const textToolSchema = z.discriminatedUnion("tool", [
-  textToolBase.extend({ tool: z.literal("polish"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("expand"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("summarize"), document: z.string(), selection: z.string() }),
-  textToolBase.extend({ tool: z.literal("translate"), document: z.string(), selection: z.string(), language: z.string() }),
-  textToolBase.extend({ tool: z.literal("rewrite"), document: z.string(), selection: z.string(), style: z.string().optional() }),
-  textToolBase.extend({ tool: z.literal("continue"), document: z.string(), selection: z.string() }),
+  textToolBase.extend({ tool: z.literal("polish"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("expand"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("shorten"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("summarize"), ...onSelection }),
+  textToolBase.extend({ tool: z.literal("translate"), ...onSelection, language: z.enum(TRANSLATE_TARGETS) }),
+  textToolBase.extend({ tool: z.literal("rewrite"), ...onSelection, style: z.enum(REWRITE_TONES).optional() }),
+  textToolBase.extend({
+    tool: z.literal("custom"),
+    ...onSelection,
+    instructions: z.string().trim().min(1).max(CUSTOM_INSTRUCTIONS_MAX),
+  }),
+  textToolBase.extend({ tool: z.literal("continue"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("generate"), instructions: z.string() }),
   textToolBase.extend({ tool: z.literal("character"), name: z.string(), traits: z.string().optional(), context: z.string().optional() }),
   textToolBase.extend({ tool: z.literal("storyboard"), instructions: z.string(), scene_count: z.number().int().optional() }),
