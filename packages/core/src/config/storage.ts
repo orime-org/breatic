@@ -110,7 +110,7 @@ export const storageConfigSchema = z
       /** Largest transfer file each route that accepts one may reference. */
       route_max_bytes: z
         .object({
-          chat_message: z.number().int().positive().default(4194304),
+          chat_message: z.number().int().positive().default(6291456),
           canvas_paste: z.number().int().positive().default(25165824),
           node_history_snapshot: z.number().int().positive().default(25165824),
         })
