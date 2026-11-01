@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Mesh, SkinnedMesh, Texture } from 'three';
+import { SkinnedMesh, Texture } from 'three';
 import type { BufferGeometry, Group, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
@@ -12,6 +12,8 @@ import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
 /** Additional parsed scenes stay owned until the active template is released. */
 const ownedScenes = new WeakMap<Group, readonly Group[]>();
@@ -38,7 +40,7 @@ function disposeInstance(root: Group): void {
   const materials = new Set<Material>();
   const skeletons = new Set<Skeleton>();
   root.traverse((child) => {
-    if (child instanceof Mesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
+    if (isDrawable(child)) for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
     if (child instanceof SkinnedMesh) skeletons.add(child.skeleton);
   });
   for (const skeleton of skeletons) skeleton.dispose();
@@ -57,7 +59,7 @@ export function disposeModelTemplate(root: Group): void {
   const materials = new Set<Material>();
   const skeletons = new Set<Skeleton>();
   for (const scene of ownedScenes.get(root) ?? [root]) scene.traverse((child) => {
-    if (!(child instanceof Mesh)) return;
+    if (!isDrawable(child)) return;
     geometries.add(child.geometry);
     for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
       materials.add(material);
@@ -90,7 +92,7 @@ function instantiate(root: Group): Group {
   const instance = clone(root) as Group;
   const materials = new Map<Material, Material>();
   instance.traverse((child) => {
-    if (!(child instanceof Mesh)) return;
+    if (!isDrawable(child)) return;
     /**
      * Clone a material once within this independent instance.
      * @param source - The template material to clone, or retrieve from this instance's material map.
@@ -276,7 +278,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
     ownedScenes.set(result.scene, result.scenes);
     try {
       signal.throwIfAborted();
-      if (decoder.failedResources.length) throw new Error(`Model resources could not be decoded: ${decoder.failedResources.join(', ')}`);
+      if (decoder.failedResources.length) throw new ModelImportError('invalid', 'Model resources could not be decoded', undefined, decoder.failedResources.join(', '));
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {

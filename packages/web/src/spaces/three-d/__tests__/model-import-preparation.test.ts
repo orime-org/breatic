@@ -3,13 +3,32 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { inspectModelSelectionInWorker } from '@web/spaces/three-d/model-import-preparation';
+import { inspectModelSelectionInWorker, prepareSceneModel } from '@web/spaces/three-d/model-import-preparation';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { serializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 
 /** A controlled transport retains callbacks that may already be queued. */
+const parse = vi.hoisted(() => vi.fn());
+vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>(), parseSceneModel: parse,
+}));
+vi.mock('three', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three')>();
+  /** Stand in for a WebGL renderer, which jsdom cannot create. */
+  class TestRenderer {
+    readonly capabilities = { maxTextureSize: 8192 };
+    /** @returns Nothing. @throws {never} Never. */
+    setSize(): void {}
+    /** @returns Nothing. @throws {never} Never. */
+    dispose(): void {}
+    /** @returns Nothing. @throws {never} Never. */
+    forceContextLoss(): void {}
+  }
+  return { ...actual, WebGLRenderer: TestRenderer };
+});
+
 class ControlledWorker {
   static instances: ControlledWorker[] = [];
   static constructorError: unknown;
@@ -77,6 +96,14 @@ describe('operation-owned model inspection worker', () => {
     worker.onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeModelImportError(failure) } }));
     await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'entry', info, detail: 'one.glb' });
     expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps entry choices on a model refused while it is parsed', async () => {
+    parse.mockRejectedValueOnce(new ModelImportError('budget', 'Model textures exceed the configured cumulative budget'));
+    const running = prepareSceneModel(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
+    await expect(running).rejects.toMatchObject({ code: 'budget', info: { entries: SELECTION.entries, paths: SELECTION.paths, missing: [] } });
   });
 
   it('cancels one worker without affecting another operation or accepting its late reply', async () => {

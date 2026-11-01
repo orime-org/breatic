@@ -137,7 +137,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   } catch (error) {
     if (root) disposeModelTemplate(root);
     if (signal.aborted) signal.throwIfAborted();
-    if (error instanceof ModelImportError) throw error;
+    if (error instanceof ModelImportError) throw error.info ? error : new ModelImportError(error.code, error.message, info, error.detail);
     throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), info);
   } finally {
     renderer?.dispose();

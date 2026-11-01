@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it, vi } from 'vitest';
-import { Bone, BoxGeometry, Group, Mesh, MeshStandardMaterial, Skeleton, SkinnedMesh, Texture } from 'three';
+import { Bone, BoxGeometry, BufferGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, Skeleton, SkinnedMesh, Texture } from 'three';
 import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Make a real Three model whose ownership can be inspected.
@@ -51,6 +51,30 @@ describe('scene model resource ownership (inner#1689)', () => {
     b.release();
     expect(geometryDispose).toHaveBeenCalledTimes(1);
     expect(textureDispose).toHaveBeenCalledTimes(1);
+    expect(templateDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['line', (): LineSegments | Points => new LineSegments(new BufferGeometry(), new LineBasicMaterial())],
+    ['point', (): LineSegments | Points => new Points(new BufferGeometry(), new LineBasicMaterial())],
+  ] as const)('gives copies their own %s material and releases its geometry at the last holder', async (_kind, create) => {
+    const root = new Group();
+    const primitive = create();
+    root.add(primitive);
+    const geometryDispose = vi.spyOn(primitive.geometry, 'dispose');
+    const templateDispose = vi.spyOn(primitive.material as LineBasicMaterial, 'dispose');
+    const cache = new ModelResourceCache(vi.fn().mockResolvedValue(root));
+    const a = cache.acquire({ kind: 'asset', assetId: 'lines' });
+    const b = cache.acquire({ kind: 'asset', assetId: 'lines' });
+    const [first, second] = await Promise.all([a.ready, b.ready]);
+    const firstPrimitive = first.children[0] as LineSegments | Points;
+    expect(firstPrimitive.material).not.toBe((second.children[0] as LineSegments | Points).material);
+    const firstDispose = vi.spyOn(firstPrimitive.material as LineBasicMaterial, 'dispose');
+    a.release();
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(templateDispose).toHaveBeenCalledTimes(0);
+    b.release();
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
     expect(templateDispose).toHaveBeenCalledTimes(1);
   });
 

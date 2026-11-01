@@ -77,25 +77,43 @@ function readImageView(model: ModelPackage, index: number): Uint8Array<ArrayBuff
 }
 
 /**
+ * Read one image's declared dimensions and hold them to the edge budget.
+ * @param model - Checked original glTF resources.
+ * @param image - The glTF image declaration.
+ * @param limits - Configured and device-adjusted texture dimension budget.
+ * @throws {ModelImportError} When the image is invalid or exceeds its dimension budget.
+ */
+function checkImage(model: ModelPackage, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
+  const bytes = image.uri !== undefined ? readResource(model, image.uri)
+    : image.bufferView !== undefined ? readImageView(model, image.bufferView) : undefined;
+  if (!bytes) throw new ModelImportError('invalid', 'Model image has no source');
+  let dimensions: { width: number; height: number } | undefined;
+  if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
+    if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header');
+    const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    dimensions = { width: header.getUint32(20, true), height: header.getUint32(24, true) };
+  } else dimensions = imageDimensionsFromData(bytes);
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata');
+  if (Math.max(dimensions.width, dimensions.height) > limits.maxTextureEdge) {
+    throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget');
+  }
+}
+
+/**
  * Check declared image dimensions before the browser decodes texture pixels.
+ * A failure names the image by its file path, or by its index when the image is embedded.
  * @param model - Checked original glTF resources.
  * @param limits - Configured and device-adjusted texture dimension budget.
- * @throws {Error} When an image is invalid or exceeds its dimension budget.
+ * @throws {ModelImportError} When an image is invalid or exceeds its dimension budget.
  */
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
-  for (const image of model.json.images ?? []) {
-    const bytes = image.uri !== undefined ? readResource(model, image.uri)
-      : image.bufferView !== undefined ? readImageView(model, image.bufferView) : undefined;
-    if (!bytes) throw new ModelImportError('invalid', 'Model image has no source');
-    let dimensions: { width: number; height: number } | undefined;
-    if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
-      if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header');
-      const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      dimensions = { width: header.getUint32(20, true), height: header.getUint32(24, true) };
-    } else dimensions = imageDimensionsFromData(bytes);
-    if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata');
-    if (Math.max(dimensions.width, dimensions.height) > limits.maxTextureEdge) {
-      throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget', undefined, image.uri ?? `bufferView ${image.bufferView}`);
+  for (const [index, image] of (model.json.images ?? []).entries()) {
+    try {
+      checkImage(model, image, limits);
+    } catch (error) {
+      const location = image.uri !== undefined && !image.uri.startsWith('data:') ? resolveModelDependency(model.entry, image.uri) : `images[${index}]`;
+      if (error instanceof ModelImportError) throw new ModelImportError(error.code, error.message, error.info, location);
+      throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), undefined, location);
     }
   }
 }

@@ -322,3 +322,14 @@ describe('model texture buffer metadata validation', () => {
     expect(() => validateModelTextureMetadata(source, IMPORT_LIMITS)).toThrow(Error);
   });
 });
+
+describe('model texture metadata failures name the image', () => {
+  it.each([
+    ['an external image', () => externalImage(PNG.slice(0, 16)), 'models/textures/Character Color', 'invalid'],
+    ['a data URI image', () => model({ images: [{ uri: dataUri(PNG.slice(0, 16), 'image/png') }] }), 'images[0]', 'invalid'],
+    ['an oversized data URI image', () => model({ images: [{ uri: dataUri(png(64, 64), 'image/png') }] }), 'images[0]', 'budget'],
+    ['an image without a source', () => model({ images: [{ mimeType: 'image/png' }] }), 'images[0]', 'invalid'],
+  ] as const)('reports %s by its location', (_label, source, detail, code) => {
+    expect(() => validateModelTextureMetadata(source(), { ...IMPORT_LIMITS, maxTextureEdge: 32 })).toThrow(expect.objectContaining({ code, detail }));
+  });
+});

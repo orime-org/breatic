@@ -3,15 +3,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { Mesh } from 'three';
+import { BufferGeometry, Group, Mesh, MeshBasicMaterial, Texture } from 'three';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import type { Group } from 'three';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...await importOriginal<typeof SharedModule>(),
@@ -251,5 +251,40 @@ describe('registered model import containers (inner#1690)', () => {
 
     expectTriangle(root, 'CharacterRoot');
     expect(httpRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('decoded texture budgets (inner#1690)', () => {
+  it('refuses textures over the cumulative budget as an import limit', () => {
+    const scene = new Group();
+    for (const _ of [0, 1]) {
+      const map = new Texture();
+      map.image = { width: 64, height: 64 };
+      map.generateMipmaps = false;
+      scene.add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map })));
+    }
+    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
+    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 })).toThrow(expect.objectContaining({ code: 'budget' }));
+  });
+});
+
+describe('line and point primitive release (inner#1690)', () => {
+  it('releases line geometry and material with the template', async () => {
+    const geometry = new Uint8Array(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer);
+    const uri = `data:application/octet-stream;base64,${btoa(String.fromCharCode(...geometry))}`;
+    const json = Uint8Array.from(strToU8(JSON.stringify({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0, 1] }], nodes: [{ mesh: 0 }, { mesh: 1 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }, { primitives: [{ attributes: { POSITION: 0 }, mode: 1 }] }],
+      buffers: [{ byteLength: geometry.byteLength, uri }], bufferViews: [{ buffer: 0, byteLength: geometry.byteLength }],
+      accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 3, min: [0, 0, 0], max: [1, 1, 0] }] })));
+    const root = await parseSceneModel(inspectModelFiles(new Map([['lines.gltf', json]]), 'lines.gltf', IMPORT_LIMITS), new AbortController().signal, IMPORT_LIMITS);
+    const released: string[] = [];
+    root.traverse((child) => {
+      if (!('geometry' in child && 'material' in child)) return;
+      const owner = child as unknown as { type: string; geometry: BufferGeometry; material: MeshBasicMaterial };
+      owner.geometry.addEventListener('dispose', () => released.push(`${owner.type}:geometry`));
+      owner.material.addEventListener('dispose', () => released.push(`${owner.type}:material`));
+    });
+    disposeModelTemplate(root);
+    expect(released.sort()).toEqual(['LineSegments:geometry', 'LineSegments:material', 'Mesh:geometry', 'Mesh:material']);
   });
 });
