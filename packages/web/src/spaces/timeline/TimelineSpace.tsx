@@ -97,7 +97,7 @@ function TimelineConflictRow({ projectId, clip, assetId, reason, selected, onSel
     <Film className='size-4 shrink-0' />
     <span className='min-w-0 truncate leading-normal'>{asset.data?.displayName || t('timeline.video')}</span>
     <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>
-    {reason !== null && <span data-testid={`timeline-conflict-reason-${clip.id}`} className='min-w-0 truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
+    {reason !== null && <span data-testid={`timeline-reason-${clip.id}`} className='min-w-0 truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
     <span className='shrink-0 text-muted-foreground'>{t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}</span>
   </Button>;
 }
