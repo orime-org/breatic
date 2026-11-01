@@ -366,6 +366,44 @@ describe('closing', () => {
   });
 });
 
+describe('the keyboard', () => {
+  it('goes to the dialog as it shows, and Tab can reach its buttons', async () => {
+    await polishing();
+    const dialog = screen.getByTestId('doc-ai-dialog');
+
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it('stays in the dialog when the button holding it goes away', async () => {
+    const { call } = await polishing();
+    act(() => {
+      screen.getByTestId('doc-ai-stop').focus();
+    });
+
+    await streams(call, ['Hi'], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    });
+    expect(screen.getByTestId('doc-ai-dialog').contains(document.activeElement)).toBe(true);
+  });
+
+  it('goes back to the body when the dialog closes', async () => {
+    const { editor } = await polishing();
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-dialog').contains(document.activeElement)).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+    });
+
+    expect(editor.prosemirrorView!.hasFocus()).toBe(true);
+  });
+});
+
 describe('the custom instruction', () => {
   /**
    * Opens the dialog on a custom instruction and writes one.
