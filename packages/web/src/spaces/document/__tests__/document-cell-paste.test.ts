@@ -491,6 +491,49 @@ it.each([
   expect(editor.prosemirrorView.state.selection.$head.parent.type.name).toBe(type);
 });
 
+/**
+ * The nested blocks' words under a block, in order.
+ * @param container - The block's container.
+ * @returns One label per nested block.
+ */
+function nestedOf(container: PMNode): string[] {
+  if (container.childCount < 2) return [];
+  const out: string[] = [];
+  container.lastChild!.forEach((child) => out.push(`${child.firstChild!.type.name}:${child.firstChild!.textContent}`));
+  return out;
+}
+
+const NESTED_LIST = '<ul><li>a<ul><li>b</li></ul></li></ul>';
+
+it('takes the empty body paragraph with a trailing list item that has nested items', async () => {
+  const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }]);
+  const lineId = (editor.document as { id: string }[])[1]!.id;
+  caretIn(editor, 1);
+
+  paste(editor, `<img src="${PICTURE}">${NESTED_LIST}`, 'a b');
+  await settled();
+
+  expect(bodyBlocks(editor)).toEqual(['paragraph:lead', `image:${PICTURE}`, 'bulletListItem:a']);
+  const last = editor.prosemirrorView.state.doc.firstChild!.lastChild!;
+  expect({ id: last.attrs['id'], nested: nestedOf(last) }).toEqual({ id: lineId, nested: ['bulletListItem:b'] });
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ parent: 'b', at: 1 });
+});
+
+it('takes an empty cell with a trailing list item that has nested items', async () => {
+  const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
+  select(editor, cellsOf(editor)[0]!.pos + 3);
+
+  paste(editor, `<img src="${PICTURE}">${NESTED_LIST}`, 'a b');
+  await settled();
+
+  const cell = cellsOf(editor)[0]!.node;
+  expect(blocksOf(cell)).toEqual([`image:${PICTURE}`, 'bulletListItem:a']);
+  expect(nestedOf(cell.lastChild!)).toEqual(['bulletListItem:b']);
+  const { $head } = editor.prosemirrorView.state.selection;
+  expect({ parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ parent: 'b', at: 1 });
+});
+
 it('keeps an empty heading line its own type when media and words land on it', async () => {
   const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'heading', props: { level: 2 } }]);
   caretIn(editor, 1);
