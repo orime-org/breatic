@@ -260,15 +260,15 @@ function arrangeProposal(
     if (!group || groupView?.type !== 'group' || groupView.data.locked === true) return undefined;
     return { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } };
   };
-  // The anchor's own group first. An anchor outside any group lends the new
+  // The anchor's own group first. An anchor in no unlocked group lends the new
   // nodes the group this template's reused nodes sit in, which a first apply
   // made, so the instance stays one piece the reader drags as one. A
   // reference the reader wired in keeps its own group to itself.
-  const anchorInGroup = anchorId !== undefined && views.get(anchorId)?.parentId !== undefined;
-  const instanceInGroup = anchorInGroup
+  const anchorGroup = unlockedGroupOf(anchorId);
+  const instanceInGroup = anchorGroup
     ? undefined
     : [...existing].find(([, node]) => node.instance === true && unlockedGroupOf(node.nodeId) !== undefined);
-  const joinGroup = anchorInGroup ? unlockedGroupOf(anchorId) : unlockedGroupOf(instanceInGroup?.[1].nodeId);
+  const joinGroup = anchorGroup ?? unlockedGroupOf(instanceInGroup?.[1].nodeId);
   // Joining the instance's group, the flow lines up on that reused node, so a
   // node put back lands in its place in the instance even after the anchor
   // was moved away from it.
@@ -277,7 +277,7 @@ function arrangeProposal(
   const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
   const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
   const added = lined.filter((_, i) => !existing.has(i));
-  const aimedGroup = !anchorInGroup && joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
+  const aimedGroup = joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
   return {
     spots: lined,
     aimedGroup,

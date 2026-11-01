@@ -505,7 +505,7 @@ describe('character template layouts (inner#1846)', () => {
   it('keeps the worn and carried items on the character sheet, and its rendering only where no style is picked', () => {
     const bible = raw('en', 'canvas.template.character-bible.prompt') ?? '';
     expect(bible).toContain('wearing everything the reference shows on the body, including anything on the back or over a shoulder');
-    expect(bible).not.toContain("keeps the reference's rendering");
+    expect(bible).not.toContain("reference's exact rendering");
     expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
   });
 

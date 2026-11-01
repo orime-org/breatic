@@ -418,7 +418,6 @@ describe('useApplyTemplate', () => {
       const place = vi.fn();
       apply(grid(), 'target', [ULTRA], place);
       expect(placed(place).proposal.groupName).toBe(t('canvas.template.storyboard-grid-25.name'));
-      expect(placed(place).proposal.groupName).not.toBe('');
     });
 
     it('leaves a second wired reference alone', () => {

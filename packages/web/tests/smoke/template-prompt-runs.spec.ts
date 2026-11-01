@@ -191,7 +191,6 @@ function record(entry: Record<string, unknown>): void {
   appendFileSync(`${OUT}/runs.jsonl`, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
 }
 
-
 /**
  * The id of the node a template placed under a key.
  * @param key - The template node's key.
@@ -233,9 +232,9 @@ test.beforeEach(async ({ browser }) => {
   if ((await hide.count()) > 0) await hide.click();
 });
 
-test.afterEach(async ({ browserName: _browserName }, info) => {
+test.afterEach(async () => {
   await fit();
-  await page.screenshot({ path: `${OUT}/${info.title.replace(/\s*@needs-model/, '').replace(/\s+/g, '-')}-${LABEL}-canvas.png` });
+  await page.screenshot({ path: `${OUT}/${test.info().title.replace(/\s*@needs-model/, '').replace(/\s+/g, '-')}-${LABEL}-canvas.png` });
   await deleteSpace(page, spaceId);
   await page.close();
 });

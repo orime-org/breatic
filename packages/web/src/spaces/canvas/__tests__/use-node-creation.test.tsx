@@ -1807,6 +1807,42 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.readCanvasGraph('p-again', 's-again').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
       });
 
+      it('on a second apply, leaves a locked group around the reused template nodes alone and groups the new nodes apart', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-shut', 's-shut', { x: 1000, y: 500 });
+        const up = seed('p-shut', 's-shut', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const frame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-shut', 's-shut', frame, [{ id: up, position: { x: PAD, y: PAD } }], true);
+        canvasSpace.addEdge('p-shut', 's-shut', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-shut', 's-shut');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-shut', 's-shut'));
+
+        const placed = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const fresh = addedSince('p-shut', 's-shut', before).filter((n) => n.type !== 'group');
+        expect(fresh).toHaveLength(2);
+        expect(fresh.some((n) => n.parentId === groupId)).toBe(false);
+        expect(placed.groupId).toBeDefined();
+        expect(fresh.every((n) => n.parentId === placed.groupId)).toBe(true);
+        const [kept] = canvasSpace.readNodePlacements('p-shut', 's-shut').filter((pl) => pl.id === groupId);
+        expect({ x: kept!.x, y: kept!.y, width: kept!.width, height: kept!.height }).toEqual(frame);
+      });
+
       it('on a second apply that only puts back an input, puts it into the group the reused template nodes sit in', () => {
         const PAD = GROUP_PADDING;
         const anchor = seedAnchor('p-input', 's-input', { x: 1000, y: 500 });
