@@ -438,7 +438,7 @@ export { planTimelineEdit, timelineInsertionIndex, timelineSourceOverflow } from
 export { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from "@shared/timeline/order.js";
 export type { TimelineEditPlan, TimelineEditRefusal } from "@shared/timeline/edit.js";
 export { activeTimelineClipAt, nextTimelinePlaybackBoundary } from "@shared/timeline/layers.js";
-export { durationToFrames, timelineSourceRoom, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
+export { durationToFrames, timelineHeadRoom, timelineSourceRoom, timelineSourceSeconds, timelineTrimHead, validateTimelineRange } from "@shared/timeline/time.js";
 export type { TimelineRangeValidation } from "@shared/timeline/time.js";
 
 export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";

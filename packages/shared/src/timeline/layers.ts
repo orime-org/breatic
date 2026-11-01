@@ -36,14 +36,14 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
  * @throws {never} Never.
  */
 export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number, endFrame: number): number {
-  const edges = new Set<number>();
-  for (const clip of Object.values(document.clips)) {
-    if (!readyClipIds.has(clip.id)) continue;
-    for (const edge of [clip.startFrame, clip.startFrame + clip.durationFrames]) if (edge > frame && edge < endFrame) edges.add(edge);
-  }
+  // The shown clip changes only where it ends or where a clip that outranks it starts.
   const shown = activeTimelineClipAt(document, readyClipIds, frame);
-  for (const edge of [...edges].sort((left, right) => left - right)) {
-    if (activeTimelineClipAt(document, readyClipIds, edge) !== shown) return edge;
+  const shownOrder = shown === null ? -1 : document.tracks[shown.trackId]?.order ?? -1;
+  let next = shown === null ? endFrame : Math.min(endFrame, shown.startFrame + shown.durationFrames);
+  for (const clip of Object.values(document.clips)) {
+    const order = document.tracks[clip.trackId]?.order;
+    if (order === undefined || !readyClipIds.has(clip.id) || clip.startFrame <= frame || clip.startFrame >= next) continue;
+    if (shown === null || order > shownOrder || (order === shownOrder && clip.id < shown.id)) next = clip.startFrame;
   }
-  return endFrame;
+  return next;
 }

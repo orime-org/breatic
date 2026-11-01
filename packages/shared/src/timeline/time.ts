@@ -149,6 +149,34 @@ export function timelineSourceOffset(clip: TimelineVideoClip, source: TimelineVi
 }
 
 /**
+ * How many Timeline frames a clip's head can extend before its in-point reaches the source start.
+ * @param clip - The clip with its in-point and speed.
+ * @param source - Its source descriptor.
+ * @param fps - The Timeline frame rate.
+ * @returns The whole Timeline frames available before the head.
+ * @throws {never} Never.
+ */
+export function timelineHeadRoom(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate): number {
+  const num = BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * BigInt(fps.num) * BigInt(clip.rate.den);
+  const den = BigInt(source.timebase.num) * BigInt(fps.den) * BigInt(clip.rate.num);
+  return Number(num / den);
+}
+
+/**
+ * The source in-point after moving a clip's head by `shift` Timeline frames.
+ * @param clip - The clip with its in-point and speed.
+ * @param source - Its source descriptor.
+ * @param fps - The Timeline frame rate.
+ * @param shift - Timeline frames the head moves; negative extends it.
+ * @returns The new in-point, or null when it is not a whole source frame or falls before the source start.
+ * @throws {never} Never.
+ */
+export function timelineTrimHead(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate, shift: number): number | null {
+  const offset = timelineSourceOffset(clip, source, fps, shift);
+  return offset === null || clip.sourceInFrame + offset < 0 ? null : clip.sourceInFrame + offset;
+}
+
+/**
  * Validate every visible sample against the fixed source duration.
  * @param clip - The current placement and range.
  * @param source - Its immutable logical source descriptor.
