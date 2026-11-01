@@ -14,7 +14,7 @@
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { NodeSelection, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { __insertCells as insertCells, __pastedCells as pastedCells, cellAround, CellSelection, selectedRect } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -715,8 +715,10 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     const backStart = startOf(laid, laid.length - 1);
     if (lastWords) caret = backStart + 2 + backWords.size;
     else finishCaret(tr, middle, startOf(laid, front === null ? 0 : 1));
-    from = front === null ? start : firstWords ? start + 2 + offset : startOf(laid, 1);
-    to = lastWords ? backStart + 2 + backWords.size : backStart;
+    // A split line's own halves bound what went in: the front's end and the
+    // back's start, so a range over it takes leading and trailing media.
+    from = front === null ? start : start + 2 + offset;
+    to = lastWords ? backStart + 2 + backWords.size : backStart + 2;
   }
   if (caret !== null) tr.setSelection(TextSelection.create(tr.doc, caret));
   view.dispatch(tr.scrollIntoView());
@@ -724,8 +726,11 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
 }
 
 /**
- * Selects what a drop put in, the way ProseMirror's own drop selects it: one
- * block alone that holds no words is selected whole, anything else as a range.
+ * Selects what a drop put in, the way ProseMirror's own drop selects it (design
+ * §5.4.1): one block alone that holds no words is selected whole, anything
+ * else as a range whose ends `TextSelection.between` draws into the words put
+ * in, never into the lines around them. Content with no words keeps the caret
+ * its placement left (§5.4.3).
  * @param view - The view.
  * @param placed - Where it landed.
  */
@@ -737,32 +742,16 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
   }
   const from = Math.max(0, Math.min(placed.from, doc.content.size));
   const to = Math.max(from, Math.min(placed.to, doc.content.size));
-  const $from = doc.resolve(from);
-  const only = $from.nodeAfter;
-  if (only?.type.name === 'blockContainer' && from + only.nodeSize === to && only.firstChild !== null && !only.firstChild.isTextblock) {
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, from + 1)));
+  const atoms: number[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.isBlock && node.isAtom && pos >= from && pos + node.nodeSize <= to) atoms.push(pos);
+    return true;
+  });
+  if (atoms.length === 1 && doc.textBetween(from, to) === '') {
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0]!)));
     return;
   }
-  // A boundary after a medium needs the text ahead of it; between() looks
-  // back and would leave the last medium outside the range.
-  const $to = doc.resolve(to);
-  const $head = $to.parent.inlineContent ? $to : (Selection.findFrom($to, 1, true)?.$head ?? $to);
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, anchorBefore($from), $head.pos)));
-}
-
-/**
- * Where a range that starts at a block boundary is anchored so a leading
- * medium is inside it: the end of the text just before, in the same cell or
- * the same body, which takes none of that text; with no such text, inside the
- * first block before its content, as the body's start edge is
- * (`document-body-edge-pos.ts`). between() would look forward instead and
- * leave the leading media out.
- * @param $from - The range's start.
- * @returns The anchor.
- */
-function anchorBefore($from: ResolvedPos): number {
-  if ($from.parent.inlineContent) return $from.pos;
-  const $text = Selection.findFrom($from, -1, true)?.$head;
-  const same = $text !== undefined && cellAround($text)?.pos === cellAround($from)?.pos;
-  return same ? $text.pos : $from.pos + 1;
+  const range = TextSelection.between(doc.resolve(from), doc.resolve(to));
+  if (range.from < from || range.to > to) return;
+  view.dispatch(view.state.tr.setSelection(range));
 }

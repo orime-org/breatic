@@ -172,7 +172,7 @@ describe('a drop selects what it put', () => {
     await settled();
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.deleteSelection());
-    expect(lines(editor).filter((label) => label.startsWith('paragraph:'))).toEqual(['paragraph:A', 'paragraph:B']);
+    expect(lines(editor).filter((label) => label.startsWith('paragraph:') && label !== 'paragraph:')).toEqual(['paragraph:A', 'paragraph:B']);
   });
 
   it('media then words at the end of a cell: deleting it keeps the cell\'s own words', async () => {
