@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Unzip, UnzipInflate, strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
+import { strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
@@ -109,48 +109,47 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
 }
 
 /**
- * Expand bounded ZIP entries with a streaming decoder.
+ * Recognize files an archiver or the macOS Finder adds beside the user's own files.
+ * @param path - A normalized resource path.
+ * @returns Whether the path is AppleDouble or Finder metadata.
+ * @throws {never} Never.
+ */
+export function isArchiverMetadata(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return path.startsWith('__MACOSX/') || name.startsWith('._') || name === '.DS_Store';
+}
+
+/**
+ * Expand bounded ZIP entries by the sizes their central directory declares.
+ * Entries written with data descriptors have no reliable end in the local stream, so offsets come from the directory.
  * @param bytes - The complete bounded archive input.
- * @param limits - Configured file count and actual expanded-byte budgets.
+ * @param limits - Configured file count and declared expanded-byte budgets.
  * @param registered - Whether the root manifest occupies its reserved metadata slot.
  * @returns The original resources under normalized paths.
- * @throws {Error} When archive paths, counts, decoding or actual output exceed the contract.
+ * @throws {Error} When archive paths, counts, decoding or output sizes break the contract.
  */
 export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits, registered = false): Map<string, Uint8Array<ArrayBuffer>> {
   if (bytes.byteLength > (registered ? limits.maxArtifactBytes : limits.maxInputBytes)) throw new ModelImportError('budget', 'Model archive exceeds its input-byte budget');
-  const files = new Map<string, Uint8Array<ArrayBuffer>>();
+  const declared = new Map<string, { path: string; size: number }>();
+  const paths = new Set<string>();
   let expanded = 0;
-  let count = 0;
-  const archive = new Unzip((file) => {
-    if (file.name.endsWith('/')) return;
+  const entries = unzipSync(bytes, { filter: (file) => {
+    if (file.name.endsWith('/')) return false;
     const path = normalizeModelPath(file.name);
-    if (files.has(path)) throw new ModelImportError('duplicate', `Duplicate model resource path: ${path}`);
-    if (!(registered && path === 'manifest.json')) count += 1;
-    if (count > limits.maxFiles) throw new ModelImportError('budget', 'Model archive exceeds its configured file count');
-    if (file.originalSize !== undefined && file.originalSize > limits.maxExpandedBytes) throw new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget');
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    files.set(path, new Uint8Array());
-    file.ondata = (error, chunk, final) => {
-      if (error) throw error;
-      size += chunk.byteLength;
-      expanded += chunk.byteLength;
-      if (expanded > limits.maxExpandedBytes) throw new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget');
-      chunks.push(chunk);
-      if (final) {
-        const output = new Uint8Array(size);
-        let offset = 0;
-        for (const part of chunks) { output.set(part, offset); offset += part.byteLength; }
-        files.set(path, output);
-      }
-    };
-    file.start();
-  });
-  archive.register(UnzipInflate);
-  // UnzipInflate is synchronous; its final push validates unfinished entries.
-  // Small compressed input slices bound each decoder callback's allocation.
-  for (let offset = 0; offset < bytes.byteLength; offset += 4096) {
-    archive.push(bytes.subarray(offset, offset + 4096), offset + 4096 >= bytes.byteLength);
+    if (!registered && isArchiverMetadata(path)) return false;
+    if (paths.has(path)) throw new ModelImportError('duplicate', `Duplicate model resource path: ${path}`);
+    paths.add(path);
+    if (paths.size - (registered && paths.has('manifest.json') ? 1 : 0) > limits.maxFiles) throw new ModelImportError('budget', 'Model archive exceeds its configured file count');
+    expanded += file.originalSize;
+    if (expanded > limits.maxExpandedBytes) throw new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget');
+    declared.set(file.name, { path, size: file.originalSize });
+    return true;
+  } });
+  const files = new Map<string, Uint8Array<ArrayBuffer>>();
+  for (const [name, { path, size }] of declared) {
+    const output = entries[name] as Uint8Array<ArrayBuffer> | undefined;
+    if (!output || output.byteLength !== size) throw new ModelImportError('invalid', `Model archive entry has an inconsistent size: ${path}`);
+    files.set(path, output);
   }
   return files;
 }

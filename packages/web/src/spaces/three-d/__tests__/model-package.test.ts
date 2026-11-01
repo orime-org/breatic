@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
+import { Zip, ZipDeflate, ZipPassThrough, strFromU8, strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import {
   inspectModelFiles, normalizeModelPath, packModelFiles, readModelJson,
@@ -276,6 +276,48 @@ describe('model-package configurable budget boundaries', () => {
     corrupt[payload] = 0xff;
     expect(() => unpackModelArchive(corrupt, IMPORT_LIMITS)).toThrow(Error);
     expect(() => unpackModelArchive(bytes.slice(0, payload + 1), IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it('reads data-descriptor entries whose bytes contain ZIP signatures by their central-directory sizes', () => {
+    const texture = new Uint8Array(4096);
+    for (let index = 0; index < texture.length; index += 1) texture[index] = (index * 131 + 17) & 0xff;
+    texture.set([0x50, 0x4b, 0x03, 0x04], 1000);
+    texture.set([0x50, 0x4b, 0x07, 0x08], 2000);
+    texture.set([0x50, 0x4b, 0x01, 0x02], 3000);
+    for (const Entry of [ZipPassThrough, ZipDeflate]) {
+      const parts: Uint8Array[] = [];
+      const zip = new Zip((error, chunk) => { if (error) throw error; parts.push(chunk); });
+      for (const [name, bytes] of [['model.glb', glb()], ['texture.bin', texture]] as const) {
+        const entry = new Entry(name);
+        zip.add(entry);
+        entry.push(bytes, true);
+      }
+      zip.end();
+      const bytes = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0));
+      parts.reduce((offset, part) => { bytes.set(part, offset); return offset + part.byteLength; }, 0);
+
+      expect(Array.from(unpackModelArchive(bytes, IMPORT_LIMITS).get('texture.bin')!), Entry.name).toEqual(Array.from(texture));
+    }
+  });
+
+  it('refuses an entry whose stored bytes differ from its declared uncompressed size', () => {
+    const bytes = archive(new Map([['model.glb', glb()]]));
+    const view = new DataView(bytes.buffer);
+    let central = bytes.byteLength - 22;
+    while (view.getUint32(central, true) !== 0x02014b50) central -= 1;
+    view.setUint32(central + 24, view.getUint32(central + 24, true) + 1, true);
+
+    expect(() => unpackModelArchive(bytes, IMPORT_LIMITS)).toThrow(Error);
+  });
+
+  it('leaves macOS archive metadata out of the expanded model resources', () => {
+    const original = glb();
+    const bytes = archive(new Map([
+      ['hero/model.glb', original], ['__MACOSX/hero/._model.glb', new Uint8Array([0, 5, 22, 7])],
+      ['hero/._model.glb', new Uint8Array([0, 5, 22, 7])], ['hero/.DS_Store', new Uint8Array([0, 0, 0, 1])],
+    ]));
+
+    expect(unpackModelArchive(bytes, IMPORT_LIMITS)).toEqual(new Map([['hero/model.glb', original]]));
   });
 
   it('measures glTF JSON by UTF-8 bytes at the exact configured boundary', () => {
