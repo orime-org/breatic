@@ -699,10 +699,11 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     const rest = firstWords ? nodes.slice(1) : nodes;
     laid = [head, ...rest];
     tr.replaceWith(start, end, laid);
+    from = firstWords ? start + 2 + size : startOf(laid, 1);
     // The words joined to the line and the blocks after it are apart when the
-    // line nests blocks of its own; what is put after them is the range.
-    from = firstWords && line.node.childCount < 2 ? start + 2 + size : startOf(laid, 1);
-    to = startOf(laid, laid.length);
+    // line nests blocks of its own: the range is the joined words, as the
+    // blocks after them are the line end's edge.
+    to = firstWords && line.node.childCount > 1 ? from + nodes[0]!.firstChild!.content.size : startOf(laid, laid.length);
     finishCaret(tr, rest, startOf(laid, 1));
   } else {
     const lineId = line.node.attrs['id'] as string;
