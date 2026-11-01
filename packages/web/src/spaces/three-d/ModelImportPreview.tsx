@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Box3, Color, DirectionalLight, GridHelper, HemisphereLight, PerspectiveCamera, Scene, SkinnedMesh, Vector3, WebGLRenderer } from 'three';
+import { Box3, DirectionalLight, GridHelper, HemisphereLight, PerspectiveCamera, Scene, SkinnedMesh, Vector3, WebGLRenderer } from 'three';
 import type { Group } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { useTranslation } from '@web/i18n/use-translation';
+import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 
 /**
  * Render a view-local clone while the import controller owns its source template.
@@ -75,13 +76,11 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       draw();
     };
     /**
-     * Resolve the same semantic grid colour after a theme change.
+     * Draw the grid the way the scene viewport does after a theme change.
      * @throws {never} Never directly.
      */
     const theme = (): void => {
-      const color = new Color(getComputedStyle(element).getPropertyValue('--color-border').trim());
-      const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
-      for (const material of materials) material.color.copy(color);
+      applySceneGridTheme(grid, getComputedStyle(element).getPropertyValue('--color-muted-foreground').trim());
       draw();
     };
     const observer = new ResizeObserver(resize);
@@ -99,7 +98,7 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       instance.traverse((object) => { if (object instanceof SkinnedMesh) object.skeleton.dispose(); });
       instance.removeFromParent();
       grid.geometry.dispose();
-      for (const material of Array.isArray(grid.material) ? grid.material : [grid.material]) material.dispose();
+      grid.material.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();

@@ -394,6 +394,10 @@ for (const role of ['editor', 'viewer'] as const) {
 
 for (const [codec, label] of [['draco', 'Draco'], ['meshopt', 'EXT Meshopt'], ['ktx2', 'KTX2']] as const) {
   test(`model import uses the shipped ${label} decoder for a real preview`, async ({ page }) => {
+    const colourWarnings: string[] = [];
+    page.on('console', (message) => {
+      if (message.text().startsWith('THREE.Color:')) colourWarnings.push(message.text());
+    });
     await openSmokeProject(page);
     const id = await createSpace(page, '3d', `Compressed preview ${codec} ${crypto.randomUUID()}`);
     try {
@@ -410,6 +414,7 @@ for (const [codec, label] of [['draco', 'Draco'], ['meshopt', 'EXT Meshopt'], ['
       await previewReady(dialog);
       await expect(dialog.getByRole('button', { name: 'Import to scene', exact: true })).toBeEnabled();
       expect(await sceneObjects(page, id)).toEqual([]);
+      expect(colourWarnings).toEqual([]);
     } finally {
       await deleteSpace(page, id);
     }

@@ -7,6 +7,7 @@ import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.
 import type { Object3D } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
+import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 import { ModelResourceCache, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
@@ -603,10 +604,7 @@ export class SceneViewportRuntime {
    */
   private onThemeChange = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
-    this.grid.material.vertexColors = false;
-    this.grid.material.color.setStyle(this.token('--color-muted-foreground'));
-    this.grid.material.opacity = 0.2;
-    this.grid.material.transparent = true;
+    applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
     const color = this.token('--color-muted-foreground');
     for (const object of this.props.objects) {
       if (object.model.kind !== 'builtin') continue;
