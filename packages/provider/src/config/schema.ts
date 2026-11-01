@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
-import { hasMediaAdapter } from "@provider/media/wavespeed/adapter.js";
+import { hasMediaAdapter } from "@provider/media/adapters.js";
 import { pricingRuleSchema } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 

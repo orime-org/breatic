@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import type { MediaBinding } from "../../../config/schema.js";
+import type { MediaBinding } from "../../config/schema.js";
 import { buildBody } from "../body.js";
 
 describe("buildBody — one binding at a time", () => {

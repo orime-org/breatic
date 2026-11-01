@@ -7,8 +7,9 @@ import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRe
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, isServerError } from "@provider/http/request.js";
-import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
-import { buildBody } from "@provider/media/wavespeed/body.js";
+import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
+import { adapterOf } from "@provider/media/adapters.js";
+import { buildBody } from "@provider/media/body.js";
 import { isPresent, orderByPrice, rejectedInput } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
@@ -137,26 +138,6 @@ export interface MediaRunnerOptions {
   pollIntervalMs: number;
 }
 
-/** What one step answered, for the steps after it and for billing. */
-interface StepOutput {
-  /** The source param an upload or vocal id replaces, and that id. */
-  param?: string;
-  id?: string;
-  voiceId?: string;
-  /** An element's place in its pool, and its id. */
-  index?: number;
-  elementId?: string;
-  urls?: string[];
-  /** One url, as steps stored it before lists. */
-  url?: string;
-  /** Whether the id came from the caller's clone cache. */
-  cached?: boolean;
-  /** The prediction to bill. */
-  prediction?: string;
-  /** An element's description, as legacy rows stored it. */
-  description?: string;
-  error?: string;
-}
 
 /** One upstream call of a run. */
 interface Step {
@@ -167,6 +148,8 @@ interface Step {
   itemIndex: number | null;
   status: "pending" | "submitted" | "done";
   predictionId?: string;
+  /** What the adapter needs to ask about the prediction again. */
+  handle?: Record<string, string>;
   output?: StepOutput;
   /** For an element step: what its describe step wrote. */
   description?: string;
@@ -194,8 +177,6 @@ interface Ticket {
   costs: Cost[];
 }
 
-/** What a done step of each kind reads off its outputs. */
-const UPLOAD_PURPOSE: Readonly<Partial<Record<StepKind, string>>> = { upload_reference: "reference", upload_melody: "melody" };
 /** The image types the understand models read (shared's understand/media-formats.ts IMAGE_TYPES). */
 const IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 /** Kling caps an element's description at 100 characters. */
@@ -213,13 +194,17 @@ function common(extra: Partial<AnswerCommon> = {}): AnswerCommon {
 /**
  * The failure class of a media submit's error.
  * @param error - What the submit threw.
+ * @param adapter - The upstream's adapter, which reads its refusals.
  * @returns Its class, or null for anything else.
  */
-function classify(error: unknown): Failure | null {
+function classify(error: unknown, adapter: MediaAdapter): Failure | null {
   if (error instanceof NotSent) return { kind: "not_sent" };
   if (error instanceof NoAnswer) return { kind: "no_answer" };
   if (error instanceof Aborted) return { kind: "aborted" };
-  if (error instanceof HttpStatus) return modelNotFound(error) ? { kind: "model_not_found" } : { kind: "http_status", status: error.status };
+  if (error instanceof HttpStatus) {
+    const refusal = adapter.refusal(error);
+    return refusal === undefined ? { kind: "http_status", status: error.status } : { kind: refusal };
+  }
   return null;
 }
 
@@ -247,33 +232,6 @@ function inChain(error: unknown, test: (e: Error) => boolean): boolean {
     if (test(current)) return true;
   }
   return false;
-}
-
-/**
- * A step's first structured output field.
- * @param outputs - The prediction's outputs.
- * @param field - The field.
- * @returns Its value.
- * @throws {Error} When the output carries no such string.
- */
-function outputField(outputs: readonly unknown[], field: string): string {
-  const first = outputs[0];
-  const value = typeof first === "object" && first !== null ? (first as Record<string, unknown>)[field] : undefined;
-  if (typeof value !== "string" || value === "") throw new Error(`No ${field} in the upstream answer`);
-  return value;
-}
-
-/**
- * Every output as a url.
- * @param outputs - The prediction's outputs.
- * @returns The urls.
- * @throws {Error} When there is none, or one is not a url.
- */
-function outputUrls(outputs: readonly unknown[]): string[] {
-  if (outputs.length === 0 || !outputs.every((u): u is string => typeof u === "string" && u !== "")) {
-    throw new Error("The upstream answered no output url");
-  }
-  return [...outputs];
 }
 
 /**
@@ -357,6 +315,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns Its declaration and key.
    */
   const reach = (upstream: string): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyOf(config.upstreams[upstream]!.key_env) ?? "" });
+
+  /**
+   * The adapter of an upstream.
+   * @param upstream - The upstream.
+   * @returns Its kind's adapter.
+   * @throws {Error} When provider has no adapter for the kind.
+   */
+  const adapterFor = (upstream: string): MediaAdapter => adapterOf(config.upstreams[upstream]!.kind);
 
   /**
    * A model's binding to one upstream.
@@ -501,6 +467,37 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const customVoiceId = (ticket: Ticket): string => `Breatic${ticket.idempotencyKey.replace(/[^A-Za-z0-9]/g, "")}`;
 
   /**
+   * What an extra step needs to write its request and read its answer.
+   * @param ticket - The ticket.
+   * @param step - The step.
+   * @returns The context.
+   */
+  const contextOf = (ticket: Ticket, step: Step): StepContext => ({
+    source: () => sourceOf(ticket, step),
+    params: ticket.input.params,
+    prompt: ticket.input.prompt,
+    binding: bindingOf(ticket),
+    customVoiceId: customVoiceId(ticket),
+    voiceId: carried(ticket).voiceId,
+    description: step.description,
+    itemIndex: step.itemIndex,
+    param: step.param,
+  });
+
+  /**
+   * How the ticket's upstream writes and reads an extra step.
+   * @param ticket - The ticket.
+   * @param kind - The step's kind.
+   * @returns The codec.
+   * @throws {Error} When the upstream does not speak the kind.
+   */
+  const codecOf = (ticket: Ticket, kind: StepKind): StepCodec => {
+    const codec = kind === "generate" || kind === "describe" ? undefined : adapterFor(ticket.upstream).steps[kind];
+    if (codec === undefined) throw new Error(`${ticket.upstream} has no ${kind} step`);
+    return codec;
+  };
+
+  /**
    * The body one step submits.
    * @param ticket - The ticket.
    * @param step - The step.
@@ -508,30 +505,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {Error} When the step lacks what it needs.
    */
   const bodyOf = (ticket: Ticket, step: Step): Record<string, unknown> => {
+    if (step.kind !== "generate") return codecOf(ticket, step.kind).body(contextOf(ticket, step));
     const binding = bindingOf(ticket);
     const done = carried(ticket);
-    switch (step.kind) {
-      case "upload_reference":
-      case "upload_melody":
-        return { audio: sourceOf(ticket, step), purpose: UPLOAD_PURPOSE[step.kind] };
-      case "vocal":
-        return { audio: sourceOf(ticket, step) };
-      case "voice":
-        return { ...buildBody(binding, { params: ticket.input.params, prompt: "" }), custom_voice_id: customVoiceId(ticket) };
-      case "speak":
-        if (done.voiceId === undefined) throw new Error("No cloned voice to speak with");
-        return { text: ticket.input.prompt, voice_id: done.voiceId };
-      case "element": {
-        const image = sourceOf(ticket, step);
-        return { name: `Element ${(step.itemIndex ?? 0) + 1}`, description: step.description ?? "", image, element_refer_list: [image] };
-      }
-      default: {
-        const params: Record<string, unknown> = { ...ticket.input.params, ...done.ids };
-        const elementParam = binding.extra_steps?.find((s) => s.kind === "element")?.for_param;
-        if (elementParam !== undefined && done.elementIds.length > 0) params[elementParam] = done.elementIds.map((id) => ({ element_id: id }));
-        return buildBody(binding, { params, prompt: ticket.input.prompt });
-      }
-    }
+    const params: Record<string, unknown> = { ...ticket.input.params, ...done.ids };
+    const elementParam = binding.extra_steps?.find((s) => s.kind === "element")?.for_param;
+    if (elementParam !== undefined && done.elementIds.length > 0) params[elementParam] = done.elementIds.map((id) => ({ element_id: id }));
+    return buildBody(binding, { params, prompt: ticket.input.prompt });
   };
 
   /**
@@ -545,21 +525,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    */
   const outputOf = (ticket: Ticket, step: Step, outputs: readonly unknown[], prediction: string | undefined): StepOutput => {
     const billedAs = prediction === undefined ? {} : { prediction };
-    switch (step.kind) {
-      case "upload_reference":
-      case "upload_melody":
-        return { param: step.param, id: outputField(outputs, `${UPLOAD_PURPOSE[step.kind]!}_id`), ...billedAs };
-      case "vocal":
-        return { param: step.param, id: outputField(outputs, "vocal_id"), ...billedAs };
-      case "voice":
-        return { voiceId: customVoiceId(ticket), ...billedAs };
-      case "element":
-        return { index: step.itemIndex ?? 0, elementId: outputField(outputs, "element_id"), ...billedAs };
-      case "speak":
-        return { urls: [outputUrls(outputs)[0]!], ...billedAs };
-      default:
-        return { urls: outputUrls(outputs), ...billedAs };
-    }
+    if (step.kind === "generate") return { urls: outputUrls(outputs), ...billedAs };
+    return { ...codecOf(ticket, step.kind).output(outputs, contextOf(ticket, step)), ...billedAs };
   };
 
   /**
@@ -629,7 +596,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const failed = (ticket: Ticket, reason: Error, warnings: MediaWarning[] = []): MediaAnswer => {
     const retired = reason instanceof UpstreamTaskFailed
       ? carried(ticket).cached.flatMap(({ kind, id }) => {
-        if (!gone(kind, reason.upstreamError, id)) return [];
+        if (!adapterFor(ticket.upstream).gone(kind, reason.upstreamError, id)) return [];
         return ticket.clones.filter((c) => c.upstream === ticket.upstream && c.kind === kind && c.upstreamId === id);
       })
       : [];
@@ -652,7 +619,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const up = reach(ticket.upstream);
     for (const prediction of done.predictions) {
       // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
-      const read = await billed(up, prediction, bounds, false);
+      const read = await adapterFor(ticket.upstream).billed(up, prediction, bounds, false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
@@ -854,9 +821,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const body = bodyOf(ticket, at.step);
       let answer;
       try {
-        answer = await capped(ticket.upstream, bounds, () => submit(reach(ticket.upstream), at.step.endpoint, body, bounds));
+        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, bounds));
       } catch (error) {
-        const failure = classify(error);
+        const failure = classify(error, adapterFor(ticket.upstream));
         if (failure === null || failure.kind === "no_answer") throw error;
         if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
         if (decide(failure, "media_submit", 0, 0) === "stop") {
@@ -878,7 +845,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
         const accepted: Ticket = answer.predictionId === undefined
           ? { ...ticket, accepted: true, costs: [...ticket.costs, { state: "missing", reason: `${ticket.upstream} finished the ${at.step.kind} step at once with no prediction id to bill` }] }
-          : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId! } : s)) };
+          : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId!, ...(answer.handle === undefined ? {} : { handle: answer.handle }) } : s)) };
         let output: StepOutput;
         try {
           output = outputOf(ticket, at.step, answer.outputs, answer.predictionId);
@@ -887,7 +854,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         }
         return completed(accepted, at.index, output, bounds, []);
       }
-      const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId! } : s));
+      const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId!, ...(answer.handle === undefined ? {} : { handle: answer.handle }) } : s));
       return waiting(next(ticket, { steps, accepted: true }));
     },
 
@@ -902,7 +869,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (at === undefined) return finish(ticket, bounds, {});
       let asked;
       try {
-        asked = await capped(ticket.upstream, bounds, () => ask(reach(ticket.upstream), at.step.predictionId!, bounds));
+        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle }));
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent
           || (error instanceof HttpStatus && (error.status === 429 || isServerError(error.status)));

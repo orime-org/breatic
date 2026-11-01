@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import type { MediaBinding } from "../../../config/schema.js";
-import { buildBody } from "../body.js";
+import { buildBody } from "../../body.js";
 
 interface BodyFixture {
   cases: { model: string; kind: "catalog" | "three_d"; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];

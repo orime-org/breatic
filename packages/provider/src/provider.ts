@@ -15,7 +15,7 @@ import { numberLeaf, type Cost, type CostLookup, type TokenBuckets } from "@prov
 import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
-import { billed } from "@provider/media/wavespeed/adapter.js";
+import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
   type Availability,
@@ -154,7 +154,7 @@ const MAX_LOOKUP_BYTES = 1024 * 1024;
 
 /**
  * Ask the upstream again for a cost that was pending: OpenRouter
- * by generation id, WaveSpeed by its billing search. Until the last attempt an
+ * by generation id, a media upstream through its adapter. Until the last attempt an
  * unanswered lookup stays pending; on it, it is missing.
  * @param config - The validated configuration.
  * @param options - The caller's options.
@@ -172,8 +172,9 @@ async function lookupCost(config: ProviderConfig, options: ProviderOptions, look
   const decl = config.upstreams[lookup.upstream];
   if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };
   const key = options.keyOf(decl.key_env) ?? "";
-  if (decl.kind === "wavespeed" && typeof lookup.predictionId === "string") {
-    return (await billed({ name: lookup.upstream, decl, key }, lookup.predictionId, {}, lastAttempt)).cost;
+  const media = mediaAdapter(decl.kind);
+  if (media !== undefined && typeof lookup.predictionId === "string") {
+    return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, {}, lastAttempt)).cost;
   }
   if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
   try {
