@@ -171,3 +171,130 @@ test('the dialog takes the keyboard, Tab reaches its buttons, and Escape hands i
   await expect(page.locator(DIALOG)).toHaveCount(0);
   await expect(page.locator(BODY)).toBeFocused();
 });
+
+/**
+ * Answers every text tool request with the given response and keeps the bodies sent.
+ * @param page - The page.
+ * @param answer - The status and body to answer with.
+ * @param answer.status - The HTTP status.
+ * @param answer.body - The response body.
+ * @param answer.sse - Whether the body is a server-sent event stream.
+ * @returns The request bodies, as they are sent.
+ */
+async function answerTextTool(page: Page, answer: { status: number; body: string; sse: boolean }): Promise<Record<string, unknown>[]> {
+  const sent: Record<string, unknown>[] = [];
+  await page.route('**/mini-tools/text', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    sent.push(route.request().postDataJSON() as Record<string, unknown>);
+    return route.fulfill({
+      status: answer.status,
+      headers: { 'content-type': answer.sse ? 'text/event-stream' : 'application/json' },
+      body: answer.body,
+    });
+  });
+  return sent;
+}
+
+/**
+ * An SSE body: the words as one delta, then done unless the stream breaks off.
+ * @param words - The words.
+ * @param ends - Whether done follows.
+ * @returns The body.
+ */
+function streamOf(words: string, ends = true): string {
+  return `event: text_delta\ndata: ${JSON.stringify({ text: words })}\n\n${ends ? 'event: done\ndata: {"type":"done"}\n\n' : ''}`;
+}
+
+const UNDO = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
+
+test('refine, replace, and undo brings the original back', async ({ page }) => {
+  await answerTextTool(page, { status: 200, body: streamOf('Alpha, bravo.'), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'refine');
+  await page.getByTestId('doc-ai-replace').click();
+
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('Alpha, bravo.');
+  await expect(page.locator(BODY)).toBeFocused();
+  await page.keyboard.press(UNDO);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('alpha bravo');
+});
+
+test('translate into Japanese names the language in the title and the request', async ({ page }) => {
+  const sent = await answerTextTool(page, { status: 200, body: streamOf('アルファ、ブラボー。'), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  const menu = await hoverOpenSlot(page, 'doc-bubble-ai');
+  await menu.getByTestId('doc-bubble-ai-item-translate').hover();
+  await page.getByTestId('doc-bubble-ai-translate-item-ja').click();
+
+  await expect(page.getByTestId('doc-ai-title')).toContainText('日本語');
+  await expect(page.getByTestId('doc-ai-preview')).toContainText('アルファ', { timeout: 10_000 });
+  expect(sent[0]).toMatchObject({ tool: 'translate', language: 'ja', selection: 'alpha bravo' });
+});
+
+test('a custom instruction goes out with Enter', async ({ page }) => {
+  const sent = await answerTextTool(page, { status: 200, body: streamOf('A haiku.'), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'custom');
+  await page.keyboard.type('Make it a haiku');
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByTestId('doc-ai-preview')).toContainText('A haiku.', { timeout: 10_000 });
+  expect(sent[0]).toMatchObject({ tool: 'custom', instructions: 'Make it a haiku' });
+  await expect(page.getByTestId('doc-ai-instruction')).toContainText('Make it a haiku');
+});
+
+test('a refusal (402) says so and leaves close and retry', async ({ page }) => {
+  await answerTextTool(page, {
+    status: 402,
+    body: JSON.stringify({ error: { code: 402, message: 'Not enough credits for this.' } }),
+    sse: false,
+  });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'refine');
+
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toContainText('Not enough credits for this.', { timeout: 10_000 });
+  await expect(page.getByTestId('doc-ai-retry')).toBeVisible();
+  await expect(page.getByTestId('doc-ai-replace')).toHaveCount(0);
+});
+
+test('a stream that breaks off says so and leaves close and retry', async ({ page }) => {
+  await answerTextTool(page, { status: 200, body: streamOf('Alpha', false), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'refine');
+
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('doc-ai-retry')).toBeVisible();
+  await expect(page.getByTestId('doc-ai-replace')).toHaveCount(0);
+});
+
+test('against the real model: refine, replace, and undo brings the original back @needs-model', async ({ page }) => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the cat sat on the mat and it was very very happy there');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'refine');
+  await expect(page.getByTestId('doc-ai-replace')).toBeVisible({ timeout: 60_000 });
+  const result = (await page.getByTestId('doc-ai-preview').innerText()).trim();
+  expect(result.length).toBeGreaterThan(0);
+  await page.getByTestId('doc-ai-replace').click();
+
+  await expect(page.locator(`${BODY} p`).first()).not.toHaveText('the cat sat on the mat and it was very very happy there');
+  await page.keyboard.press(UNDO);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('the cat sat on the mat and it was very very happy there');
+});
