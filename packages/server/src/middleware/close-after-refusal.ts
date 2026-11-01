@@ -12,7 +12,8 @@
  * 413 before the client reads it (RFC 9112 §9.6). So the close is staged
  * the way nginx's lingering close does it: once the 413 is written the
  * server half-closes, keeps reading and discarding the body, and closes when
- * the body ends, the client closes, or `request_body_linger_seconds` pass.
+ * the body ends or `request_body_linger_seconds` pass. A client that closes
+ * first is closed by Node itself.
  *
  * Node has no option for this. For a response marked last (`Connection:
  * close`) its `resOnFinish` calls `socket.destroySoon()`, which ends and
@@ -39,9 +40,9 @@ const takenOver = new WeakSet<Socket>();
  * Declare the close on a body-limit refusal and take over how the connection
  * ends. Call it before the 413 is built, so the header is on it.
  * @param c - The request context; `c.env.incoming` is node-server's request.
- * @throws {z.ZodError} when `config/limits.yaml` cannot be read; it is read
- * here, inside the request, so the request answers 500 and the socket is left
- * to Node.
+ * @throws {Error} when `config/limits.yaml` cannot be read or parsed, or holds
+ * an invalid value (`z.ZodError`); it is read here, inside the request, so the
+ * request answers 500 and the socket is left to Node.
  */
 export function closeAfterRefusal(c: Context): void {
   c.header("Connection", "close");
@@ -55,7 +56,7 @@ export function closeAfterRefusal(c: Context): void {
 
 /**
  * The replacement for `socket.destroySoon`: half-close, read the rest of the
- * body, close when it ends, the client closes, or the deadline passes.
+ * body, close when it ends or the deadline passes.
  * @param socket - The connection.
  * @param incoming - The refused request.
  * @param deadlineMs - How long to keep reading at most.
@@ -88,6 +89,5 @@ function lingeringClose(socket: Socket, incoming: IncomingMessage, deadlineMs: n
     incoming.removeAllListeners("data");
     incoming.resume();
     incoming.once("end", closeWhenWritten);
-    socket.once("end", closeWhenWritten);
   };
 }

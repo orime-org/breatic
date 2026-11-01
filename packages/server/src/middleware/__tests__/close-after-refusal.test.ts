@@ -3,7 +3,7 @@
 
 /**
  * `closeAfterRefusal` and the lingering close it installs (inner#1782,
- * test spec U1–U19). The socket and the request are fakes driven in the
+ * test spec U1–U20). The socket and the request are fakes driven in the
  * order Node drives the real ones: the response finishing calls
  * `destroySoon` (E2), node-server's drain may call it again (E3), then the
  * body ends (E4), the client sends FIN (E5), the deadline passes (E6), the
@@ -399,16 +399,6 @@ describe("lingeringClose", () => {
     expect(second.resume).not.toHaveBeenCalled();
   });
 
-  it("U16: the client's FIN closes once the write side is done (S2 × E5)", async () => {
-    const h = tracked();
-    await enterS2(h);
-    e8(h);
-
-    e5(h);
-
-    expect(h.socket.destroy).toHaveBeenCalledTimes(1);
-  });
-
   it("U17: body end, FIN, deadline and a late destroySoon close only once", async () => {
     const h = tracked();
     await enterS2(h);
@@ -437,7 +427,7 @@ describe("lingeringClose", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("U19: each lingering reads the deadline when it starts", async () => {
+  it("U19: each refusal reads the deadline", async () => {
     const a = tracked();
     const b = tracked();
     await refuse({ incoming: a.incoming });
