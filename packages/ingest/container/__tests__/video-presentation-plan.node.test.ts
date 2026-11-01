@@ -10,6 +10,13 @@
  * Chromium rule (height ≥ 720 → BT.709, else BT.601); display geometry applies
  * SAR as `scale=iw*sar:ih` and the display rotation. The assembler feeds the S6a
  * timeline and returns a plan the S6a ledger schema accepts.
+ *
+ * Confirmed rules (design 0fbbe4e0): the probe also reads `pos` and a frame's source
+ * ordinal is its packet's decode order; SAR scaling truncates as FFmpeg `scale`
+ * does (`iw*sar`), SAR 0:1 is 1:1 and a mirrored matrix keeps width and height; the
+ * plan carries the source transfer and bit depth and the output conversion they
+ * decide; the selected audio's start and end are snapped to the 48 kHz grid before
+ * they feed the timeline.
  */
 
 import fc from 'fast-check';
@@ -32,9 +39,10 @@ interface PlanInput {
   audio: { start: Rational; end: Rational; spans: EditSpan[] | null } | null;
   display: { width: number; height: number };
   colorMatrix: string;
+  source: { transfer: string | null; bitDepth: number };
   policy: { singleFrameDurationMs: number; emptyFill: 'black' | 'transparent' };
 }
-interface Packets { streamIndex: number; sourceTimeBase: Rational; packets: { rawDecodeOrdinal: number; ptsTicks: string; durationTicks: string | null; keyframe: boolean }[] }
+interface Packets { streamIndex: number; sourceTimeBase: Rational; packets: { rawDecodeOrdinal: number; ptsTicks: string; durationTicks: string | null; keyframe: boolean; position: string | null }[] }
 interface ProbeApi {
   videoPacketProbeArgs: (input: { input: string; streamIndex: number; iso: boolean }) => string[];
   parsePhysicalVideoPackets: (metadata: unknown, packetBytes: Buffer) => Packets;
@@ -101,13 +109,13 @@ function packetBytes(packets: Record<string, unknown>[]): Buffer {
 }
 
 describe('PR §5.1 step 2 packet-level probe', () => {
-  it.each([[true], [false]])('PR01 the probe asks for packets with pts, duration and flags, never frames (ISO %s)', (iso) => {
+  it.each([[true], [false]])('PR01 the probe asks for packets with pts, duration, flags and pos, never frames (ISO %s)', (iso) => {
     const args = probeExport('videoPacketProbeArgs')({ input: '/tmp/source', streamIndex: 3, iso });
     expect(args).toContain('-show_packets');
     expect(args).not.toContain('-show_frames');
     const entries = args[args.indexOf('-show_entries') + 1] ?? '';
     expect(entries.startsWith('packet=')).toBe(true);
-    for (const field of ['pts', 'duration', 'flags']) expect(entries.slice('packet='.length).split(',')).toContain(field);
+    for (const field of ['pts', 'duration', 'flags', 'pos']) expect(entries.slice('packet='.length).split(',')).toContain(field);
     expect(args[args.indexOf('-select_streams') + 1]).toBe('3');
     expect(args.at(-1)).toBe('/tmp/source');
     const editList = args.indexOf('-ignore_editlist');
@@ -117,25 +125,25 @@ describe('PR §5.1 step 2 packet-level probe', () => {
 
   it('PR02 parses decode-order packets with exact pts, declared duration and the keyframe flag', () => {
     const parsed = probeExport('parsePhysicalVideoPackets')(METADATA, packetBytes([
-      { stream_index: 0, pts: 1024, duration: 512, flags: 'K__' },
-      { stream_index: 0, pts: 2048, duration: 512, flags: '___' },
-      { stream_index: 0, pts: 1536, duration: 0, flags: '___' },
+      { stream_index: 0, pts: 1024, duration: 512, flags: 'K__', pos: '48' },
+      { stream_index: 0, pts: 2048, duration: 512, flags: '___', pos: '5120' },
+      { stream_index: 0, pts: 1536, duration: 0, flags: '___', pos: '6144' },
       { stream_index: 0, pts: 2560, flags: 'K_' },
     ]));
     expect(parsed).toEqual({
       streamIndex: 0, sourceTimeBase: { numerator: '1', denominator: '16384' },
       packets: [
-        { rawDecodeOrdinal: 0, ptsTicks: '1024', durationTicks: '512', keyframe: true },
-        { rawDecodeOrdinal: 1, ptsTicks: '2048', durationTicks: '512', keyframe: false },
-        { rawDecodeOrdinal: 2, ptsTicks: '1536', durationTicks: null, keyframe: false },
-        { rawDecodeOrdinal: 3, ptsTicks: '2560', durationTicks: null, keyframe: true },
+        { rawDecodeOrdinal: 0, ptsTicks: '1024', durationTicks: '512', keyframe: true, position: '48' },
+        { rawDecodeOrdinal: 1, ptsTicks: '2048', durationTicks: '512', keyframe: false, position: '5120' },
+        { rawDecodeOrdinal: 2, ptsTicks: '1536', durationTicks: null, keyframe: false, position: '6144' },
+        { rawDecodeOrdinal: 3, ptsTicks: '2560', durationTicks: null, keyframe: true, position: null },
       ],
     });
   });
 
   it('PR03 keeps integer ticks beyond 2^53 exact', () => {
     const parsed = probeExport('parsePhysicalVideoPackets')(METADATA, Buffer.from('{"packets":[{"stream_index":0,"pts":9007199254740993,"duration":9007199254740995,"flags":"K_"}]}'));
-    expect(parsed.packets).toEqual([{ rawDecodeOrdinal: 0, ptsTicks: '9007199254740993', durationTicks: '9007199254740995', keyframe: true }]);
+    expect(parsed.packets).toEqual([{ rawDecodeOrdinal: 0, ptsTicks: '9007199254740993', durationTicks: '9007199254740995', keyframe: true, position: null }]);
   });
 
   it.each([
@@ -178,6 +186,14 @@ describe('DG §4.3 display geometry', () => {
     [{ width: 64, height: 32, side_data_list: [{ side_data_type: 'Display Matrix', rotation: -90 }] }, { width: 32, height: 64 }],
     [{ width: 64, height: 32, side_data_list: [{ side_data_type: 'Display Matrix', rotation: 180 }] }, { width: 64, height: 32 }],
     [{ width: 64, height: 32, sample_aspect_ratio: '2:1', side_data_list: [{ side_data_type: 'Display Matrix', rotation: 90 }] }, { width: 32, height: 128 }],
+    // FFmpeg 7.1.1 `setsar=…,scale=iw*sar:ih` readings (test plan §88): the width is truncated.
+    [{ width: 720, height: 480, sample_aspect_ratio: '10:11' }, { width: 654, height: 480 }],
+    [{ width: 720, height: 480, sample_aspect_ratio: '40:33' }, { width: 872, height: 480 }],
+    [{ width: 101, height: 50, sample_aspect_ratio: '3:2' }, { width: 151, height: 50 }],
+    [{ width: 64, height: 32, sample_aspect_ratio: '0:1' }, { width: 64, height: 32 }],
+    // ffprobe 7.1.1 reports an `-display_hflip` matrix as rotation -180 and `-display_vflip` as rotation 0; both decode at 64×32.
+    [{ width: 64, height: 32, side_data_list: [{ side_data_type: 'Display Matrix', rotation: -180 }] }, { width: 64, height: 32 }],
+    [{ width: 64, height: 32, side_data_list: [{ side_data_type: 'Display Matrix', rotation: 0 }] }, { width: 64, height: 32 }],
   ])('DG01 %o displays as %o', (stream, geometry) => {
     expect(probeExport('videoDisplayGeometry')(stream)).toEqual(geometry);
   });
@@ -194,7 +210,7 @@ const POLICY = { singleFrameDurationMs: 5000, emptyFill: 'black' as const };
 function input(frames: PlanInput['frames'], overrides: Partial<PlanInput> = {}): PlanInput {
   return {
     frames, sourceTimeBase: r(1, 1000), emptyEdits: [], segmentDuration: null, videoSpans: null, audio: null,
-    display: { width: 64, height: 48 }, colorMatrix: 'bt601', policy: POLICY, ...overrides,
+    display: { width: 64, height: 48 }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, policy: POLICY, ...overrides,
   };
 }
 
@@ -215,7 +231,7 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
       { sourcePtsTicks: '4096', start: r(1, 4), declaredEnd: r(3, 8) },
     ], { sourceTimeBase: r(1, 16384) }));
     expect(plan).toEqual({
-      display: { width: 64, height: 48, duration: r(3, 8) }, colorMatrix: 'bt601', policy: POLICY,
+      display: { width: 64, height: 48, duration: r(3, 8) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: POLICY,
       presentation: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 3, step: 1, duration: 1 }] },
       originMapping: {
         timeBase: r(1, 16384), origin: r(0), entries: [{ kind: 'source', start: 0, count: 3, step: 2048 }],
@@ -232,9 +248,10 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
     const plan = assemble()(input([
       { sourcePtsTicks: '0', start: r(1, 4), declaredEnd: r(1, 2) },
       { sourcePtsTicks: '512', start: r(3, 4), declaredEnd: r(1) },
-    ], { sourceTimeBase: r(1, 1024), videoSpans, audio: { start: r(0), end: r(2), spans: audioSpans }, display: { width: 96, height: 64 }, colorMatrix: 'bt709', policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' } }));
+    ], { sourceTimeBase: r(1, 1024), videoSpans, audio: { start: r(0), end: r(2), spans: audioSpans }, display: { width: 96, height: 64 }, colorMatrix: 'bt709', source: { transfer: 'bt709', bitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' } }));
     expect(plan).toEqual({
-      display: { width: 96, height: 64, duration: r(2) }, colorMatrix: 'bt709', policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' },
+      display: { width: 96, height: 64, duration: r(2) }, colorMatrix: 'bt709', source: { transfer: 'bt709', bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 },
+      policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' },
       presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 2, duration: 2 }, { start: 2, count: 1, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
       originMapping: {
         timeBase: r(1, 1024), origin: r(0),
@@ -253,7 +270,7 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
       { sourcePtsTicks: '875', start: r(7, 8), declaredEnd: r(9, 8) },
     ], { videoSpans: [{ sourceStart: r(1, 8), sourceEnd: r(3, 8), presentationStart: r(1, 8), rate: r(1) }, { sourceStart: r(7, 8), sourceEnd: r(9, 8), presentationStart: r(7, 8), rate: r(1) }] }));
     expect(plan).toEqual({
-      display: { width: 64, height: 48, duration: r(1) }, colorMatrix: 'bt601', policy: POLICY,
+      display: { width: 64, height: 48, duration: r(1) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: POLICY,
       presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 1, duration: 1 }, { start: 1, count: 1, step: 2, duration: 2 }, { start: 3, count: 1, step: 1, duration: 1 }] },
       originMapping: {
         timeBase: r(1, 1000), origin: r(1, 8),
@@ -296,6 +313,32 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
     let caught: unknown;
     try { build(input([])); } catch (error) { caught = error; }
     expect(caught).toMatchObject({ code: 'no_presented_frames' });
+  });
+
+  it.each([
+    ['PQ 10-bit', { transfer: 'smpte2084', bitDepth: 10 }, { toneMap: 'sdr-bt709', framePngBitDepth: 8 }],
+    ['HLG 10-bit', { transfer: 'arib-std-b67', bitDepth: 10 }, { toneMap: 'sdr-bt709', framePngBitDepth: 8 }],
+    ['SDR 10-bit', { transfer: 'bt709', bitDepth: 10 }, { toneMap: 'none', framePngBitDepth: 16 }],
+    ['untagged 8-bit', { transfer: null, bitDepth: 8 }, { toneMap: 'none', framePngBitDepth: 8 }],
+  ])('PA08 a %s source records its transfer, bit depth and output conversion in the plan', (_, source, output) => {
+    const plan = assemble()(input([{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }], { source }));
+    expect(plan).toMatchObject({ source, output });
+    expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
+  });
+
+  it('PA09 the audio start and end are snapped to the 48 kHz grid before they set the origin, the hold and display.duration', () => {
+    // Audio [1/96000, 49152/65537) snaps to samples [1, 35999): origin 1/48000, end 35999/48000, both before rebasing.
+    const plan = assemble()(input([{ sourcePtsTicks: '0', start: r(1, 4), declaredEnd: r(1, 2) }], { audio: { start: r(1, 96000), end: r(49152, 65537), spans: null } }));
+    expect(plan).toMatchObject({
+      display: { width: 64, height: 48, duration: r(17999, 24000) },
+      presentation: { schemaVersion: 1, timescale: 24000, runs: [{ start: 0, count: 1, step: 17999, duration: 17999 }] },
+      originMapping: {
+        origin: r(1, 48000),
+        firstSource: { supportStart: r(11999, 48000), lead: { kind: 'derived-lead', start: r(0) } },
+        lastSource: { support: 'declared', supportEnd: r(23999, 48000), hold: { kind: 'derived-hold', end: r(17999, 24000) } },
+      },
+    });
+    expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
   });
 
   it('PA07 any declared frames, gaps and audio window assemble into a schema-valid plan taken from the S6a timeline (property)', () => {

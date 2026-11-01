@@ -9,7 +9,8 @@
  * toolInputId = sha256(canonical(sourceFingerprint, planSha256)) changes only
  * with the source bytes or the plan; versionId adds policy, producer/profile and
  * the carrier's actual bytes. The plan covers timing, derived-rule policy values,
- * the resolved colour matrix and the display geometry, never carrier choices,
+ * the resolved colour matrix, the display geometry and the source transfer, bit
+ * depth and output conversion they decide, never carrier choices,
  * URLs or later object hashes. Each object has one strict schema; the earlier
  * shapes (v1 descriptor and manifest, v2 ledger and receipt, the bare compact
  * table) fail to parse because there is no legacy reader. schemaVersion keeps
@@ -31,6 +32,8 @@ type OriginEntry = { kind: 'source'; start: number; count: number; step: number 
 interface Plan {
   display: { width: number; height: number; duration: Rational };
   colorMatrix: string;
+  source: { transfer: string | null; bitDepth: number };
+  output: { toneMap: 'none' | 'sdr-bt709'; framePngBitDepth: 8 | 16 };
   policy: { singleFrameDurationMs: number; emptyFill: 'black' | 'transparent' };
   presentation: VideoPresentationTable;
   originMapping: {
@@ -128,7 +131,7 @@ const ATTEMPT = { jobId: 'video-presentation:job-1', deadlineAt: 1_800_000_000_0
  */
 function cfrPlan(): Plan {
   return {
-    display: { width: 64, height: 48, duration: r(17, 8) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    display: { width: 64, height: 48, duration: r(17, 8) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
     originMapping: {
       timeBase: r(1, 16384), origin: r(0), entries: [{ kind: 'source', start: 4096, count: 17, step: 2048 }],
@@ -146,7 +149,8 @@ function cfrPlan(): Plan {
  */
 function gapHoldPlan(): Plan {
   return {
-    display: { width: 96, height: 64, duration: r(2) }, colorMatrix: 'bt709', policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' },
+    display: { width: 96, height: 64, duration: r(2) }, colorMatrix: 'bt709', source: { transfer: 'bt709', bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 },
+    policy: { singleFrameDurationMs: 5000, emptyFill: 'transparent' },
     presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 2, duration: 2 }, { start: 2, count: 1, step: 1, duration: 1 }, { start: 3, count: 1, step: 5, duration: 5 }] },
     originMapping: {
       timeBase: r(1, 1024), origin: r(0),
@@ -166,7 +170,7 @@ function gapHoldPlan(): Plan {
  */
 function gapPlan(): Plan {
   return {
-    display: { width: 64, height: 48, duration: r(1) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    display: { width: 64, height: 48, duration: r(1) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: { schemaVersion: 1, timescale: 4, runs: [{ start: 0, count: 1, step: 1, duration: 1 }, { start: 1, count: 1, step: 2, duration: 2 }, { start: 3, count: 1, step: 1, duration: 1 }] },
     originMapping: {
       timeBase: r(1, 1000), origin: r(1, 8),
@@ -183,7 +187,7 @@ function gapPlan(): Plan {
  */
 function matroskaPlan(): Plan {
   return {
-    display: { width: 320, height: 240, duration: r(847, 500) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    display: { width: 320, height: 240, duration: r(847, 500) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: projectPresentationTable([
       { displayStart: r(0), displayEnd: r(7, 100) }, { displayStart: r(7, 100), displayEnd: r(17, 100) },
       { displayStart: r(17, 100), displayEnd: r(233, 250) }, { displayStart: r(233, 250), displayEnd: r(847, 500) },
@@ -202,7 +206,7 @@ function matroskaPlan(): Plan {
  */
 function singlePlan(): Plan {
   return {
-    display: { width: 320, height: 240, duration: r(5) }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    display: { width: 320, height: 240, duration: r(5) }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: { schemaVersion: 1, timescale: 1, runs: [{ start: 0, count: 1, step: 5, duration: 5 }] },
     originMapping: {
       timeBase: r(1, 1000), origin: r(0), entries: [{ kind: 'source', start: 0, count: 1, step: 0 }],
@@ -324,6 +328,8 @@ describe('I §3.2 toolInputId, planSha256 and versionId', () => {
       ['single-frame policy', patched(base, ['policy', 'singleFrameDurationMs'], 1000)],
       ['empty fill', patched(base, ['policy', 'emptyFill'], 'transparent')],
       ['colour matrix', patched(base, ['colorMatrix'], 'bt709')],
+      ['source transfer and its tone map', patched(patched(base, ['source', 'transfer'], 'smpte2084'), ['output', 'toneMap'], 'sdr-bt709')],
+      ['source bit depth and its PNG depth', patched(patched(base, ['source', 'bitDepth'], 10), ['output', 'framePngBitDepth'], 16)],
       ['display height', patched(base, ['display', 'height'], 50)],
       ['source tick', patched(base, ['originMapping', 'entries', 0, 'start'], 4097)],
       ['video span', patched(base, ['videoSpans', 0, 'sourceStart'], r(1, 3))],
@@ -483,6 +489,16 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
     expect(required('videoPresentationLedgerSchema').parse(ledger(make()))).toEqual(ledger(make()));
   });
 
+  it.each([
+    ['PQ 10-bit tone mapped to 8-bit SDR', { transfer: 'smpte2084', bitDepth: 10 }, { toneMap: 'sdr-bt709', framePngBitDepth: 8 }],
+    ['HLG 10-bit tone mapped to 8-bit SDR', { transfer: 'arib-std-b67', bitDepth: 10 }, { toneMap: 'sdr-bt709', framePngBitDepth: 8 }],
+    ['10-bit SDR with 16-bit frame PNGs', { transfer: 'bt709', bitDepth: 10 }, { toneMap: 'none', framePngBitDepth: 16 }],
+    ['8-bit BT.709', { transfer: 'bt709', bitDepth: 8 }, { toneMap: 'none', framePngBitDepth: 8 }],
+  ])('L01 accepts a plan for %s', (_, source, output) => {
+    const plan = { ...cfrPlan(), source, output } as Plan;
+    expect(required('videoPresentationLedgerSchema').parse(ledger(plan))).toEqual(ledger(plan));
+  });
+
   it('L02 rejects the earlier v2 ledger shape', () => {
     const schema = required('videoPresentationLedgerSchema');
     expect(schema.safeParse(ledger()).success).toBe(true);
@@ -542,6 +558,14 @@ describe('L §3.5 full ledger: the plan with its origin mapping', () => {
     ['a zero single-frame policy', patched(cfrPlan(), ['policy', 'singleFrameDurationMs'], 0)],
     ['an unknown empty fill', patched(cfrPlan(), ['policy', 'emptyFill'], 'grey')],
     ['a missing colour matrix', patched(cfrPlan(), ['colorMatrix'], undefined)],
+    ['a missing source transfer and bit depth', patched(cfrPlan(), ['source'], undefined)],
+    ['a missing output conversion', patched(cfrPlan(), ['output'], undefined)],
+    ['an HDR (PQ) source without the tone map', patched(cfrPlan(), ['source', 'transfer'], 'smpte2084')],
+    ['an HDR (HLG) source with 16-bit frame PNGs', patched(patched(patched(cfrPlan(), ['source'], { transfer: 'arib-std-b67', bitDepth: 10 }), ['output', 'toneMap'], 'sdr-bt709'), ['output', 'framePngBitDepth'], 16)],
+    ['an SDR source with a tone map', patched(cfrPlan(), ['output', 'toneMap'], 'sdr-bt709')],
+    ['a 10-bit SDR source with 8-bit frame PNGs', patched(cfrPlan(), ['source', 'bitDepth'], 10)],
+    ['an 8-bit source with 16-bit frame PNGs', patched(cfrPlan(), ['output', 'framePngBitDepth'], 16)],
+    ['a zero source bit depth', patched(cfrPlan(), ['source', 'bitDepth'], 0)],
     ['zero display width', patched(cfrPlan(), ['display', 'width'], 0)],
     ['a zero-rate video span', patched(cfrPlan(), ['videoSpans', 0, 'rate'], r(0))],
     ['an empty video span list', patched(cfrPlan(), ['videoSpans'], [])],
@@ -581,7 +605,7 @@ function generatedPlan(frames: readonly { gap: number; length: number }[], audio
   if (held) windows[windows.length - 1]!.displayEnd = reduce(audioEnd, 25);
   const end = held ? reduce(audioEnd, 25) : supportEnd;
   return {
-    display: { width: 64, height: 48, duration: end }, colorMatrix: 'bt601', policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
+    display: { width: 64, height: 48, duration: end }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, output: { toneMap: 'none', framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: 'black' },
     presentation: projectPresentationTable(windows),
     originMapping: {
       timeBase: r(1, 90000), origin: reduce(frames[0]!.gap, 25),

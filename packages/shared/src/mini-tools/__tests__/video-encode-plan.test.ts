@@ -12,10 +12,13 @@
  * producer/profile equal the selected version reuses its carrier; copy runs in
  * the basic container only when twice the source plus the configured margin fits
  * its disk; an encoded carrier whose short side exceeds 1080 scales to short side
- * 1080 with even sides, otherwise odd sides pad to even and record the picture
- * rectangle; work is frames × pixels over the class throughput; chunk boundaries
- * are source keyframes nearest the target; presentation over the parallel cap is
- * `too_long`; job ids follow the §5.4 formats; batches respect both caps.
+ * 1080 with the long side rounded as FFmpeg `scale=-2`, otherwise odd sides pad to
+ * even and record the picture rectangle; a job's seconds are its fixed seconds
+ * plus (encoded + pre-roll frames) × output pixels over the throughput for its
+ * class, source bit depth and SDR/HDR; chunk boundaries are the source keyframes
+ * nearest the target, the earlier on a tie; presentation over the parallel cap is
+ * `too_long`; job ids follow the §5.4 formats with indices from 0 and attempts
+ * from 1; batches respect both caps.
  */
 
 import fc from 'fast-check';
@@ -37,6 +40,8 @@ interface RouteInput {
   basicDiskBytes: number;
 }
 interface Rect { x: number; y: number; width: number; height: number }
+interface JobWork { encodedFrames: number; prerollFrames: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean }
+interface ClassRates { jobFixedSeconds: number; throughputPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; hdr_8bit: number; hdr_10bit: number } }
 interface Chunk { start: number; end: number }
 type JobSpec =
   | { kind: 'presentation-probe'; jobId: string }
@@ -62,8 +67,8 @@ interface EncodeApi {
   chooseVideoCarrierRoute: (input: RouteInput) => Route;
   videoCarrierRouteStages: (route: Route) => string[];
   videoCarrierGeometry: (display: { width: number; height: number }, maxShortSide: number) => { width: number; height: number; displayRect: Rect | null };
-  videoPlanIsUnaltered: (plan: PlanShape) => boolean;
-  estimateVideoEncodeSeconds: (work: { frames: number; width: number; height: number }, pixelsPerSecond: number) => number;
+  videoPlanIsUnaltered: (plan: PlanShape, media: { mediaDuration: Rational }) => boolean;
+  estimateVideoJobSeconds: (work: JobWork, rates: ClassRates) => number;
   planVideoEncodeChunks: (input: { keyframes: readonly boolean[]; frameSeconds: number; targetSeconds: number }) => Chunk[];
   presentationEncodeFailure: (chunkCount: number, maxParallelChunks: number) => 'too_long' | null;
   videoContainerJobId: (spec: JobSpec) => string;
@@ -180,6 +185,12 @@ describe('CG §8.2 and §4.3 encoded carrier geometry', () => {
     [{ width: 2160, height: 3840 }, { width: 1080, height: 1920, displayRect: null }],
     [{ width: 4096, height: 2160 }, { width: 2048, height: 1080, displayRect: null }],
     [{ width: 3840, height: 1600 }, { width: 2592, height: 1080, displayRect: null }],
+    // FFmpeg 7.1.1 `scale=-2:1080` / `scale=1080:-2` readings (test plan §88): the long side is the nearest even value.
+    [{ width: 5000, height: 1081 }, { width: 4996, height: 1080, displayRect: null }],
+    [{ width: 1081, height: 5000 }, { width: 1080, height: 4996, displayRect: null }],
+    [{ width: 3001, height: 1081 }, { width: 2998, height: 1080, displayRect: null }],
+    [{ width: 3841, height: 2161 }, { width: 1920, height: 1080, displayRect: null }],
+    [{ width: 4000, height: 2251 }, { width: 1920, height: 1080, displayRect: null }],
     [{ width: 1920, height: 1080 }, { width: 1920, height: 1080, displayRect: null }],
     [{ width: 1280, height: 720 }, { width: 1280, height: 720, displayRect: null }],
     [{ width: 161, height: 97 }, { width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } }],
@@ -227,9 +238,17 @@ function unaltered(): PlanShape {
   };
 }
 
+const MEDIA = { mediaDuration: r(17, 8) };
+
 describe('UA §5.3 unaltered origin mapping (direct original input and identity)', () => {
   it('UA01 a plan without edits, rate changes, derived frames or derived support is unaltered', () => {
-    expect(required('videoPlanIsUnaltered')(unaltered())).toBe(true);
+    expect(required('videoPlanIsUnaltered')(unaltered(), MEDIA)).toBe(true);
+  });
+
+  it('UA02 one rate-1 edit from the media start covering the whole media is not an edit', () => {
+    const plan = unaltered();
+    plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(17, 8), presentationStart: r(0), rate: r(1) }];
+    expect(required('videoPlanIsUnaltered')(plan, MEDIA)).toBe(true);
   });
 
   it.each([
@@ -240,34 +259,62 @@ describe('UA §5.3 unaltered origin mapping (direct original input and identity)
     ['a single-frame support', (plan: PlanShape): void => { plan.originMapping.lastSource.support = 'single-frame'; }],
     ['a rate change', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(17, 16), presentationStart: r(0), rate: r(1, 2) }]; }],
     ['a cut between two edits', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(1), presentationStart: r(0), rate: r(1) }, { sourceStart: r(3, 2), sourceEnd: r(21, 8), presentationStart: r(1), rate: r(1) }]; }],
-  ])('UA02 a plan with %s is altered', (_, change) => {
+    ['one edit ending before the media ends', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }]; }],
+    ['one edit starting after the media start', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(1, 8), sourceEnd: r(17, 8), presentationStart: r(0), rate: r(1) }]; }],
+  ])('UA03 a plan with %s is altered', (_, change) => {
     const plan = unaltered();
     change(plan);
-    expect(required('videoPlanIsUnaltered')(plan)).toBe(false);
+    expect(required('videoPlanIsUnaltered')(plan, MEDIA)).toBe(false);
   });
 });
 
-describe('ES §5.4 work estimate', () => {
-  it('ES01 encode seconds are frames × pixels over the class throughput', () => {
-    const estimate = required('estimateVideoEncodeSeconds');
-    // 3600 frames of 3840×2160 at 165,888,000 pixels per second (20 fps of 4K).
-    expect(estimate({ frames: 3600, width: 3840, height: 2160 }, 165_888_000)).toBe(180);
-    expect(estimate({ frames: 30, width: 1920, height: 1080 }, 2_073_600)).toBe(30);
+const STD4: ClassRates = { jobFixedSeconds: 30, throughputPixelsPerSecond: { sdr_8bit: 165_058_560, sdr_10bit: 82_529_280, hdr_8bit: 55_019_520, hdr_10bit: 41_264_640 } };
+
+/**
+ * A job's work with defaults: 8-bit SDR 4K, no pre-roll.
+ * @param overrides - Fields to change.
+ * @returns The work.
+ */
+function work(overrides: Partial<JobWork> = {}): JobWork {
+  return { encodedFrames: 199, prerollFrames: 0, outputWidth: 3840, outputHeight: 2160, bitDepth: 8, hdr: false, ...overrides };
+}
+
+describe('ES §5.4 job estimate', () => {
+  it('ES01 seconds are the fixed seconds plus (encoded + pre-roll frames) × output pixels over the matching throughput', () => {
+    const estimate = required('estimateVideoJobSeconds');
+    // 199 frames of 4K at 19.9 fps of 4K (165,058,560 pixels per second) take 10 s, plus 30 s fixed.
+    expect(estimate(work(), STD4)).toBe(40);
+    expect(estimate(work({ prerollFrames: 199 }), STD4)).toBe(50);
+    expect(estimate(work({ bitDepth: 10 }), STD4)).toBe(50);
+    expect(estimate(work({ hdr: true }), STD4)).toBe(60);
+    expect(estimate(work({ bitDepth: 10, hdr: true }), STD4)).toBe(70);
+    // Basic 8-bit SDR: 48 frames of 1080p at 4.8 fps of 1080p (9,953,280 pixels per second) take 10 s.
+    const basic = { jobFixedSeconds: 5, throughputPixelsPerSecond: { sdr_8bit: 9_953_280, sdr_10bit: 1, hdr_8bit: 1, hdr_10bit: 1 } };
+    expect(estimate(work({ encodedFrames: 48, outputWidth: 1920, outputHeight: 1080 }), basic)).toBe(15);
   });
 
-  it('ES02 the estimate grows with frames and pixels and shrinks with throughput (property)', () => {
-    const estimate = required('estimateVideoEncodeSeconds');
-    fc.assert(fc.property(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 1_000_000_000 }), (frames, width, height, rate) => {
-      const base = estimate({ frames, width, height }, rate);
-      expect(estimate({ frames: frames + 1, width, height }, rate)).toBeGreaterThan(base);
-      expect(estimate({ frames, width: width + 1, height }, rate)).toBeGreaterThan(base);
-      expect(estimate({ frames, width, height }, rate * 2)).toBeLessThan(base);
+  it('ES02 the estimate grows with frames, pre-roll and pixels and shrinks with throughput (property)', () => {
+    const estimate = required('estimateVideoJobSeconds');
+    fc.assert(fc.property(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 1_000_000_000 }), (frames, preroll, width, height, rate) => {
+      const rates = { jobFixedSeconds: 7, throughputPixelsPerSecond: { sdr_8bit: rate, sdr_10bit: rate, hdr_8bit: rate, hdr_10bit: rate } };
+      const base = estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width, outputHeight: height }), rates);
+      expect(base).toBeGreaterThan(7);
+      expect(estimate(work({ encodedFrames: frames + 1, prerollFrames: preroll, outputWidth: width, outputHeight: height }), rates)).toBeGreaterThan(base);
+      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll + 1, outputWidth: width, outputHeight: height }), rates)).toBeGreaterThan(base);
+      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width + 1, outputHeight: height }), rates)).toBeGreaterThan(base);
+      const faster = { ...rates, throughputPixelsPerSecond: { sdr_8bit: rate * 2, sdr_10bit: rate * 2, hdr_8bit: rate * 2, hdr_10bit: rate * 2 } };
+      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width, outputHeight: height }), faster)).toBeLessThan(base);
     }), { seed: 130803, numRuns: 200 });
   });
 
-  it.each([[{ frames: 0, width: 1, height: 1 }, 1], [{ frames: 1, width: 0, height: 1 }, 1], [{ frames: 1, width: 1, height: 1 }, 0], [{ frames: 1.5, width: 1, height: 1 }, 1]])('ES03 rejects %o at %s pixels per second', (work, rate) => {
-    const estimate = required('estimateVideoEncodeSeconds');
-    expect(() => estimate(work, rate)).toThrow(RangeError);
+  it.each([
+    ['zero encoded frames', work({ encodedFrames: 0 }), STD4], ['negative pre-roll', work({ prerollFrames: -1 }), STD4],
+    ['zero output width', work({ outputWidth: 0 }), STD4], ['fractional frames', work({ encodedFrames: 1.5 }), STD4],
+    ['a 12-bit source', work({ bitDepth: 12 as 8 }), STD4], ['zero throughput', work(), { ...STD4, throughputPixelsPerSecond: { ...STD4.throughputPixelsPerSecond, sdr_8bit: 0 } }],
+    ['negative fixed seconds', work(), { ...STD4, jobFixedSeconds: -1 }],
+  ])('ES03 rejects %s', (_, job, rates) => {
+    const estimate = required('estimateVideoJobSeconds');
+    expect(() => estimate(job, rates)).toThrow(RangeError);
   });
 });
 
@@ -345,6 +392,12 @@ describe('CK §5.4 chunk boundaries at source keyframes', () => {
     expect(() => plan(input)).toThrow(RangeError);
   });
 
+  it('CK09 two equally near keyframes resolve to the earlier', () => {
+    // GOP 30, target 45: 30 and 60 are both 15 from 45 (take 30); from 30, 60 and 90 are both 15 from 75 (take 60); from 60 the end is nearest.
+    const plan = required('planVideoEncodeChunks');
+    expect(plan({ keyframes: regular(100, 30), frameSeconds: 1, targetSeconds: 45 })).toEqual([{ start: 0, end: 30 }, { start: 30, end: 60 }, { start: 60, end: 100 }]);
+  });
+
   it('CK08 presentation needing more chunks than the parallel cap fails as too_long, within it does not', () => {
     const failure = required('presentationEncodeFailure');
     expect(failure(9, 8)).toBe('too_long');
@@ -357,7 +410,10 @@ describe('JI §5.4 container job identities', () => {
   const task = '7d1c0e8a-3b5f-4a9e-8c21-5f0d3e6a9b10';
   it.each([
     [{ kind: 'presentation-probe', jobId: 'job-1' }, 'video-presentation:job-1'],
+    [{ kind: 'presentation-chunk', jobId: 'job-1', chunk: 0, attempt: 1 }, 'video-presentation:job-1:chunk:0:a1'],
     [{ kind: 'presentation-chunk', jobId: 'job-1', chunk: 3, attempt: 1 }, 'video-presentation:job-1:chunk:3:a1'],
+    [{ kind: 'run-chunk', taskId: task, output: 0, chunk: 0, attempt: 1 }, `${task}:out:0:enc:0:a1`],
+    [{ kind: 'prep', taskId: task, input: 0, attempt: 1 }, `${task}:prep:0:a1`],
     [{ kind: 'presentation-stitch', jobId: 'job-1', attempt: 2 }, 'video-presentation:job-1:stitch:a2'],
     [{ kind: 'presentation-copy', jobId: 'job-1', attempt: 1 }, 'video-presentation:job-1:copy:a1'],
     [{ kind: 'run-batch', taskId: task, batch: 0, attempt: 1 }, `${task}:batch:0:a1`],
