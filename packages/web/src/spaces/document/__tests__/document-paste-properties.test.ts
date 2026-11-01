@@ -54,7 +54,8 @@ type Piece =
   | { kind: 'table'; words: string }
   | { kind: 'divider' }
   | { kind: 'listMedium'; words: string }
-  | { kind: 'listWords'; words: string };
+  | { kind: 'listWords'; words: string }
+  | { kind: 'heading'; words: string };
 
 const piece: fc.Arbitrary<Piece> = fc.oneof(
   pastedWords.map((words): Piece => ({ kind: 'words', words })),
@@ -63,6 +64,7 @@ const piece: fc.Arbitrary<Piece> = fc.oneof(
   fc.constant<Piece>({ kind: 'divider' }),
   pastedWords.map((words): Piece => ({ kind: 'listMedium', words })),
   pastedWords.map((words): Piece => ({ kind: 'listWords', words })),
+  pastedWords.map((words): Piece => ({ kind: 'heading', words })),
 );
 
 /**
@@ -72,7 +74,7 @@ const piece: fc.Arbitrary<Piece> = fc.oneof(
  * @returns True for words.
  */
 function isWords(p: Piece): boolean {
-  return p.kind === 'words' || p.kind === 'listWords';
+  return p.kind === 'words' || p.kind === 'listWords' || p.kind === 'heading';
 }
 
 /**
@@ -101,6 +103,7 @@ function blocksOf(pieces: readonly Piece[]): Record<string, unknown>[] {
       case 'divider': return { type: 'divider' };
       case 'listMedium': return { type: 'bulletListItem', content: p.words, children: [{ type: 'image', props: { url: media() } }] };
       case 'listWords': return { type: 'bulletListItem', content: p.words, children: [{ type: 'bulletListItem', content: `${p.words}z` }] };
+      case 'heading': return { type: 'heading', props: { level: 3 }, content: p.words };
       default: return { type: 'paragraph', content: p.words };
     }
   });
@@ -446,7 +449,14 @@ describe('content put on an empty plain line (design §5.4.3)', () => {
           expect(taker, `line id: ${where}`).not.toBeNull();
           const own = (taker as unknown as PMNode).firstChild!;
           if (endsInWords(pieces)) {
-            expect(own.content.size, `taken: ${where}`).toBeGreaterThan(0);
+            const last = pieces[pieces.length - 1]!;
+            const type = { words: 'paragraph', listWords: 'bulletListItem', heading: 'heading' }[last.kind as 'words' | 'listWords' | 'heading'];
+            let lastLine: PMNode | null = null;
+            (taker as unknown as PMNode).descendants((node) => {
+              if (node.isTextblock) lastLine = node;
+              return true;
+            });
+            expect({ type: own.type.name, caretInLastLine: selection.$head.parent === lastLine }, `taken: ${where}`).toEqual({ type, caretInLastLine: true });
           } else {
             expect({ type: own.type.name, size: own.content.size, caretHere: selection.$head.parent === own }, `kept: ${where}`).toEqual({ type: 'paragraph', size: 0, caretHere: true });
           }
@@ -527,11 +537,16 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
           const event = new Event('drop', { bubbles: true, cancelable: true });
           Object.assign(event, { clientX: 1, clientY: 1 });
           Object.defineProperty(event, 'dataTransfer', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' } });
+          const linesBefore = readerLines(view.state.doc);
           view.dom.dispatchEvent(event);
+          // One block alone is selected whole (ProseMirror's own drop), and
+          // deleting it leaves a line it split in two.
+          const whole = view.state.selection instanceof NodeSelection;
           view.dispatch(view.state.tr.deleteSelection());
           const where = `${source} ${JSON.stringify(blocks)} ${JSON.stringify(pieces)} @${point} → ${shape(editor)}`;
           expect(letters(view.state.doc), `words: ${where}`).toBe(before);
-          for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
+          if (whole) for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
+          else expect(readerLines(view.state.doc), `lines: ${where}`).toEqual(linesBefore);
           unmountAll();
         },
       ),
