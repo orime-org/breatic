@@ -53,7 +53,7 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
     // One ZIP beside no model entry is the collection; the other files fill its missing paths.
     const archives = kept.filter((source) => /\.zip$/i.test(source.path));
     const archive = archives.length === 1 && !kept.some((source) => /\.(glb|gltf)$/i.test(source.path)) ? archives[0] : undefined;
-    const collection = archive ? unpackModelArchive(await readSource(archive), limits) : new Map<string, Uint8Array<ArrayBuffer>>();
+    const collection = archive ? unpackModelArchive(await readSource(archive), limits, false, archive.path) : new Map<string, Uint8Array<ArrayBuffer>>();
     for (const source of kept) {
       if (source === archive) continue;
       const path = normalizeModelPath(source.path);

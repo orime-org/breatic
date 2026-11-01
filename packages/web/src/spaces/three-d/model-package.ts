@@ -220,14 +220,15 @@ function usesZip64(bytes: Uint8Array): boolean {
  * Visit every central-directory record without inflating anything, naming a damaged directory as an unreadable archive.
  * @param bytes - The complete archive.
  * @param visit - Receives each record; it may throw to refuse the archive.
+ * @param location - The archive's own path, named when its directory is damaged.
  * @throws {ModelImportError} When the directory cannot be read or a record is refused.
  */
-function readDirectory(bytes: Uint8Array, visit: (file: { name: string; originalSize: number; compression: number }) => void): void {
+function readDirectory(bytes: Uint8Array, visit: (file: { name: string; originalSize: number; compression: number }) => void, location: string): void {
   try {
     unzipSync(bytes, { filter: (file) => { visit(file); return false; } });
   } catch (error) {
     if (error instanceof ModelImportError) throw error;
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: location });
   }
 }
 
@@ -238,10 +239,11 @@ function readDirectory(bytes: Uint8Array, visit: (file: { name: string; original
  * @param bytes - The complete bounded archive input.
  * @param limits - Configured file count and declared expanded-byte budgets.
  * @param registered - Whether this is a package we wrote, whose root manifest occupies its reserved metadata slot.
+ * @param location - The archive's path in the user's selection, named when the archive itself is damaged.
  * @returns The original resources under normalized paths.
  * @throws {ModelImportError} When archive paths, methods, counts, decoding or output sizes break the contract.
  */
-export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits, registered = false): Map<string, Uint8Array<ArrayBuffer>> {
+export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits, registered = false, location = ''): Map<string, Uint8Array<ArrayBuffer>> {
   const allowedBytes = registered ? limits.maxArtifactBytes : limits.maxInputBytes;
   if (bytes.byteLength > allowedBytes) {
     throw new ModelImportError('budget', 'Model archive exceeds its input-byte budget', { detail: '',
@@ -260,7 +262,7 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
     paths.add(path);
     expanded += file.originalSize;
     declared.set(file.name, { path, size: file.originalSize });
-  });
+  }, location);
   const count = paths.size - (registered && paths.has('manifest.json') ? 1 : 0);
   if (count > limits.maxFiles) {
     throw new ModelImportError('budget', 'Model archive exceeds its configured file count', { detail: '', budget: { limit: 'files', allowed: limits.maxFiles, actual: count } });
@@ -275,7 +277,7 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
   try {
     entries = unzipSync(bytes, { filter: (file) => { current = declared.get(file.name)?.path ?? ''; return declared.has(file.name); } });
   } catch (error) {
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: current });
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: current || location });
   }
   const files = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const [name, { path, size }] of declared) {

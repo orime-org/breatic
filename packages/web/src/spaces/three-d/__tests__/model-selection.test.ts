@@ -416,3 +416,11 @@ describe('model-selection with nothing left after Finder metadata (inner#1690)',
     await expectFailure(inspect([inputFile('.DS_Store', new Uint8Array([0]), 'pack/.DS_Store')], undefined, IMPORT_LIMITS), 'unsupported');
   });
 });
+
+describe('a damaged archive names itself (inner#1690)', () => {
+  it('reports the selected ZIP when its directory cannot be read', async () => {
+    const damaged = new File([new Uint8Array([0x50, 0x4b, 0x05, 0x06, 1, 2, 3])], 'models.zip');
+    await expect(inspectModelSelection(sourcesFromFiles([damaged]), undefined, IMPORT_LIMITS))
+      .rejects.toMatchObject({ code: 'invalid', detail: 'models.zip' });
+  });
+});
