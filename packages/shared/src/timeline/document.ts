@@ -3,7 +3,7 @@
 
 import * as Y from "yjs";
 import {
-  TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema,
+  TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema,
   type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
 } from "@shared/timeline/schema.js";
 import { planTimelineEdit, type TimelineEditPlan } from "@shared/timeline/edit.js";
@@ -58,22 +58,68 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
   });
 }
 
+/** Records left out of a read because they fail their schema, listed so a user can see and delete them. */
+export interface TimelineDamagedRecords { clips: string[]; tracks: string[] }
+
+/**
+ * Keep the records of one collection that pass their schema.
+ * @param collection - The collection as JSON.
+ * @param schema - The record schema.
+ * @param schema.safeParse - Validates one record.
+ * @param damaged - Collects the ids of records that fail.
+ * @returns The valid records by id.
+ * @throws {never} Never.
+ */
+function validRecords(collection: Record<string, unknown>, schema: { safeParse: (value: unknown) => { success: boolean } }, damaged: string[]): Record<string, unknown> {
+  const valid: Record<string, unknown> = {};
+  for (const [id, record] of Object.entries(collection)) {
+    if (schema.safeParse(record).success) valid[id] = record;
+    else damaged.push(id);
+  }
+  return valid;
+}
+
+/**
+ * Read our DTO without manufacturing initial state on the client; a damaged clip or track record is left out
+ * and listed, so one bad record never closes the whole Timeline.
+ * @param doc - The content document to project.
+ * @returns The readable Timeline and the damaged record ids.
+ * @throws {Error} When the content is empty, unsupported or its roots are structurally invalid.
+ */
+export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1; damaged: TimelineDamagedRecords } {
+  if (!doc.share.has("timeline")) throw new Error("Timeline content has not been initialized");
+  const timeline = doc.getMap("timeline");
+  const damaged: TimelineDamagedRecords = { clips: [], tracks: [] };
+  const document = TimelineDocumentV1Schema.parse({
+    schemaVersion: timeline.get("schemaVersion"),
+    settings: timeline.get("settings"),
+    tracks: validRecords(doc.getMap("tracks").toJSON(), TimelineTrackSchema, damaged.tracks),
+    clips: validRecords(doc.getMap("clips").toJSON(), TimelineVideoClipSchema, damaged.clips),
+    sources: doc.getMap("sources").toJSON(),
+  });
+  return { document, damaged };
+}
+
 /**
  * Read our DTO without manufacturing initial state on the client.
  * @param doc - The content document to project.
- * @returns The current Timeline format.
- * @throws {Error} When the content is empty, unsupported or structurally invalid.
+ * @returns The readable Timeline; damaged clip and track records are left out.
+ * @throws {Error} When the content is empty, unsupported or its roots are structurally invalid.
  */
 export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
-  if (!doc.share.has("timeline")) throw new Error("Timeline content has not been initialized");
-  const timeline = doc.getMap("timeline");
-  return TimelineDocumentV1Schema.parse({
-    schemaVersion: timeline.get("schemaVersion"),
-    settings: timeline.get("settings"),
-    tracks: doc.getMap("tracks").toJSON(),
-    clips: doc.getMap("clips").toJSON(),
-    sources: doc.getMap("sources").toJSON(),
-  });
+  return readTimelineContent(doc).document;
+}
+
+/**
+ * Delete one clip or track record, damaged or not, in one transaction.
+ * @param doc - The content document.
+ * @param kind - The collection.
+ * @param id - The record id.
+ * @param origin - The transaction origin.
+ * @throws {never} Never.
+ */
+export function removeTimelineRecord(doc: Y.Doc, kind: "clips" | "tracks", id: string, origin: unknown): void {
+  doc.transact(() => { doc.getMap(kind).delete(id); }, origin);
 }
 
 /**
