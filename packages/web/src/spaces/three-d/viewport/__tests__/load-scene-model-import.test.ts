@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { BufferGeometry, Group, Mesh, MeshBasicMaterial, Texture } from 'three';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
@@ -365,5 +366,12 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
   it('names a geometry buffer shorter than its declared length', () => {
     expect(() => triangle({}, [['mesh.bin', geometry.slice(0, 12)]], { byteLength: geometry.byteLength, uri: 'mesh.bin' }))
       .toThrow(expect.objectContaining({ code: 'invalid', detail: 'mesh.bin' }));
+  });
+});
+
+describe('meshopt fallback buffers (inner#1690)', () => {
+  it('previews the shipped EXT_meshopt fixture, whose fallback buffer has no data', async () => {
+    const json = Uint8Array.from(readFileSync('tests/fixtures/three-d-model-import/meshopt.gltf'));
+    expect(() => inspectModelFiles(new Map([['meshopt.gltf', json]]), 'meshopt.gltf', IMPORT_LIMITS)).not.toThrow();
   });
 });

@@ -147,11 +147,10 @@ export function loadedResources(json: GltfDocument): LoadedResources {
   const buffers = new Set<number>();
   for (const view of views) {
     const node = object(array(document.bufferViews)[view]);
-    // A meshopt-compressed view reads its compressed bytes from the extension's buffer.
-    for (const value of [node?.buffer, object(object(node?.extensions)?.EXT_meshopt_compression)?.buffer]) {
-      const buffer = index(value);
-      if (buffer !== undefined) buffers.add(buffer);
-    }
+    // A meshopt-compressed view reads only the extension's buffer; its own buffer is the uncompressed fallback.
+    const meshopt = object(object(node?.extensions)?.EXT_meshopt_compression);
+    const buffer = index(meshopt ? meshopt.buffer : node?.buffer);
+    if (buffer !== undefined) buffers.add(buffer);
   }
   return { textures, images, buffers };
 }
