@@ -14,6 +14,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { switchLanguage } from '../helpers/language';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
@@ -1260,18 +1261,6 @@ test('text dropped in from outside still lands in the body', async () => {
   await expect(page.locator(EDITOR)).toContainText('from elsewhere');
   await expect(page.locator(EDITOR)).toContainText('alpha');
 });
-
-/**
- * Switch the interface language and put it back.
- * @param p - The page.
- * @param code - The locale to switch to.
- */
-async function switchLanguage(p: Page, code: string): Promise<void> {
-  await p.getByTestId('lang-trigger').click();
-  await expect(p.getByTestId('lang-popover')).toBeVisible();
-  await p.getByTestId(`lang-option-${code}`).click();
-  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
-}
 
 test('the menu reads in the language the switch is set to', async () => {
   await openFreshDocument(page);

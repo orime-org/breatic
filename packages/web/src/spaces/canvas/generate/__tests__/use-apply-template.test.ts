@@ -38,11 +38,8 @@ import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
-/** What the panel hands `placeTemplate` for one canvas node it reuses. */
-type Existing = ExistingNode;
-
 /** The callback `CanvasSpace` passes the panels (6.5). */
-type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>) => unknown;
+type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>) => unknown;
 
 const ULTRA = {
   name: 'nano-banana-pro-edit-ultra',
@@ -226,9 +223,9 @@ function apply(
  * @param place - The spy.
  * @returns Its proposal and existing map.
  */
-function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; existing: ReadonlyMap<number, Existing> } {
+function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; existing: ReadonlyMap<number, ExistingNode> } {
   expect(place).toHaveBeenCalledTimes(1);
-  const [proposal, existing] = place.mock.calls[0] as [CanvasProposal, ReadonlyMap<number, Existing>];
+  const [proposal, existing] = place.mock.calls[0] as [CanvasProposal, ReadonlyMap<number, ExistingNode>];
   return { proposal, existing };
 }
 
@@ -239,7 +236,7 @@ function placed(place: ReturnType<typeof vi.fn>): { proposal: CanvasProposal; ex
  * @param index - The index.
  * @returns The identity.
  */
-function who(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, index: number): string {
+function who(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, index: number): string {
   const at = existing.get(index);
   if (at) return at.nodeId;
   return `new:${proposal.nodes[index]?.name ?? '?'}`;
@@ -251,7 +248,7 @@ function who(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, 
  * @param existing - The reused nodes.
  * @returns `from->to` per edge, sorted.
  */
-function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>): string[] {
+function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): string[] {
   return proposal.edges
     .map((e) => `${who(proposal, existing, e.fromIndex)}->${who(proposal, existing, e.toIndex)}`)
     .sort();
@@ -264,7 +261,7 @@ function edgesOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existin
  * @param index - The node's index.
  * @returns The identities.
  */
-function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>, index: number): string[] {
+function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, index: number): string[] {
   return (proposal.nodes[index]?.prompt ?? []).flatMap((s) => (s.ref === undefined ? [] : [who(proposal, existing, s.ref)]));
 }
 
@@ -274,7 +271,7 @@ function refsOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing
  * @param nodeId - The canvas node.
  * @returns Its index, or -1.
  */
-function indexOf(existing: ReadonlyMap<number, Existing>, nodeId: string): number {
+function indexOf(existing: ReadonlyMap<number, ExistingNode>, nodeId: string): number {
   for (const [index, entry] of existing) if (entry.nodeId === nodeId) return index;
   return -1;
 }
@@ -285,7 +282,7 @@ function indexOf(existing: ReadonlyMap<number, Existing>, nodeId: string): numbe
  * @param existing - The reused nodes.
  * @returns Those nodes.
  */
-function appendedOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Existing>): ProposalNode[] {
+function appendedOf(proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): ProposalNode[] {
   return proposal.nodes.filter((_, i) => !existing.has(i));
 }
 

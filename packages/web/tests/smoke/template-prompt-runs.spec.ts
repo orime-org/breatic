@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { markedSegments } from '@breatic/shared';
 import { test } from '../helpers/slot';
+import { switchLanguage } from '../helpers/language';
 
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -221,18 +222,6 @@ async function dropCharacter(): Promise<string> {
 }
 
 const STYLE = '3D cartoon';
-
-/**
- * Switch the interface language through its menu; the account's choice outranks the browser's.
- * @param p - The page.
- * @param code - The locale to switch to.
- */
-async function switchLanguage(p: Page, code: string): Promise<void> {
-  await p.getByTestId('lang-trigger').click();
-  await expect(p.getByTestId('lang-popover')).toBeVisible();
-  await p.getByTestId(`lang-option-${code}`).click();
-  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
-}
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage();
