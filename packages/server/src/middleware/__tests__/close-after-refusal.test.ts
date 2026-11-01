@@ -219,6 +219,10 @@ describe("lingeringClose", () => {
     const h = tracked();
     h.incoming.on("data", () => h.incoming.pause());
     await enterS1(h);
+    // A spy taken on the faked setTimeout keeps the fake as its original and
+    // puts it back after this file, which stalls every timer in later files of
+    // this single-fork run; so the deadline is observed on the real one.
+    vi.useRealTimers();
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
     e2(h);
@@ -228,11 +232,13 @@ describe("lingeringClose", () => {
     expect(h.incoming.resume).toHaveBeenCalledTimes(1);
     expect(h.incoming.dataListenersAtResume).toEqual([0]);
     expect(h.incoming.listenerCount("data")).toBe(0);
-    expect(vi.getTimerCount()).toBe(1);
     expect(h.socket.destroy).not.toHaveBeenCalled();
     expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
     const timer = setTimeoutSpy.mock.results[0]!.value as NodeJS.Timeout;
     expect(timer.hasRef()).toBe(false);
+
+    // The socket closing clears the real deadline.
+    e7(h);
   });
 
   it("U5: a body already read waits for the write side, under a deadline (S1 × E2 → S3, E8 → S4)", async () => {
