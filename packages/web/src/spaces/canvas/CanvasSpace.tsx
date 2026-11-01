@@ -1399,9 +1399,9 @@ function CanvasSpaceInner({
     [getInternalNode, rfStoreApi, setViewport],
   );
 
-  // A template picked in a generate panel lands beside that panel's node
-  // (inner#1345 6.5) where its flow puts it, over whatever is there: close to
-  // the node it builds on comes first (inner#1846).
+  // A template picked in a generate panel lands beside that panel's node, or
+  // in the places its earlier instance holds (inner#1345 6.5), where its flow
+  // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
     (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;

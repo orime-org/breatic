@@ -154,8 +154,9 @@ export interface NodeCreation {
    * past `occupied` until it covers none of it (inner#1443). With `existing`,
    * the proposal is a template landing around nodes already on the canvas
    * (inner#1345): those indices are written over rather than placed, and the
-   * new nodes line up left of the anchor (the lowest existing index) where
-   * the flow puts them, over whatever is there (inner#1846). They join the
+   * new nodes line up on the anchor (the lowest existing index) where the
+   * flow puts them, or, when they join the group a reused instance node sits
+   * in, on that node, over whatever is there (inner#1846). They join the
    * anchor's unlocked group, else the unlocked group a reused node of this template sits in,
    * else two or more of them make a group of their own under
    * `proposal.groupName`. If a write fails part way, everything this press wrote is taken
@@ -197,8 +198,9 @@ interface Arrangement {
 /**
  * Where a proposal's new nodes go. On its own, the flow is aimed at `start`
  * and moved right past `occupied`. Around nodes already there, it is lined up
- * on the anchor's real position, so the new nodes stand left of it, close to
- * the anchor even where that covers other nodes: they work on the same thing.
+ * on the anchor's real position, or on a reused instance node's when the new
+ * nodes join that node's group, even where that covers other nodes: they work
+ * on the same thing.
  * @param projectId - Owning project id.
  * @param spaceId - Canvas space id.
  * @param proposal - The proposal.

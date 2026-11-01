@@ -14,7 +14,7 @@
  * Agent with the picture attached and generates the node its proposal places.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { markedSegments } from '@breatic/shared';
 import { test } from '../helpers/slot';
@@ -206,7 +206,8 @@ async function keyed(key: string): Promise<string> {
 /** Drop the character picture onto the canvas and return its node once it holds the upload. */
 async function dropCharacter(): Promise<string> {
   const before = new Set((await graph()).nodes.map((n) => n.id));
-  await dropFile(page, `character-${Date.now()}.png`, 'image/png', readFileSync(CHARACTER));
+  const ext = extname(CHARACTER).toLowerCase();
+  await dropFile(page, `character-${Date.now()}${ext}`, ext === '.png' ? 'image/png' : 'image/jpeg', readFileSync(CHARACTER));
   let id = '';
   await expect
     .poll(
@@ -235,12 +236,15 @@ test.beforeEach(async ({ browser }) => {
 });
 
 test.afterEach(async () => {
-  await fit();
-  await page.screenshot({ path: `${OUT}/${test.info().title.replace(/\s*@needs-model/, '').replace(/\s+/g, '-')}-${LABEL}-canvas.png` });
-  await deleteSpace(page, spaceId);
-  // The smoke account is shared, so its language goes back to English.
-  if (LOCALE) await switchLanguage(page, 'en');
-  await page.close();
+  try {
+    await fit();
+    await page.screenshot({ path: `${OUT}/${test.info().title.replace(/\s*@needs-model/, '').replace(/\s+/g, '-')}-${LABEL}-canvas.png` });
+    await deleteSpace(page, spaceId);
+  } finally {
+    // The smoke account is shared, so its language goes back to English.
+    if (LOCALE) await switchLanguage(page, 'en');
+    await page.close();
+  }
 });
 
 const INFO = 'Mika, bicycle courier, 25, cheerful, stubborn, curious, quick; racing the rain to deliver on time';
