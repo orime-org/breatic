@@ -1384,7 +1384,8 @@ export function renderProductGuide(): string {
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
-      "line shows, or pasted at the caret, replacing the selection. Content splits a line at the caret; " +
+      "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
+      "block), or pasted at the caret, replacing the selection. Content splits a line at the caret; " +
       "on an empty line media land above it and leave the line for the caret. Nodes copied on the canvas " +
       "and a picture copied in this chat paste the same way: each text node's lines become paragraphs with " +
       "their original words, and each picture, video or audio carries the node's name as its caption, in " +

@@ -165,7 +165,7 @@ describe('a paste of files', () => {
     Object.defineProperty(event, 'clipboardData', { value: clipboard([PNG]) });
     view.dom.dispatchEvent(event);
 
-    expect(sink).toHaveBeenCalledWith({ files: [PNG], gap: null });
+    expect(sink).toHaveBeenCalledWith({ files: [PNG] });
     expect(view.state.doc.eq(before)).toBe(true);
     expect(view.state.selection).toBeInstanceOf(TextSelection);
   });

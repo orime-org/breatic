@@ -41,20 +41,16 @@ export type PasteHandler = NonNullable<
   BlockNoteEditorOptions<never, never, never>['pasteHandler']
 >;
 
-/** Files that arrived, and where they go. */
-export interface FilesArrival {
-  readonly files: readonly File[];
-  /**
-   * The gap a drop puts them in, or null for a paste, which puts them at the
-   * selection by the body's placement (inner#1351 design §5.4.3).
-   */
-  readonly gap: BlockGap | null;
-  /**
-   * The point of a drop on the words of a table cell, where the files land
-   * as a paste there would (§5.1, §5.4.7).
-   */
-  readonly at?: number;
-}
+/**
+ * Files that arrived, and where they go: a paste puts them at the selection
+ * by the body's placement (inner#1351 design §5.4.3); a drop puts them in the
+ * gap between blocks it showed, or, on a table cell's words, at that point as
+ * a paste there would (§5.1, §5.4.7).
+ */
+export type FilesArrival =
+  | { readonly files: readonly File[] }
+  | { readonly files: readonly File[]; readonly gap: BlockGap }
+  | { readonly files: readonly File[]; readonly at: number };
 
 /** Where arriving files are handed over. */
 export type FilesSink = (arrival: FilesArrival) => void;
@@ -103,7 +99,8 @@ export function gapAtDrop(doc: PMNode, at: number): BlockGap {
  */
 function onCellWords(doc: PMNode, at: number): boolean {
   const $at = doc.resolve(at);
-  return $at.parent.isTextblock && cellAround($at) !== null;
+  // Media land beside a code block (A7), so its words show the gap line.
+  return $at.parent.isTextblock && $at.parent.type.spec.code !== true && cellAround($at) !== null;
 }
 
 /**
@@ -201,7 +198,7 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
               const { doc } = view.state;
-              sink(onCellWords(doc, at.pos) ? { files, gap: null, at: at.pos } : { files, gap: gapAtDrop(doc, at.pos) });
+              sink(onCellWords(doc, at.pos) ? { files, at: at.pos } : { files, gap: gapAtDrop(doc, at.pos) });
               return true;
             },
           },
@@ -222,7 +219,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     const data = context.event.clipboardData;
     const files = data === null ? null : pastedFiles(data);
     if (files === null) return next(context);
-    sink({ files, gap: null });
+    sink({ files });
     return true;
   };
 }

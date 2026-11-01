@@ -229,11 +229,11 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        if (arrival.at !== undefined) {
+        if ('at' in arrival) {
           const placed = putBlocks(editor, prepared.blocks, arrival.at);
           if (placed !== null) selectPlaced(view, placed);
-        } else if (arrival.gap === null) putBlocks(editor, prepared.blocks);
-        else view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
+        } else if ('gap' in arrival) view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
+        else putBlocks(editor, prepared.blocks);
         prepared.start();
       },
     }),
