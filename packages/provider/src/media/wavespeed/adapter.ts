@@ -19,7 +19,9 @@ import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 
 /** The upstream kinds a media run speaks to: the runner submits, polls and bills through this adapter alone. */
-const MEDIA_KINDS: Readonly<Record<string, true>> = { wavespeed: true };
+// Configuration accepts fal and sandbase before their adapters exist, so a run bound to them would still speak
+// WaveSpeed's protocol; the adapter registry of inner#1775 replaces this table.
+const MEDIA_KINDS: Readonly<Record<string, true>> = { wavespeed: true, fal: true, sandbase: true };
 
 /**
  * Whether a media run can speak to upstreams of a kind.

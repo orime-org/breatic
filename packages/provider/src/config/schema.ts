@@ -26,10 +26,26 @@ const upstreamSchema = z.strictObject({
   concurrency: z.number().int().positive().optional(),
 });
 
+/** How a written value is converted after its spelling: to a string, a number, or a one-item list. */
+const conversion = z.enum(["string", "number", "list"]);
+
+/** How one sub-field of an item of a list param is written. */
+const itemFieldSchema = z.strictObject({
+  field: z.string().min(1),
+  values: z.record(z.string(), choice).optional(),
+  as: conversion.optional(),
+});
+
 const paramSchema = z.strictObject({
+  /** The upstream field; dots write it under nested objects. */
   field: z.string().min(1),
   /** Our value to the upstream's spelling. */
   values: z.record(z.string(), choice).optional(),
+  as: conversion.optional(),
+  /** The only values of ours this upstream takes; any other keeps it out of the candidates. */
+  supported: z.array(choice).optional(),
+  /** For a list of items: how each item's sub-fields are written; sub-fields not named are left out. */
+  item_fields: z.record(z.string(), itemFieldSchema).optional(),
   /** Each list entry is wrapped under this key. */
   item_key: z.string().optional(),
   /** Holding this value sends nothing. */
@@ -76,6 +92,16 @@ const bindingSchema = z.strictObject({
   reused_by: z.string().optional(),
   mentions: z.record(z.string(), z.string()).optional(),
   voice_map: z.record(z.string(), z.string()).optional(),
+  /** Upstream fields sent with the same value on every call. */
+  fixed: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Our params this upstream has no field for, and when it can still serve a run:
+   * `"*"` whatever the value, a list for those values (or when the run leaves the param out),
+   * `{ all_values }` whatever the value, for the reason given.
+   */
+  drops: z.record(z.string(), z.union([z.literal("*"), z.array(choice), z.strictObject({ all_values: z.string().min(1) })])).optional(),
+  /** Where a fal result puts its output files, as a dotted path. */
+  output_field: z.string().min(1).optional(),
   pricing: pricingRule,
 });
 
@@ -146,7 +172,18 @@ export interface ProviderConfig {
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
 export interface CatalogShape {
   /** Each param's offered values, and the pool param a slot joins, when it joins one. */
-  models: { name: string; params: Record<string, { values?: (string | number | boolean)[]; joins?: string }> }[];
+  models: {
+    name: string;
+    params: Record<string, {
+      values?: (string | number | boolean)[];
+      joins?: string;
+      /** `items` for a list of items, whose sub-fields are `fields`. */
+      type?: string;
+      fields?: Record<string, unknown>;
+      /** `voices` for a param whose values are the catalog's voices. */
+      remote_source?: string;
+    }>;
+  }[];
 }
 
 /** Every problem found while loading the provider configuration, one line each. */
@@ -225,6 +262,40 @@ function issueLine(input: ProviderConfigInput, path: readonly PropertyKey[], mes
 }
 
 /**
+ * Whether one upstream field path writes into another: the same path, or one nested under the other.
+ * @param a - A dotted path.
+ * @param b - Another.
+ * @returns True when they overlap.
+ */
+function overlaps(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b}.`) || b.startsWith(`${a}.`);
+}
+
+/**
+ * The problems with what one binding writes: a fixed field another entry also writes, and a pricing formula reading a dotted field.
+ * @param model - The model.
+ * @param binding - Its binding.
+ * @returns The problem lines.
+ */
+function bindingFieldProblems(model: string, binding: MediaBinding): string[] {
+  const problems: string[] = [];
+  const written = [...Object.values(binding.params ?? {}).map((p) => p.field), ...(binding.prompt_field === undefined ? [] : [binding.prompt_field])];
+  for (const fixed of Object.keys(binding.fixed ?? {})) {
+    for (const field of written) {
+      if (overlaps(fixed, field)) problems.push(`${model}: the binding to "${binding.upstream}" fixes "${fixed}", which "${field}" also writes`);
+    }
+  }
+  const formulas = [binding.pricing, ...(binding.extra_steps ?? []).map((s) => s.pricing)].flatMap((rule) => {
+    const read = pricingRuleSchema.safeParse(rule);
+    return read.success ? [read.data.formula] : [];
+  });
+  for (const field of written.filter((f) => f.includes("."))) {
+    if (formulas.some((f) => f.includes(field))) problems.push(`${model}: the binding to "${binding.upstream}" prices on "${field}", a dotted field pricing does not read`);
+  }
+  return problems;
+}
+
+/**
  * Validate the configuration and apply the deployment's weight overrides.
  * @param input - The raw files.
  * @returns The validated configuration.
@@ -239,10 +310,20 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
-    for (const { upstream } of bindings) {
+    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
+    for (const binding of bindings) {
+      const { upstream } = binding;
       // An undeclared upstream is already reported by checkList.
       const kind = raw.upstreams[upstream]?.kind;
       if (kind !== undefined && !hasMediaAdapter(kind)) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+      if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
+      if (kind !== undefined && kind !== "fal" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal binding reads`);
+      problems.push(...bindingFieldProblems(model, binding));
+      if (kind !== "wavespeed") {
+        for (const [param, drop] of Object.entries(binding.drops ?? {})) {
+          if (drop === "*" && sentByWaveSpeed.has(param)) problems.push(`${model}: the binding to "${upstream}" drops "${param}" whatever its value, which the WaveSpeed binding sends`);
+        }
+      }
     }
     models[model] = [...bindings].sort((a, b) => a.weight - b.weight);
   }
@@ -337,6 +418,46 @@ export function candidateOf(config: ProviderConfig, upstream: string, weight: nu
 }
 
 /**
+ * The problems with how one binding covers a model's params: each param bound or dropped exactly once, offered values only,
+ * item sub-fields the catalog item has, and a voice map wherever a reseller takes our voices.
+ * @param model - The model.
+ * @param binding - One of its bindings.
+ * @param params - The model's catalog params.
+ * @param kind - The kind of the binding's upstream.
+ * @returns The problem lines.
+ */
+function coverageProblems(model: string, binding: MediaBinding, params: CatalogShape["models"][number]["params"], kind: string | undefined): string[] {
+  const problems: string[] = [];
+  const at = `${model}: "${binding.upstream}"`;
+  for (const param of Object.keys(binding.drops ?? {})) {
+    if (params[param] === undefined) problems.push(`${at} drops param "${param}", which the model does not have`);
+  }
+  for (const [param, declared] of Object.entries(params)) {
+    const bound = binding.params?.[param];
+    const dropped = binding.drops?.[param];
+    if (bound === undefined && dropped === undefined) problems.push(`${at} neither binds nor drops param "${param}"`);
+    if (bound !== undefined && dropped !== undefined) problems.push(`${at} both binds and drops param "${param}"`);
+    const offered = declared.values === undefined ? undefined : new Set(declared.values.map(String));
+    const listed = [...(bound?.supported ?? []), ...(Array.isArray(dropped) ? dropped : [])];
+    for (const value of listed) {
+      if (offered !== undefined && !offered.has(String(value))) problems.push(`${at} lists value "${String(value)}" of "${param}", which the param does not offer`);
+    }
+    if (bound?.item_fields !== undefined) {
+      if (declared.type !== "items") problems.push(`${at} gives item_fields to "${param}", which is not a list of items`);
+      else {
+        for (const sub of Object.keys(bound.item_fields)) {
+          if (declared.fields?.[sub] === undefined) problems.push(`${at} maps sub-field "${sub}" of "${param}", which the catalog item does not have`);
+        }
+      }
+    }
+    if (declared.remote_source === "voices" && bound !== undefined && kind !== "wavespeed" && binding.voice_map === undefined) {
+      problems.push(`${at} takes voices in "${param}" without a voice_map`);
+    }
+  }
+  return problems;
+}
+
+/**
  * Check every binding against our catalog.
  * @param config - The validated configuration.
  * @param catalog - Our models and their params.
@@ -352,6 +473,7 @@ export function assertBindsCatalog(config: ProviderConfig, catalog: CatalogShape
     }
     const pools = new Set(Object.values(params).flatMap((p) => (p.joins === undefined ? [] : [p.joins])));
     for (const binding of bindings) {
+      problems.push(...coverageProblems(name, binding, params, config.upstreams[binding.upstream]?.kind));
       // A joined slot is named in the prompt by its pool's mention, so every binding writes one.
       for (const pool of pools) {
         if (binding.mentions?.[pool] === undefined) problems.push(`${name}: "${binding.upstream}" has no mentions template for "${pool}", which other params join`);

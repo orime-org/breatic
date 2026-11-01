@@ -211,29 +211,29 @@ describe("assertBindsCatalog", () => {
   }
 
   it("passes a binding whose params and values all exist in the catalog", () => {
-    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "5": "5s", "10": "10s" } } } })])).toEqual([]);
+    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "5": "5s", "10": "10s" } } }, drops: { aspect_ratio: "*" } })])).toEqual([]);
   });
 
   it("reports a bound param that the model does not have", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { resolution: { field: "resolution" } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { resolution: { field: "resolution" } }, drops: { duration: "*", aspect_ratio: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("resolution");
   });
 
   it("reports a value mapping for a value the param does not offer", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "7": "7s" } } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "7": "7s" } } }, drops: { aspect_ratio: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("7");
   });
 
   it("reports an absent_value the param does not offer", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio", absent_value: "1:1" } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio", absent_value: "1:1" } }, drops: { duration: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("1:1");
   });
 
   it("reports a catalog model that has no binding at all", () => {
-    const problems = catalogProblems([bind("fal", 2)], { models: [...catalog.models, { name: "kling", params: {} }] });
+    const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" } })], { models: [...catalog.models, { name: "kling", params: {} }] });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("kling");
   });
@@ -260,11 +260,11 @@ describe("provider.assertBindsCatalog", () => {
   const joined: CatalogShape = { models: [{ name: "seedance", params: { images: {}, style: { joins: "images" } } }] };
 
   it("checks the configuration the instance was built from", () => {
-    expect(problems([bind("fal", 2, { params: { images: { field: "images" } }, mentions: { images: "@image{n}" } })], joined)).toEqual([]);
+    expect(problems([bind("fal", 2, { params: { images: { field: "images" } }, drops: { style: "*" }, mentions: { images: "@image{n}" } })], joined)).toEqual([]);
   });
 
   it("reports a param other params join whose binding has no mentions template, naming model, upstream and param", () => {
-    const found = problems([bind("fal", 2, { params: { images: { field: "images" } } })], joined);
+    const found = problems([bind("fal", 2, { params: { images: { field: "images" } }, drops: { style: "*" } })], joined);
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("seedance");
     expect(found[0]).toContain("fal");

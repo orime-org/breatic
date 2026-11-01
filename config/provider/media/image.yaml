@@ -5,7 +5,8 @@
 # and how each of our params is written there: `field`,
 # `values` (our value to the upstream's spelling), `item_key` (each list
 # entry wrapped under it), `absent_value` (holding it sends nothing) and
-# `transform`. A param not listed is not sent to that upstream. `mentions` is
+# `transform`. A param this upstream has no field for is listed in `drops`:
+# "*" serves the run whatever the value. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 # `pricing` is the upstream's contract: base_price in millionths of a USD, a
 # JSONata formula (empty means base_price per call), discount_rate the percentage
@@ -61,6 +62,12 @@ models:
             field: enable_web_search
           resolution:
             field: resolution
+        drops:
+          enable_camera: "*"
+          camera: "*"
+          lens: "*"
+          focal_length: "*"
+          aperture: "*"
         pricing:
           kind: formula
           base_price: 70000
@@ -82,6 +89,14 @@ models:
             field: output_format
           resolution:
             field: resolution
+        drops:
+          light_azimuth: "*"
+          light_color: "*"
+          light_color_hex: "*"
+          light_elevation: "*"
+          light_intensity: "*"
+          light_quality: "*"
+          light_reference: "*"
         pricing:
           kind: formula
           base_price: 70000
@@ -208,6 +223,8 @@ models:
             field: quality
           resolution:
             field: resolution
+        drops:
+          style_images: "*"
         mentions:
           images: image {n}
         pricing:
@@ -229,6 +246,8 @@ models:
             field: image_urls
           output_format:
             field: output_format
+        drops:
+          style_images: "*"
         mentions:
           images: image {n}
         pricing:
@@ -250,6 +269,8 @@ models:
             field: images
           resolution:
             field: resolution
+        drops:
+          style_images: "*"
         mentions:
           images: image {n}
         pricing:

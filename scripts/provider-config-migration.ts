@@ -146,10 +146,14 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   const skipped = new Set(APP_PARAMS[model.name] ?? []);
   const params: Record<string, Record<string, unknown>> = {};
   const mentions: Record<string, string> = {};
+  const drops: Record<string, "*"> = {};
   for (const [name, spec] of Object.entries(model.params ?? {})) {
     if (spec.mention !== undefined) mentions[name] = spec.mention;
     // A slot that joins a pool travels inside it; no field carries the slot itself.
-    if (skipped.has(name) || spec.joins !== undefined) continue;
+    if (skipped.has(name) || spec.joins !== undefined) {
+      drops[name] = "*";
+      continue;
+    }
     const transform = TRANSFORMS[model.name]?.[name];
     params[name] = {
       field: threeD ? name : (spec.upstream ?? name),
@@ -187,6 +191,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     // Today's 3D path sends the prompt on every call, "" when there is none, and drops only null params.
     ...(threeD ? { prompt_field: "prompt", send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
+    ...(Object.keys(drops).length === 0 ? {} : { drops }),
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
     ...(Object.keys(mentions).length === 0 ? {} : { mentions }),
@@ -202,7 +207,8 @@ the prompt goes in (\`send_empty\` sends it and every param even when empty),
 and how each of our params is written there: \`field\`,
 \`values\` (our value to the upstream's spelling), \`item_key\` (each list
 entry wrapped under it), \`absent_value\` (holding it sends nothing) and
-\`transform\`. A param not listed is not sent to that upstream. \`mentions\` is
+\`transform\`. A param this upstream has no field for is listed in \`drops\`:
+"*" serves the run whatever the value. \`mentions\` is
 how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 \`pricing\` is the upstream's contract: base_price in millionths of a USD, a
 JSONata formula (empty means base_price per call), discount_rate the percentage

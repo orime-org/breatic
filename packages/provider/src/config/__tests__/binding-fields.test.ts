@@ -21,7 +21,7 @@ const upstreams = {
  */
 function bind(upstream: string, weight: number, extra: Record<string, unknown> = {}): MediaBinding {
   const output = upstream === "fal" ? { output_field: "video" } : {};
-  return { upstream, weight, model_id: `${upstream}/m`, pricing, ...output, ...extra } as MediaBinding;
+  return { upstream, weight, model_id: `${upstream}/m`, pricing, ...output, ...extra };
 }
 
 /**
