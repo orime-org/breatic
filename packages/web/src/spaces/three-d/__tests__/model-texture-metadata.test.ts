@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
@@ -331,5 +331,21 @@ describe('model texture metadata failures name the image', () => {
     ['an image without a source', () => model({ images: [{ mimeType: 'image/png' }] }), 'images[0]', 'invalid'],
   ] as const)('reports %s by its location', (_label, source, detail, code) => {
     expect(() => validateModelTextureMetadata(source(), { ...IMPORT_LIMITS, maxTextureEdge: 32 })).toThrow(expect.objectContaining({ code, detail }));
+  });
+});
+
+describe('model texture metadata decodes each embedded buffer once (inner#1690)', () => {
+  it('reads images that share one data-URI buffer with a single decode', () => {
+    const image = png(4, 4);
+    const uri = dataUri(image, 'application/octet-stream');
+    const source = model({
+      buffers: [{ uri, byteLength: image.byteLength }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: image.byteLength }, { buffer: 0, byteOffset: 0, byteLength: image.byteLength }],
+      images: [{ bufferView: 0, mimeType: 'image/png' }, { bufferView: 1, mimeType: 'image/png' }],
+    });
+    const decode = vi.spyOn(globalThis, 'atob');
+    validateModelTextureMetadata(source, IMPORT_LIMITS);
+    expect(decode).toHaveBeenCalledTimes(1);
+    decode.mockRestore();
   });
 });
