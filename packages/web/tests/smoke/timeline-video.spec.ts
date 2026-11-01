@@ -127,7 +127,10 @@ test('a real Viewer sees the registered Timeline clips without material or start
       const outlet = visibleSpace(peer);
       // Synchronized placements and resolved media anchor the read-only absence checks.
       await expect(outlet.getByTestId('timeline-add-media')).toHaveCount(0);
-      await expect(outlet.locator('input[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
+      // A Viewer still selects a clip and reads its start frame as text, not as a field.
+      await outlet.getByTestId(`timeline-clip-${uploaded.clipId}`).click();
+      await expect(outlet.getByTestId('timeline-clip-start')).toHaveText('0');
+      await expect(outlet.locator('input[data-testid="timeline-clip-start"]')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-start-frame')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-play')).toBeEnabled();
       await outlet.getByTestId('timeline-play').click();

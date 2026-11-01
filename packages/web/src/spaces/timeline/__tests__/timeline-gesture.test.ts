@@ -37,7 +37,7 @@ function newTrack(): string {
 describe('previewTimelineGesture move', () => {
   it('keeps the track when nothing is hovered and adds the delta', () => {
     expect(previewTimelineGesture(DOC, B, 'move', 30, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 130, sourceInFrame: 10, durationFrames: 48, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 130, dropFrame: 130, sourceInFrame: 10, durationFrames: 48, snapFrame: null,
     });
   });
 
@@ -77,7 +77,7 @@ describe('previewTimelineGesture move', () => {
 describe('previewTimelineGesture trims', () => {
   it('moves the start edge with the source in-point and keeps the end', () => {
     expect(previewTimelineGesture(DOC, B, 'trim-start', 5, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 105, sourceInFrame: 15, durationFrames: 43, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 105, dropFrame: 105, sourceInFrame: 15, durationFrames: 43, snapFrame: null,
     });
     expect(previewTimelineGesture(DOC, B, 'trim-start', -4, null, FREE)).toMatchObject({ startFrame: 96, sourceInFrame: 6, durationFrames: 52 });
   });
@@ -97,7 +97,7 @@ describe('previewTimelineGesture trims', () => {
 
   it('moves only the end edge', () => {
     expect(previewTimelineGesture(DOC, B, 'trim-end', 12, null, FREE)).toEqual({
-      clipId: B, trackId: 'v2', startFrame: 100, sourceInFrame: 10, durationFrames: 60, snapFrame: null,
+      clipId: B, trackId: 'v2', startFrame: 100, dropFrame: 100, sourceInFrame: 10, durationFrames: 60, snapFrame: null,
     });
   });
 
@@ -241,6 +241,83 @@ describe('timelineGestureCommand property', () => {
         if (command === null) return;
         const plan = planTimelineEdit(document, command, idFactory('60000000'));
         expect(plan).toMatchObject({ ok: true });
+      },
+    ), { numRuns: 400 });
+  });
+});
+
+describe('gestures on the magnetic main track (inner#1708 C3, C4)', () => {
+  const MAGNET = { ...FREE, magnet: true };
+  const C = cid(3);
+
+  /**
+   * Preview a gesture, build its command and plan it: the clip's planned placement.
+   * @param document - The document.
+   * @param clipId - The dragged clip.
+   * @param mode - The drag mode.
+   * @param delta - The pointer travel in frames.
+   * @param hover - The hovered row.
+   * @returns The preview and the planned clip.
+   * @throws {Error} When no preview, command or accepted plan results.
+   */
+  function roundTrip(document: TimelineDocumentV1, clipId: string, mode: TimelineGestureMode, delta: number, hover: string | 'new' | null): { preview: NonNullable<ReturnType<typeof previewTimelineGesture>>; planned: TimelineVideoClip; next: TimelineDocumentV1 } {
+    const preview = previewTimelineGesture(document, clipId, mode, delta, hover, MAGNET);
+    if (preview === null) throw new Error('Expected a preview');
+    const command = timelineGestureCommand(document, preview, mode, ON, newTrack);
+    if (command === null) throw new Error('Expected a command');
+    const plan = planTimelineEdit(document, command, idFactory('60000000'));
+    if (!plan.ok) throw new Error(`Expected an accepted plan, got ${plan.reason}`);
+    const planned = plan.next.clips[clipId];
+    if (planned === undefined) throw new Error('Expected the clip to remain');
+    return { preview, planned, next: plan.next };
+  }
+
+  it('extends the head of the first main clip back over its trimmed source frames', () => {
+    const document = timeline([clip(A, MAIN, 0, 20, { sourceInFrame: 20 }), clip(B, MAIN, 20, 10)], [track(MAIN, 0)]);
+    const preview = previewTimelineGesture(document, A, 'trim-start', -10, null, MAGNET);
+    expect(preview).toMatchObject({ startFrame: 0, sourceInFrame: 10, durationFrames: 30 });
+    if (preview === null) return;
+    expect(timelineGestureCommand(document, preview, 'trim-start', ON, newTrack)).not.toBe(null);
+    const { planned, next } = roundTrip(document, A, 'trim-start', -10, null);
+    expect(planned).toMatchObject({ startFrame: 0, sourceInFrame: 10, durationFrames: 30 });
+    expect(next.clips[B]?.startFrame).toBe(30);
+  });
+
+  it('previews a same-track move at the packed slot the planner gives it', () => {
+    // Dropping A at 60 puts it after B (midpoint 60) and before C: B then A from frame 0.
+    const document = timeline([clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 24), clip(C, MAIN, 72, 48)], [track(MAIN, 0), track('v2', 1)]);
+    const { preview, planned } = roundTrip(document, A, 'move', 60, null);
+    expect(preview).toMatchObject({ startFrame: 24, dropFrame: 60 });
+    expect(planned.startFrame).toBe(preview.startFrame);
+  });
+
+  it('previews a move from a sub track onto the main track at its packed slot', () => {
+    const document = timeline([clip(A, MAIN, 0, 48), clip(C, MAIN, 48, 48), clip(B, 'v2', 100, 48)], [track(MAIN, 0), track('v2', 1)]);
+    const { preview, planned } = roundTrip(document, B, 'move', -40, MAIN);
+    expect(preview).toMatchObject({ trackId: MAIN, startFrame: 48 });
+    expect(planned).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame });
+  });
+
+  it('previews every main-track move where the planner places it', () => {
+    fc.assert(fc.property(
+      conflictFreeDocument(),
+      fc.nat(),
+      fc.integer({ min: -200, max: 200 }),
+      fc.boolean(),
+      fc.integer({ min: 0, max: 400 }),
+      (document, pick, delta, snap, playhead) => {
+        const ids = Object.keys(document.clips);
+        const clipId = ids[pick % ids.length] ?? '';
+        const options = { snap, pixelsPerFrame: 1, playhead, magnet: true };
+        const preview = previewTimelineGesture(document, clipId, 'move', delta, MAIN, options);
+        if (preview === null) return;
+        const command = timelineGestureCommand(document, preview, 'move', ON, newTrack);
+        // No command means the release changes nothing, so the preview must show the clip where it already is.
+        if (command === null) { expect(document.clips[clipId]).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame }); return; }
+        const plan = planTimelineEdit(document, command, idFactory('60000000'));
+        expect(plan).toMatchObject({ ok: true });
+        if (!plan.ok) return;
+        expect(plan.next.clips[clipId]).toMatchObject({ trackId: MAIN, startFrame: preview.startFrame });
       },
     ), { numRuns: 400 });
   });

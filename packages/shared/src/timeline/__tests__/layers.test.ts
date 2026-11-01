@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 
 import { activeTimelineClipAt, nextTimelinePlaybackBoundary } from "../layers.js";
+import type { TimelineVideoClip } from "../schema.js";
 import { MAIN, V2, V3, cid, clip, timeline, track } from "./edit-fixtures.js";
 
 const LOW = cid(1);
@@ -56,5 +58,39 @@ describe("nextTimelinePlaybackBoundary", () => {
   it("is capped by the end frame", () => {
     expect(nextTimelinePlaybackBoundary(layered, allReady, 100, 120)).toBe(120);
     expect(nextTimelinePlaybackBoundary(layered, new Set(), 0, 480)).toBe(480);
+  });
+});
+
+describe("nextTimelinePlaybackBoundary under an upper layer (inner#1708 C2)", () => {
+  it("skips a lower clip edge hidden under an upper clip", () => {
+    const M1 = cid(11);
+    const M2 = cid(12);
+    const UPPER = cid(13);
+    const hidden = timeline([clip(M1, MAIN, 0, 48), clip(M2, MAIN, 48, 192), clip(UPPER, V2, 0, 240)], [track(MAIN, 0), track(V2, 1)]);
+    const ready = new Set([M1, M2, UPPER]);
+    expect(activeTimelineClipAt(hidden, ready, 47)?.id).toBe(UPPER);
+    expect(activeTimelineClipAt(hidden, ready, 48)?.id).toBe(UPPER);
+    expect(nextTimelinePlaybackBoundary(hidden, ready, 0, 240)).toBe(240);
+  });
+
+  it("returns exactly the next frame where the shown clip changes", () => {
+    const seed = fc.record({
+      layer: fc.integer({ min: 0, max: 2 }),
+      startFrame: fc.integer({ min: 0, max: 60 }),
+      durationFrames: fc.integer({ min: 1, max: 40 }),
+      ready: fc.boolean(),
+    });
+    fc.assert(fc.property(fc.array(seed, { maxLength: 6 }), fc.integer({ min: 0, max: 100 }), (seeds, frame) => {
+      const layers = [MAIN, V2, V3];
+      const clips: TimelineVideoClip[] = seeds.map((item, index) => clip(cid(index + 1), layers[item.layer] ?? MAIN, item.startFrame, item.durationFrames));
+      const document = timeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, 2)]);
+      const ready = new Set(clips.filter((_item, index) => seeds[index]?.ready === true).map((item) => item.id));
+      const end = 110;
+      const shown = (at: number): string | null => activeTimelineClipAt(document, ready, at)?.id ?? null;
+      const next = nextTimelinePlaybackBoundary(document, ready, frame, end);
+      expect(next).toBeGreaterThan(frame);
+      for (let at = frame + 1; at < next; at += 1) expect(shown(at), `shown clip changed at ${at} before ${next}`).toBe(shown(frame));
+      if (next < end) expect(shown(next), `nothing changes at ${next}`).not.toBe(shown(next - 1));
+    }), { numRuns: 300 });
   });
 });

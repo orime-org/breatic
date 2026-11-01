@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 
 import { planTimelineEdit, timelineSourceOverflow } from "../edit.js";
+import { validateTimelineRange } from "../time.js";
 import type { TimelineEditPlan } from "../edit.js";
 import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema, TimelineEditCommandSchema } from "../schema.js";
 import type { TimelineDocumentV1, TimelineEditCommand, TimelineEditPlacement, TimelineVideoClip } from "../schema.js";
 import {
-  LINK_ONLY, MAGNET_ONLY, MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, V3, V4,
+  FPS, LINK_ONLY, MAGNET_ONLY, MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, V3, V4,
   cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, starts, timeline, totalOverflow, track,
 } from "./edit-fixtures.js";
 
@@ -123,12 +124,45 @@ describe("timelineSourceOverflow", () => {
     [950, 100, 50],
     [1100, 10, 10],
   ])("counts frames outside the source for in-point %i and duration %i as %i", (sourceInFrame, durationFrames, expected) => {
-    expect(timelineSourceOverflow(clip(A, V2, 0, durationFrames, { sourceInFrame }), SOURCE)).toBe(expected);
+    expect(timelineSourceOverflow(clip(A, V2, 0, durationFrames, { sourceInFrame }), SOURCE, FPS)).toBe(expected);
   });
 
   it("samples the source at the clip rate", () => {
     // Frame j samples source frame 900 + 2j; j >= 50 falls at or past 1000.
-    expect(timelineSourceOverflow(clip(A, V2, 0, 100, { sourceInFrame: 900, rate: { num: 2, den: 1 } }), SOURCE)).toBe(50);
+    expect(timelineSourceOverflow(clip(A, V2, 0, 100, { sourceInFrame: 900, rate: { num: 2, den: 1 } }), SOURCE, FPS)).toBe(50);
+  });
+
+  describe("when the source timebase differs from the Timeline rate (inner#1708 Q1)", () => {
+    const FPS25 = { num: 25, den: 1 };
+    /** 2 s at 50 frames per second: ceil(2 * 50) = 100 source frames. */
+    const SOURCE50 = { ...SOURCE, timebase: { num: 50, den: 1 }, extentFrames: 100, durationSeconds: "2" };
+
+    it("counts Timeline frames past the source end in seconds, not in source frames", () => {
+      // 100 Timeline frames at 25 fps last 4 s; only the first 50 fall inside the 2 s source.
+      expect(timelineSourceOverflow(clip(A, V2, 0, 100), SOURCE50, FPS25)).toBe(50);
+      expect(validateTimelineRange(clip(A, V2, 0, 100), SOURCE50, FPS25).valid).toBe(false);
+      expect(timelineSourceOverflow(clip(A, V2, 0, 50), SOURCE50, FPS25)).toBe(0);
+      expect(validateTimelineRange(clip(A, V2, 0, 50), SOURCE50, FPS25).valid).toBe(true);
+    });
+
+    it("agrees with validateTimelineRange on every in-point and duration", () => {
+      fc.assert(fc.property(
+        fc.integer({ min: 0, max: 120 }), fc.integer({ min: 1, max: 120 }), fc.constantFrom({ num: 1, den: 1 }, { num: 2, den: 1 }, { num: 1, den: 2 }),
+        (sourceInFrame, durationFrames, rate) => {
+          const placed = clip(A, V2, 0, durationFrames, { sourceInFrame, rate });
+          expect(timelineSourceOverflow(placed, SOURCE50, FPS25) === 0).toBe(validateTimelineRange(placed, SOURCE50, FPS25).valid);
+        },
+      ), { numRuns: 400 });
+    });
+
+    it("refuses a set_range that runs past the source end", () => {
+      const document = TimelineDocumentV1Schema.parse({
+        ...timeline([clip(A, MAIN, 0, 10)], [track(MAIN, 0)], [SOURCE50]),
+        settings: { width: 1920, height: 1080, fps: FPS25 },
+      });
+      expect(reasonOf(plan(document, setRange(A, 0, 0, 100, ON)))).toBe("invalid_range");
+      expect(reasonOf(plan(document, setRange(A, 0, 0, 50, ON)))).toBe("ok");
+    });
   });
 });
 

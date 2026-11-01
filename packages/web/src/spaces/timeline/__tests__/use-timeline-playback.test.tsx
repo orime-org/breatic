@@ -198,15 +198,15 @@ function renderPlayback(
       observedFrames.push(value);
       setFrame(value);
     }, []);
-    // Mirrors TimelineSpace: readiness checks source ranges, and the shown clip is the top ready layer.
-    const ready = new Set(resolveTimelineArrangement({
+    // Mirrors TimelineSpace: readiness checks source ranges once per document, and the shown clip is the top ready layer.
+    const ready = React.useMemo(() => new Set(resolveTimelineArrangement({
       tracks: Object.values(input.document.tracks), clips: Object.values(input.document.clips),
       sources: input.document.sources, fps: input.document.settings.fps,
-    }).readyClipIds);
+    }).readyClipIds), [input.document]);
     const clip = activeTimelineClipAt(input.document, ready, frame);
     const source = clip === null ? null : input.document.sources[clip.sourceId] ?? null;
     const playback = useTimelinePlayback({
-      document: input.document, frame, onFrame, clip, source,
+      document: input.document, readyClipIds: ready, frame, onFrame, clip, source,
       media: source === null ? null : input.media.get(source.id) ?? null,
       enabled: input.enabled, resourceState: input.resourceState,
     });
@@ -1137,6 +1137,29 @@ describe('useTimelinePlayback across layers (inner#1708 E22)', () => {
     expect(hook.result.current.state).toBe('playing');
     tick(10250);
     expect(hook.result.current.frame).toBe(102);
+  });
+
+  it('keeps playing the upper clip past a lower clip edge hidden under it (inner#1708 C2)', async () => {
+    const M1: TimelineVideoClip = { ...CLIP, durationFrames: 48 };
+    const M2: TimelineVideoClip = { ...CLIP, id: '30000000-0000-4000-8000-000000000009', startFrame: 48, sourceInFrame: 48, durationFrames: 192 };
+    const COVER: TimelineVideoClip = { ...UPPER, startFrame: 0, durationFrames: 240 };
+    const lower = mediaFixture();
+    const upper = mediaFixture();
+    const hook = renderPlayback(upper, {
+      document: timelineDocument([M1, M2, COVER], [SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[SOURCE.id, lower.element], [SOURCE_B.id, upper.element]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    const pausesWhilePlaying = upper.pause.mock.calls.length;
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    tick(3000);
+    expect(hook.result.current.frame).toBe(72);
+    expect(hook.result.current.state).toBe('playing');
+    expect(upper.facts.paused).toBe(false);
+    expect(upper.pause).toHaveBeenCalledTimes(pausesWhilePlaying);
   });
 
   it('treats a clip outside its source as not ready and plays through it as a gap', () => {

@@ -72,8 +72,11 @@ describe('timelineKeyAction without modifiers', () => {
     expect(timelineKeyAction(press('N', { shiftKey: true }), FPS24)).toBe(null);
     expect(timelineKeyAction(press('n', { altKey: true }), FPS24)).toBe(null);
   });
-  it('maps Escape to cancel the gesture', () => {
-    expect(timelineKeyAction(press('Escape'), FPS24)).toEqual({ kind: 'cancel_gesture' });
+  it('leaves Escape to the drag library, which cancels an active drag itself', () => {
+    expect(timelineKeyAction(press('Escape'), FPS24)).toBe(null);
+  });
+  it('maps N typed with Caps Lock on to toggle snapping', () => {
+    expect(timelineKeyAction(press('N'), FPS24)).toEqual({ kind: 'toggle_snap' });
   });
   it('maps arrows to one-frame nudges and carries repeat', () => {
     expect(timelineKeyAction(press('ArrowLeft'), FPS24)).toEqual({ kind: 'nudge', frames: -1, repeat: false });

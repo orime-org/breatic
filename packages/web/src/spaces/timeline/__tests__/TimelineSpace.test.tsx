@@ -1330,3 +1330,165 @@ describe('TimelineSpace add dialog targets', () => {
     expect(Object.values(layout().sources)).toHaveLength(1);
   });
 });
+
+/**
+ * Send one primary-button pointer event at a horizontal position, as dnd-kit's pointer sensor reads it.
+ * @param target - The element pressed, or the document the sensor listens on after the press.
+ * @param type - The pointer event.
+ * @param clientX - The horizontal viewport position.
+ * @throws {Error} When a handler throws.
+ */
+function pointer(target: Element | Document, type: 'pointerDown' | 'pointerMove' | 'pointerUp', clientX: number): void {
+  fireEvent[type](target, { clientX, clientY: 10, isPrimary: true, button: 0, buttons: type === 'pointerUp' ? 0 : 1, pointerId: 1 });
+}
+
+/**
+ * The drag preview outline drawn on a track row, if any.
+ * @param trackId - The row's track.
+ * @returns The outline, or null.
+ * @throws {Error} When the row is absent.
+ */
+function dragGhost(trackId: string): Element | null {
+  return screen.getByTestId(`timeline-track-${trackId}`).querySelector('.pointer-events-none.rounded-chrome:not([data-testid])');
+}
+
+describe('TimelineSpace keyboard focus and selection (inner#1708 G1, G3, C1, C5)', () => {
+  it('selects a clip when it receives focus, so Delete removes the focused clip and keeps the earlier one', async () => {
+    seedLayout([clipAt(X, 'v2', 0, 10), clipAt(Y2, 'v2', 20, 10)]);
+    showTimeline();
+    const first = await screen.findByTestId('timeline-clip-' + X);
+    const second = screen.getByTestId('timeline-clip-' + Y2);
+    fireEvent.click(first);
+    act(() => second.focus());
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+    expect(first).toHaveAttribute('aria-pressed', 'false');
+    press(second, 'Delete');
+    await waitFor(() => expect(layout().clips[Y2]).toBe(undefined));
+    expect(layout().clips[X]).toMatchObject({ startFrame: 0, durationFrames: 10 });
+  });
+
+  it('leaves a typed key to the focused track select', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const select = screen.getByTestId('timeline-clip-track');
+    expect(select).toHaveAttribute('role', 'combobox');
+    press(select, 'n');
+    expect(screen.getByTestId('timeline-toggle-snap')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('undoes a keyboard delete with Cmd+Z after focus fell back to the page', async () => {
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    press(clip, 'Delete');
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+    fireEvent.keyDown(document.body, { key: 'z', metaKey: true });
+    await waitFor(() => expect(layout().clips[X]).toMatchObject({ startFrame: 0, durationFrames: 24 }));
+  });
+
+  it('keeps Alt+Up working after a track change dropped the focus', async () => {
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    press(clip, 'ArrowUp', { altKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+    const target = document.activeElement ?? document.body;
+    fireEvent.keyDown(target, { key: 'ArrowUp', altKey: true });
+    await waitFor(() => expect(Object.keys(layout().tracks)).toHaveLength(3));
+    expect(layout().tracks[layout().clips[X]?.trackId ?? '']).toMatchObject({ order: 2 });
+  });
+
+  it('undoes a held main-track nudge in one step', async () => {
+    const A = '30000000-0000-4000-8000-000000000031';
+    const B = '30000000-0000-4000-8000-000000000032';
+    const C = '30000000-0000-4000-8000-000000000033';
+    const D = '30000000-0000-4000-8000-000000000034';
+    seedLayout([clipAt(A, MAIN, 0, 10), clipAt(B, MAIN, 10, 10), clipAt(C, MAIN, 20, 10), clipAt(D, MAIN, 30, 10)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + A);
+    fireEvent.click(clip);
+    press(clip, 'ArrowRight');
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(10));
+    press(screen.getByTestId('timeline-clip-' + A), 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(20));
+    press(screen.getByTestId('timeline-clip-' + A), 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(30));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(0));
+    expect([B, C, D].map((id) => layout().clips[id]?.startFrame)).toEqual([10, 20, 30]);
+  });
+});
+
+describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
+  it('draws no drag preview once the role turns Viewer during a drag', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    const { view, client } = showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    expect(dragGhost('v2')).not.toBe(null);
+    view.rerender(surface(client, { ...CONNECTED, writeAccess: 'denied' }, true));
+    expect(dragGhost('v2')).toBe(null);
+    pointer(document, 'pointerMove', 40);
+    expect(dragGhost('v2')).toBe(null);
+    pointer(document, 'pointerUp', 40);
+  });
+
+  it('names a peer removal when the dragged clip vanished before release', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    act(() => { write(doc, { operation: 'delete', parameters: { clipId: X }, placement: OFF }); });
+    pointer(document, 'pointerUp', 20);
+    await waitFor(() => expect(vi.mocked(toast.warning).mock.calls.map(([text]) => text)).toEqual(['This clip was removed by another member.']));
+    expect(t('timeline.errors.clip_removed')).toBe('This clip was removed by another member.');
+  });
+
+  it('marks where a clip dragged along the magnetic main track will land', async () => {
+    const A = '30000000-0000-4000-8000-000000000041';
+    const B = '30000000-0000-4000-8000-000000000042';
+    const C = '30000000-0000-4000-8000-000000000043';
+    writeUserPreference(ME, { timelineSnap: false });
+    seedLayout([clipAt(A, MAIN, 0, 10), clipAt(B, MAIN, 10, 10), clipAt(C, MAIN, 20, 10)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + A);
+    fireEvent.click(clip);
+    // Default zoom is 2 px per frame: 30 px is 15 frames, past B's midpoint, so A lands after B at frame 10.
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 30);
+    const marker = await screen.findByTestId('timeline-insert-marker');
+    expect(screen.getByTestId('timeline-track-' + MAIN)).toContainElement(marker);
+    expect(marker.style.left).toBe('20px');
+    pointer(document, 'pointerUp', 30);
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(10));
+    expect(layout().clips[B]?.startFrame).toBe(0);
+    expect(screen.queryByTestId('timeline-insert-marker')).toBe(null);
+  });
+});
+
+describe('TimelineSpace zoom and ruler for long content (inner#1708 G4, R1)', () => {
+  it('lets the zoom slider zoom out below the fixed minimum for long content', async () => {
+    seedLayout([clipAt(X, 'v2', 1_000_000, 24)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    const thumb = within(screen.getByTestId('timeline-zoom')).getByRole('slider');
+    expect(Number(thumb.getAttribute('aria-valuemin'))).toBeLessThan(0.25);
+  });
+
+  it('draws at most 400 ruler labels for a clip far along the Timeline', async () => {
+    seedLayout([clipAt(X, 'v2', 200_000, 24)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    expect(screen.getByTestId('timeline-ruler').children.length).toBeLessThanOrEqual(400);
+  });
+});

@@ -72,6 +72,16 @@ describe('useTimelineEditPrefs', () => {
     expect(result.current).toMatchObject({ magnet: true, snap: true, linkage: true });
   });
 
+  it('shares one account\'s switches between two mounted editors without a remount', () => {
+    const tabA = renderHook(() => useTimelineEditPrefs());
+    const tabB = renderHook(() => useTimelineEditPrefs());
+    act(() => tabA.result.current.set({ magnet: false }));
+    expect(tabA.result.current.magnet).toBe(false);
+    expect(tabB.result.current.magnet).toBe(false);
+    act(() => tabB.result.current.set({ snap: false }));
+    expect(tabA.result.current).toMatchObject({ magnet: false, snap: false, linkage: true });
+  });
+
   it('keeps the value in memory when storage refuses the write', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
     const { result } = renderHook(() => useTimelineEditPrefs());
