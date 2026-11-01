@@ -350,20 +350,26 @@ describe('R stored receipt v2 names the full ledger and the compact table', () =
   });
 });
 
-// Design §2 "失败分类": a code is transient when running the producer again on the
-// same source bytes can give a different result, content when the bytes decide it.
+// Design §10.6 "失败分类": a code is transient when running the producer again on the
+// same source bytes under the same frozen policy can give a different result, content
+// when the bytes and the frozen policy decide it. Limits frozen at admission
+// (`resource_limit`, `source_ledger_over_cap`) are content; a real exhaustion of
+// container memory, disk or processes is the transient `resource_exhausted`.
 const TRANSIENT = [
   'expired', 'source_ledger_missing', 'source_ledger_invalid', 'presentation_failed', 'presentation_report_failed', 'cleanup_failed',
-  'admission_invalid', 'source_missing', 'invalid_limits', 'resource_limit', 'source_ledger_over_cap',
+  'admission_invalid', 'source_missing', 'invalid_limits', 'resource_exhausted',
   // The producer's catch-all for unclassified exceptions.
   'source_ledger_failed',
 ] as const;
 const CONTENT = [
   'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
   'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
+  'resource_limit', 'source_ledger_over_cap',
 ] as const;
+// Presentation candidate codes classified by the same function (§10.6); they are never written into ledger state (§7.4).
+const CANDIDATE_CONTENT = ['too_long', 'packed_over_cap', 'packed_clock_mismatch'] as const;
 
-describe('F ledger failure classification', () => {
+describe('F ledger and candidate failure classification', () => {
   it.each(TRANSIENT)('F01 %s is transient', (code) => {
     expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('transient');
   });
@@ -372,16 +378,18 @@ describe('F ledger failure classification', () => {
     expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('content');
   });
 
-  // Presentation-run codes are not written into ledger state (design §2); that
-  // belongs to the store slice. Here they are just unlisted codes.
-  it.each(['packed_over_cap', 'packed_clock_mismatch', 'metadata_mismatch', 'attempt_conflict', 'not_a_known_code'])('F03 unlisted code %s is transient', (code) => {
+  it.each(CANDIDATE_CONTENT)('F03 candidate code %s is content', (code) => {
+    expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('content');
+  });
+
+  it.each(['metadata_mismatch', 'attempt_conflict', 'not_a_known_code'])('F03 unlisted code %s is transient', (code) => {
     expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('transient');
   });
 
-  it('F04 every code outside the content list is transient (property)', () => {
+  it('F04 a code is content exactly when it is a ledger or candidate content code (property)', () => {
     const classify = required('classifyVideoSourceLedgerFailure');
-    const content = new Set<string>(CONTENT);
-    fc.assert(fc.property(fc.oneof(fc.stringMatching(/^[a-z][a-z0-9_]{0,40}$/), fc.constantFrom(...CONTENT)), (code) => {
+    const content = new Set<string>([...CONTENT, ...CANDIDATE_CONTENT]);
+    fc.assert(fc.property(fc.oneof(fc.stringMatching(/^[a-z][a-z0-9_]{0,40}$/), fc.constantFrom(...CONTENT, ...CANDIDATE_CONTENT, ...TRANSIENT)), (code) => {
       expect(classify(code)).toBe(content.has(code) ? 'content' : 'transient');
     }), { seed: 1306, numRuns: 300 });
   });
