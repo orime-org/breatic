@@ -12,10 +12,11 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { answersMismatch, readQuestionnaire, t } from "@breatic/shared";
+import { answersMismatch, readQuestionnaire, spaceAnswerMismatch, spaceRequestInputSchema, t } from "@breatic/shared";
 import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
-import type { AskUserAnswer, ConversationEntity, MessageData } from "@breatic/shared";
-import { askResultForModel } from "@server/agent/ask-result.js";
+import { ASK_USER, REQUEST_SPACE_CONTENT } from "@breatic/domain";
+import type { AskUserAnswer, ConversationEntity, MessageData, SpaceRequestAnswer } from "@breatic/shared";
+import { askResultForModel, cardOutputOf, type SpaceRequestResult } from "@server/agent/ask-result.js";
 
 /**
  * Validate that a conversation exists and belongs to the given user.
@@ -477,6 +478,43 @@ export async function answerAsk(
     const reason = answersMismatch(asked.questions, answer.answers);
     if (reason !== null) return { reason };
     const result = { answers: answer.answers };
-    return { output: result, forModel: askResultForModel(answer.toolCallId, result) };
+    return { output: result, forModel: askResultForModel(answer.toolCallId, result, ASK_USER) };
+  });
+}
+
+/**
+ * What a Space request is settled with for an answer: the Spaces as read, or
+ * the refusal.
+ * @param answer - What the browser sent.
+ * @returns The call's result, in full.
+ */
+export function spaceRequestResultOf(answer: SpaceRequestAnswer): SpaceRequestResult {
+  return answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
+}
+
+/**
+ * Take the reader's answer to the request to read Spaces the agent is waiting
+ * on (inner#1552), once.
+ *
+ * Held to the request as it was made, and settled only while the call still
+ * waits, as `answerAsk` is. The card keeps a summary per Space; the full
+ * result, content included, goes only to the model's copy.
+ * @param conversationId - The conversation, already checked writable by the caller.
+ * @param answer - What the browser sent.
+ * @returns How it went: answered (with the turn to resume), already settled,
+ *   not fitting the request, or no such card.
+ * @throws {NotFoundError} if the conversation is gone.
+ */
+export async function answerSpaceRequest(
+  conversationId: string,
+  answer: SpaceRequestAnswer,
+): Promise<messageRepo.AnswerOutcome> {
+  return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
+    const asked = spaceRequestInputSchema.safeParse(input);
+    if (!asked.success) return { reason: "The call is not a request to read Spaces." };
+    const reason = spaceAnswerMismatch(asked.data, answer);
+    if (reason !== null) return { reason };
+    const result = spaceRequestResultOf(answer);
+    return { output: cardOutputOf(result), forModel: askResultForModel(answer.toolCallId, result, REQUEST_SPACE_CONTENT) };
   });
 }
