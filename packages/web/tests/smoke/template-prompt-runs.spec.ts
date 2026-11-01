@@ -33,30 +33,26 @@ const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`
 mkdirSync(OUT, { recursive: true });
 
 /**
- * The template's prompt as the locale file on disk holds it, cut at every chip and brace into the literal
- * pieces the editor must show in order. A dev server started before a locale edit serves the old sentence.
+ * A prompt as the locale file on disk holds it, cut at every chip and brace into the literal pieces the
+ * editor must show in order. A dev server started before a locale edit serves the old sentence.
+ * @param key - The prompt's key, e.g. `canvas.template.character-bible.prompt`.
+ * @returns The pieces.
  */
-function draftPieces(id: string): string[] {
-  const catalog = JSON.parse(readFileSync(LOCALE_FILE, 'utf8')) as Record<string, unknown>;
-  const find = (node: unknown): string | undefined => {
-    if (node === null || typeof node !== 'object') return undefined;
-    const entry = (node as Record<string, unknown>)[id];
-    if (entry !== null && typeof entry === 'object' && typeof (entry as { prompt?: unknown }).prompt === 'string') return (entry as { prompt: string }).prompt;
-    for (const child of Object.values(node)) {
-      const hit = find(child);
-      if (hit !== undefined) return hit;
-    }
-    return undefined;
-  };
-  const prompt = find(catalog);
-  if (prompt === undefined) throw new Error(`no prompt for ${id} in the locale file`);
-  return prompt.split(/\[📎[^\]]*\]|\{✏️[^}]*\}|\(💡[^)]*\)/).map((piece) => piece.trim()).filter((piece) => piece !== '');
+function draftPieces(key: string): string[] {
+  let at: unknown = JSON.parse(readFileSync(LOCALE_FILE, 'utf8'));
+  for (const part of key.split('.')) at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[part] : undefined;
+  if (typeof at !== 'string') throw new Error(`no prompt at ${key} in the locale file`);
+  return at.split(/\[📎[^\]]*\]|\{✏️[^}]*\}|\(💡[^)]*\)/).map((piece) => piece.trim()).filter((piece) => piece !== '');
 }
 
-/** Fail unless every literal piece of the on-disk draft appears in order in the editor's text. */
-function assertDraftSent(id: string, shown: string): void {
+/**
+ * Fail unless every literal piece of the on-disk draft appears in order in the editor's text.
+ * @param key - The prompt's key.
+ * @param shown - The editor's text.
+ */
+function assertDraftSent(key: string, shown: string): void {
   let from = 0;
-  for (const piece of draftPieces(id)) {
+  for (const piece of draftPieces(key)) {
     const at = shown.indexOf(piece, from);
     if (at < 0) throw new Error(`the editor does not show the draft piece: ${piece.slice(0, 120)}`);
     from = at + piece.length;
@@ -208,6 +204,17 @@ function record(entry: Record<string, unknown>): void {
 }
 
 
+/**
+ * The id of the node a template placed under a key.
+ * @param key - The template node's key.
+ * @returns Its id.
+ */
+async function keyed(key: string): Promise<string> {
+  const node = (await graph()).nodes.find((n) => n.data.templateNode?.key === key);
+  if (!node) throw new Error(`no node placed as ${key}`);
+  return node.id;
+}
+
 /** Drop the character picture onto the canvas and return its node once it holds the upload. */
 async function dropCharacter(): Promise<string> {
   const before = new Set((await graph()).nodes.map((n) => n.id));
@@ -287,20 +294,77 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   writeFileSync(`${OUT}/agent-${LABEL}.png`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
 });
 
-if (AGENT_ASK === undefined) for (const id of (process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : ['character-bible', 'expression-sheet']) as ('character-bible' | 'expression-sheet')[]) for (let n = 1; n <= REPEAT; n += 1) {
+const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
+
+/** How each template is run: its anchor's node type, whether the character picture is wired in, the template nodes generated before the anchor, and what each one's braces are filled with, in order. */
+const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: string[]; fills: Record<string, string[]> }> = {
+  'character-bible': { type: 'image', photo: true, first: [], fills: { anchor: [INFO, STYLE] } },
+  'expression-sheet': { type: 'image', photo: true, first: [], fills: { anchor: [STYLE] } },
+  'costume-sheet': { type: 'image', photo: true, first: [], fills: { anchor: ['the hands'] } },
+  'character-design-from-text': {
+    type: 'image',
+    photo: false,
+    first: ['design'],
+    fills: {
+      design: ['a young woman bicycle courier, about 25, slim, round face, short black bob, red hooded raincoat over a grey hoodie, dark blue cargo trousers, yellow sneakers, a black delivery box on her back', STYLE],
+      anchor: [INFO],
+    },
+  },
+  'single-view-refs-scene': {
+    type: 'video',
+    photo: true,
+    first: ['front', 'side', 'back'],
+    fills: {
+      anchor: [
+        'a red hooded raincoat over a grey hoodie, dark blue cargo trousers, yellow sneakers, a black delivery box on her back',
+        'a rainy city street at dusk',
+        'she rides her bicycle up to a door and rings the bell',
+        'starts wide behind her and moves in to a close-up of her face',
+      ],
+    },
+  },
+  'identity-locked-sequence': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        FEATURES, 'wide shot, slow push in', FEATURES, 'cycles through the rain on a city street',
+        'medium shot, tracking alongside', FEATURES, 'stops at a door and checks her phone',
+        'close-up, static', FEATURES, 'smiles and rings the bell',
+      ],
+    },
+  },
+  'character-showcase-orbit': { type: 'video', photo: true, first: [], fills: { anchor: ['a rooftop with railings in front and city towers far away'] } },
+};
+
+if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : ['character-bible', 'expression-sheet']) for (let n = 1; n <= REPEAT; n += 1) {
   test(`${id} ${n} @needs-model`, async () => {
-    test.setTimeout(1_800_000);
-    const photo = await dropCharacter();
-    const anchor = await addNode('image', 600);
-    await wire(photo, anchor);
+    test.setTimeout(3_600_000);
+    const run = RUNS[id];
+    if (run === undefined) throw new Error(`no run settings for ${id}`);
+    const anchor = await addNode(run.type, 600);
+    if (run.photo) await wire(await dropCharacter(), anchor);
     await openPanel(anchor);
     await applyTemplate(id);
-    await fillBraces(id === 'character-bible' ? [INFO, STYLE] : [STYLE]);
+    for (const key of run.first) {
+      const node = await keyed(key);
+      await openPanel(node);
+      await fillBraces(run.fills[key] ?? []);
+      const prompt = await promptText();
+      assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
+      const url = await generate(node, 'image');
+      expect(url).toMatch(/^https?:/);
+      record({ template: id, node: key, label: LABEL, n, result: { prompt, url } });
+      writeFileSync(`${OUT}/${id}-${key}-${LABEL}-${n}.png`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
+    }
+    await openPanel(anchor);
+    await fillBraces(run.fills.anchor ?? []);
     const prompt = await promptText();
-    assertDraftSent(id, prompt);
-    const url = await generate(anchor, 'image');
+    assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+    const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
     record({ template: id, label: LABEL, n, result: { prompt, url } });
-    writeFileSync(`${OUT}/${id}-${LABEL}-${n}.png`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
+    writeFileSync(`${OUT}/${id}-${LABEL}-${n}.${run.type === 'video' ? 'mp4' : 'png'}`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
   });
 }
