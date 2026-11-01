@@ -21,6 +21,34 @@ See [Architecture](./docs/ARCHITECTURE.md) for the architecture overview.
 
 ---
 
+## Choosing a first contribution
+
+Start with the [good first issues](https://github.com/orime-org/breatic/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22)
+or [help wanted issues](https://github.com/orime-org/breatic/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22).
+If there is no suitable open task, propose a bounded change before starting a large PR.
+
+Useful first contributions include:
+
+- Correcting a reproducible error or broken link in the existing documentation.
+- Providing a minimal reproduction for a bug, with expected behavior, actual behavior,
+  browser and version information. Do not include credentials or private project data.
+- Adding a regression test for an agreed issue, following the testing rules in
+  [AGENTS.md](./AGENTS.md) and the relevant package.
+- Reviewing an existing translation in `locales/` and explaining a concrete correction.
+  Discuss a new language or a change to translation keys before implementing it.
+
+Use the [bug report form](https://github.com/orime-org/breatic/issues/new?template=bug_report.yml)
+for reproducible defects and the [feature request form](https://github.com/orime-org/breatic/issues/new?template=feature_request.yml)
+for feature proposals. For an actionable documentation or contributor-workflow concern,
+use the [general issue form](https://github.com/orime-org/breatic/issues/new?template=general_issue.yml).
+Search existing issues first and state an observable completion criterion.
+
+Before a code change, read the repository and affected package's `AGENTS.md`.
+Keep the first PR focused on one agreed outcome, link its issue, and include
+the checks and tests appropriate to that change. New model integrations,
+cross-package changes and changes to stored data require scope discussion first.
+---
+
 ## Commit author / trailer policy
 
 ### Using tools to write code is fine
