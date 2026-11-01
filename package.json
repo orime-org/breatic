@@ -31,6 +31,7 @@
     "db:backfill-peaks": "tsx scripts/backfill-peaks.ts",
     "db:repair-space-rows": "tsx scripts/repair-space-rows.ts",
     "analytics:delete-users": "tsx scripts/analytics-delete-users.mjs",
+    "provider:prices": "tsx scripts/provider-prices.ts",
     "voice-samples": "pnpm --filter @breatic/worker voice-samples",
     "template-resources": "pnpm --filter @breatic/worker template-resources"
   },
