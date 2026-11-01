@@ -41,6 +41,7 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
+import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
@@ -106,9 +107,7 @@ export const users = pgTable(
     // Enterprise validity is read alongside this raw tier. Ordinary paid
     // validity is interpreted from subscription facts.
     //
-    // Credits are yet another leg and live in `credit_lots`, one row per
-    // purchase, never on the
-    // account row.
+    // Credits live in `credit_lots`, one row per funding source.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
@@ -281,11 +280,8 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // Initial Space type seeded on first open (B.2). varchar with NO check
-    // constraint — same pattern as studio_members.role, so adding 3d/plan
-    // later is a zero-migration change. Canvas is the only editable type
-    // today; document/timeline are stored + seeded but disabled in the
-    // create picker until their editors ship.
+    // Initial Space type seeded on first open. Stored as a varchar;
+    // accepted Space types are validated by the shared schema.
     initialSpaceType: varchar("initial_space_type", { length: 16 })
       .default("canvas")
       .notNull(),
@@ -1140,6 +1136,45 @@ export const creditSources = pgTable(
   },
   (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
 );
+
+/** Immutable original decisions retain absent logical accounts and their request keys. */
+export const creditGrantOperations = pgTable("credit_grant_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
+  result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
+export const creditCompensations = pgTable("credit_compensations", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("compensation").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_compensations_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
+/** Registration claims and operator gifts retain distinct, immutable provenance. */
+export const creditGifts = pgTable("credit_gifts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("gift").notNull(),
+  origin: varchar("origin", { length: 16 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  reason: text("reason"),
+  operationKey: text("operation_key").unique(),
+  requestedBy: uuid("requested_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 export const payments = pgTable(
   "payments",
@@ -2869,6 +2904,23 @@ export const studioAssets = pgTable(
     // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's
     // builder does not emit partial unique indexes (same note as
     // project_activities / project_invitations).
+  ],
+);
+
+/** Long-lived Project media membership, separate from upload credentials. */
+export const projectAssetRefs = pgTable(
+  "project_asset_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    assetId: uuid("asset_id").notNull().references(() => studioAssets.id, { onDelete: "restrict" }),
+    displayName: text("display_name"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("project_asset_refs_live_key").on(table.projectId, table.assetId).where(sql`${table.deletedAt} IS NULL`),
+    index("project_asset_refs_page_idx").on(table.projectId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 

@@ -207,22 +207,14 @@ describe('SpaceReadOnlyNotice', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders nothing for a Space type that has no document of its own', () => {
-    // Timeline has no Yjs document yet, so there is no connection to report on.
-    //
-    // Of the two assertions, the THROW one carries the weight: deleting the
-    // `DOC_NAME_BUILDERS` guard makes this call `undefined(...)` and it goes
-    // red (measured in round 4). The "nothing rendered" one is close to free —
-    // the stub's default is `granted`, so nothing would render for an
-    // unconfigured document anyway — and it is here to say what the outcome
-    // should be rather than to catch a mutation.
-    //
-    // Neither pins the two-component split that keeps the hooks unconditional:
-    // measured in round 5, inlining them past the early return leaves this
-    // green, because React only objects once the hook count actually changes
-    // between renders of the same element. `react-hooks/rules-of-hooks`
-    // (error, `packages/web/eslint.config.mts:65`) is what catches that, and it
-    // catches it at author time rather than here.
+  it('uses the Timeline content connection for a degraded Timeline editor', () => {
+    degrade('project-p1/timeline-s1');
+    render(<Notice projectId='p1' spaceId='s1' type='timeline' />);
+    expect(DOC_NAME_BUILDERS.timeline?.('p1', 's1')).toBe('project-p1/timeline-s1');
+    expect(screen.getByTestId('space-read-only-notice')).toBeInTheDocument();
+  });
+
+  it('renders a healthy Timeline connection without a degrade notice', () => {
     expect(() =>
       render(
         <Notice projectId='p1' spaceId='s1' type='timeline' />,

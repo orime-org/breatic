@@ -23,6 +23,8 @@
  * switch the letter to a different language.
  */
 
+import type { CreditDecimal } from "@breatic/shared";
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -123,12 +125,12 @@ function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
     taxCents: 240,
     totalCents: 2240,
     currency: "usd",
-    creditsGranted: 1700,
+    creditsGranted: "1700.000000" as CreditDecimal,
     grantedAt: new Date("2026-08-26T01:30:00.000Z"),
     consentTextVersion: CONSENT_CREDITS_VERSION,
     refundTextVersion: REFUND_CREDITS_VERSION,
     timeZone: "UTC",
-    balanceCredits: 4200,
+    balanceCredits: "4200.000000" as CreditDecimal,
     ...over,
   };
 }
@@ -231,8 +233,8 @@ describe("the confirmation carries all eight things", () => {
 
   it("gives what landed and what the account now holds", async () => {
     const mail = await renderPurchaseConfirmation(view(), "UTC");
-    expect(mail.text).toContain("1700");
-    expect(mail.text).toContain("4200");
+    expect(mail.text).toContain("1,700");
+    expect(mail.text).toContain("4,200");
   });
 
   it("prints the refund deadline as the moment it falls, never as a duration", async () => {
@@ -259,7 +261,7 @@ describe("the receipt sets the money apart from the reference lines", () => {
       [...r[1]!.matchAll(/<td([^>]*)>([^<]*)<\/td>/g)].map((c) => ({ attrs: c[1]!, text: c[2]! })),
     );
     expect(rows.map((r) => r.map((c) => c.text))).toEqual([
-      ["Credits added", "1700"],
+      ["Credits added", "1,700"],
       ["Price", "$20.00"],
       ["Tax", "$2.40"],
       ["Total charged", "$22.40"],
@@ -294,7 +296,7 @@ describe("the receipt sets the money apart from the reference lines", () => {
     const mail = await renderPurchaseConfirmation(view({ locale: "ja" }), "UTC");
     expect(mail.html).toMatch(/<td[^>]*>お支払い合計<\/td>/);
     expect(mail.text).toContain("お支払い合計：");
-    expect(mail.text).toContain("今回の追加：1700 クレジット");
+    expect(mail.text).toContain("今回の追加：1,700 クレジット");
   });
 });
 

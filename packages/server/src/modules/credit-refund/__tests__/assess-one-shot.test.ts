@@ -124,7 +124,7 @@ function oneShot(
   const refunds = extra.refunds ?? [];
   return {
     kind,
-    lot: { lifecycle, remainingCredits: lifecycle === "refunded" ? 0 : 100 },
+    lot: { lifecycle, remainingCredits: lifecycle === "refunded" ? "0.000000" : "100.000000" },
     paidCents: PAID,
     ops: [],
     refunds,
@@ -160,7 +160,7 @@ describe("assessOneShot: the lot's state", () => {
 
   it("reject of a lot with no credits left is lot_state_changed", () => {
     expect(
-      assessOneShot({ ...oneShot("reject", "refund_pending"), lot: { lifecycle: "refund_pending", remainingCredits: 0 } }),
+      assessOneShot({ ...oneShot("reject", "refund_pending"), lot: { lifecycle: "refund_pending", remainingCredits: "0.000000" } }),
     ).toEqual(LOT_STATE_CHANGED);
   });
 });
@@ -765,7 +765,7 @@ function passingExits(state: {
   disputed: boolean;
 }): Exit[] {
   const { lifecycle, refunds, ops, disputed } = state;
-  const remainingCredits = lifecycle === "refunded" ? 0 : 100;
+  const remainingCredits = lifecycle === "refunded" ? "0.000000" : "100.000000";
   const succeeded = refunds.filter((r) => r.status === "succeeded");
   const succeededCents = succeeded.reduce((sum, r) => sum + r.amountCents, 0);
   const unresolved = unresolvedOf(lifecycle, refunds);
@@ -1017,7 +1017,7 @@ describe("§9 properties over the production judges", () => {
           expect(
             assessOneShot({
               kind: "resolve_outside",
-              lot: { lifecycle, remainingCredits: 100 },
+              lot: { lifecycle, remainingCredits: "100.000000" },
               paidCents: PAID,
               ops: settledOps(rawOps),
               refunds,
@@ -1046,7 +1046,7 @@ describe("§9 properties over the production judges", () => {
           !disputed;
         const answer = assessOneShot({
           kind: "restore_credits",
-          lot: { lifecycle: "refunding", remainingCredits: 100 },
+          lot: { lifecycle: "refunding", remainingCredits: "100.000000" },
           paidCents: PAID,
           ops,
           refunds,

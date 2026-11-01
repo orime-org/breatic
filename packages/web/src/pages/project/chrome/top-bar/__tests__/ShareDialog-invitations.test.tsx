@@ -95,7 +95,7 @@ describe('ShareDialog pending invitations', () => {
               archived={false}
               canRename
               canLeave={false}
-              credits={{ status: 'ready', value: 0 }}
+              credits={{ status: 'ready', value: '0.000000' }}
               onRename={vi.fn()}
               members={[]}
             />

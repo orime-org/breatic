@@ -13,7 +13,7 @@
  *   project-{projectId}/canvas-{spaceId}  Canvas Space content (nodesMap +
  *                                         edges)
  *   project-{projectId}/document-{spaceId}  Document Space body and comments
- *   project-{projectId}/timeline-{spaceId}  Timeline Space (future)
+ *   project-{projectId}/timeline-{spaceId}  Timeline Space content
  *   project-{projectId}/3d-{spaceId}        3D Space scene
  *
  * The doc name is the canonical identifier — appears on the Hocuspocus
@@ -67,7 +67,7 @@ export function documentSpaceDocName(projectId: string, spaceId: string): string
 }
 
 /**
- * Build the Timeline Space doc name (future kind).
+ * Build the Timeline Space content document name.
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
  * @returns `"project-{projectId}/timeline-{spaceId}"`

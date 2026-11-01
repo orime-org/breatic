@@ -1066,13 +1066,11 @@ function ProjectWorkspace({
                               if (placingAnnotation) endAnnotationPlacement();
                               else startAnnotationPlacement();
                             }
-                          // collection - placeholder (M1+)
-                          // help       - placeholder (M1+)
-                          // feedback   - placeholder (M1+)
                           // Comment is the one button here that arms a mode, so
-                          // it is the one that wears a pressed state; the rest
-                          // are fire and forget. The node-library (`nodes`)
-                          // button owns its own dropdown.
+                          // it is the one that wears a pressed state; upload is
+                          // fire and forget. The node-library (`nodes`) button
+                          // owns its own dropdown, and the shortcuts button its
+                          // own dialog.
                           }}
                         />
                         <ViewportToolbar

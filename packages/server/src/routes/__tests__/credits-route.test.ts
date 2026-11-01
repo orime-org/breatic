@@ -22,6 +22,11 @@ const { service, warn } = vi.hoisted(() => ({
 }));
 
 vi.mock("@server/modules/studio/studioCreditDesignation.service.js", () => service);
+vi.mock("@server/modules/credit/credit-view.service.js", () => ({ getLot: vi.fn(async () => ({
+  id: "11111111-1111-4111-8111-111111111111", sourceKind: "payment", purchasedCredits: "100.000000", remainingCredits: "100.000000",
+  designatedStudioId: "22222222-2222-4222-8222-222222222222", designatedStudioName: "Selected Studio", designated: true,
+  paidCents: 1000, currency: "usd", lifecycle: "active", refundAttempts: 0, everSpent: false, everRestored: false, createdAt: "2026-10-31T00:00:00.000Z",
+})) }));
 
 vi.mock("@server/middleware/rate-limit.js", () => ({
   rateLimitFor: () => async (_c: unknown, next: () => Promise<void>) => next(),

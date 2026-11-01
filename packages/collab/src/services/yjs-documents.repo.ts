@@ -23,9 +23,27 @@
  * run here idempotently; create is handled by lazy-seed on first load.
  */
 
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { decodeUpdate } from "yjs";
 import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
 import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
+
+/** Stored live Space snapshots read only by the offline media-provenance scan. */
+export interface MediaBackfillDocument { name: string; data: Uint8Array }
+
+/**
+ * Scan live content rows in immutable-name order for media backfill.
+ * @param cursor - The last emitted document name, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Live Space snapshots without Project meta rows.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function scanMediaBackfillDocuments(cursor: string | null, limit: number): Promise<MediaBackfillDocument[]> {
+  return yjsDb.select({ name: yjsDocuments.name, data: yjsDocuments.data }).from(yjsDocuments).where(and(
+    isNull(yjsDocuments.deletedAt), sql`${yjsDocuments.name} ~ '^project-[^/]+/(canvas|document|timeline)-[^/]+$'`,
+    cursor === null ? undefined : gt(yjsDocuments.name, cursor),
+  )).orderBy(yjsDocuments.name).limit(limit);
+}
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.
@@ -46,6 +64,30 @@ export async function fetchDocData(name: string): Promise<Uint8Array | null> {
 }
 
 /**
+ * Read the persisted Timeline content at its initialization boundary.
+ * @param name - The immutable content document name.
+ * @param initialState - The service's configured V1 seed.
+ * @returns The committed live winner, upgrading only a truly empty row.
+ * @throws {Error} When decoding or the database transaction fails.
+ */
+export async function loadTimelineDocData(name: string, initialState: Uint8Array): Promise<Uint8Array | null> {
+  return yjsDb.transaction(async (tx) => {
+    const [row] = await tx.select({ data: yjsDocuments.data })
+      .from(yjsDocuments)
+      .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+      .for("update")
+      .limit(1);
+    if (row === undefined) return null;
+    const decoded = decodeUpdate(row.data);
+    if (decoded.structs.length !== 0 || decoded.ds.clients.size !== 0) return row.data;
+    await tx.update(yjsDocuments)
+      .set({ data: Buffer.from(initialState), updatedAt: sql`now()` })
+      .where(eq(yjsDocuments.name, name));
+    return initialState;
+  });
+}
+
+/**
  * Upsert the binary state of a Yjs doc (Hocuspocus persistence `store`).
  *
  * On conflict only the content and `updated_at` change; `deleted_at` is left
@@ -56,6 +98,7 @@ export async function fetchDocData(name: string): Promise<Uint8Array | null> {
  * brings back the latest edits.
  * @param name - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
  * @param data - Encoded Yjs update bytes to persist
+ * @throws {Error} When the database write fails.
  */
 export async function upsertDocData(
   name: string,
@@ -217,10 +260,13 @@ export async function restoreByName(name: string): Promise<boolean> {
  * full duplicate UX is reworked when the Studio page is built properly.
  * @param sourceId - Project being duplicated
  * @param newId - Freshly created destination project id
+ * @param beforePublishContent - Accept the locked target bytes before making their meta visible.
+ * @throws {Error} When copying or accepting the actual target content fails.
  */
 export async function duplicateByProjectPrefix(
   sourceId: string,
   newId: string,
+  beforePublishContent?: (rows: readonly { name: string; data: Uint8Array }[]) => Promise<void>,
 ): Promise<void> {
   const oldPrefix = `project-${sourceId}/`;
   const newPrefix = `project-${newId}/`;
@@ -249,6 +295,15 @@ export async function duplicateByProjectPrefix(
         WHERE ${inArray(yjsDocuments.name, listed)}
         ON CONFLICT (name) DO NOTHING
       `);
+      if (beforePublishContent !== undefined) {
+        const targets = listed.map((name) => `${newPrefix}${name.slice(oldPrefix.length)}`);
+        const rows = await tx.select({ name: yjsDocuments.name, data: yjsDocuments.data })
+          .from(yjsDocuments)
+          .where(inArray(yjsDocuments.name, targets))
+          .orderBy(yjsDocuments.name)
+          .for("update");
+        await beforePublishContent(rows);
+      }
     }
     // Meta doc last, from the bytes read above, and it WINS over a racing
     // lazy-seed default so the copy reflects the source's Spaces.

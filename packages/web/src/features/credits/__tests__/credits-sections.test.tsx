@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { CreditDecimal } from '@breatic/shared';
+
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -131,9 +133,9 @@ function studio(over: Partial<StudioCreditSummary> = {}): StudioCreditSummary {
     studioName: 'Orime Studio',
     studioSlug: 'orime',
     deleted: false,
-    spendable: 2400,
-    debt: 0,
-    spent: 1280,
+    spendable: '2400.000000' as CreditDecimal,
+    debt: '0.000000' as CreditDecimal,
+    spent: '1280.000000' as CreditDecimal,
     lotCount: 1,
     ...over,
   };
@@ -146,9 +148,9 @@ function studio(over: Partial<StudioCreditSummary> = {}): StudioCreditSummary {
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 3640,
-    unassignedCredits: 1790,
-    underRefundCredits: 0,
+    assignedCredits: '3640.000000' as CreditDecimal,
+    unassignedCredits: '1790.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [studio()],
     ...over,
@@ -164,8 +166,8 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
   const base = {
     id: 'l1',
     sourceKind: 'payment' as CreditLotView['sourceKind'],
-    purchasedCredits: 4550,
-    remainingCredits: 2400,
+    purchasedCredits: '4550.000000' as CreditDecimal,
+    remainingCredits: '2400.000000' as CreditDecimal,
     designatedStudioId: 's1' as string | null,
     designatedStudioName: 'Orime Studio' as string | null,
     paidCents: 5000,
@@ -191,14 +193,14 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
 function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     rowId: 'p1',
-    sourceKind: 'payment' as PurchaseRow['sourceKind'],
-    paymentId: 'p1' as string | null,
-    amountCents: 5000 as number | null,
+    sourceKind: 'payment',
+    paymentId: 'p1',
+    amountCents: 5000,
     totalCents: 5000,
     taxCents: 0,
     currency: 'usd',
-    creditsGranted: 4550,
-    remainingCredits: 2400,
+    creditsGranted: '4550.000000' as CreditDecimal,
+    remainingCredits: '2400.000000' as CreditDecimal,
     lifecycle: 'active',
     designatedStudioId: 's1',
     designatedStudioName: 'Orime Studio',
@@ -226,7 +228,7 @@ function entry(over: Partial<CreditLedgerView> = {}): CreditLedgerView {
     model: 'seedream-4.0',
     provider: 'volcengine',
     kind: 'generation' as const,
-    amount: -120,
+    amount: '-120.000000' as CreditDecimal,
     createdAt: '2026-08-22T10:00:00.000Z',
     ...over,
   };
@@ -329,7 +331,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('gives the split a line per studio, and none for credits at no studio', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: '500.000000' as CreditDecimal }));
       await openOn('overview');
       const body = await panel();
 
@@ -341,7 +343,7 @@ describe('the credits overlay, section by section', () => {
 
     it('drops the split when every credit is at no studio', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ assignedCredits: 0, studios: [] }),
+        overview({ assignedCredits: '0.000000' as CreditDecimal, studios: [] }),
       );
       await openOn('overview');
       const body = await panel();
@@ -352,7 +354,7 @@ describe('the credits overlay, section by section', () => {
 
     it('drops the split when there is nothing, and says what to do instead', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ assignedCredits: 0, unassignedCredits: 0, studios: [] }),
+        overview({ assignedCredits: '0.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal, studios: [] }),
       );
       await openOn('overview');
       const body = await panel();
@@ -457,7 +459,7 @@ describe('the credits overlay, section by section', () => {
           purchase({
             paymentId: 'p5',
             lifecycle: 'depleted',
-            remainingCredits: 0,
+            remainingCredits: '0.000000' as CreditDecimal,
             designatedStudioId: 's1',
             designatedStudioName: 'Orime Studio',
           }),
@@ -501,7 +503,7 @@ describe('the credits overlay, section by section', () => {
 
       const rows = body.querySelectorAll('tbody tr');
       expect(rows).toHaveLength(1);
-      const row = rows[0]!;
+      const row = rows[0];
       expect(row).toHaveTextContent('2026-08-22');
       expect(row).toHaveTextContent('Lin');
       expect(row).toHaveTextContent('Orime Studio');
@@ -518,7 +520,7 @@ describe('the credits overlay, section by section', () => {
         items: [
           entry({
             kind: 'debt_repayment',
-            amount: -70,
+            amount: '-70.000000' as CreditDecimal,
             projectName: null,
             model: null,
           }),
@@ -627,11 +629,11 @@ describe('the credits overlay, section by section', () => {
 
       const viewport = body.querySelector(
         '[data-radix-scroll-area-viewport]',
-      ) as HTMLElement | null;
+      );
       expect(viewport).not.toBeNull();
       const heading = body.querySelector('h2');
       expect(heading).not.toBeNull();
-      expect(viewport!.contains(heading!)).toBe(false);
+      expect(viewport!.contains(heading)).toBe(false);
     });
 
     it('starts a section at the top of its own list', async () => {
@@ -661,8 +663,8 @@ describe('the credits overlay, section by section', () => {
     it('marks a run that drew on no purchase, and leaves the rest unmarked', async () => {
       fetchCreditLedger.mockResolvedValue({
         items: [
-          entry({ id: 'u1', kind: 'unbilled', amount: -42 }),
-          entry({ id: 'g1', kind: 'generation', amount: -12 }),
+          entry({ id: 'u1', kind: 'unbilled', amount: '-42.000000' as CreditDecimal }),
+          entry({ id: 'g1', kind: 'generation', amount: '-12.000000' as CreditDecimal }),
         ],
         nextCursor: null,
       });
@@ -670,11 +672,11 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       const rows = [...body.querySelectorAll('tbody tr')];
-      expect(rows[0]!.querySelector('td:last-child')).toHaveTextContent(
+      expect(rows[0].querySelector('td:last-child')).toHaveTextContent(
         /Not charged/i,
       );
       // 真扣到包的那一行不带这个词，否则这个词什么也没说。
-      expect(rows[1]!.querySelector('td:last-child')).not.toHaveTextContent(
+      expect(rows[1].querySelector('td:last-child')).not.toHaveTextContent(
         /Not charged/i,
       );
     });
@@ -683,7 +685,7 @@ describe('the credits overlay, section by section', () => {
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({
-            remainingCredits: 880,
+            remainingCredits: '880.000000' as CreditDecimal,
             paidCents: 1120,
             currency: 'usd',
             designatedStudioId: null,
@@ -775,9 +777,9 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('per studio', () => {
-    it('reports four things a row: spendable, debt, spent, purchases pointed there', async () => {
+    it('reports four things a row: spendable, debt, spent, credit packs pointed there', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ studios: [studio({ debt: 120 })] }),
+        overview({ studios: [studio({ debt: '120.000000' as CreditDecimal })] }),
       );
       await openOn('studios');
       const body = await panel();
@@ -785,14 +787,14 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('2,400');
       expect(body).toHaveTextContent('owes 120');
       expect(body).toHaveTextContent('spent 1,280');
-      expect(body).toHaveTextContent('1 purchase assigned to it');
+      expect(body).toHaveTextContent('1 credit pack assigned to it');
     });
 
     it('withholds the debt from a reader who no longer administers it', async () => {
       // 欠账是 studio 自己的数，只有 admin 能拿它做决定。服务端在这种情形
       // 下发的是 null，这一行要说得出「不是零、是没有」。
       fetchCreditOverview.mockResolvedValue(
-        overview({ studios: [studio({ debt: null, spent: 640 })] }),
+        overview({ studios: [studio({ debt: null, spent: '640.000000' as CreditDecimal })] }),
       );
       await openOn('studios');
       const body = await panel();
@@ -812,8 +814,8 @@ describe('the credits overlay, section by section', () => {
               studioId: 's3',
               studioName: 'Design squad',
               deleted: true,
-              spendable: 0,
-              spent: 880,
+              spendable: '0.000000' as CreditDecimal,
+              spent: '880.000000' as CreditDecimal,
               lotCount: 0,
             }),
           ],
@@ -834,8 +836,8 @@ describe('the credits overlay, section by section', () => {
               studioId: 's3',
               studioName: '',
               deleted: true,
-              spendable: 0,
-              spent: 880,
+              spendable: '0.000000' as CreditDecimal,
+              spent: '880.000000' as CreditDecimal,
               lotCount: 0,
             }),
           ],
@@ -1211,9 +1213,9 @@ describe('the credits overlay, section by section', () => {
       // on the screen says where it went.
       fetchCreditOverview.mockResolvedValue(
         overview({
-          assignedCredits: 100,
-          unassignedCredits: 40,
-          underRefundCredits: 25,
+          assignedCredits: '100.000000' as CreditDecimal,
+          unassignedCredits: '40.000000' as CreditDecimal,
+          underRefundCredits: '25.000000' as CreditDecimal,
         }),
       );
       await openOn('overview');
@@ -1225,7 +1227,7 @@ describe('the credits overlay, section by section', () => {
 
     it('leaves the figure out when nothing is under refund', async () => {
       fetchCreditOverview.mockResolvedValue(
-        overview({ underRefundCredits: 0 }),
+        overview({ underRefundCredits: '0.000000' as CreditDecimal }),
       );
       await openOn('overview');
       const body = await panel();
@@ -1495,7 +1497,7 @@ describe('the credits overlay, section by section', () => {
           items: [
             lot({
               id: 'spent',
-              remainingCredits: 818,
+              remainingCredits: '818.000000' as CreditDecimal,
               everSpent: true,
               designatedStudioId: null,
             }),
@@ -1519,8 +1521,8 @@ describe('the credits overlay, section by section', () => {
           items: [
             lot({
               id: 'empty',
-              purchasedCredits: 4550,
-              remainingCredits: 0,
+              purchasedCredits: '4550.000000' as CreditDecimal,
+              remainingCredits: '0.000000' as CreditDecimal,
               everSpent: true,
               lifecycle: 'depleted',
               designatedStudioId: null,

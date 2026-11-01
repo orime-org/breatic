@@ -26,6 +26,7 @@
     "ai": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
+    "fast-check": "catalog:",
     "lib0": "catalog:",
     "postgres": "catalog:",
     "testcontainers": "catalog:",
