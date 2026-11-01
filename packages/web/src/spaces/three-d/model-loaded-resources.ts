@@ -10,11 +10,13 @@ const MATERIAL_TEXTURE_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 /** Texture source extensions GLTFLoader r173 tries, in its plugin order, before a texture's own source. */
 const TEXTURE_SOURCE_EXTENSIONS = ['KHR_texture_basisu', 'EXT_texture_webp', 'EXT_texture_avif'] as const;
+/** Primitive modes GLTFMeshGpuInstancing accepts: undefined (TRIANGLES), TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN. */
+const TRIANGLE_MODES: ReadonlySet<unknown> = new Set([undefined, 4, 5, 6]);
 /** Morph target attributes GLTFLoader r173 reads (addMorphTargets). */
 const MORPH_ATTRIBUTES = ['POSITION', 'NORMAL', 'COLOR_0'] as const;
 
 /** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names no existing image. */
-export interface LoadedTexture {
+interface LoadedTexture {
   texture: number;
   image: number | undefined;
 }
@@ -58,23 +60,6 @@ function index(value: unknown): number | undefined {
 }
 
 /**
- * Collect every texture index a supported material extension refers to, at any depth.
- * @param value - One supported material extension object.
- * @param into - Texture indices found so far.
- * @throws {never} Never.
- */
-function collectTextureSlots(value: unknown, into: Set<number>): void {
-  const node = object(value);
-  if (!node) return;
-  for (const [key, child] of Object.entries(node)) {
-    if (key === 'extensions' || key === 'extras') continue;
-    const slot = key.endsWith('Texture') ? index(object(child)?.index) : undefined;
-    if (slot !== undefined) into.add(slot);
-    else collectTextureSlots(child, into);
-  }
-}
-
-/**
  * Collect the textures GLTFLoader assigns for one material: an unlit material reads only its base colour.
  * @param material - The material declaration.
  * @param into - Texture indices found so far.
@@ -90,8 +75,13 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
     if (texture !== undefined) into.add(texture);
   }
   if (extensions?.KHR_materials_unlit) return;
+  // Each r173 material plugin reads only the *Texture keys at the top level of its own extension.
   for (const [name, extension] of Object.entries(extensions ?? {})) {
-    if (MATERIAL_TEXTURE_EXTENSIONS.has(name)) collectTextureSlots(extension, into);
+    if (!MATERIAL_TEXTURE_EXTENSIONS.has(name)) continue;
+    for (const [key, slot] of Object.entries(object(extension) ?? {})) {
+      const texture = key.endsWith('Texture') ? index(object(slot)?.index) : undefined;
+      if (texture !== undefined) into.add(texture);
+    }
   }
 }
 
@@ -147,8 +137,12 @@ export function loadedResources(json: GltfDocument): LoadedResources {
     reached.set(nodeIndex, deep);
     const node = object(nodes[nodeIndex]);
     const mesh = index(node?.mesh);
-    if (mesh !== undefined) meshes.add(mesh);
-    for (const value of Object.values(object(object(object(node?.extensions)?.EXT_mesh_gpu_instancing)?.attributes) ?? {})) addAccessor(value);
+    if (mesh !== undefined) {
+      meshes.add(mesh);
+      // GLTFMeshGpuInstancing.createNodeMesh reads instance attributes only for a mesh drawn entirely as triangles.
+      const triangles = array(object(array(document.meshes)[mesh])?.primitives).every((primitive) => TRIANGLE_MODES.has(object(primitive)?.mode));
+      if (triangles) for (const value of Object.values(object(object(object(node?.extensions)?.EXT_mesh_gpu_instancing)?.attributes) ?? {})) addAccessor(value);
+    }
     if (!deep) return;
     for (const child of array(node?.children)) visitNode(index(child), true);
     const skin = object(array(document.skins)[index(node?.skin) ?? -1]);

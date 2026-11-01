@@ -58,14 +58,23 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
     expect(sorted(resources.buffers)).toEqual([0, 1, 3]);
   });
 
-  it('reads instancing attributes of reached nodes', () => {
+  it('reads instancing attributes only of reached nodes whose mesh draws triangles', () => {
     const resources = loadedResources(doc({
-      scenes: [{ nodes: [0] }],
-      nodes: [{ mesh: 0, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 1, SCALE: 2 } } } }],
-      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
-      ...views(3),
+      scenes: [{ nodes: [0, 1, 2, 3] }],
+      nodes: [
+        { mesh: 0, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 2, SCALE: 3 } } } },
+        { mesh: 1, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 4 } } } },
+        { extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 5 } } } },
+        { mesh: 2, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 6 } } } },
+      ],
+      meshes: [
+        { primitives: [{ attributes: { POSITION: 0 } }, { mode: 5, attributes: { POSITION: 0 } }] },
+        { primitives: [{ mode: 0, attributes: { POSITION: 1 } }] },
+        { primitives: [{ mode: 4, attributes: { POSITION: 1 } }, { mode: 1, attributes: { POSITION: 1 } }] },
+      ],
+      ...views(7),
     }));
-    expect(sorted(resources.buffers)).toEqual([0, 1, 2]);
+    expect(sorted(resources.buffers)).toEqual([0, 1, 2, 3]);
   });
 
   it('skips animation channels without a target node and samplers no channel uses', () => {
@@ -124,7 +133,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
         { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {}, KHR_materials_clearcoat: { clearcoatTexture: { index: 2 } } } },
         { pbrMetallicRoughness: { metallicRoughnessTexture: { index: 3 } }, occlusionTexture: { index: 4 }, emissiveTexture: { index: 5 },
           extras: { lightTexture: { index: 6 } },
-          extensions: { KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 7 }, extras: { bakedTexture: { index: 6 } } },
+          extensions: { KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 7 }, extras: { bakedTexture: { index: 6 } }, vendorData: { bakedTexture: { index: 9 } } },
             VENDOR_material: { someTexture: { index: 8 } } } },
         { pbrMetallicRoughness: { baseColorTexture: { index: 9 } } },
       ],

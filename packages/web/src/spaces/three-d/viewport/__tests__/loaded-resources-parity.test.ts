@@ -58,11 +58,13 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
     return { uri: `${name}.png` };
   });
   const instances = accessor('instances', 'VEC3', new Float32Array(3));
+  const pointInstances = accessor('pointInstances', 'VEC3', new Float32Array(3));
+  const meshlessInstances = accessor('meshlessInstances', 'VEC3', new Float32Array(3));
   const json = {
     asset: { version: '2.0' },
     extensionsUsed: ['KHR_materials_unlit', 'KHR_materials_clearcoat', 'EXT_mesh_gpu_instancing'],
     scene: 0,
-    scenes: [{ nodes: [0] }],
+    scenes: [{ nodes: [0, 6, 7] }],
     nodes: [
       { children: [1] },
       { mesh: 0, skin: 0 },
@@ -70,6 +72,8 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
       { mesh: 2 },
       { mesh: 3 },
       { mesh: 4, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: instances } } } },
+      { mesh: 5, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: pointInstances } } } },
+      { extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: meshlessInstances } } } },
     ],
     meshes: [
       { weights: [0], primitives: [{ material: 0, attributes: { POSITION: position('skinned'), JOINTS_0: accessor('joints', 'VEC4', new Uint8Array(12)),
@@ -79,11 +83,12 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
       { primitives: [{ attributes: { POSITION: position('jointChild') } }] },
       { primitives: [{ attributes: { POSITION: position('orphan') } }] },
       { primitives: [{ material: 2, attributes: { POSITION: position('animated') } }] },
+      { primitives: [{ mode: 0, attributes: { POSITION: position('points') } }] },
     ],
     materials: [
       { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {} } },
       { pbrMetallicRoughness: { baseColorTexture: { index: 2 } } },
-      { extras: { lightTexture: { index: 4 } }, extensions: { KHR_materials_clearcoat: { clearcoatTexture: { index: 3 } } } },
+      { extras: { lightTexture: { index: 4 } }, extensions: { KHR_materials_clearcoat: { clearcoatTexture: { index: 3 }, vendorData: { bakedTexture: { index: 4 } } } } },
     ],
     textures: images.map((_, source) => ({ source })),
     images,
@@ -126,6 +131,6 @@ describe('loadedResources matches what the installed GLTFLoader requests (inner#
     files.requested.delete('model.gltf');
     expect(new Set(derived)).toEqual(files.requested);
     expect([...files.requested].sort()).toEqual(['animated.bin', 'animationInput.bin', 'animationOutput.bin', 'base.png', 'clearcoat.png',
-      'instances.bin', 'inverseBind.bin', 'joint.bin', 'joints.bin', 'morphPosition.bin', 'skinned.bin', 'weights.bin']);
+      'instances.bin', 'inverseBind.bin', 'joint.bin', 'joints.bin', 'morphPosition.bin', 'points.bin', 'skinned.bin', 'weights.bin']);
   });
 });
