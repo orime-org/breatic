@@ -1964,7 +1964,7 @@
         "description": "選擇 GLB、glTF 或 ZIP；可同時選擇模型的配套檔案。",
         "chooseFiles": "選擇檔案",
         "chooseFolder": "選擇資料夾",
-        "inputLimit": "最多 {size} MB",
+        "inputLimit": "最多 {size} MiB",
         "dropFiles": "將模型與配套檔案拖曳到這裡",
         "resourceHint": "GLB 可直接選擇；glTF 請同時提供紋理與 bin 檔案，或選擇完整 ZIP。",
         "readOnly": "目前為唯讀",
@@ -2001,13 +2001,13 @@
         "errorUpload": "模型上傳失敗，請重試。",
         "success": "模型已匯入。",
         "limit": {
-          "input": "所選檔案共 {actual} MB，上限 {allowed} MB。",
+          "input": "所選檔案共 {actual} MiB，上限 {allowed} MiB。",
           "files": "共 {actual} 個檔案，上限 {allowed} 個。",
-          "expanded": "解壓縮後 {actual} MB，上限 {allowed} MB。",
-          "entryJson": "模型描述檔 {actual} MB，上限 {allowed} MB。",
-          "artifact": "打包後 {actual} MB，上限 {allowed} MB。",
+          "expanded": "解壓縮後 {actual} MiB，上限 {allowed} MiB。",
+          "entryJson": "模型描述檔 {actual} MiB，上限 {allowed} MiB。",
+          "artifact": "打包後 {actual} MiB，上限 {allowed} MiB。",
           "textureEdge": "紋理邊長 {actual} px，上限 {allowed} px。",
-          "textureBytes": "紋理記憶體 {actual} MB，上限 {allowed} MB。"
+          "textureBytes": "紋理記憶體 {actual} MiB，上限 {allowed} MiB。"
         }
       }
     }

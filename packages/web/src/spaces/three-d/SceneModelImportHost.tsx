@@ -51,9 +51,10 @@ export default function SceneModelImportHost({ controller, open, onOpenChange, c
    */
   const show = React.useCallback((): void => onOpenChange(true), [onOpenChange]);
   // Upload and registration continue while hidden; a registered model waiting for edit rights stays reachable while Add is disabled.
+  // The opener stays mounted under the open dialog so closing the dialog can return focus to it.
   const reachable = snapshot.phase === 'uploading' || snapshot.phase === 'registering' || (snapshot.assetId !== null && snapshot.phase !== 'placed');
   return <>
-    {!open && reachable && <Button variant='outline'
+    {reachable && <Button variant='outline'
       className='absolute left-[76px] top-1/2 z-10 -translate-y-1/2 bg-popover'
       icon={importIcon} onClick={show}>
       {snapshot.phase === 'uploading' ? t('spaces.threeD.importModel.uploading', { progress: Math.round(snapshot.progress * 100) })

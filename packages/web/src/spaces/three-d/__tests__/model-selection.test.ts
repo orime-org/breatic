@@ -160,8 +160,8 @@ describe('model-selection supplements and archiver metadata (inner#1690)', () =>
 });
 
 describe('model-selection file and entry contract (inner#1690)', () => {
-  it('reports an empty selection', async () => {
-    await expectFailure(inspect([], undefined, IMPORT_LIMITS), 'empty');
+  it('reports an empty selection as having no supported model entry', async () => {
+    await expectFailure(inspect([], undefined, IMPORT_LIMITS), 'unsupported');
   });
 
   it.each(['application/octet-stream', 'text/plain', 'application/zip'])('recognizes a valid single GLB regardless of File.type %s', async (type) => {
@@ -408,5 +408,11 @@ describe('model-selection failures state their limit and location (inner#1690)',
     }
     const selected = await inspect([inputFile('hero.zip', zipped)], undefined, IMPORT_LIMITS);
     expect([...selected.paths].sort()).toEqual(['hero/model.gltf', 'hero/贴图.bin']);
+  });
+});
+
+describe('model-selection with nothing left after Finder metadata (inner#1690)', () => {
+  it('reports no supported model entry', async () => {
+    await expectFailure(inspect([inputFile('.DS_Store', new Uint8Array([0]), 'pack/.DS_Store')], undefined, IMPORT_LIMITS), 'unsupported');
   });
 });

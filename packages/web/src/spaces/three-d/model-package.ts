@@ -59,7 +59,13 @@ export function resolveModelDependency(entry: string, uri: string): string {
     throw new ModelImportError('invalid', `Model resource must be provided locally: ${uri}`, { detail: uri });
   }
   const directory = entry.slice(0, entry.lastIndexOf('/') + 1);
-  return normalizeModelPath(directory + decodeURIComponent(uri));
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    throw new ModelImportError('invalid', `Malformed model resource URI: ${uri}`, { detail: uri });
+  }
+  return normalizeModelPath(directory + decoded);
 }
 
 /**
@@ -68,14 +74,15 @@ export function resolveModelDependency(entry: string, uri: string): string {
  * @param entry - Entry path used to identify the format.
  * @param limits - Configured metadata budget.
  * @returns The validated glTF envelope and resource declarations.
- * @throws {Error} When the container, version or metadata is invalid.
+ * @throws {ModelImportError} When the container or metadata is invalid, or the glTF version is not 2.0.
  */
 export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImportLimits): GltfDocument {
   let json = bytes;
   if (entry.toLowerCase().endsWith('.glb')) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (bytes.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67) throw new ModelImportError('invalid', 'Scene asset is not a binary glTF model', { detail: entry });
-    if (view.getUint32(4, true) !== 2) throw new ModelImportError('invalid', 'Unsupported binary glTF version', { detail: entry });
+    const version = view.getUint32(4, true);
+    if (version !== 2) throw new ModelImportError('unsupported', 'Unsupported binary glTF version', { detail: `glTF ${version}` });
     const length = view.getUint32(12, true);
     if (view.getUint32(8, true) !== bytes.byteLength || view.getUint32(16, true) !== 0x4e4f534a || length % 4 !== 0 || length > bytes.byteLength - 20) {
       throw new ModelImportError('invalid', 'Invalid binary glTF JSON chunk', { detail: entry });
@@ -86,7 +93,19 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
     throw new ModelImportError('budget', 'Model entry JSON exceeds its configured budget', { detail: entry,
       budget: { limit: 'entryJson', allowed: limits.maxEntryJsonBytes, actual: json.byteLength } });
   }
-  return gltfSchema.parse(JSON.parse(new TextDecoder().decode(json)) as unknown);
+  let document: unknown;
+  try {
+    document = JSON.parse(new TextDecoder().decode(json)) as unknown;
+  } catch {
+    throw new ModelImportError('invalid', 'Model entry JSON cannot be parsed', { detail: entry });
+  }
+  const version = z.object({ asset: z.object({ version: z.unknown() }) }).safeParse(document);
+  if (version.success && version.data.asset.version !== '2.0') {
+    throw new ModelImportError('unsupported', 'Unsupported glTF version', { detail: `glTF ${String(version.data.asset.version)}` });
+  }
+  const result = gltfSchema.safeParse(document);
+  if (!result.success) throw new ModelImportError('invalid', 'Model entry is not a valid glTF document', { detail: entry });
+  return result.data;
 }
 
 /**

@@ -10,9 +10,15 @@ import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
-import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
+import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+
+// jsdom has no Worker; the mocked client runs the same package reader the worker runs.
+vi.mock('@web/spaces/three-d/model-import-worker-client', async () => {
+  const { readRegisteredModelPackage: read } = await vi.importActual<typeof import('@web/spaces/three-d/model-package')>('@web/spaces/three-d/model-package');
+  return { readRegisteredModelPackageInWorker: vi.fn(async (bytes: Uint8Array<ArrayBuffer>, _signal: AbortSignal, limits: SceneImportLimits) => read(bytes, limits)) };
+});
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...await importOriginal<typeof SharedModule>(),
@@ -97,9 +103,7 @@ function modelPackage(entryPath: string, files: Record<string, Uint8Array>, form
 function loadRegistered(bytes: ArrayBuffer, mimeType: string, sizeBytes = bytes.byteLength, limits: SceneImportLimits = IMPORT_LIMITS): Promise<Group> {
   vi.mocked(httpRequest).mockResolvedValue(new Response(bytes));
   const resolve = vi.fn(async () => ({ url: ASSET_URL, mimeType, sizeBytes }));
-  // jsdom has no Worker; the registered package is read with the same function the worker runs.
-  const readPackage = async (packageBytes: Uint8Array<ArrayBuffer>): Promise<ModelPackage> => readRegisteredModelPackage(packageBytes, limits);
-  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits, undefined, readPackage)
+  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits)
     .then((root) => { templates.add(root); return root; });
 }
 
@@ -293,16 +297,21 @@ describe('line and point primitive release (inner#1690)', () => {
 });
 
 describe('decoder failures name model resources (inner#1690)', () => {
-  it('reports a failed resource by its model path, not the object URL it was loaded from', () => {
-    const json = Uint8Array.from(strToU8(JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'textures/albedo.png' }] })));
-    const model = inspectModelFiles(new Map([['models/scene.gltf', json], ['models/textures/albedo.png', new Uint8Array([1, 2, 3])]]), 'models/scene.gltf', IMPORT_LIMITS);
-    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: vi.fn(() => 'blob:model/1'), revokeObjectURL: vi.fn() }));
-    const decoder = createModelDecoder(model, IMPORT_LIMITS);
-    const objectUrl = decoder.loader.manager.resolveURL('textures/albedo.png');
-    expect(objectUrl).toBe('blob:model/1');
-    decoder.loader.manager.itemError(objectUrl);
-    expect(decoder.failedResources).toEqual(['models/textures/albedo.png']);
-    decoder.dispose();
+  it('names an embedded image that fails to decode, and refuses the model', async () => {
+    const image = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => { throw new Error('decode failed'); }));
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:model-image');
+      static revokeObjectURL = vi.fn();
+    });
+    await expect(loadRegistered(triangleGlb('BrokenTexture', undefined, image).buffer, 'model/gltf-binary'))
+      .rejects.toMatchObject({ code: 'invalid', detail: 'images[0]' });
+  });
+
+  it('unpacks a registered package through the worker client with the lease signal', async () => {
+    const bytes = modelPackage('files/model.glb', { 'files/model.glb': triangleGlb('Packaged') });
+    await loadRegistered(bytes, 'application/zip');
+    expect(readRegisteredModelPackageInWorker).toHaveBeenCalledWith(expect.any(Uint8Array), expect.any(AbortSignal), IMPORT_LIMITS);
   });
 
   it('states the full decoded texture size against its limit', () => {

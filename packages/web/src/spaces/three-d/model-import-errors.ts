@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-export type ModelImportErrorCode = 'missing' | 'entry' | 'unsupported' | 'empty' | 'budget' | 'invalid' | 'duplicate' | 'upload';
+export type ModelImportErrorCode = 'missing' | 'entry' | 'unsupported' | 'empty' | 'budget' | 'invalid' | 'duplicate';
 export interface ModelInspectionInfo {
   entries: readonly string[];
   paths: readonly string[];

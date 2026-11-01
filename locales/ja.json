@@ -1964,7 +1964,7 @@
         "description": "GLB、glTF または ZIP を選択し、モデルの関連ファイルも含めてください。",
         "chooseFiles": "ファイルを選択",
         "chooseFolder": "フォルダーを選択",
-        "inputLimit": "最大 {size} MB",
+        "inputLimit": "最大 {size} MiB",
         "dropFiles": "モデルと関連ファイルをここにドロップ",
         "resourceHint": "GLB はそのまま選択できます。glTF はテクスチャと bin ファイルを含めるか、完全な ZIP を選択してください。",
         "readOnly": "現在は読み取り専用です",
@@ -2001,13 +2001,13 @@
         "errorUpload": "モデルをアップロードできませんでした。再試行してください。",
         "success": "モデルをインポートしました。",
         "limit": {
-          "input": "選択したファイルは合計 {actual} MB です（上限 {allowed} MB）。",
+          "input": "選択したファイルは合計 {actual} MiB です（上限 {allowed} MiB）。",
           "files": "ファイル数は {actual} 個です（上限 {allowed} 個）。",
-          "expanded": "展開後のサイズは {actual} MB です（上限 {allowed} MB）。",
-          "entryJson": "モデル記述ファイルは {actual} MB です（上限 {allowed} MB）。",
-          "artifact": "パッケージ後のサイズは {actual} MB です（上限 {allowed} MB）。",
+          "expanded": "展開後のサイズは {actual} MiB です（上限 {allowed} MiB）。",
+          "entryJson": "モデル記述ファイルは {actual} MiB です（上限 {allowed} MiB）。",
+          "artifact": "パッケージ後のサイズは {actual} MiB です（上限 {allowed} MiB）。",
           "textureEdge": "テクスチャの辺の長さは {actual} px です（上限 {allowed} px）。",
-          "textureBytes": "テクスチャのメモリは {actual} MB です（上限 {allowed} MB）。"
+          "textureBytes": "テクスチャのメモリは {actual} MiB です（上限 {allowed} MiB）。"
         }
       }
     }

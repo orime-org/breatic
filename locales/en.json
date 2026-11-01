@@ -1964,7 +1964,7 @@
         "description": "Choose GLB, glTF or ZIP; include the model’s accompanying files.",
         "chooseFiles": "Choose files",
         "chooseFolder": "Choose folder",
-        "inputLimit": "Up to {size} MB",
+        "inputLimit": "Up to {size} MiB",
         "dropFiles": "Drop the model and its accompanying files here",
         "resourceHint": "Choose a GLB directly. For glTF, include its textures and bin files, or choose a complete ZIP.",
         "readOnly": "Currently read-only",
@@ -2001,13 +2001,13 @@
         "errorUpload": "The model could not be uploaded. Try again.",
         "success": "Model imported.",
         "limit": {
-          "input": "Selected files total {actual} MB; the limit is {allowed} MB.",
+          "input": "Selected files total {actual} MiB; the limit is {allowed} MiB.",
           "files": "{actual} files; the limit is {allowed}.",
-          "expanded": "Unpacked size {actual} MB; the limit is {allowed} MB.",
-          "entryJson": "Model description {actual} MB; the limit is {allowed} MB.",
-          "artifact": "Packaged model {actual} MB; the limit is {allowed} MB.",
+          "expanded": "Unpacked size {actual} MiB; the limit is {allowed} MiB.",
+          "entryJson": "Model description {actual} MiB; the limit is {allowed} MiB.",
+          "artifact": "Packaged model {actual} MiB; the limit is {allowed} MiB.",
           "textureEdge": "Texture edge {actual} px; the limit is {allowed} px.",
-          "textureBytes": "Texture memory {actual} MB; the limit is {allowed} MB."
+          "textureBytes": "Texture memory {actual} MiB; the limit is {allowed} MiB."
         }
       }
     }

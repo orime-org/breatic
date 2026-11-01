@@ -178,17 +178,43 @@ describe('model import dialog controls', () => {
     await controller.select([{ path: 'model.zip', file: new File(['zip'], 'model.zip') }]);
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
     expect(screen.getByText('The model exceeds an import limit.')).toBeInTheDocument();
-    expect(screen.getByText('Unpacked size 300 MB; the limit is 256 MB.')).toBeInTheDocument();
+    expect(screen.getByText('Unpacked size 300 MiB; the limit is 256 MiB.')).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ files?/)).toBeNull();
   });
 
-  it('shows no floating opener for a cancelled ready or failed import, as the approved demo does', async () => {
+  it('shows no floating opener for a cancelled ready, checking or failed import, as the approved demo does', async () => {
     const { controller } = await readyImport();
-    const { rerender } = render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const host = <SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />;
+    render(host);
     expect(controller.getSnapshot().phase).toBe('ready');
     expect(screen.queryByRole('button')).toBeNull();
-    await act(async () => { await controller.select([]); });
-    rerender(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    cleanup();
+    const checking = idleImport();
+    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={checking.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { void checking.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    expect(checking.controller.getSnapshot().phase).toBe('checking');
     expect(screen.queryByRole('button')).toBeNull();
+    cleanup();
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('invalid', 'Unreadable', { detail: '' }));
+    render(<SceneModelImportHost open={false} onOpenChange={vi.fn()} onPlaced={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }]); });
+    expect(failing.controller.getSnapshot().phase).toBe('failed');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('keeps the uploading opener mounted while its dialog is open, so closing returns focus to it', async () => {
+    const { controller, upload } = await readyImport();
+    upload.mockReturnValueOnce(new Promise(() => undefined));
+    void controller.confirm();
+    const onOpenChange = vi.fn();
+    const { rerender } = render(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const opener = screen.getByRole('button', { name: 'Uploading 0%' });
+    opener.focus();
+    rerender(<SceneModelImportHost open onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(document.contains(opener)).toBe(true);
+    rerender(<SceneModelImportHost open={false} onOpenChange={onOpenChange} onPlaced={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 
   it('keeps a registered model reachable while editing is unavailable', async () => {

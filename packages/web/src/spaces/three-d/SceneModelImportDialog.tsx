@@ -98,7 +98,6 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     budget: t('spaces.threeD.importModel.errorBudget'),
     invalid: t('spaces.threeD.importModel.errorInvalid'),
     duplicate: t('spaces.threeD.importModel.errorDuplicate'),
-    upload: t('spaces.threeD.importModel.errorUpload'),
   };
   const uploadFailure = failedUpload && !(error instanceof ModelImportError) ? modelUploadFailure(error, prepared.file.name) : null;
   const errorText = error instanceof ModelImportError ? errorMessages[error.code]
@@ -223,7 +222,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
               <div className='space-y-2'><Label htmlFor={`${id}:name`}>{t('spaces.threeD.importModel.name')}</Label><Input id={`${id}:name`} value={snapshot.name} autoComplete='off' maxLength={NAME_MAX_LENGTH} onChange={changeName} disabled={busy || checking || !canEdit} /></div>
               <div className='space-y-2 text-xs text-muted-foreground'>
                 {snapshot.entry && <p className='break-all'>{snapshot.entry}</p>}
-                <p>{t('spaces.threeD.importModel.fileCount', { count: snapshot.paths.length })}{prepared?.meshCount !== undefined && <> · {t('spaces.threeD.importModel.meshCount', { count: prepared.meshCount })}</>}{prepared?.skinned && <> · {t('spaces.threeD.importModel.skinned')}</>}</p>
+                {snapshot.paths.length > 0 && <p>{t('spaces.threeD.importModel.fileCount', { count: snapshot.paths.length })}{prepared?.meshCount !== undefined && <> · {t('spaces.threeD.importModel.meshCount', { count: prepared.meshCount })}</>}{prepared?.skinned && <> · {t('spaces.threeD.importModel.skinned')}</>}</p>}
               </div>
               {checking ? <p className='flex items-center gap-2 text-sm text-muted-foreground'><Loader2 className='size-4 shrink-0 animate-spin' />{t('spaces.threeD.importModel.checkingResources')}</p>
                 : busy ? <div className='space-y-3'><p className='flex items-center gap-2 text-sm'><Loader2 className='size-4 shrink-0 animate-spin' />{snapshot.phase === 'uploading' ? t('spaces.threeD.importModel.uploading', { progress }) : t('spaces.threeD.importModel.registering')}</p><div className='h-1.5 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground transition-all' style={{ width: `${progress}%` }} /></div><p className='text-xs text-muted-foreground'>{t('spaces.threeD.importModel.placingHint')}</p></div>

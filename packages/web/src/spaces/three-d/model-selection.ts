@@ -41,7 +41,6 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
   let info: ModelInspectionInfo | undefined;
   try {
     const kept = sources.filter((source) => !isArchiverMetadata(normalizeModelPath(source.path)));
-    if (!kept.length) throw new ModelImportError('empty', 'No model files were selected', { detail: '' });
     if (kept.length > limits.maxFiles) {
       throw new ModelImportError('budget', 'Selected model files exceed their configured file count', { detail: '',
         budget: { limit: 'files', allowed: limits.maxFiles, actual: kept.length } });

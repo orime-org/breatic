@@ -12,7 +12,7 @@ import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
-import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
@@ -209,7 +209,6 @@ export class ModelResourceCache {
  * @param builtinColor - The current semantic object colour.
  * @param limits - Import budgets injected from the Project configuration.
  * @param renderer - Current device capabilities used for texture decoding.
- * @param readPackage - Unpacks a registered model package; by default in a worker the lease's signal terminates.
  * @returns A template whose immutable resources belong to the cache.
  * @throws {Error} When resolving, transferring or parsing the model fails.
  */
@@ -220,7 +219,6 @@ export async function loadSceneModel(
   builtinColor: string,
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
-  readPackage: (bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal, limits: SceneImportLimits) => Promise<ModelPackage> = readRegisteredModelPackageInWorker,
 ): Promise<Group> {
   if (source.kind === 'builtin') return createBuiltinModel(source.id, builtinColor);
   const asset = await resolveAsset(source.assetId, signal);
@@ -231,7 +229,7 @@ export async function loadSceneModel(
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
   const model = asset.mimeType === 'application/zip'
-    ? await readPackage(bytes, signal, limits)
+    ? await readRegisteredModelPackageInWorker(bytes, signal, limits)
     : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits);
   return parseSceneModel(model, signal, limits, renderer);
 }
@@ -268,6 +266,33 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
   }
 }
 
+/** The glTF texture declarations whose source image GLTFLoader resolves, directly or through an image extension. */
+type GltfTexture = { source?: number; extensions?: Record<string, { source?: number } | undefined> };
+
+/**
+ * Read the model's texture declarations.
+ * @param model - Checked entry and original resources.
+ * @returns The declared textures, in index order.
+ * @throws {never} Never.
+ */
+function gltfTextures(model: ModelPackage): GltfTexture[] {
+  const textures: unknown = (model.json as { textures?: unknown }).textures;
+  return Array.isArray(textures) ? textures as GltfTexture[] : [];
+}
+
+/**
+ * Name a texture by the image it is decoded from, the way the texture metadata check names images.
+ * @param model - Checked entry and original resources.
+ * @param index - The texture's index.
+ * @returns The image's path, or its `images[N]` index when it is embedded.
+ * @throws {never} Never.
+ */
+function textureLocation(model: ModelPackage, index: number): string {
+  const texture = gltfTextures(model)[index];
+  const source = Object.values(texture?.extensions ?? {}).find((extension) => extension?.source !== undefined)?.source ?? texture?.source;
+  return source === undefined ? `textures[${index}]` : imageLocation(model, source);
+}
+
 /**
  * Parse the same closed model collection for import preview and registered use.
  * @param model - Checked entry and original resources.
@@ -283,19 +308,17 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   validateModelTextureMetadata(model, textureLimits);
   const decoder = createModelDecoder(model, limits, renderer);
   const bytes = model.files.get(model.entry)!;
-  const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes) : bytes.slice().buffer;
-  /**
-   * Name the resources a loader reported, for failures that left the model unusable.
-   * @param message - Internal diagnostic.
-   * @returns The failure carrying the reported resource paths.
-   * @throws {never} Never.
-   */
-  const decodeFailure = (message: string): ModelImportError => new ModelImportError('invalid', message, { detail: decoder.failedResources.join(', ') });
-  const parsed = decoder.loader.parseAsync(input, '').then((result) => {
+  // GLTFLoader only reads the buffer, so a view spanning its whole buffer is passed without a copy.
+  const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes)
+    : bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
+  const parsed = decoder.loader.parseAsync(input, '').then(async (result) => {
     ownedScenes.set(result.scene, result.scenes);
     try {
       signal.throwIfAborted();
-      if (decoder.failedResources.length) throw decodeFailure('Model resources could not be decoded');
+      // GLTFLoader turns a texture that fails to decode or transcode into null and still resolves the model.
+      const textures = await Promise.all(gltfTextures(model).map((_, index) => result.parser.getDependency('texture', index) as Promise<Texture | null>));
+      const failed = textures.findIndex((texture) => texture === null);
+      if (failed >= 0) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: textureLocation(model, failed) });
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {
@@ -303,7 +326,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       throw error;
     }
   }, (error: unknown) => {
-    throw error instanceof ModelImportError ? error : decodeFailure(error instanceof Error ? error.message : String(error));
+    throw error instanceof ModelImportError ? error : new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
   });
   let abort: (() => void) | undefined;
   try {

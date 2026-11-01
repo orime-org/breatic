@@ -130,8 +130,17 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
  */
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const [index, image] of (model.json.images ?? []).entries()) {
-    const location = image.uri !== undefined && !image.uri.startsWith('data:') ? resolveModelDependency(model.entry, image.uri) : `images[${index}]`;
-    checkImage({ model, decoded, location }, image, limits);
-  }
+  for (const [index, image] of (model.json.images ?? []).entries()) checkImage({ model, decoded, location: imageLocation(model, index) }, image, limits);
+}
+
+/**
+ * Name an image for the user: its path when it is a file, otherwise its index.
+ * @param model - Checked original glTF resources.
+ * @param index - The image's index.
+ * @returns The resolved file path, or `images[N]` for embedded images.
+ * @throws {ModelImportError} When the image URI is malformed.
+ */
+export function imageLocation(model: ModelPackage, index: number): string {
+  const uri = model.json.images?.[index]?.uri;
+  return uri !== undefined && !uri.startsWith('data:') ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
 }

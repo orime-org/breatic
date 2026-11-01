@@ -391,3 +391,32 @@ describe('registered model-package manifest versions', () => {
     expect(() => readRegisteredModelPackage(bytes, IMPORT_LIMITS)).toThrow(/version/i);
   });
 });
+
+describe('model-package entry reading names its failures (inner#1690)', () => {
+  it('reports glTF 1.0 as an unsupported version of the entry', () => {
+    expect(() => readModelJson(textBytes(JSON.stringify({ asset: { version: '1.0' } })), 'old.gltf', IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ code: 'unsupported', detail: 'glTF 1.0' }));
+  });
+
+  it('reports a binary glTF of container version 1 as unsupported', () => {
+    const bytes = glb();
+    new DataView(bytes.buffer).setUint32(4, 1, true);
+    expect(() => readModelJson(bytes, 'old.glb', IMPORT_LIMITS)).toThrow(expect.objectContaining({ code: 'unsupported', detail: 'glTF 1' }));
+  });
+
+  it('names the entry whose JSON cannot be parsed', () => {
+    expect(() => readModelJson(textBytes('{"asset":'), 'broken/scene.gltf', IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'broken/scene.gltf' }));
+  });
+
+  it('names a dependency URI whose percent escape is malformed', () => {
+    expect(() => resolveModelDependency('scene.gltf', 'tex%E0%A4%A.png')).toThrow(expect.objectContaining({ code: 'invalid', detail: 'tex%E0%A4%A.png' }));
+  });
+
+  it('checks the declared sizes of an archive before inflating any entry', () => {
+    const bytes = archive(new Map([['big.bin', new Uint8Array(1000)]]), 6);
+    const header = new DataView(bytes.buffer);
+    bytes[30 + header.getUint16(26, true) + header.getUint16(28, true)] = 0xff;
+    expect(() => unpackModelArchive(bytes, { ...IMPORT_LIMITS, maxExpandedBytes: 999 })).toThrow(expect.objectContaining({ code: 'budget' }));
+  });
+});

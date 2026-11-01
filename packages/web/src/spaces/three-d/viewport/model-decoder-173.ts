@@ -31,7 +31,6 @@ const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
 
 export interface ModelDecoder {
   loader: GLTFLoader;
-  failedResources: readonly string[];
   dispose: () => void;
 }
 
@@ -67,10 +66,7 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
     ['https://model-decoder.invalid/basis/basis_transcoder.wasm', basisWasm],
   ]);
   const urls = new Map<string, string>();
-  const failedResources: string[] = [];
   const manager = new LoadingManager();
-  // Loaders report the object URL they fetched; the user knows the resource by its path in the model.
-  manager.onError = (url) => { failedResources.push([...urls].find(([, objectUrl]) => objectUrl === url)?.[0] ?? url); };
   manager.setURLModifier((url) => {
     const decoder = decoderAssets.get(url);
     if (decoder) return decoder;
@@ -93,7 +89,6 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
   let disposed = false;
   return {
     loader,
-    failedResources,
     dispose: () => {
       if (disposed) return;
       disposed = true;
