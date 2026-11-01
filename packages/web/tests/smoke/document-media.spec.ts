@@ -862,7 +862,7 @@ test('a picture copied in the chat pastes in and is fetched into storage, named 
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   const [url] = await mediaAttr(page, 'url', ['image']);
   expect(url).not.toContain('githubusercontent');
-  expect(await rows(page)).toEqual(['Lead', 'image[Found]']);
+  expect(await rows(page)).toEqual(['Lead', 'image[Found]', '']);
 });
 
 test('a picture still uploading goes with one undo and comes back with redo, uploaded once (inner#1351 A6)', async () => {
