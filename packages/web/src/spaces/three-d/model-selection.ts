@@ -4,7 +4,7 @@
 import type { SceneImportLimits } from '@breatic/shared';
 import { inspectModelFiles, isArchiverMetadata, normalizeModelPath, packModelFiles, unpackModelArchive } from '@web/spaces/three-d/model-package';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 
@@ -74,6 +74,7 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
     if (error instanceof ModelImportError) {
       throw info ? error.withInfo({ ...info, missing: error.info?.missing ?? [] }) : error;
     }
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : 'Invalid model data', { detail: '', ...(info ? { info } : {}) });
+    const failure = contentFailure(error);
+    throw info ? failure.withInfo(info) : failure;
   }
 }

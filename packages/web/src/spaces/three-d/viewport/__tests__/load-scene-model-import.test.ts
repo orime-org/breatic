@@ -12,7 +12,7 @@ import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
@@ -452,5 +452,31 @@ describe('decoder downloads are not model content (inner#1690)', () => {
     const failure = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS, renderer).then(() => undefined, (error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(ModelImportError);
+  });
+});
+
+describe('content found after parsing is a content verdict (inner#1690)', () => {
+  const embedded = `data:application/octet-stream;base64,${btoa(String.fromCharCode(...new Uint8Array(TRIANGLE.buffer)))}`;
+  it.each([
+    ['no scenes', (json: Record<string, unknown>) => { delete json.scenes; delete json.scene; }],
+    ['a default scene past its scenes', (json: Record<string, unknown>) => { json.scene = 3; }],
+  ])('refuses a model with %s as having nothing to display', async (_label, edit) => {
+    const json = triangleJson('Root', embedded);
+    edit(json);
+    const model = inspectModelFiles(new Map([['scene.gltf', Uint8Array.from(strToU8(JSON.stringify(json)))]]), 'scene.gltf', IMPORT_LIMITS);
+    await expect(parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS)).rejects.toMatchObject({ name: 'ModelImportError', code: 'empty' });
+  });
+
+  it('names a registered manifest that is not JSON', () => {
+    const bytes = Uint8Array.from(zipSync({ 'files/m.gltf': Uint8Array.from(strToU8('{"asset":{"version":"2.0"}}')), 'manifest.json': Uint8Array.from(strToU8('{not json')) }, { level: 0 }));
+    expect(() => readRegisteredModelPackage(bytes, IMPORT_LIMITS)).toThrow(expect.objectContaining({ name: 'ModelImportError', code: 'invalid', detail: 'manifest.json' }));
+  });
+
+  it('names a decoded texture that is not a 2D image', () => {
+    // KTX2Loader gives a cube texture its six faces as an array image.
+    const texture = new Texture([{ width: 1, height: 1 }, { width: 1, height: 1 }] as unknown as HTMLImageElement);
+    texture.name = 'sky.ktx2';
+    const scene = new Group().add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map: texture })));
+    expect(() => validateModelTextures([scene], IMPORT_LIMITS)).toThrow(expect.objectContaining({ name: 'ModelImportError', code: 'invalid', detail: 'sky.ktx2' }));
   });
 });

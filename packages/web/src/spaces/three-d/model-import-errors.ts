@@ -71,3 +71,14 @@ export function restoreModelImportError(code: ModelImportErrorCode, message: str
   if (code === 'budget') return budget ? new ModelImportError(code, message, { ...rest, budget }) : new ModelImportError('invalid', message, rest);
   return new ModelImportError(code, message, rest);
 }
+
+/**
+ * Judge a failure raised while the model's own bytes are examined (inside the inspection worker, during and after GLTFLoader parsing,
+ * and while the parsed template is measured and rendered) as a content verdict. Failures outside those stages stay plain and retryable.
+ * @param error - Any failure thrown in a content stage.
+ * @returns The failure itself when it is already a verdict, otherwise an unreadable-model verdict carrying its message.
+ * @throws {never} Never.
+ */
+export function contentFailure(error: unknown): ModelImportError {
+  return error instanceof ModelImportError ? error : new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
+}

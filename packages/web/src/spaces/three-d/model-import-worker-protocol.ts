@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { SceneImportLimits } from '@breatic/shared';
-import { ModelImportError, restoreModelImportError } from '@web/spaces/three-d/model-import-errors';
-import type { ModelImportBudget, ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
+import { contentFailure, restoreModelImportError } from '@web/spaces/three-d/model-import-errors';
+import type { ModelImportBudget, ModelImportError, ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -12,30 +12,33 @@ import type { ModelSource } from '@web/spaces/three-d/model-source';
 export type ModelImportWorkerRequest =
   | { kind: 'selection'; files: readonly ModelSource[]; entry: string | undefined; limits: SceneImportLimits }
   | { kind: 'registered'; bytes: Uint8Array<ArrayBuffer>; limits: SceneImportLimits };
-/** A worker failure: a content verdict keeps its facts; any other failure keeps only its message and stays retryable. */
-export type SerializedWorkerError =
-  | { kind: 'import'; code: ModelImportErrorCode; message: string; info?: ModelInspectionInfo; detail: string; budget?: ModelImportBudget }
-  | { kind: 'error'; message: string };
+/** A worker failure; everything the worker throws judges the model, so it always carries a verdict. */
+export interface SerializedWorkerError {
+  code: ModelImportErrorCode;
+  message: string;
+  info?: ModelInspectionInfo;
+  detail: string;
+  budget?: ModelImportBudget;
+}
 export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: true; model: ModelPackage } | { ok: false; error: SerializedWorkerError };
 
 /**
  * Carry a worker failure across the boundary without relying on Error cloning.
- * @param error - Any failure thrown inside the worker.
- * @returns A structured-cloneable diagnostic.
+ * @param error - Any failure thrown inside the worker while it examines the model.
+ * @returns A structured-cloneable verdict.
  * @throws {never} Never directly.
  */
 export function serializeWorkerError(error: unknown): SerializedWorkerError {
-  return error instanceof ModelImportError
-    ? { kind: 'import', code: error.code, message: error.message, ...(error.info ? { info: error.info } : {}), detail: error.detail, ...(error.budget ? { budget: error.budget } : {}) }
-    : { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+  const failure = contentFailure(error);
+  return { code: failure.code, message: failure.message, ...(failure.info ? { info: failure.info } : {}), detail: failure.detail, ...(failure.budget ? { budget: failure.budget } : {}) };
 }
 
 /**
- * Recreate a worker failure: a content verdict as ModelImportError, anything else as a plain Error.
+ * Recreate the verdict the worker reached.
  * @param error - Worker-owned serialized diagnostic.
- * @returns The local failure.
+ * @returns The local verdict.
  * @throws {never} Never.
  */
-export function deserializeWorkerError(error: SerializedWorkerError): Error {
-  return error.kind === 'import' ? restoreModelImportError(error.code, error.message, { detail: error.detail, info: error.info, budget: error.budget }) : new Error(error.message);
+export function deserializeWorkerError(error: SerializedWorkerError): ModelImportError {
+  return restoreModelImportError(error.code, error.message, { detail: error.detail, info: error.info, budget: error.budget });
 }

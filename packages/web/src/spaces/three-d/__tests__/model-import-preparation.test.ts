@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Bone, BufferAttribute, BufferGeometry, Group, Mesh, MeshBasicMaterial, Skeleton, SkinnedMesh } from 'three';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { prepareSceneModel } from '@web/spaces/three-d/model-import-preparation';
 import { inspectModelSelectionInWorker, readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
@@ -12,6 +13,8 @@ import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 
 /** A controlled transport retains callbacks that may already be queued. */
 const parse = vi.hoisted(() => vi.fn());
+/** The preview context the stand-in renderer reports after a render. */
+const gl = vi.hoisted(() => ({ lost: false, error: 0 }));
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => ({
   ...await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>(), parseSceneModel: parse,
 }));
@@ -26,6 +29,12 @@ vi.mock('three', async (importOriginal) => {
     dispose(): void {}
     /** @returns Nothing. @throws {never} Never. */
     forceContextLoss(): void {}
+    /** @returns Nothing. @throws {never} Never. */
+    render(): void {}
+    /** @returns The preview context state the test set. @throws {never} Never. */
+    getContext(): { NO_ERROR: number; isContextLost: () => boolean; getError: () => number } {
+      return { NO_ERROR: 0, isContextLost: () => gl.lost, getError: () => gl.error };
+    }
   }
   return { ...actual, WebGLRenderer: TestRenderer };
 });
@@ -63,7 +72,7 @@ beforeEach(() => {
   ControlledWorker.onConstruct = undefined;
   vi.stubGlobal('Worker', ControlledWorker);
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); gl.lost = false; gl.error = 0; });
 
 describe('operation-owned model inspection worker', () => {
   it('refuses a cancelled operation before creating a worker', async () => {
@@ -177,11 +186,10 @@ describe('operation-owned model inspection worker', () => {
     if (type === 'error') expect(event.defaultPrevented).toBe(true);
   });
 
-  it.each([new Error('Inspection failed'), 'Inspection failed'])('carries an untyped worker failure %s as a plain error', async (error) => {
-    expect(serializeWorkerError(error)).toEqual({ kind: 'error', message: 'Inspection failed' });
+  it.each([new Error('Inspection failed'), 'Inspection failed'])('carries a failure thrown inside the worker %s as a content verdict', async (error) => {
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeWorkerError(error) } }));
-    await expect(running).rejects.toMatchObject({ name: 'Error', message: 'Inspection failed' });
+    await expect(running).rejects.toMatchObject({ name: 'ModelImportError', code: 'invalid', message: 'Inspection failed' });
   });
 
   it('keeps a preview failure that is not about the model content a plain error', async () => {
@@ -190,5 +198,60 @@ describe('operation-owned model inspection worker', () => {
     await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
     await expect(running).rejects.toMatchObject({ name: 'Error', message: 'Decoder could not be fetched' });
+  });
+});
+
+
+describe('preview failures are classified by stage (inner#1690)', () => {
+  /**
+   * Prepare the fixed selection with a parsed template, returning the preparation's outcome.
+   * @throws {never} Never; the outcome carries any failure.
+   */
+  async function prepareWith(root: Group): Promise<unknown> {
+    parse.mockResolvedValueOnce(root);
+    const running = prepareSceneModel(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
+    return running.then((prepared) => { prepared.dispose(); return prepared; }, (error: unknown) => error);
+  }
+
+  /**
+   * Build a template holding one triangle.
+   * @throws {never} Never.
+   */
+  function triangle(): Group {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3));
+    return new Group().add(new Mesh(geometry, new MeshBasicMaterial()));
+  }
+
+  it('refuses a model whose skin names a joint it does not have as content, with its entry choices', async () => {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3));
+    geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array([5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0]), 4));
+    geometry.setAttribute('skinWeight', new BufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]), 4));
+    const mesh = new SkinnedMesh(geometry, new MeshBasicMaterial());
+    const bone = new Bone();
+    mesh.add(bone);
+    mesh.bind(new Skeleton([bone]));
+    expect(await prepareWith(new Group().add(mesh))).toMatchObject({ name: 'ModelImportError', code: 'invalid', info: { entries: SELECTION.entries } });
+  });
+
+  it('refuses a mesh without finite geometry before upload', async () => {
+    expect(await prepareWith(new Group().add(new Mesh(new BufferGeometry(), new MeshBasicMaterial())))).toMatchObject({ name: 'ModelImportError', code: 'empty' });
+  });
+
+  it('refuses a preview the GPU reports an error for as content', async () => {
+    gl.error = 0x0502;
+    expect(await prepareWith(triangle())).toMatchObject({ name: 'ModelImportError', code: 'invalid' });
+  });
+
+  it('keeps a lost GPU context a plain, retryable error', async () => {
+    gl.lost = true;
+    expect(await prepareWith(triangle())).toMatchObject({ name: 'Error' });
+  });
+
+  it('accepts a finite triangle', async () => {
+    expect(await prepareWith(triangle())).toMatchObject({ meshCount: 1 });
   });
 });

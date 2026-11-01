@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { InstancedMesh, SkinnedMesh, Texture } from 'three';
-import type { BufferGeometry, Group, Material, Skeleton, WebGLRenderer } from 'three';
+import { Group, InstancedMesh, SkinnedMesh, Texture } from 'three';
+import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneObject } from '@breatic/shared';
@@ -14,7 +14,7 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
 /** Additional parsed scenes stay owned until the active template is released. */
@@ -296,8 +296,11 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
     : bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
   // A decoder download failure is not about the model, so it bypasses the content handler below and stays retryable.
   const parsed = decoder.prepare().then(() => decoder.loader.parseAsync(input, '').then(async (result) => {
-    ownedScenes.set(result.scene, result.scenes);
+    // GLTFLoader resolves without a scene when the model has none or its default scene index is out of range.
+    const root = result.scene ?? new Group();
+    ownedScenes.set(root, result.scene ? result.scenes : [root, ...result.scenes]);
     try {
+      if (!result.scene) throw new ModelImportError('empty', 'Model has no scene to display', { detail: model.entry });
       signal.throwIfAborted();
       // GLTFLoader turns a texture that fails to decode or transcode into null and still resolves the model.
       const decoded = await Promise.all(textures.map(({ texture }) => result.parser.getDependency('texture', texture) as Promise<Texture | null>));
@@ -308,12 +311,10 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {
-      disposeModelTemplate(result.scene);
-      throw error;
+      disposeModelTemplate(root);
+      throw signal.aborted ? error : contentFailure(error);
     }
-  }, (error: unknown) => {
-    throw error instanceof ModelImportError ? error : new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' });
-  }));
+  }, (error: unknown) => { throw contentFailure(error); }));
   let abort: (() => void) | undefined;
   try {
     return await new Promise<Group>((resolve, reject) => {

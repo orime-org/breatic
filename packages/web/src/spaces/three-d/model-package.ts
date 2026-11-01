@@ -324,13 +324,19 @@ export function unpackModelArchive(bytes: Uint8Array, limits: SceneImportLimits,
  * @param bytes - Stored model package bytes.
  * @param limits - The configured import budgets.
  * @returns The selected entry and its closed resource collection.
- * @throws {Error} When the manifest version, entry or resource collection is invalid.
+ * @throws {ModelImportError} When the manifest, its version, entry or resource collection is invalid.
  */
 export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImportLimits): ModelPackage {
   const files = unpackModelArchive(bytes, limits, true);
   const manifest = files.get('manifest.json');
   if (!manifest || manifest.byteLength > limits.maxEntryJsonBytes) throw new ModelImportError('invalid', 'Missing or oversized model manifest', { detail: 'manifest.json' });
-  const result = manifestSchema.safeParse(JSON.parse(new TextDecoder().decode(manifest)) as unknown);
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(new TextDecoder().decode(manifest));
+  } catch {
+    throw new ModelImportError('invalid', 'Model manifest is not JSON', { detail: 'manifest.json' });
+  }
+  const result = manifestSchema.safeParse(manifestJson);
   if (!result.success) throw new ModelImportError('invalid', 'Unsupported or invalid model manifest version', { detail: 'manifest.json' });
   const entry = normalizeModelPath(result.data.entryPath);
   if (!entry.startsWith('files/') || entry !== result.data.entryPath) throw new ModelImportError('invalid', 'Invalid model manifest entry path', { detail: result.data.entryPath });

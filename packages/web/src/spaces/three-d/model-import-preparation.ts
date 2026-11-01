@@ -5,7 +5,7 @@ import { Box3, DirectionalLight, HemisphereLight, Mesh, PerspectiveCamera, Scene
 import type { Group } from 'three';
 import type { SceneImportLimits } from '@breatic/shared';
 import type { PreparedModel } from '@web/spaces/three-d/model-import-controller';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { inspectModelSelectionInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { getUnsupportedModelExtensions } from '@web/spaces/three-d/viewport/model-decoder-173';
@@ -20,7 +20,7 @@ import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewp
  * @returns Original artifact, parsed template, metadata and its idempotent release.
  * @throws {DOMException} When the owning import is aborted.
  * @throws {ModelImportError} When inspection or parsing refuses the model.
- * @throws {Error} When a worker, decoder download or renderer fails, which a retry can resolve.
+ * @throws {Error} When a worker, decoder download, renderer or GPU context fails, which a retry can resolve.
  */
 export async function prepareSceneModel(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<PreparedModel> {
   const selection = await inspectModelSelectionInWorker(files, entry, signal, limits);
@@ -29,6 +29,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   const extensions = getUnsupportedModelExtensions(selection.model);
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;
+  let contextLost = false;
   try {
     renderer = new WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(1, 1);
@@ -42,6 +43,9 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     });
     if (!meshCount) throw new ModelImportError('empty', 'Model contains no displayable mesh', { detail: selection.model.entry, info });
     const box = new Box3().setFromObject(root);
+    if (box.isEmpty() || ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)) {
+      throw new ModelImportError('empty', 'Model has no finite displayable geometry', { detail: selection.model.entry, info });
+    }
     const center = box.getCenter(new Vector3());
     const diameter = Math.max(box.getSize(new Vector3()).length(), 0.01);
     const camera = new PerspectiveCamera(45, 1, diameter / 1000, diameter * 1000);
@@ -53,7 +57,9 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     scene.add(root, new HemisphereLight(0xffffff, 0x666666, 3), light);
     renderer.render(scene, camera);
     const context = renderer.getContext();
-    if (context.isContextLost() || context.getError() !== context.NO_ERROR) throw new ModelImportError('invalid', 'Model preview failed its GPU render', { detail: '', info });
+    contextLost = context.isContextLost();
+    if (contextLost) throw new Error('Model preview lost its GPU context');
+    if (context.getError() !== context.NO_ERROR) throw new ModelImportError('invalid', 'Model preview failed its GPU render', { detail: '', info });
     signal.throwIfAborted();
     root.removeFromParent();
     const preview = root;
@@ -75,9 +81,11 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   } catch (error) {
     if (root) disposeModelTemplate(root);
     if (signal.aborted) signal.throwIfAborted();
-    if (error instanceof ModelImportError) throw error.info ? error : error.withInfo(info);
+    // Once the template is parsed, measuring and rendering it judge its content; a lost GPU context says nothing about the model.
+    const failure = root && !contextLost ? contentFailure(error) : error;
+    if (failure instanceof ModelImportError) throw failure.info ? failure : failure.withInfo(info);
     // A decoder download, renderer or worker failure says nothing about the model, so it stays a retryable plain error.
-    throw error;
+    throw failure;
   } finally {
     renderer?.dispose();
     renderer?.forceContextLoss();

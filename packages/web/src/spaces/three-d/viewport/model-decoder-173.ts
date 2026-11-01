@@ -128,7 +128,9 @@ export function validateModelTextures(scenes: readonly Group[], limits: SceneImp
   let total = 0;
   for (const texture of textures) {
     const image: unknown = texture.image;
-    const size = imageSizeSchema.parse(image);
+    const parsed = imageSizeSchema.safeParse(image);
+    if (!parsed.success) throw new ModelImportError('invalid', 'Model texture is not a 2D image', { detail: texture.name });
+    const size = parsed.data;
     const edge = Math.max(size.width, size.height);
     if (edge > limits.maxTextureEdge) {
       throw new ModelImportError('budget', 'Model texture exceeds the configured dimension budget', { detail: texture.name,
