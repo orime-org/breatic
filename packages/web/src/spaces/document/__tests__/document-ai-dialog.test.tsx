@@ -323,6 +323,21 @@ describe('closing', () => {
     expect(view.hasFocus()).toBe(true);
   });
 
+  it('Escape typed in a field outside the dialog and the body leaves it open', async () => {
+    const { call } = await polishing();
+    const field = document.createElement('input');
+    document.body.append(field);
+    field.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(field, { key: 'Escape' });
+    });
+
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect(call.signal?.aborted).toBe(false);
+    field.remove();
+  });
+
   it('the close button closes the dialog and aborts the fetch', async () => {
     const { call } = await polishing();
 
@@ -363,6 +378,42 @@ describe('closing', () => {
     expect(call.signal?.aborted).toBe(true);
     expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: 'world' });
     expect(screen.getAllByTestId('doc-ai-dialog')).toHaveLength(1);
+  });
+});
+
+describe('how long a session lives', () => {
+  it('lives on while its Space tab is hidden, request and all, and shows again with it', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    act(() => {
+      setHidden(true);
+    });
+    expect(calls[0]!.signal?.aborted).toBe(false);
+    act(() => {
+      setHidden(false);
+    });
+    await streams(calls[0]!, ['Hi'], true);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi');
+    });
+    expect(shownButtons()).toContain('doc-ai-replace');
+  });
+
+  it('ends with the editor, aborting its request', async () => {
+    const { editor, call } = await polishing();
+
+    act(() => {
+      editor.unmount();
+    });
+
+    expect(call.signal?.aborted).toBe(true);
   });
 });
 

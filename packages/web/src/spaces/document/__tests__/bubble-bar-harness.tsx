@@ -18,6 +18,7 @@
  * become.
  */
 
+import * as React from 'react';
 import { expect } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { DOMParser } from '@tiptap/pm/model';
@@ -126,12 +127,16 @@ export function closeShared(): void {
  * @param readOnly - True for a viewer.
  * @param projectId - The project the document sits in, for the entries that
  *   hand its words to the Agent; left out, the editor is mounted outside one.
+ * @param asSpaceTab - Mount it the way a Space tab does, inside
+ *   `React.Activity`, so it can be hidden and shown again.
+ * @returns Hides or shows the tab; does nothing unless `asSpaceTab`.
  */
 export function mountDocumentEditor(
   editor: HarnessEditor,
   readOnly = false,
   projectId?: string,
-): void {
+  asSpaceTab = false,
+): (hidden: boolean) => void {
   const surface = surfaces.get(editor);
   if (!surface) throw new Error('open the editor with openSharedBody first');
   const body = (
@@ -141,15 +146,18 @@ export function mountDocumentEditor(
       myRole={readOnly ? 'viewer' : 'editor'}
     />
   );
-  render(
-    <TooltipProvider>
-      {projectId === undefined ? (
-        body
-      ) : (
-        <DocumentProjectProvider projectId={projectId}>{body}</DocumentProjectProvider>
-      )}
-    </TooltipProvider>,
-  );
+  const tree = (hidden: boolean): React.JSX.Element => {
+    const placed = projectId === undefined ? body : <DocumentProjectProvider projectId={projectId}>{body}</DocumentProjectProvider>;
+    return (
+      <TooltipProvider>
+        {asSpaceTab ? <React.Activity mode={hidden ? 'hidden' : 'visible'}>{placed}</React.Activity> : placed}
+      </TooltipProvider>
+    );
+  };
+  const { rerender } = render(tree(false));
+  return (hidden) => {
+    if (asSpaceTab) rerender(tree(hidden));
+  };
 }
 
 /**
