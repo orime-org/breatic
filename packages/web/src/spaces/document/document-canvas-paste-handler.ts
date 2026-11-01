@@ -12,7 +12,6 @@
 import { blockToNode } from '@blocknote/core';
 import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
-import { CellSelection, handlePaste as tablePaste } from '@tiptap/pm/tables';
 
 import { newId } from '@breatic/shared';
 
@@ -32,9 +31,10 @@ export interface CanvasPasteSink {
 }
 
 /**
- * Whether a position is inside a table cell.
+ * Whether a position is inside a stored (legacy) table cell, which holds one
+ * line of words; a new table's cell (`docTableCell`) holds blocks.
  * @param $at - The position.
- * @returns True when one of its ancestors is a cell.
+ * @returns True when one of its ancestors is such a cell.
  */
 function inTableCell($at: ResolvedPos): boolean {
   for (let depth = $at.depth; depth > 0; depth -= 1) {
@@ -46,8 +46,8 @@ function inTableCell($at: ResolvedPos): boolean {
 
 /**
  * Lines of a text node as the selection takes them, the words as they are,
- * never read as markdown. Text in a table cell, or over selected cells,
- * holds no paragraphs, so the lines are joined by line breaks; anywhere else
+ * never read as markdown. Text in a stored (legacy) table cell holds no
+ * paragraphs, so the lines are joined by line breaks; anywhere else
  * each line is a paragraph in a group, opened at both ends so the first line
  * joins the words before the caret and the last the words after it, as a
  * slice of the body's own lines is: the shape BlockNote's `transformPasted`
@@ -58,7 +58,7 @@ function inTableCell($at: ResolvedPos): boolean {
  */
 function textSlice(selection: Selection, lines: readonly string[]): Slice {
   const { schema } = selection.$from.doc.type;
-  if (selection instanceof CellSelection || inTableCell(selection.$from)) {
+  if (inTableCell(selection.$from)) {
     const inline = lines.flatMap((line, index) => [
       ...(index > 0 ? [schema.nodes['hardBreak']!.create()] : []),
       ...(line === '' ? [] : [schema.text(line)]),
@@ -89,15 +89,15 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
         /**
          * Pastes the lines as ProseMirror pastes a slice, its `transformPasted`
-         * first; of the paste handlers only the table's, which fills selected
-         * cells, takes them (design §5.4.3: no link made of an address).
+         * first; no paste handler sees them, so no link is made of an address
+         * (design §5.4.3).
          */
         const paste = (): void => {
           let slice = textSlice(view.state.selection, lines);
           view.someProp('transformPasted', (transform) => {
             slice = transform(slice, view, true);
           });
-          if (!tablePaste(view, context.event, slice)) view.dispatch(view.state.tr.replaceSelection(slice));
+          view.dispatch(view.state.tr.replaceSelection(slice));
         };
         const blocks = lines.map((line) => ({ type: 'paragraph', content: line }));
         putContent(editor, { blocks, lost: 0, plain: lines.join('\n'), paste }, { wordsIntoTarget: true, judge: (props) => props });

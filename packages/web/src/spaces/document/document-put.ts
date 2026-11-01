@@ -7,8 +7,9 @@
  * placement rules for web content, the body's own content, canvas nodes and
  * files alike, and the caret after what was put. Content goes in as blocks
  * built here; lines of words alone go in by the paste of their format, and
- * the words a table cell or a code block takes by ProseMirror, the table's
- * own paste and BlockNote.
+ * the words a code block or a stored (legacy) table cell takes by ProseMirror
+ * and BlockNote. In a table cell (§5.4.7) one table fills the cells from the
+ * target cell and any other content goes into the cell.
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
@@ -39,9 +40,9 @@ export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & { readonly paste
 /** What a placement needs besides the content. */
 export interface PutOptions {
   /**
-   * Whether a table cell or a code block takes the words while the media go
-   * beside it (a paste, a drop, canvas words alone); otherwise the whole
-   * content goes beside it (canvas content with media, files).
+   * Whether a code block or a stored (legacy) table cell takes the words while
+   * the media go beside it (a paste, a drop, canvas words alone); otherwise
+   * the whole content goes beside it (canvas content with media, files).
    */
   readonly wordsIntoTarget: boolean;
   /** Judges every medium put in; one left out is counted by whoever judged it. */
@@ -329,18 +330,18 @@ function nestLast(nodes: PMNode[], line: PMNode): PMNode[] {
 }
 
 /**
- * Puts content in a block that takes only words, a table or a code block: the
- * words go in first, by the table's own paste, ProseMirror or BlockNote's
- * plain text paste, and the media beside the block afterwards, found again by
- * its id. An empty code block counts as an empty line: the media go above it
- * and the caret stays in it.
+ * Puts content in a block that takes only words, a code block or a stored
+ * (legacy) table: the words go in first, by ProseMirror or BlockNote's plain
+ * text paste, and the media beside the block afterwards, found again by its
+ * id. An empty code block counts as an empty line: the media go above it and
+ * the caret stays in it.
  * @param editor - The editor.
  * @param content - The content, its media judged.
  * @param target - The table's or the code block's container.
  * @param target.node - The container.
  * @param target.pos - Where it starts.
  * @param wordsIntoTarget - Whether the words go into the block, or the whole content beside it.
- * @returns The words put in the block; the cells a table's paste filled; else the last block put beside it.
+ * @returns The words put in the block, else the last block put beside it.
  */
 function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode; pos: number }, wordsIntoTarget: boolean): Placed {
   const view = editor.prosemirrorView!;
@@ -353,10 +354,9 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
     else pasteWordsOf(editor, content, inside);
   }
   const after = view.state.selection;
-  const cells = after instanceof CellSelection ? after : null;
-  const words: Placed | null = inside.length > 0 && cells === null ? { kind: 'range', from: Math.min(from, after.head), to: after.head } : null;
+  const words: Placed | null = inside.length > 0 ? { kind: 'range', from: Math.min(from, after.head), to: after.head } : null;
   const found = beside.length === 0 ? null : containerById(view.state.doc, id);
-  if (found === null) return cells !== null ? cellsOf(cells) : (words ?? { kind: 'range', from, to: from });
+  if (found === null) return words ?? { kind: 'range', from, to: from };
   const blockContent = found.node.firstChild!;
   const nodes = containers(quotedAs(beside, blockContent.attrs[QUOTED] === true), view.state);
   const emptyCode = blockContent.type.name === 'codeBlock' && blockContent.content.size === 0;
@@ -366,7 +366,6 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
   if (emptyCode) tr.setSelection(TextSelection.create(tr.doc, at + size + 2));
   else finishCaret(tr, nodes, at);
   view.dispatch(tr.scrollIntoView());
-  if (cells !== null) return cellsOf(cells.map(tr.doc, tr.mapping) as CellSelection);
   if (words !== null) return words;
   return { kind: 'range', from: at + size - nodes[nodes.length - 1]!.nodeSize, to: at + size };
 }
@@ -489,8 +488,9 @@ function putBlocksInCells(view: EditorView, blocks: readonly ReadBlock[]): Place
  * Puts content at the selection, or at a drop's point (§5.4.3). In a code
  * block plain text goes in as it is; otherwise every medium is judged once,
  * and content that puts nothing in changes nothing. Then the selection
- * settles the target: a cell selection keeps for the table's paste; a
- * selected block is replaced in place; a text selection outside a table and
+ * settles the target: in a table cell or over selected cells, one table fills
+ * the cells from the target cell and any other content goes into the cell
+ * (§5.4.7); a selected block is replaced in place; a text selection outside a table and
  * a code block takes lines of words alone by the paste of their format; any
  * other text selection is deleted and the caret's line judged.
  * @param editor - The editor.
@@ -511,12 +511,15 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const cell = selection instanceof CellSelection && $drop === null ? selection.$anchorCell : cellAround($at);
   const inCell = cell !== null && ($drop !== null || heldTables(selection) === null);
   /**
-   * Places content, a drop's point aimed first and its hold on the selection
-   * from before the drop let go once the content is in.
+   * Places content at its target. A drop's point is aimed first and its hold
+   * on the selection from before the drop let go once the content is in. A
+   * paste over a selection whose ends are both in code blocks goes to
+   * BlockNote's plain text paste, an input the body handles as its own, so
+   * the tables it takes whole are turned into empty lines first (inner#1619).
    * @param place - Puts the content at the selection.
    * @returns Where it landed.
    */
-  const atDrop = (place: () => Placed | null): Placed | null => {
+  const atTarget = (place: () => Placed | null): Placed | null => {
     if ($drop === null) {
       if (selection.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) swapHeldTables(view);
       return place();
@@ -528,7 +531,7 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   };
   const plain = content.plain;
   if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
-    return atDrop(() => {
+    return atTarget(() => {
       const from = view.state.selection.from;
       editor.pasteText(plain);
       return { kind: 'range', from, to: view.state.selection.head };
@@ -543,14 +546,14 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   if (!holdsContent(blocks)) return null;
   // The read's own paste carries the media too, so it puts content holding none.
   const put: Content = { ...content, blocks, paste: takeMedia(content.blocks).beside.length === 0 ? content.paste : null };
-  return atDrop(() => putAtSelection(editor, put, options.wordsIntoTarget, opened));
+  return atTarget(() => putAtSelection(editor, put, options.wordsIntoTarget, opened));
 }
 
 /**
  * Puts judged content at the selection, by what the selection is (§5.4.3).
  * @param editor - The editor.
  * @param content - The content, its media judged.
- * @param wordsIntoTarget - Whether a table cell or a code block takes the words.
+ * @param wordsIntoTarget - Whether a code block or a stored (legacy) table cell takes the words.
  * @param opened - Whether the caret's line was opened by a drop, to be replaced rather than kept.
  * @returns Where the content landed.
  */
