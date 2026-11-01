@@ -34,6 +34,8 @@ const EMPTY: TimelineDocumentV1 = {
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
   clips: {}, sources: {},
 };
+/** Magnet off: a lone clip moved on the main track keeps the requested frame. */
+const FREE = { magnet: false, linkage: false } as const;
 const docs: Y.Doc[] = [];
 
 /**
@@ -66,7 +68,7 @@ function seededDoc(): Y.Doc {
  * @throws {Error} When the test edit is refused.
  */
 function addVideo(doc: Y.Doc): void {
-  expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP } })).toBe(true);
+  expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: FREE }, 'local-test').ok).toBe(true);
 }
 
 /**
@@ -200,7 +202,7 @@ describe('useTimelineDocument content ownership', () => {
     const { result } = renderHook(() => useTimelineDocument(client, true));
     const original = result.current.document;
     const vector = Y.encodeStateVector(client);
-    expect(applyTimelineEdit(peer, { operation: 'set_start', parameters: { clipId: CLIP.id, startFrame: 72 } })).toBe(true);
+    expect(applyTimelineEdit(peer, { operation: 'move', parameters: { clipId: CLIP.id, startFrame: 72 }, placement: FREE }, 'peer-test').ok).toBe(true);
     act(() => Y.applyUpdate(client, Y.encodeStateAsUpdate(peer, vector), 'remote-provider'));
     expect(result.current.document?.clips[CLIP.id]).toEqual({ ...CLIP, startFrame: 72 });
     expect(original?.clips[CLIP.id]).toEqual(CLIP);
@@ -296,7 +298,7 @@ describe('useTimelineDocument subscription lifecycle', () => {
       const previous = result.current.document;
       const previousStart = previous?.clips[CLIP.id]?.startFrame;
       act(() => {
-        expect(applyTimelineEdit(doc, { operation: 'set_start', parameters: { clipId: CLIP.id, startFrame } })).toBe(true);
+        expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: CLIP.id, startFrame }, placement: FREE }, 'local-test').ok).toBe(true);
       });
       const beforeRead = Y.encodeStateAsUpdate(doc);
       expect(result.current.document?.clips[CLIP.id]).toEqual({ ...CLIP, startFrame });
