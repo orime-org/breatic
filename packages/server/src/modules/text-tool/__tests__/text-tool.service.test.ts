@@ -104,6 +104,9 @@ vi.mock("@breatic/domain", async () => ({
   // The real one routes on which API keys the deployment has, so a name
   // derived from the model string would assert the double, not the wiring.
   resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
+  // The run asks for its thinking level through this (inner#1860); what it
+  // spells per route is `llm.ts`'s to test.
+  callOptionsFor: () => ({ providerOptions: {} }),
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
@@ -115,10 +118,16 @@ vi.mock("@breatic/domain", async () => ({
 
 vi.mock("ai", () => ({ stepCountIs: () => () => false }));
 
-vi.mock("@server/config/text-tools.js", () => ({
+// Partial: whatever else the service reads from its config (the thinking level,
+// inner#1860) comes from the shipped file.
+vi.mock("@server/config/text-tools.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getModelForTool: () => "openai/gpt-4o-mini",
   getPromptForTool: () => "system",
 }));
+
+/** The project the run belongs to; its studio pays (inner#1860). */
+const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 const { executeTextTool } = await import(
   "@server/modules/text-tool/text-tool.service.js"
@@ -133,7 +142,7 @@ async function run(): Promise<{ type: string }[]> {
   for await (const event of executeTextTool(
     "u-1",
     "generate",
-    { instructions: "写点什么" },
+    { instructions: "写点什么", project_id: PROJECT },
     new AbortController().signal,
     "key-1",
   )) {
@@ -221,7 +230,7 @@ describe("一次跑到一半就死掉的运行", () => {
     const gen = executeTextTool(
       "u-1",
       "generate",
-      { instructions: "写点什么" },
+      { instructions: "写点什么", project_id: PROJECT },
       new AbortController().signal,
       "key-1",
     );
@@ -247,7 +256,7 @@ describe("a run cut off before the model reported its cost", () => {
 
     expect(handOffLookups).toHaveBeenCalledWith(
       ["gen-42"],
-      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: null },
+      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: PROJECT },
       { model: "openai/gpt-4o-mini", description: "Text tool: generate", charge: true },
     );
   });
@@ -270,7 +279,7 @@ describe("what a run records", () => {
         operationKey: "texttool:key-1",
         feature: "text_tool",
         actorUserId: "u-1",
-        projectId: null,
+        projectId: PROJECT,
       }),
     ]);
     expect(recorders.calls).toEqual([
@@ -281,7 +290,7 @@ describe("what a run records", () => {
       }),
     ]);
     expect(charge.calls[0]?.[0]).toBe("texttool:key-1");
-    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000 });
+    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000, projectId: PROJECT, actorUserId: "u-1" });
   });
 });
 

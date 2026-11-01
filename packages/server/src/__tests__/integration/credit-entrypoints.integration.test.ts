@@ -332,13 +332,31 @@ describe("会话载荷", () => {
 });
 
 describe("Idempotency-Key", () => {
+  /**
+   * A project the caller edits, in a studio that can pay: the text tool now
+   * takes a project, checks the caller's role on it and prechecks its credits
+   * before it reads anything else (inner#1860).
+   * @returns The fixture.
+   */
+  async function seedFundedEditor(): Promise<Fixture> {
+    const fx = await seedFixture();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${fx.projectId}, ${fx.userId}, 'owner', null)
+    `;
+    const { sessionId } = await seedPendingPayment(fx.userId, 100);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
+    return fx;
+  }
+
   it("形状不合法时当场答 422，不等到模型跑完才发现", async () => {
     // This header travels all the way to `chargeOnceForGeneration`'s refKey,
     // where `REFKEY_PATTERN` rejects it. That is too late: by then the model
     // has been called and paid for, and the error the charge throws is
     // swallowed by the catch in `chargeRecorded`, so the user gets a
     // response that looks like a success. Validation belongs at the entry.
-    const fx = await seedFixture();
+    const fx = await seedFundedEditor();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);
 
@@ -352,14 +370,14 @@ describe("Idempotency-Key", () => {
           "Content-Type": "application/json",
           "Idempotency-Key": bad,
         },
-        body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+        body: JSON.stringify({ tool: "generate", instructions: "写点什么", project_id: fx.projectId }),
       });
       expect(res.status, `Idempotency-Key = ${JSON.stringify(bad)}`).toBe(422);
     }
   });
 
   it("形状合法时照常放行", async () => {
-    const fx = await seedFixture();
+    const fx = await seedFundedEditor();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);
 
@@ -370,7 +388,7 @@ describe("Idempotency-Key", () => {
         "Content-Type": "application/json",
         "Idempotency-Key": "texttool.retry-1:abc_DEF",
       },
-      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+      body: JSON.stringify({ tool: "generate", instructions: "写点什么", project_id: fx.projectId }),
     });
     expect(res.status).toBe(200);
   });
@@ -378,7 +396,7 @@ describe("Idempotency-Key", () => {
   it("不给这个 header 也照常放行", async () => {
     // 缺省时服务端自己发一个 uuid，每次重试各算一次 —— 文本工具每次都重新
     // 生成内容，这是它本来的语义。
-    const fx = await seedFixture();
+    const fx = await seedFundedEditor();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);
 
@@ -388,7 +406,7 @@ describe("Idempotency-Key", () => {
         Cookie: `${sessionCookieName()}=${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+      body: JSON.stringify({ tool: "generate", instructions: "写点什么", project_id: fx.projectId }),
     });
     expect(res.status).toBe(200);
   });

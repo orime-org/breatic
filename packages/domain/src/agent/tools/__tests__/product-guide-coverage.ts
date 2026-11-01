@@ -930,7 +930,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.studio.slug_taken": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.team_limit_reached": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.transfer_credits_designated": { excluded: REASONS.NOT_ON_THESE_SCREENS },
-  "server.text_tool.already_running": { excluded: REASONS.NO_CALLER },
   "share.inviteFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "share.inviteSending": { excluded: REASONS.PASSING },
   "share.inviteSent": { excluded: REASONS.ECHO },
