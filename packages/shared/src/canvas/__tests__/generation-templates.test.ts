@@ -437,3 +437,97 @@ describe('generation template registry checks', () => {
     }
   });
 });
+
+describe('character template layouts (inner#1846)', () => {
+  const SHEET_LABELS = [
+    'NAME', 'ROLE', 'AGE', 'PERSONALITY', 'THEME', 'COLOR PALETTE', 'MAIN VIEWS', 'FRONT', '3/4', 'SIDE', 'BACK',
+    'SILHOUETTE', 'CLOSE-UP', 'EXPRESSIONS', 'MICRO-EXPRESSIONS', 'HEAD ANGLES', 'POSES', 'COSTUME DETAILS', 'HANDS',
+  ];
+  const EXPRESSION_LABELS = ['EXPRESSIONS', 'MICRO-EXPRESSIONS', 'HEAD ANGLES'];
+  const SHEET_PROMPTS = ['canvas.template.character-bible.prompt', 'canvas.template.character-design-from-text.prompt'];
+  const EXPRESSION_PROMPT = 'canvas.template.expression-sheet.prompt';
+
+  /**
+   * The kinds of marks a prompt carries, in order.
+   * @param text - The prompt.
+   * @returns One entry per mark.
+   */
+  const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => (s.slot ? [s.slot.kind] : []));
+
+  it('names every section of the character sheet with its English label in every language', () => {
+    for (const key of SHEET_PROMPTS) {
+      for (const locale of LOCALES) {
+        const text = raw(locale, key) ?? '';
+        for (const label of SHEET_LABELS) expect(text, `${key} ${locale} ${label}`).toContain(label);
+      }
+    }
+  });
+
+  it('gives the character sheet exactly the panel counts of each row, in every language', () => {
+    for (const key of SHEET_PROMPTS) {
+      expect(raw('en', key), key).toMatch(/exactly 8 equal square swatches/);
+      expect(raw('en', key), key).toMatch(/exactly 4 full-body figures/);
+      expect(raw('en', key), key).toMatch(/Row 1, EXPRESSIONS, exactly 8 /);
+      expect(raw('en', key), key).toMatch(/Row 2, exactly 9 panels/);
+      expect(raw('en', key), key).toMatch(/Row 3, exactly 12 panels/);
+      for (const locale of LOCALES) {
+        const text = raw(locale, key) ?? '';
+        for (const count of ['8', '4', '9', '5', '12', '3']) expect(text, `${key} ${locale} ${count}`).toContain(count);
+      }
+    }
+  });
+
+  it('lays the expression sheet out as three labelled rows of 8, 5 and 4 equal panels, in every language', () => {
+    const en = raw('en', EXPRESSION_PROMPT) ?? '';
+    expect(en).toContain('Three full-width rows of exactly equal height');
+    expect(en).toContain('the same margin on all four sides');
+    expect(en).toMatch(/EXPRESSIONS, 8 panels/);
+    expect(en).toMatch(/MICRO-EXPRESSIONS, 5 panels/);
+    expect(en).toMatch(/HEAD ANGLES, the calm face in 4 panels/);
+    for (const locale of LOCALES) {
+      const text = raw(locale, EXPRESSION_PROMPT) ?? '';
+      for (const label of EXPRESSION_LABELS) expect(text, `${locale} ${label}`).toContain(label);
+      for (const count of ['8', '5', '4']) expect(text, `${locale} ${count}`).toContain(count);
+    }
+  });
+
+  it('keeps the worn and carried items on the character sheet, and its rendering only where no style is picked', () => {
+    const bible = raw('en', 'canvas.template.character-bible.prompt') ?? '';
+    expect(bible).toContain('wearing and carrying everything the reference shows');
+    expect(bible).not.toContain("keeps the reference's rendering");
+    expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
+  });
+
+  it('carries the same marks in the same order in every language, for every character template prompt', () => {
+    for (const template of GENERATION_TEMPLATES.filter((one) => one.goal === 'character')) {
+      for (const key of template.nodes.filter((node) => node.role === 'generate').map((node) => promptKeyOf(template, node.key))) {
+        const reference = marksOf(raw('en', key) ?? '');
+        for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
+      }
+    }
+  });
+
+  it('writes the inheritance list, the shot and move fields and the orbit the sources ask for', () => {
+    const scene = raw('en', 'canvas.template.single-view-refs-scene.prompt') ?? '';
+    for (const part of ['identity', 'facial features', 'face shape', 'skin tone', 'apparent age', 'hairstyle and hair colour', 'height', 'build and body proportions', 'every garment', 'the shoes and every accessory', 'overall bearing', 'no duplicates of the person, no blending of features']) {
+      expect(scene, part).toContain(part);
+    }
+    expect(scene).toContain('{✏️ name each garment, the shoes and each accessory}');
+    for (const view of ['front', 'side', 'back']) {
+      expect(raw('en', `canvas.template.single-view-refs-scene.node.${view}.prompt`), view).toContain('nothing redesigned, recoloured, added or removed');
+    }
+    for (const view of ['side', 'back']) {
+      expect(raw('en', `canvas.template.single-view-refs-scene.node.${view}.prompt`), view).toContain('Build the parts the reference does not show');
+    }
+    const sequence = raw('en', 'canvas.template.identity-locked-sequence.prompt') ?? '';
+    expect(sequence.match(/\{✏️ shot size and camera move/g)).toHaveLength(3);
+    expect(sequence).toContain('no deformation, no drift, the face never changes');
+    const orbit = raw('en', 'canvas.template.character-showcase-orbit.prompt') ?? '';
+    expect(orbit).toContain("circles 180 degrees around the character's right side");
+    expect(orbit).toContain('keeping the same distance, height and focal length');
+    expect(orbit).toContain('The near things sweep past quickly and the far background moves slowly');
+    const costume = raw('en', 'canvas.template.costume-sheet.prompt') ?? '';
+    expect(costume).toContain('exactly 3 full-body figures of equal width');
+    expect(costume).toContain('2 by 2 grid of exactly 4 equal close-up panels');
+  });
+});
