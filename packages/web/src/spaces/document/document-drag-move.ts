@@ -43,17 +43,20 @@ import {
 } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+const TABLES = new Set([DOC_TABLE, 'table']);
+
 /**
- * Whether content holds a table, itself or anywhere inside: a cell holds no
- * table (inner#1312 A14), whichever drag brings it.
+ * Whether content holds a table of either kind, itself or anywhere inside:
+ * a cell holds no table (inner#1312 A14), whichever drag brings it.
  * @param content - A block or a dragged slice's content.
  * @returns True when it does.
  */
 export function carriesTable(content: PMNode | Fragment): boolean {
-  if (content instanceof Fragment ? false : content.type.name === DOC_TABLE) return true;
+  if (!(content instanceof Fragment) && TABLES.has(content.type.name)) return true;
   let found = false;
   content.descendants((child) => {
-    if (child.type.name === DOC_TABLE) found = true;
+    if (TABLES.has(child.type.name)) found = true;
     return !found;
   });
   return found;

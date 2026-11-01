@@ -432,21 +432,12 @@ function includesTable(blocks: readonly ReadBlock[]): boolean {
 }
 
 /**
- * Whether content is one table alone, as {@link onlyTable} reads it.
- * @param blocks - The content.
- * @returns True for one table alone.
- */
-export function isLoneTable(blocks: readonly ReadBlock[]): boolean {
-  return onlyTable(blocks) !== null;
-}
-
-/**
  * The one table alone, ignoring paragraphs around it that show no words: a
  * line break or a no-break space reads as text but leaves the line blank.
  * @param blocks - The content read.
  * @returns Its table, or null for mixed content.
  */
-function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
+export function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
   const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content)?.trim() === '' && (block.children ?? []).length === 0));
   return kept.length === 1 && kept[0]!.type === DOC_TABLE ? kept[0]! : null;
 }
@@ -710,9 +701,9 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     laid = [head, ...rest];
     tr.replaceWith(start, end, laid);
     from = firstWords ? start + 2 + size : startOf(laid, 1);
-    // The words joined to the line and the blocks after it are apart when the
-    // line nests blocks of its own: the range is the joined words, as the
-    // blocks after them are the line end's edge.
+    // When the line nests blocks of its own, the blocks put after the joined
+    // words land after those nested lines, apart from the words: the range is
+    // the joined words alone, and the rest stays unselected.
     to = firstWords && line.node.childCount > 1 ? from + nodes[0]!.firstChild!.content.size : startOf(laid, laid.length);
     finishCaret(tr, rest, startOf(laid, 1));
   } else {

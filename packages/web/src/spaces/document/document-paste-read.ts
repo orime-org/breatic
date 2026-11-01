@@ -574,9 +574,9 @@ function readByMarkers(reader: BlockReader, html: string, lands: (url: string) =
 }
 
 /**
- * The language VS Code says copied code is in, as BlockNote's
- * `handleVSCodePaste` reads it: none when the data is broken or names none,
- * as a copy too large to highlight writes `"mode": null`.
+ * The language VS Code says copied code is in, or null when the data names
+ * none (a copy too large to highlight writes `"mode": null`) or is broken,
+ * where BlockNote's own `handleVSCodePaste` would throw.
  * @param data - The `vscode-editor-data` format's text.
  * @returns The language, or null.
  */
