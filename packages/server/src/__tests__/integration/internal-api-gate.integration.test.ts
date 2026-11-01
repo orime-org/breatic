@@ -56,7 +56,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...actual, getRedis: () => faulty(actual.getRedis()), logger };
 });
 
-/** The lingering deadline each case sets; read by `closeAfterRefusal` when lingering starts. */
+/** The lingering deadline each case sets; read by `closeAfterRefusal` at each refusal. */
 const linger = vi.hoisted(() => ({ seconds: 30 }));
 vi.mock("@server/config/limits.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -94,7 +94,7 @@ import {
   useInternalApp,
 } from "./internal-api-harness.js";
 import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
-import { expectWholeAnswerThenCloseAtBodyEnd, freshGetStatus, refusedThenNext } from "./refused-connection.js";
+import { expectNextOnNewConnection, expectWholeAnswerThenCloseAtBodyEnd } from "./refused-connection.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
 // the shared beforeEach clears the rate-limit keys through the same client.
@@ -626,52 +626,25 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     expect(res.json?.code).not.toBe("invalid_body");
   });
 
-  // inner#1782 test spec I1–I4: how a refusal closes its connection.
+  // inner#1782 test spec I1–I5: how a refusal closes its connection.
   const PROBE_PATH = "/internal/v1/health";
 
   it("I1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
-    const fresh = await freshGetStatus(running.baseUrl, PROBE_PATH);
-    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
-    try {
-      for (let round = 0; round < 5; round++) {
-        const { refused, next } = await refusedThenNext(running.baseUrl, agent, PROBE_PATH, PROBE_PATH);
-
-        expect(refused.status).toBe(413);
-        expect(refused.headers.connection).toBe("close");
-        expect(JSON.parse(refused.body)).toEqual({ code: "invalid_body" });
-        expect(next.error).toBeUndefined();
-        expect(next.status).toBe(fresh);
-        expect(next.reusedSocket).toBe(false);
-      }
-    } finally {
-      agent.destroy();
-    }
+    const body = await expectNextOnNewConnection(running.baseUrl, PROBE_PATH, PROBE_PATH, 5);
+    expect(JSON.parse(body)).toEqual({ code: "invalid_body" });
   });
 
   it.each([
-    ["I2: a declared 20 MiB body", 20 * 1024 * 1024],
-    ["I3: a finite chunked 20 MiB body", undefined],
-  ])("%s sent slowly by a client that reads only afterwards gets the whole 413", async (_name, contentLength) => {
-    const answer = await expectWholeAnswerThenCloseAtBodyEnd(suite.server, running.baseUrl, PROBE_PATH, contentLength);
+    ["I2: a declared 20 MiB body", false],
+    ["I3: a finite chunked 20 MiB body", true],
+  ])("%s sent slowly by a client that reads only afterwards gets the whole 413", async (_name, chunked) => {
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(suite.server, running.baseUrl, PROBE_PATH, chunked);
     expect(JSON.parse(answer.body)).toEqual({ code: "invalid_body" });
   });
 
   it.each([0, 200])("I5: after a finite chunked body just over 64 KiB is refused, a request %i ms later goes out on a new connection", async (delayMs) => {
-    const fresh = await freshGetStatus(running.baseUrl, PROBE_PATH);
-    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
-    try {
-      for (let round = 0; round < 10; round++) {
-        const { refused, next } = await refusedThenNext(running.baseUrl, agent, PROBE_PATH, PROBE_PATH, { total: 80 * 1024, delayMs });
-
-        expect(refused.status).toBe(413);
-        expect(refused.headers.connection).toBe("close");
-        expect(next.error).toBeUndefined();
-        expect(next.status).toBe(fresh);
-        expect(next.reusedSocket).toBe(false);
-      }
-    } finally {
-      agent.destroy();
-    }
+    const body = await expectNextOnNewConnection(running.baseUrl, PROBE_PATH, PROBE_PATH, 10, { total: 80 * 1024, delayMs });
+    expect(JSON.parse(body)).toEqual({ code: "invalid_body" });
   });
 
   it("I4: a body within the limit is answered without closing the connection", async () => {

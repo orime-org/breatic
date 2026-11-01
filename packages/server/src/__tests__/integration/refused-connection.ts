@@ -18,7 +18,7 @@ import { performance } from "node:perf_hooks";
 import { expect } from "vitest";
 
 /** 64 KiB, the size of every block a probe writes. */
-export const BLOCK = 65_536;
+const BLOCK = 65_536;
 
 /** The server-side sockets of one listening server, by the client's port. */
 export interface ServerSockets {
@@ -80,11 +80,12 @@ export interface ParsedResponse {
 }
 
 /**
- * Parse one complete HTTP/1.1 response from the start of the bytes.
+ * Parse one complete HTTP/1.1 response from the start of the bytes. Both
+ * apps answer a refusal with `Content-Length`.
  * @param bytes - What the client has read so far.
  * @returns The response, or null while it is incomplete.
  */
-export function parseResponse(bytes: Buffer): ParsedResponse | null {
+function parseResponse(bytes: Buffer): ParsedResponse | null {
   const headEnd = bytes.indexOf("\r\n\r\n");
   if (headEnd < 0) return null;
   const [statusLine, ...lines] = bytes.subarray(0, headEnd).toString("latin1").split("\r\n");
@@ -95,22 +96,10 @@ export function parseResponse(bytes: Buffer): ParsedResponse | null {
     headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
   }
   const rest = bytes.subarray(headEnd + 4);
-  if (headers["content-length"] !== undefined) {
-    const length = Number.parseInt(headers["content-length"], 10);
-    if (rest.length < length) return null;
-    return { status, headers, body: rest.subarray(0, length).toString("utf-8") };
-  }
-  const parts: Buffer[] = [];
-  let at = 0;
-  for (;;) {
-    const sizeEnd = rest.indexOf("\r\n", at);
-    if (sizeEnd < 0) return null;
-    const size = Number.parseInt(rest.subarray(at, sizeEnd).toString("latin1"), 16);
-    if (size === 0) return rest.indexOf("\r\n", sizeEnd + 2) < 0 ? null : { status, headers, body: Buffer.concat(parts).toString("utf-8") };
-    if (rest.length < sizeEnd + 2 + size + 2) return null;
-    parts.push(rest.subarray(sizeEnd + 2, sizeEnd + 2 + size));
-    at = sizeEnd + 2 + size + 2;
-  }
+  if (headers["content-length"] === undefined) return null;
+  const length = Number.parseInt(headers["content-length"], 10);
+  if (rest.length < length) return null;
+  return { status, headers, body: rest.subarray(0, length).toString("utf-8") };
 }
 
 /** What a raw-socket upload saw. */
@@ -222,25 +211,26 @@ export async function rawUpload(plan: UploadPlan): Promise<Upload> {
  * @param server - The listening server.
  * @param baseUrl - Its base URL.
  * @param path - Where the body goes.
- * @param contentLength - The declared length, or undefined for chunked.
+ * @param chunked - Send it chunked; with a declared length otherwise.
  * @returns The 413, for the caller to check its body.
  */
 export async function expectWholeAnswerThenCloseAtBodyEnd(
   server: http.Server,
   baseUrl: string,
   path: string,
-  contentLength: number | undefined,
+  chunked: boolean,
 ): Promise<ParsedResponse> {
+  const blocks = 320;
   const watch = watchServerSockets(server);
   let upload: Upload | undefined;
   try {
     upload = await rawUpload({
       port: Number(new URL(baseUrl).port),
       path,
-      contentLength,
-      blocks: 320,
+      contentLength: chunked ? undefined : blocks * BLOCK,
+      blocks,
       pauseMs: 20,
-      terminate: contentLength === undefined,
+      terminate: chunked,
       readAfterUpload: true,
     });
     expect(upload.tLast - upload.t0).toBeLessThan(20_000);
@@ -249,7 +239,6 @@ export async function expectWholeAnswerThenCloseAtBodyEnd(
     const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
     expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
     expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
-    expect(tClose - upload.t0).toBeLessThan(30_000);
     expect(upload.error).toBeUndefined();
     expect(upload.tFin).toBeDefined();
     expect(upload.tFin! - upload.tLast).toBeLessThan(2000);
@@ -261,8 +250,8 @@ export async function expectWholeAnswerThenCloseAtBodyEnd(
 }
 
 /** One round of a refused chunked request followed by a GET on the same agent. */
-export interface RefusedThenNext {
-  refused: { status: number; headers: http.IncomingHttpHeaders; body: string; errorBeforeAnswer?: string };
+interface RefusedThenNext {
+  refused: { status: number; headers: http.IncomingHttpHeaders; body: string };
   next: { status: number; reusedSocket: boolean; error?: string };
 }
 
@@ -284,7 +273,7 @@ export interface RefusedThenNextOptions {
  * @param opts - The body's size and the GET's delay.
  * @returns Both answers.
  */
-export async function refusedThenNext(
+async function refusedThenNext(
   baseUrl: string,
   agent: http.Agent,
   postPath: string,
@@ -347,7 +336,7 @@ export async function refusedThenNext(
  * @param path - The path.
  * @returns The status code.
  */
-export function freshGetStatus(baseUrl: string, path: string): Promise<number> {
+function freshGetStatus(baseUrl: string, path: string): Promise<number> {
   const url = new URL(baseUrl);
   return new Promise((resolve, reject) => {
     const req = http.request({ host: url.hostname, port: url.port, path, method: "GET", agent: false }, (res) => {
@@ -357,4 +346,41 @@ export function freshGetStatus(baseUrl: string, path: string): Promise<number> {
     req.on("error", reject);
     req.end();
   });
+}
+
+/**
+ * Over several rounds on one keep-alive socket, send a chunked body the
+ * server refuses, then a GET through the same agent, and check each refusal
+ * says `Connection: close` and each GET goes out on a new connection.
+ * @param baseUrl - The server.
+ * @param postPath - Where the refused body goes.
+ * @param getPath - Where the next request goes.
+ * @param rounds - How many rounds.
+ * @param opts - The body's size and the GET's delay.
+ * @returns The last refusal's body, for the caller to check.
+ */
+export async function expectNextOnNewConnection(
+  baseUrl: string,
+  postPath: string,
+  getPath: string,
+  rounds: number,
+  opts: RefusedThenNextOptions = {},
+): Promise<string> {
+  const fresh = await freshGetStatus(baseUrl, getPath);
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+  let body = "";
+  try {
+    for (let round = 0; round < rounds; round++) {
+      const { refused, next } = await refusedThenNext(baseUrl, agent, postPath, getPath, opts);
+      expect(refused.status).toBe(413);
+      expect(refused.headers.connection).toBe("close");
+      expect(next.error).toBeUndefined();
+      expect(next.status).toBe(fresh);
+      expect(next.reusedSocket).toBe(false);
+      body = refused.body;
+    }
+  } finally {
+    agent.destroy();
+  }
+  return body;
 }

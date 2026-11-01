@@ -6,7 +6,7 @@
  * T01–T06, T08–T10, T12(c), T17, the raw-body regressions X01–X03, and a
  * keep-alive regression: a body within the limit that a route refuses unread
  * must not break the next request on the same connection; and how a refusal
- * closes its connection (inner#1782 test spec P1–P6).
+ * closes its connection (inner#1782 test spec P1–P7).
  *
  * `createApp()` is served by `@hono/node-server` on a loopback port
  * (`serveOnLoopback`, as `internal-api-harness.ts` does), and requests are
@@ -56,7 +56,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: logged,
 }));
 
-/** The lingering deadline each case sets; read by `closeAfterRefusal` when lingering starts. */
+/** The lingering deadline each case sets; read by `closeAfterRefusal` at each refusal. */
 const linger = vi.hoisted(() => ({ seconds: 30 }));
 vi.mock("@server/config/limits.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -83,10 +83,9 @@ import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 import { serveOnLoopback, type RunningApp } from "./internal-api-harness.js";
 import {
+  expectNextOnNewConnection,
   expectWholeAnswerThenCloseAtBodyEnd,
-  freshGetStatus,
   rawUpload,
-  refusedThenNext,
   watchServerSockets,
 } from "./refused-connection.js";
 
@@ -693,55 +692,27 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
   });
 });
 
-describe("§inner#1782 a refusal closes its connection (P1–P6)", () => {
+describe("§inner#1782 a refusal closes its connection (P1–P7)", () => {
   const LOGIN_PATH = "/api/v1/auth/login";
   const NEXT_PATH = "/api/v1/assets/upload-config";
-  const TWENTY_MIB = 20 * 1024 * 1024;
 
   it("P1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
-    const fresh = await freshGetStatus(running.baseUrl, NEXT_PATH);
-    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
-    try {
-      for (let round = 0; round < 10; round++) {
-        const { refused, next } = await refusedThenNext(running.baseUrl, agent, LOGIN_PATH, NEXT_PATH);
-
-        expect(refused.status).toBe(413);
-        expect(refused.headers.connection).toBe("close");
-        expect(JSON.parse(refused.body)).toEqual(tooLarge());
-        expect(next.error).toBeUndefined();
-        expect(next.status).toBe(fresh);
-        expect(next.reusedSocket).toBe(false);
-      }
-    } finally {
-      agent.destroy();
-    }
+    const body = await expectNextOnNewConnection(running.baseUrl, LOGIN_PATH, NEXT_PATH, 10);
+    expect(JSON.parse(body)).toEqual(tooLarge());
   });
 
   it.each([0, 200])("P7: after a finite chunked body just over the limit is refused, a GET %i ms later goes out on a new connection", async (delayMs) => {
-    const fresh = await freshGetStatus(running.baseUrl, NEXT_PATH);
-    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
-    try {
-      for (let round = 0; round < 10; round++) {
-        const { refused, next } = await refusedThenNext(running.baseUrl, agent, LOGIN_PATH, NEXT_PATH, { total: 1_258_291, delayMs });
-
-        expect(refused.status).toBe(413);
-        expect(refused.headers.connection).toBe("close");
-        expect(next.error).toBeUndefined();
-        expect(next.status).toBe(fresh);
-        expect(next.reusedSocket).toBe(false);
-      }
-    } finally {
-      agent.destroy();
-    }
+    const body = await expectNextOnNewConnection(running.baseUrl, LOGIN_PATH, NEXT_PATH, 10, { total: limit() + 3 * CHUNK, delayMs });
+    expect(JSON.parse(body)).toEqual(tooLarge());
   });
 
   it("P2: a declared 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
-    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, TWENTY_MIB);
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, false);
     expect(JSON.parse(answer.body)).toEqual(tooLarge());
   });
 
   it("P3: a finite chunked 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
-    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, undefined);
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, true);
     expect(JSON.parse(answer.body)).toEqual(tooLarge());
   });
 
