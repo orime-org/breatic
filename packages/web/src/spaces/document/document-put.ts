@@ -665,18 +665,22 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
       tr.replaceWith(start, end, laid);
       finishCaret(tr, nodes, start);
       to = startOf(laid, laid.length);
-    } else if (lastWords) {
+    } else if (nonParagraph && lastWords) {
+      // An empty heading or list item keeps its own type (§5.4.3).
       const tail = nodes[nodes.length - 1]!;
-      const lineId = line.node.attrs['id'] as string;
-      // An empty plain line takes the pasted block's own type; an empty
-      // heading or list item keeps its own (§5.4.3).
-      const last = nonParagraph
-        ? lineWith(line.node, tail.firstChild!.content, lineId, true)
-        : line.node.type.create({ ...tail.attrs, id: lineId }, [tail.firstChild!, ...(line.node.childCount > 1 ? [line.node.lastChild!] : [])]);
-      laid = [...nodes.slice(0, -1), last];
+      laid = [...nodes.slice(0, -1), lineWith(line.node, tail.firstChild!.content, line.node.attrs['id'] as string, true)];
       tr.replaceWith(start, end, laid);
       caret = startOf(laid, laid.length - 1) + 2 + tail.firstChild!.content.size;
       to = caret;
+    } else if (!nonParagraph && nodes.length > 1 && WORDS.has(content[content.length - 1]!.type)) {
+      // An empty plain line becomes the last pasted line, its type, attributes
+      // and nested blocks, keeping the line's id and nested blocks (§5.4.3).
+      const tail = nodes[nodes.length - 1]!;
+      const own = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id: line.node.attrs['id'] }, tail.content)];
+      laid = nestLast(own, line.node);
+      tr.replaceWith(start, end, laid);
+      finishCaret(tr, own, start);
+      to = tr.selection.head;
     } else {
       laid = [...nodes, line.node];
       tr.replaceWith(start, end, laid);

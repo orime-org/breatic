@@ -520,6 +520,22 @@ it('takes the empty body paragraph with a trailing list item that has nested ite
   expect({ parent: $head.parent.textContent, at: $head.parentOffset }).toEqual({ parent: 'b', at: 1 });
 });
 
+it('hands an empty body paragraph\'s own nested blocks to the trailing line that takes it', async () => {
+  const { editor } = await openReady([
+    { type: 'paragraph', content: 'lead' },
+    { type: 'paragraph', children: [{ type: 'paragraph', content: 'kid' }] },
+  ]);
+  caretIn(editor, 1);
+
+  paste(editor, `<img src="${PICTURE}"><h2>Title</h2>`, 'Title');
+  await settled();
+
+  const last = editor.prosemirrorView.state.doc.firstChild!.lastChild!;
+  expect(bodyBlocks(editor)).toEqual(['paragraph:lead', `image:${PICTURE}`, 'heading:Title']);
+  expect(nestedOf(last)).toEqual(['paragraph:kid']);
+  expect(editor.prosemirrorView.state.selection.$head.parent.textContent).toBe('Title');
+});
+
 it('takes an empty cell with a trailing list item that has nested items', async () => {
   const { editor } = await openReady([tableBlock({ rows: [{ cells: ['', 'neighbour'] }] })]);
   select(editor, cellsOf(editor)[0]!.pos + 3);
