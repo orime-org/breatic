@@ -68,7 +68,7 @@ function droppedFolder(name: string, files: readonly File[], gate: Promise<void>
 function dropFolder(folder: FileSystemDirectoryEntry): void {
   const placeholder = new File([], folder.name);
   fireEvent.drop(screen.getByTestId('model-import-dropzone'), { dataTransfer: {
-    files: [placeholder], items: [{ kind: 'file', webkitGetAsEntry: () => folder, getAsFile: () => placeholder }],
+    types: ['Files'], files: [placeholder], items: [{ kind: 'file', webkitGetAsEntry: () => folder, getAsFile: () => placeholder }],
   } });
 }
 
