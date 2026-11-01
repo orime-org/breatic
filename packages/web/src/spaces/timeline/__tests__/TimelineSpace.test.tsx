@@ -27,6 +27,7 @@ import { MAIN, clip as clipAt, seededDoc, timeline, track } from '@web/spaces/ti
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -300,6 +301,7 @@ async function confirmLocal(startFrame = 0): Promise<File> {
 beforeEach(() => {
   _resetForTests();
   window.localStorage.clear();
+  useTimelineEditPrefsStore.setState({ owner: null });
   useCurrentUserStore.setState({ user: { id: ME, name: 'Me', email: 'me@e.com', personalStudio: { name: 'Me', slug: 'me', avatarUrl: null }, membershipTier: 'base' } });
   useUIStore.setState({ activeRegion: 'space' });
   for (const fn of Object.values(toast)) if (vi.isMockFunction(fn)) fn.mockClear();
