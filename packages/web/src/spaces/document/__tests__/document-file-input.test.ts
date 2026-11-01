@@ -21,6 +21,7 @@ import {
   type FilesArrival,
 } from '@web/spaces/document/document-file-input';
 import { gapBefore } from './textblocks';
+import { tableBlock } from './table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -242,6 +243,25 @@ describe('the line a file drag shows (A2)', () => {
     const $shown = view.state.doc.resolve(shown!.pos);
     expect($shown.parent.inlineContent).toBe(false);
     expect(shown!.pos).toBe(gapBefore(view.state.doc, idOf(editor, 'Alpha words')));
+  });
+
+  it('over the words of a table cell, keeps the editor\'s caret in the words', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['abcd', 'x'] }] })]);
+    const view = editor.prosemirrorView!;
+    let inCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (inCell < 0 && node.isTextblock && node.textContent === 'abcd') inCell = pos + 3;
+      return inCell < 0;
+    });
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: inCell, orientation: 'inline' },
+    });
+
+    expect(shown).toEqual({ pos: inCell, orientation: 'inline' });
   });
 
   it('shows no line over a read-only body, where a drop does nothing', () => {

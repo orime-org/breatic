@@ -16,6 +16,7 @@ import { encodeInitialSpaceContent } from '@breatic/shared';
 import { serializeClipboard, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
 import { drop, settled } from './paste-harness';
+import { tableBlock } from './table-fixtures';
 
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
@@ -189,5 +190,35 @@ describe('a read-only body (A8)', () => {
 
     expect(shape(handle)).toEqual(['paragraph:lead']);
     expect(upload.media).not.toHaveBeenCalled();
+  });
+});
+
+describe('a file dropped on the words of a table cell (design §5.1, §5.4.7)', () => {
+  it('lands in the cell at the pointer, splitting the line, and is selected', () => {
+    upload.media.mockReturnValue(new Promise(() => undefined));
+    const handle = openBody([tableBlock({ rows: [{ cells: ['abcd', 'x'] }] }), { type: 'paragraph', content: 'tail' }], 1);
+    const view = handle.editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isTextblock && node.textContent === 'abcd') at = pos + 3;
+      return at < 0;
+    });
+    view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.assign(event, { clientX: 1, clientY: 1 });
+    Object.defineProperty(event, 'dataTransfer', { value: { types: ['Files'], files: [PNG()], items: [], getData: (): string => '' } });
+
+    view.dom.dispatchEvent(event);
+
+    const cell: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.type.name === 'docTableCell') {
+        node.forEach((container) => cell.push(`${container.firstChild!.type.name}:${container.firstChild!.textContent}`));
+        return false;
+      }
+      return true;
+    });
+    expect(cell.slice(0, 3)).toEqual(['paragraph:ab', 'image:', 'paragraph:cd']);
+    expect(view.state.selection.constructor.name).toBe('NodeSelection');
   });
 });
