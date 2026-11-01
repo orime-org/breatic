@@ -837,7 +837,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const body = bodyOf(ticket, at.step);
       let answer;
       try {
-        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }));
+        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }, at.step.kind));
       } catch (error) {
         const failure = classify(error, adapterFor(ticket.upstream));
         if (failure === null || failure.kind === "no_answer") throw error;

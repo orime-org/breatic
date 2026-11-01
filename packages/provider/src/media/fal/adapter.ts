@@ -16,6 +16,7 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
+import { buildBody } from "@provider/media/body.js";
 import { limits, outputField, type AskContext, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type StepCodec, type Submitted } from "@provider/media/adapter.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 
@@ -218,6 +219,18 @@ export const falAdapter: MediaAdapter = {
     vocal: {
       body: (context) => ({ audio_url: context.source() }),
       output: (outputs, context) => ({ param: context.param, id: outputField(outputs, "vocal_id") }),
+    },
+    // MiniMax's clone: fal makes the voice id and answers it.
+    voice: {
+      body: (context) => buildBody(context.binding, { params: context.params, prompt: context.prompt }),
+      output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
+    },
+    speak: {
+      body: (context) => {
+        if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
+        return { prompt: context.prompt, voice_setting: { voice_id: context.voiceId } };
+      },
+      output: (outputs) => ({ urls: [outputField(outputs.map((o) => at(o, "audio")), "url")] }),
     },
   },
 };

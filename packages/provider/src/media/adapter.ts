@@ -103,8 +103,8 @@ export interface AskContext {
 
 /** One media upstream kind. */
 export interface MediaAdapter {
-  /** Submit one step; resent only when the HTTP module knows the upstream did not process it. */
-  submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted>;
+  /** Submit one step of a kind; resent only when the HTTP module knows the upstream did not process it. */
+  submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds, kind: StepKind): Promise<Submitted>;
   /** Ask once about a prediction. */
   ask(reach: Reach, predictionId: string, bounds: RequestBounds, context: AskContext): Promise<Asked>;
   /** What a prediction cost: pending when billing has not said yet, missing on the last attempt. */

@@ -15,8 +15,9 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { BodyTooLarge, HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
-import { inlineLimits, limits, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type Submitted } from "@provider/media/adapter.js";
-import type { MediaWarning } from "@provider/media/runner.js";
+import { buildBody } from "@provider/media/body.js";
+import { inlineLimits, limits, outputField, type AskContext, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type Submitted } from "@provider/media/adapter.js";
+import type { MediaWarning, StepKind } from "@provider/media/runner.js";
 
 /**
  * The headers of every request.
@@ -45,16 +46,18 @@ const errorSchema = z.looseObject({ error: z.string() });
 const OVER_LIMIT = "the run's answer is larger than the media limit allows";
 
 /**
- * What a run answer says.
+ * What a run answer says. The model's own call reads its output urls; an extra step reads
+ * the output items whole, for the fields it needs (a voice clone's `custom_voice_id`).
  * @param body - The parsed answer.
+ * @param kind - The kind of step the run serves.
  * @returns The id, and the outputs when completed with some, or SandBase's words when it failed.
  */
-function readRun(body: unknown): { id: string | undefined; outputs?: unknown[]; error?: string } {
+function readRun(body: unknown, kind: StepKind): { id: string | undefined; outputs?: unknown[]; error?: string } {
   const read = runSchema.safeParse(body);
   if (!read.success) return { id: undefined };
   const { id, status, outputs, error } = read.data;
   const named = id === "" ? undefined : id;
-  if (status === "completed" && (outputs ?? []).length > 0) return { id: named, outputs: outputs!.map((o) => o.url) };
+  if (status === "completed" && (outputs ?? []).length > 0) return { id: named, outputs: kind === "generate" ? outputs!.map((o) => o.url) : outputs! };
   if (status === "failed" || status === "timeout") {
     const words = typeof error === "string" ? error : error === undefined || error === null ? `the run ended ${status}` : JSON.stringify(error);
     return { id: named, error: words };
@@ -71,11 +74,12 @@ function readRun(body: unknown): { id: string | undefined; outputs?: unknown[]; 
  * @param endpoint - The model id.
  * @param body - The request body.
  * @param bounds - The deadline, signal and media limit.
+ * @param kind - The kind of step the run serves.
  * @returns The run id, and the outputs when it completed at once.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {NoAnswer} With a BilledAnswerLost cause carrying one missing cost, when a 2xx answer cannot be read and names no run.
  */
-async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
+async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds, kind: StepKind): Promise<Submitted> {
   const url = `${reach.decl.base_url}/run`;
   const options = { replaySafe: false, ...bounds };
   const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify({ model: endpoint, ...body }) }, options);
@@ -90,7 +94,7 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
     throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
   }
   if (!isSuccess(response.status)) throw new HttpStatus(url, response.status, text);
-  const run = readRun(parsed(text));
+  const run = readRun(parsed(text), kind);
   const id = run.id ?? named;
   if (id === undefined && run.outputs === undefined && run.error === undefined) throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} answered no run id it could read`));
   return { predictionId: id, outputs: run.outputs, ...(run.error === undefined ? {} : { error: run.error }) };
@@ -101,11 +105,12 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
  * @param reach - The upstream.
  * @param predictionId - The run id.
  * @param bounds - The deadline, signal and media limit.
- * @returns Whether it is running, done with its output urls, or failed with SandBase's words.
+ * @param context - The kind of step asked about.
+ * @returns Whether it is running, done with its outputs, or failed with SandBase's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
  */
-async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
+async function ask(reach: Reach, predictionId: string, bounds: RequestBounds, context: AskContext): Promise<Asked> {
   let body: unknown;
   try {
     body = await fetchJson(
@@ -116,7 +121,7 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): P
     if (error instanceof BodyTooLarge) return { state: "failed", error: OVER_LIMIT };
     throw error;
   }
-  const run = readRun(body);
+  const run = readRun(body, context.kind);
   if (run.error !== undefined) return { state: "failed", error: run.error };
   // A completed run may still report no outputs while SandBase stores them.
   return run.outputs === undefined ? { state: "running" } : { state: "done", outputs: run.outputs };
@@ -172,5 +177,25 @@ function refusal(error: HttpStatus): Refusal {
   return undefined;
 }
 
-/** SandBase, as the runner and cost lookups reach it; it has no extra steps. */
-export const sandbaseAdapter: MediaAdapter = { submit, ask, billed, refusal, gone: () => false, steps: {} };
+/** SandBase, as the runner and cost lookups reach it. */
+export const sandbaseAdapter: MediaAdapter = {
+  submit,
+  ask,
+  billed,
+  refusal,
+  gone: () => false,
+  steps: {
+    // MiniMax's clone: SandBase makes the voice id and answers it on the output.
+    voice: {
+      body: (context) => buildBody(context.binding, { params: context.params, prompt: context.prompt }),
+      output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
+    },
+    speak: {
+      body: (context) => {
+        if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
+        return { text: context.prompt, voice_id: context.voiceId };
+      },
+      output: (outputs) => ({ urls: [outputField(outputs, "url")] }),
+    },
+  },
+};
