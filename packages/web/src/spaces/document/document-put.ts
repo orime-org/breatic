@@ -432,6 +432,15 @@ function includesTable(blocks: readonly ReadBlock[]): boolean {
 }
 
 /**
+ * Whether content is one table alone, as {@link onlyTable} reads it.
+ * @param blocks - The content.
+ * @returns True for one table alone.
+ */
+export function isLoneTable(blocks: readonly ReadBlock[]): boolean {
+  return onlyTable(blocks) !== null;
+}
+
+/**
  * The one table alone, ignoring paragraphs around it that show no words: a
  * line break or a no-break space reads as text but leaves the line blank.
  * @param blocks - The content read.

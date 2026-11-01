@@ -477,6 +477,28 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('fills cells from the drop with one table alone, as its paste does, and takes it from where it was', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] }),
+    ]);
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 0), positionOf(editor, 'c3', 1));
+    await settled();
+    const grids: string[][] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name !== 'docTable') return true;
+      const rows: string[] = [];
+      node.forEach((row) => row.forEach((cell) => rows.push(cell.textContent)));
+      grids.push(rows);
+      return false;
+    });
+    expect(grids).toEqual([['c1', 'c2', 't1', 't2']]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('moves words into the cell as before', async () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
     const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, tableBlock({ rows: [{ cells: ['c1', 'c2'] }] })]);

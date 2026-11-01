@@ -33,6 +33,10 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { t } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
+
 import {
   rowById,
   type RowInDocument,
@@ -40,14 +44,15 @@ import {
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /**
- * Whether a carried block is a table or contains one in its children.
- * @param node - The carried block.
- * @returns True when moving it would move a table too.
+ * Whether content holds a table, itself or anywhere inside: a cell holds no
+ * table (inner#1312 A14), whichever drag brings it.
+ * @param content - A block or a dragged slice's content.
+ * @returns True when it does.
  */
-function carriesTable(node: PMNode): boolean {
-  if (node.type.name === DOC_TABLE) return true;
+export function carriesTable(content: PMNode | Fragment): boolean {
+  if (content instanceof Fragment ? false : content.type.name === DOC_TABLE) return true;
   let found = false;
-  node.descendants((child) => {
+  content.descendants((child) => {
     if (child.type.name === DOC_TABLE) found = true;
     return !found;
   });
@@ -127,7 +132,10 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
-  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
+    toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return;
+  }
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;
