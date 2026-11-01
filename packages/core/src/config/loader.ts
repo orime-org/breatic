@@ -162,8 +162,7 @@ const agentConfigSchema = z.object({
   space_list_max_items: z.number().int().positive().default(200),
   /**
    * How many Spaces one request to read Spaces may name (inner#1552). The
-   * tool refuses a call over it; the browser reads it from
-   * `GET /chat/stream-config`.
+   * tool refuses a call over it.
    */
   space_request_max_spaces: z.number().int().positive().default(3),
   /** How many canvas nodes one requested Space may be asked for by id (inner#1552). */

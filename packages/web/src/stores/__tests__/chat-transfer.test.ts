@@ -32,7 +32,7 @@ const BUDGET = BEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED;
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceRequestMaxSpaces: 3, spaceReadTimeoutMs: 20_000 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
   },
 }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
@@ -374,7 +374,7 @@ describe('the heartbeat watchdog around an upload (H01-H03, H07, H08)', () => {
     timing = { ...DEFAULT_TIMING, config: 100, parts: [6000, 6000, 5000], wait: 1000 };
     vi.mocked(chatApi.streamConfig).mockImplementation(async () => {
       await sleep(3000);
-      return { heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceRequestMaxSpaces: 3, spaceReadTimeoutMs: 20_000 };
+      return { heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 };
     });
     openSession();
     void sendInSession(CONVERSATION, LONG);

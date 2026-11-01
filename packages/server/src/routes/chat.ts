@@ -544,8 +544,8 @@ chat.delete(
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
  * `config/agent.yaml`: how often a stream says it is alive, how long the
  * attachments on one message may be and how many there may be, and how much
- * of the reader's Spaces one message may carry, how many Spaces one request
- * to read them may name and how long reading one may take. The browser checks
+ * of the reader's Spaces one message may carry, and how long reading one Space
+ * the Agent asked for may take. The browser checks
  * attachments against those before sending and cuts the Spaces to them, so it
  * measures against the same limits the server enforces.
  *
@@ -572,7 +572,6 @@ chat.get("/stream-config", (c) => {
       attachmentMaxItems: config.attachment_max_items,
       currentSpaceMaxChars: config.current_space_max_chars,
       spaceListMaxItems: config.space_list_max_items,
-      spaceRequestMaxSpaces: config.space_request_max_spaces,
       spaceReadTimeoutMs: config.space_read_timeout_ms,
     },
   });

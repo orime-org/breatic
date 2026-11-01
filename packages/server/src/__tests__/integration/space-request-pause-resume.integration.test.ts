@@ -500,15 +500,14 @@ describe("writing a message instead", () => {
 });
 
 describe("the knobs the browser reads", () => {
-  it("include how many Spaces one request may name and how long a read may take", async () => {
+  it("include how long a read may take", async () => {
     const chat = await newChat();
     const res = await app.request("/api/v1/chat/stream-config", { headers: { Cookie: chat.a.cookie } });
     const { data } = (await res.json()) as { data: Record<string, unknown> };
-    const { maxSpaces, readTimeoutMs } = caps();
+    const { readTimeoutMs } = caps();
 
-    expect(maxSpaces).toBe(3);
     expect(readTimeoutMs).toBe(20000);
-    expect(data).toMatchObject({ spaceRequestMaxSpaces: maxSpaces, spaceReadTimeoutMs: readTimeoutMs });
+    expect(data).toMatchObject({ spaceReadTimeoutMs: readTimeoutMs });
   });
 });
 
