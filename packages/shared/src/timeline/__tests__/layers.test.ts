@@ -4,7 +4,9 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 
+import * as sharedIndex from "../../index.js";
 import { activeTimelineClipAt, nextTimelinePlaybackBoundary } from "../layers.js";
+import { orderedTimelineTracks, timelineTrackRank } from "../order.js";
 import type { TimelineVideoClip } from "../schema.js";
 import { MAIN, V2, V3, cid, clip, timeline, track } from "./edit-fixtures.js";
 
@@ -80,10 +82,11 @@ describe("nextTimelinePlaybackBoundary under an upper layer (inner#1708 C2)", ()
       durationFrames: fc.integer({ min: 1, max: 40 }),
       ready: fc.boolean(),
     });
-    fc.assert(fc.property(fc.array(seed, { maxLength: 6 }), fc.integer({ min: 0, max: 100 }), (seeds, frame) => {
+    // V3's order is drawn from 1 or 2, so V2 and V3 sometimes tie (inner#1708 E3).
+    fc.assert(fc.property(fc.array(seed, { maxLength: 6 }), fc.integer({ min: 0, max: 100 }), fc.constantFrom(1, 2), (seeds, frame, v3Order) => {
       const layers = [MAIN, V2, V3];
       const clips: TimelineVideoClip[] = seeds.map((item, index) => clip(cid(index + 1), layers[item.layer] ?? MAIN, item.startFrame, item.durationFrames));
-      const document = timeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, 2)]);
+      const document = timeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, v3Order)]);
       const ready = new Set(clips.filter((_item, index) => seeds[index]?.ready === true).map((item) => item.id));
       const end = 110;
       const shown = (at: number): string | null => activeTimelineClipAt(document, ready, at)?.id ?? null;
@@ -106,5 +109,34 @@ describe("nextTimelinePlaybackBoundary cost (inner#1708 D5)", () => {
     const started = performance.now();
     for (let call = 0; call < 60; call += 1) nextTimelinePlaybackBoundary(document, ready, 0, 2010);
     expect(performance.now() - started).toBeLessThan(60);
+  });
+});
+
+describe("tracks sharing an order (inner#1708 E3)", () => {
+  it("ranks every track by its place in the ordered tracks", () => {
+    const tracks = { [MAIN]: track(MAIN, 0), b: track("b", 1), a: track("a", 1), c: track("c", 5) };
+    const rank = timelineTrackRank(tracks);
+    expect([...rank.entries()].sort((x, y) => x[1] - y[1])).toEqual([[MAIN, 0], ["a", 1], ["b", 2], ["c", 3]]);
+    expect(orderedTimelineTracks(tracks).map((item) => rank.get(item.id))).toEqual([0, 1, 2, 3]);
+    expect(sharedIndex.timelineTrackRank).toBe(timelineTrackRank);
+  });
+
+  it("shows the clip on the later of two tied tracks, whatever the clip ids", () => {
+    // V3 comes after V2 in the ordered tracks; the clip on V3 has the larger id.
+    const onLower = cid(1);
+    const onUpper = cid(2);
+    const tied = timeline([clip(onLower, V2, 0, 10), clip(onUpper, V3, 0, 10)], [track(MAIN, 0), track(V2, 1), track(V3, 1)]);
+    const ready = new Set([onLower, onUpper]);
+    expect(orderedTimelineTracks(tied.tracks).map((item) => item.id)).toEqual([MAIN, V2, V3]);
+    expect(activeTimelineClipAt(tied, ready, 5)?.id).toBe(onUpper);
+  });
+
+  it("finds the boundary where the upper tied track's clip ends over a longer lower one", () => {
+    const onLower = cid(1);
+    const onUpper = cid(2);
+    const tied = timeline([clip(onLower, V2, 0, 40), clip(onUpper, V3, 0, 10)], [track(MAIN, 0), track(V2, 1), track(V3, 1)]);
+    const ready = new Set([onLower, onUpper]);
+    expect(nextTimelinePlaybackBoundary(tied, ready, 0, 50)).toBe(10);
+    expect(activeTimelineClipAt(tied, ready, 10)?.id).toBe(onLower);
   });
 });

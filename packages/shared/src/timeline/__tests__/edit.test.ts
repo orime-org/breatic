@@ -387,6 +387,33 @@ describe("planTimelineEdit set_range", () => {
     expect(result.bumped).toEqual([OB]);
   });
 
+  it("bumps a linked clip onto a later track that shares its track's order (inner#1708 E3)", () => {
+    const OA = cid(6);
+    const OB = cid(7);
+    const current = timeline(
+      [clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 48), clip(OA, V2, 10, 60), clip(OB, V2, 70, 10)],
+      [track(MAIN, 0), track(V2, 1), track(V3, 1)],
+    );
+    const result = accepted(plan(current, setRange(A, 0, 0, 20, ON)));
+    expect(result.next.clips[OB]).toMatchObject({ trackId: V3, startFrame: 42 });
+    expect(Object.keys(result.next.tracks).sort()).toEqual([MAIN, V2, V3].sort());
+    expect(result.bumped).toEqual([OB]);
+  });
+
+  it("never bumps a linked clip down onto an earlier track that shares its order (inner#1708 E3)", () => {
+    const OA = cid(6);
+    const OB = cid(7);
+    const current = timeline(
+      [clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 48), clip(OA, V3, 10, 60), clip(OB, V3, 70, 10)],
+      [track(MAIN, 0), track(V2, 1), track(V3, 1)],
+    );
+    const result = accepted(plan(current, setRange(A, 0, 0, 20, ON)));
+    const landed = result.next.clips[OB]?.trackId ?? "";
+    expect([V2, V3]).not.toContain(landed);
+    expect(result.next.tracks[landed]).toMatchObject({ kind: "visual" });
+    expect(result.bumped).toEqual([OB]);
+  });
+
   it("does not bump when linkage is off", () => {
     const OA = cid(6);
     const OB = cid(7);

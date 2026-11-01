@@ -1446,6 +1446,78 @@ describe('TimelineSpace empty-lane press (inner#1708 D1)', () => {
   });
 });
 
+describe('TimelineSpace round-three review fixes (inner#1708 E1, E2, E4)', () => {
+  it('reports a linkage bump caused by adding media to the magnetic main track (E1)', async () => {
+    const A = '30000000-0000-4000-8000-000000000051';
+    const B = '30000000-0000-4000-8000-000000000052';
+    const T = '30000000-0000-4000-8000-000000000053';
+    const U = '30000000-0000-4000-8000-000000000054';
+    // T starts inside B, so it moves with B; the 48-frame insert at 0 pushes it onto U, which no main clip holds.
+    seedLayout([clipAt(A, MAIN, 0, 20), clipAt(B, MAIN, 20, 20), clipAt(T, 'v2', 30, 18), clipAt(U, 'v2', 80, 10)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + A);
+    await openMaterial();
+    fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
+    fireEvent.change(screen.getByTestId('timeline-start-frame'), { target: { value: '0' } });
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(5));
+    expect(layout().clips[A]?.startFrame).toBe(48);
+    expect(layout().clips[T]?.startFrame).toBe(78);
+    expect(layout().clips[T]?.trackId).not.toBe('v2');
+    await waitFor(() => expect(vi.mocked(toast.info).mock.calls.map(([message]) => message)).toContain(t('timeline.edit.bumped', { count: 1 })));
+  });
+
+  it('commits a typed start frame when the user presses an empty part of the lane (E2)', async () => {
+    const user = userEvent.setup();
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const field = await screen.findByTestId('timeline-clip-start');
+    await user.clear(field);
+    await user.type(field, '30');
+    expect(field).toHaveValue(30);
+    expect(layout().clips[X]?.startFrame).toBe(10);
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByTestId('timeline-lane-v2') });
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(30));
+    await waitFor(() => expect(screen.queryByTestId('timeline-clip-start')).toBe(null));
+    expect(screen.getByTestId('timeline-clip-' + X)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('creates one track for a held Alt+Up on the top track and undoes the hold in one step (E4)', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    press(clip, 'ArrowUp', { altKey: true });
+    await waitFor(() => expect(Object.keys(layout().tracks)).toHaveLength(3));
+    const created = layout().clips[X]?.trackId ?? '';
+    expect(created).not.toBe('v2');
+    for (let repeat = 0; repeat < 4; repeat += 1) fireEvent.keyDown(document.activeElement ?? document.body, { key: 'ArrowUp', altKey: true, repeat: true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(Object.keys(layout().tracks)).toHaveLength(3);
+    expect(layout().clips[X]?.trackId).toBe(created);
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+  });
+
+  it('climbs existing tracks while Alt+Up is held and undoes the hold in one step (E4)', async () => {
+    seedLayout([clipAt(X, MAIN, 0, 24)], [track(MAIN, 0), track('v2', 1), track('v3', 2)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    press(clip, 'ArrowUp', { altKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+    for (let repeat = 0; repeat < 2; repeat += 1) {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'ArrowUp', altKey: true, repeat: true });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v3'));
+    expect(Object.keys(layout().tracks)).toHaveLength(3);
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe(MAIN));
+  });
+});
+
 describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
   it('draws no drag preview once the role turns Viewer during a drag', async () => {
     seedLayout([clipAt(X, 'v2', 10, 14)]);

@@ -92,8 +92,12 @@ describe('timelineKeyAction without modifiers', () => {
     expect(timelineKeyAction(press('ArrowLeft', { shiftKey: true, repeat: true }), fps)).toEqual({ kind: 'nudge', frames: -step, repeat: true });
   });
   it('maps Alt+Up and Alt+Down to a track change', () => {
-    expect(timelineKeyAction(press('ArrowUp', { altKey: true }), FPS24)).toEqual({ kind: 'change_track', direction: 1 });
-    expect(timelineKeyAction(press('ArrowDown', { altKey: true }), FPS24)).toEqual({ kind: 'change_track', direction: -1 });
+    expect(timelineKeyAction(press('ArrowUp', { altKey: true }), FPS24)).toEqual({ kind: 'change_track', direction: 1, repeat: false });
+    expect(timelineKeyAction(press('ArrowDown', { altKey: true }), FPS24)).toEqual({ kind: 'change_track', direction: -1, repeat: false });
+  });
+  it('carries a held Alt+arrow as a repeat (inner#1708 E4)', () => {
+    expect(timelineKeyAction(press('ArrowUp', { altKey: true, repeat: true }), FPS24)).toEqual({ kind: 'change_track', direction: 1, repeat: true });
+    expect(timelineKeyAction(press('ArrowDown', { altKey: true, repeat: true }), FPS24)).toEqual({ kind: 'change_track', direction: -1, repeat: true });
   });
   it('ignores a key that maps to nothing', () => {
     expect(timelineKeyAction(press('q'), FPS24)).toBe(null);

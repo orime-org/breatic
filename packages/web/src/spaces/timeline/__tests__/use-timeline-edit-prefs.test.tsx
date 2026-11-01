@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import { useCurrentUserStore } from '@web/stores';
+import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 
 const ALICE = 'user-alice';
@@ -28,6 +29,7 @@ function signIn(id: string | null): void {
 
 beforeEach(() => {
   window.localStorage.clear();
+  useTimelineEditPrefsStore.setState({ owner: null });
   signIn(ALICE);
 });
 afterEach(() => {
@@ -117,6 +119,24 @@ describe('useTimelineEditPrefs', () => {
     view.rerender(<Tabs shown='b' />);
     expect(seen.b?.magnet).toBe(false);
     expect(view.getByTestId('magnet-b')).toHaveTextContent('false');
+  });
+
+  it('reads storage at most once across 60 re-renders of an editor (Q1)', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    /**
+     * An editor that re-renders on every playback frame.
+     * @param props - The frame.
+     * @param props.frame - The current frame.
+     * @returns The frame and the magnet state.
+     * @throws {never} Never.
+     */
+    function Editor({ frame }: { frame: number }): React.JSX.Element {
+      const prefs = useTimelineEditPrefs();
+      return <span>{frame}{String(prefs.magnet)}</span>;
+    }
+    const view = render(<Editor frame={0} />);
+    for (let frame = 1; frame <= 60; frame += 1) view.rerender(<Editor frame={frame} />);
+    expect(getItem.mock.calls.length).toBeLessThanOrEqual(1);
   });
 
   it('keeps the value in memory when storage refuses the write', () => {

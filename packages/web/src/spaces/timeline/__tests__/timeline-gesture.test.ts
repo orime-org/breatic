@@ -287,6 +287,20 @@ describe('gestures on the magnetic main track (inner#1708 C3, C4)', () => {
     expect(next.clips[B]?.startFrame).toBe(30);
   });
 
+  it('draws a later main clip\'s trimmed head at its own frame so the snap line meets it (E5)', () => {
+    // B[48,96) with in-point 100; the head dragged 20 frames to 68 snaps to the playhead at 70 (2 px/frame).
+    const document = timeline([clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 48, { sourceInFrame: 100 })], [track(MAIN, 0)]);
+    const preview = previewTimelineGesture(document, B, 'trim-start', 20, null, { snap: true, pixelsPerFrame: 2, playhead: 70, magnet: true });
+    expect(preview).toMatchObject({ startFrame: 70, sourceInFrame: 122, durationFrames: 26, snapFrame: 70 });
+    if (preview === null) return;
+    const command = timelineGestureCommand(document, preview, 'trim-start', ON, newTrack);
+    if (command === null) throw new Error('Expected a command');
+    const plan = planTimelineEdit(document, command, idFactory('60000000'));
+    if (!plan.ok) throw new Error(`Expected an accepted plan, got ${plan.reason}`);
+    expect(plan.next.clips[B]).toMatchObject({ startFrame: 48, sourceInFrame: 122, durationFrames: 26 });
+    expect(plan.next.clips[A]).toMatchObject({ startFrame: 0, durationFrames: 48 });
+  });
+
   it('previews a same-track move at the drop frame and marks the gap the planner inserts it into (D2)', () => {
     // A[0,10) B[10,20) C[20,30); dragging A by 15 drops it past B's midpoint: the gap after B, landing at 10.
     const document = timeline([clip(A, MAIN, 0, 10), clip(B, MAIN, 10, 10), clip(C, MAIN, 20, 10)], [track(MAIN, 0)]);
