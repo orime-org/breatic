@@ -114,6 +114,56 @@ describe("Timeline arrangement from the complete current document", () => {
     expect(resolveTimelineArrangement({ tracks, clips: [baseClip] }).placements).toEqual([{ clipId: baseClip.id, status: "ready", reasons: [] }]);
   });
 
+  describe("source range when sources and fps are given", () => {
+    const fps = { num: 24, den: 1 };
+    const source = {
+      id: baseClip.sourceId,
+      kind: "video" as const,
+      assetId: "20000000-0000-4000-8000-000000000001",
+      timebase: fps,
+      extentFrames: 48,
+      durationSeconds: "2",
+      durationOrigin: "registered" as const,
+    };
+    const sources = { [source.id]: source };
+
+    it("keeps a clip inside its source ready", () => {
+      expect(resolveTimelineArrangement({ tracks, clips: [baseClip], sources, fps }).readyClipIds).toEqual([baseClip.id]);
+    });
+
+    it.each([
+      { sourceInFrame: 1 },
+      { durationFrames: 49 },
+      { sourceInFrame: 40, durationFrames: 9 },
+    ])("diagnoses a clip outside its source %j as invalid_range", (changes) => {
+      const outside = { ...baseClip, ...changes };
+      const result = resolveTimelineArrangement({ tracks, clips: [outside], sources, fps });
+      expect(result.placements).toEqual([{
+        clipId: baseClip.id,
+        status: "conflict",
+        reasons: [{ code: "invalid_range", relatedClipIds: [], startFrame: outside.startFrame, endFrame: outside.startFrame + outside.durationFrames }],
+      }]);
+      expect(result.readyClipIds).toEqual([]);
+      expect(result.hasConflicts).toBe(true);
+    });
+
+    it("keeps the previous classification without sources or fps, or when the clip's source is absent", () => {
+      const outside = { ...baseClip, sourceInFrame: 1 };
+      expect(resolveTimelineArrangement({ tracks, clips: [outside] }).readyClipIds).toEqual([baseClip.id]);
+      expect(resolveTimelineArrangement({ tracks, clips: [outside], sources }).readyClipIds).toEqual([baseClip.id]);
+      expect(resolveTimelineArrangement({ tracks, clips: [outside], fps }).readyClipIds).toEqual([baseClip.id]);
+      expect(resolveTimelineArrangement({ tracks, clips: [outside], sources: {}, fps }).readyClipIds).toEqual([baseClip.id]);
+    });
+
+    it("leaves a valid neighbour of an out-of-source clip ready", () => {
+      const outside = { ...baseClip, sourceInFrame: 1 };
+      const neighbour = placement(1, 48, 12);
+      const result = resolveTimelineArrangement({ tracks, clips: [outside, neighbour], sources, fps });
+      expect(result.readyClipIds).toEqual([neighbour.id]);
+      expect(result.conflicts.map((item) => item.clipId)).toEqual([baseClip.id]);
+    });
+  });
+
   it("has the same classifications and reason order for any arrival order", () => {
     fc.assert(fc.property(
       fc.array(fc.record({ startFrame: fc.integer({ min: 0, max: 120 }), durationFrames: fc.integer({ min: 1, max: 48 }) }), { maxLength: 12 }),
