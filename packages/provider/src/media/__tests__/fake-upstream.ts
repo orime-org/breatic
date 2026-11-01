@@ -25,8 +25,8 @@ export interface Seen {
  */
 export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; hold?: boolean; cut?: boolean } | "reset" | "hang";
 
-/** Answers a request by its method and path; the default answers 404. */
-export type Route = (req: { method: string; path: string; body: unknown }) => Reply | undefined;
+/** Answers a request by its method, path and query string; the default answers 404. */
+export type Route = (req: { method: string; path: string; query: string; body: unknown }) => Reply | undefined;
 
 /** A loopback HTTP server standing in for an upstream, recording what it received. */
 export interface FakeUpstream {
@@ -96,7 +96,7 @@ export async function fakeUpstream(route: Route = () => undefined): Promise<Fake
       const [path = "/", query = ""] = (req.url ?? "/").split("?");
       const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : (v ?? "")]));
       seen.push({ method, path, query, headers, body, authorization: req.headers.authorization, at });
-      write(req, res, current({ method, path, body }) ?? { status: 404, body: { message: "no route" } });
+      write(req, res, current({ method, path, query, body }) ?? { status: 404, body: { message: "no route" } });
     });
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));

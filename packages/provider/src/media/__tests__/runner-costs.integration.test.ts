@@ -10,7 +10,7 @@ import { NoAnswer } from "../../http/errors.js";
 import { createProvider, type Provider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
-import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
+import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
 
 // Every billed answer reaches the caller once, whatever way the run ends.
 
@@ -367,6 +367,228 @@ describe("a run's billed predictions reach the caller once, however it ends (cri
         expect(reached.filter((c) => c.state === "missing")).toHaveLength(unreadable);
       }),
       { numRuns: 40 },
+    );
+  });
+});
+
+describe("a run's billed answers on fal and SandBase reach the caller once, however it ends (critical path)", () => {
+  const FAL_SUBMITS = ["accept", "unreadable", "busy", "locked", "noModel"] as const;
+  const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
+  const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
+  const FAL_BILLINGS = ["events", "none", "forbidden"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "overLimitNamed", "overLimitUnnamed", "unreadable", "busy", "balance", "noModel"] as const;
+  const SB_ASKS = ["running", "completed", "dataUri", "failed", "overLimit"] as const;
+  const SB_COSTS = ["settled", "unsettled", "unknown"] as const;
+  /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
+  const MAX_MEDIA_BYTES = 2_000;
+  const smallDataUri = `data:audio/mpeg;base64,${Buffer.from("ID3 tiny").toString("base64")}`;
+  const bigDataUri = `data:audio/mpeg;base64,${Buffer.alloc(MAX_MEDIA_BYTES * 2, 7).toString("base64")}`;
+  const song = { prompt: "a song", params: { song: "https://cdn.example/a.mp3" } };
+
+  /**
+   * fal (on fake a) with a reference upload before the song, and SandBase (on fake b) with the song alone.
+   * @param falFirst - Whether fal has the lower weight.
+   * @returns The raw configuration.
+   */
+  function resellers(falFirst: boolean): ProviderConfigInput {
+    return {
+      upstreams: {
+        fal: { kind: "fal", base_url: a.url, billing_url: `${a.url}/v1`, key_env: "FAL_KEY" },
+        sandbase: { kind: "sandbase", base_url: `${b.url}/v1`, key_env: "SANDBASE_API_KEY" },
+      },
+      media: {
+        models: {
+          song: {
+            upstreams: [
+              {
+                upstream: "fal",
+                weight: falFirst ? 1 : 2,
+                model_id: "mureka/song",
+                prompt_field: "prompt",
+                params: { song: { field: "reference_id" } },
+                extra_steps: [{ kind: "upload_reference", endpoint: "mureka/upload", at: "before", for_param: "song" }],
+                output_field: "audio",
+                pricing,
+              },
+              { upstream: "sandbase", weight: falFirst ? 2 : 1, model_id: "mureka/song", prompt_field: "prompt", params: { song: { field: "song_url" } }, pricing },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  /**
+   * The next answer of a script, or its default once the script is spent.
+   * @param script - The script.
+   * @param fallback - The default.
+   * @returns The answer.
+   */
+  const draw = <T>(script: { list: readonly T[]; at: number }, fallback: T): T => script.list[script.at++] ?? fallback;
+
+  it("property: whatever fal and SandBase answer to submits, questions and cost lookups", async () => {
+    const scripts = fc.record({
+      falFirst: fc.boolean(),
+      falSubmit: fc.array(fc.constantFrom(...FAL_SUBMITS), { maxLength: 5 }),
+      falStatus: fc.array(fc.constantFrom(...FAL_STATUSES), { maxLength: 5 }),
+      falResult: fc.array(fc.constantFrom(...FAL_RESULTS), { maxLength: 4 }),
+      falBilling: fc.array(fc.constantFrom(...FAL_BILLINGS), { maxLength: 3 }),
+      sbSubmit: fc.array(fc.constantFrom(...SB_SUBMITS), { maxLength: 5 }),
+      sbAsk: fc.array(fc.constantFrom(...SB_ASKS), { maxLength: 4 }),
+      sbCost: fc.array(fc.constantFrom(...SB_COSTS), { maxLength: 3 }),
+    });
+    await fc.assert(
+      fc.asyncProperty(scripts, async (s) => {
+        vi.spyOn(Math, "random").mockReturnValue(0);
+        const at = <T>(list: readonly T[]): { list: readonly T[]; at: number } => ({ list, at: 0 });
+        const falSubmit = at(s.falSubmit);
+        const falStatus = at(s.falStatus);
+        const falResult = at(s.falResult);
+        const falBilling = at(s.falBilling);
+        const sbSubmit = at(s.sbSubmit);
+        const sbAsk = at(s.sbAsk);
+        const sbCost = at(s.sbCost);
+        // Every billed answer the fakes gave: an id, unique across both, whose number is also its billed dollars; or none.
+        let n = 0;
+        const billedAs: string[] = [];
+        let anonymous = 0;
+        const refusedBilling = new Set<string>();
+        const falKinds = new Map<string, "upload" | "song">();
+        let resultBusy = 0;
+        const usdOf = (id: string): number => Number(id.slice(1));
+        /**
+         * Bill a new id on one of the fakes.
+         * @param prefix - `r` for fal, `s` for SandBase.
+         * @returns The id.
+         */
+        const bill = (prefix: string): string => {
+          const id = `${prefix}${++n}`;
+          billedAs.push(id);
+          return id;
+        };
+        a.answer(({ method, path, query }): Reply | undefined => {
+          if (path === "/v1/models/billing-events") {
+            const id = new URLSearchParams(query).get("request_id") ?? "";
+            const next = draw(falBilling, "events");
+            if (next === "forbidden") {
+              refusedBilling.add(id);
+              return { status: 403, body: { error: { type: "authorization_error", message: "forbidden" } } };
+            }
+            return { status: 200, body: { billing_events: next === "none" ? [] : [{ request_id: id, cost_total: usdOf(id), quantity: 1 }], has_more: false } };
+          }
+          if (method === "POST") {
+            const next = draw(falSubmit, "accept");
+            if (next === "accept") {
+              const id = bill("r");
+              falKinds.set(id, path === "/mureka/upload" ? "upload" : "song");
+              return { status: 200, body: { request_id: id, status_url: `${a.url}/q/requests/${id}/status`, response_url: `${a.url}/q/requests/${id}`, queue_position: 0 } };
+            }
+            if (next === "unreadable") {
+              anonymous++;
+              return { status: 200, raw: "<html>ok</html>", contentType: "text/html" };
+            }
+            if (next === "busy") return { status: 503, body: { detail: "busy" } };
+            if (next === "locked") return { status: 403, body: { detail: "User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing." } };
+            return { status: 404, body: { detail: 'Application "mureka" not found' } };
+          }
+          const asked = /^\/q\/requests\/([^/]+)(\/status)?$/.exec(path);
+          if (asked === null) return undefined;
+          const id = asked[1]!;
+          if (asked[2] !== undefined) {
+            const next = draw(falStatus, "completed");
+            if (next === "inProgress") return { status: 202, body: { status: "IN_PROGRESS" } };
+            return { status: 200, body: next === "completed" ? { status: "COMPLETED" } : { status: "COMPLETED", error: "content policy violation" } };
+          }
+          if (resultBusy > 0) {
+            resultBusy--;
+            return { status: 503, body: { detail: "busy" } };
+          }
+          const next = draw(falResult, "ok");
+          if (next === "busyForAPoll") {
+            // Every delivery of this poll's result read answers 503.
+            resultBusy = 2;
+            return { status: 503, body: { detail: "busy" } };
+          }
+          if (next === "refused") return { status: 422, body: { detail: [{ msg: "no media generated", type: "no_media_generated" }] } };
+          if (falKinds.get(id) === "upload") return { status: 200, body: { id: `upload-${id}`, purpose: "reference" } };
+          return { status: 200, body: { audio: { url: next === "dataUri" ? smallDataUri : `https://out.example/${id}.mp3` } } };
+        });
+        b.answer(({ method, path }): Reply | undefined => {
+          if (method === "POST" && path === "/v1/run") {
+            const next = draw(sbSubmit, "accept");
+            const done = (url: string): { id?: string; status: string; outputs: { url: string }[] } => ({ status: "completed", outputs: [{ url }] });
+            if (next === "accept") return { status: 202, body: { id: bill("s"), status: "pending" } };
+            if (next === "finishNow" || next === "finishNowDataUri") {
+              const id = bill("s");
+              return { status: 200, body: { ...done(next === "finishNow" ? `https://out.example/${id}.mp3` : smallDataUri), id } };
+            }
+            if (next === "overLimitNamed") {
+              const id = bill("s");
+              return { status: 200, headers: { "x-task-id": id }, body: { ...done(bigDataUri), id } };
+            }
+            if (next === "finishNowNoId" || next === "overLimitUnnamed" || next === "unreadable") {
+              anonymous++;
+              if (next === "unreadable") return { status: 200, raw: "<html>ok</html>", contentType: "text/html" };
+              return { status: 200, body: done(next === "finishNowNoId" ? "https://out.example/no-id.mp3" : bigDataUri) };
+            }
+            if (next === "busy") return { status: 503, body: { error: "busy" } };
+            if (next === "balance") return { status: 402, body: { error: "insufficient balance" } };
+            return { status: 404, body: { error: "model not found: mureka/song" } };
+          }
+          const run = /^\/v1\/run\/([^/]+)$/.exec(path);
+          if (run !== null) {
+            const id = run[1]!;
+            const next = draw(sbAsk, "completed");
+            if (next === "running") return { status: 200, body: { id, status: "running" } };
+            if (next === "failed") return { status: 200, body: { id, status: "failed", error: "boom" } };
+            const url = next === "completed" ? `https://out.example/${id}.mp3` : next === "dataUri" ? smallDataUri : bigDataUri;
+            return { status: 200, body: { id, status: "completed", outputs: [{ url }] } };
+          }
+          const cost = /^\/v1\/tasks\/([^/]+)\/cost$/.exec(path);
+          if (cost === null) return undefined;
+          const next = draw(sbCost, "settled");
+          if (next === "unknown") return { status: 404, body: { error: "task not found" } };
+          return { status: 200, body: { id: cost[1], settled: next === "settled", currency: "USD", cost: String(usdOf(cost[1]!)) } };
+        });
+        const keys: Record<string, string> = { FAL_KEY: "fal-key", SANDBASE_API_KEY: "sb-key" };
+        const p = createProvider({ config: resellers(s.falFirst), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+        const r = createMediaRunner(p, { mediaLimits: { maxMediaBytes: MAX_MEDIA_BYTES }, pollIntervalMs: 0 });
+        const reached: Cost[] = [];
+        let answer: MediaAnswer = await r.plan("song", song, DEFAULT, options);
+        for (let turn = 0; turn < 24 && (answer.state === "send" || answer.state === "running"); turn++) {
+          const ticket = stored((answer as { ticket: MediaTicket }).ticket);
+          if (answer.state === "running") {
+            answer = await r.poll(ticket, live());
+            continue;
+          }
+          try {
+            answer = await r.send(ticket, live());
+          } catch (error) {
+            reached.push(...costsOf(error));
+            if (error instanceof NoAnswer) answer = await r.recover(ticket, live());
+            else if (!(error instanceof SendNotAccepted)) throw error;
+          }
+        }
+        if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
+        else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+        const identified: string[] = [];
+        let missing = 0;
+        for (const cost of reached) {
+          if (cost.state === "missing") missing++;
+          else if (cost.state === "pending") {
+            identified.push(String(cost.lookup.predictionId));
+            expect(cost.lookup.upstream).toBe(String(cost.lookup.predictionId).startsWith("r") ? "fal" : "sandbase");
+          } else {
+            expect(cost.source).toBe("billing");
+            const id = billedAs.find((x) => usdOf(x) === cost.usd);
+            expect(id).toBeDefined();
+            identified.push(id!);
+          }
+        }
+        expect(identified.sort()).toEqual(billedAs.filter((id) => !refusedBilling.has(id)).sort());
+        expect(missing).toBe(anonymous + refusedBilling.size);
+      }),
+      { numRuns: 60 },
     );
   });
 });
