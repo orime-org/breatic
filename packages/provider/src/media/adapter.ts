@@ -24,6 +24,8 @@ export interface RequestBounds {
   /** Epoch ms after which nothing is sent; absent for a final ask. */
   deadlineAt?: number;
   signal?: AbortSignal;
+  /** The largest file the caller takes; an answer that may carry files inline is read up to its base64 length. */
+  maxMediaBytes?: number;
 }
 
 /** What a submit answered. */
@@ -33,6 +35,8 @@ export interface Submitted {
   outputs: unknown[] | undefined;
   /** Data of the adapter's own that later questions about this prediction need; it survives a JSON round trip in the ticket. */
   handle?: Record<string, string>;
+  /** Why the step fails although the upstream took it (an answer over the read limit, a run failed at once); it is billed under `predictionId`. */
+  error?: string;
 }
 
 /** What one question about a prediction answered. */
@@ -126,6 +130,21 @@ const FINAL_ASK_IDLE_MS = 60_000;
 export function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
   const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
   return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
+}
+
+/** Room for the JSON around an inline file in an answer. */
+const INLINE_ANSWER_ROOM_BYTES = 2048;
+
+/**
+ * The read limits of a request whose answer may carry a file inline: the caller's media
+ * limit as base64 and the JSON around it, or the fixed limit when the caller gave none.
+ * @param bounds - The request's bounds.
+ * @returns Byte and idle limits.
+ */
+export function inlineLimits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
+  const read = limits(bounds);
+  if (bounds.maxMediaBytes === undefined) return read;
+  return { ...read, maxBodyBytes: Math.ceil(bounds.maxMediaBytes / 3) * 4 + INLINE_ANSWER_ROOM_BYTES };
 }
 
 /**

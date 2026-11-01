@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { unescape } from "node:querystring";
 import { candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
@@ -181,6 +182,21 @@ interface Ticket {
 const IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 /** Kling caps an element's description at 100 characters. */
 const ELEMENT_DESCRIPTION_MAX = 100;
+
+/**
+ * One output as the caller takes it: a data URI as its bytes, any other url as it is.
+ * @param url - The output url.
+ * @returns The output.
+ */
+function mediaOutputOf(url: string): MediaOutput {
+  const comma = url.indexOf(",");
+  if (!url.startsWith("data:") || comma < 0) return { kind: "url", url };
+  const [type = "", ...flags] = url.slice("data:".length, comma).split(";");
+  const data = url.slice(comma + 1);
+  // querystring's unescape, unlike decodeURIComponent, does not throw on a stray "%".
+  const bytes = flags.includes("base64") ? new Uint8Array(Buffer.from(data, "base64")) : new TextEncoder().encode(unescape(data));
+  return { kind: "bytes", bytes, contentType: type === "" ? "text/plain" : type };
+}
 
 /**
  * The common part of an answer.
@@ -623,7 +639,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
-    return { state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, servedBy: ticket.upstream, ...common({ ...extra, warnings }) };
+    return { state: "done", outputs: done.urls.map(mediaOutputOf), costs, servedBy: ticket.upstream, ...common({ ...extra, warnings }) };
   };
 
   /**
@@ -821,7 +837,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const body = bodyOf(ticket, at.step);
       let answer;
       try {
-        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, bounds));
+        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }));
       } catch (error) {
         const failure = classify(error, adapterFor(ticket.upstream));
         if (failure === null || failure.kind === "no_answer") throw error;
@@ -840,6 +856,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         }
         const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
         return waiting(moved, { warnings: [{ code: "upstream_switched", detail: { model: ticket.model, from: ticket.upstream, to, failure: failure.kind } }] });
+      }
+      if (answer.error !== undefined) {
+        // Accepted and billed, but the step cannot go on: billed under its id, or missing without one.
+        const id = answer.predictionId;
+        const steps = id === undefined ? ticket.steps : ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: id } : s));
+        const costs: Cost[] = id === undefined ? [...ticket.costs, { state: "missing", reason: `${ticket.upstream} took the ${at.step.kind} step and named no id to bill it by` }] : ticket.costs;
+        const warnings = id === undefined ? [{ code: "cost_unavailable", detail: { model: ticket.model, upstream: ticket.upstream, step: at.step.kind } }] : [];
+        return failed({ ...ticket, accepted: true, steps, costs }, new UpstreamTaskFailed(ticket.upstream, answer.error), warnings);
       }
       if (answer.outputs !== undefined) {
         // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
@@ -863,6 +887,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const bounds: RequestBounds = {
         ...(pollOptions.finalAsk === true ? {} : { deadlineAt: pollOptions.deadlineAt }),
         ...(pollOptions.signal ? { signal: pollOptions.signal } : {}),
+        maxMediaBytes: options.mediaLimits.maxMediaBytes,
       };
       if (pollOptions.finalAsk !== true && Date.now() >= pollOptions.deadlineAt) throw new DeadlinePassed(pollOptions.deadlineAt);
       const at = current(ticket);

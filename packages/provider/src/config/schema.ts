@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
-import { hasMediaAdapter } from "@provider/media/adapters.js";
+import { mediaAdapter } from "@provider/media/adapters.js";
 import { pricingRuleSchema } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
@@ -318,7 +318,14 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
       const { upstream } = binding;
       // An undeclared upstream is already reported by checkList.
       const kind = raw.upstreams[upstream]?.kind;
-      if (kind !== undefined && !hasMediaAdapter(kind)) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+      const adapter = kind === undefined ? undefined : mediaAdapter(kind);
+      if (kind !== undefined && adapter === undefined) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+      if (adapter !== undefined) {
+        for (const step of binding.extra_steps ?? []) {
+          if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
+        }
+        if (binding.reused_by !== undefined && adapter.steps.voice === undefined) problems.push(`${model}: the binding to "${upstream}" clones a voice (reused_by), which the ${kind} adapter has no voice step for`);
+      }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
       if (kind !== undefined && kind !== "fal" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal binding reads`);
       problems.push(...bindingFieldProblems(model, binding));
