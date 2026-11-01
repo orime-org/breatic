@@ -415,6 +415,15 @@ describe('useApplyTemplate', () => {
       expect(words).toContain('5 行 5 列');
     });
 
+    it('names the group its new nodes may form after the template, in the reader’s language', () => {
+      seed('target', 'image');
+      setLocale('zh-CN');
+      const place = vi.fn();
+      apply(grid(), 'target', [ULTRA], place);
+      expect(placed(place).proposal.groupName).toBe(t('canvas.template.storyboard-grid-25.name'));
+      expect(placed(place).proposal.groupName).not.toBe('');
+    });
+
     it('leaves a second wired reference alone', () => {
       seed('target', 'image');
       seed('first', 'image', { name: 'First', content: 'https://cdn/first.png' });
