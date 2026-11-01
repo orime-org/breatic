@@ -445,12 +445,15 @@ describe('decoder downloads are not model content (inner#1690)', () => {
     ['Draco', 'draco.gltf', [] as string[]],
     ['KTX2', 'ktx2.gltf', ['normal.ktx2']],
   ])('keeps a failed %s decoder download a plain, retryable error', async (_label, entry, extra) => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    vi.stubGlobal('Request', class { constructor(readonly url: string) {} });
+    const fetched = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetched);
     const files = new Map([entry, ...extra].map((path) => [path, Uint8Array.from(readFileSync(`${directory}/${path}`))] as const));
     const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
     const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
     const failure = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS, renderer).then(() => undefined, (error: unknown) => error);
-    expect(failure).toBeInstanceOf(Error);
+    expect(fetched).toHaveBeenCalled();
+    expect(failure).toMatchObject({ name: 'TypeError', message: 'Failed to fetch' });
     expect(failure).not.toBeInstanceOf(ModelImportError);
   });
 });
@@ -478,5 +481,36 @@ describe('content found after parsing is a content verdict (inner#1690)', () => 
     texture.name = 'sky.ktx2';
     const scene = new Group().add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map: texture })));
     expect(() => validateModelTextures([scene], IMPORT_LIMITS)).toThrow(expect.objectContaining({ name: 'ModelImportError', code: 'invalid', detail: 'sky.ktx2' }));
+  });
+});
+
+describe('cancelling while a decoder downloads (inner#1690)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('starts no decoder work afterwards and releases what the download created', async () => {
+    let release: () => void = () => undefined;
+    const downloaded = new Promise<void>((resolve) => { release = resolve; });
+    // The decoder asset URLs are root-relative under vitest, which the Node Request constructor rejects.
+    vi.stubGlobal('Request', class { constructor(readonly url: string) {} });
+    const fetched = vi.fn(async () => { await downloaded; return new Response(new Uint8Array(8)); });
+    vi.stubGlobal('fetch', fetched);
+    const revoked: string[] = [];
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:decoder-worker-source');
+      static revokeObjectURL = vi.fn((url: string) => { revoked.push(url); });
+    });
+    const workers = vi.fn();
+    vi.stubGlobal('Worker', class { constructor() { workers(); } postMessage(): void {} terminate(): void {} addEventListener(): void {} });
+    const bytes = Uint8Array.from(readFileSync('tests/fixtures/three-d-model-import/draco.gltf'));
+    const model = inspectModelFiles(new Map([['draco.gltf', bytes]]), 'draco.gltf', IMPORT_LIMITS);
+    const abort = new AbortController();
+    const loading = parseSceneModel(model, abort.signal, IMPORT_LIMITS);
+    abort.abort();
+    await expect(loading).rejects.toMatchObject({ name: 'AbortError' });
+    release();
+    expect(fetched).toHaveBeenCalled();
+    await vi.waitFor(() => expect(revoked).toContain('blob:decoder-worker-source'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(workers).not.toHaveBeenCalled();
   });
 });

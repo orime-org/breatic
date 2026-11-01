@@ -94,9 +94,17 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
   return {
     loader,
     prepare: async () => {
-      // r173 DRACOLoader exposes its decoder download promise only through _initDecoder.
-      if (used.has('KHR_draco_mesh_compression')) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
-      if (ktx2 && used.has('KHR_texture_basisu')) await ktx2.init();
+      try {
+        // r173 DRACOLoader exposes its decoder download promise only through _initDecoder.
+        if (used.has('KHR_draco_mesh_compression')) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
+        if (ktx2 && used.has('KHR_texture_basisu')) await ktx2.init();
+      } finally {
+        // A dispose during the download found nothing to release; the finished download created the worker source URL.
+        if (disposed) {
+          draco.dispose();
+          ktx2?.dispose();
+        }
+      }
     },
     dispose: () => {
       if (disposed) return;

@@ -295,7 +295,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes)
     : bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
   // A decoder download failure is not about the model, so it bypasses the content handler below and stays retryable.
-  const parsed = decoder.prepare().then(() => decoder.loader.parseAsync(input, '').then(async (result) => {
+  const parsed = decoder.prepare().then(() => signal.throwIfAborted()).then(() => decoder.loader.parseAsync(input, '').then(async (result) => {
     // GLTFLoader resolves without a scene when the model has none or its default scene index is out of range.
     const root = result.scene ?? new Group();
     ownedScenes.set(root, result.scene ? result.scenes : [root, ...result.scenes]);
