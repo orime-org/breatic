@@ -1464,6 +1464,47 @@
     },
     "promptMark": {
       "reference": "@로 {label} 선택"
+    },
+    "shortcuts": {
+      "title": "키보드 단축키",
+      "group": {
+        "edit": "편집",
+        "group": "그룹",
+        "select": "선택 및 이동",
+        "view": "보기",
+        "drawing": "그리기 도구",
+        "exit": "종료"
+      },
+      "row": {
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "copy": "복사",
+        "paste": "붙여넣기",
+        "duplicate": "복제",
+        "delete": "삭제",
+        "group": "그룹으로 묶기",
+        "ungroup": "그룹 해제",
+        "marquee": "영역 선택",
+        "toggleSelect": "선택에 추가 또는 제거",
+        "nudge": "선택 항목 조금 이동",
+        "nudgeFar": "더 멀리 이동",
+        "pan": "화면 이동",
+        "zoom": "확대/축소",
+        "brushSize": "브러시 또는 마크 크기",
+        "deleteMark": "선택한 마크 삭제",
+        "closePanel": "패널 닫기",
+        "exitPick": "선택 모드 종료",
+        "cancelNote": "주석 배치 취소"
+      },
+      "gesture": {
+        "dragEmpty": "빈 공간 드래그",
+        "click": "클릭",
+        "arrowKeys": "화살표 키",
+        "scroll": "스크롤",
+        "spaceDrag": "Space + 드래그",
+        "pinch": "핀치",
+        "wheel": "휠"
+      }
     }
   },
   "auth": {
@@ -1949,7 +1990,7 @@
       "add": "추가",
       "generate": "AI 생성",
       "annotationsLater": "주석 (추후 제공)",
-      "help": "도움말",
+      "controls": "조작 안내",
       "tasks": "생성 작업",
       "minimap": "장면 미니맵",
       "generationDev": "3D 모델 생성 기능은 개발 중입니다",
@@ -1967,9 +2008,7 @@
       "nodes": "노드 라이브러리",
       "upload": "에셋 업로드 (혼합 파일)",
       "comment": "Canvas에 주석 달기",
-      "collection": "Collection (출시 예정)",
-      "help": "도움말 (출시 예정)",
-      "feedback": "피드백 / 지원 (출시 예정)"
+      "shortcuts": "키보드 단축키"
     },
     "disabledTooltip": "Editor 권한이 필요합니다"
   },
@@ -2443,7 +2482,12 @@
       "language": "언어: {name}",
       "theme": "테마: {theme}"
     },
-    "languageNotSaved": "언어를 계정에 저장하지 못했습니다"
+    "languageNotSaved": "언어를 계정에 저장하지 못했습니다",
+    "help": {
+      "trigger": "도움말",
+      "manual": "사용자 매뉴얼",
+      "contact": "지원팀에 문의"
+    }
   },
   "projectJoin": {
     "title": "이 Project의 멤버가 아닙니다",

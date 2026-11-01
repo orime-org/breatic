@@ -214,7 +214,10 @@ export function renderProductGuide(): string {
       `${quoted(t("server.project.invite_mail_failed"))} Other refusals include ` +
       `${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
-      "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
+      "allows: the plan of the studio's admin, so only their upgrade raises it). Next is a question-mark icon " +
+      `with two entries: ${quoted(t("chrome.help.manual"))}, which opens the user manual on the official website ` +
+      `in a new tab, and ${quoted(t("chrome.help.contact"))}, which shows the support email address and starts an ` +
+      "email to it; the Studio page has the same icon beside its bell. Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -610,9 +613,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.annotation.edited"))}. A locked note shows no three dots. ` +
       "Deleting someone else's note from the canvas, unless you own the project, shows " +
       `${quoted(t("canvas.gate.notYours"))}`,
-    "Below a thin line the left menu has three more icons, " +
-      `${quoted(t("menu.item.collection"))}, ${quoted(t("menu.item.help"))} and ` +
-      `${quoted(t("menu.item.feedback"))}, which do nothing yet.`,
+    `Below a thin line the left menu has a keyboard icon, ${quoted(t("menu.item.shortcuts"))}, which opens a ` +
+      "list of the canvas's keyboard shortcuts and mouse gestures in groups: editing, grouping, selecting and " +
+      "moving, the view, drawing tools, and leaving a mode. Each line names the action and its keys, written " +
+      "with Cmd on a Mac and Ctrl elsewhere. A viewer can open it too and sees only the lines that work for them.",
     "",
     "## Moving around the canvas",
     "At the bottom right of a canvas is a bar, left to right: " +
@@ -1243,7 +1247,7 @@ export function renderProductGuide(): string {
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
       `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
       `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
-      `The question-mark icon opens ${quoted(t("spaces.threeD.help"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+      `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +

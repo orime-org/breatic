@@ -43,7 +43,7 @@ const TRANSLATED_ZH_CN: ReadonlyArray<readonly [string, string]> = [
 const SCANNED_FILES: readonly string[] = [
   'src/pages/project/chrome/top-bar/TopBar.tsx',
   'src/pages/project/chrome/top-bar/ShareDialog.tsx',
-  'src/pages/project/chrome/top-bar/Logo28.tsx',
+  'src/pages/project/chrome/top-bar/TopBarLogo.tsx',
   'src/pages/project/chrome/top-bar/MembersStack.tsx',
   'src/pages/project/chrome/agent-header/AgentColHeader.tsx',
   'src/pages/project/chrome/tab-bar/SpaceTabBar.tsx',

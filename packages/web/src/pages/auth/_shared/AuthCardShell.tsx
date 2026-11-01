@@ -9,7 +9,7 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
-import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
+import { PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL, TUTORIALS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';
 
@@ -116,8 +116,9 @@ function AuthPageHeader(): React.JSX.Element {
 }
 
 /**
- * The page footer below the card: the terms and the privacy policy on the
- * official website, each in a new tab so the form keeps what was typed.
+ * The page footer below the card: the terms, the privacy policy and the user
+ * manual on the official website, each in a new tab so the form keeps what
+ * was typed, and a link to write to the support mailbox.
  * @returns the page footer.
  */
 function AuthPageFooter(): React.JSX.Element {
@@ -132,6 +133,12 @@ function AuthPageFooter(): React.JSX.Element {
       </a>
       <a href={PRIVACY_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('auth.terms.privacyLink')}
+      </a>
+      <a href={TUTORIALS_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
+        {t('chrome.help.manual')}
+      </a>
+      <a href={`mailto:${SUPPORT_EMAIL}`} className={FOOTER_LINK_CLASS}>
+        {t('chrome.help.contact')}
       </a>
       {COOKIE_SETTINGS_AVAILABLE ? (
         <Button type='button' variant={null} size={null} onClick={openCookieSettings} className={FOOTER_LINK_CLASS}>

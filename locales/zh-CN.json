@@ -1464,6 +1464,47 @@
     },
     "promptMark": {
       "reference": "请用 @ 选择 {label}"
+    },
+    "shortcuts": {
+      "title": "快捷键",
+      "group": {
+        "edit": "编辑",
+        "group": "编组",
+        "select": "选择与移动",
+        "view": "视图",
+        "drawing": "绘制工具",
+        "exit": "退出"
+      },
+      "row": {
+        "undo": "撤销",
+        "redo": "重做",
+        "copy": "复制",
+        "paste": "粘贴",
+        "duplicate": "复制副本",
+        "delete": "删除",
+        "group": "编组",
+        "ungroup": "取消编组",
+        "marquee": "框选",
+        "toggleSelect": "加选或减选",
+        "nudge": "微移所选",
+        "nudgeFar": "移得更远",
+        "pan": "平移",
+        "zoom": "缩放",
+        "brushSize": "画笔或标注大小",
+        "deleteMark": "删除选中的标注",
+        "closePanel": "关闭面板",
+        "exitPick": "退出选取",
+        "cancelNote": "取消放批注"
+      },
+      "gesture": {
+        "dragEmpty": "拖动空白处",
+        "click": "点击",
+        "arrowKeys": "方向键",
+        "scroll": "滚动",
+        "spaceDrag": "空格 + 拖动",
+        "pinch": "双指捏合",
+        "wheel": "滚轮"
+      }
     }
   },
   "auth": {
@@ -1949,7 +1990,7 @@
       "add": "添加",
       "generate": "AI 生成",
       "annotationsLater": "批注（后续提供）",
-      "help": "帮助",
+      "controls": "操作说明",
       "tasks": "生成任务",
       "minimap": "场景小地图",
       "generationDev": "3D 模型生成正在开发中",
@@ -1967,9 +2008,7 @@
       "nodes": "节点库",
       "upload": "上传素材(多文件混合)",
       "comment": "在 Canvas 加批注",
-      "collection": "Collection(敬请期待)",
-      "help": "帮助(敬请期待)",
-      "feedback": "反馈 / 客服(敬请期待)"
+      "shortcuts": "快捷键"
     },
     "disabledTooltip": "需要 Editor 权限"
   },
@@ -2443,7 +2482,12 @@
       "language": "语言：{name}",
       "theme": "主题：{theme}"
     },
-    "languageNotSaved": "语言未保存到账号"
+    "languageNotSaved": "语言未保存到账号",
+    "help": {
+      "trigger": "帮助",
+      "manual": "用户手册",
+      "contact": "联系支持"
+    }
   },
   "projectJoin": {
     "title": "你还不是这个 Project 的成员",
