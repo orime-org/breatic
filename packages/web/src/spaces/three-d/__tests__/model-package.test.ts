@@ -340,6 +340,17 @@ describe('model-package configurable budget boundaries', () => {
   });
 });
 
+describe('registered model-package zip64 directories (inner#1690)', () => {
+  it.each([[10, 0xffff, 2], [16, 0xffffffff, 4]] as const)('refuses a registered package whose end record defers to zip64 at offset %i', (field, marker, width) => {
+    const bytes = packModelFiles(new Map([['scene.gltf', textBytes(JSON.stringify(gltfDocument('mesh.bin')))], ['mesh.bin', GEOMETRY.slice()]]), 'scene.gltf', IMPORT_LIMITS);
+    const view = new DataView(bytes.buffer);
+    let end = bytes.byteLength - 22;
+    while (view.getUint32(end, true) !== 0x06054b50) end -= 1;
+    if (width === 2) view.setUint16(end + field, marker, true); else view.setUint32(end + field, marker, true);
+    expect(() => readRegisteredModelPackage(bytes, IMPORT_LIMITS)).toThrow(expect.objectContaining({ code: 'invalid' }));
+  });
+});
+
 describe('registered model-package manifest versions', () => {
   it.each([
     { field: 0, value: 0, reason: 'magic' },

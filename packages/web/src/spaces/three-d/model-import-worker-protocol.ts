@@ -4,14 +4,14 @@
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError, restoreModelImportError } from '@web/spaces/three-d/model-import-errors';
 import type { ModelImportBudget, ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
+import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 
-export interface ModelImportWorkerRequest {
-  files: readonly ModelSource[];
-  entry: string | undefined;
-  limits: SceneImportLimits;
-}
+/** Inspect a user's selection, or unpack a registered package, away from the page's main thread. */
+export type ModelImportWorkerRequest =
+  | { kind: 'selection'; files: readonly ModelSource[]; entry: string | undefined; limits: SceneImportLimits }
+  | { kind: 'registered'; bytes: Uint8Array<ArrayBuffer>; limits: SceneImportLimits };
 export interface SerializedModelImportError {
   code: ModelImportErrorCode;
   message: string;
@@ -19,7 +19,7 @@ export interface SerializedModelImportError {
   detail: string;
   budget?: ModelImportBudget;
 }
-export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: false; error: SerializedModelImportError };
+export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: true; model: ModelPackage } | { ok: false; error: SerializedModelImportError };
 
 /**
  * Carry inspection facts across the worker boundary without relying on Error cloning.

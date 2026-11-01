@@ -3,7 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { inspectModelSelectionInWorker, prepareSceneModel } from '@web/spaces/three-d/model-import-preparation';
+import { prepareSceneModel } from '@web/spaces/three-d/model-import-preparation';
+import { inspectModelSelectionInWorker, readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { serializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
 import type { ModelImportWorkerAnswer } from '@web/spaces/three-d/model-import-worker-protocol';
@@ -77,7 +78,7 @@ describe('operation-owned model inspection worker', () => {
     const running = inspectModelSelectionInWorker(FILES, 'model.gltf', abort.signal, IMPORT_LIMITS);
     const worker = ControlledWorker.instances[0];
     const reply = worker.onmessage;
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ files: FILES, entry: 'model.gltf', limits: IMPORT_LIMITS });
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'selection', files: FILES, entry: 'model.gltf', limits: IMPORT_LIMITS }, []);
     reply?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
     await expect(running).resolves.toBe(SELECTION);
     abort.abort();
@@ -86,6 +87,17 @@ describe('operation-owned model inspection worker', () => {
     expect(worker.onmessage).toBeNull();
     expect(worker.onerror).toBeNull();
     expect(worker.onmessageerror).toBeNull();
+  });
+
+  it('unpacks a registered package in a worker and terminates it when the model lease ends', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const lease = new AbortController();
+    const running = readRegisteredModelPackageInWorker(bytes, lease.signal, IMPORT_LIMITS);
+    const worker = ControlledWorker.instances[0];
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'registered', bytes, limits: IMPORT_LIMITS }, [bytes.buffer]);
+    lease.abort();
+    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 
   it('carries an exceeded limit across the worker boundary', async () => {

@@ -10,7 +10,8 @@ import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
+import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
@@ -96,7 +97,9 @@ function modelPackage(entryPath: string, files: Record<string, Uint8Array>, form
 function loadRegistered(bytes: ArrayBuffer, mimeType: string, sizeBytes = bytes.byteLength, limits: SceneImportLimits = IMPORT_LIMITS): Promise<Group> {
   vi.mocked(httpRequest).mockResolvedValue(new Response(bytes));
   const resolve = vi.fn(async () => ({ url: ASSET_URL, mimeType, sizeBytes }));
-  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits)
+  // jsdom has no Worker; the registered package is read with the same function the worker runs.
+  const readPackage = async (packageBytes: Uint8Array<ArrayBuffer>): Promise<ModelPackage> => readRegisteredModelPackage(packageBytes, limits);
+  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits, undefined, readPackage)
     .then((root) => { templates.add(root); return root; });
 }
 

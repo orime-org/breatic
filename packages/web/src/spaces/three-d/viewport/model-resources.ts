@@ -8,7 +8,8 @@ import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneObject } from '@breatic/shared';
 import { createBuiltinModel } from '@web/spaces/three-d/viewport/builtin-models';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
-import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
+import { inspectModelFiles } from '@web/spaces/three-d/model-package';
+import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
@@ -201,6 +202,7 @@ export class ModelResourceCache {
  * @param builtinColor - The current semantic object colour.
  * @param limits - Import budgets injected from the Project configuration.
  * @param renderer - Current device capabilities used for texture decoding.
+ * @param readPackage - Unpacks a registered model package; by default in a worker the lease's signal terminates.
  * @returns A template whose immutable resources belong to the cache.
  * @throws {Error} When resolving, transferring or parsing the model fails.
  */
@@ -211,6 +213,7 @@ export async function loadSceneModel(
   builtinColor: string,
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
+  readPackage: (bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal, limits: SceneImportLimits) => Promise<ModelPackage> = readRegisteredModelPackageInWorker,
 ): Promise<Group> {
   if (source.kind === 'builtin') return createBuiltinModel(source.id, builtinColor);
   const asset = await resolveAsset(source.assetId, signal);
@@ -221,7 +224,7 @@ export async function loadSceneModel(
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
   const model = asset.mimeType === 'application/zip'
-    ? readRegisteredModelPackage(bytes, limits)
+    ? await readPackage(bytes, signal, limits)
     : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits);
   return parseSceneModel(model, signal, limits, renderer);
 }

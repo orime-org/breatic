@@ -6,72 +6,10 @@ import type { Group } from 'three';
 import type { SceneImportLimits } from '@breatic/shared';
 import type { PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { deserializeModelImportError } from '@web/spaces/three-d/model-import-worker-protocol';
-import type { ModelImportWorkerAnswer, ModelImportWorkerRequest } from '@web/spaces/three-d/model-import-worker-protocol';
-import type { ModelSelection } from '@web/spaces/three-d/model-selection';
+import { inspectModelSelectionInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { getUnsupportedModelExtensions } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-
-/**
- * Inspect one original file collection in its own cancellable worker.
- * @param files - Original files under their paths in the user's collection.
- * @param entry - Explicit selected entry when the collection contains several models.
- * @param signal - Owning import operation's cancellation signal.
- * @param limits - Project's import budgets.
- * @returns Checked resources and the deterministic registered artifact.
- * @throws {DOMException} When the owning operation is aborted.
- * @throws {ModelImportError} When worker setup, execution or inspection fails.
- */
-export function inspectModelSelectionInWorker(files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal, limits: SceneImportLimits): Promise<ModelSelection> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) { reject(new DOMException('Model inspection cancelled', 'AbortError')); return; }
-    let worker: Worker;
-    try {
-      worker = new Worker(new URL('./model-import-worker.ts', import.meta.url), { type: 'module' });
-    } catch (error) {
-      reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' }));
-      return;
-    }
-    let settled = false;
-    /**
-     * End this worker exactly once before delivering its terminal result.
-     * @param action - Resolves or rejects the waiting operation.
-     * @throws {never} Never directly.
-     */
-    const settle = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener('abort', abort);
-      worker.onmessage = null;
-      worker.onerror = null;
-      worker.onmessageerror = null;
-      worker.terminate();
-      action();
-    };
-    /**
-     * Release work promptly when its document or source selection ends.
-     * @returns Completion of this operation's cancellation.
-     * @throws {never} Never directly.
-     */
-    const abort = (): void => settle(() => reject(new DOMException('Model inspection cancelled', 'AbortError')));
-    worker.onmessage = (event: MessageEvent<ModelImportWorkerAnswer>): void => {
-      const answer = event.data;
-      settle(() => { if (answer.ok) resolve(answer.selection); else reject(deserializeModelImportError(answer.error)); });
-    };
-    worker.onerror = (event: ErrorEvent): void => {
-      event.preventDefault();
-      settle(() => reject(new ModelImportError('invalid', event.message, { detail: '' })));
-    };
-    worker.onmessageerror = (): void => settle(() => reject(new ModelImportError('invalid', 'Model inspection result could not be read', { detail: '' })));
-    signal.addEventListener('abort', abort, { once: true });
-    if (signal.aborted) { abort(); return; }
-    const request: ModelImportWorkerRequest = { files, entry, limits };
-    try { worker.postMessage(request); } catch (error) {
-      settle(() => reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' })));
-    }
-  });
-}
 
 /**
  * Prepare a real model preview and retain only resources owned by the import.
