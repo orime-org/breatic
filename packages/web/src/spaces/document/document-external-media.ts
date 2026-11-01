@@ -27,16 +27,21 @@
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
+import { cellAround } from '@tiptap/pm/tables';
+import type { EditorView } from '@tiptap/pm/view';
 
-import { newId } from '@breatic/shared';
+import { newId, t } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
+import { toast } from '@web/lib/toast';
+import { rowInFlight } from '@web/spaces/document/document-drag-drop';
 import { addressLanding } from '@web/spaces/document/document-media-address';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** The key the pasted-media extension registers under. */
@@ -225,8 +230,9 @@ export function documentPastedMediaExtension(
               // drop; files go to the file drop entry.
               drop: (view, event) => {
                 if (event.defaultPrevented) return false;
+                if (view.dragging !== null) return refusesInCell(view, view.dragging.slice, event);
                 const data = event.dataTransfer;
-                if (view.dragging !== null || !view.editable || data === null || data === undefined || Array.from(data.types).includes('Files')) return false;
+                if (!view.editable || data === null || data === undefined || Array.from(data.types).includes('Files')) return false;
                 const read = readTransfer(editor, data, media.lands);
                 event.preventDefault();
                 const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
@@ -244,4 +250,29 @@ export function documentPastedMediaExtension(
       ],
     };
   })();
+}
+
+/**
+ * Refuses words dragged within the body that hold a table and land in a table
+ * cell (design §5.4.7, A14): a cell holds no table, and ProseMirror's own drop
+ * would split the target table around it. A row's own drag is the row
+ * extension's; anything else is ProseMirror's own drop.
+ * @param view - The view.
+ * @param slice - What is dragged.
+ * @param event - The drop.
+ * @returns True when it was refused.
+ */
+function refusesInCell(view: EditorView, slice: Slice, event: DragEvent): boolean {
+  if (rowInFlight() || !view.editable) return false;
+  const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+  if (at === undefined || cellAround(view.state.doc.resolve(at)) === null) return false;
+  let table = false;
+  slice.content.descendants((node) => {
+    if (node.type.name === DOC_TABLE) table = true;
+    return !table;
+  });
+  if (!table) return false;
+  event.preventDefault();
+  toast.warning(t('spaces.document.paste.unsupportedInCell'));
+  return true;
 }
