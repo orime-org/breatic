@@ -318,9 +318,8 @@ export async function chargeForGeneration(
     referenceId: input.referenceId,
   };
 
-  // Payments off — every local install and every self-hosted one. Usage is
-  // still recorded, because a deployment that charges nobody still wants to
-  // know what it produced; there is simply no purchase to draw it from.
+  // Payment-disabled deployments still need usage records to report what
+  // they produced, even though no purchase is charged.
   if (!env.PAYMENT_ENABLED) {
     await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
