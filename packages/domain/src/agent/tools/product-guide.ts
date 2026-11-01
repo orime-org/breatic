@@ -677,7 +677,7 @@ export function renderProductGuide(): string {
       "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
       "sight, zooming out only as far as that takes. The new nodes go beside the node even where other nodes " +
       "already are, so they may cover them. Inside a group, the new nodes join the group; outside one, they join " +
-      "the group the template's nodes from an earlier pick are in, lined up on those nodes, or else two or more " +
+      "the unlocked group the template's nodes from an earlier pick are in, lined up on those nodes, or else two or more " +
       "new nodes are put in a new group named after the template, so they can be dragged aside together. On a " +
       `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
       `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +

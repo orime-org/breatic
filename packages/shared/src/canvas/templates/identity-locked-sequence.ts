@@ -21,7 +21,7 @@ export const IDENTITY_LOCKED_SEQUENCE: GenerationTemplate = {
   inputs: [{ key: "reference", type: "image" }],
   steps: [],
   agentNote:
-    "an 8-second video of three continuous shots of the reference character, written with timecodes, the same identifying features repeated in each shot so the face and outfit do not drift; if the reader says the face drifted, shorten it to 5 to 6 seconds and tighten the identity sentence",
+    "an 8-second video of three continuous shots of the reference character, written with timecodes, the same identifying features repeated in each shot so the face and outfit do not drift; if the reader says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots",
   goal: "character",
   triggers: {
     asks: ["several shots of the same character", "a short sequence with my character"],

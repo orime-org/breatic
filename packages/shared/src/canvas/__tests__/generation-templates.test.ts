@@ -519,7 +519,7 @@ describe('character template layouts (inner#1846)', () => {
   });
 
   it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
-    expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds and tighten the identity sentence');
+    expect(byId('identity-locked-sequence')?.agentNote).toContain('if the reader says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots');
     expect(byId('character-showcase-orbit')?.agentNote).toContain('check that it shows different sides of the character, not the character turning round');
   });
 
