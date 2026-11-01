@@ -54,3 +54,71 @@ describe("buildBody — one binding at a time", () => {
   });
 });
 
+
+describe("buildBody — reseller binding vocabulary", () => {
+  const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
+  const base = { upstream: "fal", weight: 2, model_id: "m", pricing };
+
+  it("writes a dotted field under nested objects and merges fields of one object", () => {
+    const binding = {
+      ...base,
+      params: {
+        voice_id: { field: "voice_setting.voice_id" },
+        speed: { field: "voice_setting.speed" },
+        emotion: { field: "voice_setting.emotion" },
+      },
+    } as MediaBinding;
+    expect(buildBody(binding, { prompt: "", params: { voice_id: "Wise_Woman", speed: 1.2, emotion: "happy" } })).toEqual({
+      voice_setting: { voice_id: "Wise_Woman", speed: 1.2, emotion: "happy" },
+    });
+  });
+
+  it("writes a transformed value under a dotted field", () => {
+    const binding = { ...base, params: { dict: { field: "pronunciation_dict.tone_list", transform: "pronunciation_pairs" } } } as MediaBinding;
+    expect(buildBody(binding, { prompt: "", params: { dict: [{ text: "Breatic", pronunciation: "bree-attic" }] } })).toEqual({
+      pronunciation_dict: { tone_list: ["Breatic/bree-attic"] },
+    });
+  });
+
+  it("converts a value to a string, a number or a one-item list after mapping it", () => {
+    const binding = {
+      ...base,
+      params: {
+        duration: { field: "duration", as: "string" },
+        seconds: { field: "seconds", values: { short: "5" }, as: "number" },
+        video: { field: "video_urls", as: "list" },
+      },
+    } as MediaBinding;
+    expect(buildBody(binding, { prompt: "", params: { duration: 7, seconds: "short", video: "https://v.example/a.mp4" } })).toEqual({
+      duration: "7",
+      seconds: 5,
+      video_urls: ["https://v.example/a.mp4"],
+    });
+  });
+
+  it("renames, maps and converts the sub-fields of every item, and leaves out sub-fields the binding does not name", () => {
+    const binding = {
+      ...base,
+      params: {
+        speakers: { field: "speakers", item_fields: { speaker: { field: "speaker_id" }, voice: { field: "voice", values: { Kore: "kore" } } } },
+        shots: { field: "multi_prompt", item_fields: { prompt: { field: "prompt" }, duration: { field: "duration", as: "string" } } },
+      },
+    } as MediaBinding;
+    const body = buildBody(binding, {
+      prompt: "",
+      params: {
+        speakers: [{ speaker: "Ann", voice: "Kore", note: "x" }, { speaker: "Bo", voice: "Puck" }],
+        shots: [{ prompt: "a", duration: 3 }],
+      },
+    });
+    expect(body).toEqual({
+      speakers: [{ speaker_id: "Ann", voice: "kore" }, { speaker_id: "Bo", voice: "Puck" }],
+      multi_prompt: [{ prompt: "a", duration: "3" }],
+    });
+  });
+
+  it("adds the binding's fixed fields to every body", () => {
+    const binding = { ...base, prompt_field: "prompt", fixed: { rendering_speed: "QUALITY", mode: "async" } } as MediaBinding;
+    expect(buildBody(binding, { prompt: "a cat", params: {} })).toEqual({ prompt: "a cat", rendering_speed: "QUALITY", mode: "async" });
+  });
+});
