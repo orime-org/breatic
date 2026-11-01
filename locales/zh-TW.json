@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "儲值",
       "gift": "體驗點數",
+      "operatorGift": "贈送點數",
       "compensation": "補償",
       "discount": "優惠"
     },

@@ -157,7 +157,7 @@ async function seedLot(
 
 describe("GET /credits/overview", () => {
   it("未登录答 401", async () => {
-    const res = await app.request("/api/v1/credits/overview");
+    const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1");
     expect(res.status).toBe(401);
   });
 
@@ -168,7 +168,7 @@ describe("GET /credits/overview", () => {
     await seedLot(fx, 100, fx.studioId);
     await seedLot(fx, 250);
 
-    const res = await app.request("/api/v1/credits/overview", {
+    const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -179,10 +179,10 @@ describe("GET /credits/overview", () => {
         studios: { studioId: string; spendable: number; spent: number }[];
       };
     };
-    expect(body.data.assignedCredits).toBe(100);
-    expect(body.data.unassignedCredits).toBe(250);
+    expect(body.data.assignedCredits).toBe("100.000000");
+    expect(body.data.unassignedCredits).toBe("250.000000");
     expect(body.data.studios).toEqual([
-      expect.objectContaining({ studioId: fx.studioId, spendable: 100, spent: 0 }),
+      expect.objectContaining({ studioId: fx.studioId, spendable: "100.000000", spent: "0.000000" }),
     ]);
   });
 
@@ -203,20 +203,20 @@ describe("GET /credits/overview", () => {
       VALUES (${other.userId}, ${fx.studioId}, 'spend', -999)
     `;
 
-    const res = await app.request("/api/v1/credits/overview", {
+    const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
       headers: { Cookie: fx.cookie },
     });
     const body = (await res.json()) as {
       data: { studios: { studioId: string; spent: number }[] };
     };
     const mine = body.data.studios.find((s) => s.studioId === fx.studioId);
-    expect(mine?.spent).toBe(30);
+    expect(mine?.spent).toBe("30.000000");
   });
 });
 
 describe("GET /credits/lots", () => {
   it("未登录答 401", async () => {
-    const res = await app.request("/api/v1/credits/lots");
+    const res = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1");
     expect(res.status).toBe(401);
   });
 
@@ -227,7 +227,7 @@ describe("GET /credits/lots", () => {
     const lotId = await seedLot(fx, 880, fx.studioId);
     await sql`UPDATE credit_lots SET refund_attempts = 2 WHERE id = ${lotId}`;
 
-    const res = await app.request("/api/v1/credits/lots", {
+    const res = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1", {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -235,7 +235,7 @@ describe("GET /credits/lots", () => {
       data: {
         items: {
           id: string;
-          purchasedCredits: number;
+          purchasedCredits: string;
           remainingCredits: number;
           designatedStudioId: string | null;
           lifecycle: string;
@@ -247,8 +247,8 @@ describe("GET /credits/lots", () => {
     expect(body.data.items).toHaveLength(1);
     expect(body.data.items[0]).toMatchObject({
       id: lotId,
-      purchasedCredits: 880,
-      remainingCredits: 880,
+      purchasedCredits: "880.000000",
+      remainingCredits: "880.000000",
       designatedStudioId: fx.studioId,
       lifecycle: "active",
       refundAttempts: 2,
@@ -260,7 +260,7 @@ describe("GET /credits/lots", () => {
     const theirs = await seedFixture();
     await seedLot(theirs, 500);
 
-    const res = await app.request("/api/v1/credits/lots", {
+    const res = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1", {
       headers: { Cookie: mine.cookie },
     });
     const body = (await res.json()) as { data: { items: unknown[] } };
@@ -273,24 +273,24 @@ describe("GET /credits/lots", () => {
     await seedLot(fx, 20);
     await seedLot(fx, 30);
 
-    const first = await app.request("/api/v1/credits/lots?limit=2", {
+    const first = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1&limit=2", {
       headers: { Cookie: fx.cookie },
     });
     const firstBody = (await first.json()) as {
-      data: { items: { purchasedCredits: number }[]; nextCursor: string | null };
+      data: { items: { purchasedCredits: string }[]; nextCursor: string | null };
     };
-    expect(firstBody.data.items.map((i) => i.purchasedCredits)).toEqual([30, 20]);
+    expect(firstBody.data.items.map((i) => i.purchasedCredits)).toEqual(["30.000000", "20.000000"]);
     expect(firstBody.data.nextCursor).not.toBeNull();
 
     const second = await app.request(
-      `/api/v1/credits/lots?limit=2&cursor=${encodeURIComponent(firstBody.data.nextCursor!)}`,
+      `/api/v1/credits/lots?amountFormat=decimal-v1&limit=2&cursor=${encodeURIComponent(firstBody.data.nextCursor!)}`,
       { headers: { Cookie: fx.cookie } },
     );
     expect(second.status).toBe(200);
     const secondBody = (await second.json()) as {
-      data: { items: { purchasedCredits: number }[]; nextCursor: string | null };
+      data: { items: { purchasedCredits: string }[]; nextCursor: string | null };
     };
-    expect(secondBody.data.items.map((i) => i.purchasedCredits)).toEqual([10]);
+    expect(secondBody.data.items.map((i) => i.purchasedCredits)).toEqual(["10.000000"]);
     expect(secondBody.data.nextCursor).toBeNull();
   });
 
@@ -313,8 +313,8 @@ describe("GET /credits/lots", () => {
     let cursor: string | null = null;
     for (let page = 0; page < 5; page++) {
       const url: string = cursor
-        ? `/api/v1/credits/lots?limit=1&cursor=${encodeURIComponent(cursor)}`
-        : "/api/v1/credits/lots?limit=1";
+        ? `/api/v1/credits/lots?amountFormat=decimal-v1&limit=1&cursor=${encodeURIComponent(cursor)}`
+        : "/api/v1/credits/lots?amountFormat=decimal-v1&limit=1";
       const res = await app.request(url, { headers: { Cookie: fx.cookie } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -333,7 +333,7 @@ describe("GET /credits/lots", () => {
 
 describe("GET /credits/ledger", () => {
   it("未登录答 401", async () => {
-    const res = await app.request("/api/v1/credits/ledger");
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1");
     expect(res.status).toBe(401);
   });
 
@@ -354,7 +354,7 @@ describe("GET /credits/ledger", () => {
       model: "seedance-1.5-pro",
     });
 
-    const res = await app.request("/api/v1/credits/ledger", {
+    const res = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1", {
       headers: { Cookie: owner.cookie },
     });
     expect(res.status).toBe(200);
@@ -381,7 +381,7 @@ describe("GET /credits/ledger", () => {
     // 这一行；让它拿 id 再去问一次，一页三十行就是三十次请求。
     expect(body.data.items[0]).toMatchObject({
       kind: 'generation',
-      amount: -10,
+      amount: "-10.000000",
       actorUserId: guest.userId,
       actorName: guest.personalStudioName,
       projectId: owner.projectId,
@@ -391,7 +391,7 @@ describe("GET /credits/ledger", () => {
     });
 
     // 花钱的那个人自己的账上没有这笔 —— 那不是他的钱。
-    const guestRes = await app.request("/api/v1/credits/ledger", {
+    const guestRes = await app.request("/api/v1/credits/ledger?amountFormat=decimal-v1", {
       headers: { Cookie: guest.cookie },
     });
     const guestBody = (await guestRes.json()) as { data: { items: unknown[] } };
@@ -408,7 +408,7 @@ describe("GET /credits/ledger", () => {
     });
 
     const res = await app.request(
-      `/api/v1/credits/ledger?studioId=${fx.studioId}`,
+      `/api/v1/credits/ledger?amountFormat=decimal-v1&studioId=${fx.studioId}`,
       { headers: { Cookie: fx.cookie } },
     );
     const body = (await res.json()) as { data: { items: { studioId: string }[] } };
@@ -420,14 +420,14 @@ describe("GET /credits/ledger", () => {
 describe("GET /studio/:slug/credits", () => {
   it("未登录答 401", async () => {
     const fx = await seedFixture();
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`);
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`);
     expect(res.status).toBe(401);
   });
 
   it("非成员答 403", async () => {
     const fx = await seedFixture();
     const stranger = await seedFixture();
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: stranger.cookie },
     });
     expect(res.status).toBe(403);
@@ -442,7 +442,7 @@ describe("GET /studio/:slug/credits", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${fx.studioId}, ${helper.userId}, 'maintainer')
     `;
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: helper.cookie },
     });
     expect(res.status).toBe(403);
@@ -457,7 +457,7 @@ describe("GET /studio/:slug/credits", () => {
       amount: 30,
     });
 
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -477,23 +477,23 @@ describe("GET /studio/:slug/credits", () => {
         };
       };
     };
-    expect(body.data.spendable).toBe(70);
-    expect(body.data.debt).toBe(0);
+    expect(body.data.spendable).toBe("70.000000");
+    expect(body.data.debt).toBe("0.000000");
     // 买家的名字是这一块比账号那侧多出来的那一列：同一个 studio 的钱可能是
     // 好几个人各充各的。
     expect(body.data.lots).toEqual([
       expect.objectContaining({
         id: lotId,
-        remainingCredits: 70,
+        remainingCredits: "70.000000",
         buyerName: fx.personalStudioName,
       }),
     ]);
     expect(body.data.ledger.items).toEqual([
       expect.objectContaining({
         kind: "generation",
-        charged: -30,
-        consumed: -30,
-        owed: 0,
+        charged: "-30.000000",
+        consumed: "-30.000000",
+        owed: "0.000000",
         projectName: fx.projectName,
       }),
     ]);
@@ -511,7 +511,7 @@ describe("GET /studio/:slug/credits", () => {
       referenceId: `route-owe-${Date.now()}`,
     });
 
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -522,10 +522,10 @@ describe("GET /studio/:slug/credits", () => {
         ledger: { items: { charged: number; consumed: number; owed: number }[] };
       };
     };
-    expect(body.data.spendable).toBe(-320);
-    expect(body.data.debt).toBe(320);
+    expect(body.data.spendable).toBe("-320.000000");
+    expect(body.data.debt).toBe("320.000000");
     expect(body.data.ledger.items).toEqual([
-      expect.objectContaining({ charged: -30, consumed: -350, owed: -320 }),
+      expect.objectContaining({ charged: "-30.000000", consumed: "-350.000000", owed: "-320.000000" }),
     ]);
   });
 
@@ -542,7 +542,7 @@ describe("GET /studio/:slug/credits", () => {
       UPDATE credit_lots SET created_at = '2026-08-19T00:00:00Z' WHERE id = ${newer}
     `;
 
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     const body = (await res.json()) as { data: { lots: { id: string }[] } };
@@ -560,7 +560,7 @@ describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => 
       SELECT created_at FROM credit_lots WHERE id = ${lotId}
     `;
 
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
@@ -575,8 +575,8 @@ describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => 
     ]);
     expect(body.data.lots[0]).toEqual({
       id: lotId,
-      purchasedCredits: 120,
-      remainingCredits: 120,
+      purchasedCredits: "120.000000",
+      remainingCredits: "120.000000",
       createdAt: stored!.created_at.toISOString(),
       buyerName: fx.personalStudioName,
     });
@@ -595,12 +595,12 @@ describe("GET /studio/:slug/credits — holds (inner#1611)", () => {
       ttlMs: 3_600_000,
     });
 
-    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { spendable: number; held: number; available: number } };
-    expect(body.data).toMatchObject({ spendable: 100, held: 30, available: 70 });
+    expect(body.data).toMatchObject({ spendable: "100.000000", held: "30.000000", available: "70.000000" });
   });
 });
 
@@ -620,16 +620,16 @@ describe("GET /projects/:id/credits", () => {
       ttlMs: 3_600_000,
     });
 
-    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ data: { spendable: 100, held: 40, available: 60 } });
+    expect(await res.json()).toEqual({ data: { spendable: "100.000000", held: "40.000000", available: "60.000000" } });
   });
 
   it("未登录答 401", async () => {
     const fx = await seedFixture();
-    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`);
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits?amountFormat=decimal-v1`);
     expect(res.status).toBe(401);
   });
 
@@ -637,7 +637,7 @@ describe("GET /projects/:id/credits", () => {
     // 跟这个 project 的其他读路径一样，无权访问收敛成 404，不泄露它存不存在。
     const fx = await seedFixture();
     const stranger = await seedFixture();
-    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: stranger.cookie },
     });
     expect(res.status).toBe(404);
@@ -647,7 +647,7 @@ describe("GET /projects/:id/credits", () => {
     const fx = await seedFixture();
     const errors = vi.spyOn(logger, "error");
     try {
-      const res = await app.request("/api/v1/projects/not-a-uuid/credits", {
+      const res = await app.request("/api/v1/projects/not-a-uuid/credits?amountFormat=decimal-v1", {
         headers: { Cookie: fx.cookie },
       });
       expect(res.status).toBe(404);
@@ -669,12 +669,12 @@ describe("GET /projects/:id/credits", () => {
       VALUES (${fx.projectId}, ${helper.userId}, 'viewer')
     `;
 
-    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: helper.cookie },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { spendable: number } };
-    expect(body.data.spendable).toBe(100);
+    expect(body.data.spendable).toBe("100.000000");
   });
 
   it("欠着账时这个数是负的，跟积分页那个数一样", async () => {
@@ -693,12 +693,12 @@ describe("GET /projects/:id/credits", () => {
       referenceId: `top-owe-${Date.now()}`,
     });
 
-    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits?amountFormat=decimal-v1`, {
       headers: { Cookie: fx.cookie },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { spendable: number } };
-    expect(body.data.spendable).toBe(-320);
+    expect(body.data.spendable).toBe("-320.000000");
   });
 });
 
@@ -729,8 +729,8 @@ describe("坏输入不该 500", () => {
       Buffer.from(JSON.stringify({ c: "2026-07-04 03:00:00+00", i: "not-a-uuid" })).toString("base64url"),
     ];
     for (const cursor of bad) {
-      for (const url of ["/api/v1/credits/lots", "/api/v1/credits/ledger"]) {
-        const res = await app.request(`${url}?cursor=${encodeURIComponent(cursor)}`, {
+      for (const url of ["/api/v1/credits/lots?amountFormat=decimal-v1", "/api/v1/credits/ledger?amountFormat=decimal-v1"]) {
+        const res = await app.request(`${url}${url.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`, {
           headers: { Cookie: fx.cookie },
         });
         expect(res.status, `${url} 收到 ${cursor}`).toBe(200);
@@ -750,14 +750,14 @@ describe("坏输入不该 500", () => {
     ).toString("base64url");
 
     const res = await app.request(
-      `/api/v1/studio/${fx.studioSlug}/credits?cursor=${encodeURIComponent(unusable)}`,
+      `/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1&cursor=${encodeURIComponent(unusable)}`,
       { headers: { Cookie: fx.cookie } },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       data: { spendable?: number; lots?: { id: string }[] };
     };
-    expect(body.data.spendable).toBe(100);
+    expect(body.data.spendable).toBe("100.000000");
     expect(body.data.lots).toEqual([expect.objectContaining({ id: lotId })]);
   });
 
@@ -772,7 +772,7 @@ describe("坏输入不该 500", () => {
     ).toString("base64url");
 
     const res = await app.request(
-      `/api/v1/studio/${fx.studioSlug}/credits?cursor=${encodeURIComponent(cursor)}`,
+      `/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1&cursor=${encodeURIComponent(cursor)}`,
       { headers: { Cookie: fx.cookie } },
     );
     expect(res.status).toBe(200);
@@ -805,7 +805,7 @@ describe("PATCH /credits/lots/:id/designation", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { designatedStudioId: string } };
     expect(body.data.designatedStudioId).toBe(fx.studioId);
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(100);
   });
 
   it("目标 studio 自己不是 admin 时答 403", async () => {
@@ -878,7 +878,7 @@ describe("PATCH /credits/lots/:id/designation", () => {
       body: JSON.stringify({ studioId: null }),
     });
     expect(res.status).toBe(200);
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(0);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(0);
   });
 
   it("body 里没有 studioId 时答 422，不当成取消指定", async () => {
@@ -892,7 +892,7 @@ describe("PATCH /credits/lots/:id/designation", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(422);
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(100);
   });
 });
 
@@ -932,7 +932,7 @@ describe("POST /credits/lots/:id/refund", () => {
     });
 
     expect(res.status).toBe(409);
-    expect(await creditLotService.getSpendableCredits(fx.studioId)).toBe(100);
+    expect(Number(await creditLotService.getSpendableCredits(fx.studioId))).toBe(100);
   });
 
   it("answers 404 on someone else's purchase", async () => {
@@ -999,7 +999,7 @@ describe("a purchase pointed at a studio that is gone", () => {
     const lotId = await seedLot(fx, 100, fx.studioId);
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
 
-    const res = await app.request("/api/v1/credits/lots", {
+    const res = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1", {
       headers: { Cookie: fx.cookie },
     });
 

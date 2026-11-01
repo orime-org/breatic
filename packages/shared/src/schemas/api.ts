@@ -11,6 +11,8 @@
  * Inferred type: `{Resource}{Action}Input`
  */
 
+import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
+
 import { z } from "zod";
 import {
   BILLING_PERIODS,
@@ -627,7 +629,7 @@ export type PaymentCancelInput = z.infer<typeof paymentCancelSchema>;
  * because a purchase landing between two reads would otherwise shift every
  * row after it.
  */
-export const paymentHistoryQuerySchema = z.object({
+export const paymentHistoryQuerySchema = creditAmountFormatQuerySchema.extend({
   limit: z.string().optional(),
   cursor: z.string().optional(),
 });

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isPurchased } from '@breatic/shared';
@@ -217,7 +219,7 @@ function AssignRow({
   // cannot work out from the rest of it.
   const lead =
     lot.paidCents === null
-      ? t(`credits.source.${lot.sourceKind}`)
+      ? t(creditSourceLabelKey(lot))
       : formatMoney(lot.paidCents, lot.currency ?? 'usd');
 
   // Where it points now, for the row that has no picker to say it. The

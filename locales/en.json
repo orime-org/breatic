@@ -2657,6 +2657,7 @@
     "source": {
       "payment": "Purchase",
       "gift": "Trial credits",
+      "operatorGift": "Gift credits",
       "compensation": "Compensation",
       "discount": "Discount"
     },
@@ -2707,7 +2708,7 @@
     "deletedStudio": "Deleted Studio",
     "deletedBadge": "Deleted",
     "deletedStudioHint": "This Studio is gone, so its credits cannot be spent",
-    "assignedLots": "{count, plural, one {# purchase assigned to it} other {# purchases assigned to it}}",
+    "assignedLots": "{count, plural, one {# credit pack assigned to it} other {# credit packs assigned to it}}",
     "noLotsHere": "Nothing assigned to it yet",
     "debtAndSpent": "owes {debt} · spent {spent}",
     "spentOnly": "spent {spent}",

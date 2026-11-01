@@ -64,8 +64,8 @@ describe("project 真的没了", () => {
 
     await expect(charge()).resolves.toMatchObject({
       billed: false,
-      charged: 0,
-      shortfall: 10,
+      charged: "0.000000",
+      shortfall: "10.000000",
       studioId: null,
     });
     // The standalone exit, which is the one that carries no lot: this row

@@ -267,7 +267,7 @@ export const mocks = {
   creditHoldService: {
     reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
     releaseHold: vi.fn().mockResolvedValue(undefined),
-    getCreditPosition: vi.fn().mockResolvedValue({ spendable: 100, held: 0, available: 100 }),
+    getCreditPosition: vi.fn().mockResolvedValue({ spendable: "100.000000", held: "0.000000", available: "100.000000" }),
   },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
@@ -275,26 +275,26 @@ export const mocks = {
     // request carrying the header dies inside the check rather than being
     // refused at the door.
     REFKEY_PATTERN: /^[A-Za-z0-9_:.-]{1,255}$/,
-    getSpendableCredits: vi.fn().mockResolvedValue(100),
-    getStudioDebt: vi.fn().mockResolvedValue(0),
+    getSpendableCredits: vi.fn().mockResolvedValue("100.000000"),
+    getStudioDebt: vi.fn().mockResolvedValue("0.000000"),
     getOverview: vi.fn().mockResolvedValue({
-      assignedCredits: 0,
-      unassignedCredits: 0,
+      assignedCredits: "0.000000",
+      unassignedCredits: "0.000000",
       studios: [],
     }),
-    getUnassignedCredits: vi.fn().mockResolvedValue(0),
-    getGrantedCredits: vi.fn().mockResolvedValue(0),
+    getUnassignedCredits: vi.fn().mockResolvedValue("0.000000"),
+    getGrantedCredits: vi.fn().mockResolvedValue("0.000000"),
     chargeForGeneration: vi.fn().mockResolvedValue({
       billed: true,
-      charged: 5,
-      shortfall: 0,
+      charged: "5.000000",
+      shortfall: "0.000000",
       studioId: "s0000000-0000-4000-8000-000000000001",
       lotIds: ["l0000000-0000-4000-8000-000000000001"],
     }),
     chargeOnceForGeneration: vi.fn().mockResolvedValue({
       billed: true,
-      charged: 5,
-      shortfall: 0,
+      charged: "5.000000",
+      shortfall: "0.000000",
       studioId: "s0000000-0000-4000-8000-000000000001",
       lotIds: ["l0000000-0000-4000-8000-000000000001"],
     }),

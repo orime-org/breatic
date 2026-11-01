@@ -444,8 +444,8 @@ function assessFacts(facts: Facts): Pick<AssessInput, "lot" | "payment" | "ops" 
   return {
     lot: {
       lifecycle: facts.lot.lifecycle,
-      remainingCredits: Number(facts.lot.remainingCredits),
-      ledgerSum: Number(facts.ledgerSum),
+      remainingCredits: facts.lot.remainingCredits,
+      ledgerSum: facts.ledgerSum,
     },
     payment: {
       status: payment.status,

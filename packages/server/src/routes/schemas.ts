@@ -36,7 +36,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
-import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS } from "@breatic/shared";
+import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
@@ -102,7 +102,7 @@ export const attachmentParamSchema = z.object({
  * clamps `limit` against `config/limits.yaml` and treats a malformed cursor
  * as "first page" — a garbage value from the network must not fail the panel.
  */
-export const creditPageQuerySchema = z.object({
+export const creditPageQuerySchema = creditAmountFormatQuerySchema.extend({
   limit: z.string().optional(),
   cursor: z.string().optional(),
 });
@@ -166,3 +166,5 @@ export const designationSchema = z.object({
  * behind it, which anyone can produce as fast as they can send requests.
  */
 export const idParamSchema = z.object({ id: z.string().uuid() });
+
+export { creditAmountFormatQuerySchema } from "@breatic/shared";

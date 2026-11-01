@@ -331,3 +331,17 @@ export async function linkGoogleIdentity(userId: string, googleId: string): Prom
     .returning();
   return rows[0] ? toEntity(rows[0]) : null;
 }
+
+
+/**
+ * Lock the grant account without blocking foreign-key key-share checks.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns The current active account, or null after erasure or absence.
+ * @throws {Error} When the account lock cannot be acquired.
+ */
+export async function lockGrantAccount(userId: string, tx: DbTx): Promise<UserEntity | null> {
+  const rows = await tx.select().from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt))).for("no key update").limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}

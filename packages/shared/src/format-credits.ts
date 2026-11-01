@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ceilToCreditCent } from "@shared/credit-cent.js";
+import { ceilCreditMicroToCent, parseCreditDecimal, quantizeQuotedCredits } from "@shared/credit-amount.js";
 
 /**
  * A credit amount written for a reader.
@@ -16,7 +16,14 @@ import { ceilToCreditCent } from "@shared/credit-cent.js";
  *   amounts passes 2 so its decimal points line up.
  * @returns The amount as text.
  */
-export function formatCredits(value: number, locale: string, minimumFractionDigits = 0): string {
-  const settled = Math.sign(value) * ceilToCreditCent(Math.abs(value));
-  return settled.toLocaleString(locale, { minimumFractionDigits, maximumFractionDigits: 2 });
+export function formatCredits(value: number | string, locale: string, minimumFractionDigits = 0): string {
+  const micro = typeof value === "string" ? parseCreditDecimal(value) : quantizeQuotedCredits(Math.abs(value)) * (value < 0 ? -1n : 1n);
+  const magnitude = ceilCreditMicroToCent(micro < 0n ? -micro : micro);
+  const whole = magnitude / 1_000_000n;
+  const cents = Number(magnitude % 1_000_000n / 10_000n);
+  const integer = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(whole);
+  const fraction = new Intl.NumberFormat(locale, { minimumFractionDigits, maximumFractionDigits: 2, useGrouping: false })
+    .formatToParts(cents / 100).filter((part) => part.type === "decimal" || part.type === "fraction").map((part) => part.value).join("");
+  const minus = micro < 0n ? new Intl.NumberFormat(locale).formatToParts(-1).find((part) => part.type === "minusSign")!.value : "";
+  return `${minus}${integer}${fraction}`;
 }
