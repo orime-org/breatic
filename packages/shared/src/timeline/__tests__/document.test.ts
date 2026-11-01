@@ -6,7 +6,8 @@ import fc from "fast-check";
 import * as Y from "yjs";
 
 import { resolveTimelineArrangement } from "../arrangement.js";
-import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from "../document.js";
+import * as spaceContent from "../../space-content.js";
+import { applyTimelineEdit, initializeTimelineDocument, readTimelineContent, readTimelineDocument, removeTimelineRecord } from "../document.js";
 import { planTimelineEdit } from "../edit.js";
 import type { TimelineEditPlan } from "../edit.js";
 import { TimelineDocumentV1Schema } from "../schema.js";
@@ -762,5 +763,77 @@ describe("Timeline concurrent edits across two replicas", () => {
     expect(Y.encodeStateAsUpdate(left)).toEqual(bytes);
     accepted(applyTimelineEdit(left, setRange(K, 0, 0, 48, ON), ORIGIN));
     expect(arrange(left).hasConflicts).toBe(false);
+  });
+});
+
+describe("Timeline content with damaged records (inner#1708 F1b)", () => {
+  const BAD_CLIP = "30000000-0000-4000-8000-0000000000bd";
+  const BAD_TRACK = "track-damaged";
+
+  /**
+   * A document holding one valid clip, a clip record missing most fields and a track record missing its kind.
+   * @returns The document.
+   * @throws {Error} When seeding fails.
+   */
+  function damagedDoc(): Y.Doc {
+    const doc = seededDoc();
+    expect(applyTimelineEdit(doc, add, ORIGIN).ok).toBe(true);
+    doc.transact(() => {
+      const partialClip = new Y.Map<unknown>();
+      doc.getMap("clips").set(BAD_CLIP, partialClip);
+      partialClip.set("startFrame", 100);
+      const partialTrack = new Y.Map<unknown>();
+      doc.getMap("tracks").set(BAD_TRACK, partialTrack);
+      partialTrack.set("order", 3);
+    }, "peer");
+    return doc;
+  }
+
+  it("reads every valid record and lists the damaged ones", () => {
+    const doc = damagedDoc();
+    const content = readTimelineContent(doc);
+    expect(content.document.clips).toEqual({ [clip.id]: clip });
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.document.sources).toEqual({ [source.id]: source });
+    expect(content.damaged).toEqual({ clips: [BAD_CLIP], tracks: [BAD_TRACK] });
+  });
+
+  it("reads the same valid document through readTimelineDocument without throwing", () => {
+    const doc = damagedDoc();
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    expect(readTimelineDocument(doc)).toEqual(readTimelineContent(doc).document);
+  });
+
+  it("reports nothing damaged for intact content", () => {
+    const doc = seededDoc();
+    expect(applyTimelineEdit(doc, add, ORIGIN).ok).toBe(true);
+    expect(readTimelineContent(doc)).toEqual({ document: readTimelineDocument(doc), damaged: { clips: [], tracks: [] } });
+  });
+
+  it("still refuses missing and unsupported Timeline roots", () => {
+    expect(typeof readTimelineContent).toBe("function");
+    expect(() => readTimelineContent(trackedDoc())).toThrow(Error);
+    const unsupported = seededDoc();
+    unsupported.getMap("timeline").set("schemaVersion", 2);
+    expect(() => readTimelineContent(unsupported)).toThrow(Error);
+  });
+
+  it("removes one damaged record in one transaction with the given origin", () => {
+    const doc = damagedDoc();
+    const origins: unknown[] = [];
+    doc.on("afterTransaction", (transaction: Y.Transaction) => { origins.push(transaction.origin); });
+    removeTimelineRecord(doc, "clips", BAD_CLIP, ORIGIN);
+    expect(origins).toEqual([ORIGIN]);
+    expect(doc.getMap("clips").has(BAD_CLIP)).toBe(false);
+    expect(doc.getMap("clips").has(clip.id)).toBe(true);
+    removeTimelineRecord(doc, "tracks", BAD_TRACK, OTHER_ORIGIN);
+    expect(origins).toEqual([ORIGIN, OTHER_ORIGIN]);
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [], tracks: [] });
+  });
+
+  it("is exported from the space-content entry", () => {
+    expect(spaceContent.readTimelineContent).toBe(readTimelineContent);
+    expect(spaceContent.removeTimelineRecord).toBe(removeTimelineRecord);
+    expect(typeof spaceContent.readTimelineContent).toBe("function");
   });
 });

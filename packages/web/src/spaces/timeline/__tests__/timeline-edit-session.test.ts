@@ -12,7 +12,7 @@ import * as React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import type { TimelineEditCommand, TimelineVideoSource } from '@breatic/shared';
+import { TimelineVideoClipSchema, type TimelineEditCommand, type TimelineVideoSource } from '@breatic/shared';
 import { applyTimelineEdit, readTimelineDocument } from '@breatic/shared/space-content';
 
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
@@ -357,5 +357,100 @@ describe('Timeline edit session cache', () => {
 
   it('evicting an unknown name is a no-op', () => {
     expect(() => evictTimelineEditSession('project-p/timeline-never')).not.toThrow();
+  });
+});
+
+describe('Timeline edit session undo and redo against a concurrent peer (inner#1708 F1a)', () => {
+  const MOVED = cid(21);
+  const COVERED = cid(22);
+  const ADDED = cid(23);
+
+  /**
+   * My replica with its session and a peer replica that starts in sync but is not connected. Which replica wrote
+   * the seed changes how Yjs restores a deleted record, so every case runs with my session on either one.
+   * @param clips - The starting clips.
+   * @param seededByMe - Whether my replica wrote the seed, or received it from the peer.
+   * @returns Both replicas and my session.
+   * @throws {Error} When seeding fails.
+   */
+  function apart(clips: ReturnType<typeof clip>[], seededByMe: boolean): { mine: Y.Doc; peer: Y.Doc; session: TimelineEditSession } {
+    const seeded = keep(seededDoc(timeline(clips)));
+    const copy = keep(new Y.Doc());
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded));
+    const mine = seededByMe ? seeded : copy;
+    const peer = seededByMe ? copy : seeded;
+    return { mine, peer, session: sessionOf(mine) };
+  }
+
+  /**
+   * Exchange every update between the replicas, as the provider does after a reconnect. Which side receives first
+   * changes what my undo restores, so every case runs in both orders.
+   * @param mine - My replica.
+   * @param peer - The peer replica.
+   * @param mineFirst - Whether my replica receives the peer's updates first.
+   * @throws {never} Never.
+   */
+  function sync(mine: Y.Doc, peer: Y.Doc, mineFirst: boolean): void {
+    if (mineFirst) Y.applyUpdate(mine, Y.encodeStateAsUpdate(peer), 'remote');
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(mine), 'remote');
+    if (!mineFirst) Y.applyUpdate(mine, Y.encodeStateAsUpdate(peer), 'remote');
+  }
+
+  const CASES = [
+    { seededByMe: true, mineFirst: true }, { seededByMe: true, mineFirst: false },
+    { seededByMe: false, mineFirst: true }, { seededByMe: false, mineFirst: false },
+  ];
+
+  /**
+   * Assert a clip record is present and complete on a replica.
+   * @param doc - The replica.
+   * @param clipId - The clip.
+   * @throws {Error} When the record is missing or incomplete.
+   */
+  function expectComplete(doc: Y.Doc, clipId: string): void {
+    const record = doc.getMap('clips').get(clipId);
+    expect(record).toBeInstanceOf(Y.Map);
+    const fields = record instanceof Y.Map ? record.toJSON() : null;
+    expect(TimelineVideoClipSchema.safeParse(fields).success, `clip ${clipId} is incomplete: ${JSON.stringify(fields)}`).toBe(true);
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    expect(readTimelineDocument(doc).clips[clipId]).toMatchObject({ id: clipId, kind: 'video' });
+  }
+
+  it.each(CASES)('restores a complete clip when I undo my delete after the peer moved that clip (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart([clip(A, MAIN, 0, 48), clip(MOVED, 'v2', 0, 48)], seededByMe);
+    expect(session.edit({ operation: 'delete', parameters: { clipId: MOVED }, placement: OFF }).ok).toBe(true);
+    expect(applyTimelineEdit(peer, move(MOVED, 100), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    sync(mine, peer, mineFirst);
+    expectComplete(mine, MOVED);
+    expectComplete(peer, MOVED);
+  });
+
+  it.each(CASES)('restores a complete overwritten clip when I undo after the peer moved it (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    // Magnet off: my move of B onto frame 0 overwrites and removes COVERED; the peer meanwhile moves COVERED to v2.
+    const { mine, peer, session } = apart([clip(COVERED, MAIN, 0, 48), clip(B, MAIN, 48, 48)], seededByMe);
+    const plan = session.edit(move(B, 0));
+    expect(plan.ok && plan.removed).toEqual([COVERED]);
+    expect(applyTimelineEdit(peer, move(COVERED, 0, OFF, { trackId: 'v2' }), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    sync(mine, peer, mineFirst);
+    expectComplete(mine, COVERED);
+    expectComplete(peer, COVERED);
+  });
+
+  it.each(CASES)('redoes a complete clip after the peer edited it before seeing my undo (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart([clip(A, MAIN, 0, 48)], seededByMe);
+    const added: TimelineEditCommand = { operation: 'add_video', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', 200, 48) }, placement: OFF };
+    expect(session.edit(added).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    expect(applyTimelineEdit(peer, move(ADDED, 300), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.redo();
+    sync(mine, peer, mineFirst);
+    expectComplete(mine, ADDED);
+    expectComplete(peer, ADDED);
   });
 });

@@ -206,7 +206,7 @@ test('Add media places a clip on a new visual track and on an existing sub track
     expect(created).not.toBe(null);
     expect(created).not.toBe('visual-1');
 
-    const onExisting = await addProjectVideoTo(page, uploaded.asset.assetId, 'Track 2', duration);
+    const onExisting = await addProjectVideoTo(page, uploaded.asset.assetId, 'Visual 2', duration);
     await expect(tracks).toHaveCount(2);
     await expect(outlet.getByTestId(`timeline-clip-${onExisting}`)).toHaveAttribute('data-track-id', created ?? '');
     await expect(outlet.getByTestId(`timeline-clip-${uploaded.clipId}`)).toHaveAttribute('data-track-id', 'visual-1');

@@ -176,8 +176,8 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
     await expectTimelineStart(page, third, duration * 2, duration);
     // The conflict is built on a sub track, where clips keep their frames; the magnetic main track keeps its clips end to end.
     await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New visual track');
-    await moveTimelineClip(page, second, duration * 4, duration, 'Track 2');
-    await moveTimelineClip(page, third, duration * 2, duration, 'Track 2');
+    await moveTimelineClip(page, second, duration * 4, duration, 'Visual 2');
+    await moveTimelineClip(page, third, duration * 2, duration, 'Visual 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       const peerGate = await installTimelineDeliveryGate(peer);

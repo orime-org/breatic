@@ -28,6 +28,7 @@ import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -1589,5 +1590,179 @@ describe('TimelineSpace zoom and ruler for long content (inner#1708 G4, R1)', ()
     showTimeline();
     await screen.findByTestId('timeline-clip-' + X);
     expect(screen.getByTestId('timeline-ruler').children.length).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)', () => {
+  const DAMAGED = '30000000-0000-4000-8000-0000000000dd';
+
+  /**
+   * End a pointer drag and wait out the 50 ms in which dnd-kit swallows clicks, which would reach the next case.
+   * @param clientX - The release position.
+   * @returns Once the click guard has lapsed.
+   * @throws {Error} When a handler throws.
+   */
+  async function release(clientX: number): Promise<void> {
+    pointer(document, 'pointerUp', clientX);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+  }
+
+  // A case that fails mid-drag leaves dnd-kit's document listeners active; end any drag before the next case.
+  afterEach(async () => { await release(0); });
+
+  /**
+   * Write a clip record that misses most of its fields, as an interrupted collaborative write can leave it.
+   * @param doc - The content document.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function damageClip(doc: Y.Doc): void {
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(DAMAGED, record);
+      record.set('startFrame', 5);
+    }, 'provider');
+  }
+
+  it('opens a Timeline holding a damaged clip record and lets an Editor delete the record (F1c)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    damageClip(doc);
+    showTimeline();
+    expect(await screen.findByTestId('timeline-clip-' + X)).toBeInTheDocument();
+    const row = screen.getByTestId('timeline-conflict-' + DAMAGED);
+    expect(row).toHaveTextContent(t('timeline.conflictReason.damaged'));
+    fireEvent.click(screen.getByTestId('timeline-damaged-delete-' + DAMAGED));
+    await waitFor(() => expect(currentDoc().getMap('clips').has(DAMAGED)).toBe(false));
+    expect(screen.queryByTestId('timeline-conflict-' + DAMAGED)).toBe(null);
+    expect(layout().clips[X]).toMatchObject({ startFrame: 10, durationFrames: 14 });
+  });
+
+  it('shows a Viewer the damaged record without a delete button (F1c)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    damageClip(doc);
+    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
+    expect(await screen.findByTestId('timeline-clip-' + X)).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-conflict-' + DAMAGED)).toHaveTextContent(t('timeline.conflictReason.damaged'));
+    expect(screen.queryByTestId('timeline-damaged-delete-' + DAMAGED)).toBe(null);
+  });
+
+  it('names a removed track as the reason a clip conflicts (F2)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 0, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
+    await waitFor(() => expect(screen.getByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_track')));
+  });
+
+  it('names an overlap as the reason both merged clips conflict (F2)', async () => {
+    const secondId = seedConflictingClips();
+    showTimeline();
+    for (const id of [CLIP.id, secondId]) {
+      expect(await screen.findByTestId('timeline-conflict-reason-' + id)).toHaveTextContent(t('timeline.conflictReason.overlap'));
+    }
+  });
+
+  it('names a range outside the video as the reason a clip conflicts (F2)', async () => {
+    seedLayout([clipAt(X, 'v2', 0, 14, { sourceInFrame: 40 })]);
+    showTimeline();
+    expect(await screen.findByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.invalid_range'));
+  });
+
+  it('names an incompatible track as the reason a clip conflicts (F2)', async () => {
+    seedLayout([clipAt(X, 'a1', 0, 14)], [track(MAIN, 0), track('v2', 1), { id: 'a1', kind: 'audio', order: 2 }]);
+    showTimeline();
+    expect(await screen.findByTestId('timeline-conflict-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.incompatible_track'));
+  });
+
+  it('explains how to resolve conflicts including changing the track (F2)', () => {
+    expect(t('timeline.conflictHelp')).toBe('Clips overlap, sit on a removed track or fall outside their video. Select a clip and move it, change its track, trim or delete it.');
+  });
+
+  it.each(['damaged', 'overlap', 'missing_track', 'invalid_range', 'incompatible_track'])('has a %s reason in all five locales (F1c, F2)', (code) => {
+    for (const [tag, catalog] of LOCALE_CATALOGS) {
+      const sentence = readPath(catalog, `timeline.conflictReason.${code}`);
+      expect(typeof sentence, `${tag} timeline.conflictReason.${code}`).toBe('string');
+      expect(String(sentence).trim()).not.toBe('');
+    }
+  });
+
+  it('names sub tracks by the visual layer in every locale (F3)', async () => {
+    const expected: Record<string, string> = { en: 'Visual {index}', 'zh-CN': '画面 {index}', 'zh-TW': '畫面 {index}', ja: '映像 {index}', ko: '영상 {index}' };
+    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.track'), tag).toBe(expected[tag]);
+    seedLayout([clipAt(X, 'v2', 0, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    expect(within(screen.getByTestId('timeline-track-v2')).getByText('Visual 2')).toBeInTheDocument();
+  });
+
+  it('cancels a drag when the window loses focus (F4)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    const before = Y.encodeStateAsUpdate(doc);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 40);
+    expect(dragGhost('v2')).not.toBe(null);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    expect(dragGhost('v2')).toBe(null);
+    pointer(document, 'pointerMove', 60);
+    expect(dragGhost('v2')).toBe(null);
+    await release(60);
+    expect(layout().clips[X]?.startFrame).toBe(10);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('labels a sub-track move ghost with its frames and as an overwrite (F5)', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    // 40 px at 2 px per frame moves the start from 10 to 30.
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 40);
+    const label = await screen.findByTestId('timeline-ghost-label');
+    expect(label).toHaveTextContent(t('timeline.clipFrames', { start: 30, duration: 14 }));
+    expect(label).toHaveTextContent(t('timeline.edit.ghostOverwrite'));
+    expect(label).not.toHaveTextContent(t('timeline.edit.ghostInsert'));
+    await release(40);
+  });
+
+  it.each([[true, 'ghostInsert', 'ghostOverwrite'], [false, 'ghostOverwrite', 'ghostInsert']] as const)(
+    'labels a main-track move ghost with magnet %s as %s (F5)', async (on, shown, hidden) => {
+      writeUserPreference(ME, { timelineSnap: false, timelineMagnet: on });
+      const A = '30000000-0000-4000-8000-000000000061';
+      seedLayout([clipAt(A, MAIN, 0, 10), clipAt(X, 'v2', 40, 8)]);
+      showTimeline();
+      const clip = await screen.findByTestId('timeline-clip-' + A);
+      fireEvent.click(clip);
+      pointer(clip, 'pointerDown', 0);
+      pointer(document, 'pointerMove', 10);
+      pointer(document, 'pointerMove', 30);
+      const label = await screen.findByTestId('timeline-ghost-label');
+      expect(label).toHaveTextContent(t('timeline.clipFrames', { start: 15, duration: 10 }));
+      expect(label).toHaveTextContent(t(`timeline.edit.${shown}`));
+      expect(label).not.toHaveTextContent(t(`timeline.edit.${hidden}`));
+      await release(30);
+    },
+  );
+
+  it('labels a trim ghost with its frames only (F5)', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const handle = screen.getByTestId('timeline-trim-end-' + X);
+    // 20 px at 2 px per frame lengthens the clip from 14 to 24 frames.
+    pointer(handle, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    const label = await screen.findByTestId('timeline-ghost-label');
+    expect(label).toHaveTextContent(t('timeline.clipFrames', { start: 10, duration: 24 }));
+    expect(label).not.toHaveTextContent(t('timeline.edit.ghostInsert'));
+    expect(label).not.toHaveTextContent(t('timeline.edit.ghostOverwrite'));
+    await release(20);
   });
 });

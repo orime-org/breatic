@@ -162,7 +162,7 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
     const farStart = duration * 3;
     // Overlaps are built on a sub track: the magnetic main track keeps its clips end to end.
     await moveTimelineClip(page, secondId, duration, duration, 'New visual track');
-    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'Track 2');
+    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'Visual 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
@@ -258,7 +258,7 @@ test('a clip moved onto a track another Editor deletes at the same time is kept 
       try {
         await outlet.getByTestId(`timeline-delete-track-${emptied}`).click();
         await expect(outlet.getByTestId(`timeline-track-${emptied}`)).toHaveCount(0);
-        await moveTimelineClip(peer, secondId, duration * 2, duration, 'Track 2');
+        await moveTimelineClip(peer, secondId, duration * 2, duration, 'Visual 2');
         await expect(visibleSpace(peer).getByTestId(`timeline-clip-${secondId}`)).toHaveAttribute('data-track-id', emptied);
         await expect.poll(() => ownerDelivery.pending.length).toBeGreaterThan(0);
         await expect.poll(() => peerDelivery.pending.length).toBeGreaterThan(0);
@@ -338,7 +338,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
         // Editing resumes only after the real connection and its normal Project policy are restored.
         await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New visual track');
         await expectTimelineStart(peer, uploaded.clipId, duration * 3, duration);
-        await moveTimelineClip(peer, secondId, duration * 4, duration, 'Track 2');
+        await moveTimelineClip(peer, secondId, duration * 4, duration, 'Visual 2');
         await expectTimelineStart(page, secondId, duration * 4, duration);
         for (const member of [page, peer]) {
           await expectTimelineConnected(member);
