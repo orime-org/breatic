@@ -16,3 +16,8 @@ selection_max_chars: 40000
 # browser sends a window around the selection that fits; the server refuses
 # anything longer with 422. Must be at least selection_max_chars.
 context_max_chars: 200000
+
+# Milliseconds between words as the answer streams out. The model sends its
+# text in bursts; the server splits each burst into words and spaces them by
+# this much, so the reader sees the answer being written.
+stream_delay_ms: 20

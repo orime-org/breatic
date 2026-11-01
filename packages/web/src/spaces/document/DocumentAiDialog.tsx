@@ -12,12 +12,12 @@
  * only carries out the effects it asks for — a request, an abort, a write, a
  * toast — and draws the state it is in.
  *
- * The panel follows one place in the document, picked once as it opens by
- * the bubble bar's own rule (`pickAnchorLine`): the end of the original range
- * that rule picks, carried by the AI range (`document-ai-range.ts`); once
- * those words are gone, the insert block; once that is gone too, the last
- * place it stood. Over a select-all the place is the point the bar was pinned
- * to, frozen. Which side of it the panel sits on is decided once, as it
+ * The panel hangs under the last line of the original range, whichever end
+ * the reader dragged from (user 2026-11-01), carried by the AI range
+ * (`document-ai-range.ts`); once those words are gone, under the insert
+ * block; once that is gone too, at the last place it stood. Over a select-all
+ * the place is under the bar, frozen. It stays whole inside the body's
+ * viewport. Which side of its anchor it sits on is decided once, as it
  * appears (the bar's E3); a panel that grows scrolls inside instead.
  *
  * The preview is the body's own drawing: the result is parsed with the body's
@@ -46,6 +46,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { WaitingDot } from '@web/components/WaitingDot';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
@@ -64,7 +65,7 @@ import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { AI_TONES, DocumentAiLaunchContext, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
-import { aiRangeIn, DOCUMENT_AI_RANGE, onAiRangeChange } from '@web/spaces/document/document-ai-range';
+import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape, onAiRangeChange } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
   reduceAiSession,
@@ -77,13 +78,11 @@ import {
 } from '@web/spaces/document/document-ai-session';
 import { insertAiResult, replaceAiResult, type AiWriteResult } from '@web/spaces/document/document-ai-write';
 import { selectionMarkdown } from '@web/spaces/document/document-blocks-read';
-import { textEnds } from '@web/spaces/document/document-body-edge-selection';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-import { pickAnchorLine } from '@web/spaces/document/SelectionBubbleBar';
 
 /** How often, at most, the preview parses the result while it streams. */
 const PREVIEW_THROTTLE_MS = 80;
@@ -99,8 +98,6 @@ interface Opened {
   readonly base: { readonly project_id: string; readonly selection: string; readonly document: string };
   /** The block a result is inserted under. */
   readonly insertBlockId: string | null;
-  /** Which end of the original range the panel follows. */
-  readonly end: 'start' | 'end';
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
 }
@@ -301,15 +298,12 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         toast.error(t('server.text_tool.selection_too_long', { actual: markdown.length, limit: budgets.selectionMaxChars }));
         return;
       }
-      const { anchor, head } = textEnds(selection);
       const bar = selection instanceof AllSelection ? opener?.getBoundingClientRect() ?? null : null;
-      const picked = bar === null && viewport !== null ? pickAnchorLine(view, viewport.getBoundingClientRect(), anchor, head) : null;
       openings.current += 1;
       const next: Opened = {
         key: openings.current,
         base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, budgets.contextMaxChars) },
         insertBlockId: aiInsertBlockId(view.state),
-        end: picked !== null && picked.pos !== Math.min(anchor, head) ? 'end' : 'start',
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;
@@ -320,7 +314,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       config.current = null;
       toast.error(t('server.text_tool.failed'));
     });
-  }, [dispatch, editor, projectId, t, viewport]);
+  }, [dispatch, editor, projectId, t]);
 
   // The original range is the dialog's for as long as it is open.
   const state = session?.state ?? null;
@@ -382,7 +376,7 @@ interface AiPanelProps {
 }
 
 /**
- * Where the panel's anchor is now: the followed end of the original range,
+ * Where the panel's anchor is now: the last line of the original range,
  * else the insert block, else nowhere.
  * @param editor - The document editor.
  * @param opened - The opening.
@@ -396,8 +390,9 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
   const left = view.dom.getBoundingClientRect().left;
   const range = aiRangeIn(view.state);
   if (range?.kind === 'present') {
-    const pos = opened.end === 'start' ? range.segments[0]!.from : range.segments[range.segments.length - 1]!.to;
-    const line = view.coordsAtPos(pos);
+    // The line of the last selected character: a range ending at the start of
+    // a line would otherwise measure the line after it.
+    const line = view.coordsAtPos(range.segments[range.segments.length - 1]!.to, -1);
     return new DOMRect(left, line.top, 0, line.bottom - line.top);
   }
   if (opened.insertBlockId === null) return null;
@@ -454,8 +449,8 @@ function AiPanel({
   const [side, setSide] = React.useState<Placement | null>(null);
   const middleware = React.useMemo(
     () => (side === null
-      ? [offset(GAP_FROM_ANCHOR_PX), flip({ boundary: viewport }), shift({ boundary: viewport })]
-      : [offset(GAP_FROM_ANCHOR_PX), shift({ boundary: viewport })]),
+      ? [offset(GAP_FROM_ANCHOR_PX), flip({ boundary: viewport }), shift({ boundary: viewport, crossAxis: true })]
+      : [offset(GAP_FROM_ANCHOR_PX), shift({ boundary: viewport, crossAxis: true })]),
     [side, viewport],
   );
   const { refs, floatingStyles, placement, isPositioned, update } = useFloating({
@@ -475,6 +470,12 @@ function AiPanel({
   }, [side, isPositioned, placement]);
   // Edits move the anchor; `autoUpdate` hears only scrolls and resizes.
   React.useEffect(() => onEditorSettled(editor, update), [editor, update]);
+
+  // Escape typed in the body reaches the dialog through the editor's own
+  // shortcut, which keeps it from blurring the body.
+  React.useEffect(() => onAiEscape(editor, () => {
+    dispatch({ type: 'close' });
+  }), [editor, dispatch]);
 
   // Escape closes, unless something else already took the key.
   React.useEffect(() => {
@@ -544,7 +545,7 @@ function AiPanel({
           )}
         </div>
         {session.state === 'composing' ? (
-          <Composer dispatch={dispatch} />
+          <Composer dispatch={dispatch} shown={isPositioned} />
         ) : (
           <>
             {session.instructions !== null && <InstructionLine text={session.instructions} />}
@@ -675,18 +676,26 @@ function WriteButton({
  * the Enter that confirms an input method's candidate is the input method's.
  * @param props - The box.
  * @param props.dispatch - Sends the session the instruction.
+ * @param props.shown - Whether the panel is on screen yet.
  * @returns The box.
  */
-function Composer({ dispatch }: { dispatch: (event: AiSessionEvent) => void }): React.JSX.Element {
+function Composer({
+  dispatch,
+  shown,
+}: {
+  dispatch: (event: AiSessionEvent) => void;
+  shown: boolean;
+}): React.JSX.Element {
   const t = useTranslation();
   const [text, setText] = React.useState('');
   const composition = React.useMemo(() => compositionEnd(), []);
   // The box takes the keyboard as it appears: writing the instruction is the
-  // only thing the dialog asks for now.
+  // only thing the dialog asks for now. Not before: the panel stays hidden
+  // until it is positioned, and a browser ignores focus on a hidden element.
   const box = React.useRef<HTMLTextAreaElement>(null);
   React.useEffect(() => {
-    box.current?.focus();
-  }, []);
+    if (shown) box.current?.focus();
+  }, [shown]);
   return (
     <div className='p-3'>
       <Textarea
@@ -803,8 +812,11 @@ function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession
     if (streaming) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [html, editor, streaming]);
 
+  // Until the first words, the Agent's waiting mark stands where they will.
+  const waiting = streaming && session.result.trim() === '';
   return (
     <ScrollArea viewportRef={scroller} className='min-h-16' viewportClassName='max-h-56 px-3 py-2.5'>
+      {waiting && <WaitingDot />}
       <div ref={host} data-testid='doc-ai-preview' />
     </ScrollArea>
   );

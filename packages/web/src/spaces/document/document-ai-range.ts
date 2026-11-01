@@ -15,9 +15,14 @@
  * While the dialog is open the words keep the body's selected look (design
  * §5.3): the reader's own selection moves on, so the range wears the
  * `[data-show-selection]` stand-in the link panel's words wear (`index.css`).
+ *
+ * Escape typed in the body closes the open dialog and leaves the keyboard in
+ * the body (design §5.3): BlockNote's own Escape would blur the editor and
+ * mark the key handled, so the dialog would never hear it.
  */
 
 import { createExtension } from '@blocknote/core';
+import { SuggestionMenu } from '@blocknote/core/extensions';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -93,6 +98,24 @@ const watch = watchPluginState(aiRangeIn);
 /** Hear about every change to the range. */
 export const onAiRangeChange: (listener: () => void) => () => void = watch.onChange;
 
+/** Who closes the open dialog when Escape is typed in a given editor's body. */
+const escapeListeners = new WeakMap<object, Set<() => void>>();
+
+/**
+ * Hear Escape typed in this editor's body while its AI dialog is open.
+ * @param editor - The document editor.
+ * @param listener - Called once per such Escape.
+ * @returns Stops hearing.
+ */
+export function onAiEscape(editor: object, listener: () => void): () => void {
+  const listeners = escapeListeners.get(editor) ?? new Set<() => void>();
+  escapeListeners.set(editor, listeners);
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /**
  * The extension that keeps the AI dialog's original range on its words.
  * @returns The extension, for the assembly to register.
@@ -101,6 +124,24 @@ export const documentAiRange = createExtension(() => {
   const tracker = localRangeTracker(presentIn);
   return {
     key: 'document-ai-range',
+    keyboardShortcuts: {
+      /**
+       * Closes the open dialog; a suggestion menu that is up keeps the key.
+       * @param ctx - The shortcut's context.
+       * @param ctx.editor - The editor the key was typed in.
+       * @returns True when the key closed a dialog.
+       */
+      Escape: ({ editor }): boolean => {
+        if (aiRangeIn(editor.prosemirrorState) === null) return false;
+        if (editor.getExtension(SuggestionMenu)?.shown() === true) return false;
+        const listeners = escapeListeners.get(editor);
+        if (listeners === undefined || listeners.size === 0) return false;
+        listeners.forEach((listener) => {
+          listener();
+        });
+        return true;
+      },
+    },
     prosemirrorPlugins: [
       new Plugin<AiRange | null>({
         key: DOCUMENT_AI_RANGE,

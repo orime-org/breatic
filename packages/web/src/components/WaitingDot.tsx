@@ -11,6 +11,9 @@
  * It stands alone in an empty bubble before the first word, and once there is
  * a reply it sits on a line under it until the turn is over (user 2026-08-20:
  * the mark must not disappear and must not turn into a bar).
+ *
+ * The document AI dialog shows the same mark while it waits for the first
+ * word, and drops it once words arrive (user 2026-11-01, inner#1860).
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '@web/i18n/use-translation';

@@ -12,7 +12,7 @@
 
 import { serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 
-import { stepCountIs } from "ai";
+import { smoothStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
@@ -155,6 +155,12 @@ export async function* executeTextTool(
         cache: false,
       }),
       abortSignal: signal,
+      // The model sends its text in bursts; split them into words (locale
+      // aware, so CJK text splits too) and space them out.
+      experimental_transform: smoothStream({
+        delayInMs: getTextToolsConfig().stream_delay_ms,
+        chunking: new Intl.Segmenter(undefined, { granularity: "word" }),
+      }),
       ...watch.streamOptions,
       onLanguageModelCallEnd: (event) => {
         totalTokens += event.usage.totalTokens ?? 0;

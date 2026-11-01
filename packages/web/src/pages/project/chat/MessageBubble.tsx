@@ -18,7 +18,7 @@ import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { UserWords } from '@web/pages/project/chat/UserWords';
 import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
-import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
+import { WaitingDot } from '@web/components/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {

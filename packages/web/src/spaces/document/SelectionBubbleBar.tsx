@@ -226,31 +226,26 @@ const GAP_FROM_SELECTION_PX = 8;
  * select-all reaching this far is answered by its pin before the call
  * ({@link bubbleAnchorRect}), so that reading stands only in the frames
  * between a pin being dropped and the bar being taken away with it.
- *
- * Exported with the two ends as arguments because the AI output dialog
- * (inner#1860, design §5.3) anchors by the same rule, once, as it opens, and
- * then follows the position it picked rather than the live selection.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
- * @param anchor - The selection's anchor.
- * @param head - The selection's head.
- * @returns The position picked, and its line's extent in viewport coordinates.
+ * @returns The anchored line's extent, in viewport coordinates.
  */
-export function pickAnchorLine(
+function pickAnchorLine(
   view: EditorView,
   bounds: DOMRect,
-  anchor: number,
-  head: number,
-): { pos: number; top: number; bottom: number } {
+): { top: number; bottom: number } {
+  // An end on an edge of the body sits outside any line, where the answer is the
+  // zero-height separator described above; the nearest text stands in for it
+  // (#124), the same place a collaborator's caret is drawn.
+  const { anchor, head } = textEnds(view.state.selection);
   const from = Math.min(anchor, head);
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
   const headLine = view.coordsAtPos(head);
   if (headLine.bottom > bounds.top && headLine.top < bounds.bottom) {
-    return { pos: head, top: headLine.top, bottom: headLine.bottom };
+    return headLine;
   }
-  const fromLine = view.coordsAtPos(from);
-  return { pos: from, top: fromLine.top, bottom: fromLine.bottom };
+  return view.coordsAtPos(from);
 }
 
 /**
@@ -393,11 +388,7 @@ export function bubbleAnchorRect(
   // anchor's own x is no such thing, and neither is `posToDOMRect`, which
   // samples only the two endpoints and so misses the block edge a middle line
   // starts at.
-  // An end on an edge of the body sits outside any line, where the answer is
-  // the zero-height separator `pickAnchorLine` describes; the nearest text
-  // stands in for it (#124), the same place a collaborator's caret is drawn.
-  const { anchor, head } = textEnds(view.state.selection);
-  const line = pickAnchorLine(view, viewportBox, anchor, head);
+  const line = pickAnchorLine(view, viewportBox);
   return anchorRect(selectionBox(view).left, line);
 }
 
