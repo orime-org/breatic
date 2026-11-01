@@ -26,9 +26,10 @@ afterEach(async () => {
 
 /**
  * The configuration: SandBase first, a WaveSpeed-kind fake second.
+ * @param extra - More models.
  * @returns The raw configuration.
  */
-function config(): ProviderConfigInput {
+function config(extra: ProviderConfigInput["media"]["models"] = {}): ProviderConfigInput {
   const bindings = [
     { upstream: "sandbase", weight: 1, model_id: "bfl/flux-2/flash", prompt_field: "prompt", params: { aspect_ratio: { field: "aspect_ratio" } }, fixed: { mode: "async" }, pricing },
     { upstream: "ws", weight: 2, model_id: "ws/flux", prompt_field: "prompt", params: { aspect_ratio: { field: "aspect_ratio" } }, pricing },
@@ -38,17 +39,24 @@ function config(): ProviderConfigInput {
       sandbase: { kind: "sandbase", base_url: `${sb.url}/v1`, key_env: "SANDBASE_API_KEY" },
       ws: { kind: "wavespeed", base_url: ws.url, key_env: "WS_KEY" },
     },
-    media: { models: { flux: { upstreams: bindings }, "flux-only": { upstreams: [bindings[0]!] } } },
+    media: {
+      models: {
+        flux: { upstreams: bindings },
+        "flux-only": { upstreams: [bindings[0]!] },
+        ...extra,
+      },
+    },
   };
 }
 
 /**
  * A runner over the fakes.
  * @param keys - The environment.
+ * @param extra - More models.
  * @returns The runner and its provider.
  */
-function runner(keys: Record<string, string> = { SANDBASE_API_KEY: "sb-key", WS_KEY: "ws-key" }): { run: MediaRunner; provider: ReturnType<typeof createProvider> } {
-  const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+function runner(keys: Record<string, string> = { SANDBASE_API_KEY: "sb-key", WS_KEY: "ws-key" }, extra: ProviderConfigInput["media"]["models"] = {}): { run: MediaRunner; provider: ReturnType<typeof createProvider> } {
+  const provider = createProvider({ config: config(extra), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
   return { run: createMediaRunner(provider, { mediaLimits: { maxMediaBytes: MAX_MEDIA_BYTES }, pollIntervalMs: 0 }), provider };
 }
 
@@ -258,5 +266,63 @@ describe("SandBase refusals", () => {
     const failed = expectState(await sent(run), "failed");
     expect(failed.reason).toBeInstanceOf(UpstreamRequestRejected);
     expect(submits(ws.seen)).toHaveLength(0);
+  });
+});
+
+/** A MiniMax voice clone on SandBase: the clone, then speech in the cloned voice. */
+const VOICE: ProviderConfigInput["media"]["models"] = {
+  "voice-clone": {
+    upstreams: [{
+      upstream: "sandbase",
+      weight: 1,
+      model_id: "minimax/voice-clone",
+      prompt_field: "text",
+      params: { audio: { field: "audio" } },
+      extra_steps: [{ kind: "speak", endpoint: "minimax/speech/2.8/hd", at: "after" }],
+      reused_by: "audio",
+      pricing,
+    }],
+  }
+};
+
+describe("a MiniMax voice clone on SandBase", () => {
+  const speech = { prompt: "hello there", params: { audio: "https://cdn.example/voice.mp3" } };
+  const keyed = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/voice.mp3": "sha-a" } };
+
+  it("clones without naming an id, reads the id SandBase made, and speaks with it", async () => {
+    const { run } = runner(undefined, VOICE);
+    sb.answer(({ method, path, body }) => {
+      const model = (body as { model?: string } | undefined)?.model;
+      if (method === "POST" && path === "/v1/run" && model === "minimax/voice-clone") return { status: 202, body: { id: "c1", status: "pending" } };
+      if (method === "POST" && path === "/v1/run" && model === "minimax/speech/2.8/hd") return { status: 202, body: { id: "s1", status: "pending" } };
+      if (path === "/v1/run/c1") return { status: 200, body: { id: "c1", status: "completed", outputs: [{ custom_voice_id: "sb-voice-1", url: "https://media.example/c1/preview.mp3" }] } };
+      if (path === "/v1/run/s1") return { status: 200, body: { id: "s1", status: "completed", outputs: [{ content_type: "audio/mpeg", url: "https://media.example/s1/0.mp3" }] } };
+      if (path.startsWith("/v1/tasks/")) return taskCost(true, "0.010000");
+      return undefined;
+    });
+    const clones: unknown[] = [];
+    let answer: MediaAnswer = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [] }), "send");
+    expect(answer.step.kind).toBe("voice");
+    for (let i = 0; i < 10 && answer.state !== "done" && answer.state !== "failed"; i++) {
+      answer = answer.state === "send" ? await run.send(stored(answer.ticket), live()) : await run.poll(stored(answer.ticket), live());
+      if ("clones" in answer) clones.push(...answer.clones);
+    }
+    const done = expectState(answer, "done");
+    expect(submits(sb.seen).map((s) => s.body)).toEqual([
+      { model: "minimax/voice-clone", audio: "https://cdn.example/voice.mp3", text: "hello there" },
+      { model: "minimax/speech/2.8/hd", text: "hello there", voice_id: "sb-voice-1" },
+    ]);
+    expect(clones).toEqual([{ upstream: "sandbase", kind: "voice", sourceKey: "sha-a", upstreamId: "sb-voice-1" }]);
+    expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/s1/0.mp3" }]);
+  });
+
+  it("speaks with SandBase's cached clone and skips the clone step", async () => {
+    const { run } = runner(undefined, VOICE);
+    sb.answer(({ method }) => (method === "POST" ? { status: 202, body: { id: "s1", status: "pending" } } : { status: 200, body: { id: "s1", status: "running" } }));
+    const cached = [{ upstream: "sandbase", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "sb-voice-9" }];
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached }), "send");
+    expect(planned.step.kind).toBe("speak");
+    await run.send(stored(planned.ticket), live());
+    expect(submits(sb.seen).map((s) => s.body)).toEqual([{ model: "minimax/speech/2.8/hd", text: "hello there", voice_id: "sb-voice-9" }]);
   });
 });

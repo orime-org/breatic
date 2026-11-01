@@ -59,9 +59,10 @@ function onFal(model: string, output: string, extra: Partial<MediaBinding> = {})
 
 /**
  * The configuration: fal and a WaveSpeed-kind fake.
+ * @param extra - More models.
  * @returns The raw configuration.
  */
-function config(): ProviderConfigInput {
+function config(extra: ProviderConfigInput["media"]["models"] = {}): ProviderConfigInput {
   return {
     upstreams: {
       fal: { kind: "fal", base_url: fal.url, billing_url: `${fal.url}/v1`, key_env: "FAL_KEY" },
@@ -86,6 +87,7 @@ function config(): ProviderConfigInput {
             pricing,
           }],
         },
+        ...extra,
       },
     },
   };
@@ -94,10 +96,11 @@ function config(): ProviderConfigInput {
 /**
  * A runner over the fakes.
  * @param keys - The environment.
+ * @param extra - More models.
  * @returns The runner and its provider.
  */
-function runner(keys: Record<string, string> = { FAL_KEY: "fal-key", WS_KEY: "ws-key" }): { run: MediaRunner; provider: ReturnType<typeof createProvider> } {
-  const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+function runner(keys: Record<string, string> = { FAL_KEY: "fal-key", WS_KEY: "ws-key" }, extra: ProviderConfigInput["media"]["models"] = {}): { run: MediaRunner; provider: ReturnType<typeof createProvider> } {
+  const provider = createProvider({ config: config(extra), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
   return { run: createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 }), provider };
 }
 
@@ -317,5 +320,76 @@ describe("fal extra steps", () => {
       ["/mureka/api/voice/clone", { audio_url: "https://cdn.example/voice.mp3" }],
       ["/mureka/v9.5/generate/song", { prompt: "a fox", reference_id: "upload-77", vocal_id: "vocal-9" }],
     ]);
+  });
+});
+
+/** A MiniMax voice clone on fal: the clone, then speech in the cloned voice. */
+const VOICE: ProviderConfigInput["media"]["models"] = {
+  "voice-clone": {
+    upstreams: [{
+      upstream: "fal",
+      weight: 1,
+      model_id: "fal-ai/minimax/voice-clone",
+      prompt_field: "text",
+      params: { audio: { field: "audio_url" } },
+      extra_steps: [{ kind: "speak", endpoint: "fal-ai/minimax/speech-2.8-hd", at: "after" }],
+      reused_by: "audio",
+      output_field: "audio",
+      pricing,
+    }],
+  }
+};
+
+describe("a MiniMax voice clone on fal", () => {
+  const speech = { prompt: "hello there", params: { audio: "https://cdn.example/voice.mp3" } };
+  const keyed = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/voice.mp3": "sha-a" } };
+
+  /**
+   * Drive a run until it is done or failed, collecting the clones it reports.
+   * @param r - The runner.
+   * @param first - The plan's answer.
+   * @returns The last answer and every clone reported on the way.
+   */
+  async function driven(r: MediaRunner, first: MediaAnswer): Promise<{ last: MediaAnswer; clones: unknown[] }> {
+    const clones: unknown[] = [];
+    let answer = first;
+    for (let i = 0; i < 10 && answer.state !== "done" && answer.state !== "failed"; i++) {
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+      if ("clones" in answer) clones.push(...answer.clones);
+    }
+    return { last: answer, clones };
+  }
+
+  it("clones without naming an id, reads the id fal made, and speaks with it", async () => {
+    const { run } = runner(undefined, VOICE);
+    fal.answer(({ method, path }) => {
+      if (method === "POST" && path === "/fal-ai/minimax/voice-clone") return queued("c1", "fal-ai/minimax");
+      if (method === "POST" && path === "/fal-ai/minimax/speech-2.8-hd") return queued("s1", "fal-ai/minimax");
+      if (path.endsWith("/status")) return { status: 200, body: { status: "COMPLETED" } };
+      if (path === "/fal-ai/minimax/requests/c1") return { status: 200, body: { custom_voice_id: "fal-voice-1", audio: null } };
+      if (path === "/fal-ai/minimax/requests/s1") return { status: 200, body: { audio: { url: "https://a/speech.mp3" }, duration_ms: 1200 } };
+      if (path === "/v1/models/billing-events") return events([0.01]);
+      return undefined;
+    });
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [] }), "send");
+    expect(planned.step.kind).toBe("voice");
+    const { last, clones } = await driven(run, planned);
+    const done = expectState(last, "done");
+    expect(submits(fal.seen).map((s) => [s.path, s.body])).toEqual([
+      ["/fal-ai/minimax/voice-clone", { audio_url: "https://cdn.example/voice.mp3", text: "hello there" }],
+      ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1" } }],
+    ]);
+    expect(clones).toEqual([{ upstream: "fal", kind: "voice", sourceKey: "sha-a", upstreamId: "fal-voice-1" }]);
+    expect(done.outputs).toEqual([{ kind: "url", url: "https://a/speech.mp3" }]);
+  });
+
+  it("speaks with fal's cached clone and skips the clone step", async () => {
+    const { run } = runner(undefined, VOICE);
+    fal.answer(({ method }) => (method === "POST" ? queued("s1", "fal-ai/minimax") : { status: 200, body: { status: "IN_PROGRESS" } }));
+    const cached = [{ upstream: "fal", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "fal-voice-9" }];
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached }), "send");
+    expect(planned.step.kind).toBe("speak");
+    await run.send(stored(planned.ticket), live());
+    expect(submits(fal.seen).map((s) => s.body)).toEqual([{ prompt: "hello there", voice_setting: { voice_id: "fal-voice-9" } }]);
   });
 });
