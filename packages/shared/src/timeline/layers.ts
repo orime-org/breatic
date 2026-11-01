@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { timelineTrackRank } from "@shared/timeline/order.js";
 import type { TimelineDocumentV1, TimelineVideoClip } from "@shared/timeline/schema.js";
 
 /**
- * The clip the preview shows at a frame: the ready clip on the highest-order track covering it, ties by id.
+ * The clip the preview shows at a frame: the ready clip on the highest-ranked track covering it, ties by id.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The Timeline frame.
@@ -12,14 +13,15 @@ import type { TimelineDocumentV1, TimelineVideoClip } from "@shared/timeline/sch
  * @throws {never} Never.
  */
 export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number): TimelineVideoClip | null {
+  const rank = timelineTrackRank(document.tracks);
   let shown: TimelineVideoClip | null = null;
-  let shownOrder = -1;
+  let shownRank = -1;
   for (const clip of Object.values(document.clips)) {
-    const order = document.tracks[clip.trackId]?.order;
-    if (order === undefined || !readyClipIds.has(clip.id) || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
-    if (shown === null || order > shownOrder || (order === shownOrder && clip.id < shown.id)) {
+    const at = rank.get(clip.trackId);
+    if (at === undefined || !readyClipIds.has(clip.id) || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
+    if (shown === null || at > shownRank || (at === shownRank && clip.id < shown.id)) {
       shown = clip;
-      shownOrder = order;
+      shownRank = at;
     }
   }
   return shown;
@@ -37,13 +39,14 @@ export function activeTimelineClipAt(document: TimelineDocumentV1, readyClipIds:
  */
 export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number, endFrame: number): number {
   // The shown clip changes only where it ends or where a clip that outranks it starts.
+  const rank = timelineTrackRank(document.tracks);
   const shown = activeTimelineClipAt(document, readyClipIds, frame);
-  const shownOrder = shown === null ? -1 : document.tracks[shown.trackId]?.order ?? -1;
+  const shownRank = shown === null ? -1 : rank.get(shown.trackId) ?? -1;
   let next = shown === null ? endFrame : Math.min(endFrame, shown.startFrame + shown.durationFrames);
   for (const clip of Object.values(document.clips)) {
-    const order = document.tracks[clip.trackId]?.order;
-    if (order === undefined || !readyClipIds.has(clip.id) || clip.startFrame <= frame || clip.startFrame >= next) continue;
-    if (shown === null || order > shownOrder || (order === shownOrder && clip.id < shown.id)) next = clip.startFrame;
+    const at = rank.get(clip.trackId);
+    if (at === undefined || !readyClipIds.has(clip.id) || clip.startFrame <= frame || clip.startFrame >= next) continue;
+    if (shown === null || at > shownRank || (at === shownRank && clip.id < shown.id)) next = clip.startFrame;
   }
   return next;
 }

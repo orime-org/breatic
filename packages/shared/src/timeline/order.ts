@@ -35,3 +35,13 @@ export function orderedTimelineClips(clips: Record<string, TimelineVideoClip>, t
   return Object.values(clips).filter((clip) => trackId === undefined || clip.trackId === trackId)
     .sort((a, b) => a.startFrame - b.startFrame || compareTimelineIds(a.id, b.id));
 }
+
+/**
+ * Each track's stacking rank: its index in `orderedTimelineTracks`, so tracks sharing an order still stack apart.
+ * @param tracks - All tracks.
+ * @returns Track id to rank, bottom track 0.
+ * @throws {never} Never.
+ */
+export function timelineTrackRank(tracks: Record<string, TimelineTrack>): Map<string, number> {
+  return new Map(orderedTimelineTracks(tracks).map((track, rank) => [track.id, rank]));
+}

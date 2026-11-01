@@ -342,9 +342,10 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
       return orderedTimelineClips(clips, trackId).some((other) => other.id !== moved.id && other.startFrame < endOf(moved) && moved.startFrame < endOf(other));
     }
     if (!collides(moved.trackId)) continue;
-    const from = tracks[moved.trackId]?.order ?? -1;
-    let trackId = orderedTimelineTracks(tracks)
-      .find((track) => track.kind === "visual" && track.id !== TIMELINE_MAIN_TRACK_ID && track.order > from && !collides(track.id))?.id;
+    const ordered = orderedTimelineTracks(tracks);
+    const from = ordered.findIndex((track) => track.id === moved.trackId);
+    let trackId = ordered
+      .find((track, rank) => track.kind === "visual" && track.id !== TIMELINE_MAIN_TRACK_ID && rank > from && !collides(track.id))?.id;
     if (trackId === undefined) {
       trackId = newId();
       tracks[trackId] = { id: trackId, kind: "visual", order: nextOrder() };
