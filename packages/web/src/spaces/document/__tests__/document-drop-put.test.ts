@@ -9,13 +9,19 @@
  */
 
 import { act } from '@testing-library/react';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
 
+import { toast } from '@web/lib/toast';
+import { tableBlock } from './table-fixtures';
+
 import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
-afterEach(unmountAll);
+afterEach(() => {
+  unmountAll();
+  vi.restoreAllMocks();
+});
 
 type Block = { type: string; props: Record<string, unknown>; content?: unknown; children?: Block[] };
 
@@ -437,5 +443,46 @@ describe('the line a drop opens between two quoted blocks', () => {
       'image:true',
       'paragraph:true',
     ]);
+  });
+});
+
+describe('a drag within the body into a table cell (design §5.4.7, A14)', () => {
+  /**
+   * Drags the selection between two words to a point, as ProseMirror's own
+   * text drag does.
+   * @param editor - The editor.
+   * @param from - Where the selection starts.
+   * @param to - Where it ends.
+   * @param at - Where it is dropped.
+   */
+  function dragWithin(editor: Editor, from: number, to: number, at: number): void {
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    dropFormats(editor, at, { 'text/html': '<p>x</p>' });
+  }
+
+  it('refuses content holding a table, leaving the body as it was', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['t1', 't2'] }] }),
+      { type: 'paragraph', content: 'tail' },
+      tableBlock({ rows: [{ cells: ['c1', 'c2'] }] }),
+    ]);
+    const before = editor.prosemirrorView.state.doc.toJSON();
+    dragWithin(editor, positionOf(editor, 'lead', 2), positionOf(editor, 'tail', 2), positionOf(editor, 'c1', 1));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.toJSON()).toEqual(before);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves words into the cell as before', async () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('w');
+    const { editor } = await openReady([{ type: 'paragraph', content: 'lead' }, tableBlock({ rows: [{ cells: ['c1', 'c2'] }] })]);
+    dragWithin(editor, positionOf(editor, 'lead', 1), positionOf(editor, 'lead', 3), positionOf(editor, 'c1', 1));
+    await settled();
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('ldcea1c2');
+    expect(warn).not.toHaveBeenCalled();
   });
 });
