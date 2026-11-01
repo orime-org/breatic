@@ -56,6 +56,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...actual, getRedis: () => faulty(actual.getRedis()), logger };
 });
 
+/** The lingering deadline each case sets; read by `closeAfterRefusal` when lingering starts. */
+const linger = vi.hoisted(() => ({ seconds: 30 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getRequestBodyLingerSeconds: () => linger.seconds,
+}));
+
 vi.mock("@server/infra/stripe.js", async () => {
   const { fakeStripe } = await import("./fake-stripe-refunds.js");
   return {
@@ -68,6 +75,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { resolve } from "node:path";
 import { getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -86,11 +94,13 @@ import {
   useInternalApp,
 } from "./internal-api-harness.js";
 import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
+import { freshGetStatus, rawUpload, refusedThenNext, watchServerSockets } from "./refused-connection.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
 // the shared beforeEach clears the rate-limit keys through the same client.
 beforeEach(() => {
   redisFault.mode = "none";
+  linger.seconds = 30;
   logged.info.mockClear();
   logged.warn.mockClear();
 });
@@ -614,6 +624,86 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     expect(res.status).not.toBe(413);
     expect(res.status).not.toBe(401);
     expect(res.json?.code).not.toBe("invalid_body");
+  });
+
+  // inner#1782 test spec I1–I4: how a refusal closes its connection.
+  const PROBE_PATH = "/internal/v1/health";
+
+  it("I1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
+    const fresh = await freshGetStatus(running.baseUrl, PROBE_PATH);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      for (let round = 0; round < 5; round++) {
+        const { refused, next } = await refusedThenNext(running.baseUrl, agent, PROBE_PATH, PROBE_PATH);
+
+        expect(refused.status).toBe(413);
+        expect(refused.headers.connection).toBe("close");
+        expect(JSON.parse(refused.body)).toEqual({ code: "invalid_body" });
+        expect(next.error).toBeUndefined();
+        expect(next.status).toBe(fresh);
+        expect(next.reusedSocket).toBe(false);
+      }
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  it.each([
+    ["I2: a declared 20 MiB body", 20 * 1024 * 1024],
+    ["I3: a finite chunked 20 MiB body", undefined],
+  ])("%s sent slowly by a client that reads only afterwards gets the whole 413", async (_name, contentLength) => {
+    const port = Number(new URL(running.baseUrl).port);
+    const watch = watchServerSockets(suite.server);
+    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+    try {
+      upload = await rawUpload({
+        port,
+        path: PROBE_PATH,
+        contentLength,
+        blocks: 320,
+        pauseMs: 20,
+        terminate: contentLength === undefined,
+        readAfterUpload: true,
+      });
+      expect(upload.tLast - upload.t0).toBeLessThan(20_000);
+      expect(upload.response?.status).toBe(413);
+      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
+      expect(JSON.parse(upload.response!.body)).toEqual({ code: "invalid_body" });
+      const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
+      expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
+      expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
+      expect(tClose - upload.t0).toBeLessThan(30_000);
+      expect(upload.error).toBeUndefined();
+      expect(upload.tFin).toBeDefined();
+      expect(upload.tFin! - upload.tLast).toBeLessThan(2000);
+    } finally {
+      upload?.client.destroy();
+      watch.stop();
+    }
+  });
+
+  it("I4: a body within the limit is answered without closing the connection", async () => {
+    const url = new URL(running.baseUrl);
+    // A keep-alive agent: one with keep-alive off asks for the close itself.
+    const agent = new http.Agent({ keepAlive: true });
+    try {
+      const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
+        const req = http.request(
+          { host: url.hostname, port: url.port, path: PROBE_PATH, method: "POST", agent, headers: { "Content-Type": "application/json", "Content-Length": "10240" } },
+          (r) => {
+            r.resume();
+            r.on("end", () => resolve(r));
+          },
+        );
+        req.on("error", reject);
+        req.end(Buffer.alloc(10_240, 0x20));
+      });
+
+      expect(res.statusCode).not.toBe(413);
+      expect(res.headers.connection).not.toBe("close");
+    } finally {
+      agent.destroy();
+    }
   });
 });
 

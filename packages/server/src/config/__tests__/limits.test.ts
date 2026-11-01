@@ -16,6 +16,7 @@ import { MONOREPO_ROOT } from "@breatic/core";
 import {
   limitsConfigSchema,
   getRequestBodyMaxBytes,
+  getRequestBodyLingerSeconds,
   getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -169,6 +170,25 @@ describe("request body limit", () => {
 
   it.each([0, 1.5])("(c) refuses %s like every other key here", (value) => {
     expect(() => limitsConfigSchema.parse({ request_body_max_bytes: value })).toThrow(ZodError);
+  });
+});
+
+/**
+ * inner#1782 test spec C1–C3: how long a refused connection keeps reading.
+ */
+describe("request body linger", () => {
+  it("C1: defaults to 30 seconds when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).request_body_linger_seconds).toBe(30);
+  });
+
+  it("C2: the shipped yaml sets 30 seconds and the getter returns it", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config", "limits.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(shipped.request_body_linger_seconds).toBe(30);
+    expect(getRequestBodyLingerSeconds()).toBe(30);
+  });
+
+  it.each([0, 1.5])("C3: refuses %s", (value) => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: value }).success).toBe(false);
   });
 });
 

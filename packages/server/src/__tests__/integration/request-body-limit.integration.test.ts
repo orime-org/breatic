@@ -5,7 +5,8 @@
  * The public app's request body limit over a real socket (inner#1006 §3):
  * T01–T06, T08–T10, T12(c), T17, the raw-body regressions X01–X03, and a
  * keep-alive regression: a body within the limit that a route refuses unread
- * must not break the next request on the same connection.
+ * must not break the next request on the same connection; and how a refusal
+ * closes its connection (inner#1782 test spec P1–P6).
  *
  * `createApp()` is served by `@hono/node-server` on a loopback port
  * (`serveOnLoopback`, as `internal-api-harness.ts` does), and requests are
@@ -55,6 +56,13 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: logged,
 }));
 
+/** The lingering deadline each case sets; read by `closeAfterRefusal` when lingering starts. */
+const linger = vi.hoisted(() => ({ seconds: 30 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getRequestBodyLingerSeconds: () => linger.seconds,
+}));
+
 import postgres from "postgres";
 import Stripe from "stripe";
 import type { Hono } from "hono";
@@ -74,6 +82,7 @@ import { formatBytes, t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 import { serveOnLoopback, type RunningApp } from "./internal-api-harness.js";
+import { freshGetStatus, rawUpload, refusedThenNext, watchServerSockets } from "./refused-connection.js";
 
 try {
   initCore(process.env);
@@ -105,6 +114,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  linger.seconds = 30;
 });
 
 /** 64 KiB, the chunk size every chunked case sends. */
@@ -692,5 +702,135 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
     const [row] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM projects WHERE studio_id = ${a.studioId}`;
     // The seeded project plus the one the press made.
     expect(row!.n).toBe(2);
+  });
+});
+
+describe("§inner#1782 a refusal closes its connection (P1–P6)", () => {
+  const LOGIN_PATH = "/api/v1/auth/login";
+  const NEXT_PATH = "/api/v1/assets/upload-config";
+  const TWENTY_MIB = 20 * 1024 * 1024;
+
+  it("P1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
+    const fresh = await freshGetStatus(running.baseUrl, NEXT_PATH);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      for (let round = 0; round < 10; round++) {
+        const { refused, next } = await refusedThenNext(running.baseUrl, agent, LOGIN_PATH, NEXT_PATH);
+
+        expect(refused.status).toBe(413);
+        expect(refused.headers.connection).toBe("close");
+        expect(JSON.parse(refused.body)).toEqual(tooLarge());
+        expect(next.error).toBeUndefined();
+        expect(next.status).toBe(fresh);
+        expect(next.reusedSocket).toBe(false);
+      }
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  /**
+   * Upload 20 MiB slowly, read only afterwards, and check the server read it
+   * to the end before closing.
+   * @param contentLength - Declared length, or undefined for chunked.
+   */
+  async function slowUploadReadAfter(contentLength: number | undefined): Promise<void> {
+    const port = Number(new URL(running.baseUrl).port);
+    const watch = watchServerSockets(running.server);
+    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+    try {
+      upload = await rawUpload({
+        port,
+        path: LOGIN_PATH,
+        contentLength,
+        blocks: 320,
+        pauseMs: 20,
+        terminate: contentLength === undefined,
+        readAfterUpload: true,
+      });
+      const readFrom = upload.tLast;
+      expect(upload.tLast - upload.t0).toBeLessThan(20_000);
+      expect(upload.response?.status).toBe(413);
+      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
+      expect(JSON.parse(upload.response!.body)).toEqual(tooLarge());
+      const tClose = await watch.closedAt(upload.client.localPort!, 30_000 + 5000);
+      expect(tClose).toBeGreaterThanOrEqual(upload.tLast);
+      expect(tClose - upload.tLast).toBeLessThanOrEqual(2000);
+      expect(tClose - upload.t0).toBeLessThan(30_000);
+      expect(upload.error).toBeUndefined();
+      expect(upload.tFin).toBeDefined();
+      expect(upload.tFin! - readFrom).toBeLessThan(2000);
+    } finally {
+      upload?.client.destroy();
+      watch.stop();
+    }
+  }
+
+  it("P2: a declared 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
+    await slowUploadReadAfter(TWENTY_MIB);
+  });
+
+  it("P3: a finite chunked 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
+    await slowUploadReadAfter(undefined);
+  });
+
+  it("P4: a client that stalls mid-body gets the 413 and a FIN at once, and the server closes at the deadline", async () => {
+    linger.seconds = 2;
+    const port = Number(new URL(running.baseUrl).port);
+    const watch = watchServerSockets(running.server);
+    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+    try {
+      upload = await rawUpload({ port, path: LOGIN_PATH, blocks: 32, pauseMs: 0, terminate: false, readAfterUpload: false });
+      expect(upload.response?.status).toBe(413);
+      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
+      const tClose = await watch.closedAt(upload.client.localPort!, 2000 + 5000);
+      expect(upload.t413!).toBeLessThan(tClose);
+      expect(upload.tFin).toBeDefined();
+      expect(upload.tFin! - upload.tLast).toBeLessThan(1000);
+      expect(upload.tFin!).toBeLessThan(tClose);
+      expect(tClose - upload.tFin!).toBeGreaterThanOrEqual(1750);
+      expect(tClose - upload.tFin!).toBeLessThanOrEqual(3500);
+      expect(upload.error === undefined || upload.error.at >= tClose).toBe(true);
+    } finally {
+      upload?.client.destroy();
+      watch.stop();
+    }
+  });
+
+  it("P5: a declared body within the limit that a route refuses unread keeps the connection", async () => {
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const refused = await send("/api/v1/canvas/node-history/snapshot", {
+        agent,
+        headers: { "Content-Type": "application/json" },
+        body: padded({ project_id: randomUUID(), node_id: randomUUID(), text: "a" }, 307_200),
+      });
+      expect(refused.status).toBe(401);
+      expect(refused.headers.connection).not.toBe("close");
+
+      const next = await send(NEXT_PATH, { method: "GET", agent });
+      expect(next.reusedSocket).toBe(true);
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  it("P6: a chunked body within the limit keeps the connection", async () => {
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const refused = await send("/api/v1/canvas/node-history/snapshot", {
+        agent,
+        headers: { "Content-Type": "application/json" },
+        body: padded({ project_id: randomUUID(), node_id: randomUUID(), text: "a" }, 307_200),
+        chunkSize: CHUNK,
+      });
+      expect(refused.status).toBe(401);
+      expect(refused.headers.connection).not.toBe("close");
+
+      const next = await send(NEXT_PATH, { method: "GET", agent });
+      expect(next.reusedSocket).toBe(true);
+    } finally {
+      agent.destroy();
+    }
   });
 });
