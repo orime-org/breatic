@@ -33,7 +33,7 @@ Useful first contributions include:
 - Providing a minimal reproduction for a bug, with expected behavior, actual behavior,
   browser and version information. Do not include credentials or private project data.
 - Adding a regression test for an agreed issue, following the testing rules in
-  [AGENTS.md](./AGENTS.md) and the relevant package.
+  [testing rules](./AGENTS.md#testing) and the relevant package.
 - Reviewing an existing translation in `locales/` and explaining a concrete correction.
   Discuss a new language or a change to translation keys before implementing it.
 
@@ -43,7 +43,8 @@ for feature proposals. For an actionable documentation or contributor-workflow c
 use the [general issue form](https://github.com/orime-org/breatic/issues/new?template=general_issue.yml).
 Search existing issues first and state an observable completion criterion.
 
-Before a code change, read the repository and affected package's `AGENTS.md`.
+Before a code change, read the [repository rules](./AGENTS.md#rule-files)
+and the affected [package rules](./AGENTS.md#index).
 Keep the first PR focused on one agreed outcome, link its issue, and include
 the checks and tests appropriate to that change. New model integrations,
 cross-package changes and changes to stored data require scope discussion first.
