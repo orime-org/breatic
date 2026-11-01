@@ -1999,7 +1999,16 @@
         "errorInvalid": "无法读取模型或配套文件。",
         "errorDuplicate": "存在相同路径的文件，请重新选择无冲突的文件集合。",
         "errorUpload": "模型上传失败，请重试。",
-        "success": "模型已导入。"
+        "success": "模型已导入。",
+        "limit": {
+          "input": "所选文件共 {actual} MB，上限 {allowed} MB。",
+          "files": "共 {actual} 个文件，上限 {allowed} 个。",
+          "expanded": "解压后 {actual} MB，上限 {allowed} MB。",
+          "entryJson": "模型描述文件 {actual} MB，上限 {allowed} MB。",
+          "artifact": "打包后 {actual} MB，上限 {allowed} MB。",
+          "textureEdge": "纹理边长 {actual} px，上限 {allowed} px。",
+          "textureBytes": "纹理内存 {actual} MB，上限 {allowed} MB。"
+        }
       }
     }
   },

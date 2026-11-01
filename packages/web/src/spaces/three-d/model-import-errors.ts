@@ -7,19 +7,67 @@ export interface ModelInspectionInfo {
   paths: readonly string[];
   missing: readonly string[];
 }
+/** The configured import limit a selection exceeded. */
+export type ModelImportLimit = 'input' | 'files' | 'expanded' | 'entryJson' | 'artifact' | 'textureEdge' | 'textureBytes';
+/** Which limit was exceeded, its configured value and what the selection measured. */
+export interface ModelImportBudget {
+  limit: ModelImportLimit;
+  allowed: number;
+  actual: number;
+}
+/** What the user is shown beside a failure: where it is, the selection it belongs to and any exceeded limit. */
+export interface ModelImportFacts {
+  /** The resource path, archive entry or `images[N]` that failed; empty when the failure concerns the whole selection. */
+  detail: string;
+  info?: ModelInspectionInfo;
+  budget?: ModelImportBudget;
+}
 
 /** Carry localized display facts separately from an internal diagnostic. */
 export class ModelImportError extends Error {
+  readonly detail: string;
+  readonly info?: ModelInspectionInfo;
+  readonly budget?: ModelImportBudget;
+
   /**
    * Describe a local inspection or upload failure without embedding UI copy.
+   * Every failure states its location, and every budget failure states the limit it exceeded.
    * @param code - Locale-key suffix for the failed operation.
    * @param message - Internal diagnostic used by logs and tests.
-   * @param info - Known source paths and entry choices, when available.
-   * @param detail - A source path or extension identifier shown as user data.
+   * @param facts - Where the failure is, the selection's paths and entries, and the exceeded limit.
    * @throws {never} Never.
    */
-  constructor(readonly code: ModelImportErrorCode, message: string, readonly info?: ModelInspectionInfo, readonly detail = '') {
+  constructor(code: 'budget', message: string, facts: ModelImportFacts & { budget: ModelImportBudget });
+  constructor(code: Exclude<ModelImportErrorCode, 'budget'>, message: string, facts: ModelImportFacts & { budget?: never });
+  constructor(readonly code: ModelImportErrorCode, message: string, facts: ModelImportFacts) {
     super(message);
     this.name = 'ModelImportError';
+    this.detail = facts.detail;
+    if (facts.info) this.info = facts.info;
+    if (facts.budget) this.budget = facts.budget;
   }
+
+  /**
+   * Keep this failure's code, location and limit while stating the selection it occurred in.
+   * @param info - Paths, entries and missing resources of the inspected selection.
+   * @returns A copy of this failure carrying that selection.
+   * @throws {never} Never.
+   */
+  withInfo(info: ModelInspectionInfo): ModelImportError {
+    return restoreModelImportError(this.code, this.message, { detail: this.detail, info, budget: this.budget });
+  }
+}
+
+/**
+ * Rebuild a failure from facts carried across a boundary, keeping the rule that a budget failure names its limit.
+ * @param code - The original failure code.
+ * @param message - The original internal diagnostic.
+ * @param facts - The original location, selection and limit.
+ * @returns The typed failure; a budget failure that lost its limit reads as an unreadable model.
+ * @throws {never} Never.
+ */
+export function restoreModelImportError(code: ModelImportErrorCode, message: string, facts: ModelImportFacts): ModelImportError {
+  const { budget, ...rest } = facts;
+  if (code === 'budget') return budget ? new ModelImportError(code, message, { ...rest, budget }) : new ModelImportError('invalid', message, rest);
+  return new ModelImportError(code, message, rest);
 }

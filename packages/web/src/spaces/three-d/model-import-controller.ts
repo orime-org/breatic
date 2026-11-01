@@ -177,7 +177,7 @@ export class ModelImportController {
         id, name: this.snapshot.name, model: { kind: 'asset', assetId }, position: this.inputs.position(prepared.bounds),
         rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true,
       }] });
-      if (!result.ok) throw new ModelImportError('invalid', `Model placement refused: ${result.reason}`);
+      if (!result.ok) throw new ModelImportError('invalid', `Model placement refused: ${result.reason}`, { detail: '' });
       this.publish({ phase: 'placed', objectId: id, error: null });
     } catch (error) {
       if (!signal.aborted) this.publish({ phase: 'failed', error: error instanceof Error ? error : new Error(String(error)) });

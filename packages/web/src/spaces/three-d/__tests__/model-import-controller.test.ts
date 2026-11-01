@@ -476,7 +476,7 @@ describe('document-owned model imports (inner#1690)', () => {
     await h.controller.select(h.files);
     expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', error: { message: 'Invalid source' } });
     const info = { paths: ['one.glb', 'two.glb'], entries: ['one.glb', 'two.glb'], missing: [] };
-    h.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose an entry', info));
+    h.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose an entry', { detail: '', info }));
     await h.controller.select(h.files);
     expect(h.controller.getSnapshot()).toMatchObject({ phase: 'failed', ...info, error: { code: 'entry' } });
     h.upload.mockRejectedValueOnce('Upload interrupted');

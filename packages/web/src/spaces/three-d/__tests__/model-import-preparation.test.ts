@@ -88,9 +88,17 @@ describe('operation-owned model inspection worker', () => {
     expect(worker.onmessageerror).toBeNull();
   });
 
+  it('carries an exceeded limit across the worker boundary', async () => {
+    const budget = { limit: 'expanded', allowed: 1000, actual: 2000 } as const;
+    const failure = new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '', budget });
+    const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
+    ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeModelImportError(failure) } }));
+    await expect(running).rejects.toMatchObject({ code: 'budget', budget });
+  });
+
   it('retains error paths and entry choices across the worker boundary', async () => {
     const info = { entries: ['one.glb', 'two.glb'], paths: ['one.glb', 'two.glb'], missing: [] };
-    const failure = new ModelImportError('entry', 'Choose a model entry', info, 'one.glb');
+    const failure = new ModelImportError('entry', 'Choose a model entry', { detail: 'one.glb', info });
     const running = inspectModelSelectionInWorker(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
     const worker = ControlledWorker.instances[0];
     worker.onmessage?.(new MessageEvent('message', { data: { ok: false, error: serializeModelImportError(failure) } }));
@@ -99,11 +107,13 @@ describe('operation-owned model inspection worker', () => {
   });
 
   it('keeps entry choices on a model refused while it is parsed', async () => {
-    parse.mockRejectedValueOnce(new ModelImportError('budget', 'Model textures exceed the configured cumulative budget'));
+    parse.mockRejectedValueOnce(new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
+      budget: { limit: 'textureBytes', allowed: 10, actual: 20 } }));
     const running = prepareSceneModel(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
     await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
-    await expect(running).rejects.toMatchObject({ code: 'budget', info: { entries: SELECTION.entries, paths: SELECTION.paths, missing: [] } });
+    await expect(running).rejects.toMatchObject({ code: 'budget', budget: { limit: 'textureBytes', allowed: 10, actual: 20 },
+      info: { entries: SELECTION.entries, paths: SELECTION.paths, missing: [] } });
   });
 
   it('cancels one worker without affecting another operation or accepting its late reply', async () => {

@@ -274,17 +274,26 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   const decoder = createModelDecoder(model, limits, renderer);
   const bytes = model.files.get(model.entry)!;
   const input = model.entry.toLowerCase().endsWith('.gltf') ? new TextDecoder().decode(bytes) : bytes.slice().buffer;
+  /**
+   * Name the resources a loader reported, for failures that left the model unusable.
+   * @param message - Internal diagnostic.
+   * @returns The failure carrying the reported resource paths.
+   * @throws {never} Never.
+   */
+  const decodeFailure = (message: string): ModelImportError => new ModelImportError('invalid', message, { detail: decoder.failedResources.join(', ') });
   const parsed = decoder.loader.parseAsync(input, '').then((result) => {
     ownedScenes.set(result.scene, result.scenes);
     try {
       signal.throwIfAborted();
-      if (decoder.failedResources.length) throw new ModelImportError('invalid', 'Model resources could not be decoded', undefined, decoder.failedResources.join(', '));
+      if (decoder.failedResources.length) throw decodeFailure('Model resources could not be decoded');
       validateModelTextures(result.scenes, textureLimits);
       return result.scene;
     } catch (error) {
       disposeModelTemplate(result.scene);
       throw error;
     }
+  }, (error: unknown) => {
+    throw error instanceof ModelImportError ? error : decodeFailure(error instanceof Error ? error.message : String(error));
   });
   let abort: (() => void) | undefined;
   try {

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { SceneImportLimits } from '@breatic/shared';
-import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import type { ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
+import { ModelImportError, restoreModelImportError } from '@web/spaces/three-d/model-import-errors';
+import type { ModelImportBudget, ModelImportErrorCode, ModelInspectionInfo } from '@web/spaces/three-d/model-import-errors';
 import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
 
@@ -17,6 +17,7 @@ export interface SerializedModelImportError {
   message: string;
   info?: ModelInspectionInfo;
   detail: string;
+  budget?: ModelImportBudget;
 }
 export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | { ok: false; error: SerializedModelImportError };
 
@@ -28,7 +29,7 @@ export type ModelImportWorkerAnswer = { ok: true; selection: ModelSelection } | 
  */
 export function serializeModelImportError(error: unknown): SerializedModelImportError {
   return error instanceof ModelImportError
-    ? { code: error.code, message: error.message, ...(error.info ? { info: error.info } : {}), detail: error.detail }
+    ? { code: error.code, message: error.message, ...(error.info ? { info: error.info } : {}), detail: error.detail, ...(error.budget ? { budget: error.budget } : {}) }
     : { code: 'invalid', message: error instanceof Error ? error.message : String(error), detail: '' };
 }
 
@@ -39,5 +40,5 @@ export function serializeModelImportError(error: unknown): SerializedModelImport
  * @throws {never} Never.
  */
 export function deserializeModelImportError(error: SerializedModelImportError): ModelImportError {
-  return new ModelImportError(error.code, error.message, error.info, error.detail);
+  return restoreModelImportError(error.code, error.message, { detail: error.detail, info: error.info, budget: error.budget });
 }

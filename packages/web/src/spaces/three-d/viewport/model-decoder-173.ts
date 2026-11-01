@@ -69,7 +69,8 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
   const urls = new Map<string, string>();
   const failedResources: string[] = [];
   const manager = new LoadingManager();
-  manager.onError = (url) => { failedResources.push(url); };
+  // Loaders report the object URL they fetched; the user knows the resource by its path in the model.
+  manager.onError = (url) => { failedResources.push([...urls].find(([, objectUrl]) => objectUrl === url)?.[0] ?? url); };
   manager.setURLModifier((url) => {
     const decoder = decoderAssets.get(url);
     if (decoder) return decoder;
@@ -124,7 +125,11 @@ export function validateModelTextures(scenes: readonly Group[], limits: SceneImp
   for (const texture of textures) {
     const image: unknown = texture.image;
     const size = imageSizeSchema.parse(image);
-    if (Math.max(size.width, size.height) > limits.maxTextureEdge) throw new ModelImportError('budget', 'Model texture exceeds the configured dimension budget', undefined, texture.name);
+    const edge = Math.max(size.width, size.height);
+    if (edge > limits.maxTextureEdge) {
+      throw new ModelImportError('budget', 'Model texture exceeds the configured dimension budget', { detail: texture.name,
+        budget: { limit: 'textureEdge', allowed: limits.maxTextureEdge, actual: edge } });
+    }
     const mipData = texture.mipmaps?.map((value) => mipDataSchema.safeParse(value)) ?? [];
     if (mipData.length && mipData.every((value) => value.success)) {
       total += mipData.reduce((sum, value) => sum + (value.success ? value.data.data.byteLength : 0), 0);
@@ -137,6 +142,9 @@ export function validateModelTextures(scenes: readonly Group[], limits: SceneImp
         height = Math.max(1, Math.floor(height / 2));
       }
     }
-    if (total > limits.maxTextureBytes) throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget');
+  }
+  if (total > limits.maxTextureBytes) {
+    throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
+      budget: { limit: 'textureBytes', allowed: limits.maxTextureBytes, actual: total } });
   }
 }

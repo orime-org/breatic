@@ -324,3 +324,68 @@ describe('model-selection metadata budget admission', () => {
     ], undefined, { ...IMPORT_LIMITS, maxArtifactBytes: 1 }), 'budget');
   });
 });
+
+describe('model-selection failures state their limit and location (inner#1690)', () => {
+  /**
+   * Run one inspection and return the failure it reports.
+   * @throws {Error} When the inspection succeeds.
+   */
+  async function failure(files: readonly File[], entry: string | undefined, limits = IMPORT_LIMITS): Promise<ModelImportError> {
+    try { await inspect(files, entry, limits); } catch (error) { if (error instanceof ModelImportError) return error; throw error; }
+    throw new Error('Expected model selection to fail');
+  }
+
+  it('states the expanded size of a whole archive against its limit', async () => {
+    const zipped = archive(new Map([['a.bin', new Uint8Array(600)], ['b.bin', new Uint8Array(600)], ['m.glb', modelGlb()]]));
+    const error = await failure([inputFile('m.zip', zipped)], undefined, { ...IMPORT_LIMITS, maxExpandedBytes: 1000 });
+    expect(error).toMatchObject({ code: 'budget', budget: { limit: 'expanded', allowed: 1000, actual: 1200 + modelGlb().byteLength } });
+  });
+
+  it('states the selected file count and total size against their limits', async () => {
+    const files = [inputFile('a.glb', modelGlb()), inputFile('b.bin', GEOMETRY.slice())];
+    expect(await failure(files, 'a.glb', { ...IMPORT_LIMITS, maxFiles: 1 })).toMatchObject({ budget: { limit: 'files', allowed: 1, actual: 2 } });
+    const total = files[0].size + files[1].size;
+    expect(await failure(files, 'a.glb', { ...IMPORT_LIMITS, maxInputBytes: total - 1 })).toMatchObject({ budget: { limit: 'input', allowed: total - 1, actual: total } });
+  });
+
+  it('states the entry description size against its limit', async () => {
+    const json = modelJson('mesh.bin');
+    const error = await failure([inputFile('model.gltf', json, ENTRY), inputFile('mesh.bin', GEOMETRY.slice(), 'hero/mesh.bin')], undefined, { ...IMPORT_LIMITS, maxEntryJsonBytes: 10 });
+    expect(error).toMatchObject({ code: 'budget', detail: ENTRY, budget: { limit: 'entryJson', allowed: 10, actual: json.byteLength } });
+  });
+
+  it.each([['../textures/color.png', '../textures/color.png'], ['https://cdn.example.com/mesh.bin', 'https://cdn.example.com/mesh.bin']])('names the dependency %s that is not inside the selection', async (uri, detail) => {
+    expect(await failure([inputFile('model.gltf', modelJson(uri))], undefined)).toMatchObject({ code: 'invalid', detail });
+  });
+
+  it('names the archive entries that share a path and an unsupported compression method', async () => {
+    const zipped = archive(new Map([['m/t.png', new Uint8Array(1)], ['m\\t.png', new Uint8Array(1)], ['m.glb', modelGlb()]]));
+    expect(await failure([inputFile('m.zip', zipped)], undefined)).toMatchObject({ code: 'duplicate', detail: 'm/t.png' });
+    const bzip = archive(new Map([['m.glb', modelGlb()]]));
+    const view = new DataView(bzip.buffer);
+    for (let offset = 0; offset < bzip.byteLength - 4; offset += 1) {
+      const signature = view.getUint32(offset, true);
+      if (signature === 0x04034b50) view.setUint16(offset + 8, 12, true);
+      if (signature === 0x02014b50) view.setUint16(offset + 10, 12, true);
+    }
+    expect(await failure([inputFile('m.zip', bzip)], undefined)).toMatchObject({ code: 'unsupported', detail: 'm.glb' });
+  });
+
+  it('names a selected file the browser cannot read', async () => {
+    const file = inputFile('model.glb', modelGlb(), 'hero/model.glb');
+    Object.defineProperty(file, 'arrayBuffer', { value: () => Promise.reject(new DOMException('gone', 'NotFoundError')) });
+    expect(await failure([file], undefined)).toMatchObject({ code: 'invalid', detail: 'hero/model.glb' });
+  });
+
+  it('reads a UTF-8 entry name written without the UTF-8 flag', async () => {
+    const zipped = archive(new Map([['hero/model.gltf', modelJson('%E8%B4%B4%E5%9B%BE.bin')], ['hero/贴图.bin', GEOMETRY.slice()]]));
+    const view = new DataView(zipped.buffer);
+    for (let offset = 0; offset < zipped.byteLength - 4; offset += 1) {
+      const signature = view.getUint32(offset, true);
+      if (signature === 0x04034b50) view.setUint16(offset + 6, view.getUint16(offset + 6, true) & ~0x800, true);
+      if (signature === 0x02014b50) view.setUint16(offset + 8, view.getUint16(offset + 8, true) & ~0x800, true);
+    }
+    const selected = await inspect([inputFile('hero.zip', zipped)], undefined, IMPORT_LIMITS);
+    expect([...selected.paths].sort()).toEqual(['hero/model.gltf', 'hero/贴图.bin']);
+  });
+});

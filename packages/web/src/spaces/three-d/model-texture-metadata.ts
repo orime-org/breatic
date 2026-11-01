@@ -9,93 +9,115 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 
+/** Everything one image check reads: the model, its decoded data URIs and the image's location for failures. */
+interface ImageRead {
+  model: ModelPackage;
+  /** Data URIs decoded during this validation; images that share an embedded buffer decode it once. */
+  decoded: Map<string, Uint8Array<ArrayBuffer>>;
+  location: string;
+}
+
 /**
  * Read an embedded URI or an original file from the closed model collection.
- * @param model - Checked model entry and original resources.
+ * @param read - The model, the decoded data URIs and the image location.
  * @param uri - Image or buffer URI relative to the model entry.
  * @returns The original resource bytes.
- * @throws {Error} When embedded resource bytes cannot be decoded.
+ * @throws {ModelImportError} When embedded resource bytes cannot be decoded.
  */
-function readResource(model: ModelPackage, uri: string): Uint8Array<ArrayBuffer> {
+function readResource(read: ImageRead, uri: string): Uint8Array<ArrayBuffer> {
   if (uri.startsWith('data:')) {
+    const cached = read.decoded.get(uri);
+    if (cached) return cached;
     const comma = uri.indexOf(',');
-    if (comma < 0) throw new ModelImportError('invalid', 'Invalid embedded model resource');
+    if (comma < 0) throw new ModelImportError('invalid', 'Invalid embedded model resource', { detail: read.location });
     const encoded = uri.slice(comma + 1).replace(/%([a-f\d]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
-    const binary = /;base64$/i.test(uri.slice(0, comma)) ? atob(encoded) : encoded;
-    return Uint8Array.from(binary, (value) => value.charCodeAt(0));
+    let binary: string;
+    try {
+      binary = /;base64$/i.test(uri.slice(0, comma)) ? atob(encoded) : encoded;
+    } catch {
+      throw new ModelImportError('invalid', 'Invalid embedded model resource', { detail: read.location });
+    }
+    const bytes = Uint8Array.from(binary, (value) => value.charCodeAt(0));
+    read.decoded.set(uri, bytes);
+    return bytes;
   }
-  const path = resolveModelDependency(model.entry, uri);
+  const path = resolveModelDependency(read.model.entry, uri);
   // inspectModelFiles establishes resource presence before either parsing entry point.
-  return model.files.get(path)!;
+  return read.model.files.get(path)!;
 }
 
 /**
  * Locate the original GLB BIN chunk without copying its image payload.
- * @param model - Checked binary model entry.
+ * @param read - The checked binary model entry and the image location.
  * @returns A byte view of the embedded buffer.
  * @throws {ModelImportError} When the container or its binary chunk is invalid.
  */
-function readBinaryChunk(model: ModelPackage): Uint8Array<ArrayBuffer> {
+function readBinaryChunk(read: ImageRead): Uint8Array<ArrayBuffer> {
+  const { model, location } = read;
   const bytes = model.files.get(model.entry);
-  if (!bytes || !model.entry.toLowerCase().endsWith('.glb')) throw new ModelImportError('invalid', 'Model image has no embedded binary buffer');
+  if (!bytes || !model.entry.toLowerCase().endsWith('.glb')) throw new ModelImportError('invalid', 'Model image has no embedded binary buffer', { detail: location });
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   for (let offset = 12; offset < bytes.byteLength;) {
-    if (bytes.byteLength - offset < 8) throw new ModelImportError('invalid', 'Truncated binary model chunk');
+    if (bytes.byteLength - offset < 8) throw new ModelImportError('invalid', 'Truncated binary model chunk', { detail: location });
     const length = view.getUint32(offset, true);
     const type = view.getUint32(offset + 4, true);
     offset += 8;
-    if (length % 4 !== 0 || length > bytes.byteLength - offset) throw new ModelImportError('invalid', 'Invalid binary model chunk length');
+    if (length % 4 !== 0 || length > bytes.byteLength - offset) throw new ModelImportError('invalid', 'Invalid binary model chunk length', { detail: location });
     if (type === 0x004e4942) return bytes.subarray(offset, offset + length);
     offset += length;
   }
-  throw new ModelImportError('invalid', 'Model image has no embedded binary buffer');
+  throw new ModelImportError('invalid', 'Model image has no embedded binary buffer', { detail: location });
 }
 
 /**
  * Resolve an image view within both the actual and declared buffer bounds.
- * @param model - Original glTF declarations and resources.
+ * @param read - The model, the decoded data URIs and the image location.
  * @param index - Image's declared bufferView index.
  * @returns The original image byte view.
  * @throws {ModelImportError} When an index, offset or declared range is invalid.
  */
-function readImageView(model: ModelPackage, index: number): Uint8Array<ArrayBuffer> {
+function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> {
+  const { model, location } = read;
   const view = Number.isSafeInteger(index) && index >= 0 ? model.json.bufferViews?.[index] : undefined;
-  if (!view || !Number.isSafeInteger(view.buffer) || view.buffer < 0) throw new ModelImportError('invalid', 'Invalid model image buffer view');
+  if (!view || !Number.isSafeInteger(view.buffer) || view.buffer < 0) throw new ModelImportError('invalid', 'Invalid model image buffer view', { detail: location });
   const buffer = model.json.buffers?.[view.buffer];
   if (!buffer || buffer.byteLength === undefined || !Number.isSafeInteger(buffer.byteLength) || buffer.byteLength < 0) {
-    throw new ModelImportError('invalid', 'Invalid model image buffer');
+    throw new ModelImportError('invalid', 'Invalid model image buffer', { detail: location });
   }
   const offset = view.byteOffset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(view.byteLength) || view.byteLength <= 0
     || offset > buffer.byteLength || view.byteLength > buffer.byteLength - offset) {
-    throw new ModelImportError('invalid', 'Model image view exceeds its declared buffer');
+    throw new ModelImportError('invalid', 'Model image view exceeds its declared buffer', { detail: location });
   }
-  if (buffer.uri === undefined && view.buffer !== 0) throw new ModelImportError('invalid', 'Only the first model buffer can be embedded');
-  const bytes = buffer.uri === undefined ? readBinaryChunk(model) : readResource(model, buffer.uri);
-  if (buffer.byteLength > bytes.byteLength) throw new ModelImportError('invalid', 'Truncated model image buffer');
+  if (buffer.uri === undefined && view.buffer !== 0) throw new ModelImportError('invalid', 'Only the first model buffer can be embedded', { detail: location });
+  const bytes = buffer.uri === undefined ? readBinaryChunk(read) : readResource(read, buffer.uri);
+  if (buffer.byteLength > bytes.byteLength) throw new ModelImportError('invalid', 'Truncated model image buffer', { detail: location });
   return bytes.subarray(offset, offset + view.byteLength);
 }
 
 /**
  * Read one image's declared dimensions and hold them to the edge budget.
- * @param model - Checked original glTF resources.
+ * @param read - The model, the decoded data URIs and the image location.
  * @param image - The glTF image declaration.
  * @param limits - Configured and device-adjusted texture dimension budget.
  * @throws {ModelImportError} When the image is invalid or exceeds its dimension budget.
  */
-function checkImage(model: ModelPackage, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
-  const bytes = image.uri !== undefined ? readResource(model, image.uri)
-    : image.bufferView !== undefined ? readImageView(model, image.bufferView) : undefined;
-  if (!bytes) throw new ModelImportError('invalid', 'Model image has no source');
+function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
+  const { location } = read;
+  const bytes = image.uri !== undefined ? readResource(read, image.uri)
+    : image.bufferView !== undefined ? readImageView(read, image.bufferView) : undefined;
+  if (!bytes) throw new ModelImportError('invalid', 'Model image has no source', { detail: location });
   let dimensions: { width: number; height: number } | undefined;
   if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
-    if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header');
+    if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header', { detail: location });
     const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     dimensions = { width: header.getUint32(20, true), height: header.getUint32(24, true) };
   } else dimensions = imageDimensionsFromData(bytes);
-  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata');
-  if (Math.max(dimensions.width, dimensions.height) > limits.maxTextureEdge) {
-    throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget');
+  if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata', { detail: location });
+  const edge = Math.max(dimensions.width, dimensions.height);
+  if (edge > limits.maxTextureEdge) {
+    throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget', { detail: location,
+      budget: { limit: 'textureEdge', allowed: limits.maxTextureEdge, actual: edge } });
   }
 }
 
@@ -107,13 +129,9 @@ function checkImage(model: ModelPackage, image: NonNullable<ModelPackage['json']
  * @throws {ModelImportError} When an image is invalid or exceeds its dimension budget.
  */
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
+  const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const [index, image] of (model.json.images ?? []).entries()) {
-    try {
-      checkImage(model, image, limits);
-    } catch (error) {
-      const location = image.uri !== undefined && !image.uri.startsWith('data:') ? resolveModelDependency(model.entry, image.uri) : `images[${index}]`;
-      if (error instanceof ModelImportError) throw new ModelImportError(error.code, error.message, error.info, location);
-      throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), undefined, location);
-    }
+    const location = image.uri !== undefined && !image.uri.startsWith('data:') ? resolveModelDependency(model.entry, image.uri) : `images[${index}]`;
+    checkImage({ model, decoded, location }, image, limits);
   }
 }

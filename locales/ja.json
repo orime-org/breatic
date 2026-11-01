@@ -1999,7 +1999,16 @@
         "errorInvalid": "モデルまたは関連ファイルを読み取れませんでした。",
         "errorDuplicate": "同じパスのファイルがあります。競合のないファイル一式を選択してください。",
         "errorUpload": "モデルをアップロードできませんでした。再試行してください。",
-        "success": "モデルをインポートしました。"
+        "success": "モデルをインポートしました。",
+        "limit": {
+          "input": "選択したファイルは合計 {actual} MB です（上限 {allowed} MB）。",
+          "files": "ファイル数は {actual} 個です（上限 {allowed} 個）。",
+          "expanded": "展開後のサイズは {actual} MB です（上限 {allowed} MB）。",
+          "entryJson": "モデル記述ファイルは {actual} MB です（上限 {allowed} MB）。",
+          "artifact": "パッケージ後のサイズは {actual} MB です（上限 {allowed} MB）。",
+          "textureEdge": "テクスチャの辺の長さは {actual} px です（上限 {allowed} px）。",
+          "textureBytes": "テクスチャのメモリは {actual} MB です（上限 {allowed} MB）。"
+        }
       }
     }
   },

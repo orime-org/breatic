@@ -16,6 +16,20 @@ export interface ModelSelection {
 }
 
 /**
+ * Read one selected file, naming it when the browser cannot read it.
+ * @param source - A selected file at its collection path.
+ * @returns The file's bytes.
+ * @throws {ModelImportError} When the browser cannot read the file.
+ */
+async function readSource(source: ModelSource): Promise<Uint8Array<ArrayBuffer>> {
+  try {
+    return new Uint8Array(await source.file.arrayBuffer());
+  } catch (error) {
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : 'Unreadable model file', { detail: source.path });
+  }
+}
+
+/**
  * Inspect local source bytes and produce the registered model artifact.
  * @param sources - Original files under their paths in the user's collection.
  * @param entry - Explicit selected model entry when several are present.
@@ -26,34 +40,41 @@ export interface ModelSelection {
 export async function inspectModelSelection(sources: readonly ModelSource[], entry: string | undefined, limits: SceneImportLimits): Promise<ModelSelection> {
   let info: ModelInspectionInfo | undefined;
   try {
-    if (!sources.length) throw new ModelImportError('empty', 'No model files were selected');
-    if (sources.length > limits.maxFiles || sources.reduce((sum, source) => sum + source.file.size, 0) > limits.maxInputBytes) {
-      throw new ModelImportError('budget', 'Selected model files exceed their configured input budget');
+    const kept = sources.filter((source) => !isArchiverMetadata(normalizeModelPath(source.path)));
+    if (!kept.length) throw new ModelImportError('empty', 'No model files were selected', { detail: '' });
+    if (kept.length > limits.maxFiles) {
+      throw new ModelImportError('budget', 'Selected model files exceed their configured file count', { detail: '',
+        budget: { limit: 'files', allowed: limits.maxFiles, actual: kept.length } });
     }
-    // A single ZIP is the collection; files added after inspecting it fill its missing paths.
-    const archive = sources[0].path.toLowerCase().endsWith('.zip')
-      && !sources.slice(1).some((source) => /\.(zip|glb|gltf)$/i.test(source.path));
-    const collection = archive ? unpackModelArchive(new Uint8Array(await sources[0].file.arrayBuffer()), limits) : new Map<string, Uint8Array<ArrayBuffer>>();
-    for (const source of archive ? sources.slice(1) : sources) {
+    const selectedBytes = kept.reduce((sum, source) => sum + source.file.size, 0);
+    if (selectedBytes > limits.maxInputBytes) {
+      throw new ModelImportError('budget', 'Selected model files exceed their configured input budget', { detail: '',
+        budget: { limit: 'input', allowed: limits.maxInputBytes, actual: selectedBytes } });
+    }
+    // One ZIP beside no model entry is the collection; the other files fill its missing paths.
+    const archives = kept.filter((source) => /\.zip$/i.test(source.path));
+    const archive = archives.length === 1 && !kept.some((source) => /\.(glb|gltf)$/i.test(source.path)) ? archives[0] : undefined;
+    const collection = archive ? unpackModelArchive(await readSource(archive), limits) : new Map<string, Uint8Array<ArrayBuffer>>();
+    for (const source of kept) {
+      if (source === archive) continue;
       const path = normalizeModelPath(source.path);
-      if (isArchiverMetadata(path)) continue;
-      if (collection.has(path)) throw new ModelImportError('duplicate', `Duplicate model resource path: ${path}`, undefined, path);
-      collection.set(path, new Uint8Array(await source.file.arrayBuffer()));
+      if (collection.has(path)) throw new ModelImportError('duplicate', `Duplicate model resource path: ${path}`, { detail: path });
+      collection.set(path, await readSource(source));
     }
     const paths = [...collection.keys()].sort();
     const entries = paths.filter((path) => /\.(glb|gltf)$/i.test(path));
     info = { paths, entries, missing: [] };
-    if (!entries.length) throw new ModelImportError('unsupported', 'No supported model entry was selected');
+    if (!entries.length) throw new ModelImportError('unsupported', 'No supported model entry was selected', { detail: '' });
     if ((!entry && entries.length > 1) || (entry !== undefined && !entries.includes(entry))) {
-      throw new ModelImportError('entry', 'Choose a model entry');
+      throw new ModelImportError('entry', 'Choose a model entry', { detail: '' });
     }
     const selected = entry ?? entries[0];
     const model = inspectModelFiles(collection, selected, limits);
     return { model, artifact: packModelFiles(collection, selected, limits), entries, paths };
   } catch (error) {
     if (error instanceof ModelImportError) {
-      throw new ModelImportError(error.code, error.message, info ? { ...info, missing: error.info?.missing ?? [] } : error.info, error.detail);
+      throw info ? error.withInfo({ ...info, missing: error.info?.missing ?? [] }) : error;
     }
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : 'Invalid model data', info);
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : 'Invalid model data', { detail: '', ...(info ? { info } : {}) });
   }
 }

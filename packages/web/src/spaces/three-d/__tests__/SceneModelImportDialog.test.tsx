@@ -13,6 +13,7 @@ import { ModelImportController } from '@web/spaces/three-d/model-import-controll
 import type { PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { UploadFailedError } from '@web/data/upload/media-upload';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
@@ -94,6 +95,21 @@ describe('model import dialog controls', () => {
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
       expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
     }
+  });
+
+  it('states which import limit a selection exceeded, with both sizes', async () => {
+    const doc = new Y.Doc();
+    doc.getMap('scene').set('formatVersion', 1);
+    const session = new SceneSession(doc);
+    session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
+    const budget = { limit: 'expanded', allowed: 256 * 1024 * 1024, actual: 300 * 1024 * 1024 } as const;
+    const controller = new ModelImportController({ session, upload: vi.fn(), position: () => [0, 0, 0],
+      prepare: () => Promise.reject(new ModelImportError('budget', 'Model archive exceeds its expanded-byte budget', { detail: '', budget })) });
+    disposers.push(() => { controller.dispose(); session.destroy(); doc.destroy(); });
+    await controller.select([{ path: 'model.zip', file: new File(['zip'], 'model.zip') }]);
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    expect(screen.getByText('The model exceeds an import limit.')).toBeInTheDocument();
+    expect(screen.getByText('Unpacked size 300 MB; the limit is 256 MB.')).toBeInTheDocument();
   });
 
   it('keeps an uploading operation reachable through its hidden-dialog opener', async () => {

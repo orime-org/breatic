@@ -1999,7 +1999,16 @@
         "errorInvalid": "The model or an accompanying file could not be read.",
         "errorDuplicate": "Some files have the same path. Choose a collection without conflicts.",
         "errorUpload": "The model could not be uploaded. Try again.",
-        "success": "Model imported."
+        "success": "Model imported.",
+        "limit": {
+          "input": "Selected files total {actual} MB; the limit is {allowed} MB.",
+          "files": "{actual} files; the limit is {allowed}.",
+          "expanded": "Unpacked size {actual} MB; the limit is {allowed} MB.",
+          "entryJson": "Model description {actual} MB; the limit is {allowed} MB.",
+          "artifact": "Packaged model {actual} MB; the limit is {allowed} MB.",
+          "textureEdge": "Texture edge {actual} px; the limit is {allowed} px.",
+          "textureBytes": "Texture memory {actual} MB; the limit is {allowed} MB."
+        }
       }
     }
   },

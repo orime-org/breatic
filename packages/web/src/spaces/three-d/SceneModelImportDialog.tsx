@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { SceneObjectValuesSchema } from '@breatic/shared';
+import { SceneObjectValuesSchema, getLocale } from '@breatic/shared';
 import { Box, Check, ChevronRight, FolderOpen, Loader2, Lock, TriangleAlert, Upload } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -15,6 +15,7 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { ModelImportPreview } from '@web/spaces/three-d/ModelImportPreview';
 import type { ModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
+import type { ModelImportBudget, ModelImportLimit } from '@web/spaces/three-d/model-import-errors';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
@@ -29,6 +30,29 @@ interface SceneModelImportDialogProps {
 const NAME_MAX_LENGTH = SceneObjectValuesSchema.shape.name.maxLength ?? undefined;
 const uploadIcon = <Upload className='size-4' />;
 const folderIcon = <FolderOpen className='size-4' />;
+
+const BYTE_LIMITS: ReadonlySet<ModelImportLimit> = new Set(['input', 'expanded', 'entryJson', 'artifact', 'textureBytes']);
+
+/**
+ * State an exceeded import limit with the measured value, sizes in megabytes rounded up to one decimal.
+ * @param t - The current translator.
+ * @param budget - The exceeded limit and both values.
+ * @returns The localized sentence.
+ * @throws {never} Never.
+ */
+function budgetText(t: ReturnType<typeof useTranslation>, budget: ModelImportBudget): string {
+  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
+  /**
+   * Show a measured value in the unit its limit uses.
+   * @param value - Bytes, a count or pixels.
+   * @param round - Rounds a megabyte size to one decimal in the direction that keeps the comparison true.
+   * @returns The formatted number.
+   * @throws {never} Never.
+   */
+  const size = (value: number, round: (value: number) => number): string =>
+    format.format(BYTE_LIMITS.has(budget.limit) ? round(value / 1024 / 1024 * 10) / 10 : value);
+  return t(`spaces.threeD.importModel.limit.${budget.limit}`, { actual: size(budget.actual, Math.ceil), allowed: size(budget.allowed, Math.floor) });
+}
 
 /**
  * Let the drop zone receive dropped files.
@@ -202,7 +226,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
               </div>
               {checking ? <p className='flex items-center gap-2 text-sm text-muted-foreground'><Loader2 className='size-4 shrink-0 animate-spin' />{t('spaces.threeD.importModel.checkingResources')}</p>
                 : busy ? <div className='space-y-3'><p className='flex items-center gap-2 text-sm'><Loader2 className='size-4 shrink-0 animate-spin' />{snapshot.phase === 'uploading' ? t('spaces.threeD.importModel.uploading', { progress }) : t('spaces.threeD.importModel.registering')}</p><div className='h-1.5 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground transition-all' style={{ width: `${progress}%` }} /></div><p className='text-xs text-muted-foreground'>{t('spaces.threeD.importModel.placingHint')}</p></div>
-                  : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
+                  : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
                     : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
               {!canEdit && <p className='text-sm text-muted-foreground'>{snapshot.assetId ? t('spaces.threeD.importModel.registeredReadOnly') : t('spaces.threeD.importModel.readOnlyHint')}</p>}
               {snapshot.missing.length > 0 && <Button variant='outline' className='w-fit' onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}

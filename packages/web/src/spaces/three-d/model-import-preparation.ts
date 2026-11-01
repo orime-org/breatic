@@ -30,7 +30,7 @@ export function inspectModelSelectionInWorker(files: readonly ModelSource[], ent
     try {
       worker = new Worker(new URL('./model-import-worker.ts', import.meta.url), { type: 'module' });
     } catch (error) {
-      reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error)));
+      reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' }));
       return;
     }
     let settled = false;
@@ -61,14 +61,14 @@ export function inspectModelSelectionInWorker(files: readonly ModelSource[], ent
     };
     worker.onerror = (event: ErrorEvent): void => {
       event.preventDefault();
-      settle(() => reject(new ModelImportError('invalid', event.message)));
+      settle(() => reject(new ModelImportError('invalid', event.message, { detail: '' })));
     };
-    worker.onmessageerror = (): void => settle(() => reject(new ModelImportError('invalid', 'Model inspection result could not be read')));
+    worker.onmessageerror = (): void => settle(() => reject(new ModelImportError('invalid', 'Model inspection result could not be read', { detail: '' })));
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) { abort(); return; }
     const request: ModelImportWorkerRequest = { files, entry, limits };
     try { worker.postMessage(request); } catch (error) {
-      settle(() => reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error))));
+      settle(() => reject(new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '' })));
     }
   });
 }
@@ -88,7 +88,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   signal.throwIfAborted();
   const info = { entries: selection.entries, paths: selection.paths, missing: [] };
   const extensions = getUnsupportedModelExtensions(selection.model);
-  if (extensions.required.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', info, extensions.required.join(', '));
+  if (extensions.required.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: extensions.required.join(', '), info });
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;
   try {
@@ -102,7 +102,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
       if (object instanceof Mesh) meshCount += 1;
       if (object instanceof SkinnedMesh) skinned = true;
     });
-    if (!meshCount) throw new ModelImportError('empty', 'Model contains no displayable mesh', info);
+    if (!meshCount) throw new ModelImportError('empty', 'Model contains no displayable mesh', { detail: selection.model.entry, info });
     const box = new Box3().setFromObject(root);
     const center = box.getCenter(new Vector3());
     const diameter = Math.max(box.getSize(new Vector3()).length(), 0.01);
@@ -115,7 +115,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     scene.add(root, new HemisphereLight(0xffffff, 0x666666, 3), light);
     renderer.render(scene, camera);
     const context = renderer.getContext();
-    if (context.isContextLost() || context.getError() !== context.NO_ERROR) throw new ModelImportError('invalid', 'Model preview failed its GPU render', info);
+    if (context.isContextLost() || context.getError() !== context.NO_ERROR) throw new ModelImportError('invalid', 'Model preview failed its GPU render', { detail: '', info });
     signal.throwIfAborted();
     root.removeFromParent();
     const preview = root;
@@ -137,8 +137,8 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   } catch (error) {
     if (root) disposeModelTemplate(root);
     if (signal.aborted) signal.throwIfAborted();
-    if (error instanceof ModelImportError) throw error.info ? error : new ModelImportError(error.code, error.message, info, error.detail);
-    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), info);
+    if (error instanceof ModelImportError) throw error.info ? error : error.withInfo(info);
+    throw new ModelImportError('invalid', error instanceof Error ? error.message : String(error), { detail: '', info });
   } finally {
     renderer?.dispose();
     renderer?.forceContextLoss();

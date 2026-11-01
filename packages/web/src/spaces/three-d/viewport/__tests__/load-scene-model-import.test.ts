@@ -11,7 +11,7 @@ import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
-import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...await importOriginal<typeof SharedModule>(),
@@ -286,5 +286,32 @@ describe('line and point primitive release (inner#1690)', () => {
     });
     disposeModelTemplate(root);
     expect(released.sort()).toEqual(['LineSegments:geometry', 'LineSegments:material', 'Mesh:geometry', 'Mesh:material']);
+  });
+});
+
+describe('decoder failures name model resources (inner#1690)', () => {
+  it('reports a failed resource by its model path, not the object URL it was loaded from', () => {
+    const json = Uint8Array.from(strToU8(JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'textures/albedo.png' }] })));
+    const model = inspectModelFiles(new Map([['models/scene.gltf', json], ['models/textures/albedo.png', new Uint8Array([1, 2, 3])]]), 'models/scene.gltf', IMPORT_LIMITS);
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: vi.fn(() => 'blob:model/1'), revokeObjectURL: vi.fn() }));
+    const decoder = createModelDecoder(model, IMPORT_LIMITS);
+    const objectUrl = decoder.loader.manager.resolveURL('textures/albedo.png');
+    expect(objectUrl).toBe('blob:model/1');
+    decoder.loader.manager.itemError(objectUrl);
+    expect(decoder.failedResources).toEqual(['models/textures/albedo.png']);
+    decoder.dispose();
+  });
+
+  it('states the full decoded texture size against its limit', () => {
+    const scene = new Group();
+    for (const _ of [0, 1, 2]) {
+      const map = new Texture();
+      map.image = { width: 64, height: 64 };
+      map.generateMipmaps = false;
+      scene.add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map })));
+    }
+    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
+      code: 'budget', budget: { limit: 'textureBytes', allowed: 64 * 64 * 4, actual: 64 * 64 * 4 * 3 },
+    }));
   });
 });
