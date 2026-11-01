@@ -126,7 +126,11 @@ async function openPanel(nodeId: string): Promise<void> {
   await fit();
   const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
-  await node.click({ button: 'right' });
+  // A result taller than the empty card grows its node over the one below, so the menu is opened on
+  // the node itself rather than by a click at its point on screen.
+  const box = await node.boundingBox();
+  if (!box) throw new Error(`node ${nodeId} has no box`);
+  await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
   await expect(page.getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
 }
