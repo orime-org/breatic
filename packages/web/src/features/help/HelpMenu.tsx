@@ -40,7 +40,7 @@ export function HelpMenu(): React.JSX.Element {
           <a href={TUTORIALS_URL} target='_blank' rel='noopener noreferrer'>
             <BookOpen aria-hidden='true' />
             {t('chrome.help.manual')}
-            <ExternalLink className='ml-auto text-muted-foreground' aria-hidden='true' />
+            <ExternalLink className='ml-auto !size-3.5 text-muted-foreground' aria-hidden='true' />
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
