@@ -434,12 +434,13 @@ function includesTable(blocks: readonly ReadBlock[]): boolean {
 }
 
 /**
- * The one table alone, ignoring empty paragraphs surrounding it.
+ * The one table alone, ignoring paragraphs around it that show no words: a
+ * line break or a no-break space reads as text but leaves the line blank.
  * @param blocks - The content read.
  * @returns Its table, or null for mixed content.
  */
 function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
-  const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content) === '' && (block.children ?? []).length === 0));
+  const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content)?.trim() === '' && (block.children ?? []).length === 0));
   return kept.length === 1 && kept[0]!.type === DOC_TABLE ? kept[0]! : null;
 }
 
