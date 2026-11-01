@@ -187,6 +187,15 @@ async function promptText(): Promise<string> {
   return (await page.getByTestId('generate-prompt-editor').innerText()).trim();
 }
 
+/**
+ * Save a result under the run's output folder. The test's own time limit bounds the download, since a sheet can be 15 MB and a fixed request limit fails a run that already generated.
+ * @param url - The result's URL.
+ * @param file - The file name to save it as.
+ */
+async function save(url: string, file: string): Promise<void> {
+  writeFileSync(`${OUT}/${file}`, Buffer.from(await (await page.request.get(url, { timeout: 0 })).body()));
+}
+
 /** Append one record line. */
 function record(entry: Record<string, unknown>): void {
   appendFileSync(`${OUT}/runs.jsonl`, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
@@ -286,7 +295,7 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   const prompt = await promptText();
   const url = await generate(target, 'image');
   record({ template: 'agent', label: LABEL, result: { prompt, url } });
-  writeFileSync(`${OUT}/agent-${LABEL}.png`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
+  await save(url, `agent-${LABEL}.png`);
 });
 
 const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
@@ -354,7 +363,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       const url = await generate(node, 'image');
       expect(url).toMatch(/^https?:/);
       record({ template: id, node: key, label: LABEL, n, result: { prompt, url } });
-      writeFileSync(`${OUT}/${id}-${key}-${LABEL}-${n}.png`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
+      await save(url, `${id}-${key}-${LABEL}-${n}.png`);
     }
     await openPanel(anchor);
     await fillBraces(run.fills.anchor ?? []);
@@ -363,6 +372,6 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
     record({ template: id, label: LABEL, n, result: { prompt, url } });
-    writeFileSync(`${OUT}/${id}-${LABEL}-${n}.${run.type === 'video' ? 'mp4' : 'png'}`, Buffer.from(await (await page.request.get(url, { timeout: 180_000 })).body()));
+    await save(url, `${id}-${LABEL}-${n}.${run.type === 'video' ? 'mp4' : 'png'}`);
   });
 }
