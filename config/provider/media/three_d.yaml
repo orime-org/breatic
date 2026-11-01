@@ -15,14 +15,12 @@
 models:
   meshy6-t23d:
     upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: wavespeed-ai/meshy6/text-to-3d
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/meshy/v6/text-to-3d
         prompt_field: prompt
-        send_empty: true
+        output_field: model_glb
         params:
-          art_style:
-            field: art_style
           topology:
             field: topology
           target_polycount:
@@ -32,7 +30,13 @@ models:
           symmetry_mode:
             field: symmetry_mode
           ta_pose:
-            field: ta_pose
+            field: pose_mode
+            values:
+              "true": t-pose
+              "false": ""
+        drops:
+          art_style:
+            all_values: fal has no such field; Meshy deprecated art_style and ignores it (docs.meshy.ai/en/api/text-to-3d, read 2026-11-01)
         pricing:
           kind: formula
           base_price: 800000
@@ -48,6 +52,9 @@ models:
         params:
           generate_type:
             field: generate_type
+            supported:
+              - Normal
+              - Geometry
           enable_pbr:
             field: enable_pbr
           face_count:
@@ -62,7 +69,6 @@ models:
       - upstream: wavespeed
         weight: 1
         model_id: wavespeed-ai/hunyuan3d-v3/image-to-3d
-        prompt_field: prompt
         send_empty: true
         params:
           image:
@@ -75,6 +81,9 @@ models:
             field: right_image
           generate_type:
             field: generate_type
+            supported:
+              - Normal
+              - Geometry
           enable_pbr:
             field: enable_pbr
           face_count:
@@ -89,7 +98,6 @@ models:
       - upstream: wavespeed
         weight: 1
         model_id: wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid
-        prompt_field: prompt
         send_empty: true
         params:
           image:

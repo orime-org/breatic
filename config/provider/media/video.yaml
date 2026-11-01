@@ -26,8 +26,8 @@ models:
             field: duration
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 100000
@@ -45,11 +45,11 @@ models:
           duration:
             field: duration
           generate_audio:
-            field: enable_audio
+            field: generate_audio
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 500000
@@ -76,10 +76,9 @@ models:
             field: reference_videos
           resolution:
             field: resolution
-          shots:
-            field: shots
         drops:
           style_images: "*"
+          shots: "*"
         mentions:
           audios: "@audio{n}"
           images: "@image{n}"
@@ -102,8 +101,8 @@ models:
             field: duration
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 700000
@@ -155,8 +154,8 @@ models:
             field: last_image
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 100000
@@ -177,8 +176,8 @@ models:
             field: last_image
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 700000
@@ -197,15 +196,15 @@ models:
           duration:
             field: duration
           generate_audio:
-            field: enable_audio
+            field: generate_audio
           image:
             field: image
           end_image:
             field: last_image
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 500000
@@ -228,8 +227,8 @@ models:
             field: last_image
           resolution:
             field: resolution
-          shots:
-            field: shots
+        drops:
+          shots: "*"
         pricing:
           kind: formula
           base_price: 900000
@@ -336,10 +335,9 @@ models:
             field: reference_videos
           resolution:
             field: resolution
-          shots:
-            field: shots
         drops:
           style_images: "*"
+          shots: "*"
         mentions:
           audios: <Audio {n}>
           images: <Picture {n}>
@@ -366,10 +364,9 @@ models:
             field: reference_videos
           resolution:
             field: resolution
-          shots:
-            field: shots
         drops:
           style_images: "*"
+          shots: "*"
         mentions:
           images: <IMAGE_REF_{i}>
           videos: the reference video {n}
@@ -390,7 +387,7 @@ models:
           duration:
             field: duration
           generate_audio:
-            field: enable_audio
+            field: generate_audio
           audios:
             field: reference_audios
           images:
@@ -399,10 +396,9 @@ models:
             field: reference_videos
           resolution:
             field: resolution
-          shots:
-            field: shots
         drops:
           style_images: "*"
+          shots: "*"
         mentions:
           audios: Audio {n}
           images: Image {n}
@@ -427,10 +423,9 @@ models:
             field: images
           resolution:
             field: resolution
-          shots:
-            field: shots
         drops:
           style_images: "*"
+          shots: "*"
         mentions:
           images: "[Image {n}]"
         pricing:
@@ -451,13 +446,13 @@ models:
           duration:
             field: duration
           end_image:
-            field: end_image
+            field: last_image
           generate_audio:
             field: generate_audio
           resolution:
             field: resolution
           image:
-            field: start_image
+            field: image
         pricing:
           kind: formula
           base_price: 850000

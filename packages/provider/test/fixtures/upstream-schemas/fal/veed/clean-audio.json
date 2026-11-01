@@ -1,0 +1,83 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=veed/clean-audio",
+  "fields": {
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "flac",
+          "wav"
+        ]
+      }
+    ],
+    "target_lufs": [
+      {
+        "type": "number",
+        "minimum": -40,
+        "maximum": -8
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "strength": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    ]
+  },
+  "required": [
+    "audio_url"
+  ],
+  "outputs": {
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio_duration": [
+      {
+        "type": "number"
+      }
+    ]
+  }
+}

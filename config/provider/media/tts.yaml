@@ -77,12 +77,13 @@ models:
         model_id: elevenlabs/eleven-v3
         prompt_field: text
         params:
-          similarity:
-            field: similarity
           stability:
             field: stability
           voice_id:
             field: voice_id
+        drops:
+          similarity:
+            all_values: WaveSpeed has no such field and ignores it, probed 2026-11-01
         pricing:
           kind: formula
           base_price: 200000

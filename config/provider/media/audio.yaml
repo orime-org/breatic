@@ -122,14 +122,15 @@ models:
         model_id: mirelo-ai/sfx-1.6/text-to-audio
         prompt_field: text_prompt
         params:
-          loop:
-            field: ambience
           double_output:
             field: double_output
           duration:
             field: duration
           num_samples:
             field: num_samples
+        drops:
+          loop:
+            all_values: WaveSpeed has no such field and ignores it, probed 2026-11-01
         pricing:
           kind: formula
           base_price: 10000
@@ -180,12 +181,13 @@ models:
           discount_rate: 100
   veed-clean-audio:
     upstreams:
-      - upstream: wavespeed
-        weight: 1
+      - upstream: fal
+        weight: 2
         model_id: veed/clean-audio
+        output_field: audio
         params:
           audio:
-            field: audio
+            field: audio_url
           strength:
             field: strength
           target_lufs:
@@ -194,8 +196,8 @@ models:
             field: output_format
         pricing:
           kind: formula
-          base_price: 14000
-          formula: '{"total_price": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}'
+          base_price: 12500
+          formula: '{"total_price": $min([$max([$ceil(get_duration(audio_url) / 60), 1]), 30]) * base_price}'
           discount_rate: 100
   sfx-1.6-extend-audio:
     upstreams:

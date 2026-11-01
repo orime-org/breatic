@@ -87,6 +87,9 @@ models:
             field: images
           output_format:
             field: output_format
+            supported:
+              - jpeg
+              - png
           resolution:
             field: resolution
         drops:
@@ -113,6 +116,9 @@ models:
             field: images
           output_format:
             field: output_format
+            supported:
+              - jpeg
+              - png
           resolution:
             field: resolution
         pricing:
@@ -191,21 +197,28 @@ models:
           discount_rate: 100
   recraft-v4-style-text-to-image:
     upstreams:
-      - upstream: wavespeed
-        weight: 1
-        model_id: recraft-ai/recraft-v4-style/text-to-image
+      - upstream: fal
+        weight: 2
+        model_id: recraft/v4/style/text-to-image
         prompt_field: prompt
+        output_field: images
         params:
           aspect_ratio:
-            field: aspect_ratio
+            field: image_size
+            values:
+              1:1: square_hd
+              4:3: landscape_4_3
+              3:4: portrait_4_3
+              16:9: landscape_16_9
+              9:16: portrait_16_9
           style_match:
             field: style_match
           style_images:
-            field: images
+            field: image_urls
         pricing:
           kind: formula
-          base_price: 38500
-          formula: '{"total_price": base_price + (($exists(images) and $count(images) > 0) ? 5500 : 0)}'
+          base_price: 35000
+          formula: '{"total_price": base_price + 5000}'
           discount_rate: 100
   gpt-image-2.5-sunburst-edit:
     upstreams:
@@ -241,9 +254,19 @@ models:
         params:
           aspect_ratio:
             field: aspect_ratio
+            supported:
+              - auto
+              - 21:9
+              - 16:9
+              - 4:3
+              - 3:2
+              - 1:1
+              - 2:3
+              - 3:4
+              - 9:16
             absent_value: auto
           images:
-            field: image_urls
+            field: images
           output_format:
             field: output_format
         drops:

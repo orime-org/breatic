@@ -1,0 +1,212 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=recraft/v4/style/text-to-image",
+  "fields": {
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "style_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "background_color.g": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      }
+    ],
+    "background_color.r": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      }
+    ],
+    "background_color.b": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      }
+    ],
+    "background_color": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "colors": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "g": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "r": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "b": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "style_match": [
+      {
+        "type": "string",
+        "enum": [
+          "precise",
+          "flexible"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "style_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

@@ -9,6 +9,12 @@ upstreams:
     base_url: https://api.wavespeed.ai/api/v3
     key_env: WAVESPEED_API_KEY
     concurrency: 50
+  fal:
+    kind: fal
+    base_url: https://queue.fal.run
+    billing_url: https://api.fal.ai/v1
+    key_env: FAL_KEY
+    concurrency: 10
   openrouter:
     kind: openrouter
     base_url: https://openrouter.ai/api/v1
