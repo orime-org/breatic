@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { resolveTimelineArrangement, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import { nextTimelinePlaybackBoundary, resolveTimelineArrangement, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
 /** The current document projection and its authorized preview resource. */
@@ -39,11 +39,10 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry'>;
  * @throws {never} Never.
  */
 export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayback {
-  const readyClips = React.useMemo(() => {
-    const clips = Object.values(input.document.clips);
-    const ready = new Set(resolveTimelineArrangement({ tracks: Object.values(input.document.tracks), clips }).readyClipIds);
-    return clips.filter((item) => ready.has(item.id));
-  }, [input.document.clips, input.document.tracks]);
+  const readyClips = React.useMemo(() => new Set(resolveTimelineArrangement({
+    tracks: Object.values(input.document.tracks), clips: Object.values(input.document.clips),
+    sources: input.document.sources, fps: input.document.settings.fps,
+  }).readyClipIds), [input.document.clips, input.document.tracks, input.document.sources, input.document.settings.fps]);
   const latest = React.useRef({ ...input, readyClips });
   latest.current = { ...input, readyClips };
   const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused' });
@@ -152,9 +151,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (!active || state.current.intent !== 'play' || state.current.state !== 'playing' || anchor === null) return;
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
-      const boundary = clip !== null
-        ? clip.startFrame + clip.durationFrames
-        : Math.min(end, ...latest.current.readyClips.filter((item) => item.startFrame > position).map((item) => item.startFrame));
+      // Any ready clip edge can change which layer is shown, so playback stops at each one.
+      const boundary = nextTimelinePlaybackBoundary(latest.current.document, latest.current.readyClips, position, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));

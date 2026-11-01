@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import type { ProjectRegisteredAsset } from '@breatic/shared';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { TIMELINE_MAIN_TRACK_ID, timelineInsertionIndex, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineEditPlacement } from '@breatic/shared';
 import { Film, Upload } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -11,11 +11,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { timelineApi } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
+import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -23,6 +25,8 @@ interface TimelineMaterialDialogProps {
   spaceId: string;
   draft: TimelineMediaDraft;
   canWrite: boolean;
+  document: TimelineDocumentV1;
+  placement: TimelineEditPlacement;
   onClose: () => void;
 }
 
@@ -56,11 +60,13 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
  * @param props.spaceId - The target Space tab's stable identity.
  * @param props.draft - The document-owned material state and actions.
  * @param props.canWrite - The current Project role's permission.
+ * @param props.document - The current Timeline, for target tracks and the main-track insertion hint.
+ * @param props.placement - The editing user's magnet and linkage switches.
  * @param props.onClose - The explicit cancel and overlay-release action.
  * @returns The Project picker, local uploader and placement confirmation.
  * @throws {never} Never.
  */
-export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, onClose }: TimelineMaterialDialogProps): React.JSX.Element {
+export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, document, placement, onClose }: TimelineMaterialDialogProps): React.JSX.Element {
   const t = useTranslation();
   const state = React.useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const fileInput = React.useRef<HTMLInputElement>(null);
@@ -78,7 +84,19 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, on
   const changeFrame = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setStartFrame(event.target.value), [draft]);
   const retryList = React.useCallback((): void => { void refetch(); }, [refetch]);
   const moreVideos = React.useCallback((): void => { void fetchNextPage(); }, [fetchNextPage]);
-  const confirm = React.useCallback((event: React.FormEvent): void => { event.preventDefault(); void draft.confirm(); }, [draft]);
+  const confirm = React.useCallback((event: React.FormEvent): void => { event.preventDefault(); void draft.confirm(placement); }, [draft, placement]);
+  const labels = useTimelineTrackLabels(document);
+  const changeTrack = React.useCallback((value: string): void => draft.setTrack(value), [draft]);
+  const startFrame = Number(state.startFrame);
+  const mainClips = React.useMemo(() => Object.values(document.clips).filter((clip) => clip.trackId === TIMELINE_MAIN_TRACK_ID)
+    .sort((a, b) => a.startFrame - b.startFrame || (a.id < b.id ? -1 : 1)), [document.clips]);
+  const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
+  const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
+  const beforeAssetId = before === undefined ? '' : document.sources[before.sourceId]?.assetId ?? '';
+  const beforeKey = React.useMemo(() => ['timeline-asset', projectId, beforeAssetId], [projectId, beforeAssetId]);
+  const beforeFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, beforeAssetId, signal), [projectId, beforeAssetId]);
+  const beforeAsset = useQuery({ queryKey: beforeKey, queryFn: beforeFn, enabled: beforeAssetId !== '' });
+  const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>
       <DialogHeader className='shrink-0 border-b border-border p-4'><DialogTitle>{t('timeline.addMedia')}</DialogTitle><DialogDescription>{t('timeline.material.description')}</DialogDescription></DialogHeader>
@@ -102,7 +120,13 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, on
           </div>}
         </ScrollArea>
         <div className='flex shrink-0 flex-col gap-3 border-t border-border p-4'>
+          <div className='flex items-center gap-3'><Label htmlFor={`timeline-track-${spaceId}`} className='shrink-0'>{t('timeline.edit.track')}</Label>
+            <Select value={trackKnown ? state.trackId : ''} onValueChange={changeTrack} disabled={state.busy}>
+              <SelectTrigger id={`timeline-track-${spaceId}`} data-testid='timeline-material-track' className='min-w-0 flex-1'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
+              <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
+            </Select></div>
           <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='number' autoComplete='off' min={0} step={1} value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
+          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: beforeAsset.data?.displayName || t('timeline.video') })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}
         </div>

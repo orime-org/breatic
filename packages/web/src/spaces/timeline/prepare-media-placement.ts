@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as Y from 'yjs';
-import type { ProjectRegisteredAsset, TimelineEditCommand } from '@breatic/shared';
-import { durationToFrames, TimelineEditCommandSchema } from '@breatic/shared';
-import { prepareTimelineEdit, readTimelineDocument } from '@breatic/shared/space-content';
+import type { ProjectRegisteredAsset, TimelineEditCommand, TimelineEditPlacement, TimelineEditRefusal } from '@breatic/shared';
+import { durationToFrames, newId, planTimelineEdit, TimelineEditCommandSchema } from '@breatic/shared';
+import { readTimelineDocument } from '@breatic/shared/space-content';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {
@@ -14,15 +14,17 @@ export interface TimelineMediaPlacementInput {
   clipId: string;
   sourceId: string;
   canWrite: boolean;
+  placement: TimelineEditPlacement;
+  newTrackId?: string;
   decodedDurationSeconds?: number;
 }
 
 /** A prepared immutable edit or a refusal that leaves the draft available. */
 export type TimelineMediaPlacementResult = { ok: true; command: TimelineEditCommand }
-  | { ok: false; reason: 'readonly' | 'source_unavailable' | 'metadata_unavailable' | 'invalid_range' | 'overlap' | 'target_missing' };
+  | { ok: false; reason: 'readonly' | 'metadata_unavailable' | TimelineEditRefusal };
 
 /**
- * Prepare a fixed registered-video placement without accepting an edit.
+ * Prepare a fixed registered-video placement and dry-run it against the current document without writing.
  * @param doc - The actual current Timeline content document.
  * @param input - The fixed draft and current authority to write.
  * @returns The prepared native command or a recoverable refusal.
@@ -35,7 +37,6 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   const duration = asset.durationSeconds === null ? input.decodedDurationSeconds : asset.durationSeconds;
   if (duration === undefined || !Number.isFinite(duration) || duration <= 0) return { ok: false, reason: 'metadata_unavailable' };
   const current = readTimelineDocument(doc);
-  if (current.clips[input.clipId] !== undefined) return { ok: false, reason: 'target_missing' };
   let extentFrames: number;
   try {
     extentFrames = durationToFrames(duration, current.settings.fps);
@@ -55,10 +56,12 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
         rate: { num: 1, den: 1 }, gain: 1, mute: false,
         transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       },
+      ...(input.newTrackId === undefined ? {} : { newTrackId: input.newTrackId }),
     },
+    placement: input.placement,
   });
   if (!parsed.success) return { ok: false, reason: 'invalid_range' };
-  const prepared = prepareTimelineEdit(doc, parsed.data);
-  if (prepared.reason !== undefined) return { ok: false, reason: prepared.reason };
+  const plan = planTimelineEdit(current, parsed.data, newId);
+  if (!plan.ok) return { ok: false, reason: plan.reason };
   return { ok: true, command: parsed.data };
 }
