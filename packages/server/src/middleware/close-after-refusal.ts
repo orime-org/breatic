@@ -39,14 +39,18 @@ const takenOver = new WeakSet<Socket>();
  * Declare the close on a body-limit refusal and take over how the connection
  * ends. Call it before the 413 is built, so the header is on it.
  * @param c - The request context; `c.env.incoming` is node-server's request.
+ * @throws {z.ZodError} when `config/limits.yaml` cannot be read; it is read
+ * here, inside the request, so the request answers 500 and the socket is left
+ * to Node.
  */
 export function closeAfterRefusal(c: Context): void {
   c.header("Connection", "close");
   const incoming = (c.env as { incoming?: IncomingMessage } | undefined)?.incoming;
   const socket = incoming?.socket;
   if (!incoming || !socket || takenOver.has(socket)) return;
+  const deadlineMs = getRequestBodyLingerSeconds() * 1000;
   takenOver.add(socket);
-  socket.destroySoon = lingeringClose(socket, incoming);
+  socket.destroySoon = lingeringClose(socket, incoming, deadlineMs);
 }
 
 /**
@@ -54,9 +58,10 @@ export function closeAfterRefusal(c: Context): void {
  * body, close when it ends, the client closes, or the deadline passes.
  * @param socket - The connection.
  * @param incoming - The refused request.
+ * @param deadlineMs - How long to keep reading at most.
  * @returns The function to run where Node would destroy the socket.
  */
-function lingeringClose(socket: Socket, incoming: IncomingMessage): () => void {
+function lingeringClose(socket: Socket, incoming: IncomingMessage, deadlineMs: number): () => void {
   let started = false;
   /** Close now, whatever is still unwritten; a second call finds the socket destroyed. */
   const destroy = (): void => {
@@ -71,7 +76,7 @@ function lingeringClose(socket: Socket, incoming: IncomingMessage): () => void {
     if (started || socket.destroyed) return;
     started = true;
     socket.end();
-    const deadline = setTimeout(destroy, getRequestBodyLingerSeconds() * 1000);
+    const deadline = setTimeout(destroy, deadlineMs);
     deadline.unref();
     socket.once("close", () => clearTimeout(deadline));
     if (incoming.readableEnded) {

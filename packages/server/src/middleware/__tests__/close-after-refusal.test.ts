@@ -14,9 +14,12 @@ import { EventEmitter } from "node:events";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-const linger = vi.hoisted(() => ({ seconds: 30 }));
+const linger = vi.hoisted(() => ({ seconds: 30, broken: false }));
 vi.mock("@server/config/limits.js", () => ({
-  getRequestBodyLingerSeconds: () => linger.seconds,
+  getRequestBodyLingerSeconds: () => {
+    if (linger.broken) throw new Error("config/limits.yaml failed to parse");
+    return linger.seconds;
+  },
 }));
 
 import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
@@ -152,6 +155,7 @@ function tracked(): Harness {
 beforeEach(() => {
   vi.useFakeTimers();
   linger.seconds = 30;
+  linger.broken = false;
   current = [];
 });
 
@@ -180,6 +184,16 @@ describe("closeAfterRefusal", () => {
     const h = tracked();
 
     await enterS1(h);
+  });
+
+  it("U20: a deadline that cannot be read fails the refusal inside the request and leaves the socket alone", async () => {
+    const h = tracked();
+    linger.broken = true;
+
+    const res = await refuse({ incoming: h.incoming });
+
+    expect(res.status).toBe(500);
+    expect(h.socket.destroySoon).toBe(h.original);
   });
 
   it("U3: a second refusal on the same socket replaces destroySoon only once (S1 × E1)", async () => {
