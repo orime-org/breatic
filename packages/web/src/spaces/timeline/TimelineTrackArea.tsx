@@ -99,11 +99,13 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
 const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, selected, conflict, dragging, readOnly, pixelsPerFrame, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
   const name = useAssetName(projectId, assetId);
-  const { attributes, listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
+  // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
+  // attributes would mark a read-only clip aria-disabled although it stays selectable.
+  const { listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
   const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
   const style = React.useMemo(() => ({ left: clip.startFrame * pixelsPerFrame, width: Math.max(2, clip.durationFrames * pixelsPerFrame) }), [clip.startFrame, clip.durationFrames, pixelsPerFrame]);
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
-    <Button ref={setNodeRef} {...attributes} {...listeners} data-testid={`timeline-clip-${clip.id}`} data-track-id={clip.trackId} type='button' variant={null} size={null}
+    <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-track-id={clip.trackId} type='button' variant={null} size={null}
       aria-pressed={selected} onClick={select}
       className={cn('flex size-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-border bg-muted px-2 text-xs hover-enabled:bg-accent',
         !readOnly && 'cursor-grab', conflict && 'border-status-error-border bg-status-error-bg', selected && 'border-active-border')}>

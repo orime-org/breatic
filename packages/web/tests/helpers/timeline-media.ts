@@ -78,7 +78,7 @@ export async function openTimeline(page: Page, spaceId: string): Promise<void> {
  * @throws {Error} When the visible track cannot be read.
  */
 export async function timelineClipIds(page: Page): Promise<string[]> {
-  return visibleSpace(page).locator('[data-testid^="timeline-clip-"]').evaluateAll((clips) =>
+  return visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-track-id]').evaluateAll((clips) =>
     clips.map((clip) => clip.getAttribute('data-testid')!.replace('timeline-clip-', '')),
   );
 }
@@ -226,11 +226,11 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   expect(asset.kind).toBe('video');
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
-  await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(1);
+  await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(1);
   const [clipId] = await timelineClipIds(page);
   await selectTimelineClip(page, clipId);
-  const properties = await outlet.getByText(/^Start 0 · Duration \d+ frames$/).innerText();
-  const durationFrames = Number(/Duration (\d+) frames/.exec(properties)?.[1]);
+  await expect(outlet.getByTestId('timeline-clip-start')).toHaveText('0');
+  const durationFrames = Number(await outlet.getByTestId('timeline-clip-duration').inputValue());
   expect(Number.isSafeInteger(durationFrames)).toBe(true);
   expect(durationFrames).toBeGreaterThan(0);
   await expectTimelineVideoReady(page, asset.fileUrl);
@@ -266,7 +266,7 @@ export async function addProjectTimelineVideo(page: Page, assetId: string): Prom
   await expect(choice).toHaveAttribute('aria-pressed', 'true');
   await dialog.getByTestId('timeline-confirm-material').click();
   await expect(dialog).toHaveCount(0);
-  await expect(visibleSpace(page).locator('[data-testid^="timeline-clip-"]')).toHaveCount(before.length + 1);
+  await expect(visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(before.length + 1);
   const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
   expect(added).toHaveLength(1);
   return added[0];

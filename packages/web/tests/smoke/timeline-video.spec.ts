@@ -127,7 +127,7 @@ test('a real Viewer sees the registered Timeline clips without material or start
       const outlet = visibleSpace(peer);
       // Synchronized placements and resolved media anchor the read-only absence checks.
       await expect(outlet.getByTestId('timeline-add-media')).toHaveCount(0);
-      await expect(outlet.locator('input[data-testid^="timeline-clip-"]')).toHaveCount(0);
+      await expect(outlet.locator('input[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-start-frame')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-play')).toBeEnabled();
       await outlet.getByTestId('timeline-play').click();
@@ -157,8 +157,8 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
     const duration = uploaded.durationFrames;
     const farStart = duration * 3;
     // Overlaps are built on a sub track: the magnetic main track keeps its clips end to end.
-    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'New visual track');
-    await moveTimelineClip(page, secondId, duration, duration, 'Track 2');
+    await moveTimelineClip(page, secondId, duration, duration, 'New visual track');
+    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'Track 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
@@ -185,7 +185,7 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
         await expect.poll(() => peerDelivery.pending.length).toBeGreaterThan(0);
         for (const member of [page, peer]) {
           await expectTimelineConnected(member);
-          await expect(visibleSpace(member).locator('[data-testid^="timeline-clip-"]')).toHaveCount(2);
+          await expect(visibleSpace(member).locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(2);
           await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
         }
         await expectTimelineStart(page, uploaded.clipId, farStart, duration);

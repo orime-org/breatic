@@ -167,7 +167,7 @@ for (const locale of LOCALES) {
         await expect(timeline.getByTestId('timeline-track-visual-1')).toBeVisible();
         await expect(timeline.getByTestId('timeline-play')).toHaveText(copy.play);
         await expect(timeline.getByTestId('timeline-play')).toBeDisabled();
-        await expect(timeline.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+        await expect(timeline.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(0);
         const addMedia = timeline.getByTestId('timeline-add-media');
         await expect(addMedia).toHaveText(copy.addMedia);
         await expect(addMedia).toBeEnabled();

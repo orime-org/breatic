@@ -61,7 +61,7 @@ async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string
         playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
         reportedStates: Array.from(root?.querySelectorAll('span') ?? []).map((span) => span.textContent ?? '').filter((text) => ['Playing', 'Paused', 'Buffering…', 'Playback failed'].includes(text)),
         conflictCount: root?.querySelectorAll('[data-testid^="timeline-conflict-"]').length ?? 0,
-        clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"]').length ?? 0,
+        clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"][data-track-id]').length ?? 0,
         native: video === undefined || video === null ? null : {
           sameExpectedUrl: expected === null ? null : video.currentSrc === expected,
           time: video.currentTime, duration: video.duration, readyState: video.readyState,
