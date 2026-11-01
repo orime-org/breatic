@@ -264,6 +264,25 @@ describe('the line a file drag shows (A2)', () => {
     expect(shown).toEqual({ pos: inCell, orientation: 'inline' });
   });
 
+  it('over a code block in a table cell, shows the line between blocks, as in the body', () => {
+    const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'codeBlock', content: 'abcd' }] }, 'x'] }] })]);
+    const view = editor.prosemirrorView!;
+    let inCode = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (inCode < 0 && node.type.name === 'codeBlock') inCode = pos + 3;
+      return inCode < 0;
+    });
+
+    const shown = fileDropPosition({
+      editor: editor as never,
+      view,
+      event: fileDrag('dragover') as DragEvent,
+      defaultPosition: { pos: inCode, orientation: 'inline' },
+    });
+
+    expect(shown?.orientation).toBe('block-horizontal');
+  });
+
   it('shows no line over a read-only body, where a drop does nothing', () => {
     const editor = open([{ type: 'paragraph', content: 'Alpha' }]);
     editor.isEditable = false;
