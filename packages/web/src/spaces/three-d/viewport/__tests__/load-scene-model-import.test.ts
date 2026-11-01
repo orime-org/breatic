@@ -442,13 +442,21 @@ describe('decoder downloads are not model content (inner#1690)', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it.each([
-    ['Draco', 'draco.gltf', [] as string[]],
-    ['KTX2', 'ktx2.gltf', ['normal.ktx2']],
-  ])('keeps a failed %s decoder download a plain, retryable error', async (_label, entry, extra) => {
+    ['Draco', 'draco.gltf', [] as string[], false],
+    ['KTX2', 'ktx2.gltf', ['normal.ktx2'], false],
+    ['KTX2 the model does not declare', 'ktx2.gltf', ['normal.ktx2'], true],
+  ])('keeps a failed %s decoder download a plain, retryable error', async (_label, entry, extra, undeclared) => {
     vi.stubGlobal('Request', class { constructor(readonly url: string) {} });
     const fetched = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
     vi.stubGlobal('fetch', fetched);
     const files = new Map([entry, ...extra].map((path) => [path, Uint8Array.from(readFileSync(`${directory}/${path}`))] as const));
+    if (undeclared) {
+      // GLTFLoader decodes a basisu texture even when extensionsUsed does not list the extension.
+      const json = JSON.parse(new TextDecoder().decode(files.get(entry))) as Record<string, unknown>;
+      delete json.extensionsUsed;
+      delete json.extensionsRequired;
+      files.set(entry, Uint8Array.from(strToU8(JSON.stringify(json))));
+    }
     const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
     const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
     const failure = await parseSceneModel(model, new AbortController().signal, IMPORT_LIMITS, renderer).then(() => undefined, (error: unknown) => error);
@@ -487,7 +495,10 @@ describe('content found after parsing is a content verdict (inner#1690)', () => 
 describe('cancelling while a decoder downloads (inner#1690)', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('starts no decoder work afterwards and releases what the download created', async () => {
+  it.each([
+    ['Draco', 'draco.gltf', [] as string[]],
+    ['KTX2', 'ktx2.gltf', ['normal.ktx2']],
+  ])('starts no %s decoder work afterwards and releases what the download created', async (_label, entry, extra) => {
     let release: () => void = () => undefined;
     const downloaded = new Promise<void>((resolve) => { release = resolve; });
     // The decoder asset URLs are root-relative under vitest, which the Node Request constructor rejects.
@@ -501,10 +512,11 @@ describe('cancelling while a decoder downloads (inner#1690)', () => {
     });
     const workers = vi.fn();
     vi.stubGlobal('Worker', class { constructor() { workers(); } postMessage(): void {} terminate(): void {} addEventListener(): void {} });
-    const bytes = Uint8Array.from(readFileSync('tests/fixtures/three-d-model-import/draco.gltf'));
-    const model = inspectModelFiles(new Map([['draco.gltf', bytes]]), 'draco.gltf', IMPORT_LIMITS);
+    const files = new Map([entry, ...extra].map((path) => [path, Uint8Array.from(readFileSync(`tests/fixtures/three-d-model-import/${path}`))] as const));
+    const model = inspectModelFiles(files, entry, IMPORT_LIMITS);
+    const renderer = { extensions: { has: () => false }, capabilities: { maxTextureSize: 4096 } } as unknown as WebGLRenderer;
     const abort = new AbortController();
-    const loading = parseSceneModel(model, abort.signal, IMPORT_LIMITS);
+    const loading = parseSceneModel(model, abort.signal, IMPORT_LIMITS, renderer);
     abort.abort();
     await expect(loading).rejects.toMatchObject({ name: 'AbortError' });
     release();

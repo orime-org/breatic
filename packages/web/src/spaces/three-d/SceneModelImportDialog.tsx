@@ -18,6 +18,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { sourcesFromDrop, sourcesFromFiles, supplementSources } from '@web/spaces/three-d/model-source';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
+import type { ModelSource } from '@web/spaces/three-d/model-source';
 
 interface SceneModelImportDialogProps {
   open: boolean;
@@ -73,6 +74,9 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
   // A check that failed outside the model content can succeed on the same retained collection.
   const retryCheck = snapshot.phase === 'failed' && prepared === null && error !== null && !(error instanceof ModelImportError) && snapshot.files.length > 0;
+  // The pressed Retry stays mounted and focusable while the check it started runs on the same retained files.
+  const [retriedFiles, setRetriedFiles] = React.useState<readonly ModelSource[] | null>(null);
+  const checkRetrying = checking && retriedFiles === snapshot.files;
 
   /**
    * Ask for a fresh source collection through the browser's hidden file input.
@@ -154,7 +158,10 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    * Check the retained collection and main file again.
    * @throws {never} Never directly.
    */
-  const checkAgain = React.useCallback((): void => { void controller.select(snapshot.files, snapshot.entry); }, [controller, snapshot.files, snapshot.entry]);
+  const checkAgain = React.useCallback((): void => {
+    setRetriedFiles(snapshot.files);
+    void controller.select(snapshot.files, snapshot.entry);
+  }, [controller, snapshot.files, snapshot.entry]);
   /**
    * Hide this view while the document retains any active import.
    * @throws {never} Never directly.
@@ -212,7 +219,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
           </div>}
         </div>
       </ScrollArea>
-      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck ? <Button onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
+      <DialogFooter><Button variant='outline' onClick={hide}>{busy || checking ? t('spaces.threeD.importModel.hide') : t('common.cancel')}</Button>{retryCheck || checkRetrying ? <Button loading={checkRetrying} onClick={checkAgain} disabled={!canEdit}>{t('spaces.threeD.importModel.retry')}</Button>
         : <Button loading={busy} onClick={confirm} disabled={!prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim()}>{retryable ? t('spaces.threeD.importModel.retry') : t('spaces.threeD.importModel.confirm')}</Button>}</DialogFooter>
     </DialogContent>
   </Dialog>;

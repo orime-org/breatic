@@ -17,6 +17,7 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
+import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 
 /** Capabilities registered by the installed r173 GLTFLoader and its decoders. */
 const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -61,7 +62,8 @@ export function getUnsupportedModelExtensions(model: ModelPackage): { required: 
 export function createModelDecoder(model: ModelPackage, limits: SceneImportLimits, renderer?: WebGLRenderer): ModelDecoder {
   const unsupported = getUnsupportedModelExtensions(model).required;
   if (unsupported.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: unsupported.join(', ') });
-  if (model.json.extensionsUsed?.includes('KHR_texture_basisu') && !renderer) throw new Error('KTX2 decoding requires the current viewport capabilities');
+  const { basisu } = loadedResources(model.json);
+  if (basisu && !renderer) throw new Error('KTX2 decoding requires the current viewport capabilities');
   const decoderAssets = new Map([
     ['https://model-decoder.invalid/draco/draco_wasm_wrapper.js', dracoWrapper],
     ['https://model-decoder.invalid/draco/draco_decoder.wasm', dracoWasm],
@@ -97,7 +99,7 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
       try {
         // r173 DRACOLoader exposes its decoder download promise only through _initDecoder.
         if (used.has('KHR_draco_mesh_compression')) await (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
-        if (ktx2 && used.has('KHR_texture_basisu')) await ktx2.init();
+        if (ktx2 && basisu) await ktx2.init();
       } finally {
         // A dispose during the download found nothing to release; the finished download created the worker source URL.
         if (disposed) {

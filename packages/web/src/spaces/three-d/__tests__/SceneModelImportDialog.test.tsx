@@ -272,7 +272,22 @@ describe('model import dialog failures outside the model (inner#1690)', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
     expect(failing.prepare).toHaveBeenCalledTimes(2);
     expect(failing.prepare.mock.calls[1][0]).toEqual(sources);
-    expect(failing.prepare.mock.calls[1][1]).toBe(failing.prepare.mock.calls[0][1]);
+  });
+
+  it('checks the chosen main file again and keeps keyboard focus on Retry while it runs', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new Error('Worker failed'));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const files = [{ path: 'a.glb', file: new File(['a'], 'a.glb') }, { path: 'b.glb', file: new File(['b'], 'b.glb') }];
+    await act(async () => { await failing.controller.select(files, 'b.glb'); });
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    retry.focus();
+    await act(async () => { fireEvent.click(retry); });
+    expect(failing.prepare.mock.calls[1][1]).toBe('b.glb');
+    expect(document.activeElement).toBe(retry);
+    expect(retry).not.toBeDisabled();
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    expect(retry).toHaveTextContent('Retry');
   });
 
   it('offers no check Retry for a content verdict', async () => {

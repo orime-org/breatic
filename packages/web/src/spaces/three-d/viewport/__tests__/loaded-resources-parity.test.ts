@@ -88,7 +88,7 @@ function everyPath(): { json: GltfDocument; files: RecordingFiles } {
     materials: [
       { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {} } },
       { pbrMetallicRoughness: { baseColorTexture: { index: 2 } } },
-      { extras: { lightTexture: { index: 4 } }, extensions: { KHR_materials_clearcoat: { clearcoatTexture: { index: 3 }, vendorData: { bakedTexture: { index: 4 } } } } },
+      { extras: { lightTexture: { index: 4 } }, extensions: { KHR_materials_clearcoat: { clearcoatTexture: { index: 3 }, vendorData: { bakedTexture: { index: 4 } }, bakedTexture: { index: 4 } } } },
     ],
     textures: images.map((_, source) => ({ source })),
     images,

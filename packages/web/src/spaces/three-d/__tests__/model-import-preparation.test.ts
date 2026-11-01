@@ -14,7 +14,7 @@ import type { ModelSelection } from '@web/spaces/three-d/model-selection';
 /** A controlled transport retains callbacks that may already be queued. */
 const parse = vi.hoisted(() => vi.fn());
 /** The preview context the stand-in renderer reports after a render. */
-const gl = vi.hoisted(() => ({ lost: false, error: 0 }));
+const gl = vi.hoisted(() => ({ lost: false, error: 0, renderError: undefined as Error | undefined }));
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => ({
   ...await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>(), parseSceneModel: parse,
 }));
@@ -29,8 +29,8 @@ vi.mock('three', async (importOriginal) => {
     dispose(): void {}
     /** @returns Nothing. @throws {never} Never. */
     forceContextLoss(): void {}
-    /** @returns Nothing. @throws {never} Never. */
-    render(): void {}
+    /** @returns Nothing. @throws {Error} The render failure the test set. */
+    render(): void { if (gl.renderError) throw gl.renderError; }
     /** @returns The preview context state the test set. @throws {never} Never. */
     getContext(): { NO_ERROR: number; isContextLost: () => boolean; getError: () => number } {
       return { NO_ERROR: 0, isContextLost: () => gl.lost, getError: () => gl.error };
@@ -72,7 +72,7 @@ beforeEach(() => {
   ControlledWorker.onConstruct = undefined;
   vi.stubGlobal('Worker', ControlledWorker);
 });
-afterEach(() => { vi.unstubAllGlobals(); gl.lost = false; gl.error = 0; });
+afterEach(() => { vi.unstubAllGlobals(); gl.lost = false; gl.error = 0; gl.renderError = undefined; });
 
 describe('operation-owned model inspection worker', () => {
   it('refuses a cancelled operation before creating a worker', async () => {
@@ -244,6 +244,12 @@ describe('preview failures are classified by stage (inner#1690)', () => {
   it('refuses a preview the GPU reports an error for as content', async () => {
     gl.error = 0x0502;
     expect(await prepareWith(triangle())).toMatchObject({ name: 'ModelImportError', code: 'invalid' });
+  });
+
+  it('keeps a GPU context lost in the middle of rendering a plain, retryable error', async () => {
+    gl.lost = true;
+    gl.renderError = new TypeError('Cannot read properties of null (reading trim)');
+    expect(await prepareWith(triangle())).toMatchObject({ name: 'TypeError' });
   });
 
   it('keeps a lost GPU context a plain, retryable error', async () => {

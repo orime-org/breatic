@@ -29,7 +29,6 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   const extensions = getUnsupportedModelExtensions(selection.model);
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;
-  let contextLost = false;
   try {
     renderer = new WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(1, 1);
@@ -57,8 +56,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     scene.add(root, new HemisphereLight(0xffffff, 0x666666, 3), light);
     renderer.render(scene, camera);
     const context = renderer.getContext();
-    contextLost = context.isContextLost();
-    if (contextLost) throw new Error('Model preview lost its GPU context');
+    if (context.isContextLost()) throw new Error('Model preview lost its GPU context');
     if (context.getError() !== context.NO_ERROR) throw new ModelImportError('invalid', 'Model preview failed its GPU render', { detail: '', info });
     signal.throwIfAborted();
     root.removeFromParent();
@@ -82,7 +80,8 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
     if (root) disposeModelTemplate(root);
     if (signal.aborted) signal.throwIfAborted();
     // Once the template is parsed, measuring and rendering it judge its content; a lost GPU context says nothing about the model.
-    const failure = root && !contextLost ? contentFailure(error) : error;
+    // three can throw on a context lost mid-render before it reports the loss, so the context is read again here.
+    const failure = root && !renderer?.getContext().isContextLost() ? contentFailure(error) : error;
     if (failure instanceof ModelImportError) throw failure.info ? failure : failure.withInfo(info);
     // A decoder download, renderer or worker failure says nothing about the model, so it stays a retryable plain error.
     throw failure;

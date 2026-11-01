@@ -133,7 +133,7 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
         { pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 }, extensions: { KHR_materials_unlit: {}, KHR_materials_clearcoat: { clearcoatTexture: { index: 2 } } } },
         { pbrMetallicRoughness: { metallicRoughnessTexture: { index: 3 } }, occlusionTexture: { index: 4 }, emissiveTexture: { index: 5 },
           extras: { lightTexture: { index: 6 } },
-          extensions: { KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 7 }, extras: { bakedTexture: { index: 6 } }, vendorData: { bakedTexture: { index: 9 } } },
+          extensions: { KHR_materials_clearcoat: { clearcoatNormalTexture: { index: 7 }, extras: { bakedTexture: { index: 6 } }, vendorData: { bakedTexture: { index: 9 } }, bakedTexture: { index: 9 } },
             VENDOR_material: { someTexture: { index: 8 } } } },
         { pbrMetallicRoughness: { baseColorTexture: { index: 9 } } },
       ],

@@ -3,11 +3,17 @@
 
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
-/** Material extensions whose textures GLTFLoader r173 loads through its registered plugins. */
-const MATERIAL_TEXTURE_EXTENSIONS: ReadonlySet<string> = new Set([
-  'KHR_materials_clearcoat', 'KHR_materials_dispersion', 'KHR_materials_iridescence', 'KHR_materials_sheen',
-  'KHR_materials_transmission', 'KHR_materials_volume', 'KHR_materials_specular', 'KHR_materials_anisotropy', 'EXT_materials_bump',
-]);
+/** The texture slots each GLTFLoader r173 material plugin reads (GLTFLoader.js 784-1367). */
+const MATERIAL_TEXTURE_SLOTS: Readonly<Record<string, readonly string[]>> = {
+  KHR_materials_clearcoat: ['clearcoatTexture', 'clearcoatRoughnessTexture', 'clearcoatNormalTexture'],
+  KHR_materials_iridescence: ['iridescenceTexture', 'iridescenceThicknessTexture'],
+  KHR_materials_sheen: ['sheenColorTexture', 'sheenRoughnessTexture'],
+  KHR_materials_transmission: ['transmissionTexture'],
+  KHR_materials_volume: ['thicknessTexture'],
+  KHR_materials_specular: ['specularTexture', 'specularColorTexture'],
+  KHR_materials_anisotropy: ['anisotropyTexture'],
+  EXT_materials_bump: ['bumpTexture'],
+};
 /** Texture source extensions GLTFLoader r173 tries, in its plugin order, before a texture's own source. */
 const TEXTURE_SOURCE_EXTENSIONS = ['KHR_texture_basisu', 'EXT_texture_webp', 'EXT_texture_avif'] as const;
 /** Primitive modes GLTFMeshGpuInstancing accepts: undefined (TRIANGLES), TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN. */
@@ -25,6 +31,8 @@ export interface LoadedResources {
   textures: readonly LoadedTexture[];
   images: ReadonlySet<number>;
   buffers: ReadonlySet<number>;
+  /** Whether a loaded texture decodes through KHR_texture_basisu, which GLTFLoader uses whether or not extensionsUsed lists it. */
+  basisu: boolean;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -75,11 +83,10 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
     if (texture !== undefined) into.add(texture);
   }
   if (extensions?.KHR_materials_unlit) return;
-  // Each r173 material plugin reads only the *Texture keys at the top level of its own extension.
-  for (const [name, extension] of Object.entries(extensions ?? {})) {
-    if (!MATERIAL_TEXTURE_EXTENSIONS.has(name)) continue;
-    for (const [key, slot] of Object.entries(object(extension) ?? {})) {
-      const texture = key.endsWith('Texture') ? index(object(slot)?.index) : undefined;
+  for (const [name, slotNames] of Object.entries(MATERIAL_TEXTURE_SLOTS)) {
+    const extension = object(extensions?.[name]);
+    for (const slot of slotNames) {
+      const texture = index(object(extension?.[slot])?.index);
       if (texture !== undefined) into.add(texture);
     }
   }
@@ -88,16 +95,16 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
 /**
  * Pick the image GLTFLoader decodes for a texture: the first supported source extension, otherwise the texture's source.
  * @param texture - The texture declaration.
- * @returns The image index, or undefined when none is declared.
+ * @returns The image index, or undefined when none is declared, and the source extension that supplies it.
  * @throws {never} Never.
  */
-function textureImage(texture: JsonObject | undefined): number | undefined {
+function textureImage(texture: JsonObject | undefined): { image: number | undefined; extension: string | undefined } {
   const extensions = object(texture?.extensions);
   for (const name of TEXTURE_SOURCE_EXTENSIONS) {
     const source = index(object(extensions?.[name])?.source);
-    if (source !== undefined) return source;
+    if (source !== undefined) return { image: source, extension: name };
   }
-  return index(texture?.source);
+  return { image: index(texture?.source), extension: undefined };
 }
 
 /**
@@ -105,7 +112,7 @@ function textureImage(texture: JsonObject | undefined): number | undefined {
  * skin joints (their own mesh only), the reached meshes, the materials their primitives use and the slots each material assigns.
  * Checks run on exactly these, so a declaration the loader never touches cannot refuse a model it renders.
  * @param json - The checked glTF document.
- * @returns The loaded textures (image undefined when the texture names no existing image), images and buffers by index.
+ * @returns The loaded textures (image undefined when the texture names no existing image), images and buffers by index, and whether KTX2 decoding is needed.
  * @throws {never} Never.
  */
 export function loadedResources(json: GltfDocument): LoadedResources {
@@ -183,8 +190,10 @@ export function loadedResources(json: GltfDocument): LoadedResources {
   for (const material of materials) collectMaterialTextures(object(array(document.materials)[material]), textureIndices);
   const textureDefinitions = array(document.textures);
   const imageDefinitions = array(document.images);
+  let basisu = false;
   const textures = [...textureIndices].sort((a, b) => a - b).map((texture) => {
-    const image = textureImage(object(textureDefinitions[texture]));
+    const { image, extension } = textureImage(object(textureDefinitions[texture]));
+    if (extension === 'KHR_texture_basisu') basisu = true;
     return { texture, image: image !== undefined && object(imageDefinitions[image]) ? image : undefined };
   });
   const images = new Set(textures.flatMap(({ image }) => image === undefined ? [] : [image]));
@@ -207,5 +216,5 @@ export function loadedResources(json: GltfDocument): LoadedResources {
     const buffer = index(meshopt ? meshopt.buffer : node?.buffer);
     if (buffer !== undefined) buffers.add(buffer);
   }
-  return { textures, images, buffers };
+  return { textures, images, buffers, basisu };
 }

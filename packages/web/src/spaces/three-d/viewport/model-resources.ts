@@ -298,7 +298,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
   const parsed = decoder.prepare().then(() => signal.throwIfAborted()).then(() => decoder.loader.parseAsync(input, '').then(async (result) => {
     // GLTFLoader resolves without a scene when the model has none or its default scene index is out of range.
     const root = result.scene ?? new Group();
-    ownedScenes.set(root, result.scene ? result.scenes : [root, ...result.scenes]);
+    ownedScenes.set(root, result.scenes);
     try {
       if (!result.scene) throw new ModelImportError('empty', 'Model has no scene to display', { detail: model.entry });
       signal.throwIfAborted();
