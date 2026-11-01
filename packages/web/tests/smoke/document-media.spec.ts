@@ -1594,6 +1594,9 @@ test('a picture dragged by itself moves like a row dragged by its handle (A10)',
   await page.keyboard.press('Enter');
   await page.keyboard.type('beta');
   await page.keyboard.press('ArrowUp');
+  // From the end of `beta` the caret lands before the last letter of `alpha`;
+  // at the end of the line a picture pasted goes below it (design §5.4.3).
+  await page.keyboard.press('ArrowRight');
   await pastePicture(page, 'move.png');
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
