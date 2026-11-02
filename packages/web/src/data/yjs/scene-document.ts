@@ -219,9 +219,9 @@ export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: sym
   const objects = doc.getMap<unknown>('objects');
   doc.transact(() => {
     for (const creation of plan.creates) {
-      objects.set(creation.id, new Y.Map<unknown>(Object.entries(structuredClone(creation.values))));
+      objects.set(creation.id, new Y.Map<unknown>(Object.entries(creation.values)));
     }
-    for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, structuredClone(write.value));
+    for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, write.value);
     for (const id of plan.deletes) objects.delete(id);
   }, origin);
   return { ok: true, ids: plan.ids };
