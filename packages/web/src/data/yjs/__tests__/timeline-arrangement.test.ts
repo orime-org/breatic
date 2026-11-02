@@ -4,7 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
+import type { TimelineDocumentV1, TimelineRate, TimelineTrack, TimelineVideoSource } from '@breatic/shared';
+
 import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
+import { SOURCE } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const tracks = [{ id: 'visual-1', kind: 'visual' as const, order: 0 }];
 const baseClip = {
@@ -20,6 +23,30 @@ const baseClip = {
   mute: false,
   transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
+
+const FPS: TimelineRate = { num: 24, den: 1 };
+
+/**
+ * The whole document the arrangement reads (inner#1708 Q4); SOURCE spans 1000 frames, so ranges are inside it.
+ * @param clips - The placements.
+ * @param trackList - The tracks.
+ * @param sources - The stored sources.
+ * @param fps - The Timeline rate.
+ * @returns The document.
+ * @throws {never} Never.
+ */
+function documentOf(
+  clips: ReadonlyArray<typeof baseClip>, trackList: readonly TimelineTrack[] = tracks,
+  sources: Record<string, TimelineVideoSource> = { [SOURCE.id]: SOURCE }, fps: TimelineRate = FPS,
+): TimelineDocumentV1 {
+  return {
+    schemaVersion: 1,
+    settings: { width: 1920, height: 1080, fps },
+    tracks: Object.fromEntries(trackList.map((item) => [item.id, item])),
+    clips: Object.fromEntries(clips.map((item) => [item.id, item])),
+    sources,
+  };
+}
 
 /**
  * Give each generated placement a stable, valid clip identity.
@@ -37,12 +64,12 @@ function placement(index: number, startFrame: number, durationFrames: number): t
 
 describe('Timeline arrangement from the complete current document', () => {
   it('reads an empty arrangement without creating tracks or clips', () => {
-    expect(resolveTimelineArrangement({ tracks, clips: [] })).toEqual({ placements: [], conflicts: [], readyClipIds: [], hasConflicts: false });
+    expect(resolveTimelineArrangement(documentOf([]))).toEqual({ placements: [], conflicts: [], readyClipIds: [], hasConflicts: false });
   });
 
   it('accepts adjacent half-open intervals on the same track', () => {
     const next = placement(1, 48, 12);
-    expect(resolveTimelineArrangement({ tracks, clips: [baseClip, next] })).toEqual({
+    expect(resolveTimelineArrangement(documentOf([baseClip, next]))).toEqual({
       placements: [
         { clipId: baseClip.id, status: 'ready', reasons: [] },
         { clipId: next.id, status: 'ready', reasons: [] },
@@ -57,7 +84,7 @@ describe('Timeline arrangement from the complete current document', () => {
     const next = placement(1, 47, 12);
     const clips = [baseClip, next];
     const before = structuredClone(clips);
-    const result = resolveTimelineArrangement({ tracks, clips });
+    const result = resolveTimelineArrangement(documentOf(clips));
     expect(result.readyClipIds).toEqual([]);
     expect(result.hasConflicts).toBe(true);
     expect(result.placements).toEqual([
@@ -71,13 +98,13 @@ describe('Timeline arrangement from the complete current document', () => {
   it('keeps a valid placement on another visual track available', () => {
     const otherTrack = { id: 'visual-2', kind: 'visual' as const, order: 1 };
     const overlaid = { ...placement(1, 0, 48), trackId: otherTrack.id };
-    const result = resolveTimelineArrangement({ tracks: [...tracks, otherTrack], clips: [baseClip, overlaid] });
+    const result = resolveTimelineArrangement(documentOf([baseClip, overlaid], [...tracks, otherTrack]));
     expect(result.readyClipIds).toEqual([baseClip.id, overlaid.id]);
     expect(result.conflicts).toEqual([]);
   });
 
   it('reports a missing track without discarding the placement', () => {
-    const result = resolveTimelineArrangement({ tracks: [], clips: [baseClip] });
+    const result = resolveTimelineArrangement(documentOf([baseClip], []));
     expect(result.placements).toHaveLength(1);
     expect(result.placements[0]).toMatchObject({ clipId: baseClip.id, status: 'conflict', reasons: [{ code: 'missing_track' }] });
     expect(result.readyClipIds).toEqual([]);
@@ -85,7 +112,7 @@ describe('Timeline arrangement from the complete current document', () => {
   });
 
   it('reports an incompatible track for a video placement', () => {
-    const result = resolveTimelineArrangement({ tracks: [{ id: 'visual-1', kind: 'audio', order: 0 }], clips: [baseClip] });
+    const result = resolveTimelineArrangement(documentOf([baseClip], [{ id: 'visual-1', kind: 'audio', order: 0 }]));
     expect(result.placements).toHaveLength(1);
     expect(result.placements[0]).toMatchObject({ clipId: baseClip.id, status: 'conflict', reasons: [{ code: 'incompatible_track' }] });
     expect(result.readyClipIds).toEqual([]);
@@ -99,7 +126,7 @@ describe('Timeline arrangement from the complete current document', () => {
     { durationFrames: -1 },
     { durationFrames: Number.NaN },
   ])('diagnoses merged invalid bounds %j independently from strict DTO validation', (changes) => {
-    const result = resolveTimelineArrangement({ tracks, clips: [{ ...baseClip, ...changes }] });
+    const result = resolveTimelineArrangement(documentOf([{ ...baseClip, ...changes }]));
     expect(result.placements).toHaveLength(1);
     expect(result.placements[0]).toMatchObject({ clipId: baseClip.id, status: 'conflict', reasons: [{ code: 'invalid_range' }] });
     expect(result.readyClipIds).toEqual([]);
@@ -107,14 +134,14 @@ describe('Timeline arrangement from the complete current document', () => {
 
   it('recomputes after a conflict is explicitly moved or a placement is removed', () => {
     const conflicting = placement(1, 47, 12);
-    expect(resolveTimelineArrangement({ tracks, clips: [baseClip, conflicting] }).hasConflicts).toBe(true);
-    const moved = resolveTimelineArrangement({ tracks, clips: [baseClip, { ...conflicting, startFrame: 48 }] });
+    expect(resolveTimelineArrangement(documentOf([baseClip, conflicting])).hasConflicts).toBe(true);
+    const moved = resolveTimelineArrangement(documentOf([baseClip, { ...conflicting, startFrame: 48 }]));
     expect(moved.readyClipIds).toEqual([baseClip.id, conflicting.id]);
     expect(moved.conflicts).toEqual([]);
-    expect(resolveTimelineArrangement({ tracks, clips: [baseClip] }).placements).toEqual([{ clipId: baseClip.id, status: 'ready', reasons: [] }]);
+    expect(resolveTimelineArrangement(documentOf([baseClip])).placements).toEqual([{ clipId: baseClip.id, status: 'ready', reasons: [] }]);
   });
 
-  describe('source range when sources and fps are given', () => {
+  describe('source range', () => {
     const fps = { num: 24, den: 1 };
     const source = {
       id: baseClip.sourceId,
@@ -128,7 +155,7 @@ describe('Timeline arrangement from the complete current document', () => {
     const sources = { [source.id]: source };
 
     it('keeps a clip inside its source ready', () => {
-      expect(resolveTimelineArrangement({ tracks, clips: [baseClip], sources, fps }).readyClipIds).toEqual([baseClip.id]);
+      expect(resolveTimelineArrangement(documentOf([baseClip], tracks, sources, fps)).readyClipIds).toEqual([baseClip.id]);
     });
 
     it.each([
@@ -137,7 +164,7 @@ describe('Timeline arrangement from the complete current document', () => {
       { sourceInFrame: 40, durationFrames: 9 },
     ])('diagnoses a clip outside its source %j as invalid_range', (changes) => {
       const outside = { ...baseClip, ...changes };
-      const result = resolveTimelineArrangement({ tracks, clips: [outside], sources, fps });
+      const result = resolveTimelineArrangement(documentOf([outside], tracks, sources, fps));
       expect(result.placements).toEqual([{
         clipId: baseClip.id,
         status: 'conflict',
@@ -147,18 +174,10 @@ describe('Timeline arrangement from the complete current document', () => {
       expect(result.hasConflicts).toBe(true);
     });
 
-    it('keeps the previous classification without sources or fps, or when the clip\'s source is absent', () => {
-      const outside = { ...baseClip, sourceInFrame: 1 };
-      expect(resolveTimelineArrangement({ tracks, clips: [outside] }).readyClipIds).toEqual([baseClip.id]);
-      expect(resolveTimelineArrangement({ tracks, clips: [outside], sources }).readyClipIds).toEqual([baseClip.id]);
-      expect(resolveTimelineArrangement({ tracks, clips: [outside], fps }).readyClipIds).toEqual([baseClip.id]);
-      expect(resolveTimelineArrangement({ tracks, clips: [outside], sources: {}, fps }).readyClipIds).toEqual([baseClip.id]);
-    });
-
     it('leaves a valid neighbour of an out-of-source clip ready', () => {
       const outside = { ...baseClip, sourceInFrame: 1 };
       const neighbour = placement(1, 48, 12);
-      const result = resolveTimelineArrangement({ tracks, clips: [outside, neighbour], sources, fps });
+      const result = resolveTimelineArrangement(documentOf([outside, neighbour], tracks, sources, fps));
       expect(result.readyClipIds).toEqual([neighbour.id]);
       expect(result.conflicts.map((item) => item.clipId)).toEqual([baseClip.id]);
     });
@@ -170,8 +189,8 @@ describe('Timeline arrangement from the complete current document', () => {
       (ranges) => {
         const clips = ranges.map((range, index) => placement(index, range.startFrame, range.durationFrames));
         const before = structuredClone(clips);
-        const forward = resolveTimelineArrangement({ tracks, clips });
-        const reverse = resolveTimelineArrangement({ tracks, clips: [...clips].reverse() });
+        const forward = resolveTimelineArrangement(documentOf(clips));
+        const reverse = resolveTimelineArrangement(documentOf([...clips].reverse()));
         expect(reverse).toEqual(forward);
         expect(clips).toEqual(before);
         const ready = clips.filter((candidate) => forward.readyClipIds.includes(candidate.id));

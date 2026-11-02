@@ -386,11 +386,12 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
    * the seed changes how Yjs restores a deleted record, so every case runs with my session on either one.
    * @param clips - The starting clips.
    * @param seededByMe - Whether my replica wrote the seed, or received it from the peer.
+   * @param sources - The stored sources, SOURCE by default.
    * @returns Both replicas and my session.
    * @throws {Error} When seeding fails.
    */
-  function apart(clips: ReturnType<typeof clip>[], seededByMe: boolean): { mine: Y.Doc; peer: Y.Doc; session: TimelineEditSession } {
-    const seeded = keep(seededDoc(timeline(clips)));
+  function apart(clips: ReturnType<typeof clip>[], seededByMe: boolean, sources = [SOURCE]): { mine: Y.Doc; peer: Y.Doc; session: TimelineEditSession } {
+    const seeded = keep(seededDoc(timeline(clips, undefined, sources)));
     const copy = keep(new Y.Doc());
     Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded));
     const mine = seededByMe ? seeded : copy;
@@ -468,6 +469,59 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
     sync(mine, peer, mineFirst);
     expectComplete(mine, ADDED);
     expectComplete(peer, ADDED);
+  });
+
+  const addedOn = (startFrame: number): TimelineEditCommand => ({
+    operation: 'add_video', parameters: { source: SOURCE, clip: clip(ADDED, 'v2', startFrame, 48) }, placement: OFF,
+  });
+
+  it.each(CASES)('redoes a complete addition after a no-op move that followed it (G1, seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart([clip(A, MAIN, 0, 48)], seededByMe);
+    expect(session.edit(addedOn(200)).ok).toBe(true);
+    expect(session.edit(move(ADDED, 200)).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    expect(mine.getMap('clips').has(ADDED), 'the undo takes back the addition before the no-op').toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: true });
+    expect(applyTimelineEdit(peer, move(ADDED, 300), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.redo();
+    sync(mine, peer, mineFirst);
+    expectComplete(mine, ADDED);
+    expectComplete(peer, ADDED);
+  });
+
+  it.each(CASES)('redoes a complete addition after a magnetic main-track move that packed back in place (G1, seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart([clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 48)], seededByMe);
+    expect(session.edit(addedOn(200)).ok).toBe(true);
+    expect(session.edit(move(B, 60, ON)).ok).toBe(true);
+    expect(readTimelineDocument(mine).clips[B]?.startFrame).toBe(48);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    expect(mine.getMap('clips').has(ADDED), 'the undo takes back the addition before the no-op').toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: true });
+    expect(applyTimelineEdit(peer, move(ADDED, 300), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.redo();
+    sync(mine, peer, mineFirst);
+    expectComplete(mine, ADDED);
+    expectComplete(peer, ADDED);
+  });
+
+  it.each(CASES)('restores a complete clip a later repeat of a held move removed (G1, seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    // X[0,10) nudged right to 4 covers Z[12,14) only on the last repeats; the hold is one undo step.
+    const { mine, peer, session } = apart([clip(A, MAIN, 0, 48), clip(MOVED, 'v2', 0, 10), clip(COVERED, 'v2', 12, 2, { sourceId: SHORT_SOURCE.id })], seededByMe, [SOURCE, SHORT_SOURCE]);
+    expect(session.edit(move(MOVED, 1)).ok).toBe(true);
+    for (let frame = 2; frame <= 4; frame += 1) expect(session.edit(move(MOVED, frame), { joinPrevious: true }).ok).toBe(true);
+    expect(mine.getMap('clips').has(COVERED)).toBe(false);
+    expect(applyTimelineEdit(peer, move(COVERED, 100), Symbol('peer')).ok).toBe(true);
+    sync(mine, peer, mineFirst);
+    session.undo();
+    sync(mine, peer, mineFirst);
+    expect(session.getSnapshot().canUndo).toBe(false);
+    expectComplete(mine, COVERED);
+    expectComplete(peer, COVERED);
+    expect(readTimelineDocument(mine).clips[MOVED]?.startFrame).toBe(0);
   });
 });
 

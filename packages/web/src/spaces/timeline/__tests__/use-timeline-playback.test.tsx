@@ -201,10 +201,7 @@ function renderPlayback(
       setFrame(value);
     }, []);
     // Mirrors TimelineSpace: readiness checks source ranges once per document, and the shown clip is the top ready layer.
-    const ready = React.useMemo(() => new Set(resolveTimelineArrangement({
-      tracks: Object.values(input.document.tracks), clips: Object.values(input.document.clips),
-      sources: input.document.sources, fps: input.document.settings.fps,
-    }).readyClipIds), [input.document]);
+    const ready = React.useMemo(() => new Set(resolveTimelineArrangement(input.document).readyClipIds), [input.document]);
     const clip = activeTimelineClipAt(input.document, ready, frame);
     const source = clip === null ? null : input.document.sources[clip.sourceId] ?? null;
     const playback = useTimelinePlayback({
@@ -802,7 +799,7 @@ describe('useTimelinePlayback review regressions', () => {
     }));
     const later = { ...CLIP, id: '30000000-0000-4000-8000-000000000005', startFrame: 192, durationFrames: 24, sourceInFrame: 24 };
     const document = timelineDocument([...conflicts, later]);
-    expect(resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips: Object.values(document.clips) }).readyClipIds).toEqual([later.id]);
+    expect(resolveTimelineArrangement(document).readyClipIds).toEqual([later.id]);
     const media = mediaFixture({ readyState: 0 });
     const hook = renderPlayback(media, { document });
     act(() => hook.result.current.toggle());
@@ -1168,7 +1165,7 @@ describe('useTimelinePlayback across layers (inner#1708 E22)', () => {
     const outside = { ...CLIP, id: '30000000-0000-4000-8000-000000000003', startFrame: 24, durationFrames: 24, sourceInFrame: 230 };
     const later = { ...CLIP, id: '30000000-0000-4000-8000-000000000004', startFrame: 96, durationFrames: 24, sourceInFrame: 24 };
     const document = timelineDocument([outside, later]);
-    expect(resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips: Object.values(document.clips), sources: document.sources, fps: document.settings.fps }).readyClipIds).toEqual([later.id]);
+    expect(resolveTimelineArrangement(document).readyClipIds).toEqual([later.id]);
     const media = mediaFixture({ readyState: 0 });
     const hook = renderPlayback(media, { document });
     act(() => hook.result.current.toggle());

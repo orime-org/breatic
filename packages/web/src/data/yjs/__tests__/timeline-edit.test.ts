@@ -715,11 +715,10 @@ describe('planTimelineEdit invariants over random documents', () => {
     const next = result.next;
     expect(TimelineDocumentV1Schema.safeParse(next).success).toBe(true);
     expect(next.settings).toEqual(before.settings);
-    // Sources follow the clips (inner#1708 L1): exactly the referenced ones, each with its stored or added value.
-    expect(Object.keys(next.sources).sort()).toEqual([...new Set(Object.values(next.clips).map((item) => item.sourceId))].sort());
-    for (const [id, source] of Object.entries(next.sources)) {
-      expect(source).toEqual(before.sources[id] ?? (command.operation === 'add_video' ? command.parameters.source : undefined));
-    }
+    // The planner leaves sources to the writer (inner#1708 Q1): the current ones, plus an added source it does not hold.
+    const added = command.operation === 'add_video' && before.sources[command.parameters.source.id] === undefined
+      ? { [command.parameters.source.id]: command.parameters.source } : {};
+    expect(next.sources).toEqual({ ...before.sources, ...added });
 
     // No new overlapped frames on any track.
     const overlapBefore = overlappedFrames(before);
@@ -797,60 +796,35 @@ describe('planTimelineEdit invariants over random documents', () => {
   });
 });
 
-describe('planTimelineEdit sources follow the clips (inner#1708 L1)', () => {
+describe('planTimelineEdit leaves sources to the writer (inner#1708 Q1)', () => {
   const X = cid(31);
-  const Y = cid(32);
   const W = cid(33);
 
-  /**
-   * The source ids the planned clips reference.
-   * @param document - The planned document.
-   * @returns The sorted ids.
-   * @throws {never} Never.
-   */
-  function referenced(document: TimelineDocumentV1): string[] {
-    return [...new Set(Object.values(document.clips).map((item) => item.sourceId))].sort();
-  }
-
-  it('drops a source when its last clip is deleted', () => {
+  it('keeps the source of a deleted last clip in the plan', () => {
     const current = timeline([clip(A, MAIN, 0, 48), clip(X, V2, 100, 20, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]);
-    const result = accepted(plan(current, remove(X, OFF)));
-    expect(result.next.sources).toEqual({ [SOURCE.id]: SOURCE });
-    expect(Object.keys(result.next.sources)).toEqual(referenced(result.next));
+    expect(accepted(plan(current, remove(X, OFF))).next.sources).toEqual(current.sources);
   });
 
-  it('keeps a source while another clip still references it', () => {
-    const current = timeline(
-      [clip(A, MAIN, 0, 48), clip(X, V2, 100, 20, { sourceId: SHORT_SOURCE.id }), clip(Y, V2, 200, 20, { sourceId: SHORT_SOURCE.id })],
-      undefined, [SOURCE, SHORT_SOURCE],
-    );
-    const result = accepted(plan(current, remove(X, OFF)));
-    expect(result.next.sources).toEqual({ [SOURCE.id]: SOURCE, [SHORT_SOURCE.id]: SHORT_SOURCE });
-  });
-
-  it('drops a source no clip referenced before the edit', () => {
+  it('keeps a source no clip referenced before the edit', () => {
     const current = timeline([clip(A, MAIN, 0, 48)], undefined, [SOURCE, SHORT_SOURCE]);
-    const result = accepted(plan(current, move(A, 0, OFF, { trackId: V2 })));
-    expect(result.next.sources).toEqual({ [SOURCE.id]: SOURCE });
+    expect(accepted(plan(current, move(A, 0, OFF, { trackId: V2 }))).next.sources).toEqual(current.sources);
   });
 
-  it('drops the sources of clips removed by an overwrite and keeps the ones the cut parts reference', () => {
-    // Moving A onto V2 at 0 with the magnet off covers W (SHORT_SOURCE) whole; it is removed with its source.
+  it('keeps the source of a clip an overwrite removes', () => {
     const current = timeline([clip(A, MAIN, 0, 48), clip(W, V2, 10, 20, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]);
     const result = accepted(plan(current, move(A, 0, OFF, { trackId: V2 })));
     expect(result.removed).toEqual([W]);
-    expect(Object.keys(result.next.sources)).toEqual(referenced(result.next));
-    expect(result.next.sources).toEqual({ [SOURCE.id]: SOURCE });
+    expect(result.next.sources).toEqual(current.sources);
   });
 
-  it('keeps every planned source equal to the set the planned clips reference', () => {
+  it('adds a new source and keeps a stored one unchanged for every kind of edit', () => {
     const current = timeline([clip(A, MAIN, 0, 48), clip(X, V2, 100, 20, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]);
+    const fresh = { ...SOURCE, id: '10000000-0000-4000-8000-000000000099', assetId: '20000000-0000-4000-8000-000000000099' };
     for (const command of [
       split(A, 10, cid(40), ON), duplicate(X, cid(41), OFF), remove(A, ON), move(X, 300, OFF), setRange(X, 100, 0, 10, OFF),
       addVideo(clip(cid(42), V2, 400, 10), OFF),
-    ]) {
-      const result = accepted(plan(current, command));
-      expect(Object.keys(result.next.sources).sort(), command.operation).toEqual(referenced(result.next));
-    }
+    ]) expect(accepted(plan(current, command)).next.sources, command.operation).toEqual(current.sources);
+    expect(accepted(plan(current, addVideo(clip(cid(43), V2, 400, 10, { sourceId: fresh.id }), OFF, undefined, fresh))).next.sources)
+      .toEqual({ ...current.sources, [fresh.id]: fresh });
   });
 });
