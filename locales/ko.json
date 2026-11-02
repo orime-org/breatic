@@ -1997,6 +1997,7 @@
       "invalidObject": "읽을 수 없는 오브젝트: {id}",
       "empty": "인물이나 블록을 추가하여 장면을 구성하세요.",
       "unsupported": "지원되지 않는 장면 형식입니다. 페이지를 새로고침하세요.",
+      "unsupportedOld": "이전 형식의 장면이라 열 수 없습니다.",
       "modelFailed": "모델을 불러오지 못했습니다.",
       "peerSelection": "{name}: {count}개 선택됨",
       "add": "추가",

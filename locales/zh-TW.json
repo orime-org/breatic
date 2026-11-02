@@ -1997,6 +1997,7 @@
       "invalidObject": "無法讀取的物件：{id}",
       "empty": "新增人物或方塊，開始佈置場景。",
       "unsupported": "此場景使用目前頁面不支援的格式，請重新載入頁面。",
+      "unsupportedOld": "這個場景使用舊格式，無法開啟。",
       "modelFailed": "模型載入失敗。",
       "peerSelection": "{name}：選取 {count} 個物件",
       "add": "新增",

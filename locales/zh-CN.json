@@ -1997,6 +1997,7 @@
       "invalidObject": "无法读取的对象：{id}",
       "empty": "添加人物或方块，开始布置场景。",
       "unsupported": "此场景使用当前页面不支持的格式，请重新加载页面。",
+      "unsupportedOld": "这个场景使用旧格式，无法打开。",
       "modelFailed": "模型加载失败。",
       "peerSelection": "{name}：选中 {count} 个对象",
       "add": "添加",

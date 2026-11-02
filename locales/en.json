@@ -1997,6 +1997,7 @@
       "invalidObject": "Unreadable object: {id}",
       "empty": "Add a figure or block to start arranging your scene.",
       "unsupported": "This scene uses an unsupported format. Reload to update the page.",
+      "unsupportedOld": "This scene uses an older format and can't be opened.",
       "modelFailed": "A model could not be loaded.",
       "peerSelection": "{name}: {count} selected",
       "add": "Add",

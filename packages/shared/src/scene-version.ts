@@ -4,7 +4,7 @@
 import type * as Y from "yjs";
 
 /** The scene document format understood by this build. */
-export const SCENE_FORMAT_VERSION = 1;
+export const SCENE_FORMAT_VERSION = 2;
 
 /**
  * Bind a scene root and validate its map-only content structure.
