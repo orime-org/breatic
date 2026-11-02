@@ -66,6 +66,7 @@ describe("buildAgentConfig", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",

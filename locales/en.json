@@ -172,6 +172,7 @@
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
       "current_space_too_long": "The open Space's content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "shared_space_too_long": "The content shared from {name} is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "spaces_too_many": "Too many Spaces are listed. At most {limit, number} may be listed; this message lists {actual, number}.",
       "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
       "ask_not_found": "This question card is not in this conversation.",
@@ -426,7 +427,8 @@
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
         "other": "Calling {tool}",
-        "readTemplate": "Reading the template"
+        "readTemplate": "Reading the template",
+        "requestSpace": "Asking to look at Spaces"
       }
     },
     "loadEarlier": "Load earlier messages",
@@ -523,6 +525,21 @@
       "show": "Show",
       "hide": "Hide",
       "atLeastOne": "Answer at least one question."
+    },
+    "spaceRequest": {
+      "title": "Agent wants to look at",
+      "allow": "Allow",
+      "decline": "Decline",
+      "shared": "Shared with Agent",
+      "declined": "Not shared with Agent",
+      "partBlocks": "{to, select, end {From block {from}} other {Blocks {from}–{to}}}",
+      "partNodes": "{count, plural, one {# node} other {# nodes}}",
+      "state": {
+        "unreadable": "Can't be read",
+        "gone": "Deleted",
+        "timedOut": "Timed out",
+        "failed": "Couldn't read"
+      }
     }
   },
   "canvas": {

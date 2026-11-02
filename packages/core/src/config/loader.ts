@@ -161,6 +161,18 @@ const agentConfigSchema = z.object({
    */
   space_list_max_items: z.number().int().positive().default(200),
   /**
+   * How many Spaces one request to read Spaces may name (inner#1552). The
+   * tool refuses a call over it.
+   */
+  space_request_max_spaces: z.number().int().positive().default(3),
+  /** How many canvas nodes one requested Space may be asked for by id (inner#1552). */
+  space_request_max_node_ids: z.number().int().positive().default(100),
+  /**
+   * How long the browser waits for a requested Space it has not opened to
+   * sync before it reports the Space as timed out (inner#1552).
+   */
+  space_read_timeout_ms: z.number().int().positive().default(20000),
+  /**
    * What one consolidation leaves behind, in tokens.
    *
    * A fold takes whole turns from the oldest end until what remains is at or

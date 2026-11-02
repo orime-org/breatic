@@ -1170,6 +1170,8 @@ export const creditGifts = pgTable("credit_gifts", {
   targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
   credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  /** Explicit confirmation of a pre-existing manual gift, never a new funding instruction. */
+  legacyConfirmation: jsonb("legacy_confirmation").$type<Record<string, unknown>>(),
   reason: text("reason"),
   operationKey: text("operation_key").unique(),
   requestedBy: uuid("requested_by"),

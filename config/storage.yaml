@@ -60,12 +60,17 @@ transfer:
   #   reference markers, attachment_max_chars, current_space_max_chars x2
   #   for content and blocks) at up to 6 bytes a character once
   #   JSON.stringify escapes it, plus block metadata and the space list:
-  #   about 3.3 MB, rounded up.
+  #   about 3.3 MB; plus the Spaces shared in answer to a request to read
+  #   them, space_request_max_spaces x (current_space_max_chars +
+  #   space_request_max_node_ids x 36-character node ids + an 80-character
+  #   name) x 6 bytes, about 1.87 MB, and each Space's fixed fields (id,
+  #   kind, state, counts, canvas detail), under 1 KB each: about 5.2 MB,
+  #   rounded up.
   # canvas_paste / node_history_snapshot: a 10 MB document
   #   (collab.yaml max_document_bytes) whose quotes, backslashes and line
   #   breaks JSON.stringify doubles, with margin.
   route_max_bytes:
-    chat_message: 4194304
+    chat_message: 6291456
     canvas_paste: 25165824
     node_history_snapshot: 25165824
   # A finished transfer can be referenced only this long, and only once.

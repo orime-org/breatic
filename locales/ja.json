@@ -172,6 +172,7 @@
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "shared_space_too_long": "{name} から共有した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
       "ask_not_found": "この会話にこの質問カードはありません。",
@@ -426,7 +427,8 @@
         "readNodeHistory": "ノードの履歴の確認",
         "readActivity": "Project アクティビティの確認",
         "other": "{tool} の実行",
-        "readTemplate": "テンプレートの確認"
+        "readTemplate": "テンプレートの確認",
+        "requestSpace": "Space の閲覧依頼"
       }
     },
     "loadEarlier": "以前のメッセージを読み込む",
@@ -523,6 +525,21 @@
       "show": "開く",
       "hide": "閉じる",
       "atLeastOne": "少なくとも1問に答えてください"
+    },
+    "spaceRequest": {
+      "title": "Agent が次の内容の閲覧を求めています",
+      "allow": "閲覧を許可",
+      "decline": "閲覧を拒否",
+      "shared": "Agent に共有しました",
+      "declined": "Agent に共有しませんでした",
+      "partBlocks": "{to, select, end {ブロック {from} 以降} other {ブロック {from}–{to}}}",
+      "partNodes": "{count} 個のノード",
+      "state": {
+        "unreadable": "読み取れません",
+        "gone": "削除済み",
+        "timedOut": "タイムアウト",
+        "failed": "読み取りに失敗"
+      }
     }
   },
   "canvas": {

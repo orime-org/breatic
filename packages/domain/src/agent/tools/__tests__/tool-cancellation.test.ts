@@ -69,6 +69,7 @@ describe("tools accept the cancellation signal", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",
@@ -77,11 +78,13 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  it("has one tool with nothing to run, the question that waits for the reader", () => {
-    // ask_user has no `execute`: a call to it is answered by the reader in a
-    // later request, so there is no work in this turn to cancel.
+  it("has two tools with nothing to run, the cards that wait for the reader", () => {
+    // ask_user and request_space_content have no `execute`: a call to either
+    // is answered by the reader in a later request, so there is no work in
+    // this turn to cancel.
     expect(registeredTools().filter(([, execute]) => execute === undefined).map(([name]) => name)).toEqual([
       "ask_user",
+      "request_space_content",
     ]);
   });
 

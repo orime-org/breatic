@@ -172,6 +172,7 @@
       "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
       "current_space_too_long": "目前 Space 的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
+      "shared_space_too_long": "從 {name} 共享的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 個，這則有 {actual, number} 個。",
       "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
@@ -426,7 +427,8 @@
         "readNodeHistory": "查節點的歷史",
         "readActivity": "查 Project 活動",
         "other": "呼叫 {tool}",
-        "readTemplate": "讀範本"
+        "readTemplate": "讀範本",
+        "requestSpace": "請求查看 Space"
       }
     },
     "loadEarlier": "載入更早的訊息",
@@ -523,6 +525,21 @@
       "show": "展開",
       "hide": "收起",
       "atLeastOne": "至少回答一題"
+    },
+    "spaceRequest": {
+      "title": "Agent 想查看這些內容",
+      "allow": "同意查看",
+      "decline": "拒絕查看",
+      "shared": "已給 Agent 查看",
+      "declined": "沒有給 Agent 查看",
+      "partBlocks": "{to, select, end {第 {from} 塊起} other {第 {from}–{to} 塊}}",
+      "partNodes": "{count} 個節點",
+      "state": {
+        "unreadable": "無法讀取",
+        "gone": "已刪除",
+        "timedOut": "讀取逾時",
+        "failed": "讀取失敗"
+      }
     }
   },
   "canvas": {

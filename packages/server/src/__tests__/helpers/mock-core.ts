@@ -21,6 +21,8 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
+  AWAITS_READER as REAL_AWAITS_READER,
+  REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
@@ -658,6 +660,9 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
+  // The same reason: the tools a turn stops at for the reader (inner#1552).
+  AWAITS_READER: REAL_AWAITS_READER,
+  REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the document proposal the open document (inner#1509).
