@@ -21,6 +21,8 @@ export interface Leaf {
   maxItems?: number;
   /** For an object: the sub-fields it requires when it is sent. */
   required?: string[];
+  /** For an object: sets of sub-fields of which it needs one whole set (an `anyOf` or `oneOf` of `required` lists). */
+  requiredAnyOf?: string[][];
   /** For an array: each item's fields (a scalar item's shapes under the key "") and required ones. */
   items?: { fields: Record<string, Leaf[]>; required: string[] };
 }
@@ -33,6 +35,8 @@ export interface SchemaSnapshot {
   fields: Record<string, Leaf[]>;
   /** The top-level fields every request carries. */
   required: string[];
+  /** Sets of top-level fields of which every request carries one whole set. */
+  requiredAnyOf?: string[][];
   /** The result's fields, for an upstream that publishes its result schema. */
   outputs?: Record<string, Leaf[]>;
   /** The execution modes the upstream runs the endpoint in (SandBase). */
@@ -83,7 +87,18 @@ function resolved(node: Node, root: unknown, depth: number): Node {
 }
 
 /**
+ * The alternative required sets of a union whose every branch only lists required fields (`anyOf: [{ required: [a] }, { required: [b] }]`).
+ * @param union - The `anyOf` or `oneOf` list.
+ * @returns One set per branch, or undefined when some branch says more than what it requires.
+ */
+function requiredSets(union: readonly unknown[]): string[][] | undefined {
+  const sets = union.map((branch) => (isObject(branch) && Array.isArray(branch.required) && Object.keys(branch).every((key) => key === "required") ? branch.required.map(String) : undefined));
+  return sets.length > 0 && sets.every((set) => set !== undefined) ? sets : undefined;
+}
+
+/**
  * The branches a node accepts: each `anyOf` and `oneOf` branch, each type of a type list, and a null branch when it is nullable.
+ * A union of required lists only is not a set of shapes: the node keeps its one shape and the lists as `requiredAnyOf`.
  * @param node - The resolved node.
  * @param root - The document references point into.
  * @param depth - How many references were followed.
@@ -92,6 +107,11 @@ function resolved(node: Node, root: unknown, depth: number): Node {
  */
 function branches(node: Node, root: unknown, depth: number): Node[] {
   const union = Array.isArray(node.anyOf) ? node.anyOf : Array.isArray(node.oneOf) ? node.oneOf : undefined;
+  const sets = union === undefined ? undefined : requiredSets(union);
+  if (sets !== undefined) {
+    const { anyOf: _a, oneOf: _o, ...rest } = node;
+    return branches({ ...rest, requiredAnyOf: sets }, root, depth);
+  }
   if (union !== undefined) {
     const { anyOf: _a, oneOf: _o, ...rest } = node;
     return (union as unknown[]).filter(isObject).flatMap((branch) => branches(resolved({ ...rest, ...branch }, root, depth + 1), root, depth + 1));
@@ -157,6 +177,7 @@ function collect(node: Node, path: string, root: unknown, fields: Record<string,
     if (leaf.type === "object") {
       const required = Array.isArray(branch.required) ? branch.required.map(String) : [];
       if (required.length > 0) leaf.required = required;
+      if (Array.isArray(branch.requiredAnyOf)) leaf.requiredAnyOf = branch.requiredAnyOf as string[][];
       for (const [key, sub] of Object.entries(isObject(branch.properties) ? branch.properties : {})) {
         if (isObject(sub)) collect(sub, path === "" ? key : `${path}.${key}`, root, fields, depth + 1);
       }
@@ -181,7 +202,8 @@ export function snapshotOf(schema: unknown, options: { root: unknown; source: st
   const top = fields[""] ?? [];
   delete fields[""];
   const required = [...new Set(top.flatMap((leaf) => leaf.required ?? []))];
-  return { source: options.source, fields, required };
+  const requiredAnyOf = top.find((leaf) => leaf.requiredAnyOf !== undefined)?.requiredAnyOf;
+  return { source: options.source, fields, required, ...(requiredAnyOf === undefined ? {} : { requiredAnyOf }) };
 }
 
 /**
@@ -257,25 +279,31 @@ export function fieldFits(snapshot: SchemaSnapshot, path: string, value: unknown
 /**
  * The required fields one object of a body lacks, its nested objects and list items included.
  * @param fields - The field table.
- * @param required - The object's required fields.
+ * @param needs - The object's required fields, and the sets of which it needs one whole set.
+ * @param needs.required - The fields it requires.
+ * @param needs.requiredAnyOf - The alternative sets, if any.
  * @param body - The object.
  * @param at - The object's path in the table.
  * @param named - How the object is named in the answer.
- * @returns The missing fields.
+ * @returns The missing fields; a missing alternative as `one of a | b+c`.
  */
-function missingIn(fields: Record<string, Leaf[]>, required: readonly string[], body: Record<string, unknown>, at: string, named: string): string[] {
-  const missing = required.filter((key) => body[key] === undefined).map((key) => `${named}${key}`);
+function missingIn(fields: Record<string, Leaf[]>, needs: { required?: readonly string[]; requiredAnyOf?: readonly (readonly string[])[] }, body: Record<string, unknown>, at: string, named: string): string[] {
+  const missing = (needs.required ?? []).filter((key) => body[key] === undefined).map((key) => `${named}${key}`);
+  const sets = needs.requiredAnyOf;
+  if (sets !== undefined && !sets.some((set) => set.every((key) => body[key] !== undefined))) {
+    missing.push(`one of ${sets.map((set) => set.map((key) => `${named}${key}`).join("+")).join(" | ")}`);
+  }
   for (const [key, value] of Object.entries(body)) {
     const path = at === "" ? key : `${at}.${key}`;
     const leaves = fields[path] ?? [];
     if (isObject(value)) {
       const object = leaves.find((leaf) => leaf.type === "object");
-      if (object !== undefined) missing.push(...missingIn(fields, object.required ?? [], value, path, `${named}${key}.`));
+      if (object !== undefined) missing.push(...missingIn(fields, object, value, path, `${named}${key}.`));
     } else if (Array.isArray(value)) {
       const items = leaves.find((leaf) => leaf.type === "array" && leaf.items !== undefined)?.items;
       if (items === undefined) continue;
       value.forEach((item, i) => {
-        if (isObject(item)) missing.push(...missingIn(items.fields, items.required, item, "", `${named}${key}[${i}].`));
+        if (isObject(item)) missing.push(...missingIn(items.fields, items, item, "", `${named}${key}[${i}].`));
       });
     }
   }
@@ -290,5 +318,5 @@ function missingIn(fields: Record<string, Leaf[]>, required: readonly string[], 
  * @returns The missing fields, empty when none.
  */
 export function missingRequired(snapshot: SchemaSnapshot, body: Record<string, unknown>): string[] {
-  return missingIn(snapshot.fields, snapshot.required, body, "", "");
+  return missingIn(snapshot.fields, snapshot, body, "", "");
 }
