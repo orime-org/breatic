@@ -13,9 +13,12 @@
  * turn replays. Inside a turn it is the previous step's, and a fold voids it
  * until the next call reports again.
  *
+ * The line is the lower of `fold_trigger_tokens` and that room (inner#1879).
  * The window here is 200,000 and the output reserve 16,384, so the line is a
- * known count of 183,616. Every "does not fold" case runs its positive twin in
- * the same test, so it cannot pass on a turn that never folds at all.
+ * known count of 183,616; the last block runs a 1,000,000 window, where the
+ * trigger of 750,000 is the lower. Every "does not fold" case runs its
+ * positive twin in the same test, so it cannot pass on a turn that never
+ * folds at all.
  */
 
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,14 +76,15 @@ type Rows = Array<MessageData & { forModel: unknown }>;
  * @param options.edit - Change the rows the first turn left.
  * @param options.memory - The conversation memory the second turn reads.
  * @param options.stopDuringTool - The reader stops the first turn while its tool runs.
+ * @param options.window - The main model's window, when not {@link WINDOW}.
  * @returns How many folds the second turn ran, and what it sent first.
  */
 async function nextTurnAfter(
   first: ScriptedCall[],
-  options: { edit?: (rows: Rows) => void; memory?: string; stopDuringTool?: boolean } = {},
+  options: { edit?: (rows: Rows) => void; memory?: string; stopDuringTool?: boolean; window?: number } = {},
 ): Promise<{ folds: number; watermarks: number[]; firstSystem: string; foldedBeforeFirstCall: boolean }> {
   resetWorld();
-  world.window = WINDOW;
+  world.window = options.window ?? WINDOW;
   world.script = first;
   if (options.stopDuringTool === true) world.duringTool = () => world.controller.abort();
   await sendMessage("first");
@@ -304,5 +308,53 @@ describe("in the middle of a turn", () => {
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call", "tool", "fold", "call"]);
     expect(world.folds.map((f) => f.watermarkBefore)).toEqual([0, 1]);
     expect(toolPairsOf(world.prompts[2] ?? [])).toEqual({ calls: ["c1", "c2"], results: ["c1", "c2"] });
+  });
+});
+
+describe("when the window leaves more room than the trigger line", () => {
+  /** A window whose room, 983,616, is above the trigger. */
+  const BIG_WINDOW = 1_000_000;
+  /** `fold_trigger_tokens`: the known count that folds before the next call. */
+  const TRIGGER = 750_000;
+
+  it("folds at the start of a turn once the newest reply's count reaches the trigger, and not one token under it", async () => {
+    const under = await nextTurnAfter([answers("first answer", TRIGGER - 616, 615)], { window: BIG_WINDOW });
+    const at = await nextTurnAfter([answers("first answer", TRIGGER - 616, 616)], { window: BIG_WINDOW });
+
+    expect(under.folds).toBe(0);
+    expect(at.folds).toBe(1);
+    expect(at.foldedBeforeFirstCall).toBe(true);
+  });
+
+  it("folds before the next call in the middle of a turn once the previous call's count reaches the trigger", async () => {
+    const history = [...plainTurn(1, 10_000), ...plainTurn(2, 10_000), ...plainTurn(3, 10_000)];
+    const run = async (output: number): Promise<number> => {
+      resetWorld();
+      world.window = BIG_WINDOW;
+      world.history = history;
+      world.nextTurn = 4;
+      world.script = [callsFetch("c1", TRIGGER - 600, output), answers("done")];
+      await sendMessage();
+      return world.folds.length;
+    };
+
+    expect(await run(599)).toBe(0);
+    expect(await run(600)).toBe(1);
+    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call"]);
+  });
+
+  it("reads the trigger from the agent config", async () => {
+    const shipped = await nextTurnAfter([answers("first answer", 600_000, 10)], { window: BIG_WINDOW });
+    resetWorld();
+    world.window = BIG_WINDOW;
+    world.config.fold_trigger_tokens = 600_000;
+    world.script = [answers("first answer", 600_000, 10)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.script = [answers("second")];
+    await sendMessage("second");
+
+    expect(shipped.folds).toBe(0);
+    expect(world.folds).toHaveLength(1);
   });
 });

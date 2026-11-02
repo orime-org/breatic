@@ -4,8 +4,9 @@
 /**
  * The three numbers a fold is decided and sized by (inner#1567, design 6.2 and 6.4.1).
  *
- * Remaining room is the window less the output reserve less what the provider
- * last reported; with no report there is nothing to check. A fold runs down to
+ * A turn folds once what the provider last reported reaches the lower of the
+ * trigger (inner#1879) and the window less the output reserve; with no report
+ * there is nothing to check. A fold runs down to
  * the lower of the keep line and the room the window leaves, less the room
  * memory itself takes, and sizes the request by the largest count it holds.
  */
@@ -20,6 +21,10 @@ const { foldSize, foldTarget, needsFold } = await import("@server/agent/turn-fol
 const WINDOW = 1_000_000;
 const MAX_OUTPUT = 65_536;
 const RESERVE = 32_768;
+/** Above the window less the output reserve, so the window line is the lower. */
+const NO_TRIGGER = WINDOW;
+/** `fold_trigger_tokens` as shipped. */
+const TRIGGER = 750_000;
 
 describe("foldTarget", () => {
   it("uses the keep line when the window leaves more room than it", () => {
@@ -46,23 +51,41 @@ describe("foldTarget", () => {
 
 describe("needsFold", () => {
   it("folds when the known count leaves exactly no room", () => {
-    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, known: WINDOW - MAX_OUTPUT })).toBe(true);
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: NO_TRIGGER, known: WINDOW - MAX_OUTPUT })).toBe(true);
   });
 
   it("folds when the known count is past the room", () => {
-    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, known: WINDOW - MAX_OUTPUT + 1 })).toBe(true);
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: NO_TRIGGER, known: WINDOW - MAX_OUTPUT + 1 })).toBe(true);
   });
 
   it("sends as is when one token of room is left", () => {
-    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, known: WINDOW - MAX_OUTPUT - 1 })).toBe(false);
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: NO_TRIGGER, known: WINDOW - MAX_OUTPUT - 1 })).toBe(false);
   });
 
   it("does not check without a known count", () => {
-    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, known: undefined })).toBe(false);
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: TRIGGER, known: undefined })).toBe(false);
   });
 
   it("folds on a small window that a large-window count would pass", () => {
-    expect(needsFold({ window: 200_000, maxOutput: MAX_OUTPUT, known: 150_000 })).toBe(true);
+    expect(needsFold({ window: 200_000, maxOutput: MAX_OUTPUT, trigger: TRIGGER, known: 150_000 })).toBe(true);
+  });
+
+  it("folds at the trigger when it is below the window line, and not one token under it", () => {
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: TRIGGER, known: TRIGGER })).toBe(true);
+    expect(needsFold({ window: WINDOW, maxOutput: MAX_OUTPUT, trigger: TRIGGER, known: TRIGGER - 1 })).toBe(false);
+  });
+
+  it("folds once the known count reaches the lower of the trigger and the window line, for any inputs", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 2_000_000 }),
+        fc.integer({ min: 0, max: 200_000 }),
+        fc.integer({ min: 1, max: 2_000_000 }),
+        fc.integer({ min: 0, max: 2_000_000 }),
+        (window, maxOutput, trigger, known) =>
+          needsFold({ window, maxOutput, trigger, known }) === known >= Math.min(trigger, window - maxOutput),
+      ),
+    );
   });
 });
 
