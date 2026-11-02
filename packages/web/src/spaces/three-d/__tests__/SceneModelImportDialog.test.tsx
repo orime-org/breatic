@@ -357,6 +357,38 @@ describe('model import dialog footer during checks and after refusals (inner#169
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
   });
 
+  it('keeps focus on Add accompanying files while its check runs and hands it to Import to scene when the model is ready', async () => {
+    const failing = idleImport();
+    const prepared: PreparedModel = { file: new File(['model'], 'a.gltf'), entry: 'a.gltf', entries: ['a.gltf'],
+      paths: ['a.gltf', 'mesh.bin'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() };
+    const ready = Promise.withResolvers<PreparedModel>();
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('missing', 'Missing model resources: mesh.bin', { detail: '', info: { entries: [], paths: ['a.gltf'], missing: ['mesh.bin'] } }));
+    failing.prepare.mockReturnValueOnce(ready.promise);
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.gltf', file: new File(['{}'], 'a.gltf') }]); });
+    const add = screen.getByRole('button', { name: 'Add accompanying files' });
+    add.focus();
+    fireEvent.click(add);
+    await act(async () => { fireEvent.change(screen.getByTestId('model-import-dialog').querySelector('input[type="file"]')!, { target: { files: [new File(['b'], 'mesh.bin')] } }); });
+    expect(failing.controller.getSnapshot().phase).toBe('checking');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add accompanying files' }));
+    await act(async () => { ready.resolve(prepared); await ready.promise; });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import to scene' })));
+  });
+
+  it('keeps the main-file choice mounted while the chosen file is checked', async () => {
+    const failing = idleImport();
+    const files = [{ path: 'a.glb', file: new File(['a'], 'a.glb') }, { path: 'b.glb', file: new File(['b'], 'b.glb') }];
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose a model entry', { detail: '', info: { entries: ['a.glb', 'b.glb'], paths: ['a.glb', 'b.glb'], missing: [] } }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select(files); });
+    const choice = screen.getByRole('combobox');
+    choice.focus();
+    await act(async () => { void failing.controller.select(failing.controller.getSnapshot().files, 'b.glb'); });
+    expect(failing.controller.getSnapshot().phase).toBe('checking');
+    expect(document.activeElement).toBe(choice);
+  });
+
   it('keeps focus in the name field when clearing the name disables Import to scene', async () => {
     const { controller } = await readyImport();
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);

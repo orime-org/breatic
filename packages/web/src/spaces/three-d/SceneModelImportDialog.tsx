@@ -73,19 +73,23 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const retryable = failedUpload && (uploadFailure?.retryable ?? true);
   // A check that failed outside the model content can succeed on the same retained collection.
   const retryCheck = snapshot.phase === 'failed' && prepared === null && error !== null && !(error instanceof ModelImportError) && snapshot.files.length > 0;
-  // The pressed Retry stays mounted and focusable while the check it started runs; any later select publishes a new snapshot.
-  const [retried, setRetried] = React.useState<typeof snapshot | null>(null);
-  const checkRetrying = checking && retried === snapshot;
+  // The control that started a check stays mounted and focusable while that check runs; any later select publishes a new snapshot.
+  const [started, setStarted] = React.useState<{ snapshot: typeof snapshot; control: 'retry' | 'supplement' } | null>(null);
+  const checkRetrying = checking && started?.snapshot === snapshot && started.control === 'retry';
+  const supplementing = checking && started?.snapshot === snapshot && started.control === 'supplement';
   const confirmDisabled = !prepared || !['ready', 'failed', 'uploading', 'registering'].includes(snapshot.phase) || (failedUpload && !retryable) || !canEdit || !snapshot.name.trim();
   const primaryUnavailable = !retryCheck && !checkRetrying && !busy && confirmDisabled;
   const primaryButton = React.useRef<HTMLButtonElement>(null);
   const chooseFilesButton = React.useRef<HTMLButtonElement>(null);
   const addResourcesButton = React.useRef<HTMLButtonElement>(null);
+  const content = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    // A focused button that turns natively disabled drops keyboard focus to the body; hand it to the control that remedies the refusal.
-    if (!primaryUnavailable || (document.activeElement !== primaryButton.current && document.activeElement !== document.body)) return;
-    (addResourcesButton.current ?? chooseFilesButton.current)?.focus();
-  }, [primaryUnavailable]);
+    // A focused button that turns natively disabled drops keyboard focus to the body, and one that unmounts drops it to the dialog;
+    // hand it to the next step: Import to scene when it is available, otherwise the control that remedies the refusal.
+    const active = document.activeElement;
+    if (checking || (active !== document.body && active !== content.current && !(primaryUnavailable && active === primaryButton.current))) return;
+    (primaryUnavailable ? addResourcesButton.current ?? chooseFilesButton.current : primaryButton.current)?.focus();
+  }, [primaryUnavailable, checking]);
 
   /**
    * Ask for a fresh source collection through the browser's hidden file input.
@@ -125,6 +129,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
     appendFiles.current = false;
     setDetails(false);
     void controller.select(append ? [...current.files, ...supplementSources(files, current.missing)] : sourcesFromFiles(files), append ? current.entry : undefined);
+    if (append) setStarted({ snapshot: controller.getSnapshot(), control: 'supplement' });
   }, [controller]);
   /**
    * Read a dropped file collection through the same inspection entry point.
@@ -169,7 +174,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
    */
   const checkAgain = React.useCallback((): void => {
     void controller.select(snapshot.files, snapshot.entry);
-    setRetried(controller.getSnapshot());
+    setStarted({ snapshot: controller.getSnapshot(), control: 'retry' });
   }, [controller, snapshot.files, snapshot.entry]);
   /**
    * Hide this view while the document retains any active import.
@@ -184,7 +189,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const detailsIcon = React.useMemo(() => <ChevronRight className={details ? 'size-3 rotate-90' : 'size-3'} />, [details]);
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className='max-w-[760px]' onCloseAutoFocus={returnFocus} data-testid='model-import-dialog'>
+    <DialogContent ref={content} className='max-w-[760px]' onCloseAutoFocus={returnFocus} data-testid='model-import-dialog'>
       <DialogHeader><DialogTitle>{t('spaces.threeD.importModel.title')}</DialogTitle><DialogDescription>{t('spaces.threeD.importModel.description')}</DialogDescription></DialogHeader>
       <ScrollArea viewportClassName='max-h-[calc(100dvh-200px)] p-4'>
         <div className='space-y-4'>
@@ -220,7 +225,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
                   : error ? <div className='space-y-2'><p className='flex items-start gap-2 text-sm text-status-error'><TriangleAlert className='mt-0.5 size-4 shrink-0' /><span>{errorText}</span></p>{error instanceof ModelImportError && error.budget && <p className='pl-6 text-xs text-muted-foreground'>{budgetText(t, error.budget)}</p>}{error instanceof ModelImportError && error.detail && <p className='break-all pl-6 text-xs text-muted-foreground'>{error.detail}</p>}{snapshot.missing.length > 0 && <ScrollArea viewportClassName='max-h-24'><div className='space-y-1 pl-6 text-xs text-muted-foreground'>{snapshot.missing.map((path) => <p className='break-all' key={path}>{path}</p>)}</div></ScrollArea>}</div>
                     : <p className='flex items-center gap-2 text-sm'><Check className='size-4 shrink-0 text-status-success' />{t('spaces.threeD.importModel.ready')}</p>}
               {!canEdit && <p className='text-sm text-muted-foreground'>{snapshot.assetId ? t('spaces.threeD.importModel.registeredReadOnly') : t('spaces.threeD.importModel.readOnlyHint')}</p>}
-              {snapshot.missing.length > 0 && <Button ref={addResourcesButton} variant='outline' className='w-fit' onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
+              {(snapshot.missing.length > 0 || supplementing) && <Button ref={addResourcesButton} variant='outline' className='w-fit' loading={supplementing} onClick={supplement} disabled={busy || !canEdit}>{t('spaces.threeD.importModel.addResources')}</Button>}
               {prepared?.warnings?.length ? <div className='space-y-1 text-xs text-muted-foreground'><p>{t('spaces.threeD.importModel.optionalExtensions')}</p>{prepared.warnings.map((warning) => <p key={warning} className='break-all'>{warning}</p>)}</div> : null}
               {snapshot.paths.length > 0 && <Button variant='outline' size='compact' className='w-fit text-xs text-muted-foreground' icon={detailsIcon} onClick={toggleDetails}>{details ? t('spaces.threeD.importModel.hideFiles') : t('spaces.threeD.importModel.showFiles')}</Button>}
               {details && <ScrollArea className='h-[70px]' viewportClassName='space-y-1'><div className='space-y-1 text-xs text-muted-foreground'>{snapshot.paths.map((path) => <p key={path} className='break-all'>{path}</p>)}</div></ScrollArea>}

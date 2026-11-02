@@ -104,8 +104,9 @@ export class ModelImportController {
     this.snapshot.prepared?.dispose();
     const operation = new AbortController();
     this.operation = operation;
+    // Choosing another main file re-checks the same collection, whose entries stay the same while it runs.
     this.publish({ phase: 'checking', prepared: null, assetId: null, objectId: null, error: null, progress: 0,
-      files, entry, entries: [], paths: [], missing: [] });
+      files, entry, entries: files === this.snapshot.files ? this.snapshot.entries : [], paths: [], missing: [] });
     try {
       const prepared = await this.inputs.prepare(files, entry, operation.signal);
       if (operation.signal.aborted) { prepared.dispose(); return; }
