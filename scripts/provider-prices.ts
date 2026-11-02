@@ -32,6 +32,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
+import { yamlText } from "./provider-yaml.mjs";
 
 interface Pricing { kind: "formula"; base_price: number; formula: string; discount_rate: number }
 interface Binding {
@@ -300,7 +301,7 @@ for (const upstream of [...new Set(bindings.map((b) => b.binding.upstream))]) {
 
 for (const [modality, doc] of docs) {
   const path = resolve(ROOT, `config/provider/media/${modality}.yaml`);
-  const text = doc.toString({ lineWidth: 0 });
+  const text = yamlText(doc, { lineWidth: 0 });
   if (text !== readFileSync(path, "utf8")) writeFileSync(path, text);
 }
 

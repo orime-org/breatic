@@ -24,8 +24,9 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { parse, stringify } from "yaml";
+import { Document, parse } from "yaml";
 import { mergeLlm, mergeMediaModels, mergeUpstreams } from "./provider-config-merge.mjs";
+import { yamlText } from "./provider-yaml.mjs";
 
 interface RawPricing { base_price: number; formula: string; discount_rate: number }
 interface RawParam {
@@ -144,7 +145,7 @@ function current<T>(path: string): T | undefined {
 function write(path: string, header: string, content: unknown): void {
   const out = resolve(ROOT, "config/provider", path);
   mkdirSync(dirname(out), { recursive: true });
-  const body = content === null ? "" : stringify(content, { lineWidth: 0 });
+  const body = content === null ? "" : yamlText(new Document(content), { lineWidth: 0 });
   writeFileSync(out, `${header.trim().split("\n").map((line) => `# ${line}`.trimEnd()).join("\n")}\n\n${body}`);
 }
 

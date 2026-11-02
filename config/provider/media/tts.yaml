@@ -364,9 +364,9 @@ models:
             Chinese (Mandarin)_BashfulGirl: Chinese (Mandarin)_BashfulGirl
             Arabic_CalmWoman: Arabic_CalmWoman
             Arabic_FriendlyGuy: Arabic_FriendlyGuy
-            Cantonese_ProfessionalHost（F): Cantonese_ProfessionalHost（F)
+            "Cantonese_ProfessionalHost\uFF08F)": "Cantonese_ProfessionalHost\uFF08F)"
             Cantonese_GentleLady: Cantonese_GentleLady
-            Cantonese_ProfessionalHost（M): Cantonese_ProfessionalHost（M)
+            "Cantonese_ProfessionalHost\uFF08M)": "Cantonese_ProfessionalHost\uFF08M)"
             Cantonese_PlayfulMan: Cantonese_PlayfulMan
             Cantonese_CuteGirl: Cantonese_CuteGirl
             Cantonese_KindWoman: Cantonese_KindWoman
@@ -859,9 +859,9 @@ models:
             Chinese (Mandarin)_BashfulGirl: Chinese (Mandarin)_BashfulGirl
             Arabic_CalmWoman: Arabic_CalmWoman
             Arabic_FriendlyGuy: Arabic_FriendlyGuy
-            Cantonese_ProfessionalHost（F): Cantonese_ProfessionalHost（F)
+            "Cantonese_ProfessionalHost\uFF08F)": "Cantonese_ProfessionalHost\uFF08F)"
             Cantonese_GentleLady: Cantonese_GentleLady
-            Cantonese_ProfessionalHost（M): Cantonese_ProfessionalHost（M)
+            "Cantonese_ProfessionalHost\uFF08M)": "Cantonese_ProfessionalHost\uFF08M)"
             Cantonese_PlayfulMan: Cantonese_PlayfulMan
             Cantonese_CuteGirl: Cantonese_CuteGirl
             Cantonese_KindWoman: Cantonese_KindWoman
