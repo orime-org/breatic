@@ -6,6 +6,7 @@ import type { SpaceType } from '@breatic/shared';
 
 import { useCollabSocketContext } from '@web/data/yjs/collab-socket';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { SpaceRequestAnswerContext } from '@web/pages/project/chat/space-request-answer';
 import type { ChatSharedSpaceSummary, ChatSpaceRequest } from '@web/pages/project/chat/types';
@@ -63,7 +64,7 @@ function SpaceRow({ row }: { row: Row }): React.JSX.Element {
         </span>
       )}
       {row.state === undefined ? null : (
-        <span data-testid='space-request-state' className='ml-auto shrink-0 text-xs text-muted-foreground'>
+        <span data-testid='space-request-state' className={cn('shrink-0 text-xs text-muted-foreground', name !== undefined && 'ml-auto')}>
           {t(STATE_KEYS[row.state])}
         </span>
       )}
@@ -165,14 +166,19 @@ export const SpaceRequestCard = React.memo(function SpaceRequestCard({ request }
   }, [awaiting, listed, request]);
   const heading = awaiting
     ? t('chat.spaceRequest.title')
-    : t(request.state === 'shared' ? 'chat.spaceRequest.shared' : request.state === 'declined' ? 'chat.spaceRequest.declined' : 'chat.spaceRequest.replied');
+    : t(request.state === 'shared' ? 'chat.spaceRequest.shared' : request.state === 'declined' ? 'chat.spaceRequest.declined' : 'chat.questionnaire.replied');
   return (
     <div
       data-testid='space-request-card'
       className='mt-2 flex flex-col gap-3 rounded-overlay border border-border bg-popover px-3 py-2.5'
     >
       <div className='flex flex-col gap-1'>
-        <p className='text-sm font-medium text-foreground'>{heading}</p>
+        <p
+          data-testid='space-request-heading'
+          className={awaiting ? 'text-sm font-semibold text-foreground' : 'text-sm text-muted-foreground'}
+        >
+          {heading}
+        </p>
         {awaiting ? <p className='break-words text-xs text-muted-foreground'>{request.reason}</p> : null}
       </div>
       {rows.length === 0 ? null : (

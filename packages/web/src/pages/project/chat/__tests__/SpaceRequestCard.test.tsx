@@ -242,7 +242,7 @@ describe('allowing', () => {
 
     expect(signal.aborted).toBe(true);
     expect(value.answer).not.toHaveBeenCalled();
-    expect(screen.getByTestId('space-request-card')).toHaveTextContent(t('chat.spaceRequest.replied'));
+    expect(screen.getByTestId('space-request-card')).toHaveTextContent(t('chat.questionnaire.replied'));
   });
 
   it('drops the read when the card goes away while it reads', async () => {
@@ -328,6 +328,33 @@ describe('a settled card', () => {
     expect(within(card).queryAllByRole('button')).toHaveLength(0);
   });
 
+  it('starts the mark of a deleted Space where its name would be, and keeps the others at the end of the row', () => {
+    draw({
+      ...REQUEST,
+      spaces: [{ id: 'c1' }, { id: 'x2' }],
+      state: 'shared',
+      results: [
+        { id: 'c1', name: 'Cast board', kind: 'canvas', state: 'timed_out' },
+        { id: 'x2', state: 'gone' },
+      ],
+    });
+
+    expect(within(rows()[0]!).getByTestId('space-request-state')).toHaveClass('ml-auto');
+    expect(within(rows()[1]!).getByTestId('space-request-state')).not.toHaveClass('ml-auto');
+  });
+
+  it('heads a waiting card like the proposal cards and a settled one in muted text', () => {
+    const { unmount } = draw(REQUEST);
+    expect(screen.getByTestId('space-request-heading')).toHaveClass('font-semibold', 'text-foreground');
+    unmount();
+
+    draw({ ...REQUEST, state: 'declined' });
+    const settled = screen.getByTestId('space-request-heading');
+    expect(settled).toHaveClass('text-muted-foreground');
+    expect(settled).not.toHaveClass('font-semibold');
+    expect(settled).not.toHaveClass('font-medium');
+  });
+
   it('shows a Space that was gone as deleted even when the summary kept its name', () => {
     draw({ ...REQUEST, spaces: [{ id: 'd1' }], state: 'shared', results: [{ id: 'd1', name: 'Script v3', kind: 'document', state: 'gone' }] });
 
@@ -347,7 +374,7 @@ describe('a settled card', () => {
     draw({ ...REQUEST, state: 'replied' });
     const card = screen.getByTestId('space-request-card');
 
-    expect(card).toHaveTextContent(t('chat.spaceRequest.replied'));
+    expect(card).toHaveTextContent(t('chat.questionnaire.replied'));
     expect(rows()).toHaveLength(0);
     expect(within(card).queryAllByRole('button')).toHaveLength(0);
   });

@@ -532,7 +532,6 @@
       "decline": "閲覧を拒否",
       "shared": "Agent に共有しました",
       "declined": "Agent に共有しませんでした",
-      "replied": "チャットで返信しました",
       "partBlocks": "{to, select, end {ブロック {from} 以降} other {ブロック {from}–{to}}}",
       "partNodes": "{count} 個のノード",
       "state": {

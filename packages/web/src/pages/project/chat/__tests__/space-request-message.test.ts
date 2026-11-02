@@ -164,7 +164,6 @@ describe('the words the card and its failure line use', () => {
     'chat.spaceRequest.decline',
     'chat.spaceRequest.shared',
     'chat.spaceRequest.declined',
-    'chat.spaceRequest.replied',
     'chat.spaceRequest.partBlocks',
     'chat.spaceRequest.partNodes',
     'chat.spaceRequest.state.unreadable',
@@ -179,4 +178,12 @@ describe('the words the card and its failure line use', () => {
 
     expect(missing).toEqual([]);
   });
+
+  it.each(LOCALE_CATALOGS.map(([tag, catalog]) => [tag, catalog] as const))(
+    'say a reply in the chat with the questionnaire\'s own words in %s',
+    (_tag, catalog) => {
+      expect(readPath(catalog, 'chat.questionnaire.replied')).toEqual(expect.any(String));
+      expect(readPath(catalog, 'chat.spaceRequest.replied')).toBeUndefined();
+    },
+  );
 });

@@ -532,7 +532,6 @@
       "decline": "拒絕查看",
       "shared": "已給 Agent 查看",
       "declined": "沒有給 Agent 查看",
-      "replied": "你在對話中回覆了",
       "partBlocks": "{to, select, end {第 {from} 塊起} other {第 {from}–{to} 塊}}",
       "partNodes": "{count} 個節點",
       "state": {

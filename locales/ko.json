@@ -532,7 +532,6 @@
       "decline": "보기 거부",
       "shared": "Agent에게 공유함",
       "declined": "Agent에게 공유하지 않음",
-      "replied": "채팅에서 답장했습니다",
       "partBlocks": "{to, select, end {{from}번 블록부터} other {{from}–{to}번 블록}}",
       "partNodes": "노드 {count}개",
       "state": {

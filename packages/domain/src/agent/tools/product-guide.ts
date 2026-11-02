@@ -423,7 +423,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
       `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
       `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
-      `which then reads ${quoted(t("chat.spaceRequest.replied"))}.`,
+      `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
