@@ -11,14 +11,27 @@
  * with a selected version whose ledger failed transiently it makes the new job the
  * writer of that toolInputId without a new carrier, keeps a content failure, and
  * two concurrent repairs make one writer. The request carries the fields §3.5
- * fixes (storageKey, sourceFingerprint, action, jobId, deadline, limits, pricing)
- * plus the admission policy; the response is the store's view.
+ * fixes (storageKey, sourceFingerprint, action, jobId, deadline, limits, the basic
+ * and standard-4 prices, the target policy) plus the admission policy; the
+ * response is the ingest snapshot (§3.5 response row, §5.1 step 6): source
+ * binding, selected bundle, preparation and the L state of the selected
+ * toolInputId in the §10.1 wire states, with no full array. Writer facts are
+ * read from the store itself.
  */
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { videoPresentationIngestSnapshotSchema } from '@breatic/shared';
 import { videoPresentationRoute, type VideoPresentationEnv } from '@ingest/video-presentation-route.js';
-import { admission, bundle, H, planned, POLICY, source, T, withStore, type Admission, type MachineView } from './helpers/machine-store.js';
+import { admission, bundle, H, planned, POLICY, source, T, withStore, type Admission } from './helpers/machine-store.js';
+
+/** The decided S6c snapshot (§3.5 response row); declared here until the shared type carries it. */
+interface Snapshot {
+  sourceBinding: { storageKey: string; sourceFingerprint: string };
+  presentation: Record<string, unknown> | null;
+  preparation: { targetPolicyVersion: number; jobId: string; stage: string; failure: string | null } | null;
+  ledger: { state: string; receipt: Record<string, unknown> | null; failure: string | null } | null;
+}
 
 /**
  * The route environment whose DO surface reaches the real store of one key.
@@ -36,17 +49,17 @@ function routeEnv(key: string): VideoPresentationEnv {
 }
 
 /**
- * Post one request to the route and read the view.
+ * Post one request to the route and parse the snapshot.
  * @param key - The storage key.
  * @param body - The request body.
- * @returns The view.
+ * @returns The snapshot.
  */
-async function post(key: string, body: Record<string, unknown>): Promise<MachineView> {
+async function post(key: string, body: Record<string, unknown>): Promise<Snapshot> {
   const response = await videoPresentationRoute(new Request('https://ingest.example.test/video-presentation', {
     method: 'POST', headers: { 'x-ingest-secret': 'test-ingest-secret', 'content-type': 'application/json' }, body: JSON.stringify(body),
   }), routeEnv(key));
   expect(response.status).toBe(200);
-  return response.json<MachineView>();
+  return videoPresentationIngestSnapshotSchema.parse(await response.json()) as unknown as Snapshot;
 }
 
 /**
@@ -59,7 +72,7 @@ function acceptBody(key: string, jobId: string): Record<string, unknown> {
   const value = admission(key, jobId);
   return {
     action: 'accept', storageKey: key, sourceFingerprint: H, jobId, deadlineAt: value.deadlineAt, original: value.original, contentType: value.contentType,
-    repair: true, limits: value.limits, pricing: value.pricing, actorUserId: value.actorUserId, projectId: value.projectId,
+    repair: true, limits: value.limits, pricing: value.pricing, targetPolicyVersion: value.targetPolicyVersion, actorUserId: value.actorUserId, projectId: value.projectId,
     packedURL: `https://assets.example.test/${key}.packed.mp4`, manifestURL: `https://assets.example.test/${key}.alpha.json`,
     sourceLedgerURL: value.sourceLedgerURL, sourceLedgerTableURL: value.sourceLedgerTableURL, policy: POLICY,
   };
@@ -80,30 +93,47 @@ async function selectedWithFailedLedger(code: string): Promise<string> {
   return key;
 }
 
+/**
+ * A read body with the target policy (§3.5 「freeze/read/repair都传目标policy」).
+ * @param key - The storage key.
+ * @returns The body.
+ */
+function readBody(key: string): Record<string, unknown> {
+  return { action: 'read', storageKey: key, sourceFingerprint: H, targetPolicyVersion: 1 };
+}
+
+const E = 'e'.repeat(64);
+
 describe('ledger repair through the presentation route (inner#1306 §7.4, §5.2)', () => {
   it('R01 a read leaves a transient ledger failure as it is; the repair accept makes the new job the writer of the selected toolInputId', async () => {
     const key = await selectedWithFailedLedger('source_ledger_invalid');
-    const read = await post(key, { action: 'read', storageKey: key, sourceFingerprint: H });
-    expect(read.ledgers[T]).toEqual({ kind: 'failed-transient', code: 'source_ledger_invalid' });
-    expect(await post(key, { action: 'read', storageKey: key, sourceFingerprint: H })).toEqual(read);
+    const read = await post(key, readBody(key));
+    expect(read).not.toHaveProperty('ledgers');
+    expect(read.sourceBinding).toEqual({ storageKey: key, sourceFingerprint: H });
+    expect(read.presentation).toMatchObject({ versionId: E, toolInputId: T });
+    expect(read.ledger).toEqual({ state: 'failed', receipt: null, failure: 'source_ledger_invalid' });
+    expect(await post(key, readBody(key))).toEqual(read);
     const accepted = await post(key, acceptBody(key, 'route-retry'));
-    expect(accepted.ledgers[T]).toEqual({ kind: 'pending', writer: 'route-retry', writerArchived: false, waiters: [] });
-    expect(accepted.selected).toEqual(read.selected);
+    expect(accepted.ledger).toEqual({ state: 'pending', receipt: null, failure: null });
+    expect(accepted.presentation).toEqual(read.presentation);
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'pending', writer: 'route-retry', writerArchived: false, waiters: [] });
   });
 
   it('R02 the repair accept keeps a content ledger failure and makes no writer', async () => {
     const key = await selectedWithFailedLedger('unsupported_rate');
     const accepted = await post(key, acceptBody(key, 'content-route-retry'));
-    expect(accepted.ledgers[T]).toEqual({ kind: 'failed-content', code: 'unsupported_rate' });
-    expect(accepted.selected).toEqual({ kind: 'ready', version: { versionId: 'e'.repeat(64), toolInputId: T } });
+    expect(accepted.ledger).toEqual({ state: 'failed', receipt: null, failure: 'unsupported_rate' });
+    expect(accepted.presentation).toMatchObject({ versionId: E, toolInputId: T });
+    const view = await withStore(key, (store) => store.read(key, H));
+    expect(view.ledgers[T]).toEqual({ kind: 'failed-content', code: 'unsupported_rate' });
+    expect(view.selected).toEqual({ kind: 'ready', version: { versionId: E, toolInputId: T } });
   });
 
   it('R03 two concurrent repair accepts make one writer', async () => {
     const key = await selectedWithFailedLedger('expired');
     const [a, b] = await Promise.all([post(key, acceptBody(key, 'route-a')), post(key, acceptBody(key, 'route-b'))]);
-    const writers = [a, b].map((view) => (view.ledgers[T] as { writer?: string }).writer);
-    expect(new Set(writers).size).toBe(1);
-    expect(['route-a', 'route-b']).toContain(writers[0]);
-    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toMatchObject({ kind: 'pending', writer: writers[0] });
+    expect([a.ledger, b.ledger]).toEqual([{ state: 'pending', receipt: null, failure: null }, { state: 'pending', receipt: null, failure: null }]);
+    const writer = ((await withStore(key, (store) => store.read(key, H))).ledgers[T] as { writer?: string }).writer;
+    expect(['route-a', 'route-b']).toContain(writer);
   });
 });

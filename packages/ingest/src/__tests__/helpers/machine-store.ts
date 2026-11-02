@@ -30,7 +30,10 @@ export type ChunkUnit = { kind: 'presentation-chunk'; chunk: number } | { kind: 
 export type ChunkReport = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number } | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
 export type Fact = { kind: 'verified'; bundle: Bundle } | { kind: 'finished'; usage: { wallMs: number; cpuUsec: number | null } };
 export interface Measured { etag: string; size: number; sha256: string; table: { etag: string; size: number; sha256: string } }
-export type Admission = VideoPresentationAdmission & { policy: { chunkRetries: number; maxAutoRepairs: number } };
+/** S6c admission (design §3.5, §5.1): both frozen prices, the target policy version and the frozen retry caps. */
+export type Admission = Omit<VideoPresentationAdmission, 'pricing'> & {
+  pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number };
+};
 export interface MachineStore {
   accept: (admission: Admission) => Promise<MachineView>;
   prepare: (identity: Omit<Identity, 'token'>, now: number) => Promise<{ token: string | null; view: MachineView }>;
@@ -102,7 +105,7 @@ export function admission(key: string, jobId: string, deadlineAt = D): Admission
     actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null, pricing: PRICING,
     limits: { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: 'medium', probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536, sourceLedger: { ...LEDGER_LIMITS } },
     sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(key)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(key)}`,
-    policy: POLICY,
+    targetPolicyVersion: 1, policy: POLICY,
   };
 }
 

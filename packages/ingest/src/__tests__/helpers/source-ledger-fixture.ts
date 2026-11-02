@@ -14,8 +14,11 @@ export const ORIGINAL = { width: 95, height: 63, duration: 2.4 };
 // inner#1306 §77: six budgets, no frame-count ceiling.
 export const LEDGER_LIMITS = { maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216,
   isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000 };
-export const PRICING = { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 },
-  prices: { vcpu_second_usd: 1, memory_gib_second_usd: 1, disk_gb_second_usd: 1 } };
+// S6c (design §3.5, §5.1): admission freezes the basic and the standard-4 prices together.
+export const PRICING = {
+  basic: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 }, prices: { vcpu_second_usd: 1, memory_gib_second_usd: 1, disk_gb_second_usd: 1 } },
+  standard4: { containerClass: 'MiniToolContainerStd4', size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 1, memory_gib_second_usd: 1, disk_gb_second_usd: 1 } },
+};
 
 /**
  * The registered key of the compact table; a missing export fails the case that reaches it.

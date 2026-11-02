@@ -17,7 +17,12 @@ const accept = {
   action: 'accept', storageKey: 'video/canonical.webm', sourceFingerprint: 'a'.repeat(64), jobId: 'video-presentation-a', deadlineAt: 1900000000000,
   original: null, contentType: 'video/webm',
   limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1, sourceLedger: ledgerLimits },
-  pricing: { containerClass: 'MediaContainer', size: { vcpu: 1, memory_gib: 1, disk_gb: 1 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
+  // S6c (design §3.5, §5.1): both prices frozen at admission, the target policy and the frozen retry caps.
+  pricing: {
+    basic: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
+    standard4: { containerClass: 'MiniToolContainerStd4', size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
+  },
+  targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
   packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4', manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json',
   sourceLedgerURL: 'https://assets.example.test/video/canonical.webm.ledger.json',
@@ -40,6 +45,21 @@ describe('presentation admission at the ingest boundary (inner#1306 §77)', () =
       limits: expect.objectContaining({ sourceLedger: ledgerLimits }),
       sourceLedgerURL: accept.sourceLedgerURL,
       sourceLedgerTableURL: accept.sourceLedgerTableURL,
+    }));
+  });
+
+  it('I02 passes both frozen prices, the target policy version and the retry caps through to the store (S6c, §3.5, §5.1)', async () => {
+    const acceptPresentation = vi.fn(async () => ({ presentation: null, attempt: null }));
+    const env = {
+      INGEST_SHARED_SECRET: 'secret',
+      BUCKET: { head: async () => ({ etag: 'e' }) },
+      MEDIA: { idFromName: (name: string) => name, get: () => ({ acceptPresentation }) },
+    } as unknown as VideoPresentationEnv;
+    await videoPresentationRoute(new Request('https://ingest.example.test/video-presentation', {
+      method: 'POST', headers: { 'x-ingest-secret': 'secret', 'content-type': 'application/json' }, body: JSON.stringify(accept),
+    }), env);
+    expect(acceptPresentation).toHaveBeenCalledWith(expect.objectContaining({
+      pricing: accept.pricing, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
     }));
   });
 });
