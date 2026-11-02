@@ -15,6 +15,7 @@ import { cellAround, CellSelection } from '@tiptap/pm/tables';
 
 import { toast } from '@web/lib/toast';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { tableBlock } from './table-fixtures';
 
 import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
@@ -1080,6 +1081,113 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     await settled();
     expect(lines(editor)).toEqual(['paragraph:next', 'paragraph:foo', 'paragraph:xy']);
     expect(selected(editor)).toBe('text:foo');
+  });
+
+  /**
+   * The position in the n-th empty line of the document.
+   * @param editor - The editor.
+   * @param n - Which empty line, from 0.
+   * @returns The position.
+   */
+  function nthEmptyLine(editor: Editor, n: number): number {
+    let seen = 0;
+    let found = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (found < 0 && node.isTextblock && node.content.size === 0) {
+        if (seen === n) found = pos + 1;
+        seen += 1;
+      }
+      return found < 0;
+    });
+    return found;
+  }
+
+  /**
+   * Each cell's words, in order.
+   * @param editor - The editor.
+   * @returns The cells' text, lines joined by a slash.
+   */
+  function cellWords(editor: Editor): string[] {
+    const found: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name !== 'docTableCell') return true;
+      const words: string[] = [];
+      node.descendants((inner) => {
+        if (inner.isTextblock) words.push(inner.textContent);
+        return !inner.isTextblock;
+      });
+      found.push(words.join('/'));
+      return false;
+    });
+    return found;
+  }
+
+  it('pastes words copied from a nested item\'s middle to a later line\'s middle as their lines, and drops them alike', async () => {
+    const doc = [item('par', [item('kid')]), para('next'), para('xxyy')];
+    expect((await copyPaste(doc, ['kid', 1], ['next', 2], ['xxyy', 2])).slice(2)).toEqual(['paragraph:xxid', 'paragraph:neyy']);
+    const deep = [item('a', [item('b', [item('cccc')])]), para('next'), para('xxyy')];
+    expect((await copyPaste(deep, ['cccc', 2], ['next', 2], ['xxyy', 2])).slice(2)).toEqual(['paragraph:xxcc', 'paragraph:neyy']);
+    const { editor } = await openReady(doc as Parameters<typeof open>[0]);
+    dragWithin(editor, positionOf(editor, 'kid', 1), positionOf(editor, 'next', 2), positionOf(editor, 'xxyy', 2));
+    await settled();
+    expect(tree(editor)).toEqual(['bulletListItem:par[bulletListItem:kxt]', 'paragraph:xxid', 'paragraph:neyy']);
+  });
+
+  it('keeps the empty lines a copy between nested items holds, as the same copy at the top level does', async () => {
+    const nested = [item('par', [item('k1k1'), item(''), item('')]), para('xxyy')];
+    const tail = async (at: number): Promise<string[]> => {
+      const { editor } = await openReady(nested as Parameters<typeof open>[0]);
+      const html = copyOf(editor, positionOf(editor, 'k1k1', 2), nthEmptyLine(editor, 1));
+      pasteAtPoint(editor, positionOf(editor, 'xxyy', at), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'x' });
+      await settled();
+      const out = tree(editor).slice(1);
+      unmountAll();
+      return out;
+    };
+    expect(await tail(2)).toEqual(['paragraph:xxk1', 'bulletListItem:', 'paragraph:yy']);
+    expect(await tail(4)).toEqual(['paragraph:xxyyk1', 'bulletListItem:']);
+    expect(await tail(0)).toEqual(['bulletListItem:k1', 'bulletListItem:', 'paragraph:xxyy']);
+    const { editor } = await openReady([para('k1k1'), item('', [item('')]), para('xxyy')] as Parameters<typeof open>[0]);
+    const html = copyOf(editor, positionOf(editor, 'k1k1', 2), nthEmptyLine(editor, 1));
+    pasteAtPoint(editor, positionOf(editor, 'xxyy', 2), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'x' });
+    await settled();
+    expect(tree(editor).slice(2)).toEqual(['paragraph:xxk1', 'bulletListItem:', 'paragraph:yy']);
+  });
+
+  it('pastes from a nested line\'s end to a sibling\'s words as that line break and those words', async () => {
+    const doc = [item('par', [item('k0'), item(''), item('k3k3')]), para('xxyy')];
+    expect((await copyPaste(doc, ['k0', 2], ['k3k3', 2], ['xxyy', 0])).slice(1)).toEqual(['bulletListItem:', 'paragraph:k3xxyy']);
+    const two = [item('par', [item('k0'), item('k3')]), para('xxyy')];
+    expect((await copyPaste(two, ['k0', 2], ['k3', 1], ['xxyy', 2])).slice(1)).toEqual(['paragraph:xx', 'paragraph:kyy']);
+  });
+
+  it('pastes from the end of a line with nested lines as those nested lines, no empty line before them', async () => {
+    const doc = [item('par', [item('kid', [item('gkid')])]), para('next'), para('xxyy')];
+    expect((await copyPaste(doc, ['kid', 3], ['next', 0], ['xxyy', 4])).slice(2)).toEqual(['paragraph:xxyy', 'bulletListItem:gkid']);
+  });
+
+  it('drops words dragged out of a cell as their copy pastes there, never as a table', async () => {
+    const doc = [tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'paragraph', content: 'aaaa' }, { type: 'paragraph', content: 'bb' }] }, 'zzzz'] }] } as never), para('xyzw')];
+    const body = await openReady(doc as Parameters<typeof open>[0]);
+    dragWithin(body.editor, positionOf(body.editor, 'aaaa', 1), positionOf(body.editor, 'aaaa', 3), positionOf(body.editor, 'xyzw', 2));
+    await settled();
+    expect(lines(body.editor)).toEqual(['table', 'paragraph:xyaazw']);
+    expect(cellWords(body.editor)).toEqual(['aa/bb', 'zzzz']);
+    unmountAll();
+    const cell = await openReady(doc as Parameters<typeof open>[0]);
+    dragWithin(cell.editor, positionOf(cell.editor, 'aaaa', 1), positionOf(cell.editor, 'aaaa', 3), positionOf(cell.editor, 'zzzz', 2));
+    await settled();
+    expect(cellWords(cell.editor)).toEqual(['aa/bb', 'zzaazz']);
+  });
+
+  it('pastes a whole line copied in a cell as that line, no empty line after it', async () => {
+    const { editor } = await openReady([tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'paragraph', content: 'aaaa' }, { type: 'paragraph', content: 'bb' }] }, 'zzzz'] }] } as never), para('xyzw')] as Parameters<typeof open>[0]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'aaaa', 0), positionOf(editor, 'bb', 0))));
+    const html = tableClipped(editor as never, view)!.internal;
+    pasteAtPoint(editor, positionOf(editor, 'xyzw', 4), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'aaaa' });
+    await settled();
+    expect(lines(editor)).toEqual(['table', 'paragraph:xyzwaaaa']);
   });
 
   it('drops lines dragged to a nested item\'s start as they paste there', async () => {

@@ -17,6 +17,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
+import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
 import { OURS, open, pasteFormats, unmountAll, type Editor } from './paste-harness';
@@ -433,7 +434,8 @@ describe('a drag within the body', () => {
           };
           const pasted = ready();
           const pastedView = pasted.editor.prosemirrorView;
-          const html = pastedView.serializeForClipboard(pastedView.state.selection.content()).dom.innerHTML;
+          // The copy as the body's copy handler writes it: words in a cell without the table around them.
+          const html = tableClipped(pasted.editor as never, pastedView)?.internal ?? pastedView.serializeForClipboard(pastedView.state.selection.content()).dom.innerHTML;
           // A drop onto the dragged content itself is no paste, and a drag
           // holding no words and no block, a line break alone, puts nothing.
           const { from: start, to: end } = pastedView.state.selection;
@@ -644,6 +646,67 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
           if (whole) for (const line of readerLines(view.state.doc)) expect(new Set(line).size, `lines: ${where}`).toBe(1);
           else expect(readerLines(view.state.doc), `lines: ${where}`).toEqual(linesBefore);
           unmountAll();
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+describe('a copy whose lines are nested (design §5.4.1)', () => {
+  it('pastes as the same lines copied at the top level', () => {
+    const line = fc.oneof(readerWords, fc.constant(''));
+    fc.assert(
+      fc.property(
+        fc.record({
+          lines: fc.array(line, { minLength: 1, maxLength: 4 }),
+          from: fc.nat(),
+          fromAt: fc.nat(4),
+          to: fc.nat(),
+          toAt: fc.nat(4),
+          at: fc.constantFrom(0, 2, 4),
+        }),
+        ({ lines, from, fromAt, to, toAt, at }) => {
+          const items = lines.map((content) => ({ type: 'bulletListItem', content }));
+          // Each line the copy can reach, in order: the lines, then the one after them.
+          const reach = lines.length + 1;
+          const first = from % reach;
+          const last = first + (to % (reach - first));
+          /**
+           * Copies the range and pastes it into the target line.
+           * @param body - The document.
+           * @param offset - How many text blocks come before the first line.
+           * @returns The blocks after the original ones, or null for an empty range.
+           */
+          const pasted = (body: BodyBlock[], offset: number): string | null => {
+            const { editor } = open(body as never);
+            const view = editor.prosemirrorView;
+            const starts: number[] = [];
+            view.state.doc.descendants((node, pos) => {
+              if (node.isTextblock) starts.push(pos + 1);
+              return true;
+            });
+            const point = (index: number, at: number): number => starts[offset + index]! + Math.min(at, view.state.doc.resolve(starts[offset + index]!).parent.content.size);
+            const a = point(first, fromAt);
+            const b = point(last, toAt);
+            if (b <= a) {
+              unmountAll();
+              return null;
+            }
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, a, b)));
+            const html = tableClipped(editor as never, view)?.internal ?? view.serializeForClipboard(view.state.selection.content()).dom.innerHTML;
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, starts[starts.length - 1]! + at)));
+            pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
+            // The target line is the last one: what is pasted lands after the original 'tail'.
+            type Read = { type: string; content?: unknown; children?: Read[] };
+            const label = (block: Read): string => `${block.type}:${Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : ''}[${(block.children ?? []).map(label).join(',')}]`;
+            const after = (editor.document as Read[]).slice(body.length - 1).map(label).join('|');
+            unmountAll();
+            return after;
+          };
+          const nested = pasted([{ type: 'bulletListItem', content: 'par', children: items }, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
+          const flat = pasted([{ type: 'paragraph', content: 'par' }, ...items, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
+          expect(nested, `${JSON.stringify(lines)} ${first}@${fromAt}..${last}@${toAt} @${at}`).toBe(flat);
         },
       ),
       { numRuns: 300 },
