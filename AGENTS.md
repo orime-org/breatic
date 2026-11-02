@@ -9,7 +9,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
-- **breatic is source-available under its own [Breatic Source-Available License v1.0](LICENSE), Apache 2.0 with additional conditions; call it source-available, as the README does.** Check a dependency's licence against it before adding the dependency.
+- **breatic is open source under its own [Breatic Source-Available License v1.0](LICENSE), Apache 2.0 with additional conditions; describe the project as open source everywhere and write "Source-Available" only inside the licence's name.** Check a dependency's licence against it before adding the dependency.
 
 | Read | When |
 |---|---|

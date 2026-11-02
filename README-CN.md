@@ -6,7 +6,7 @@
 
 将创作简报、场景与媒体组织在同一个项目里。在 Document Space 中写作，在 Canvas Space 中生成和调整素材，与 AI Agent 和团队共同推进创作，让每个环节都保留作品的上下文。
 
-**线上已开放 · 源码可用 · 桌面浏览器**
+**线上已开放 · 开源 · 桌面浏览器**
 
 [在线体验][hosted-app] · [观看45秒英文演示](https://youtu.be/mc1XAqtJD_M) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
 
@@ -96,7 +96,7 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 ## 许可证与允许用途
 
-Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码可用**项目，以 Apache 2.0 为基础附加条款。
+Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**开源**项目，以 Apache 2.0 为基础附加条款。
 
 许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [contact@breatic.ai](mailto:contact@breatic.ai)。
 

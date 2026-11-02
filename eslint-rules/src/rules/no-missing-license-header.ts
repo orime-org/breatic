@@ -35,7 +35,7 @@ function staleHeaderLines(lines: readonly string[]): number {
 /**
  * Every first-party source file carries the SPDX header.
  *
- * The repository is source-available under its own licence, and a file
+ * The repository is open source under its own licence, and a file
  * without the header is a file whose terms are unstated wherever it ends up
  * on its own — in a gist, in an issue, in someone's editor. The vendored
  * shadcn components are exempt in the config: they are third-party IP and
