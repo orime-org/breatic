@@ -1,134 +1,150 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/**
+ * Real R2 publication of the full ledger and its compact object (inner#1306,
+ * test plan §89 rewrite; frames-split design §7.3 Rf/Rc, §7.4).
+ *
+ * The write mechanics are unchanged by the design: one producer body split into
+ * the compact and full objects with fixed MIME and the original owner metadata,
+ * short or long streams refused and drained, a completed receipt replayed without
+ * a PUT, a lost commit or acknowledgement recovered from the real objects, and the
+ * deadline rechecked after a claim. What changes is the identity: the writer is
+ * the toolInputId's writer from Tp, and the write points are
+ * `claimSourceLedger`, `commitLedger` and `releaseSourceLedger` for that
+ * toolInputId.
+ */
+
 import { env } from 'cloudflare:test';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { videoSourceLedgerKeyFor } from '@breatic/shared';
-import { writeVideoSourceLedger, type SourceLedgerOwner } from '@ingest/video-source-ledger-write.js';
-import { fixture, receipt, stream, digest, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import * as writeModule from '@ingest/video-source-ledger-write.js';
+import { digest, stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { DECLARATION, expectedReceipt, FULL, H, LEDGER_BODY, ledgerCase, ledgerPort, T, TABLE, withStore, type Identity, type LedgerPort } from './helpers/machine-store.js';
 
-/** Observe ordinary RPC calls while retaining the actual DO implementation. @throws {never} Never. */
-function ports(owner: SourceLedgerOwner): SourceLedgerOwner & { calls: {
-  claim: Mock<SourceLedgerOwner['claimSourceLedger']>; complete: Mock<SourceLedgerOwner['completeSourceLedger']>; release: Mock<SourceLedgerOwner['releaseSourceLedger']>;
-} } {
-  const claim = vi.fn<SourceLedgerOwner['claimSourceLedger']>((identity, declaration) => owner.claimSourceLedger(identity, declaration));
-  const complete = vi.fn<SourceLedgerOwner['completeSourceLedger']>((identity, nonce, measured) => owner.completeSourceLedger(identity, nonce, measured));
-  const release = vi.fn<SourceLedgerOwner['releaseSourceLedger']>((identity, nonce) => owner.releaseSourceLedger(identity, nonce));
-  return { claimSourceLedger: claim, completeSourceLedger: complete, releaseSourceLedger: release, calls: { claim, complete, release } };
+type Write = (input: { bucket: R2Bucket; owner: LedgerPort; identity: Identity; toolInputId: string; declaration: typeof DECLARATION; body: ReadableStream<Uint8Array> }) => Promise<{ ok: boolean; status: number }>;
+const write = (writeModule as unknown as { writeVideoSourceLedger: Write }).writeVideoSourceLedger;
+
+/**
+ * Observe the port's calls while keeping the real store behind it.
+ * @param port - The real port.
+ * @returns The observed port.
+ */
+function observed(port: LedgerPort): LedgerPort & { calls: { claim: Mock<LedgerPort['claimSourceLedger']>; commit: Mock<LedgerPort['commitLedger']>; release: Mock<LedgerPort['releaseSourceLedger']> } } {
+  const claim = vi.fn<LedgerPort['claimSourceLedger']>((identity, toolInputId, declaration) => port.claimSourceLedger(identity, toolInputId, declaration));
+  const commit = vi.fn<LedgerPort['commitLedger']>((identity, toolInputId, owner, measured) => port.commitLedger(identity, toolInputId, owner, measured));
+  const release = vi.fn<LedgerPort['releaseSourceLedger']>((identity, toolInputId, owner) => port.releaseSourceLedger(identity, toolInputId, owner));
+  return { claimSourceLedger: claim, commitLedger: commit, releaseSourceLedger: release, calls: { claim, commit, release } };
 }
 
-/** Wait for a synthetic original deadline, without asserting a platform latency budget. @throws {never} Never. */
+/**
+ * Wait past a synthetic deadline.
+ * @param deadlineAt - The deadline.
+ */
 async function passDeadline(deadlineAt: number): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, Math.max(0, deadlineAt - Date.now() + 5)));
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, deadlineAt - Date.now() + 5)));
 }
 
-describe('dedicated source-ledger real R2 publication (inner#1306)', () => {
-  it('W01 splits the one producer write into the compact table and the full ledger, each complete with fixed MIME and original owner metadata', async () => {
-    const value = await fixture();
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner: value.owner, identity: value.identity, declaration: value.declaration, body: stream(value.body) })).toEqual({ ok: true, status: 200 });
-    const object = await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey));
-    expect(new Uint8Array(await object!.arrayBuffer())).toEqual(value.bytes);
-    expect(object!.httpMetadata?.contentType).toBe('application/json');
-    expect(object!.customMetadata?.sourceLedgerJobId).toBe(value.identity.jobId);
-    expect(object!.customMetadata?.sourceLedgerClaimOwner).toEqual(expect.any(String));
-    const table = await env.BUCKET.get(tableKeyFor(value.admission.storageKey));
-    expect(new Uint8Array(await table!.arrayBuffer())).toEqual(value.tableBytes);
-    expect(table!.httpMetadata?.contentType).toBe('application/json');
-    expect(table!.customMetadata).toEqual(object!.customMetadata);
-    const measured = { etag: object!.etag, size: object!.size, sha256: await digest(value.bytes) };
-    expect((await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, measured) });
-    expect(new Uint8Array(await (await env.BUCKET.get(value.admission.storageKey))!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]));
+/**
+ * The receipt the store holds for T after a real write.
+ * @param key - The source key.
+ * @returns The receipt.
+ */
+async function writtenReceipt(key: string): Promise<Record<string, unknown>> {
+  const object = await env.BUCKET.head(videoSourceLedgerKeyFor(key));
+  const table = await env.BUCKET.head(tableKeyFor(key));
+  return expectedReceipt(key, 'job-a', { etag: object!.etag, size: object!.size, sha256: await digest(FULL), table: { etag: table!.etag, size: table!.size, sha256: await digest(TABLE) } });
+}
+
+describe('ledger R2 publication (inner#1306 §7.3, §7.4)', () => {
+  it('W01 splits the one producer write into the compact and full objects, each with fixed MIME and the original owner metadata', async () => {
+    const { key, identity } = await ledgerCase();
+    expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) })).toEqual({ ok: true, status: 200 });
+    const full = await env.BUCKET.get(videoSourceLedgerKeyFor(key));
+    const table = await env.BUCKET.get(tableKeyFor(key));
+    expect(new Uint8Array(await full!.arrayBuffer())).toEqual(FULL);
+    expect(new Uint8Array(await table!.arrayBuffer())).toEqual(TABLE);
+    expect(full!.httpMetadata?.contentType).toBe('application/json');
+    expect(full!.customMetadata?.sourceLedgerJobId).toBe('job-a');
+    expect(table!.customMetadata).toEqual(full!.customMetadata);
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'ready', receipt: await writtenReceipt(key) });
   });
 
-  it('cancels a refused legacy body before any R2 side effect', async () => {
-    const value = await fixture({ requested: false });
+  it('cancels a body from a job that is not the writer before any R2 side effect', async () => {
+    const { key, identity } = await ledgerCase();
     const canceled = vi.fn();
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner: value.owner, identity: value.identity, declaration: value.declaration, body: stream(value.body, canceled) })).toEqual({ ok: false, status: 409 });
+    expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity: { ...identity, jobId: 'job-x' }, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
-    expect(await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
+    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
   });
 
-  it.each(['short', 'long'] as const)('rejects a %s stream and drains its original write without publishing a receipt', async (shape) => {
-    const value = await fixture();
-    const owner = ports(value.owner);
-    const bytes = shape === 'short' ? value.body.slice(0, value.body.length - 1) : new Uint8Array([...value.body, 1]);
-    await expect(writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: value.identity, declaration: value.declaration, body: stream(bytes) })).rejects.toThrow();
-    expect(owner.calls.claim).toHaveBeenCalledOnce();
-    expect(owner.calls.complete).not.toHaveBeenCalled();
-    expect(owner.calls.release).toHaveBeenCalledOnce();
-    expect(await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
-    expect((await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).sourceLedger?.state).toBe('pending');
+  it.each(['short', 'long'] as const)('rejects a %s stream and releases its claim without a commit', async (shape) => {
+    const { key, identity } = await ledgerCase();
+    const port = observed(ledgerPort(key));
+    const bytes = shape === 'short' ? LEDGER_BODY.slice(0, -1) : new Uint8Array([...LEDGER_BODY, 1]);
+    await expect(write({ bucket: env.BUCKET, owner: port, identity, toolInputId: T, declaration: DECLARATION, body: stream(bytes) })).rejects.toThrow();
+    expect(port.calls.claim).toHaveBeenCalledOnce();
+    expect(port.calls.commit).not.toHaveBeenCalled();
+    expect(port.calls.release).toHaveBeenCalledOnce();
+    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]!.kind).toBe('pending');
   });
 
-  it('A09 replays a completed physical receipt without PUT or version changes', async () => {
-    const value = await fixture();
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner: value.owner, identity: value.identity, declaration: value.declaration, body: stream(value.body) })).toEqual({ ok: true, status: 200 });
-    const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    const object = await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey));
+  it('replays a completed receipt without a PUT or a version change', async () => {
+    const { key, identity } = await ledgerCase();
+    await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) });
+    const etag = (await env.BUCKET.head(videoSourceLedgerKeyFor(key)))!.etag;
     const canceled = vi.fn();
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner: value.owner, identity: value.identity, declaration: value.declaration, body: stream(value.body, canceled) })).toEqual({ ok: false, status: 409 });
+    expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
-    expect(await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).toEqual(before);
-    expect((await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey)))!.etag).toBe(object!.etag);
+    expect((await env.BUCKET.head(videoSourceLedgerKeyFor(key)))!.etag).toBe(etag);
   });
 
-  it('A11 recovers the real complete object after an injected complete RPC failure before delivery', async () => {
-    const value = await fixture();
-    const owner = ports(value.owner);
-    // The RPC transport is interrupted; the real R2 and actual durable intent remain.
-    owner.calls.complete.mockImplementationOnce(() => Promise.reject(new Error('Injected complete RPC unavailable')));
-    await expect(writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: value.identity, declaration: value.declaration, body: stream(value.body) })).rejects.toThrow('Injected complete RPC unavailable');
-    expect(owner.calls.release).toHaveBeenCalledOnce();
-    const object = await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey));
-    expect(object!.size).toBe(value.bytes.length);
-    const measured = { etag: object!.etag, size: object!.size, sha256: await digest(value.bytes) };
-    expect((await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, measured) });
-    expect((await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey)))!.etag).toBe(object!.etag);
+  it('recovers the real complete objects on read after the commit call failed', async () => {
+    const { key, identity } = await ledgerCase();
+    const port = observed(ledgerPort(key));
+    port.calls.commit.mockImplementationOnce(() => Promise.reject(new Error('Injected commit RPC unavailable')));
+    await expect(write({ bucket: env.BUCKET, owner: port, identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) })).rejects.toThrow('Injected commit RPC unavailable');
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'ready', receipt: await writtenReceipt(key) });
   });
 
-  it('A11 retains an actual committed receipt after its acknowledgement is lost', async () => {
-    const value = await fixture();
-    const owner = ports(value.owner);
-    owner.calls.complete.mockImplementationOnce(async (identity, nonce, measured) => {
-      expect(await value.owner.completeSourceLedger(identity, nonce, measured)).toBe(true);
-      throw new Error('Injected complete ACK lost');
+  it('keeps a committed receipt after its acknowledgement is lost', async () => {
+    const { key, identity } = await ledgerCase();
+    const port = observed(ledgerPort(key));
+    port.calls.commit.mockImplementationOnce(async (...args) => {
+      expect(await ledgerPort(key).commitLedger(...args)).toBe(true);
+      throw new Error('Injected commit ACK lost');
     });
-    await expect(writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: value.identity, declaration: value.declaration, body: stream(value.body) })).rejects.toThrow('Injected complete ACK lost');
-    const object = await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey));
-    const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, { etag: object!.etag, size: object!.size, sha256: await digest(value.bytes) }) });
-    expect(await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).toEqual(before);
+    await expect(write({ bucket: env.BUCKET, owner: port, identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) })).rejects.toThrow('Injected commit ACK lost');
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'ready', receipt: await writtenReceipt(key) });
   });
 
-  it('A12 rechecks D when an actual claim RPC begun before D returns after D', async () => {
-    const value = await fixture({ deadlineAt: Date.now() + 2000 });
-    const owner = ports(value.owner);
-    owner.calls.claim.mockImplementationOnce(async (identity, declaration) => {
-      const claim = await value.owner.claimSourceLedger(identity, declaration);
+  it('rechecks the deadline when a claim begun before it returns after it', async () => {
+    const { key, identity } = await ledgerCase(Date.now() + 2000);
+    const port = observed(ledgerPort(key));
+    port.calls.claim.mockImplementationOnce(async (...args) => {
+      const claim = await ledgerPort(key).claimSourceLedger(...args);
       expect(claim).not.toBeNull();
-      await passDeadline(value.identity.deadlineAt);
+      await passDeadline(identity.deadlineAt);
       return claim;
     });
     const canceled = vi.fn();
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: value.identity, declaration: value.declaration, body: stream(value.body, canceled) })).toEqual({ ok: false, status: 409 });
+    expect(await write({ bucket: env.BUCKET, owner: port, identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
-    expect(owner.calls.complete).not.toHaveBeenCalled();
-    expect(await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
+    expect(port.calls.commit).not.toHaveBeenCalled();
+    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
   });
 
-  it('A11 permits full completion of a flow already started before D without an uploaded-time cutoff or work revival', async () => {
-    const value = await fixture({ deadlineAt: Date.now() + 2000 });
-    const owner = ports(value.owner);
+  it('completes a flow that started before the deadline even when the job expires meanwhile', async () => {
+    const { key, identity } = await ledgerCase(Date.now() + 2000);
     const body = new ReadableStream<Uint8Array>({ async pull(controller) {
-      await passDeadline(value.identity.deadlineAt);
-      await value.owner.fail(value.identity, 'expired');
-      controller.enqueue(value.body); controller.close();
+      await passDeadline(identity.deadlineAt);
+      await withStore(key, (store) => store.fail(identity, 'expired'));
+      controller.enqueue(LEDGER_BODY); controller.close();
     } }, { highWaterMark: 0 });
-    expect(await writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: value.identity, declaration: value.declaration, body })).toEqual({ ok: true, status: 200 });
-    const object = await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey));
-    expect(object!.uploaded.getTime()).toBeGreaterThan(value.identity.deadlineAt);
-    const result = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    expect(result.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, { etag: object!.etag, size: object!.size, sha256: await digest(value.bytes) }) });
-    expect(result.attempt).toMatchObject({ jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt, status: 'failed', usage: null });
+    expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body })).toEqual({ ok: true, status: 200 });
+    const view = await withStore(key, (store) => store.read(key, H));
+    expect(view.ledgers[T]!.kind).toBe('ready');
+    expect(view.candidate).toMatchObject({ jobId: 'job-a', state: 'failed', failure: 'expired' });
   });
 });

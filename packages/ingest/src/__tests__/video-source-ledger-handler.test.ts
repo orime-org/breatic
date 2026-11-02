@@ -2,30 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The edge outbound handler that receives the producer's one ledger PUT
- * (inner#1306 test plan §77, cases H). Contract: `writeSourceLedgerPresentation`
- * is exported from `media-container.ts` beside `writeAlphaPresentation` and
- * takes the same `(request, env, ctx)`. It accepts only a PUT for
- * `videoSourceLedgerKeyFor(ctx.params.key)` whose query carries the accepted
- * identity (`jobId`, `sourceFingerprint`, `deadlineAt`, `token`) and the
- * declaration (`producerVersion=2`, `byteLength`, `tableByteLength`,
- * `tableFrameCount`), with `content-length` equal to the two lengths together.
- * A malformed request answers 400, another key 403, a refused claim 409;
- * success stores both objects and answers 200.
+ * The edge handler of the one ledger PUT over real R2 and the real store
+ * (inner#1306, test plan §89 rewrite; §77 H01–H04; frames-split design §3.5,
+ * §7.4).
+ *
+ * Unchanged: one PUT stores both objects and commits; malformed declarations are
+ * 400 with nothing stored; another key is 403; a wrong token or job is 409. The
+ * query now names the toolInputId and planSha256 the write belongs to, and the
+ * write reaches the store through `claimSourceLedger`, `commitLedger` and
+ * `releaseSourceLedger` of that toolInputId; a job that is no longer the writer
+ * is refused with 409.
  */
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoSourceLedgerKeyFor } from '@breatic/shared';
 import * as containerModule from '@ingest/media-container.js';
-import { fixture, replacement, stream, tableKeyFor, type LedgerFixture } from './helpers/source-ledger-fixture.js';
+import { stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { admission, D, DECLARATION, FULL, H, LEDGER_BODY, ledgerCase, ledgerPort, NOW, PLAN, T, TABLE, withStore, type LedgerCase } from './helpers/machine-store.js';
 
 type Handler = (request: Request, environment: unknown, ctx: unknown) => Promise<Response>;
 
 /**
- * The handler under test, read at call time so a missing export fails one case.
+ * The production handler, failing when it is not exported.
  * @returns The handler.
- * @throws {Error} When media-container does not export it.
  */
 function handler(): Handler {
   const found = (containerModule as Record<string, unknown>).writeSourceLedgerPresentation;
@@ -34,46 +34,43 @@ function handler(): Handler {
 }
 
 /**
- * Send one producer PUT for the fixture.
- * @param value - The fixture.
- * @param change - Query, header, key or body overrides.
- * @param change.query - Query parameter overrides.
- * @param change.key - The asked key, when not the ledger key.
- * @param change.contentLength - The content-length header, when not the body length.
- * @param change.body - The body, when not the fixture's.
- * @returns The handler's response.
- * @throws {Error} When the handler is missing.
+ * Send the one PUT of a case.
+ * @param value - The case.
+ * @param change - What to change.
+ * @param change.query - Query overrides.
+ * @param change.key - Another target key.
+ * @param change.contentLength - Another content length.
+ * @returns The response.
  */
-function send(value: LedgerFixture, change: { query?: Record<string, string>; key?: string; contentLength?: number; body?: Uint8Array } = {}): Promise<Response> {
-  const body = change.body ?? value.body;
-  const url = new URL(`http://source-ledger.local/${change.key ?? videoSourceLedgerKeyFor(value.admission.storageKey)}`);
-  const query = { jobId: value.identity.jobId, sourceFingerprint: value.identity.sourceFingerprint, deadlineAt: String(value.identity.deadlineAt),
-    token: value.identity.token, producerVersion: '2', byteLength: String(value.bytes.length), tableByteLength: String(value.tableBytes.length),
-    tableFrameCount: String(value.declaration.table.frameCount), ...change.query };
+function send(value: LedgerCase, change: { query?: Record<string, string>; key?: string; contentLength?: number } = {}): Promise<Response> {
+  const url = new URL(`http://source-ledger.local/${change.key ?? videoSourceLedgerKeyFor(value.key)}`);
+  const query = {
+    jobId: value.identity.jobId, sourceFingerprint: H, deadlineAt: String(value.identity.deadlineAt), token: value.identity.token,
+    toolInputId: T, planSha256: PLAN, producerVersion: '2', byteLength: String(FULL.length), tableByteLength: String(TABLE.length),
+    tableFrameCount: String(DECLARATION.table.frameCount), ...change.query,
+  };
   for (const [name, entry] of Object.entries(query)) url.searchParams.set(name, entry);
-  const request = new Request(url, { method: 'PUT', body: stream(body), headers: { 'content-length': String(change.contentLength ?? body.length) }, duplex: 'half' } as RequestInit);
-  const environment = { BUCKET: env.BUCKET, MEDIA: { idFromName: (name: string) => name, get: () => value.owner } };
-  return handler()(request, environment, { params: { key: value.admission.storageKey } });
+  const request = new Request(url, { method: 'PUT', body: stream(LEDGER_BODY), headers: { 'content-length': String(change.contentLength ?? LEDGER_BODY.length) }, duplex: 'half' } as RequestInit);
+  const environment = { BUCKET: env.BUCKET, MEDIA: { idFromName: (name: string) => name, get: () => ledgerPort(value.key) } };
+  return handler()(request, environment, { params: { key: value.key } });
 }
 
 /**
- * Whether neither object was stored.
- * @param value - The fixture.
- * @returns Nothing when both keys are empty.
- * @throws {Error} When either object exists.
+ * Assert that neither object was stored.
+ * @param value - The case.
  */
-async function nothingStored(value: LedgerFixture): Promise<void> {
-  expect(await env.BUCKET.head(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
-  expect(await env.BUCKET.head(tableKeyFor(value.admission.storageKey))).toBeNull();
+async function nothingStored(value: LedgerCase): Promise<void> {
+  expect(await env.BUCKET.head(videoSourceLedgerKeyFor(value.key))).toBeNull();
+  expect(await env.BUCKET.head(tableKeyFor(value.key))).toBeNull();
 }
 
-describe('edge handler for the one ledger PUT (inner#1306 §77)', () => {
-  it('H01 stores both objects and commits the ready ledger', async () => {
-    const value = await fixture();
+describe('edge handler for the one ledger PUT (inner#1306 §77, §7.4)', () => {
+  it('H01 stores both objects and commits the ready ledger of the named toolInputId', async () => {
+    const value = await ledgerCase();
     expect((await send(value)).status).toBe(200);
-    expect(new Uint8Array(await (await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey)))!.arrayBuffer())).toEqual(value.bytes);
-    expect(new Uint8Array(await (await env.BUCKET.get(tableKeyFor(value.admission.storageKey)))!.arrayBuffer())).toEqual(value.tableBytes);
-    expect((await value.owner.snapshotFor(value.identity)).sourceLedger?.state).toBe('ready');
+    expect(new Uint8Array(await (await env.BUCKET.get(videoSourceLedgerKeyFor(value.key)))!.arrayBuffer())).toEqual(FULL);
+    expect(new Uint8Array(await (await env.BUCKET.get(tableKeyFor(value.key)))!.arrayBuffer())).toEqual(TABLE);
+    expect((await withStore(value.key, (store) => store.read(value.key, H))).ledgers[T]!.kind).toBe('ready');
   });
 
   it.each([
@@ -85,31 +82,36 @@ describe('edge handler for the one ledger PUT (inner#1306 §77)', () => {
     ['producer version 1', { query: { producerVersion: '1' } }],
     ['a missing token', { query: { token: '' } }],
     ['a malformed fingerprint', { query: { sourceFingerprint: 'not-a-hash' } }],
+    ['a missing toolInputId', { query: { toolInputId: '' } }],
+    ['a malformed planSha256', { query: { planSha256: 'not-a-hash' } }],
   ])('H02 refuses %s with 400 and stores nothing', async (_name, change) => {
-    const value = await fixture();
+    const value = await ledgerCase();
     expect((await send(value, change)).status).toBe(400);
     await nothingStored(value);
-    expect((await value.owner.snapshotFor(value.identity)).sourceLedger?.state).toBe('pending');
+    expect((await withStore(value.key, (store) => store.read(value.key, H))).ledgers[T]!.kind).toBe('pending');
   });
 
   it('H03 refuses another key with 403', async () => {
-    const value = await fixture();
-    expect((await send(value, { key: `${value.admission.storageKey}.other.json` })).status).toBe(403);
+    const value = await ledgerCase();
+    expect((await send(value, { key: `${value.key}.other.json` })).status).toBe(403);
     await nothingStored(value);
   });
 
-  it.each([['a wrong token', 'token'], ['an unknown job', 'jobId']] as const)('H04 refuses %s with 409 and stores nothing', async (_name, field) => {
-    const value = await fixture();
-    expect((await send(value, { query: { [field]: 'not-the-accepted-one' } })).status).toBe(409);
+  it.each([['a wrong token', 'token'], ['an unknown job', 'jobId'], ['another toolInputId', 'toolInputId']] as const)('H04 refuses %s with 409 and stores nothing', async (_name, field) => {
+    const value = await ledgerCase();
+    expect((await send(value, { query: { [field]: field === 'toolInputId' ? 'e'.repeat(64) : 'not-the-accepted-one' } })).status).toBe(409);
     await nothingStored(value);
   });
 
-  it('H04 refuses the superseded job with 409 and leaves the current job pending', async () => {
-    const value = await fixture();
-    const current = await replacement(value);
-    const before = await current.owner.snapshotFor(current.identity);
+  it('H04 refuses a job that is no longer the writer with 409 and leaves the current writer pending', async () => {
+    const value = await ledgerCase();
+    await withStore(value.key, async (store) => {
+      await store.accept(admission(value.key, 'job-b'));
+      const { token } = await store.prepare({ storageKey: value.key, sourceFingerprint: H, jobId: 'job-b', deadlineAt: D }, NOW);
+      await store.planPresentation({ storageKey: value.key, sourceFingerprint: H, jobId: 'job-b', deadlineAt: D, token: token! }, { route: 'encode', toolInputId: T, planSha256: PLAN });
+    });
     expect((await send(value)).status).toBe(409);
     await nothingStored(value);
-    expect(await current.owner.snapshotFor(current.identity)).toEqual(before);
+    expect((await withStore(value.key, (store) => store.read(value.key, H))).ledgers[T]).toMatchObject({ kind: 'pending', writer: 'job-b' });
   });
 });
