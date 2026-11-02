@@ -538,7 +538,7 @@ pnpm test / typecheck / lint
 `packages/shared/src/scene.ts` defines the plain scene values and their runtime
 schemas. Positions are finite Y-up metre tuples, rotations are normalized XYZW
 quaternions, and per-axis scales are positive. Model references identify a built-in
-model or a registered asset by UUID. `scene-version.ts` initializes version 1 when
+model or a registered asset by UUID. `scene-version.ts` initializes version 2 when
 both validated scene roots are empty; existing content, including unknown or
 missing version metadata, is retained. Its `getSceneRootMap` validates the root
 structure for initialization, projection and recovery checks. Yjs retains sequence
@@ -546,25 +546,35 @@ content when a decoded root acquires its Map constructor, so the shared check
 rejects that content while preserving its encoded bytes.
 
 The document has a `scene` root Map with `formatVersion` and an `objects` root Map
-keyed by object UUID. Each object is a stable Map containing immutable `initial`
-values and six pre-created Y.Array sequences: `name`, `position`, `rotation`,
-`scale`, `locked` and `exists`. Each edit appends a complete field value. The
-projection uses the last visible value, falling back to `initial` for an empty
-sequence. Initial `locked` and `exists` are false; creation appends `exists=true`.
+keyed by object UUID. Each object record is a Map of six plain current values:
+`name`, `model`, `position`, `rotation`, `scale` and `locked`. An edit overwrites the
+changed fields and skips values that are already current; deletion removes the
+record. Yjs merges consecutive overwrites of one field by one client, so such edits
+do not grow the stored document, while edits that switch fields or objects leave
+about 9 bytes per written field. The collab copy has no UndoManager and collects
+deleted content. A key left empty by a concurrent write followed by its writer's
+undo reads as its default (origin, identity rotation, unit scale, unlocked, the
+model's name); only a missing model or a wrongly typed value makes a record invalid.
 
-`packages/web/src/data/yjs/scene-document.ts` projects valid visible objects while
+`packages/web/src/data/yjs/scene-document.ts` projects valid objects while
 retaining invalid records and reporting their errors. Command planning checks the
 whole target set, format, values, caller permission and manual locks before any
 write. Duplication creates an independent identity from committed values and
-unlocks the copy. Deletion appends `exists=false`, preserving the record for late
-edits and undo. Concurrent edits merge through Yjs sequence order; tuples remain
-whole and independent fields merge separately.
+unlocks the copy. Only `formatVersion` 2 is read and written; a document with a
+lower version shows `spaces.threeD.unsupportedOld` with no editing chrome, and a
+higher version shows `spaces.threeD.unsupported` with a reload button. Neither is
+read, migrated or written. Collab writes the version into new documents, so collab
+is deployed no later than web.
 
-Stable records are created with a system origin. Each complete command appends
-its values in one transaction using the caller's local origin. Personal history
-tracks that origin and reuses the existing UndoManager cleanup adapter, so undo
-removes local inserts while preserving remote records and stable structure.
-The document host supplies current write permission and owns the history lifetime.
+Each complete command, including record creation, runs in one transaction using
+the caller's local origin. Personal history tracks that origin and reuses the
+existing UndoManager cleanup adapter. Undo follows Yjs selective undo: it restores
+the value a local write replaced unless another member wrote that field after the
+last local write, and undoing a delete restores the whole record. When another
+member's later write or delete voids the top local undo item, one undo reverts the
+next earlier local item, which can be on another object; same-object concurrent
+edits and this case are out of scope, as in canvas. The document host supplies
+current write permission and owns the history lifetime.
 
 The `3d` Space uses `project-<projectId>/3d-<spaceId>` as its content document
 name. The shared Space enum drives creation validation, name parsing, content
