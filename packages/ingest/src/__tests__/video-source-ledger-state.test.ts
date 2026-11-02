@@ -51,7 +51,12 @@ describe('ledger instance per toolInputId (inner#1306 §7.4)', () => {
       if (defect === 'table-size') await env.BUCKET.put(tableKeyFor(key), new Uint8Array([...TABLE, 32]), metadata);
       if (defect === 'table-owner') await env.BUCKET.put(tableKeyFor(key), TABLE, { ...metadata, customMetadata: { ...metadata.customMetadata, sourceLedgerClaimOwner: 'someone-else' } });
       if (defect === 'table-mime') await env.BUCKET.put(tableKeyFor(key), TABLE, { ...metadata, httpMetadata: { contentType: 'text/plain' } });
-      if (defect === 'table-etag') await env.BUCKET.put(tableKeyFor(key), TABLE, metadata);
+      if (defect === 'table-etag') {
+        // Same length and metadata, one byte flipped: miniflare's R2 etag is the content MD5, so identical bytes would not differ (§7.3).
+        const changed = TABLE.slice();
+        changed[changed.length - 1]! ^= 1;
+        expect((await env.BUCKET.put(tableKeyFor(key), changed, metadata)).etag).not.toBe(measured.table.etag);
+      }
       if (defect === 'ledger-missing') await env.BUCKET.delete(videoSourceLedgerKeyFor(key));
       expect(await store.commitLedger(identity, T, claim.owner, measured)).toBe(false);
       expect((await store.read(key, H)).ledgers[T]).toEqual({ kind: 'pending', writer: 'job-a', writerArchived: false, waiters: [] });

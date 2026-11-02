@@ -54,7 +54,11 @@ describe('ready ledger checks and L\' recovery (inner#1306 §7.4)', () => {
     await withStore(key, async (store) => {
       const claim = (await store.claimSourceLedger(identity, T, DECLARATION))!;
       const measured = await putLedger(claim, 'job-a');
-      await env.BUCKET.put(videoSourceLedgerKeyFor(key), FULL, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: claim.owner } });
+      // Same length and metadata, one byte flipped: miniflare's R2 etag is the content MD5, so identical bytes would not differ (§7.3).
+      const changed = FULL.slice();
+      changed[changed.length - 1]! ^= 1;
+      const replaced = await env.BUCKET.put(videoSourceLedgerKeyFor(key), changed, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: claim.owner } });
+      expect(replaced.etag).not.toBe(measured.etag);
       expect(await store.commitLedger(identity, T, claim.owner, measured)).toBe(false);
       expect((await store.read(key, H)).ledgers[T]!.kind).toBe('pending');
     });
