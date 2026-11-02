@@ -4,7 +4,9 @@
 import type {
   VideoSourceLedgerCompanion, PhysicalVideoProbe, MatroskaPhysicalVideoProbe, OwnedVideoPresentation, VideoEditSpan, VideoSourceLedgerV2, VideoSourceRun,
 } from "@shared/upload/video-source-ledger-types.js";
-import { projectPresentationTable, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import { projectPresentationTable, rational, type PresentationRational, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import { planVideoPresentationTimeline, videoAudioSampleIndex, VIDEO_AUDIO_SAMPLE_RATE, type VideoTimelineFrame } from "@shared/mini-tools/video-presentation-timeline.js";
+import { videoPlanOutput, type VideoPlanOutput, type VideoPlanSource } from "@shared/mini-tools/video-encode-plan.js";
 import type { IsoBmffEdit, IsoBmffMetadata } from "@ingest/container/iso-bmff-metadata.js";
 import { exactPresentationTime } from "@ingest/container/iso-bmff-presentation.js";
 import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
@@ -107,6 +109,118 @@ export function assembleVideoSourceLedgerV2(input: VideoSourceLedgerV2Input): { 
     videoEdits, audioEdits,
   };
   return { ledger, table };
+}
+
+/** Everything a presentation plan is assembled from: real frames and edits in original time and the resolved source facts. */
+export interface VideoPresentationPlanInput {
+  /** Real frames in presentation order; `sourcePtsTicks` is on `sourceTimeBase`. */
+  frames: readonly { sourcePtsTicks: string; start: PresentationRational; declaredEnd: PresentationRational | null }[];
+  sourceTimeBase: PresentationRational;
+  emptyEdits: readonly { start: PresentationRational; end: PresentationRational }[];
+  segmentDuration: PresentationRational | null;
+  videoSpans: readonly VideoEditSpan[] | null;
+  /** The video track's media duration, which decides whether a single edit is no edit. */
+  mediaDuration: PresentationRational;
+  /** The selected audio's window and edits in original time, or null without audio. */
+  audio: { start: PresentationRational; end: PresentationRational; spans: readonly VideoEditSpan[] | null } | null;
+  display: { width: number; height: number };
+  colorMatrix: string;
+  source: VideoPlanSource;
+  policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" };
+}
+/** The S6a presentation plan as the container assembles it; the shared ledger schema is its validator. */
+export interface AssembledVideoPresentationPlan {
+  display: { width: number; height: number; duration: PresentationRational };
+  colorMatrix: string;
+  source: VideoPlanSource;
+  output: VideoPlanOutput;
+  policy: VideoPresentationPlanInput["policy"];
+  presentation: VideoPresentationTable;
+  originMapping: {
+    timeBase: PresentationRational;
+    origin: PresentationRational;
+    entries: ({ kind: "source"; start: number; count: number; step: number } | { kind: "derived-empty" })[];
+    firstSource: { supportStart: PresentationRational; lead: { kind: "derived-lead"; start: PresentationRational } | null };
+    lastSource: { support: "declared" | "previous-max" | "single-frame"; supportEnd: PresentationRational; hold: { kind: "derived-hold"; end: PresentationRational } | null };
+  };
+  videoSpans: VideoEditSpan[] | null;
+  audioSpans: VideoEditSpan[] | null;
+  segmentDuration: PresentationRational | null;
+}
+
+/**
+ * Assemble the presentation plan (§4.2, §4.2.1, §7.16) from the S6a timeline: the audio window is snapped to the 48 kHz grid
+ * first, a single rate-1 edit from 0 over the whole media is recorded as no edit, spans are rebased by the origin, source
+ * ticks become greedy canonical runs between derived-empty frames and the output conversion follows the source.
+ * @param input - Frames, edits, audio window and resolved source facts.
+ * @returns The plan.
+ * @throws {Error} With `code` `no_presented_frames` when nothing is presented; `RangeError` when the timeline rejects the times.
+ */
+export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput): AssembledVideoPresentationPlan {
+  if (input.frames.length === 0) throw ledgerError("no_presented_frames", "The edits present no frame");
+  /**
+   * Snap an original time to the output audio sample grid.
+   * @param time - The time.
+   * @returns The nearest sample's time.
+   * @throws {RangeError} When the time is not an exact rational.
+   */
+  const snap = (time: PresentationRational): PresentationRational => exactPresentationTime(BigInt(videoAudioSampleIndex(time)), BigInt(VIDEO_AUDIO_SAMPLE_RATE));
+  const audioStart = input.audio === null ? null : snap(input.audio.start);
+  const audioEnd = input.audio === null ? null : snap(input.audio.end);
+  const timeline = planVideoPresentationTimeline({
+    frames: input.frames.map(({ start, declaredEnd }) => ({ start, declaredEnd })), emptyEdits: input.emptyEdits,
+    segmentDuration: input.segmentDuration, audioStart, audioEnd, singleFrameDurationMs: input.policy.singleFrameDurationMs,
+  });
+  const entries: AssembledVideoPresentationPlan["originMapping"]["entries"] = [];
+  let ticks: number[] = [];
+  for (const frame of timeline.frames) {
+    if (frame.kind === "source") { ticks.push(sourceTick(input.frames[frame.occurrence]!.sourcePtsTicks)); continue; }
+    entries.push(...sourceRuns(ticks).map((run) => ({ kind: "source" as const, ...run })), { kind: "derived-empty" });
+    ticks = [];
+  }
+  entries.push(...sourceRuns(ticks).map((run) => ({ kind: "source" as const, ...run })));
+  const sources = timeline.frames.filter((frame): frame is Extract<VideoTimelineFrame, { kind: "source" }> => frame.kind === "source");
+  const first = sources[0]!;
+  const last = sources.at(-1)!;
+  if (last.support.rule === "next-start") throw new Error("The last real frame cannot end at a next start");
+  const origin = rational(timeline.origin);
+  /**
+   * Rebase spans onto the presentation timeline.
+   * @param spans - Spans laid out in original time.
+   * @returns The spans with presentationStart less the origin.
+   * @throws {RangeError} When a time is not an exact rational.
+   */
+  const rebase = (spans: readonly VideoEditSpan[]): VideoEditSpan[] => spans.map((span) => {
+    const [n, d] = rational(span.presentationStart);
+    return { ...span, presentationStart: exactPresentationTime(n * origin[1] - origin[0] * d, d * origin[1]) };
+  });
+  return {
+    display: { width: input.display.width, height: input.display.height, duration: timeline.end },
+    colorMatrix: input.colorMatrix, source: { ...input.source }, output: videoPlanOutput(input.source), policy: { ...input.policy },
+    presentation: projectPresentationTable(timeline.frames),
+    originMapping: {
+      timeBase: { ...input.sourceTimeBase }, origin: timeline.origin, entries,
+      firstSource: { supportStart: first.support.start, lead: first.derivedLead === null ? null : { kind: "derived-lead", start: first.derivedLead.start } },
+      lastSource: { support: last.support.rule, supportEnd: last.support.end, hold: last.derivedHold === null ? null : { kind: "derived-hold", end: last.derivedHold.end } },
+    },
+    videoSpans: input.videoSpans === null || coversWholeMedia(input.videoSpans, input.mediaDuration) ? null : rebase(input.videoSpans),
+    audioSpans: input.audio === null || input.audio.spans === null ? null : rebase(input.audio.spans),
+    segmentDuration: input.segmentDuration,
+  };
+}
+
+/**
+ * Whether the edits are one rate-1 span from the media start over the whole media, which presents the media unedited.
+ * @param spans - The video edits.
+ * @param mediaDuration - The video track's media duration.
+ * @returns Whether the edits are no edit.
+ * @throws {RangeError} When a time is not an exact rational.
+ */
+function coversWholeMedia(spans: readonly VideoEditSpan[], mediaDuration: PresentationRational): boolean {
+  if (spans.length !== 1) return false;
+  const [start, end, rate] = [rational(spans[0]!.sourceStart), rational(spans[0]!.sourceEnd), rational(spans[0]!.rate)];
+  const media = rational(mediaDuration);
+  return start[0] === 0n && end[0] * media[1] === media[0] * end[1] && rate[0] === rate[1];
 }
 
 /**

@@ -62,6 +62,8 @@
     "../../shared/src/upload/video-presentation-types.ts",
     "../../shared/src/upload/video-source-ledger-types.ts",
     "../../shared/src/mini-tools/video-presentation-projection.ts",
+    "../../shared/src/mini-tools/video-presentation-timeline.ts",
+    "../../shared/src/mini-tools/video-encode-plan.ts",
     "__tests__/*.ts"
   ]
 }

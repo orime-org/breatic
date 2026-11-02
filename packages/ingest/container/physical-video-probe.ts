@@ -142,3 +142,105 @@ export function parsePhysicalVideoProbe(metadata: unknown, physicalFrameBytes: B
   });
   return { streamIndex, trackId, sourceTimeBase, frames };
 }
+
+/** One selected-stream packet in decode order, its numbers kept as the probe wrote them. */
+export interface PhysicalVideoPacket { rawDecodeOrdinal: number; ptsTicks: string; durationTicks: string | null; keyframe: boolean; position: string | null }
+/** The selected video stream's packets and clock. */
+export interface PhysicalVideoPackets { streamIndex: number; sourceTimeBase: PhysicalVideoProbe["sourceTimeBase"]; packets: PhysicalVideoPacket[] }
+
+/**
+ * The packet-level demux probe of §5.1 step 2: pts, duration, flags and pos of the selected stream, no decoding.
+ * @param input - The source path.
+ * @param input.input - The source path.
+ * @param input.streamIndex - The selected video stream index.
+ * @param input.iso - Whether the source is ISO BMFF, whose edit list is read separately and ignored here.
+ * @returns The ffprobe arguments.
+ * @throws {never} Never.
+ */
+export function videoPacketProbeArgs(input: { input: string; streamIndex: number; iso: boolean }): string[] {
+  return ["-v", "error", "-protocol_whitelist", "file", ...(input.iso ? ["-ignore_editlist", "1"] : []),
+    "-select_streams", String(input.streamIndex), "-show_packets", "-show_entries", "packet=stream_index,pts,duration,flags,pos", "-of", "json", input.input];
+}
+
+/**
+ * Read the packet probe without rounding: a packet's decode order is its source ordinal, a zero or missing duration is
+ * undeclared, flags starting with `K` mark a keyframe and a missing pos is null.
+ * @param metadata - Stream metadata from the same immutable source.
+ * @param packetBytes - Complete packet JSON from {@link videoPacketProbeArgs}.
+ * @returns The selected stream's packets.
+ * @throws {TypeError} When the selected stream, clock or a packet fact is invalid.
+ * @throws {SyntaxError} When the packet stdout is not complete JSON.
+ */
+export function parsePhysicalVideoPackets(metadata: unknown, packetBytes: Buffer): PhysicalVideoPackets {
+  const streams = probeObject(metadata).streams;
+  if (!Array.isArray(streams)) throw new TypeError("Expected original video stream metadata");
+  const selected = streams.map(probeObject).find((stream) => stream.codec_type === "video");
+  if (selected === undefined || typeof selected.index !== "number" || !Number.isSafeInteger(selected.index) || selected.index < 0 || streams.map(probeObject).filter((stream) => stream.index === selected.index).length !== 1) {
+    throw new TypeError("Expected an unambiguous selected video stream");
+  }
+  const streamIndex = selected.index;
+  const sourceTimeBase = probeTimeBase(selected.time_base);
+  const parsed: unknown = JSON.parse(packetBytes.toString("utf8"),
+    (key: string, value: unknown, context?: { source?: string }): unknown =>
+      (key === "pts" || key === "duration" || key === "pos") && typeof value === "number" ? context?.source : value);
+  const values = probeObject(parsed).packets;
+  if (!Array.isArray(values) || values.length === 0) throw new TypeError("Expected complete selected-video packets");
+  const packets = values.map((value: unknown, rawDecodeOrdinal: number): PhysicalVideoPacket => {
+    const packet = probeObject(value);
+    const { pts, duration, flags, pos } = packet;
+    if (packet.stream_index !== streamIndex || typeof pts !== "string" || !/^-?\d+$/u.test(pts) || typeof flags !== "string" ||
+      (duration !== undefined && (typeof duration !== "string" || !/^\d+$/u.test(duration))) ||
+      (pos !== undefined && (typeof pos !== "string" || !/^\d+$/u.test(pos)))) {
+      throw new TypeError("Expected exact selected-video packet pts, duration, flags and position");
+    }
+    return {
+      rawDecodeOrdinal, ptsTicks: pts, durationTicks: duration === undefined || BigInt(duration) === 0n ? null : duration,
+      keyframe: flags.startsWith("K"), position: pos ?? null,
+    };
+  });
+  return { streamIndex, sourceTimeBase, packets };
+}
+
+/** Tagged ffprobe `color_space` values and the matrix the plan records for them. */
+const TAGGED_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", smpte170m: "bt601", bt470bg: "bt601", bt2020nc: "bt2020nc" };
+
+/**
+ * Resolve the colour matrix once for the plan (§4.3): a tag is kept; an untagged or `unknown` stream is BT.709 when its
+ * coded height is at least 720 and BT.601 otherwise, whatever its rotation.
+ * @param stream - The selected ffprobe stream.
+ * @returns The matrix.
+ * @throws {TypeError} When an untagged stream has no positive integer coded height.
+ */
+export function resolveVideoColorMatrix(stream: Record<string, unknown>): string {
+  const tag = stream.color_space;
+  if (typeof tag === "string" && tag !== "" && tag !== "unknown") return Object.hasOwn(TAGGED_MATRICES, tag) ? TAGGED_MATRICES[tag]! : tag;
+  const height = stream.height;
+  if (typeof height !== "number" || !Number.isSafeInteger(height) || height <= 0) throw new TypeError("Expected the coded video height");
+  return height >= 720 ? "bt709" : "bt601";
+}
+
+/**
+ * The display size (§4.3): the width scaled by SAR and truncated as FFmpeg `scale=iw*sar:ih`, SAR 0:1 read as 1:1, then
+ * sides swapped for a ±90 display rotation; a mirror (rotation -180 or 0) keeps them.
+ * @param stream - The selected ffprobe stream.
+ * @returns The display width and height.
+ * @throws {TypeError} When the coded size, SAR or rotation is malformed.
+ */
+export function videoDisplayGeometry(stream: Record<string, unknown>): { width: number; height: number } {
+  const { width, height } = stream;
+  if (typeof width !== "number" || typeof height !== "number" || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
+    throw new TypeError("Expected the coded video size");
+  }
+  let displayWidth = width;
+  const sar = stream.sample_aspect_ratio;
+  if (sar !== undefined) {
+    const match = typeof sar === "string" ? /^(\d+):(\d+)$/u.exec(sar) : null;
+    if (match === null) throw new TypeError("Expected a sample aspect ratio");
+    const [num, den] = [BigInt(match[1]!), BigInt(match[2]!)];
+    if (num > 0n && den > 0n) displayWidth = Number((BigInt(width) * num) / den);
+  }
+  const sideData = Array.isArray(stream.side_data_list) ? stream.side_data_list.map(probeObject) : [];
+  const rotation = sideData.find((entry) => entry.side_data_type === "Display Matrix")?.rotation ?? 0;
+  if (typeof rotation !== "number" || !Number.isFinite(rotation)) throw new TypeError("Expected a display rotation");
+  return Math.abs(rotation) % 180 === 90 ? { width: height, height: displayWidth } : { width: displayWidth, height };
+}
