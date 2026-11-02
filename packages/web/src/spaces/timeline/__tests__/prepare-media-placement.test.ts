@@ -328,7 +328,9 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
     const after = readTimelineDocument(doc);
     expect(after.clips[CLIP_ID]).toMatchObject({ trackId: 'visual-2', startFrame, durationFrames: 48 });
-    expect(after.sources[OTHER_SOURCE_ID]).toEqual(base.parameters.source);
+    // The covered clip's source stays only while a clip still references it (inner#1708 L2).
+    const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+    expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? base.parameters.source : null);
     const covered = Object.values(after.clips).filter((item) => item.trackId === 'visual-2' && item.id !== CLIP_ID)
       .filter((item) => item.startFrame < startFrame + 48 && startFrame < item.startFrame + item.durationFrames);
     expect(covered).toEqual([]);
@@ -367,7 +369,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(readTimelineDocument(doc).clips[OTHER_CLIP_ID]?.startFrame).toBe(movedStart);
   });
 
-  it('preserves integer-frame targets and every source across generated sub-track placements', () => {
+  it('preserves integer-frame targets and every still-referenced source across generated sub-track placements', () => {
     fc.assert(fc.property(
       fc.integer({ min: 0, max: 1_000_000 }),
       fc.integer({ min: -48, max: 48 }),
@@ -383,7 +385,9 @@ describe('prepareTimelineMediaPlacement', () => {
         if (!result.ok) throw new Error('Expected a prepared placement');
         expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
         expect(readTimelineDocument(doc).clips[CLIP_ID]).toEqual(expectedCommand({ trackId: 'visual-2', startFrame }).parameters.clip);
-        expect(readTimelineDocument(doc).sources[OTHER_SOURCE_ID]).toEqual(existing.parameters.source);
+        const after = readTimelineDocument(doc);
+        const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+        expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? existing.parameters.source : null);
       },
     ));
   });

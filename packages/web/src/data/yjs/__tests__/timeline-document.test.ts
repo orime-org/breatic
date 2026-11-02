@@ -122,7 +122,7 @@ function accepted(plan: TimelineEditPlan): Extract<TimelineEditPlan, { ok: true 
  * @throws {never} Never.
  */
 function undoManager(doc: Y.Doc, origin: symbol): Y.UndoManager {
-  return new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips')], { trackedOrigins: new Set([origin]), captureTimeout: 0 });
+  return new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips'), doc.getMap('sources')], { trackedOrigins: new Set([origin]), captureTimeout: 0 });
 }
 
 /**
@@ -177,7 +177,12 @@ function expectedChanges(before: TimelineDocumentV1, after: TimelineDocumentV1):
       }
     }
   }
-  for (const id of Object.keys(after.sources)) if (before.sources[id] === undefined) changes.push(`sources:${id}`);
+  // Sources (inner#1708 L2, L4): every created clip re-sets its source, a new source is added, an unreferenced one deleted.
+  const sources = new Set<string>();
+  for (const [id, item] of Object.entries(after.clips)) if (before.clips[id] === undefined) sources.add(item.sourceId);
+  for (const id of Object.keys(after.sources)) if (before.sources[id] === undefined) sources.add(id);
+  for (const id of Object.keys(before.sources)) if (after.sources[id] === undefined) sources.add(id);
+  for (const id of sources) changes.push(`sources:${id}`);
   return changes.sort();
 }
 
@@ -544,11 +549,12 @@ describe('Timeline edits write only changed fields', () => {
     expect(readTimelineDocument(doc).sources).toEqual(base.sources);
   });
 
-  it('attaches a new clip as one key and does not rewrite an existing source', () => {
+  it('attaches a new clip as one key and re-sets the existing source it references (inner#1708 L4)', () => {
     const doc = docFrom(base);
     const changes = recordChanges(doc);
     accepted(applyTimelineEdit(doc, addVideo(fixtureClip(cid(5), V2, 200, 10), ON), ORIGIN));
-    expect(changes).toEqual([`clips:${cid(5)}`]);
+    expect(changes.sort()).toEqual([`clips:${cid(5)}`, `sources:${SOURCE.id}`].sort());
+    expect(readTimelineDocument(doc).sources).toEqual(base.sources);
     expect(doc.getMap('clips').get(cid(5))).toBeInstanceOf(Y.Map);
   });
 
@@ -620,14 +626,14 @@ describe('Timeline personal undo', () => {
     expect(readTimelineDocument(doc)).toEqual(before);
   });
 
-  it('undoes an addition by removing the clip and keeping its new source', () => {
+  it('undoes an addition by removing the clip and the source it added (inner#1708 L5)', () => {
     const doc = docFrom(base);
     const undo = undoManager(doc, ORIGIN);
     accepted(applyTimelineEdit(doc, addVideo(fixtureClip(cid(5), V2, 200, 10, { sourceId: SHORT_SOURCE.id }), ON, SHORT_SOURCE), ORIGIN));
     undo.undo();
     const after = readTimelineDocument(doc);
     expect(after.clips).toEqual(base.clips);
-    expect(after.sources).toEqual({ [SOURCE.id]: SOURCE, [SHORT_SOURCE.id]: SHORT_SOURCE });
+    expect(after.sources).toEqual({ [SOURCE.id]: SOURCE });
   });
 
   it('does not track edits made under another origin', () => {
@@ -840,5 +846,208 @@ describe('Timeline content with damaged records (inner#1708 F1b)', () => {
     expect(readTimelineContent).toBe(spaceContent.readTimelineContent);
     expect(readTimelineDocument).toBe(spaceContent.readTimelineDocument);
     expect(sharedIndex).not.toHaveProperty('planTimelineEdit');
+  });
+});
+
+/**
+ * The source ids every record in the clips map references, valid or damaged, as long as `sourceId` is a string.
+ * @param doc - The content document.
+ * @returns The sorted ids.
+ * @throws {never} Never.
+ */
+function referencedSources(doc: Y.Doc): string[] {
+  const ids = new Set<string>();
+  for (const record of doc.getMap('clips').values()) {
+    const sourceId = record instanceof Y.Map ? record.get('sourceId') : undefined;
+    if (typeof sourceId === 'string') ids.add(sourceId);
+  }
+  return [...ids].sort();
+}
+
+/**
+ * The stored source ids.
+ * @param doc - The content document.
+ * @returns The sorted ids.
+ * @throws {never} Never.
+ */
+function storedSources(doc: Y.Doc): string[] {
+  return [...doc.getMap('sources').keys()].sort();
+}
+
+/**
+ * Write a clip record that misses most fields but still names its source.
+ * @param doc - The content document.
+ * @param id - The record id.
+ * @param sourceId - The source it names.
+ * @throws {Error} When Yjs cannot attach the map.
+ */
+function damagedClip(doc: Y.Doc, id: string, sourceId: string): void {
+  doc.transact(() => {
+    const record = new Y.Map<unknown>();
+    doc.getMap('clips').set(id, record);
+    record.set('sourceId', sourceId);
+    record.set('startFrame', 5);
+  }, 'peer');
+}
+
+/**
+ * Record each transaction's origin and whether it changed the sources map.
+ * @param doc - The content document.
+ * @returns The live list.
+ * @throws {never} Never.
+ */
+function recordTransactions(doc: Y.Doc): Array<{ origin: unknown; sources: boolean }> {
+  const seen: Array<{ origin: unknown; sources: boolean }> = [];
+  // Compared by identity only, so the map is held as unknown.
+  const sources: unknown = doc.getMap('sources');
+  doc.on('afterTransaction', (transaction: Y.Transaction) => { seen.push({ origin: transaction.origin, sources: [...transaction.changed.keys()].some((type) => type === sources) }); });
+  return seen;
+}
+
+describe('Timeline edits sweep unreferenced sources (inner#1708 L2)', () => {
+  const X = cid(51);
+  const Y2 = cid(52);
+
+  it('deletes the source of the last clip that referenced it in the edit transaction', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]));
+    const seen = recordTransactions(doc);
+    accepted(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: Y2 }, placement: OFF }, ORIGIN));
+    expect(seen).toEqual([{ origin: ORIGIN, sources: true }]);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('sweeps an orphan left in an older document during an unrelated move', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)]));
+    doc.transact(() => doc.getMap('sources').set(SHORT_SOURCE.id, SHORT_SOURCE), 'setup');
+    const seen = recordTransactions(doc);
+    accepted(applyTimelineEdit(doc, move(X, 100, OFF), ORIGIN));
+    expect(seen).toEqual([{ origin: ORIGIN, sources: true }]);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('keeps the source a damaged clip record still names', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    damagedClip(doc, cid(59), SHORT_SOURCE.id);
+    accepted(applyTimelineEdit(doc, move(X, 100, OFF), ORIGIN));
+    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
+    expect(storedSources(doc)).toEqual(referencedSources(doc));
+  });
+
+  it('leaves exactly the referenced sources after every kind of accepted edit', () => {
+    const commands: TimelineEditCommand[] = [
+      move(X, 100, OFF), setRange(X, 0, 0, 5, OFF), addVideo(fixtureClip(cid(53), V2, 300, 10), OFF),
+      { operation: 'split', parameters: { clipId: X, frame: 5, newClipId: cid(54) }, placement: OFF },
+      { operation: 'duplicate', parameters: { clipId: X, newClipId: cid(55) }, placement: OFF },
+      { operation: 'delete', parameters: { clipId: X }, placement: OFF },
+      { operation: 'delete_track', parameters: { trackId: 'v3' }, placement: OFF },
+    ];
+    for (const command of commands) {
+      const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }, { id: 'v3', kind: 'visual', order: 2 }]));
+      doc.transact(() => doc.getMap('sources').set(SHORT_SOURCE.id, SHORT_SOURCE), 'setup');
+      accepted(applyTimelineEdit(doc, command, ORIGIN));
+      expect(storedSources(doc), command.operation).toEqual(referencedSources(doc));
+    }
+  });
+});
+
+describe('Removing a clip or track record and its source (inner#1708 L3)', () => {
+  const X = cid(61);
+  const Y2 = cid(62);
+  const DAMAGED = cid(63);
+
+  it('deletes the source only the removed damaged record named, in the same transaction', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
+    const seen = recordTransactions(doc);
+    removeTimelineRecord(doc, 'clips', DAMAGED, ORIGIN);
+    expect(seen).toEqual([{ origin: ORIGIN, sources: true }]);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('keeps the source another valid clip still references', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10)]));
+    removeTimelineRecord(doc, 'clips', X, ORIGIN);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('keeps the source a damaged record still names', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]));
+    damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
+    removeTimelineRecord(doc, 'clips', Y2, ORIGIN);
+    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
+  });
+
+  it('never touches sources when removing a track record', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    const seen = recordTransactions(doc);
+    removeTimelineRecord(doc, 'tracks', V2, ORIGIN);
+    expect(seen).toEqual([{ origin: ORIGIN, sources: false }]);
+    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
+  });
+});
+
+describe('Edits that create clips re-set their sources against a concurrent sweep (inner#1708 L4)', () => {
+  const X = cid(71);
+  const W = cid(72);
+  const Z = cid(73);
+  const PART = cid(74);
+
+  /**
+   * Run a clip-creating edit on one replica while the other deletes the last clip naming SHORT_SOURCE, then merge.
+   * @param start - The common starting document.
+   * @param create - The creating edit on the first replica.
+   * @param createdId - The clip the creating edit makes.
+   * @param lastReference - The clip the other replica deletes.
+   * @throws {Error} When an edit is refused or a replica breaks the contract.
+   */
+  function race(start: TimelineDocumentV1, create: TimelineEditCommand, createdId: string, lastReference: string): void {
+    const bytes = Y.encodeStateAsUpdate(docFrom(start));
+    const mine = trackedDoc(bytes);
+    const peer = trackedDoc(bytes);
+    const changes = recordChanges(mine);
+    accepted(applyTimelineEdit(mine, create, ORIGIN, idFactory('41111111')));
+    expect(changes, 'the creating edit re-sets the source').toContain(`sources:${SHORT_SOURCE.id}`);
+    accepted(applyTimelineEdit(peer, { operation: 'delete', parameters: { clipId: lastReference }, placement: OFF }, OTHER_ORIGIN));
+    expect(storedSources(peer), 'the peer sweeps the unreferenced source').not.toContain(SHORT_SOURCE.id);
+    sync(mine, peer);
+    for (const doc of [mine, peer]) {
+      const document = readTimelineDocument(doc);
+      expect(document.sources[SHORT_SOURCE.id]).toEqual(SHORT_SOURCE);
+      expect(document.clips[createdId]?.sourceId).toBe(SHORT_SOURCE.id);
+    }
+    expect(readTimelineDocument(mine)).toEqual(readTimelineDocument(peer));
+  }
+
+  it('keeps the source for a clip added from it', () => {
+    race(timeline([fixtureClip(X, V2, 0, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]),
+      addVideo(fixtureClip(Z, V2, 200, 10, { sourceId: SHORT_SOURCE.id }), OFF, SHORT_SOURCE), Z, X);
+  });
+
+  it('keeps the source for the right part of a split', () => {
+    race(timeline([fixtureClip(X, V2, 0, 40, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]),
+      { operation: 'split', parameters: { clipId: X, frame: 20, newClipId: PART }, placement: OFF }, PART, X);
+  });
+
+  it('keeps the source for a duplicate', () => {
+    race(timeline([fixtureClip(X, V2, 0, 40, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]),
+      { operation: 'duplicate', parameters: { clipId: X, newClipId: PART }, placement: OFF }, PART, X);
+  });
+
+  it('keeps the source for the right part an overwrite cuts from a covered clip', () => {
+    // Moving W onto V2 at 10 with the magnet off covers the middle of X; the cut right part keeps X's source.
+    const start = timeline([fixtureClip(X, V2, 0, 48, { sourceId: SHORT_SOURCE.id }), fixtureClip(W, MAIN, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]);
+    const probe = accepted(planTimelineEdit(start, move(W, 10, OFF, { trackId: V2 }), idFactory('41111111')));
+    const cut = probe.created[0];
+    if (cut === undefined) throw new Error('The overwrite cut no right part');
+    race(start, move(W, 10, OFF, { trackId: V2 }), cut, X);
+  });
+
+  it('writes nothing to sources for an edit that creates no clip', () => {
+    for (const command of [move(X, 100, OFF), setRange(X, 0, 0, 20, OFF)]) {
+      const doc = docFrom(timeline([fixtureClip(X, V2, 0, 40, { sourceId: SHORT_SOURCE.id })], undefined, [SHORT_SOURCE]));
+      const seen = recordTransactions(doc);
+      accepted(applyTimelineEdit(doc, command, ORIGIN));
+      expect(seen, command.operation).toEqual([{ origin: ORIGIN, sources: false }]);
+    }
   });
 });
