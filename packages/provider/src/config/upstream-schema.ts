@@ -87,12 +87,14 @@ function resolved(node: Node, root: unknown, depth: number): Node {
 }
 
 /**
- * The alternative required sets of a union whose every branch only lists required fields (`anyOf: [{ required: [a] }, { required: [b] }]`).
+ * The alternative required sets of a union whose every branch only lists required fields (`anyOf: [{ required: [a] }, { required: [b] }]`),
+ * or adds constraints on the fields it requires (`{ required: [a], properties: { a: { minItems: 1 } } }`). Such a constraint holds
+ * only when that alternative is the one taken, so it is not kept.
  * @param union - The `anyOf` or `oneOf` list.
  * @returns One set per branch, or undefined when some branch says more than what it requires.
  */
 function requiredSets(union: readonly unknown[]): string[][] | undefined {
-  const sets = union.map((branch) => (isObject(branch) && Array.isArray(branch.required) && Object.keys(branch).every((key) => key === "required") ? branch.required.map(String) : undefined));
+  const sets = union.map((branch) => (isObject(branch) && Array.isArray(branch.required) && Object.keys(branch).every((key) => key === "required" || key === "properties") ? branch.required.map(String) : undefined));
   return sets.length > 0 && sets.every((set) => set !== undefined) ? sets : undefined;
 }
 
