@@ -222,7 +222,8 @@ export const falAdapter: MediaAdapter = {
     },
     // MiniMax's clone: fal makes the voice id and answers it.
     voice: {
-      body: (context) => buildBody(context.binding, { params: context.params, prompt: context.prompt }),
+      // The clone's preview text is not sent: the speak step after it says the run's text.
+      body: (context) => buildBody(context.binding, { params: context.params, prompt: "" }),
       output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
     },
     speak: {
