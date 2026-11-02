@@ -34,6 +34,7 @@ import { toast } from '@web/lib/toast';
 import { readBodyContent, type BlockReader } from '@web/spaces/document/document-paste-read';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
+import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 
 /** The editor a drop is put by. */
 type Editor = Parameters<typeof putContent>[0] & BlockReader;
@@ -66,7 +67,9 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   // hands over has already been through the paste transforms against the
   // selection the drag began from, and the paste below runs them again
   // against the drop point.
-  const dragged = view.dragging?.slice ?? slice;
+  // A drag of the selection takes what its copy would (words in a cell
+  // without the table around them, a range leaving a table with the table).
+  const dragged = (node === undefined && !selection.empty ? tableClippedBlocks(view)?.slice : null) ?? view.dragging?.slice ?? slice;
   const content = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
   const read = readBodyContent(editor, view.serializeForClipboard(content).dom.innerHTML, view.state.schema);
   if (!holdsContent(read.blocks)) return true;
@@ -75,6 +78,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
     return true;
   }
   if (removes) view.dispatch(tr);
+  const taken = view.state.doc;
   const point = tr.mapping.map(at);
   // BlockNote's own paste fixes read their target from the selection and stand
   // aside while a drag is in flight (`transformPasted.ts`); the placement puts
@@ -87,6 +91,14 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
     placed = landingAsDrop(removes, () => putContent(editor, read, { wordsIntoTarget: true, judge: (props) => props, dropAt: point }));
   } finally {
     view.dragging = dragging;
+  }
+  // A move whose drop puts nothing gives the dragged content back, as
+  // ProseMirror's own drop gives up when its insertion changes nothing.
+  if (removes && view.state.doc.eq(taken)) {
+    const back = view.state.tr;
+    for (let i = tr.steps.length - 1; i >= 0; i -= 1) back.step(tr.steps[i]!.invert(tr.docs[i]!));
+    view.dispatch(back.setSelection(selection.getBookmark().resolve(back.doc)));
+    return true;
   }
   if (placed !== null) selectPlaced(view, placed);
   return true;

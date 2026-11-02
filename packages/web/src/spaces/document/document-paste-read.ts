@@ -30,7 +30,7 @@ export interface ReadBlock {
   readonly [BODY_NODE]?: PMNode;
   /** Whether the block is an open end of the body's own copy with no words. */
   readonly [OPEN_EDGE]?: true;
-  /** Whether the block is the nested line of words the copy's end opens into, read out to the top level. */
+  /** Whether the block is the nested line of words an end of the copy opens into, read out to the top level. */
   readonly [OPEN_NESTED]?: true;
 }
 
@@ -41,9 +41,9 @@ export interface ReadBlock {
 export const OPEN_EDGE: unique symbol = Symbol('open edge');
 
 /**
- * Marks the line of words a copy's end opens into when that line is nested:
- * it is read out to the top level as the copy's last line, where it joins the
- * line it lands in, which only a placement by blocks does.
+ * Marks the line of words an end of a copy opens into when that line is
+ * nested: it is read out to the top level as the copy's first or last line,
+ * where it joins the line it lands in, which only a placement by blocks does.
  */
 export const OPEN_NESTED: unique symbol = Symbol('open nested end');
 
@@ -704,13 +704,15 @@ export function readBodyContent(reader: BlockReader, html: string, schema: Schem
 /**
  * The body's own copy with its open ends read the same at any depth.
  * ProseMirror records how deep each end of a copied slice is open
- * (`data-pm-slice`, plus two levels per node of the context it wraps the
+ * (`data-pm-slice`, plus one level per node of the context it wraps the
  * slice in). Each end opens into one line, which this reads as a top-level
  * block: the nested line the end opens into is read out of its parent, and
- * the parents the start opens through, whose words lie before the copy, are
- * left out. An open end with no words is the boundary of a line the copy only
- * touched, which joins the line it lands in and is no line of its own
- * (`OPEN_EDGE`); it has no type of its own and reads as an empty paragraph.
+ * the parents the start opens through, whose own lines lie before the copy
+ * and which BlockNote reads as empty paragraphs, are left out; a line read
+ * out this way is marked (`OPEN_NESTED`). An open end with no words is the
+ * boundary of a line the copy only touched, which joins the line it lands in
+ * and is no line of its own (`OPEN_EDGE`); it has no type of its own and
+ * reads as an empty paragraph, the lines nested under it following it.
  * @param blocks - The blocks read.
  * @param html - The copy's clipboard HTML.
  * @returns The blocks.
@@ -724,18 +726,27 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
    * @param open - The end's open depth, as `data-pm-slice` records it.
    * @returns The lines.
    */
-  const levels = (open: string): number => Math.floor((Number(open) + 2 * contextDepth(marker[3]!) - 1) / 2);
+  const levels = (open: string): number => Math.floor((Number(open) + contextDepth(marker[3]!) - 1) / 2);
   /**
-   * Whether a block is a line with no words and nothing nested.
+   * Whether a block is a line with no words.
    * @param block - The block.
    * @returns True for such a line.
    */
-  const blank = (block: ReadBlock | undefined): boolean => block !== undefined && wordsIn(block.content) === '' && (block.children ?? []).length === 0;
+  const wordless = (block: ReadBlock | undefined): boolean => block !== undefined && wordsIn(block.content) === '';
+  /**
+   * An open end with no words, as the empty paragraph it reads as.
+   * @param block - The block.
+   * @returns The marked block.
+   */
+  const edge = (block: ReadBlock): ReadBlock => ({ type: 'paragraph', content: [], children: [], [OPEN_EDGE]: true, ...(block[BODY_NODE] === undefined ? {} : { [BODY_NODE]: block[BODY_NODE] }) });
   const out = [...blocks];
   const start = levels(marker[1]!);
-  let wrappers = 0;
-  while (wrappers < start - 1 && blank(out[wrappers])) wrappers += 1;
-  if (wrappers > 0 && wrappers < out.length && !blank(out[wrappers])) out.splice(0, wrappers);
+  const parents = openParents(html, start - 1);
+  if (parents > 0 && parents < out.length) {
+    out.splice(0, parents);
+    if (!wordless(out[0])) out[0] = { ...out[0]!, [OPEN_NESTED]: true };
+  }
+  if (start > 0 && out.length > 1 && wordless(out[0])) out.splice(0, 1, edge(out[0]!), ...(out[0]!.children ?? []));
   const end = levels(marker[2]!);
   /**
    * A block without the nested line its end opens into, and that line.
@@ -753,17 +764,33 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
   };
   if (end > 1 && out.length > 0) {
     const [kept, line] = openLine(out[out.length - 1]!, end - 1);
-    if (line !== null) out.splice(out.length - 1, 1, kept, blank(line) ? line : { ...line, [OPEN_NESTED]: true });
+    if (line !== null) out.splice(out.length - 1, 1, kept, wordless(line) ? line : { ...line, [OPEN_NESTED]: true });
   }
-  /**
-   * An open end with no words, as the empty paragraph it reads as.
-   * @param block - The block.
-   * @returns The marked block.
-   */
-  const edge = (block: ReadBlock): ReadBlock => ({ type: 'paragraph', content: [], children: [], [OPEN_EDGE]: true, ...(block[BODY_NODE] === undefined ? {} : { [BODY_NODE]: block[BODY_NODE] }) });
-  for (let i = 0; i < start && i < out.length - 1 && blank(out[i]); i += 1) out[i] = edge(out[i]!);
-  for (let i = out.length - 1; out.length - 1 - i < end && i > 0 && blank(out[i]); i -= 1) out[i] = edge(out[i]!);
+  const last = out[out.length - 1];
+  if (end > 0 && out.length > 1 && wordless(last) && (last!.children ?? []).length === 0) out[out.length - 1] = edge(last!);
   return out;
+}
+
+/**
+ * How many parents the start of a copied slice opens through before its first
+ * line: block containers in its HTML that hold a nested block group and no
+ * content of their own.
+ * @param html - The copy's clipboard HTML.
+ * @param most - The most there can be: one fewer than the lines the start opens through.
+ * @returns The count.
+ */
+function openParents(html: string, most: number): number {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  let group = root.querySelector('[data-pm-slice]');
+  let count = 0;
+  while (count < most && group?.getAttribute('data-node-type') === 'blockGroup') {
+    const first = group.firstElementChild?.querySelector(':scope > [data-node-type="blockContainer"]')?.firstElementChild;
+    if (first?.getAttribute('data-node-type') !== 'blockGroup') break;
+    count += 1;
+    group = first;
+  }
+  return count;
 }
 
 /**

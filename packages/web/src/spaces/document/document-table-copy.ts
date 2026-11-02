@@ -126,7 +126,10 @@ function inCellBlocks(view: EditorView, depth: number): ClippedBlocks {
   for (let level = 0; level < depth; level += 1) {
     content = content.firstChild?.content ?? Fragment.empty;
   }
-  const slice = new Slice(content, Math.max(0, whole.openStart - depth), Math.max(0, whole.openEnd - depth));
+  // The cell's blocks go back into a block group, as the body's own copy
+  // starts, so each end opens as deep as the same lines copied in the body.
+  const group = view.state.schema.nodes['blockGroup']!.create(null, content);
+  const slice = new Slice(Fragment.from(group), Math.max(0, whole.openStart - depth) + 1, Math.max(0, whole.openEnd - depth) + 1);
   return { blocks: fragmentToBlocks(content as never) as never[], slice };
 }
 

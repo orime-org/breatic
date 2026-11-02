@@ -164,9 +164,6 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
  */
 function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: boolean): ReadBlock[] {
   const out = [...blocks];
-  // The open ends of one side are one boundary, however many levels deep.
-  while (out[0]?.[OPEN_EDGE] === true && out[1]?.[OPEN_EDGE] === true) out.splice(1, 1);
-  while (out.length > 1 && out[out.length - 1]?.[OPEN_EDGE] === true && out[out.length - 2]?.[OPEN_EDGE] === true) out.splice(-2, 1);
   while (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
   while (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
   return out;
