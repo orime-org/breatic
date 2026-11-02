@@ -461,6 +461,26 @@ describe('texture files a collaborator browser loads (inner#1690)', () => {
     expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: false })).toThrow('color.avif');
   });
 
+  it('reads only the WebP and fallback images of a texture that also declares AVIF', () => {
+    const json = JSON.parse(new TextDecoder().decode(avifModel(fallback)));
+    json.extensionsUsed = ['EXT_texture_webp', 'EXT_texture_avif'];
+    json.textures = [{ source: 0, extensions: { EXT_texture_webp: { source: 2 }, EXT_texture_avif: { source: 1 } } }];
+    json.images.push({ uri: 'color.webp' });
+    const files = new Map([['scene.gltf', textBytes(JSON.stringify(json))], ['mesh.bin', Uint8Array.from(GEOMETRY)],
+      ['color.png', new Uint8Array(8)], ['color.webp', new Uint8Array(8)]]);
+    expect(inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: true }).entry).toBe('scene.gltf');
+  });
+
+  it('checks the length of a buffer only another browser reads an image from', () => {
+    const json = JSON.parse(new TextDecoder().decode(avifModel(fallback)));
+    json.buffers.push({ uri: 'fallback.bin', byteLength: 1000 });
+    json.bufferViews.push({ buffer: 1, byteLength: 8 });
+    json.images[0] = { bufferView: 1, mimeType: 'image/png' };
+    const files = new Map([['scene.gltf', textBytes(JSON.stringify(json))], ['mesh.bin', Uint8Array.from(GEOMETRY)],
+      ['fallback.bin', new Uint8Array(8)], ['color.avif', new Uint8Array(8)]]);
+    expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: true })).toThrow('shorter than its declared length');
+  });
+
   it('accepts a required AVIF texture without a fallback source', () => {
     const files = new Map([['scene.gltf', avifModel({ extensions: { EXT_texture_avif: { source: 1 } } }, true)],
       ['mesh.bin', Uint8Array.from(GEOMETRY)], ['color.avif', new Uint8Array(8)]]);

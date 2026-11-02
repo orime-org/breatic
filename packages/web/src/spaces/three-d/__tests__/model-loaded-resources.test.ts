@@ -133,6 +133,17 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
     expect(sorted(resources.buffers)).toEqual([1]);
   });
 
+  it('falls back to the texture source when a declared WebP is unsupported, without trying AVIF', () => {
+    const json = {
+      scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: {}, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+      textures: [{ source: 0, extensions: { EXT_texture_webp: { source: 1 }, EXT_texture_avif: { source: 2 } } }],
+      images: [{ uri: 'c.png' }, { uri: 'c.webp' }, { uri: 'c.avif' }],
+    };
+    expect(derive(json, { webp: false, avif: true }).textures).toEqual([{ texture: 0, image: 0 }]);
+    expect(derive(json, { webp: true, avif: true }).textures).toEqual([{ texture: 0, image: 1 }]);
+  });
+
   it('reads textures only of materials reached primitives use, by the slots the loader assigns', () => {
     const resources = derive(({
       scenes: [{ nodes: [0] }],

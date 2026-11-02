@@ -96,7 +96,8 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
 }
 
 /**
- * Pick the image GLTFLoader decodes for a texture: the first source extension this browser decodes, otherwise the texture's source.
+ * Pick the image GLTFLoader decodes for a texture: the first source extension the texture declares, or the texture's own source
+ * when this browser cannot decode that extension's format (GLTFLoader's WebP and AVIF plugins fall back without trying another).
  * @param texture - The texture declaration.
  * @param support - The browser's WebP and AVIF support, which GLTFLoader probes before using those extensions.
  * @returns The image index, or undefined when none is declared, and the source extension that supplies it.
@@ -105,9 +106,10 @@ function collectMaterialTextures(material: JsonObject | undefined, into: Set<num
 function textureImage(texture: JsonObject | undefined, support: TextureFormatSupport): { image: number | undefined; extension: string | undefined } {
   const extensions = object(texture?.extensions);
   for (const name of TEXTURE_SOURCE_EXTENSIONS) {
-    if ((name === 'EXT_texture_webp' && !support.webp) || (name === 'EXT_texture_avif' && !support.avif)) continue;
     const source = index(object(extensions?.[name])?.source);
-    if (source !== undefined) return { image: source, extension: name };
+    if (source === undefined) continue;
+    if ((name === 'EXT_texture_webp' && !support.webp) || (name === 'EXT_texture_avif' && !support.avif)) break;
+    return { image: source, extension: name };
   }
   return { image: index(texture?.source), extension: undefined };
 }

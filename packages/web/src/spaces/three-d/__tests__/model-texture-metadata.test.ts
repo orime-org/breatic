@@ -160,6 +160,19 @@ describe('model texture metadata dimensions before decoding', () => {
     expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 63 })).toThrow('dimension budget');
   });
 
+  it('holds only the images this browser decodes to the device texture limit', () => {
+    const source = model({
+      extensionsUsed: ['EXT_texture_webp'],
+      images: [{ uri: 'large.png' }, { uri: 'small.webp' }],
+      textures: [{ source: 0, extensions: { EXT_texture_webp: { source: 1 } } }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+    }, [['models/large.png', png(64, 64)], ['models/small.webp', png(16, 16)]]);
+
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 64 }, 16)).not.toThrow();
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 64 }, 15)).toThrow('dimension budget');
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 63 }, 16)).toThrow('dimension budget');
+  });
+
   it('checks dimensions inside image data URIs', () => {
     const source = model({ images: [{ uri: dataUri(png(32, 16), 'image/png') }] });
 

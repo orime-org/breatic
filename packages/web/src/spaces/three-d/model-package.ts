@@ -5,7 +5,7 @@ import { strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js'
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import { loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 import type { LoadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
@@ -118,7 +118,7 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
  * @param files - Original selected resources indexed by normalized path.
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
- * @param support - The browser's WebP and AVIF support.
+ * @param support - This browser's WebP and AVIF support, kept for the preview and parse; the checks cover every browser.
  * @returns A model package ready for the installed loader.
  * @throws {ModelImportError} When the entry or a loaded dependency is missing, unreadable or shorter than declared.
  */
@@ -130,7 +130,7 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
   for (const resource of [...json.buffers ?? [], ...json.images ?? []]) {
     if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);
   }
-  const loaded = loadedResources(json, support);
+  // A registered package is read by every collaborator's browser, so every check covers what any of them loads.
   const everyBrowser = loadedResourcesInEveryBrowser(json);
   // GLTFLoader reads a used texture's image without checking it exists.
   const imageless = everyBrowser.flatMap((resources) => resources.textures).find((texture) => texture.image === undefined);
@@ -139,7 +139,7 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
   if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${missing.join(', ')}`,
     { detail: '', info: { entries: [], paths: [...files.keys()], missing } });
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const index of loaded.buffers) {
+  for (const index of new Set(everyBrowser.flatMap((resources) => [...resources.buffers]))) {
     const buffer = json.buffers?.[index];
     if (!buffer) continue;
     const location = buffer.uri === undefined ? index === 0 ? entry : `buffers[${index}]`

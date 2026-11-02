@@ -288,7 +288,7 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
 export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, limits: SceneImportLimits, renderer?: WebGLRenderer): Promise<Group> {
   signal.throwIfAborted();
   const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
-  validateModelTextureMetadata(model, textureLimits);
+  validateModelTextureMetadata(model, limits, textureLimits.maxTextureEdge);
   const { textures, basisu, draco } = loadedResources(model.json, model.support);
   const decoder = createModelDecoder(model, limits, renderer, { basisu, draco });
   const bytes = model.files.get(model.entry)!;

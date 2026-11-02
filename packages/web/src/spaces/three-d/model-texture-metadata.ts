@@ -6,7 +6,7 @@ import type { SceneImportLimits } from '@breatic/shared';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { loadedImageUri, readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 
 const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -46,7 +46,7 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
  * Read one image's declared dimensions and hold them to the edge budget.
  * @param read - The model, the decoded data URIs and the image location.
  * @param image - The glTF image declaration.
- * @param limits - Configured and device-adjusted texture dimension budget.
+ * @param limits - The texture dimension budget for this image.
  * @throws {ModelImportError} When the image is invalid or exceeds its dimension budget.
  */
 function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
@@ -71,15 +71,21 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
 
 /**
  * Check the dimensions of the images GLTFLoader decodes in any browser that can open the model, before the browser decodes their pixels.
+ * Every such image is held to the configured edge; the images this browser decodes are also held to this device's texture limit.
  * A failure names the image by its file path, or by its index when the image is embedded.
  * @param model - Checked original glTF resources.
- * @param limits - Configured and device-adjusted texture dimension budget.
+ * @param limits - Configured texture dimension budget, shared by every collaborator.
+ * @param deviceMaxEdge - The largest texture edge this device uploads; the configured edge when there is no device limit.
  * @throws {ModelImportError} When an image is invalid or exceeds its dimension budget.
  */
-export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
+export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits, deviceMaxEdge = limits.maxTextureEdge): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
+  const local = loadedResources(model.json, model.support).images;
+  const deviceLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, deviceMaxEdge) };
   // loadedResources lists only images that exist.
-  for (const index of new Set(loadedResourcesInEveryBrowser(model.json).flatMap((resources) => [...resources.images]))) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
+  for (const index of new Set(loadedResourcesInEveryBrowser(model.json).flatMap((resources) => [...resources.images]))) {
+    checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], local.has(index) ? deviceLimits : limits);
+  }
 }
 
 /**
