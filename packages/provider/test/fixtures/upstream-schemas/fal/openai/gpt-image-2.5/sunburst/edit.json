@@ -1,0 +1,196 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/edit",
+  "fields": {
+    "mask_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ]
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9",
+          "auto"
+        ]
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "background": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "transparent",
+          "opaque"
+        ]
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "maxItems": 16,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      }
+    ],
+    "output_compression": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "image_urls"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ]
+  }
+}

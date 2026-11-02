@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/ideogram-ai/ideogram-v3",
+  "price_formula": "(params.rendering_speed ?? \"BALANCED\") == \"TURBO\" ? 0.03 : (params.rendering_speed ?? \"BALANCED\") == \"QUALITY\" ? 0.09 : 0.06"
+}

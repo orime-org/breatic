@@ -1,0 +1,43 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/gemini-omni-flash/1.1/text-to-video",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 10
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ]
+}

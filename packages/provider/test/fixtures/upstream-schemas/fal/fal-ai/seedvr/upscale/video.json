@@ -1,0 +1,141 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/seedvr/upscale/video",
+  "fields": {
+    "noise_scale": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "upscale_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "target",
+          "factor"
+        ]
+      }
+    ],
+    "target_resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p",
+          "1440p",
+          "2160p"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "output_write_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "fast",
+          "balanced",
+          "small"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "X264 (.mp4)",
+          "VP9 (.webm)",
+          "PRORES4444 (.mov)",
+          "GIF (.gif)"
+        ]
+      }
+    ],
+    "upscale_factor": [
+      {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 10
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "output_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "maximum"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "video_url"
+  ],
+  "outputs": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

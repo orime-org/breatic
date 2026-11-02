@@ -1,0 +1,128 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/image-to-video",
+  "fields": {
+    "prompt_expansion_mode": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "end_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480P",
+          "768P",
+          "2K",
+          "4K"
+        ]
+      }
+    ],
+    "target_audio_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "expanded_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

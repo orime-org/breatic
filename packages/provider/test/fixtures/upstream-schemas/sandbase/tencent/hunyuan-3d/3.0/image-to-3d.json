@@ -1,0 +1,62 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/tencent/hunyuan-3d/3.0/image-to-3d",
+  "fields": {
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "back_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_pbr": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000
+      }
+    ],
+    "left_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "right_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "polygon_type": [
+      {
+        "type": "string",
+        "enum": [
+          "triangle",
+          "quadrilateral"
+        ]
+      }
+    ],
+    "generate_type": [
+      {
+        "type": "string",
+        "enum": [
+          "Normal",
+          "LowPoly",
+          "Geometry"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ],
+  "modes": [
+    "async"
+  ]
+}

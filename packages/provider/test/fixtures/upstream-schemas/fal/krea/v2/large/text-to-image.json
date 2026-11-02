@@ -1,0 +1,223 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=krea/v2/large/text-to-image",
+  "fields": {
+    "styles": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "image_style_references": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "image_url": [
+              {
+                "type": "string"
+              }
+            ],
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "image_url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "image_url"
+          ]
+        }
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "4:3",
+          "3:2",
+          "16:9",
+          "2.35:1",
+          "4:5",
+          "2:3",
+          "9:16"
+        ]
+      }
+    ],
+    "moodboards": [
+      {
+        "type": "array",
+        "maxItems": 1,
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "creativity": [
+      {
+        "type": "string",
+        "enum": [
+          "raw",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

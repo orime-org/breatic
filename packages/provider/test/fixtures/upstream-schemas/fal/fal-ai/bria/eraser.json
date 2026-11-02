@@ -1,0 +1,93 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bria/eraser",
+  "fields": {
+    "mask_type": [
+      {
+        "type": "string",
+        "enum": [
+          "manual",
+          "automatic"
+        ]
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "preserve_alpha": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "mask_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "image_url",
+    "mask_url"
+  ],
+  "outputs": {
+    "image.width": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.height": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "image.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

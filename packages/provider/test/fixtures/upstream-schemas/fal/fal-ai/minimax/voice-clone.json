@@ -1,0 +1,104 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/voice-clone",
+  "fields": {
+    "accuracy": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "noise_reduction": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "need_volume_normalization": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model": [
+      {
+        "type": "string",
+        "enum": [
+          "speech-02-hd",
+          "speech-02-turbo",
+          "speech-01-hd",
+          "speech-01-turbo"
+        ]
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "audio_url"
+  ],
+  "outputs": {
+    "custom_voice_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

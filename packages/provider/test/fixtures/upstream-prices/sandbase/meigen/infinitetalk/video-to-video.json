@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/meigen/infinitetalk/video-to-video",
+  "price_formula": "(usage.duration ?? media_duration(params.audio) ?? ((params.num_frames ?? 145) / 25.0)) * 0.3 * ((params.resolution ?? \"720p\") == \"720p\" ? 2.0 : 1.0)"
+}

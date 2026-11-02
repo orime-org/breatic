@@ -1,0 +1,160 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4.5/edit",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "max_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9",
+          "auto_2K",
+          "auto_4K"
+        ]
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "image_urls"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ]
+  }
+}

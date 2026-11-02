@@ -1,0 +1,171 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=bytedance/seedance-2.5/us/image-to-video",
+  "fields": {
+    "end_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "draft": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "auto"
+        ]
+      }
+    ],
+    "end_user_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "bitrate_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "high"
+        ]
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "codec": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "H264",
+          "H265"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20",
+          "21",
+          "22",
+          "23",
+          "24",
+          "25",
+          "26",
+          "27",
+          "28",
+          "29",
+          "30"
+        ]
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image_url"
+  ],
+  "outputs": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "draft_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

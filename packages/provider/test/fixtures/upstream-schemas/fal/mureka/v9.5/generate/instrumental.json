@@ -1,0 +1,217 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/v9.5/generate/instrumental",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "instrumental_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [],
+  "outputs": {
+    "lyrics_sections": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "start": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "section_type": [
+              {
+                "type": "string",
+                "enum": [
+                  "intro",
+                  "verse",
+                  "pre-chorus",
+                  "chorus",
+                  "bridge",
+                  "break",
+                  "outro"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "lines": [
+              {
+                "type": "array",
+                "items": {
+                  "fields": {
+                    "start": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "text": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "end": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "words": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "fields": {
+                            "start": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "text": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "end": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "": [
+                              {
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "required": []
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "": [
+                      {
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "required": []
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "end": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "song_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

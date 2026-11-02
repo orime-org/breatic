@@ -1,0 +1,285 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/gemini-3.1-flash-tts",
+  "fields": {
+    "speakers": [
+      {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "speaker_id": [
+              {
+                "type": "string"
+              }
+            ],
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Pulcherrima",
+                  "Puck",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "voice",
+                  "speaker_id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "voice",
+            "speaker_id"
+          ]
+        }
+      },
+      {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 0
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "ogg_opus"
+        ]
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "style_instructions": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "language_code": [
+      {
+        "type": "string",
+        "enum": [
+          "Arabic (Egypt)",
+          "Bangla (Bangladesh)",
+          "Dutch (Netherlands)",
+          "English (India)",
+          "English (US)",
+          "French (France)",
+          "German (Germany)",
+          "Hindi (India)",
+          "Indonesian (Indonesia)",
+          "Italian (Italy)",
+          "Japanese (Japan)",
+          "Korean (South Korea)",
+          "Marathi (India)",
+          "Polish (Poland)",
+          "Portuguese (Brazil)",
+          "Romanian (Romania)",
+          "Russian (Russia)",
+          "Spanish (Spain)",
+          "Tamil (India)",
+          "Telugu (India)",
+          "Thai (Thailand)",
+          "Turkish (Turkey)",
+          "Ukrainian (Ukraine)",
+          "Vietnamese (Vietnam)",
+          "Afrikaans (South Africa)",
+          "Albanian (Albania)",
+          "Amharic (Ethiopia)",
+          "Arabic (World)",
+          "Armenian (Armenia)",
+          "Azerbaijani (Azerbaijan)",
+          "Basque (Spain)",
+          "Belarusian (Belarus)",
+          "Bulgarian (Bulgaria)",
+          "Burmese (Myanmar)",
+          "Catalan (Spain)",
+          "Cebuano (Philippines)",
+          "Chinese Mandarin (China)",
+          "Chinese Mandarin (Taiwan)",
+          "Croatian (Croatia)",
+          "Czech (Czech Republic)",
+          "Danish (Denmark)",
+          "English (Australia)",
+          "English (UK)",
+          "Estonian (Estonia)",
+          "Filipino (Philippines)",
+          "Finnish (Finland)",
+          "French (Canada)",
+          "Galician (Spain)",
+          "Georgian (Georgia)",
+          "Greek (Greece)",
+          "Gujarati (India)",
+          "Haitian Creole (Haiti)",
+          "Hebrew (Israel)",
+          "Hungarian (Hungary)",
+          "Icelandic (Iceland)",
+          "Javanese (Java)",
+          "Kannada (India)",
+          "Konkani (India)",
+          "Lao (Laos)",
+          "Latin (Vatican City)",
+          "Latvian (Latvia)",
+          "Lithuanian (Lithuania)",
+          "Luxembourgish (Luxembourg)",
+          "Macedonian (North Macedonia)",
+          "Maithili (India)",
+          "Malagasy (Madagascar)",
+          "Malay (Malaysia)",
+          "Malayalam (India)",
+          "Mongolian (Mongolia)",
+          "Nepali (Nepal)",
+          "Norwegian Bokmal (Norway)",
+          "Norwegian Nynorsk (Norway)",
+          "Odia (India)",
+          "Pashto (Afghanistan)",
+          "Persian (Iran)",
+          "Portuguese (Portugal)",
+          "Punjabi (India)",
+          "Serbian (Serbia)",
+          "Sindhi (India)",
+          "Sinhala (Sri Lanka)",
+          "Slovak (Slovakia)",
+          "Slovenian (Slovenia)",
+          "Spanish (Latin America)",
+          "Spanish (Mexico)",
+          "Swahili (Kenya)",
+          "Swedish (Sweden)",
+          "Urdu (Pakistan)"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Pulcherrima",
+          "Puck",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

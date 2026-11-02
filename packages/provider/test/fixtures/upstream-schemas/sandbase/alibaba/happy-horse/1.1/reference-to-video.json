@@ -1,0 +1,84 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/alibaba/happy-horse/1.1/reference-to-video",
+  "fields": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "images",
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ]
+}

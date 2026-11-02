@@ -1,0 +1,71 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/openai/gpt-image-2.5-sunburst",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "2k",
+          "4k"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "1:2",
+          "2:1",
+          "1:3",
+          "3:1",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:3",
+          "4:5",
+          "5:4",
+          "9:16",
+          "16:9",
+          "9:21",
+          "21:9"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "sync",
+    "async"
+  ]
+}

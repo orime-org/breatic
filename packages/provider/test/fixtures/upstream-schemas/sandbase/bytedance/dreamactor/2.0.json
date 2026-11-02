@@ -1,0 +1,27 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/dreamactor/2.0",
+  "fields": {
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ],
+    "trim_first_second": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "video"
+  ],
+  "modes": [
+    "async"
+  ]
+}

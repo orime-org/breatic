@@ -1,0 +1,157 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/o3/4k/image-to-video",
+  "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "end_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "multi_prompt": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "prompt": [
+              {
+                "type": "string"
+              }
+            ],
+            "duration": [
+              {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7",
+                  "8",
+                  "9",
+                  "10",
+                  "11",
+                  "12",
+                  "13",
+                  "14",
+                  "15"
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "prompt"
+          ]
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "duration": [
+      {
+        "type": "string",
+        "enum": [
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15"
+        ]
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligent"
+        ]
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image_url"
+  ],
+  "outputs": {
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

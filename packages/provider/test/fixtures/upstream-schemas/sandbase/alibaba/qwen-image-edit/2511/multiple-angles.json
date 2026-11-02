@@ -1,0 +1,81 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/alibaba/qwen-image-edit/2511/multiple-angles",
+  "fields": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "zoom": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "png",
+          "jpeg"
+        ]
+      }
+    ],
+    "vertical_angle": [
+      {
+        "type": "number",
+        "minimum": -30,
+        "maximum": 90
+      }
+    ],
+    "horizontal_angle": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 360
+      }
+    ],
+    "additional_prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [],
+  "modes": [
+    "async"
+  ]
+}

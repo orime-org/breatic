@@ -1,0 +1,171 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=alibaba/happy-horse/v1.1/reference-to-video",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4",
+          "21:9",
+          "9:21",
+          "5:4",
+          "4:5"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "image_urls"
+  ],
+  "outputs": {
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.width": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.num_frames": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.fps": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.height": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

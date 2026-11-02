@@ -1,0 +1,81 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/rife/video",
+  "fields": {
+    "loop": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "use_calculated_fps": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "num_frames": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4
+      }
+    ],
+    "use_scene_detection": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "fps": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 60
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "video_url"
+  ],
+  "outputs": {
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

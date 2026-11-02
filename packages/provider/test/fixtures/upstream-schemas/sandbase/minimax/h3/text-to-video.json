@@ -1,0 +1,63 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/h3/text-to-video",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "768P",
+          "2K"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ]
+      }
+    ],
+    "aigc_watermark": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "duration"
+  ],
+  "modes": [
+    "async"
+  ]
+}

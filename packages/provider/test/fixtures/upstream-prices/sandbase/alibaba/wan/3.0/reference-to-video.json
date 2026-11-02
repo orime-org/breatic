@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/alibaba/wan/3.0/reference-to-video",
+  "price_formula": "(((params.duration ?? 5) == \"auto\" ? Math.round(usage.duration ?? 30.0) : (params.duration ?? 5)) + (len(params.videos ?? []) > 0 ? Math.ceil(Math.min(media_duration(params.videos) ?? 15.0, 15.0)) : 0.0)) * ((params.resolution ?? \"720p\") == \"1080p\" ? 0.20 : (params.resolution ?? \"720p\") == \"480p\" ? 0.05 : 0.10)"
+}

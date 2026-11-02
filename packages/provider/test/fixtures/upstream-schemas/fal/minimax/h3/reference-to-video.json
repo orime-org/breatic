@@ -1,0 +1,166 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/reference-to-video",
+  "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "reference_audio_urls": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt_expansion_mode": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15
+      }
+    ],
+    "reference_image_urls": [
+      {
+        "type": "array",
+        "maxItems": 9,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480P",
+          "768P",
+          "2K",
+          "4K"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "adaptive",
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ]
+      }
+    ],
+    "reference_video_urls": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "expanded_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

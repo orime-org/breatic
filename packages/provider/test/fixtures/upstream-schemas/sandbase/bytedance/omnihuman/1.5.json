@@ -1,0 +1,47 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/omnihuman/1.5",
+  "fields": {
+    "mask": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p"
+        ]
+      }
+    ],
+    "turbo_mode": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "image",
+    "audio"
+  ],
+  "modes": [
+    "async"
+  ]
+}

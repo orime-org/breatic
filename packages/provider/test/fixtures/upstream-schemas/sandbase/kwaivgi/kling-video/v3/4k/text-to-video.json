@@ -1,0 +1,107 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/v3/4k/text-to-video",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligent"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ]
+      }
+    ],
+    "multi_prompt": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "prompt": [
+              {
+                "type": "string"
+              }
+            ],
+            "duration": [
+              {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "prompt"
+          ]
+        }
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ]
+}

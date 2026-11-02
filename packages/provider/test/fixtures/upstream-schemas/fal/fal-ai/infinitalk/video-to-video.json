@@ -1,0 +1,107 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/infinitalk/video-to-video",
+  "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4294967295
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p"
+        ]
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "acceleration": [
+      {
+        "type": "string",
+        "enum": [
+          "none",
+          "regular",
+          "high"
+        ]
+      }
+    ],
+    "num_frames": [
+      {
+        "type": "integer",
+        "minimum": 41,
+        "maximum": 241
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "video_url",
+    "audio_url",
+    "prompt"
+  ],
+  "outputs": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=xai/grok-imagine-image/v2.0/text-to-image",
+  "fields": {
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ]
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "1.5k",
+          "2k"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "2:1",
+          "20:9",
+          "19.5:9",
+          "16:9",
+          "4:3",
+          "3:2",
+          "1:1",
+          "2:3",
+          "3:4",
+          "9:16",
+          "9:19.5",
+          "9:20",
+          "1:2",
+          "auto",
+          "21:9",
+          "5:2"
+        ]
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "auto"
+        ]
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "revised_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ]
+  }
+}

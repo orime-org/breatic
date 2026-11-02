@@ -1,0 +1,354 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/ideogram/v3",
+  "fields": {
+    "sync_mode": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "style": [
+      {
+        "type": "string",
+        "enum": [
+          "AUTO",
+          "GENERAL",
+          "REALISTIC",
+          "DESIGN"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "negative_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "style_codes": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "color_palette.name": [
+      {
+        "type": "string",
+        "enum": [
+          "EMBER",
+          "FRESH",
+          "JUNGLE",
+          "MAGIC",
+          "MELON",
+          "MOSAIC",
+          "PASTEL",
+          "ULTRAMARINE"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "color_palette.members": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "color_weight": [
+              {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "rgb.r": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "rgb.b": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "rgb.g": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            ],
+            "rgb": [
+              {
+                "type": "object"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "rgb"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "rgb"
+          ]
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "color_palette": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "style_preset": [
+      {
+        "type": "string",
+        "enum": [
+          "80S_ILLUSTRATION",
+          "90S_NOSTALGIA",
+          "ABSTRACT_ORGANIC",
+          "ANALOG_NOSTALGIA",
+          "ART_BRUT",
+          "ART_DECO",
+          "ART_POSTER",
+          "AURA",
+          "AVANT_GARDE",
+          "BAUHAUS",
+          "BLUEPRINT",
+          "BLURRY_MOTION",
+          "BRIGHT_ART",
+          "C4D_CARTOON",
+          "CHILDRENS_BOOK",
+          "COLLAGE",
+          "COLORING_BOOK_I",
+          "COLORING_BOOK_II",
+          "CUBISM",
+          "DARK_AURA",
+          "DOODLE",
+          "DOUBLE_EXPOSURE",
+          "DRAMATIC_CINEMA",
+          "EDITORIAL",
+          "EMOTIONAL_MINIMAL",
+          "ETHEREAL_PARTY",
+          "EXPIRED_FILM",
+          "FLAT_ART",
+          "FLAT_VECTOR",
+          "FOREST_REVERIE",
+          "GEO_MINIMALIST",
+          "GLASS_PRISM",
+          "GOLDEN_HOUR",
+          "GRAFFITI_I",
+          "GRAFFITI_II",
+          "HALFTONE_PRINT",
+          "HIGH_CONTRAST",
+          "HIPPIE_ERA",
+          "ICONIC",
+          "JAPANDI_FUSION",
+          "JAZZY",
+          "LONG_EXPOSURE",
+          "MAGAZINE_EDITORIAL",
+          "MINIMAL_ILLUSTRATION",
+          "MIXED_MEDIA",
+          "MONOCHROME",
+          "NIGHTLIFE",
+          "OIL_PAINTING",
+          "OLD_CARTOONS",
+          "PAINT_GESTURE",
+          "POP_ART",
+          "RETRO_ETCHING",
+          "RIVIERA_POP",
+          "SPOTLIGHT_80S",
+          "STYLIZED_RED",
+          "SURREAL_COLLAGE",
+          "TRAVEL_POSTER",
+          "VINTAGE_GEO",
+          "VINTAGE_POSTER",
+          "WATERCOLOR",
+          "WEIRD",
+          "WOODBLOCK_PRINT"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "rendering_speed": [
+      {
+        "type": "string",
+        "enum": [
+          "TURBO",
+          "BALANCED",
+          "QUALITY"
+        ]
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

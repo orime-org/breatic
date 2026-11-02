@@ -1,0 +1,34 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/sync/lipsync/3.0/video-to-video",
+  "fields": {
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "video",
+    "audio"
+  ],
+  "modes": [
+    "async"
+  ]
+}

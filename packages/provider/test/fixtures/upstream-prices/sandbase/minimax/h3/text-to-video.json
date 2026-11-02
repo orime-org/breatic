@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/h3/text-to-video",
+  "price_formula": "(usage.total_seconds ?? params.duration ?? 5) * ((params.resolution ?? \"2K\") == \"768P\" ? 0.06 : 0.13)"
+}

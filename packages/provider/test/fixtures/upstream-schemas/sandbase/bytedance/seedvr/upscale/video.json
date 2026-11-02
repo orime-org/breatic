@@ -1,0 +1,87 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/seedvr/upscale/video",
+  "fields": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ],
+    "noise_scale": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    ],
+    "upscale_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "target",
+          "factor"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "X264 (.mp4)",
+          "VP9 (.webm)",
+          "PRORES4444 (.mov)",
+          "GIF (.gif)"
+        ]
+      }
+    ],
+    "output_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "maximum"
+        ]
+      }
+    ],
+    "upscale_factor": [
+      {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 10
+      }
+    ],
+    "output_write_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "fast",
+          "balanced",
+          "small"
+        ]
+      }
+    ],
+    "target_resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p",
+          "1440p",
+          "2160p"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "video"
+  ],
+  "modes": [
+    "async"
+  ]
+}

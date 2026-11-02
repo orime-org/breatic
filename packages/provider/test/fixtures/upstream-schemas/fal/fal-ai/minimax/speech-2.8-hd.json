@@ -1,0 +1,303 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/speech-2.8-hd",
+  "fields": {
+    "normalization_setting.target_range": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 20
+      }
+    ],
+    "normalization_setting.enabled": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "normalization_setting.target_loudness": [
+      {
+        "type": "number",
+        "minimum": -70,
+        "maximum": -10
+      }
+    ],
+    "normalization_setting.target_peak": [
+      {
+        "type": "number",
+        "minimum": -3,
+        "maximum": 0
+      }
+    ],
+    "normalization_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "audio_setting.channel": [
+      {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ]
+      }
+    ],
+    "audio_setting.bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ]
+      }
+    ],
+    "audio_setting.format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "pcm",
+          "flac"
+        ]
+      }
+    ],
+    "audio_setting.sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ]
+      }
+    ],
+    "audio_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "pronunciation_dict.tone_list": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "pronunciation_dict": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "url",
+          "hex"
+        ]
+      }
+    ],
+    "voice_setting.pitch": [
+      {
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12
+      }
+    ],
+    "voice_setting.vol": [
+      {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 10
+      }
+    ],
+    "voice_setting.voice_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice_setting.speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2
+      }
+    ],
+    "voice_setting.english_normalization": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "voice_setting.emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "fearful",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "voice_modify.intensity": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100
+      }
+    ],
+    "voice_modify.timbre": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100
+      }
+    ],
+    "voice_modify.pitch": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100
+      }
+    ],
+    "voice_modify": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "language_boost": [
+      {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans",
+          "auto"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "duration_ms": [
+      {
+        "type": "integer"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ]
+  }
+}

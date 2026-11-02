@@ -1,0 +1,51 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/meigen/infinitetalk/video-to-video",
+  "fields": {
+    "seed": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      }
+    ],
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "num_frames": [
+      {
+        "type": "integer",
+        "minimum": 41,
+        "maximum": 241
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p"
+        ]
+      }
+    ]
+  },
+  "required": [
+    "video",
+    "audio",
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ]
+}

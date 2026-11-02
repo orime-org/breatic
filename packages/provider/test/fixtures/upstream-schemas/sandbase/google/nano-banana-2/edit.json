@@ -1,0 +1,83 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/nano-banana-2/edit",
+  "fields": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ]
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16",
+          "4:1",
+          "1:4",
+          "8:1",
+          "1:8"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ]
+      }
+    ],
+    "enable_web_search": [
+      {
+        "type": "boolean"
+      }
+    ],
+    "enable_image_search": [
+      {
+        "type": "boolean"
+      }
+    ]
+  },
+  "required": [
+    "prompt",
+    "images"
+  ],
+  "modes": [
+    "async"
+  ]
+}
