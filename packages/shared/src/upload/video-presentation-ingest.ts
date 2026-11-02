@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
-
-import type { VideoPresentation, AlphaManifest } from '@shared/upload/video-presentation.js';
 import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
 import { z } from 'zod';
-import { alphaManifestSchema, videoPresentationOriginalSchema, videoPresentationSchema } from '@shared/upload/video-presentation.js';
+import { videoPresentationOriginalSchema } from '@shared/upload/video-presentation.js';
+import {
+  videoPresentationLedgerReceiptSchema, videoPresentationVersionSchema, type VideoPresentationLedgerReceipt, type VideoPresentationVersion,
+} from '@shared/upload/video-presentation-version.js';
+import type { VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
-import { videoSourceLedgerStateSchema } from '@shared/upload/video-source-ledger.js';
 import { untilDeadline } from '@shared/http/deadline.js';
+import type { VideoPresentation } from '@shared/upload/video-presentation-types.js';
 import type { VideoPresentationProcessLimits, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
@@ -28,21 +29,30 @@ export interface VideoPresentationUsageFact {
   pricing: VideoPresentationPricing;
 }
 
-/** Internal durable admission, including work accepted before media measurement. */
-export interface VideoPresentationIngestAttempt {
+/** Both container prices, frozen together at admission (design §3.5): basic probes and copies, standard-4 encodes. */
+export interface VideoPresentationIngestPricing { basic: VideoPresentationPricing; standard4: VideoPresentationPricing }
+/** The retry caps frozen at admission. */
+export interface VideoPresentationAdmissionPolicy { chunkRetries: number; maxAutoRepairs: number }
+/** The internal source binding: the registered storage key and the source bytes' fingerprint. */
+export interface VideoPresentationIngestSourceBinding { storageKey: string; sourceFingerprint: string }
+/** The target policy's preparation: the original job, its real stage and its failure code. */
+export interface VideoPresentationIngestPreparation {
+  targetPolicyVersion: number;
   jobId: string;
-  deadlineAt: number;
-  status: 'accepted' | 'running' | 'completed' | 'failed';
-  usage: ContainerUsage | null;
-  error?: string;
-  usageRecorded?: boolean;
+  stage: VideoCarrierStage | null;
+  failure: string | null;
 }
-/** A read never infers native from missing sidecars. */
+/** The selected version's companion state; absent is null, a failure carries its code. */
+export type VideoPresentationIngestLedger =
+  | { state: 'pending'; receipt: null; failure: null }
+  | { state: 'ready'; receipt: VideoPresentationLedgerReceipt; failure: null }
+  | { state: 'failed'; receipt: null; failure: string };
+/** A read: the selected bundle, the target policy's preparation and the selected version's ledger, never a full array (§3.5, §5.1 step 6). */
 export interface VideoPresentationIngestSnapshot {
-  sourceLedger?: VideoSourceLedgerState;
-  presentation: VideoPresentation | null;
-  manifest?: AlphaManifest;
-  attempt: VideoPresentationIngestAttempt | null;
+  sourceBinding: VideoPresentationIngestSourceBinding;
+  presentation: VideoPresentationVersion | null;
+  preparation: VideoPresentationIngestPreparation | null;
+  ledger: VideoPresentationIngestLedger | null;
   usageFact?: VideoPresentationUsageFact;
 }
 /** Plain internal calls; only ingest owns storage and container execution. */
@@ -58,7 +68,10 @@ export type VideoPresentationIngestRequest = {
   knownAlpha?: boolean;
   repair?: boolean;
   limits?: VideoPresentationProcessLimits;
-  pricing?: VideoPresentationPricing;
+  pricing?: VideoPresentationIngestPricing;
+  /** The target presentation policy; every admission and read carries it. */
+  targetPolicyVersion?: number;
+  policy?: VideoPresentationAdmissionPolicy;
   actorUserId?: string;
   projectId?: string | null;
   packedURL?: string;
@@ -75,6 +88,7 @@ export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing>
   size: z.strictObject({ vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
   prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }),
 });
+const retryCap = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const budget = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const httpsUrl = z.url().refine(value => value.startsWith('https://'));
 /** Limits are validated at the edge and frozen for the original accepted job; the ledger has byte and parser budgets, never a frame count ceiling. */
@@ -93,7 +107,11 @@ export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIn
   original: videoPresentationOriginalSchema.nullable().optional(),
   registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
   contentType: z.string().min(1).optional(), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
-  limits: videoPresentationProcessLimitsSchema.optional(), pricing: videoPresentationPricingSchema.optional(), actorUserId: z.uuid().optional(),
+  limits: videoPresentationProcessLimitsSchema.optional(),
+  pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }).optional(),
+  targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  policy: z.strictObject({ chunkRetries: retryCap, maxAutoRepairs: retryCap }).optional(),
+  actorUserId: z.uuid().optional(),
   projectId: z.uuid().nullable().optional(), packedURL: z.url().optional(), manifestURL: z.url().optional(),
   sourceLedgerURL: httpsUrl.optional(), sourceLedgerTableURL: httpsUrl.optional(),
 }).superRefine((value, ctx) => {
@@ -101,19 +119,38 @@ export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIn
   if (ledgerParts !== 0 && ledgerParts !== 3) ctx.addIssue({ code: 'custom', message: 'A ledger request carries its budgets and both object addresses together' });
   if (value.sourceLedgerURL !== undefined && value.sourceLedgerURL === value.sourceLedgerTableURL) ctx.addIssue({ code: 'custom', message: 'The ledger and its table are different objects' });
   if (value.action !== 'read' && (value.jobId === undefined || value.deadlineAt === undefined)) ctx.addIssue({ code: 'custom', message: 'Attempt operations require their fixed identity' });
-  if (value.action === 'accept' && (value.original === undefined || value.contentType === undefined || value.limits === undefined || value.pricing === undefined || value.actorUserId === undefined || value.projectId === undefined || value.packedURL === undefined || value.manifestURL === undefined)) {
+  if ((value.action === 'read' || value.action === 'accept') && value.targetPolicyVersion === undefined) ctx.addIssue({ code: 'custom', message: 'Admission and read carry the target policy' });
+  if (value.action === 'accept' && (value.original === undefined || value.contentType === undefined || value.limits === undefined || value.pricing === undefined || value.policy === undefined || value.actorUserId === undefined || value.projectId === undefined || value.packedURL === undefined || value.manifestURL === undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Admission requires frozen source facts, pricing, attribution and capabilities' });
   }
 });
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);
+const ledger = z.discriminatedUnion('state', [
+  z.strictObject({ state: z.literal('pending'), receipt: z.null(), failure: z.null() }),
+  z.strictObject({ state: z.literal('ready'), receipt: videoPresentationLedgerReceiptSchema, failure: z.null() }),
+  z.strictObject({ state: z.literal('failed'), receipt: z.null(), failure: errorCode }),
+]);
 /** Internal response parser is shared by the backend client and ingest writer. */
 export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationIngestSnapshot> = z.strictObject({
-  presentation: videoPresentationSchema.nullable(), manifest: alphaManifestSchema.optional(),
-  attempt: z.strictObject({ jobId: z.string().min(1), deadlineAt: z.number().int().positive(),
-    status: z.enum(['accepted', 'running', 'completed', 'failed']), usage: usage.nullable(),
-    error: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(), usageRecorded: z.boolean().optional(),
+  sourceBinding: z.strictObject({ storageKey: z.string().min(1).max(500), sourceFingerprint: hash }),
+  presentation: videoPresentationVersionSchema.nullable(),
+  preparation: z.strictObject({
+    targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), jobId: z.string().min(1),
+    stage: z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']).nullable(), failure: errorCode.nullable(),
   }).nullable(),
+  ledger: ledger.nullable(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
-  sourceLedger: videoSourceLedgerStateSchema.optional(),
+}).superRefine((value, ctx) => {
+  const { presentation, ledger: state } = value;
+  if (presentation !== null && presentation.sourceFingerprint !== value.sourceBinding.sourceFingerprint) {
+    ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'The selected bundle belongs to another source' });
+  }
+  if (state === null) return;
+  if (presentation === null) ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'Only a selected version reports its ledger' });
+  else if (state.receipt !== null && (state.receipt.toolInputId !== presentation.toolInputId || state.receipt.sourceFingerprint !== presentation.sourceFingerprint)) {
+    ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'The ledger receipt belongs to another tool input' });
+  }
 });
 
 /**
