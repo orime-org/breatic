@@ -564,13 +564,13 @@ describe('planTimelineEdit source availability', () => {
     expect(reasonOf(plan(base, addVideo(clip(D, V2, 200, 10, { sourceId: MISSING_SOURCE_ID }), ON, undefined, SHORT_SOURCE)))).toBe('source_unavailable');
   });
 
-  it('refuses editing a clip whose source is absent from the document', () => {
+  it('refuses editing a clip whose source is absent from the document as missing_source (inner#1708 P1)', () => {
     for (const placement of [ON, OFF]) {
-      expect(reasonOf(plan(sourceless, move(Z, 100, placement)))).toBe('source_unavailable');
-      expect(reasonOf(plan(sourceless, move(Z, 100, placement, { trackId: MAIN })))).toBe('source_unavailable');
-      expect(reasonOf(plan(sourceless, setRange(Z, 0, 0, 5, placement)))).toBe('source_unavailable');
-      expect(reasonOf(plan(sourceless, split(Z, 5, cid(52), placement)))).toBe('source_unavailable');
-      expect(reasonOf(plan(sourceless, duplicate(Z, cid(53), placement)))).toBe('source_unavailable');
+      expect(reasonOf(plan(sourceless, move(Z, 100, placement)))).toBe('missing_source');
+      expect(reasonOf(plan(sourceless, move(Z, 100, placement, { trackId: MAIN })))).toBe('missing_source');
+      expect(reasonOf(plan(sourceless, setRange(Z, 0, 0, 5, placement)))).toBe('missing_source');
+      expect(reasonOf(plan(sourceless, split(Z, 5, cid(52), placement)))).toBe('missing_source');
+      expect(reasonOf(plan(sourceless, duplicate(Z, cid(53), placement)))).toBe('missing_source');
     }
   });
 
