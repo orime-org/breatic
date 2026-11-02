@@ -12,7 +12,8 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { answersMismatch, readQuestionnaire, spaceAnswerMismatch, spaceRequestInputSchema, t } from "@breatic/shared";
+import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
+import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
 import { db, NotFoundError, ForbiddenError, getAgentConfig } from "@breatic/core";
 import { ASK_USER, REQUEST_SPACE_CONTENT } from "@breatic/domain";
 import type { AskUserAnswer, ConversationEntity, MessageData, SpaceRequestAnswer } from "@breatic/shared";

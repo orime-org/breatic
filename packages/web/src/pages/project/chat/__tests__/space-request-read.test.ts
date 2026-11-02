@@ -20,7 +20,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { blocksToYXmlFragment } from '@blocknote/core/yjs';
-import { documentBodyFragment, READ_ONLY_COLLAB_TOKEN, spaceAnswerMismatch, spaceRequestAnswerSchema } from '@breatic/shared';
+import { documentBodyFragment, READ_ONLY_COLLAB_TOKEN, spaceRequestAnswerSchema } from '@breatic/shared';
 import type { ModelCatalog } from '@breatic/shared';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
@@ -155,14 +155,19 @@ function read(
 }
 
 /**
- * Whether the read results pass as the answer the server takes.
+ * Hold the read results to the answer contract: they parse as a shared
+ * answer, each Space asked for is answered once in order, and each echoes the
+ * part it was asked for.
  * @param requested - What was asked for.
  * @param got - What was read.
- * @returns True when the answer parses and matches the request's structure.
  */
-function accepted(requested: Requested, got: Got): boolean {
-  const parsed = spaceRequestAnswerSchema.safeParse({ toolCallId: 'call-1', decision: 'shared', spaces: got });
-  return parsed.success && spaceAnswerMismatch({ reason: 'r', spaces: requested }, parsed.data) === null;
+function expectAnswerFor(requested: Requested, got: Got): void {
+  expect(spaceRequestAnswerSchema.safeParse({ toolCallId: 'call-1', decision: 'shared', spaces: got }).success).toBe(true);
+  expect(got.map((space) => space.id)).toEqual(requested.map((space) => space.id));
+  requested.forEach((asked, i) => {
+    const part = asked.blocks !== undefined ? { blocks: asked.blocks } : asked.node_ids !== undefined ? { node_ids: asked.node_ids } : undefined;
+    expect((got[i] as { part?: unknown }).part).toEqual(part);
+  });
 }
 
 /**
@@ -373,7 +378,7 @@ describe('a Space this tab does not hold', () => {
     expect(got[0]).not.toHaveProperty('nodes_missing');
     expect(got[0]).not.toHaveProperty('blocks_total');
     expect(torndown(reader)).toBe(true);
-    expect(accepted(requested, got)).toBe(true);
+    expectAnswerFor(requested, got);
   });
 
   it('reads a closed document from its stored blocks', async () => {
@@ -510,7 +515,7 @@ describe('a part of a document', () => {
     const reader = await readerFor(docName.documentSpace(PID, doc.id));
     serve(reader, (await documentSeed(markdown, trailingEmpty)).update);
     const got = await pending;
-    expect(accepted(requested, got)).toBe(true);
+    expectAnswerFor(requested, got);
     return got[0] as Got[number] & { content?: string; blocks_total?: number; total_chars?: number };
   };
 
@@ -575,7 +580,7 @@ describe('some nodes of a canvas', () => {
     const reader = await readerFor(docName.canvasSpace(PID, canvas.id));
     serve(reader, canvasUpdate(['a', 'b', 'c']));
     const got = await pending;
-    expect(accepted(requested, got)).toBe(true);
+    expectAnswerFor(requested, got);
     return got[0] as { content: string; nodes_missing?: number; detail?: unknown; state: string };
   };
 

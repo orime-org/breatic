@@ -619,7 +619,6 @@ export {
   readQuestionnaire,
 } from "@shared/agent/ask-user.js";
 export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from "@shared/agent/ask-user.js";
-export { spaceAnswerMismatch } from "@shared/agent/space-request.js";
 export {
   carrying,
   FAILURE_LINES,

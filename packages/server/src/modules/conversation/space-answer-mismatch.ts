@@ -3,13 +3,10 @@
 
 /**
  * The reader's answer to the agent's request to read Spaces, held to the
- * request it answers (inner#1552).
- *
- * Shared because the route takes the answer and the browser builds it from
- * the same request. Only structure is checked here; content length is checked
- * by the route against config this package cannot read.
+ * request it answers (inner#1552). Only structure is checked here; the route
+ * holds each Space's content to the configured length.
  */
-import type { SharedSpace, SpaceRequestAnswer, SpaceRequestInput } from "@shared/schemas/api.js";
+import type { SharedSpace, SpaceRequestAnswer, SpaceRequestInput } from "@breatic/shared";
 
 type AskedSpace = SpaceRequestInput["spaces"][number];
 
