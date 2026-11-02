@@ -565,7 +565,7 @@ describe('character template layouts (inner#1846)', () => {
   it('joins the breathing note into one phrase, keeps labels to the section name and blending out of the faces, in every language', () => {
     // The breathing note, the sheets' label clause, and the scene's no-blending clause, in each language.
     const PHRASES: Record<string, [string, string, string]> = {
-      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of every section, written exactly as that section\'s capitalised name below', 'no blending of features'],
+      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of every section, written exactly as that section\'s name in capital letters below', 'no blending of features'],
       'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '一个清晰的英文小标签（只写下文大写的区块名，无衬线大写）', '不把五官混在一起'],
       'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '一個清晰的英文小標籤（只寫下文大寫的區塊名，無襯線大寫）', '不把五官混在一起'],
       ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '各セクションの左上に、以下で大文字で示したセクション名をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
