@@ -7,8 +7,9 @@
  *
  * The request goes as it is unless the provider has said it does not fit.
  * Two things say so: the count the provider reported for the previous call
- * (input plus output) leaving no room under the main model's window less the
- * output reserve, checked before each call; and the provider turning a call
+ * (input plus output) reaching the lower of `fold_trigger_tokens` and the main
+ * model's window less the output reserve, checked before each call
+ * (inner#1879); and the provider turning a call
  * away as over its window. Nothing not yet sent is estimated to decide this:
  * characters overstate DeepSeek's tokens two to three times.
  *
@@ -99,16 +100,18 @@ export function foldTarget(lines: { keep: number; window: number; maxOutput: num
 }
 
 /**
- * Whether the provider's last count leaves no room for the next call.
- * @param room - The window, the output reserve, and the known count.
+ * Whether the provider's last count has reached the fold line: the lower of
+ * the trigger and the window less the output reserve.
+ * @param room - The window, the output reserve, the trigger, and the known count.
  * @param room.window - The main model's context window.
  * @param room.maxOutput - `max_output_tokens`.
+ * @param room.trigger - `fold_trigger_tokens`; absent, only the window line applies.
  * @param room.known - Input plus output the provider reported last; absent, nothing is checked.
  * @returns True when the turn must fold before it sends.
  * @throws {never} Never.
  */
-export function needsFold(room: { window: number; maxOutput: number; known: number | undefined }): boolean {
-  return room.known !== undefined && room.window - room.maxOutput - room.known <= 0;
+export function needsFold(room: { window: number; maxOutput: number; trigger?: number; known: number | undefined }): boolean {
+  return room.known !== undefined && room.known >= Math.min(room.trigger ?? Infinity, room.window - room.maxOutput);
 }
 
 /**
@@ -144,7 +147,7 @@ export async function foldIfTooLong(
   const config = getAgentConfig();
   const window = assembly.agentConfig.contextWindow;
   const maxOutput = config.max_output_tokens;
-  if (trigger.kind === "precheck" && !needsFold({ window, maxOutput, known: trigger.known })) return "none";
+  if (trigger.kind === "precheck" && !needsFold({ window, maxOutput, trigger: config.fold_trigger_tokens, known: trigger.known })) return "none";
 
   const turns = costPerTurn(assembly.replayed);
   const takeable = turns.filter((turn) => turn.turnIndex < who.turnIndex);

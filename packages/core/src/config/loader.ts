@@ -178,10 +178,18 @@ const agentConfigSchema = z.object({
    * A fold takes whole turns from the oldest end until what remains is at or
    * under the lower of this and the main model's window less
    * `max_output_tokens`, less the room memory itself takes. A fold runs only
-   * when the provider's own count leaves no room or the provider turned the
-   * request away as too long (inner#1567).
+   * when the provider's last count reaches the lower of `fold_trigger_tokens`
+   * and the window less `max_output_tokens`, or the provider turned the
+   * request away as too long (inner#1567, inner#1879).
    */
-  memory_keep_tokens: z.number().int().positive().default(500000),
+  memory_keep_tokens: z.number().int().positive().default(300000),
+  /**
+   * The known count, in tokens, at which the next call folds first: input
+   * plus output the provider reported for the last call. The line in effect
+   * is the lower of this and the main model's window less
+   * `max_output_tokens` (inner#1879).
+   */
+  fold_trigger_tokens: z.number().int().positive().default(750000),
   /**
    * The main model's context window when the model directory cannot say, in
    * tokens: the smallest window among the providers that serve the default
@@ -372,6 +380,17 @@ const agentConfigSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["memory_conversation_max_size"],
       message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_tokens (${config.memory_keep_tokens})`,
+    });
+  }
+
+  // A fold leaves up to the keep line, and the next call reports at least
+  // that much. A keep line at or above the trigger is back on the trigger at
+  // once, so every call would pay for another fold.
+  if (config.memory_keep_tokens >= config.fold_trigger_tokens) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["fold_trigger_tokens"],
+      message: `memory_keep_tokens (${config.memory_keep_tokens}) must be below fold_trigger_tokens (${config.fold_trigger_tokens}): a fold leaves up to the keep line, so a keep line at or above the trigger folds again on the very next call`,
     });
   }
 
