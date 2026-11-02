@@ -186,6 +186,30 @@ function expectedChanges(before: TimelineDocumentV1, after: TimelineDocumentV1):
   return changes.sort();
 }
 
+/**
+ * A value as JSON with object keys sorted, so records compare regardless of key order.
+ * @param value - The value.
+ * @returns Its canonical JSON.
+ * @throws {never} Never.
+ */
+function canonical(value: unknown): string {
+  const sorted = (item: unknown): unknown => item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, sorted(Reflect.get(item, key))]))
+    : item;
+  return JSON.stringify(sorted(value));
+}
+
+/**
+ * Whether two documents hold the same track and clip records by id, whatever their key order.
+ * @param before - One document.
+ * @param after - The other document.
+ * @returns True when no track or clip record differs.
+ * @throws {never} Never.
+ */
+function sameRecords(before: TimelineDocumentV1, after: TimelineDocumentV1): boolean {
+  return canonical({ tracks: before.tracks, clips: before.clips }) === canonical({ tracks: after.tracks, clips: after.clips });
+}
+
 const move = (clipId: string, startFrame: number, placement: TimelineEditPlacement, target: { trackId?: string } = {}): TimelineEditCommand =>
   ({ operation: 'move', parameters: { clipId, startFrame, ...target }, placement });
 const setRange = (clipId: string, startFrame: number, sourceInFrame: number, durationFrames: number, placement: TimelineEditPlacement): TimelineEditCommand =>
@@ -476,6 +500,13 @@ describe('Timeline edits write only changed fields', () => {
         if (!plan.ok) {
           expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
           expect(changes).toEqual([]);
+          return;
+        }
+        if (sameRecords(before, plan.next)) {
+          // A plan that changes no record writes nothing (inner#1708 H5, N1).
+          expect(origins).toEqual([]);
+          expect(changes).toEqual([]);
+          expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
           return;
         }
         expect(origins).toEqual([ORIGIN]);
