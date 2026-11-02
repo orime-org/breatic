@@ -105,6 +105,17 @@ models:
               base_price: 5000000
               formula: ""
               discount_rate: 100
+        rejects:
+          - when: $length(prompt) > 2000
+            reason: fal prompt maxLength 2000
+          - when: $exists(melody_id) and ($exists(prompt) or $exists(reference_id) or $exists(vocal_id))
+            reason: "fal melody_id: This cannot be combined with prompt, reference_id, or vocal_id"
+          - when: $not($exists(prompt) or $exists(lyrics))
+            reason: "fal prompt: Required when lyrics is omitted"
+          - when: $exists(lyrics) and $length(prompt) > 1024
+            reason: "fal prompt: With lyrics, it acts as a music-style control and supports up to 1,024 characters"
+          - when: $length(lyrics) > 5000
+            reason: fal lyrics maxLength 5000
         pricing:
           kind: formula
           base_price: 5000
@@ -126,6 +137,9 @@ models:
         model_id: mureka/v9.5/generate/instrumental
         prompt_field: prompt
         output_field: audio
+        rejects:
+          - when: $length(prompt) > 1024
+            reason: fal prompt maxLength 1024
         pricing:
           kind: formula
           base_price: 5000
@@ -153,6 +167,9 @@ models:
         params:
           image:
             field: image_url
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: fal prompt maxLength 5000
         pricing:
           kind: formula
           base_price: 80000
@@ -221,6 +238,9 @@ models:
             field: duration
           num_samples:
             field: num_samples
+        rejects:
+          - when: ambience = true and duration < 1
+            reason: "fal duration: The minimum is 0.1s for ordinary sound effects and 1s when ambience=true"
         pricing:
           kind: formula
           base_price: 10000
@@ -321,6 +341,13 @@ models:
             field: double_output
           num_samples:
             field: num_samples
+        rejects:
+          - when: get_duration(audio_url) > 59
+            reason: "fal audio_url: The prefix duration must be 3–59 seconds"
+          - when: get_duration(audio_url, min=3, max=1000000, total=1000000) > get_duration(audio_url)
+            reason: "fal audio_url: The prefix duration must be 3–59 seconds"
+          - when: get_duration(audio_url) + append_duration > 60
+            reason: "fal audio_url: the total output (prefix + append_duration) is capped at 60 seconds"
         pricing:
           kind: formula
           base_price: 10000

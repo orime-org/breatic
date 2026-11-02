@@ -56,6 +56,9 @@ models:
         drops:
           resolution:
             - 1k
+        rejects:
+          - when: $length(prompt) > 32000
+            reason: fal prompt maxLength 32000
         pricing:
           kind: formula
           base_price: 1000000
@@ -74,6 +77,9 @@ models:
             field: resolution
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 90000
@@ -105,6 +111,9 @@ models:
             field: aspect_ratio
           resolution:
             field: resolution
+        rejects:
+          - when: $length(prompt) > 8000
+            reason: fal prompt maxLength 8000
         pricing:
           kind: formula
           base_price: 10000
@@ -129,6 +138,9 @@ models:
             field: resolution
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 8000
+            reason: SandBase prompt maxLength 8000
         pricing:
           kind: formula
           base_price: 60000
@@ -185,6 +197,9 @@ models:
           lens: "*"
           focal_length: "*"
           aperture: "*"
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 80000
@@ -216,6 +231,9 @@ models:
           aperture: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 67000
@@ -281,6 +299,9 @@ models:
           light_intensity: "*"
           light_quality: "*"
           light_reference: "*"
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 80000
@@ -318,6 +339,9 @@ models:
           light_reference: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 67000
@@ -361,6 +385,9 @@ models:
               1k: 1K
               2k: 2K
               4k: 4K
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 80000
@@ -387,6 +414,9 @@ models:
               4k: 4K
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 67000
@@ -420,6 +450,9 @@ models:
               9:16: portrait_16_9
               4:3: landscape_4_3
               3:4: portrait_4_3
+        rejects:
+          - when: $length(prompt) > 10000
+            reason: fal prompt maxLength 10000
         pricing:
           kind: formula
           base_price: 300000
@@ -475,6 +508,9 @@ models:
           style_images:
             field: image_style_references
             item_key: image_url
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: fal prompt maxLength 5000
         pricing:
           kind: formula
           base_price: 1000
@@ -568,6 +604,9 @@ models:
             field: style_match
           style_images:
             field: image_urls
+        rejects:
+          - when: $length(prompt) > 10000
+            reason: fal prompt maxLength 10000
         pricing:
           kind: formula
           base_price: 35000
@@ -628,6 +667,9 @@ models:
           style_images: "*"
         mentions:
           images: image {n}
+        rejects:
+          - when: $length(prompt) > 32000
+            reason: fal prompt maxLength 32000
         pricing:
           kind: formula
           base_price: 1000000
@@ -653,6 +695,9 @@ models:
           images: image {n}
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 105000
@@ -943,6 +988,9 @@ models:
             field: images
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 40000

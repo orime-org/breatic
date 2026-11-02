@@ -47,6 +47,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 30000
@@ -67,6 +70,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: SandBase prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 100000
@@ -110,6 +116,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 50000
@@ -132,6 +141,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: SandBase prompt maxLength 5000
         pricing:
           kind: formula
           base_price: 100000
@@ -229,6 +241,9 @@ models:
           images: "@image{n}"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 360000
@@ -283,6 +298,9 @@ models:
               2k: 2K
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 50000
@@ -306,6 +324,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: SandBase prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 130000
@@ -370,6 +391,15 @@ models:
             field: negative_prompt
           generate_audio:
             field: generate_audio
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: fal prompt maxLength 2500
+          - when: $exists(prompt) and $exists(multi_prompt)
+            reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
+          - when: $not($exists(prompt) or $exists(multi_prompt))
+            reason: "fal prompt: Either prompt or multi_prompt must be provided"
+          - when: $length(negative_prompt) > 2500
+            reason: fal negative_prompt maxLength 2500
         pricing:
           kind: formula
           base_price: 420000
@@ -399,6 +429,13 @@ models:
           negative_prompt: []
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: SandBase prompt maxLength 2500
+          - when: $exists(prompt) and $exists(multi_prompt)
+            reason: "SandBase prompt: Either prompt or multi_prompt must be provided, but not both"
+          - when: $not($exists(prompt) or $exists(multi_prompt))
+            reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
         pricing:
           kind: formula
           base_price: 420000
@@ -446,6 +483,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 30000
@@ -470,6 +510,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: SandBase prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 100000
@@ -528,6 +571,9 @@ models:
               2k: 2K
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 50000
@@ -553,6 +599,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: SandBase prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 130000
@@ -606,6 +655,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
         pricing:
           kind: formula
           base_price: 50000
@@ -633,6 +685,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: SandBase prompt maxLength 5000
         pricing:
           kind: formula
           base_price: 100000
@@ -713,6 +768,9 @@ models:
           shots: "*"
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
         pricing:
           kind: formula
           base_price: 360000
@@ -795,6 +853,13 @@ models:
             field: generate_audio
         drops:
           elements: []
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: fal prompt maxLength 2500
+          - when: $exists(prompt) and $exists(multi_prompt)
+            reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
+          - when: $not($exists(prompt) or $exists(multi_prompt))
+            reason: "fal prompt: Either prompt or multi_prompt must be provided"
         pricing:
           kind: formula
           base_price: 420000
@@ -824,6 +889,13 @@ models:
           elements: []
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: SandBase prompt maxLength 2500
+          - when: $exists(prompt) and $exists(multi_prompt)
+            reason: "SandBase prompt: Either prompt or multi_prompt must be provided, but not both"
+          - when: $not($exists(prompt) or $exists(multi_prompt))
+            reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
         pricing:
           kind: formula
           base_price: 420000
@@ -873,6 +945,9 @@ models:
             field: image_url
           video:
             field: video_url
+        rejects:
+          - when: get_duration(video_url) > 30
+            reason: "fal video_url: Max duration: 30 seconds"
         pricing:
           kind: formula
           base_price: 50000
@@ -964,6 +1039,19 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
+          - when: $count(reference_image_urls) + $count(reference_video_urls) + $count(reference_audio_urls) > 12
+            reason: "fal: Reference images, videos, and audio clips must add up to at most 12 files"
+          - when: get_duration(reference_audio_urls) > 15
+            reason: "fal reference_audio_urls: combined duration at most 15 seconds"
+          - when: get_duration(reference_audio_urls, min=2, max=1000000, total=1000000) > get_duration(reference_audio_urls)
+            reason: "fal reference_audio_urls: 2-15 seconds each"
+          - when: get_duration(reference_video_urls) > 15
+            reason: "fal reference_video_urls: combined duration at most 15 seconds"
+          - when: get_duration(reference_video_urls, min=2, max=1000000, total=1000000) > get_duration(reference_video_urls)
+            reason: "fal reference_video_urls: 2-15 seconds each"
         pricing:
           kind: formula
           base_price: 50000
@@ -998,6 +1086,15 @@ models:
           videos: Video {n}
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: SandBase prompt maxLength 7000
+          - when: $exists(audios) and $not($exists(images) or $exists(videos))
+            reason: "SandBase audios: Audio requires at least one reference image or video"
+          - when: get_duration(videos) > 15
+            reason: "SandBase videos: combined duration must not exceed 15 seconds"
+          - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
+            reason: "SandBase videos: Each clip must be 2–15 seconds"
         pricing:
           kind: formula
           base_price: 130000
@@ -1053,6 +1150,11 @@ models:
         mentions:
           images: <IMAGE_REF_{i}>
           videos: <VIDEO_REF_{i}>
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
+          - when: get_duration(reference_video_urls) > get_duration(reference_video_urls, min=0, max=10, total=1000000)
+            reason: "fal reference_video_urls: Each video must be at most ten seconds long"
         pricing:
           kind: formula
           base_price: 30000
@@ -1081,6 +1183,11 @@ models:
         mentions:
           images: <IMAGE_REF_{i}>
           videos: <VIDEO_REF_{i}>
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: SandBase prompt maxLength 20000
+          - when: get_duration(videos) > get_duration(videos, min=0, max=3, total=1000000)
+            reason: "SandBase videos: Each video must be at most three seconds long"
         pricing:
           kind: formula
           base_price: 100000
@@ -1146,6 +1253,13 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
+        rejects:
+          - when: $length(prompt) > 20000
+            reason: fal prompt maxLength 20000
+          - when: get_duration(reference_audio_urls) > 15
+            reason: "fal reference_audio_urls: Up to 5 reference audio URLs totaling at most 15 seconds"
+          - when: get_duration(reference_video_urls) > 15
+            reason: "fal reference_video_urls: Up to 5 reference video URLs totaling at most 15 seconds"
         pricing:
           kind: formula
           base_price: 50000
@@ -1179,6 +1293,19 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: SandBase prompt maxLength 5000
+          - when: $not($exists(images) or $exists(videos) or $exists(audios))
+            reason: "SandBase images: Provide at least one of images, videos, or audios"
+          - when: get_duration(audios) > 15
+            reason: "SandBase audios: 1-15s each, 15s total"
+          - when: get_duration(audios, min=1, max=1000000, total=1000000) > get_duration(audios)
+            reason: "SandBase audios: 1-15s each, 15s total"
+          - when: get_duration(videos) > 15
+            reason: "SandBase videos: 1-15s each, 15s total"
+          - when: get_duration(videos, min=1, max=1000000, total=1000000) > get_duration(videos)
+            reason: "SandBase videos: 1-15s each, 15s total"
         pricing:
           kind: formula
           base_price: 100000
@@ -1228,6 +1355,9 @@ models:
           shots: "*"
         mentions:
           images: character{n}
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: "fal prompt: Max 2500 characters"
         pricing:
           kind: formula
           base_price: 140000
@@ -1348,6 +1478,11 @@ models:
             as: list
         fixed:
           task: extension
+        rejects:
+          - when: get_duration(video_urls) > 30.2
+            reason: "fal video_urls: Each video must be 1.8 to 30.2 seconds; combined duration must not exceed 30.2 seconds"
+          - when: get_duration(video_urls, min=1.8, max=1000000, total=1000000) > get_duration(video_urls)
+            reason: "fal video_urls: Each video must be 1.8 to 30.2 seconds"
         pricing:
           kind: formula
           base_price: 21400
@@ -1374,6 +1509,11 @@ models:
         fixed:
           task_type: extend
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
+          - when: get_duration(videos) > 30
+            reason: "SandBase videos: combined duration must not exceed 30 seconds"
         pricing:
           kind: formula
           base_price: 110000
@@ -1444,6 +1584,11 @@ models:
         drops:
           negative_prompt:
             - ""
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: fal prompt maxLength 2500
+          - when: 'get_duration(video_url) > (character_orientation = "image" ? 10 : 30)'
+            reason: "fal video_url: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
         pricing:
           kind: formula
           base_price: 168000
@@ -1467,6 +1612,11 @@ models:
             - ""
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: SandBase prompt maxLength 2500
+          - when: 'get_duration(video) > (character_orientation = "image" ? 10 : 30)'
+            reason: "SandBase video: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
         pricing:
           kind: formula
           base_price: 168000
@@ -1496,6 +1646,9 @@ models:
             field: audio_url
           image:
             field: image_url
+        rejects:
+          - when: get_duration(audio_url) >= 30
+            reason: "fal audio_url: Audio must be under 30s long for 1080p generation (resolution defaults to 1080p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1512,6 +1665,9 @@ models:
         fixed:
           prompt: ""
           mode: async
+        rejects:
+          - when: get_duration(audio) >= 60
+            reason: "SandBase audio: Audio must be under 60s long for 720p generation (resolution defaults to 720p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1612,6 +1768,9 @@ models:
             field: video_url
         fixed:
           num_frames: 241
+        rejects:
+          - when: get_duration(audio_url) > 9.64
+            reason: "fal num_frames maximum 241 at InfiniteTalk's 25 fps: audio past 9.64 s is cut"
         pricing:
           kind: formula
           base_price: 300000
@@ -1632,6 +1791,9 @@ models:
         fixed:
           num_frames: 241
           mode: async
+        rejects:
+          - when: get_duration(audio) > 9.64
+            reason: "SandBase num_frames: Maximum frames to generate (41–241, 25 fps); sent as 241, audio past 9.64 s is cut"
         pricing:
           kind: formula
           base_price: 300000
@@ -1691,6 +1853,11 @@ models:
             field: model_mode
           video:
             field: video_url
+        rejects:
+          - when: get_duration(audio_url) > 15
+            reason: "fal audio_url: Must be 15 seconds or shorter"
+          - when: get_duration(video_url) > 15
+            reason: "fal video_url: Must be 15 seconds or shorter"
         pricing:
           kind: formula
           base_price: 10000000

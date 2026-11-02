@@ -37,6 +37,9 @@ models:
         drops:
           art_style:
             all_values: fal has no such field; Meshy deprecated art_style and ignores it (docs.meshy.ai/en/api/text-to-3d, read 2026-11-01)
+        rejects:
+          - when: $length(prompt) > 600
+            reason: fal prompt maxLength 600
         pricing:
           kind: formula
           base_price: 800000
@@ -77,6 +80,9 @@ models:
           face_count:
             field: face_count
             absent_value: 500000
+        rejects:
+          - when: $length(prompt) > 1024
+            reason: fal prompt maxLength 1024
         pricing:
           kind: formula
           base_price: 15000

@@ -98,6 +98,11 @@ models:
             Zephyr: Zephyr
             Zubenelgenubi: Zubenelgenubi
         output_field: audio
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: fal prompt maxLength 50000
+          - when: $exists(speakers[$contains(speaker, /[^\w\x80-\uffff]/)])
+            reason: fal speakers[].speaker_id pattern ^\w+$
         pricing:
           kind: formula
           base_price: 50000
@@ -155,6 +160,11 @@ models:
             Zubenelgenubi: Zubenelgenubi
         fixed:
           mode: async
+        rejects:
+          - when: $length(prompt) > 50000
+            reason: SandBase prompt maxLength 50000
+          - when: $exists(speakers[$contains(speaker, /[^\w\x80-\uffff]/)])
+            reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace"
         pricing:
           kind: formula
           base_price: 50000
@@ -1170,6 +1180,9 @@ models:
             Afrikaans_female_1_v1: Afrikaans_female_1_v1
         fixed:
           mode: async
+        rejects:
+          - when: $length(text) > 5000
+            reason: SandBase text maxLength 5000
         pricing:
           kind: formula
           base_price: 100000
