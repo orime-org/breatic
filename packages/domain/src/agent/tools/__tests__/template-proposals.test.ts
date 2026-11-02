@@ -487,6 +487,21 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     expect(answer.nodes[0]?.templateNode).toBeUndefined();
   });
 
+  it("keeps an instance's own node marked as its own when it also feeds another instance's input", () => {
+    const shape = agentShape(SHEET);
+    const sketch = shape.at.get("node:sketch") ?? -1;
+    const sent: Sent = {
+      ...shape.sent,
+      nodes: [
+        ...shape.sent.nodes,
+        { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Generate Sketch first" } }, { text: "Redraw " }, { ref: sketch }] },
+      ],
+      edges: [...shape.sent.edges, { fromIndex: sketch, toIndex: shape.sent.nodes.length, into: "pool" }],
+    };
+    const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
+    expect(answer.nodes[sketch]?.templateNode).toEqual({ template: "fixture-sheet", key: "sketch" });
+  });
+
   it("places two instances chained, the first anchor standing as the second's input", () => {
     const first = solo();
     const sent: Sent = {
