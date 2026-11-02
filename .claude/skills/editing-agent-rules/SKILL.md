@@ -57,7 +57,7 @@ Rules for coding agents live only in `AGENTS.md` files and project skills. Every
 
 ## Language
 
-**Rule files and skills are written in English.** This is a global source-available project, and `no-cjk` scans every `AGENTS.md` and `.claude/skills/**/*.md`.
+**Rule files and skills are written in English.** This is a global open-source project, and `no-cjk` scans every `AGENTS.md` and `.claude/skills/**/*.md`.
 
 ## Maintenance
 
