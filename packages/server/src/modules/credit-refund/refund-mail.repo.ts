@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Data access for `refund_mail_outbox` (inner#1410 §6.5).
  */
+
+import { parseCreditDecimal, serializeCreditMicro } from "@breatic/shared";
 
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import {
@@ -230,7 +232,7 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
     locale: typeof locale === "string" && locale.length > 0 ? locale : "en",
     timeZone: typeof timeZone === "string" && timeZone.length > 0 ? timeZone : "UTC",
     paymentId: row.paymentId,
-    credits: Number(row.credits),
+    credits: serializeCreditMicro(parseCreditDecimal(row.credits)),
     purchasedAt: row.purchasedAt,
   };
   const requestedAt = row.requestedAt ?? row.operationCreatedAt;

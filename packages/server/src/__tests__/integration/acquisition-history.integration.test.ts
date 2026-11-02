@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The acquisition history — how every credit this account holds got here
@@ -152,6 +152,11 @@ async function seedGrant(userId: string, at: string): Promise<string> {
     INSERT INTO credit_sources (id, kind, created_at)
     VALUES (${userId}, 'gift', ${at})
   `;
+  const [studio] = await sql<{ id: string }[]>`
+    INSERT INTO studios(created_by_user_id,slug,type,name) VALUES(${userId},${`acq-gift-${seq++}`},'personal','Gift') RETURNING id
+  `;
+  await sql`INSERT INTO credit_gifts(id,source_kind,origin,target_user_id,personal_studio_id,credits,created_at)
+    VALUES(${userId},'gift','registration',${userId},${studio!.id},100,${at})`;
   const rows = await sql<{ id: string }[]>`
     INSERT INTO credit_lots
       (source_id, source_kind, user_id, purchased_credits, remaining_credits,
@@ -206,8 +211,8 @@ describe("the acquisition history takes both kinds of row", () => {
     expect(row.totalCents).toBeNull();
     expect(row.status).toBeNull();
     expect(row.canResend).toBe(false);
-    expect(row.creditsGranted).toBe(100);
-    expect(row.remainingCredits).toBe(100);
+    expect(row.creditsGranted).toBe("100.000000");
+    expect(row.remainingCredits).toBe("100.000000");
   });
 
   it("keeps a checkout that opened no credits", async () => {

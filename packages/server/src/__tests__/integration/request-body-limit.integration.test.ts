@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The public app's request body limit over a real socket (inner#1006 §3):
  * T01–T06, T08–T10, T12(c), T17, the raw-body regressions X01–X03, and a
  * keep-alive regression: a body within the limit that a route refuses unread
- * must not break the next request on the same connection.
+ * must not break the next request on the same connection; and how a refusal
+ * closes its connection (inner#1782 test spec P1–P7).
  *
  * `createApp()` is served by `@hono/node-server` on a loopback port
  * (`serveOnLoopback`, as `internal-api-harness.ts` does), and requests are
@@ -55,6 +56,13 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: logged,
 }));
 
+/** The lingering deadline each case sets; read by `closeAfterRefusal` at each refusal. */
+const linger = vi.hoisted(() => ({ seconds: 30 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getRequestBodyLingerSeconds: () => linger.seconds,
+}));
+
 import postgres from "postgres";
 import Stripe from "stripe";
 import type { Hono } from "hono";
@@ -74,6 +82,12 @@ import { formatBytes, t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 import { serveOnLoopback, type RunningApp } from "./internal-api-harness.js";
+import {
+  expectNextOnNewConnection,
+  expectWholeAnswerThenCloseAtBodyEnd,
+  rawUpload,
+  watchServerSockets,
+} from "./refused-connection.js";
 
 try {
   initCore(process.env);
@@ -105,6 +119,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  linger.seconds = 30;
 });
 
 /** 64 KiB, the chunk size every chunked case sends. */
@@ -157,8 +172,6 @@ interface SendOptions {
   stream?: { total: number; bodyAt: (offset: number, length: number) => Buffer };
   /** The connection pool to send through; the default global agent otherwise. */
   agent?: http.Agent;
-  /** Identify the X03 request in transport failure diagnostics. */
-  diagnosticStage?: "first" | "again";
 }
 
 /**
@@ -192,29 +205,13 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
             reusedSocket: req.reusedSocket,
           }),
         );
-        res.on("error", rejectWithDiagnostics);
+        res.on("error", reject);
       },
     );
-    /**
-     * Keep the native failure as the cause while identifying the X03 request.
-     * @param err - The original socket or response error.
-     */
-    function rejectWithDiagnostics(err: unknown): void {
-      if (opts.diagnosticStage === undefined) {
-        reject(err);
-        return;
-      }
-      const code = err instanceof Error && "code" in err ? String(err.code) : "undefined";
-      const message = err instanceof Error ? err.message : String(err);
-      reject(new Error(
-        `X03 stage=${opts.diagnosticStage} error.code=${code} reusedSocket=${req.reusedSocket}: ${message}`,
-        { cause: err },
-      ));
-    }
     req.on("error", (err) => {
       // A refusal may close the socket while the client is still writing;
       // the case passes on the answer, which has already arrived.
-      if (!answered) rejectWithDiagnostics(err);
+      if (!answered) reject(err);
     });
     /**
      * Write one piece, waiting for the socket to drain when it asks.
@@ -249,7 +246,7 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
       }
       if (!req.destroyed) req.end();
     })().catch((err: unknown) => {
-      if (!answered) rejectWithDiagnostics(err instanceof Error ? err : new Error(String(err)));
+      if (!answered) reject(err instanceof Error ? err : new Error(String(err)));
     });
   });
 }
@@ -681,8 +678,8 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
     );
     const headers = { "Content-Type": "application/json", Cookie: a.cookie, "Idempotency-Key": randomUUID() };
 
-    const first = await send("/api/v1/projects", { headers, body, diagnosticStage: "first" });
-    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16, diagnosticStage: "again" });
+    const first = await send("/api/v1/projects", { headers, body });
+    const again = await send("/api/v1/projects", { headers, body, chunkSize: 16 });
 
     expect(first.status).toBe(201);
     expect(again.status).toBe(201);
@@ -692,5 +689,90 @@ describe("§9 routes that read the raw body still read the same bytes (X01–X03
     const [row] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM projects WHERE studio_id = ${a.studioId}`;
     // The seeded project plus the one the press made.
     expect(row!.n).toBe(2);
+  });
+});
+
+describe("§inner#1782 a refusal closes its connection (P1–P7)", () => {
+  const LOGIN_PATH = "/api/v1/auth/login";
+  const NEXT_PATH = "/api/v1/assets/upload-config";
+
+  it("P1: after an endless chunked body is refused, the next request goes out on a new connection", async () => {
+    const body = await expectNextOnNewConnection(running.baseUrl, LOGIN_PATH, NEXT_PATH, 10);
+    expect(JSON.parse(body)).toEqual(tooLarge());
+  });
+
+  it.each([0, 200])("P7: after a finite chunked body just over the limit is refused, a GET %i ms later goes out on a new connection", async (delayMs) => {
+    const body = await expectNextOnNewConnection(running.baseUrl, LOGIN_PATH, NEXT_PATH, 10, { total: limit() + 3 * CHUNK, delayMs });
+    expect(JSON.parse(body)).toEqual(tooLarge());
+  });
+
+  it("P2: a declared 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, false);
+    expect(JSON.parse(answer.body)).toEqual(tooLarge());
+  });
+
+  it("P3: a finite chunked 20 MiB body sent slowly by a client that reads only afterwards gets the whole 413", async () => {
+    const answer = await expectWholeAnswerThenCloseAtBodyEnd(running.server, running.baseUrl, LOGIN_PATH, true);
+    expect(JSON.parse(answer.body)).toEqual(tooLarge());
+  });
+
+  it("P4: a client that stalls mid-body gets the 413 and a FIN at once, and the server closes at the deadline", async () => {
+    linger.seconds = 2;
+    const port = Number(new URL(running.baseUrl).port);
+    const watch = watchServerSockets(running.server);
+    let upload: Awaited<ReturnType<typeof rawUpload>> | undefined;
+    try {
+      upload = await rawUpload({ port, path: LOGIN_PATH, blocks: 32, pauseMs: 0, terminate: false, readAfterUpload: false });
+      expect(upload.response?.status).toBe(413);
+      expect(upload.response?.headers.connection?.toLowerCase()).toBe("close");
+      const tClose = await watch.closedAt(upload.client.localPort!, 2000 + 5000);
+      expect(upload.t413!).toBeLessThan(tClose);
+      expect(upload.tFin).toBeDefined();
+      expect(upload.tFin! - upload.tLast).toBeLessThan(1000);
+      expect(upload.tFin!).toBeLessThan(tClose);
+      expect(tClose - upload.tFin!).toBeGreaterThanOrEqual(1750);
+      expect(tClose - upload.tFin!).toBeLessThanOrEqual(3500);
+      expect(upload.error === undefined || upload.error.at >= tClose).toBe(true);
+    } finally {
+      upload?.client.destroy();
+      watch.stop();
+    }
+  });
+
+  it("P5: a declared body within the limit that a route refuses unread keeps the connection", async () => {
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const refused = await send("/api/v1/canvas/node-history/snapshot", {
+        agent,
+        headers: { "Content-Type": "application/json" },
+        body: padded({ project_id: randomUUID(), node_id: randomUUID(), text: "a" }, 307_200),
+      });
+      expect(refused.status).toBe(401);
+      expect(refused.headers.connection).not.toBe("close");
+
+      const next = await send(NEXT_PATH, { method: "GET", agent });
+      expect(next.reusedSocket).toBe(true);
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  it("P6: a chunked body within the limit keeps the connection", async () => {
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const refused = await send("/api/v1/canvas/node-history/snapshot", {
+        agent,
+        headers: { "Content-Type": "application/json" },
+        body: padded({ project_id: randomUUID(), node_id: randomUUID(), text: "a" }, 307_200),
+        chunkSize: CHUNK,
+      });
+      expect(refused.status).toBe(401);
+      expect(refused.headers.connection).not.toBe("close");
+
+      const next = await send(NEXT_PATH, { method: "GET", agent });
+      expect(next.reusedSocket).toBe(true);
+    } finally {
+      agent.destroy();
+    }
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -89,6 +89,14 @@ describe('StudioTopBar', () => {
     expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('puts the Help menu between the theme switch and the bell', async () => {
+    setup();
+    await flushInbox();
+    const help = screen.getByTestId('help-menu-trigger');
+    expect(screen.getByTestId('theme-toggle').nextElementSibling).toBe(help);
+    expect(help.nextElementSibling).toBe(screen.getByTestId('bell-trigger'));
   });
 
   it('has no a11y violations', async () => {

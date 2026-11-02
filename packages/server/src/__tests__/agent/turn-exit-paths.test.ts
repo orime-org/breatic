@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a turn hands the model, and what it leaves behind however it ends.
@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
 /**
@@ -230,6 +230,7 @@ describe("what a plain chat turn hands the model", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",
@@ -391,5 +392,28 @@ describe("a turn the user stopped", () => {
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+});
+
+
+describe("decimal shortfall consumption", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
+  });
+
+  it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
+      [expect.objectContaining({ userId: "u1", conversationId: "c1", studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One message, from what the protocol carries to what the panel draws.
@@ -26,11 +26,21 @@ import {
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   readQuestionnaire,
+  spaceRequestInputSchema,
   stripDsml,
   TURNED_AWAY,
 } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
-import type { ChatAsset, ChatFailureLine, ChatMessage, ChatQuestionnaire, ChatSource, ToolCall } from '@web/pages/project/chat/types';
+import type {
+  ChatAsset,
+  ChatFailureLine,
+  ChatMessage,
+  ChatQuestionnaire,
+  ChatSharedSpaceSummary,
+  ChatSource,
+  ChatSpaceRequest,
+  ToolCall,
+} from '@web/pages/project/chat/types';
 import { failurePlaceholder, PLACEHOLDER_MARK } from '@web/pages/project/chat/tool-failure-plugin';
 
 /** The part type carrying a turn that was stopped. */
@@ -50,6 +60,15 @@ const ASK_AWAITING = 'data-ask-awaiting';
 
 /** The tool that puts a questionnaire to the reader. */
 const ASK_TOOL = 'ask_user';
+
+/** The tool that asks the reader to let the Agent look at Spaces (inner#1552). */
+const REQUEST_SPACE_TOOL = 'request_space_content';
+
+/**
+ * The tools whose card stops the turn until the reader answers; a step keeps
+ * only the first card of either and the server names it with one mark.
+ */
+const AWAITS_READER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = 'data-thinking-time';
@@ -181,6 +200,7 @@ const STEP_KEYS: Readonly<Record<string, string>> = {
   read_conversation: 'chat.tool.step.readConversation',
   read_node_history: 'chat.tool.step.readNodeHistory',
   list_project_activity: 'chat.tool.step.readActivity',
+  request_space_content: 'chat.tool.step.requestSpace',
 };
 
 /** The tools whose step names what was searched for. */
@@ -307,6 +327,51 @@ function questionnaireOf(
 }
 
 /**
+ * The Spaces a stored summary of a shared request lists, read defensively:
+ * entries without an id or a state are left out.
+ * @param list - What the call's output carries as `spaces`.
+ * @returns The entries.
+ */
+function summariesOf(list: unknown[]): ChatSharedSpaceSummary[] {
+  return list.filter(
+    (entry): entry is ChatSharedSpaceSummary =>
+      entry !== null &&
+      typeof entry === 'object' &&
+      typeof (entry as { id?: unknown }).id === 'string' &&
+      typeof (entry as { state?: unknown }).state === 'string',
+  );
+}
+
+/**
+ * The request to look at Spaces one `request_space_content` part carries,
+ * with where it stands, or null when it carries none to draw: a call still
+ * arriving, one turned away, or one the model sent wrong.
+ * @param part - The tool part.
+ * @param part.toolCallId - Its call.
+ * @param part.state - Where it stands.
+ * @param part.input - What the model sent.
+ * @param part.output - What it ended with, once it has.
+ * @param awaited - The calls named as the card the reader is shown.
+ * @returns The request, or null.
+ */
+function spaceRequestOf(
+  part: { toolCallId: string; state: string; input?: unknown; output?: unknown },
+  awaited: ReadonlySet<string>,
+): ChatSpaceRequest | null {
+  const asked = spaceRequestInputSchema.safeParse(part.input);
+  if (!asked.success) return null;
+  const base = { toolCallId: part.toolCallId, reason: asked.data.reason, spaces: asked.data.spaces };
+  if (part.state === 'output-available') {
+    const output = part.output as { spaces?: unknown; declined?: unknown; repliedInChat?: unknown } | null | undefined;
+    if (output?.repliedInChat === true) return { ...base, state: 'replied' };
+    if (output?.declined === true) return { ...base, state: 'declined' };
+    if (Array.isArray(output?.spaces)) return { ...base, state: 'shared', results: summariesOf(output.spaces) };
+    return null;
+  }
+  return part.state === 'input-available' && awaited.has(part.toolCallId) ? { ...base, state: 'awaiting' } : null;
+}
+
+/**
  * A reply as the panel lays it out: whole, or split where each segment that
  * asked a questionnaire ended, once the reader answered on the card and the
  * turn went on in the same message (inner#1542).
@@ -406,6 +471,7 @@ export function toChatMessage(
   const proposals: CanvasProposal[] = [];
   const documentProposals: DocumentProposal[] = [];
   const questionnaires: ChatQuestionnaire[] = [];
+  const spaceRequests: ChatSpaceRequest[] = [];
   // Read before the loop, because the mark comes after the call it names.
   const awaited = awaitedCalls(message.parts);
   let hasExpiredProposal = false;
@@ -422,12 +488,12 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const isAsk = getToolName(part) === ASK_TOOL;
+      const isCard = AWAITS_READER.has(getToolName(part));
       // A card waiting for the reader is not a call that came to nothing; a
-      // second card in the step, which the server named nothing for, was
-      // turned away rather than failed.
-      const waiting = isAsk && part.state === 'input-available' && awaited.has(part.toolCallId);
-      const turnedAwayAsk = isAsk && part.state === 'input-available' && awaited.size > 0 && !waiting;
+      // second card in the step, of either tool, which the server named
+      // nothing for, was turned away rather than failed.
+      const waiting = isCard && part.state === 'input-available' && awaited.has(part.toolCallId);
+      const turnedAwayAsk = isCard && part.state === 'input-available' && awaited.size > 0 && !waiting;
       const status = waiting ? 'pending' : statusOf(part.state, options.streaming === true);
       // Cut short rather than failed: it never reached an end state of its
       // own, and the turn it belonged to was stopped.
@@ -480,9 +546,13 @@ export function toChatMessage(
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
       }
-      if (isAsk) {
+      if (getToolName(part) === ASK_TOOL) {
         const questionnaire = questionnaireOf(part, awaited);
         if (questionnaire !== null) questionnaires.push(questionnaire);
+      }
+      if (getToolName(part) === REQUEST_SPACE_TOOL) {
+        const request = spaceRequestOf(part, awaited);
+        if (request !== null) spaceRequests.push(request);
       }
       continue;
     }
@@ -565,6 +635,7 @@ export function toChatMessage(
     ...(proposals.length > 0 ? { proposals } : {}),
     ...(documentProposals.length > 0 ? { documentProposals } : {}),
     ...(questionnaires.length > 0 ? { questionnaires } : {}),
+    ...(spaceRequests.length > 0 ? { spaceRequests } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),

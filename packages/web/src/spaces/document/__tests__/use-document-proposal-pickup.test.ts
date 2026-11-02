@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The document Space taking up the cards pressed for it (inner#1509, design
@@ -22,7 +22,8 @@ vi.mock('@web/lib/toast', () => ({ toast }));
 
 const landProposal = vi.hoisted(() => vi.fn());
 const landedAt = vi.hoisted(() => vi.fn());
-vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAt }));
+const sourceAt = vi.hoisted(() => vi.fn());
+vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAt, sourceAt }));
 
 const bindings = vi.hoisted(() => ({ read: vi.fn(), peek: vi.fn(), locate: vi.fn() }));
 vi.mock('@web/data/yjs/collab-socket', async (readActual) => ({
@@ -68,6 +69,7 @@ beforeEach(() => {
   useDocumentProposals.getState().reset();
   landProposal.mockReset();
   landedAt.mockReset();
+  sourceAt.mockReset();
   toast.warning.mockReset();
   toast.error.mockReset();
   onChange.mockReset();
@@ -243,6 +245,118 @@ describe('a card shown again (inner#1509 review round 1)', () => {
       expect(toast.warning).toHaveBeenCalledWith('This change is no longer in the Document.');
     });
     expect(landProposal).not.toHaveBeenCalled();
+  });
+});
+
+describe('a card located in its document (inner#1646)', () => {
+  const pending = (): ReturnType<typeof useDocumentProposals.getState>['pending'] => useDocumentProposals.getState().pending;
+
+  it('hands the body where the proposal points, writing nothing and leaving the card as it was', async () => {
+    sourceAt.mockReturnValue({ outcome: 'located', target: { how: 'source', blockId: 'b3', quote: 'the gate' } });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => {
+      expect(pending().p1).toBeUndefined();
+    });
+    expect(result.current).toMatchObject({ how: 'source', blockId: 'b3', quote: 'the gate', documentName: NAME, handle: HANDLE });
+    expect(landProposal).not.toHaveBeenCalled();
+    expect(bindings.locate).not.toHaveBeenCalled();
+    expect(cards().p1).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('locates on a read-only connection too', async () => {
+    sourceAt.mockReturnValue({ outcome: 'located', target: { how: 'source', blockId: 'b3' } });
+    bindings.read.mockReturnValue({ provider, document: doc, hasEverSynced: true, authFailure: null, writeAccess: 'denied' });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'denied', false, NAME));
+
+    await waitFor(() => {
+      expect(result.current).toMatchObject({ how: 'source', blockId: 'b3' });
+    });
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('still shows the passage, with a warning, when it changed since the proposal', async () => {
+    sourceAt.mockReturnValue({ outcome: 'changed', target: { how: 'source', blockId: 'b3' } });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith('This passage has changed since the proposal.');
+    });
+    expect(result.current).toMatchObject({ how: 'source', blockId: 'b3' });
+  });
+
+  it('shows nothing and says so when the passage was deleted', async () => {
+    sourceAt.mockReturnValue({ outcome: 'blockGone' });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith('This passage has been deleted.');
+    });
+    expect(result.current).toBeNull();
+    expect(pending().p1).toBeUndefined();
+  });
+
+  it('hands the body a new location each time the same card is located again', async () => {
+    sourceAt.mockReturnValue({ outcome: 'located', target: { how: 'source', blockId: 'b3' } });
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    act(() => {
+      useDocumentProposals.getState().locate(proposal('p1'));
+    });
+    await waitFor(() => {
+      expect(result.current).not.toBeNull();
+    });
+    const first = result.current;
+    act(() => {
+      useDocumentProposals.getState().locate(proposal('p1'));
+    });
+
+    await waitFor(() => {
+      expect(result.current).not.toBe(first);
+    });
+    expect(result.current).toMatchObject({ how: 'source', blockId: 'b3' });
+  });
+
+  it.each([
+    ['write', { how: 'write', blockId: 'w1' }],
+    ['comment', { how: 'comment', blockId: 'b2', threadId: 't1' }],
+  ] as const)('shows where a proposal already landed as a %s, without saying its passage is gone (implementation review round 1)', async (how, at) => {
+    landedAt.mockReturnValue(at);
+    sourceAt.mockReturnValue({ outcome: 'blockGone' });
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => {
+      expect(pending().p1).toBeUndefined();
+    });
+    expect(result.current).toMatchObject(at);
+    expect(sourceAt).not.toHaveBeenCalled();
+    expect(bindings.locate).toHaveBeenCalledTimes(how === 'comment' ? 1 : 0);
+    expect(cards().p1).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('says it could not locate when the editor cannot be built', async () => {
+    useDocumentProposals.getState().locate(proposal('p1'));
+
+    renderHook(() => useDocumentProposalPickup('d1', null, 'granted', true, NAME));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Could not locate. Try again.');
+    });
+    expect(sourceAt).not.toHaveBeenCalled();
   });
 });
 

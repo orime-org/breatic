@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -65,7 +67,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         archived={false}
         canRename
         canLeave={false}
-        credits={{ status: 'ready', value: 42 }}
+        credits={{ status: 'ready', value: '42.000000' }}
         onRename={onRename}
         members={MEMBERS}
         {...overrides}
@@ -104,7 +106,7 @@ describe('TopBar', () => {
         archived={false}
         canRename
         canLeave={false}
-        credits={{ status: 'ready', value: 42 }}
+        credits={{ status: 'ready', value: '42.000000' }}
         onRename={onRename}
       />
     );
@@ -127,12 +129,12 @@ describe('TopBar', () => {
   });
 
   it('shows the credits chip with the credit count', () => {
-    setup({ credits: { status: 'ready', value: 7 } });
+    setup({ credits: { status: 'ready', value: '7.000000' } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
   });
 
   it('reads out a negative balance when the studio owes', () => {
-    setup({ credits: { status: 'ready', value: -320 } });
+    setup({ credits: { status: 'ready', value: '-320.000000' } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('-320');
   });
 
@@ -141,7 +143,7 @@ describe('TopBar', () => {
     // normal case. This is the same figure the Studio's credits tab shows,
     // and one place reading 10.368 while the other reads 10.37 makes a
     // person check which of the two is their money.
-    setup({ credits: { status: 'ready', value: 10.368 } });
+    setup({ credits: { status: 'ready', value: '10.368000' } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('10.37');
   });
 
@@ -168,7 +170,7 @@ describe('TopBar', () => {
   it('carries nothing to press — it is a readout', () => {
     // Everyone working in the project sees how much its pool has left.
     // Topping up is an account-level act and lives on the account page.
-    setup({ credits: { status: 'ready', value: 7 } });
+    setup({ credits: { status: 'ready', value: '7.000000' } });
     const chip = screen.getByTestId('credits-chip');
     expect(within(chip).queryByRole('button')).toBeNull();
   });
@@ -199,6 +201,20 @@ describe('TopBar', () => {
     expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it.each(['owner', 'editor', 'viewer'] as const)('puts the Help menu right before the bell in the icon-only group (%s)', (role) => {
+    setup({ role, actualRole: role });
+    const group = screen.getByTestId('topbar-group-icon-only');
+    const help = within(group).getByTestId('help-menu-trigger');
+    expect(help.nextElementSibling).toBe(within(group).getByTestId('bell-trigger'));
+  });
+
+  it('draws the logo at 24px, the size the Studio top bar uses', () => {
+    setup();
+    const logo = screen.getByTestId('top-bar-logo');
+    expect(logo).toHaveAttribute('width', '24');
+    expect(logo).toHaveAttribute('height', '24');
   });
 
   it('renders both topbar groups (text-icon + icon-only)', () => {
@@ -268,23 +284,23 @@ describe('TopBar', () => {
 
 describe('toCreditsReadout', () => {
   it('reads out what is left once running tasks\' holds are taken off (inner#1611)', () => {
-    expect(toCreditsReadout({ data: { spendable: 120, held: 80, available: 40 }, isError: false })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: '120.000000' as CreditDecimal, held: '80.000000' as CreditDecimal, available: '40.000000' as CreditDecimal }, isError: false })).toEqual({
       status: 'ready',
-      value: 40,
+      value: '40.000000',
     });
   });
 
   it('reads out the balance once an answer has arrived', () => {
-    expect(toCreditsReadout({ data: { spendable: -320, held: 0, available: -320 }, isError: false })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: '-320.000000' as CreditDecimal, held: '0.000000' as CreditDecimal, available: '-320.000000' as CreditDecimal }, isError: false })).toEqual({
       status: 'ready',
-      value: -320,
+      value: '-320.000000',
     });
   });
 
   it('reads out zero as a balance, because that is what it is', () => {
-    expect(toCreditsReadout({ data: { spendable: 0, held: 0, available: 0 }, isError: false })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: '0.000000' as CreditDecimal, held: '0.000000' as CreditDecimal, available: '0.000000' as CreditDecimal }, isError: false })).toEqual({
       status: 'ready',
-      value: 0,
+      value: '0.000000',
     });
   });
 
@@ -303,9 +319,9 @@ describe('toCreditsReadout', () => {
   it('keeps the last balance when a refetch fails', () => {
     // React Query holds the previous answer through a failed refetch, and one
     // refetch old beats replacing a real figure with "unknown".
-    expect(toCreditsReadout({ data: { spendable: 4910, held: 0, available: 4910 }, isError: true })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: '4910.000000' as CreditDecimal, held: '0.000000' as CreditDecimal, available: '4910.000000' as CreditDecimal }, isError: true })).toEqual({
       status: 'ready',
-      value: 4910,
+      value: '4910.000000',
     });
   });
 });

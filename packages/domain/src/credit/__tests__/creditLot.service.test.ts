@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 扣费开头解析 studio 失败时，两种错因的处置完全相反（任务 #11）。
@@ -64,8 +64,8 @@ describe("project 真的没了", () => {
 
     await expect(charge()).resolves.toMatchObject({
       billed: false,
-      charged: 0,
-      shortfall: 10,
+      charged: "0.000000",
+      shortfall: "10.000000",
       studioId: null,
     });
     // The standalone exit, which is the one that carries no lot: this row

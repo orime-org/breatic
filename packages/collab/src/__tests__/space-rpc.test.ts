@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * space-rpc handler tests (ADR 2026-07-04 project-activity-feed).
@@ -259,7 +259,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     const seeded = seedInitialStateMock.mock.calls.find((call) => call[0] === contentName)!;
     const scene = new Y.Doc();
     Y.applyUpdate(scene, seeded[1] as Uint8Array);
-    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(scene.getMap("objects").toJSON()).toEqual({});
 
     const entry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn run against a scripted model and a small fake conversation, for the
@@ -330,6 +330,7 @@ export const BASE_CONFIG: Record<string, unknown> = {
   default_model: "test",
   main_model_sees_pictures: "no",
   max_output_tokens: 16_384,
+  fold_trigger_tokens: 750_000,
   // Above the window less the output reserve, so the window term sets the fold target.
   memory_keep_tokens: 2_000_000,
   memory_conversation_max_size: 1000,

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { _resetForTests, destroyDoc, getDoc } from '../manager';
 
 afterEach(() => _resetForTests());
@@ -9,9 +10,9 @@ afterEach(() => _resetForTests());
 describe('shared scene document lifetime', () => {
   it('reuses the canonical document across consumers and Activity mounts', () => {
     const doc = getDoc('project-p/3d-s');
-    doc.getMap('scene').set('formatVersion', 1);
+    doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     expect(getDoc('project-p/3d-s')).toBe(doc);
-    expect(getDoc('project-p/3d-s').getMap('scene').get('formatVersion')).toBe(1);
+    expect(getDoc('project-p/3d-s').getMap('scene').get('formatVersion')).toBe(SCENE_FORMAT_VERSION);
   });
 
   it('destroys the document when the owning provider releases it', () => {

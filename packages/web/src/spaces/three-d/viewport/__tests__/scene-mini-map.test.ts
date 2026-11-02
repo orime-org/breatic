@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Vector3 } from 'three';
@@ -16,7 +16,7 @@ vi.mock('three', async (importOriginal) => {
     render(...args: unknown[]): void { renders.push(args); }
   } };
 });
-const OBJECT: SceneObject = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false, exists: true };
+const OBJECT: SceneObject = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false };
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); renders.length = 0; document.body.replaceChildren(); });
 function model(): Group { const root = new Group(); root.add(new Mesh(new BoxGeometry(2, 4, 8), new MeshStandardMaterial())); return root; }

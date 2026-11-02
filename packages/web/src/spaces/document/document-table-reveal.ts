@@ -1,5 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The element a wide table holding some words scrolls sideways in, if they
+ * are in one (`DocumentTableScroller`).
+ * @param target - The words, in the body.
+ * @returns The table's sideways scroller, or null outside a table.
+ */
+export function tableViewportOf(target: Element): HTMLElement | null {
+  return target.closest('.doc-table-frame')?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]') ?? null;
+}
 
 /**
  * Scrolls the wide table holding some words sideways just far enough to show
@@ -12,8 +22,8 @@
  */
 export function revealInTable(target: HTMLElement): void {
   const frame = target.closest('.doc-table-frame');
-  const viewport = frame?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
-  if (frame === null || frame === undefined || viewport === null || viewport === undefined) return;
+  const viewport = tableViewportOf(target);
+  if (frame === null || viewport === null) return;
   const edge = frame.querySelector<HTMLElement>('.doc-table-overflow-edge')?.offsetWidth ?? 0;
   const cell = target.closest<HTMLElement>('td, th') ?? target;
   const box = viewport.getBoundingClientRect();

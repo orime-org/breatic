@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Copy, CopyPlus, Group, MessageSquarePlus, Trash2 } from 'lucide-react';
 import * as React from 'react';
@@ -14,6 +14,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 
 interface SelectionContextMenuProps {
   /** Whether the menu is open (driven by the canvas's selection right-click handler). */
@@ -91,7 +92,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
               <Group className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.group.group')}
               <DropdownMenuShortcut>
-                {formatShortcut({ mod: true, key: 'G' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.group)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -102,7 +103,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
             <Copy className='mr-2 h-4 w-4' aria-hidden='true' />
             {t('canvas.contextMenu.copy')}
             <DropdownMenuShortcut>
-              {formatShortcut({ mod: true, key: 'C' })}
+              {formatShortcut(CANVAS_KEY_SHORTCUTS.copy)}
             </DropdownMenuShortcut>
           </DropdownMenuItem>
         ) : null}
@@ -114,7 +115,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
             <CopyPlus className='mr-2 h-4 w-4' aria-hidden='true' />
             {t('canvas.contextMenu.duplicate')}
             <DropdownMenuShortcut>
-              {formatShortcut({ mod: true, key: 'D' })}
+              {formatShortcut(CANVAS_KEY_SHORTCUTS.duplicate)}
             </DropdownMenuShortcut>
           </DropdownMenuItem>
         ) : null}
@@ -141,7 +142,7 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
               <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.contextMenu.deleteSelection')}
               <DropdownMenuShortcut>
-                {formatShortcut({ key: 'Delete' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.delete)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
           </>

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two entrances the buyer comes back through, plus the reconcile pass that
@@ -537,7 +537,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     const { paymentId, sessionId } = await seedPending(buyer.userId);
     stripe.checkout.sessions.retrieve.mockResolvedValue(paidSession(sessionId));
     try {
-      const res = await app.request("/api/v1/credits/overview", {
+      const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       expect(res.status).toBe(200);
@@ -558,7 +558,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
       for (let i = 0; i < 62; i += 1) {
         codes.push(
           (
-            await app.request("/api/v1/credits/overview", {
+            await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
               headers: { cookie: buyer.cookie },
             })
           ).status,
@@ -580,7 +580,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     });
     stripe.checkout.sessions.retrieve.mockClear();
     try {
-      const res = await app.request("/api/v1/credits/overview", {
+      const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
 
@@ -606,7 +606,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     });
     stripe.checkout.sessions.retrieve.mockResolvedValue(paidSession(sessionId));
     try {
-      await app.request("/api/v1/credits/overview", {
+      await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       expect(await statusOf(paymentId)).toBe("completed");
@@ -621,7 +621,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
       createdAgoSeconds: 30,
     });
     try {
-      await app.request("/api/v1/credits/overview", {
+      await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
@@ -636,7 +636,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     await seedPending(buyer.userId, { status: "completed" });
     await seedPending(buyer.userId, { status: "expired" });
     try {
-      await app.request("/api/v1/credits/overview", {
+      await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
@@ -658,7 +658,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
       async (id: string) => unpaidSession(id, "open"),
     );
     try {
-      await app.request("/api/v1/credits/overview", {
+      await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       const firstPass = stripe.checkout.sessions.retrieve.mock.calls.map(
@@ -668,7 +668,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
       expect(firstPass).not.toContain(rows[3]!.sessionId);
 
       stripe.checkout.sessions.retrieve.mockClear();
-      await app.request("/api/v1/credits/overview", {
+      await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       const secondPass = stripe.checkout.sessions.retrieve.mock.calls.map(
@@ -694,7 +694,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
         },
       );
 
-      const res = await app.request("/api/v1/credits/overview", {
+      const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
 
@@ -724,7 +724,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     const { paymentId } = await seedPending(buyer.userId);
     stripe.checkout.sessions.retrieve.mockRejectedValue(new Error("timeout"));
     try {
-      const res = await app.request("/api/v1/credits/overview", {
+      const res = await app.request("/api/v1/credits/overview?amountFormat=decimal-v1", {
         headers: { cookie: buyer.cookie },
       });
       // Seven sections of the overlay wait behind this one query. A repair

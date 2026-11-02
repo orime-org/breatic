@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one place an agent's three things get decided.
@@ -66,6 +66,7 @@ describe("buildAgentConfig", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Closing connections whose session ended (inner#1548).
@@ -80,7 +80,7 @@ function buildRedis(fails = false): { source: Redis; subscriber: FakeSubscriber 
  */
 function connection(userId: string, token: string): FakeConnection {
   return {
-    context: { user: { id: userId, role: "editor" }, handedOverFrom: null, session: { token, id: `id-${token}` } },
+    context: { user: { id: userId, role: "editor" }, seatCap: null, arrivedAtMs: 0, session: { token, id: `id-${token}` } },
     close: vi.fn(),
   };
 }

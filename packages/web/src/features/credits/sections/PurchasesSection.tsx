@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -203,7 +205,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 says where they came from instead — the one thing about the
                 row a reader cannot work out from the rest of it. */}
           {purchase.amountCents === null
-            ? t(`credits.source.${purchase.sourceKind}`)
+            ? t(creditSourceLabelKey(purchase))
             : over
               ? t('credits.purchase.notCharged')
               : charged !== null

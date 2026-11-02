@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Main Agent — streaming chat with AI SDK.
@@ -7,6 +7,8 @@
  * Replaces the Python ToolCallRunner with AI SDK's built-in
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
+
+import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
 import { streamTextRetry } from "@breatic/domain";
@@ -16,7 +18,7 @@ import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/d
 import {
   buildAgentConfig,
   finalizeTurn,
-  ASK_USER,
+  AWAITS_READER,
   agentPictureOutputOf,
   expandAgentPictures,
   instructionsForAgentMemory,
@@ -33,7 +35,7 @@ import { projectRecordsFor } from "@server/agent/project-records.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import type { AskUserResult, ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
 import { continuationMessageForModel, openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
 import type { UserTurn } from "@server/agent/user-turn.js";
@@ -54,18 +56,20 @@ import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
+import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
 
 /**
  * What opened a segment of a turn: the reader's message, or the reader's
- * answer to a questionnaire the turn stopped at (inner#1542).
+ * answer to a card the turn stopped at -- a questionnaire (inner#1542) or a
+ * request to read Spaces (inner#1552).
  */
 type Opening =
   | {
       kind: "message";
       clockNote: string;
       turn: UserTurn;
-      /** The questionnaires this message closed instead of answering them. */
+      /** The cards this message closed instead of answering them. */
       closedAsks: string[];
     }
   | {
@@ -73,11 +77,12 @@ type Opening =
       clockNote: string;
       space: ChatSpaceContext;
       toolCallId: string;
-      result: AskUserResult;
+      /** The call's output as the store now holds it. */
+      output: unknown;
     };
 
-/** What a waiting questionnaire is settled with when the reader writes a message instead. */
-const REPLIED_IN_CHAT: AskUserResult = { repliedInChat: true };
+/** What a waiting card is settled with when the reader writes a message instead. */
+const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
 
 /**
  * What a client is told when the turn's own code fails.
@@ -150,9 +155,9 @@ export class MainAgent {
     // retries — see domain/src/credit/creditLot.service.ts
     // `chargeOnceForGeneration`.
     //
-    // Every questionnaire still waiting is closed by this message, in the
-    // same transaction: its result says the reader wrote a message instead,
-    // and is kept beside the call in the row that asked.
+    // Every card still waiting is closed by this message, in the same
+    // transaction: its result says the reader wrote a message instead, and is
+    // kept beside the call in the row that asked, under that call's own tool.
     const { turnIndex, closedAsks } = await messageRepo.addReaderMessage(
       conversationId,
       {
@@ -162,7 +167,7 @@ export class MainAgent {
           { type: "text", text: said },
         ],
       },
-      (toolCallId) => ({ output: REPLIED_IN_CHAT, forModel: askResultForModel(toolCallId, REPLIED_IN_CHAT) }),
+      (toolCallId, toolName) => ({ output: REPLIED_IN_CHAT, forModel: askResultForModel(toolCallId, REPLIED_IN_CHAT, toolName) }),
     );
 
     // A conversation takes its name from the first thing said in it, so this
@@ -198,14 +203,15 @@ export class MainAgent {
   }
 
   /**
-   * Resume a turn that stopped at a questionnaire, once the reader's answer
-   * has been taken (inner#1542).
+   * Resume a turn that stopped at a card, once the reader's answer has been
+   * taken: a questionnaire's (inner#1542) or a Space request's (inner#1552).
    *
    * The answer is already in the store -- the route settled it before calling
    * this -- so what runs here is the turn's next segment: the paused turn as
    * history, the answer as the call's result, and the model asked again.
-   * @param toolCallId - The questionnaire call answered.
-   * @param result - What it was answered with.
+   * @param toolCallId - The call answered.
+   * @param output - The call's output as the store now holds it, which is
+   *   what the card draws; the model's copy of the result is in the store.
    * @param turnIndex - The turn that asked.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param timeZone - The zone the reader's browser reported, if any.
@@ -214,7 +220,7 @@ export class MainAgent {
    */
   async answer(
     toolCallId: string,
-    result: AskUserResult,
+    output: unknown,
     turnIndex: number,
     signal?: AbortSignal,
     timeZone?: string,
@@ -225,7 +231,7 @@ export class MainAgent {
       clockNote: readerClockNote(new Date(), timeZone),
       space,
       toolCallId,
-      result,
+      output,
     };
     return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
   }
@@ -256,7 +262,7 @@ export class MainAgent {
    * @param opening - What opened this segment: the reader's message (the
    *   clock, Spaces, attachments and typed words, laid out with each assembly,
    *   which knows whether the history already holds the open Space), or the
-   *   reader's answer to the questionnaire the turn stopped at.
+   *   reader's answer to the card the turn stopped at.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -294,12 +300,12 @@ export class MainAgent {
     // that produced the reply.
     let turnTools: Readonly<Record<string, Tool>> = {};
 
-    // The questionnaire this segment stopped at, if it did, and the ones put
-    // in the same step after it. Decided when the model's stream finishes:
-    // `ask_user` has no `execute`, so the SDK stops the step at it and never
+    // The card this segment stopped at, if it did, and the ones put in the
+    // same step after it. Decided when the model's stream finishes: a tool in
+    // `AWAITS_READER` has no `execute`, so the SDK stops the step at it and never
     // consults `stopWhen` (`ai@7.0.68` `dist/index.js:10046-10053`).
     let awaitingCall: string | undefined;
-    let turnedAwayCalls: string[] = [];
+    let turnedAwayCalls: TurnedAwayCall[] = [];
     // Media a questionnaire may show: what `search_images` returned in this
     // conversation, read from the history and added to as this turn searches.
     const vouchedMedia = new Set<string>();
@@ -339,7 +345,7 @@ export class MainAgent {
     // the reader leaving mid-loop -- reading it would drive the rest of the
     // loop after everyone has gone.
     const usage = createUsageRecorder({
-      // A segment resumed after a questionnaire is charged on its own: the
+      // A segment resumed after a card is charged on its own: the
       // charge below is taken once per key, and the segment that asked has
       // already settled under the turn's.
       operationKey:
@@ -442,7 +448,7 @@ export class MainAgent {
           logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
         }
       }
-      // A segment paused at a questionnaire has not ended: its answer is
+      // A segment paused at a card has not ended: its answer is
       // appended to this copy and must follow the call it answers.
       const note = ended.exit === "blocked" ? undefined : endingNote(ended.stored);
       // A resumed segment's own message is kept in its row, since no reader's
@@ -536,6 +542,8 @@ export class MainAgent {
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
           preparePictures,
+          // The Spaces a request to read Spaces may name: this turn's list.
+          spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
         },
       });
       const agentConfig: ResolvedAgentConfig = firstAssembly ? fixedAgentConfig : {
@@ -1024,10 +1032,10 @@ export class MainAgent {
           // end of `execute`, or, when stopped, has the figure written into
           // its stored parts at the exit below.
           sayThoughtFor(writer);
-          // The step stopped at a questionnaire when it holds an `ask_user`
-          // call the schema took and nothing has answered. The first is the
-          // card the reader is shown; any later one in the step is turned
-          // away. Said on the wire here, while the writer is still open, so
+          // The step stopped at a card when it holds a call to a tool that
+          // waits for the reader (`AWAITS_READER`) the schema took and nothing
+          // has answered. The first, whichever tool made it, is the card the
+          // reader is shown; any later one in the step is turned away. Said on the wire here, while the writer is still open, so
           // the panel draws the card as waiting rather than as a call that
           // came to nothing -- the rule lives on this side only. Written last,
           // so it is the last part of the segment that asked: the browser
@@ -1039,10 +1047,10 @@ export class MainAgent {
             finishReason === "error" || seen.failed === true
               ? []
               : toolCalls
-                .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
-                .map((call) => call.toolCallId);
+                .filter((call) => AWAITS_READER.includes(call.toolName) && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+                .map(({ toolCallId, toolName }) => ({ toolCallId, toolName }));
           if (asks[0] !== undefined) {
-            awaitingCall = asks[0];
+            awaitingCall = asks[0].toolCallId;
             turnedAwayCalls = asks.slice(1);
             writer.write({ type: "data-ask-awaiting", data: { toolCallId: awaitingCall } });
           }
@@ -1189,7 +1197,7 @@ export class MainAgent {
             replyParts[i] = { ...part, status: "awaiting" };
             continue;
           }
-          if (exit === "blocked" && turnedAwayCalls.includes(part.toolCallId)) {
+          if (exit === "blocked" && turnedAwayCalls.some((call) => call.toolCallId === part.toolCallId)) {
             replyParts[i] = { ...part, status: "error", failure: { kind: "turned_away", forModel: SECOND_QUESTION_TURNED_AWAY } };
             continue;
           }
@@ -1258,7 +1266,7 @@ export class MainAgent {
                   provider: resolveProvider(modelId),
                 },
               );
-              if (outcome && outcome.shortfall > 0) {
+              if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {
                 // The pool ran out mid-turn, or its credits were reassigned
                 // while the model was answering. The reply is already with the
                 // reader, so what could not be charged goes to reconciliation.
@@ -1326,7 +1334,7 @@ export class MainAgent {
     const answered: UIMessageChunk = {
       type: "tool-output-available",
       toolCallId: opening.toolCallId,
-      output: opening.result,
+      output: opening.output,
     };
     return stream.pipeThrough(
       new TransformStream<UIMessageChunk, UIMessageChunk>({

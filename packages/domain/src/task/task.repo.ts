@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Task repository — data access for the tasks table.
@@ -7,10 +7,22 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, isNull, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+
+/**
+ * Resolve one bounded set of task provenance without guessing from producers.
+ * @param ids - The captured generation-task identities.
+ * @returns Live task rows in immutable-id order.
+ * @throws {Error} When the database read fails.
+ */
+export async function findLiveTasksByIds(ids: readonly string[]): Promise<TaskEntity[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.select().from(tasks).where(and(inArray(tasks.id, [...new Set(ids)]), isNull(tasks.deletedAt))).orderBy(tasks.id);
+  return rows.map(toEntity);
+}
 
 /**
  * Convert a Drizzle row to a TaskEntity.

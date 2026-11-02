@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The judgement table shared by the preview and the two endpoints that
@@ -91,7 +91,7 @@ const COMPLETED_PAYMENT = { status: "completed", stripePaymentIntentId: "pi_1", 
 /** An approve that passes every row. */
 const APPROVE_OK: AssessInput = {
   kind: "approve",
-  lot: { lifecycle: "refund_pending", remainingCredits: 100, ledgerSum: 100 },
+  lot: { lifecycle: "refund_pending", remainingCredits: "100.000000", ledgerSum: "100.000000" },
   payment: COMPLETED_PAYMENT,
   ops: [],
   refunds: [],
@@ -101,7 +101,7 @@ const APPROVE_OK: AssessInput = {
 /** A retry that passes every row: the last disposition is an open needs_attention. */
 const RETRY_OK: AssessInput = {
   kind: "retry",
-  lot: { lifecycle: "refunding", remainingCredits: 100, ledgerSum: 100 },
+  lot: { lifecycle: "refunding", remainingCredits: "100.000000", ledgerSum: "100.000000" },
   payment: COMPLETED_PAYMENT,
   ops: [op("needs_attention", 5)],
   refunds: [],
@@ -214,14 +214,14 @@ describe("row 2: approve only — the lot must come from a completed payment wit
       assessRefundCreate({
         ...APPROVE_OK,
         ...laterRowsTrip,
-        lot: { lifecycle: "refund_pending", remainingCredits: 100, ledgerSum: 99 },
+        lot: { lifecycle: "refund_pending", remainingCredits: "100.000000", ledgerSum: "99.000000" },
       }),
     ).toEqual(LOT_STATE_CHANGED);
   });
 
   it("retry does not check the ledger sum", () => {
     expect(
-      assessRefundCreate({ ...RETRY_OK, lot: { lifecycle: "refunding", remainingCredits: 100, ledgerSum: 40 } }),
+      assessRefundCreate({ ...RETRY_OK, lot: { lifecycle: "refunding", remainingCredits: "100.000000", ledgerSum: "40.000000" } }),
     ).toEqual(create(PAID));
   });
 });
@@ -470,7 +470,7 @@ describe("assessRefundPreview: the create operation", () => {
     expect(
       createHalf(
         assessRefundPreview({
-          ...previewInput({ ...APPROVE_OK, lot: { lifecycle: "refunded", remainingCredits: 0, ledgerSum: 0 } }),
+          ...previewInput({ ...APPROVE_OK, lot: { lifecycle: "refunded", remainingCredits: "0.000000", ledgerSum: "0.000000" } }),
           ops: [op("succeeded", 1, { result: "refunded" })],
           refunds: [failedLater],
           unresolvedFailedRefunds: [failedLater],
@@ -519,7 +519,7 @@ describe("assessRefundPreview: the create operation", () => {
 
 describe("assessRefundPreview: restoreCredits is the restore endpoint's own answer", () => {
   const failedLater = refund("re_later", "failed", PAID, { everSucceeded: true });
-  const refundedLot = { lifecycle: "refunded" as const, remainingCredits: 0, ledgerSum: 0 };
+  const refundedLot = { lifecycle: "refunded" as const, remainingCredits: "0.000000", ledgerSum: "0.000000" };
 
   it("is allowed on a refunded lot whose refund failed later", () => {
     const p = assessRefundPreview({
@@ -667,7 +667,7 @@ describe("§9: the preview and the endpoints agree when the operator confirms wh
     // only approve's row 2 is asked to judge one.
     const payment = g.payment === null && g.lifecycle !== "refund_pending" ? COMPLETED_PAYMENT : g.payment;
     return {
-      lot: { lifecycle: g.lifecycle, remainingCredits: 50, ledgerSum: g.ledgerMatches ? 50 : 49 },
+      lot: { lifecycle: g.lifecycle, remainingCredits: "50.000000", ledgerSum: g.ledgerMatches ? "50.000000" : "49.000000" },
       payment,
       ops: g.ops.map((o) =>
         op(o.status, o.minute, {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The card for a document proposal (inner#1509, design §5.3 · §5.7): it says
@@ -86,25 +86,134 @@ describe('a comment card', () => {
     expect(screen.getByTestId('document-proposal-quote').textContent).toBe('He pushes the door open');
     expect(screen.getByText('The conflict comes too soon.')).toBeTruthy();
     const buttons = screen.getAllByRole('button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['Add comment']);
+    expect(buttons.map((b) => b.textContent)).toEqual(['Locate', 'Add comment']);
 
-    await userEvent.click(buttons[0]!);
+    await userEvent.click(buttons[1]!);
     expect(useDocumentProposals.getState().pending[BASE.proposalId]).toMatchObject({ action: 'comment' });
   });
 });
 
 describe('the land buttons', () => {
-  it('are the land button a Canvas proposal card uses, in the same row', () => {
+  it('are the land button a Canvas proposal card uses, in the same row, which wraps whole buttons (inner#1646)', () => {
     draw(BASE);
     const comment = screen.getByRole('button', { name: 'Add comment' });
+    const locate = screen.getByRole('button', { name: 'Locate' });
     render(
-      <ProposalActions>
+      <ProposalActions wrap>
         <ProposalAction>shared</ProposalAction>
       </ProposalActions>,
     );
     const shared = screen.getByText('shared').closest('button')!;
     expect(comment.className).toBe(shared.className);
+    expect(locate.className).toBe(shared.className);
     expect(comment.parentElement!.className).toBe(shared.parentElement!.className);
+  });
+
+  it('wrap whole buttons only on a Document card; the Canvas row keeps one line', () => {
+    render(
+      <ProposalActions>
+        <ProposalAction>canvas</ProposalAction>
+      </ProposalActions>,
+    );
+    render(
+      <ProposalActions wrap>
+        <ProposalAction>document</ProposalAction>
+      </ProposalActions>,
+    );
+    const canvasRow = screen.getByText('canvas').closest('button')!.parentElement!.className.split(' ');
+    const documentRow = screen.getByText('document').closest('button')!.parentElement!.className.split(' ');
+
+    expect(canvasRow).not.toContain('flex-wrap');
+    expect(documentRow).toEqual(expect.arrayContaining(['flex-wrap', '*:min-w-max']));
+  });
+});
+
+describe('locating a card\'s passage (inner#1646)', () => {
+  const pending = (): ReturnType<typeof useDocumentProposals.getState>['pending'] => useDocumentProposals.getState().pending;
+
+  it('is the first press in the row and the first reached by Tab', async () => {
+    draw(BASE);
+
+    expect(screen.getAllByRole('button')[0]!.textContent).toBe('Locate');
+    await userEvent.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Locate' }));
+  });
+
+  it('waits as a locate on that button, holding the others, and leaves the card as it was', async () => {
+    const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
+    draw(rewrite);
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Locate' }));
+
+    expect(pending()[BASE.proposalId]).toMatchObject({ action: 'locate' });
+    expect(useDocumentProposals.getState().cards[BASE.proposalId]).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Locate' }).getAttribute('aria-busy')).toBe('true');
+    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('offers every press again once located, the card still waiting for a choice', async () => {
+    draw(BASE);
+    await userEvent.click(screen.getByRole('button', { name: 'Locate' }));
+
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'located');
+    });
+
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Locate' }).getAttribute('aria-busy')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('is held while the card is landing', async () => {
+    draw(BASE);
+    await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+
+    expect((screen.getByRole('button', { name: 'Locate' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('can be pressed before an insert\'s body is read', () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'Text.' };
+    draw(insert);
+
+    expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Locate' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('is not offered on a card that landed', async () => {
+    draw(BASE);
+    await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'applied');
+    });
+
+    expect(screen.queryByRole('button', { name: 'Locate' })).toBeNull();
+  });
+
+  it('is offered, and locates, on a card whose landing was undone in the open Document', async () => {
+    const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
+    peek.mockReturnValue({ editor: {} });
+    landedHow.mockReturnValue('write');
+    draw(rewrite);
+    act(() => {
+      useDocumentProposals.getState().start(rewrite, 'write');
+      useDocumentProposals.getState().report(BASE.proposalId, 'applied');
+    });
+    landedHow.mockReturnValue(null);
+    act(() => {
+      useDocumentProposals.getState().bump(BASE.spaceId);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Locate' }));
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'located');
+    });
+
+    expect(useDocumentProposals.getState().cards[BASE.proposalId]).toEqual({ state: 'applied', action: 'write' });
+    expect(screen.getByRole('button', { name: 'Locate' })).toBeTruthy();
   });
 });
 
@@ -125,7 +234,7 @@ describe('a rewrite card', () => {
       expect(screen.getByTestId('document-proposal-removed').textContent).toContain('slowly');
     });
     expect(screen.queryByTestId('document-proposal-added')).toBeNull();
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Add comment', 'Replace']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Locate', 'Add comment', 'Replace']);
     expect(screen.queryByTestId('document-proposal-lossy')).toBeNull();
   });
 
@@ -146,7 +255,7 @@ describe('a rewrite card', () => {
     const { quote: _quote, ...rewrite } = { ...REWRITE, original };
     draw(rewrite);
 
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Replace']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Locate', 'Replace']);
   });
 
   it('shows the whole passage out and the whole rewrite in when the two are too far apart to compare word by word (review round 3)', async () => {
@@ -172,7 +281,7 @@ describe('a rewrite card', () => {
     await waitFor(() => {
       expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(false);
     });
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Replace']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Locate', 'Replace']);
   });
 
   it('holds its write button until the body is read (review round 4)', async () => {
@@ -217,7 +326,7 @@ describe('an insert card', () => {
 
     expect(screen.getByTestId('document-proposal-where').textContent).toBe('Insert into Document “Storyboard” · End');
     expect(screen.getByText('Wide')).toBeTruthy();
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Insert']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Locate', 'Insert']);
     expect(screen.queryByTestId('document-proposal-anchor')).toBeNull();
   });
 
@@ -348,7 +457,7 @@ describe('a landed card whose document changes', () => {
     });
 
     expect(screen.queryByTestId('document-proposal-status')).toBeNull();
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Add comment', 'Replace']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Locate', 'Add comment', 'Replace']);
   });
 
   it('trusts the open document over a landing reported earlier', async () => {

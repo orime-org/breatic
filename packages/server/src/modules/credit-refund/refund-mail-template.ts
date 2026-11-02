@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the three buyer emails about a refund say (inner#1410 §8), in the
@@ -8,7 +8,7 @@
  * view, so it cannot reach a buyer.
  */
 
-import { getAvailableLocales, t } from "@breatic/shared";
+import { formatCredits, getAvailableLocales, t, type CreditDecimal } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
 import { bothZones, formatMoney } from "@server/modules/payment/purchase-mail-template.js";
 import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
@@ -24,7 +24,7 @@ interface RefundMailViewBase {
   /** The order reference, `payments.id`. */
   paymentId: string;
   /** The credits the pack granted. */
-  credits: number;
+  credits: CreditDecimal;
   purchasedAt: Date;
 }
 
@@ -60,7 +60,7 @@ export function renderRefundMail(view: RefundMailView): Promise<RenderedMail> {
      */
     const line = (name: string, value: string): string =>
       t("server.refund_mail.fact_line", { label: t(`server.refund_mail.label.${name}`), value });
-    const credits = t("server.refund_mail.credits_amount", { credits: String(view.credits) });
+    const credits = t("server.refund_mail.credits_amount", { credits: formatCredits(view.credits, locale) });
     const lines =
       view.kind === "refund_completed"
         ? [

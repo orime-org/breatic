@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The credit engine (task #11) — the only module that writes a lot's
@@ -21,6 +21,7 @@
  * task and the user, writes the reconciliation line.
  */
 
+import { randomUUID } from "node:crypto";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
@@ -32,6 +33,7 @@ import {
   fromMicroCredits,
   planCharge,
   positionFrom,
+  serializeCreditPosition,
 } from "@domain/credit/credit-math.js";
 import {
   db,
@@ -48,9 +50,17 @@ import {
   REFUND_LIFECYCLES,
   refundRefusal,
   isPurchased,
+  addCreditMicro,
+  subtractCreditMicro,
+  minCreditMicro,
+  negateCreditMicro,
+  parseCreditDecimal,
+  serializeCreditMicro,
 } from "@breatic/shared";
 import type {
   CreditLotEntity,
+  CreditDecimal,
+  CreditMicro,
   CreditOverview,
   RefundRefusal,
   StudioCreditSummary,
@@ -118,13 +128,13 @@ export interface ChargeOutcome {
   /** Whether any credits were taken. False when payments are off, or nothing could be charged. */
   billed: boolean;
   /** Credits actually taken. */
-  charged: number;
+  charged: CreditDecimal;
   /**
    * Credits that could not be taken. Above zero means the account is short
    * and the caller should log it for reconciliation — the task is not failed
    * and nothing is rolled back: the user already has their result.
    */
-  shortfall: number;
+  shortfall: CreditDecimal;
   /** The studio that paid, when one could be resolved. */
   studioId: string | null;
   /** The lots drawn down, oldest first. */
@@ -237,6 +247,7 @@ export async function grantTrialCredits(
   );
   if (!opened) return null;
 
+  await creditSourceRepo.createRegistrationGift({ userId: input.userId, studioId: input.studioId, credits: fromMicroCredits(toMicroCredits(input.credits)) }, tx);
   return creditLotRepo.createLot(
     {
       sourceId: input.userId,
@@ -307,16 +318,15 @@ export async function chargeForGeneration(
     referenceId: input.referenceId,
   };
 
-  // Payments off — every local install and every self-hosted one. Usage is
-  // still recorded, because a deployment that charges nobody still wants to
-  // know what it produced; there is simply no purchase to draw it from.
+  // Payment-disabled deployments still need usage records to report what
+  // they produced, even though no purchase is charged.
   if (!env.PAYMENT_ENABLED) {
     await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
-    return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
+    return { billed: false, charged: fromMicroCredits(0n), shortfall: fromMicroCredits(0n), studioId, lotIds: [] };
   }
 
   // No studio means no pool. Two ways to get here: the text tools, whose route
@@ -332,8 +342,8 @@ export async function chargeForGeneration(
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return {
       billed: false,
-      charged: 0,
-      shortfall: amountMicro / 1_000_000,
+      charged: fromMicroCredits(0n),
+      shortfall: fromMicroCredits(amountMicro),
       studioId: null,
       lotIds: [],
     };
@@ -352,8 +362,8 @@ export async function chargeForGeneration(
     if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
-    const locked: { id: string; remaining: number }[] = [];
-    let available = 0;
+    const locked: { id: string; remaining: CreditMicro }[] = [];
+    let available = toMicroCredits("0");
     for (const candidate of candidates) {
       if (available >= amountMicro) break;
       const row = await creditLotRepo.lockLot(candidate.id, tx);
@@ -361,9 +371,9 @@ export async function chargeForGeneration(
       if (row.lifecycle !== "active") continue;
       if (row.designatedStudioId !== studioId) continue;
       const remaining = toMicroCredits(row.remainingCredits);
-      if (remaining <= 0) continue;
+      if (remaining <= 0n) continue;
       locked.push({ id: row.id, remaining });
-      available += remaining;
+      available = addCreditMicro(available, remaining);
     }
 
     const plan = planCharge(locked, amountMicro);
@@ -390,7 +400,7 @@ export async function chargeForGeneration(
     // same event seen from the pool, and it carries the full context because
     // a charge that took nothing wrote no `spend` row to carry it — the
     // project and the model on the credits page come from here.
-    if (plan.shortfall > 0) {
+    if (plan.shortfall > 0n) {
       await creditLotRepo.adjustDebt(
         studioId,
         fromMicroCredits(plan.shortfall),
@@ -411,11 +421,11 @@ export async function chargeForGeneration(
       );
     }
 
-    const charged = amountMicro - plan.shortfall;
+    const charged = subtractCreditMicro(amountMicro, plan.shortfall);
     return {
-      billed: charged > 0,
-      charged: charged / 1_000_000,
-      shortfall: plan.shortfall / 1_000_000,
+      billed: charged > 0n,
+      charged: fromMicroCredits(charged),
+      shortfall: fromMicroCredits(plan.shortfall),
       studioId,
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
@@ -532,7 +542,7 @@ export async function designateLot(input: {
     // `studio_members` → `studio_credit_debts` → `credit_lots`.
     const owedMicro =
       input.studioId === null
-        ? 0
+        ? parseCreditDecimal("0")
         : toMicroCredits(await creditLotRepo.lockDebt(input.studioId, tx));
 
     const lot = await creditLotRepo.lockLot(input.lotId, tx);
@@ -556,33 +566,9 @@ export async function designateLot(input: {
       tx,
     );
 
-    if (input.studioId === null || owedMicro <= 0) return designated;
-
-    const repaidMicro = Math.min(
-      owedMicro,
-      toMicroCredits(designated.remainingCredits),
-    );
-    if (repaidMicro <= 0) return designated;
-
-    const repaid = fromMicroCredits(repaidMicro);
-    const charged = await creditLotRepo.applyCharge(input.lotId, repaid, tx);
-    await creditLotRepo.adjustDebt(input.studioId, `-${repaid}`, tx);
-    await creditLotRepo.appendLedgerEntry(
-      {
-        payerUserId: designated.userId,
-        actorUserId: input.requestingUserId,
-        entryType: "debt_repayment",
-        studioId: input.studioId,
-        amount: fromMicroCredits(-repaidMicro),
-        lotId: input.lotId,
-      },
-      tx,
-    );
-    return {
-      ...designated,
-      remainingCredits: charged.remainingCredits,
-      lifecycle: charged.lifecycle,
-    };
+    if (input.studioId === null) return designated;
+    const repayment = await repayDesignatedLot({ lot: designated, studioId: input.studioId, owedMicro, actorUserId: input.requestingUserId }, tx);
+    return repayment.lot;
   });
 }
 
@@ -855,15 +841,15 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
       studioName: row.studioName,
       studioSlug: row.studioSlug,
       deleted: false,
-      spendable: toMicroCredits(row.spendable) / 1_000_000,
-      debt: 0,
-      spent: 0,
+      spendable: fromMicroCredits(toMicroCredits(row.spendable)),
+      debt: fromMicroCredits(0n),
+      spent: fromMicroCredits(0n),
       lotCount: row.lotCount,
     });
   }
   for (const row of spentRows) {
     const existing = byStudio.get(row.studioId);
-    const spent = toMicroCredits(row.spent) / 1_000_000;
+    const spent = fromMicroCredits(toMicroCredits(row.spent));
     if (existing) existing.spent = spent;
     // A studio reaches this side and not the other one whenever no purchase
     // of this account points at it: they were pointed elsewhere, or the
@@ -877,8 +863,8 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
         studioName: row.studioName,
         studioSlug: row.studioSlug,
         deleted: row.deleted,
-        spendable: 0,
-        debt: 0,
+        spendable: fromMicroCredits(0n),
+        debt: fromMicroCredits(0n),
         spent,
         lotCount: 0,
       });
@@ -906,15 +892,15 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   for (const row of owingRows) {
     if (byStudio.has(row.studioId)) continue;
     if (!administered.has(row.studioId)) continue;
-    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0) continue;
+    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0n) continue;
     byStudio.set(row.studioId, {
       studioId: row.studioId,
       studioName: row.studioName,
       studioSlug: row.studioSlug,
       deleted: row.deleted,
-      spendable: 0,
-      debt: 0,
-      spent: 0,
+      spendable: fromMicroCredits(0n),
+      debt: fromMicroCredits(0n),
+      spent: fromMicroCredits(0n),
       lotCount: 0,
     });
   }
@@ -922,14 +908,14 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   const studios = [...byStudio.values()];
   for (const studio of studios) {
     studio.debt = administered.has(studio.studioId)
-      ? toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000
+      ? fromMicroCredits(toMicroCredits(debts.get(studio.studioId) ?? "0"))
       : null;
   }
 
   return {
-    assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
+    assignedCredits: fromMicroCredits(studios.reduce((sum, s) => sum + toMicroCredits(s.spendable), 0n)),
     unassignedCredits: unassigned,
-    underRefundCredits: toMicroCredits(underRefund) / 1_000_000,
+    underRefundCredits: fromMicroCredits(toMicroCredits(underRefund)),
     billing: env.PAYMENT_ENABLED,
     studios,
   };
@@ -950,14 +936,14 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * @param studioId - The studio to total.
  * @returns The total in credits, below zero when the studio owes.
  */
-export async function getSpendableCredits(studioId: string): Promise<number> {
+export async function getSpendableCredits(studioId: string): Promise<CreditDecimal> {
   return db.transaction(
     async (tx) => {
       const [lots, debt] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
       ]);
-      return positionFrom(lots, debt, "0").spendable;
+      return fromMicroCredits(positionFrom(lots, debt, "0").spendable);
     },
     { isolationLevel: "repeatable read" },
   );
@@ -967,12 +953,12 @@ export async function getSpendableCredits(studioId: string): Promise<number> {
 
 /** Everything one studio's credits page reads, as of one instant. */
 export interface StudioCreditsSnapshot {
-  spendable: number;
-  debt: number;
+  spendable: CreditDecimal;
+  debt: CreditDecimal;
   /** What running work holds (inner#1611). */
-  held: number;
+  held: CreditDecimal;
   /** What the next run is admitted against: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
-  available: number;
+  available: CreditDecimal;
   lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];
 }
@@ -1005,8 +991,8 @@ export async function readStudioCredits(
         creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {
-        ...positionFrom(lots, debt, held),
-        debt: toMicroCredits(debt) / 1_000_000,
+        ...serializeCreditPosition(positionFrom(lots, debt, held)),
+        debt: fromMicroCredits(toMicroCredits(debt)),
         lots: designated,
         ledger,
       };
@@ -1023,8 +1009,8 @@ export async function readStudioCredits(
  * @param studioId - The studio to read.
  * @returns The debt in credits; zero when it owes nothing.
  */
-export async function getStudioDebt(studioId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.readDebt(studioId)) / 1_000_000;
+export async function getStudioDebt(studioId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.readDebt(studioId)));
 }
 
 /**
@@ -1032,8 +1018,8 @@ export async function getStudioDebt(studioId: string): Promise<number> {
  * @param userId - The account to total.
  * @returns The total in credits.
  */
-export async function getUnassignedCredits(userId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)) / 1_000_000;
+export async function getUnassignedCredits(userId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)));
 }
 
 /**
@@ -1044,8 +1030,8 @@ export async function getUnassignedCredits(userId: string): Promise<number> {
  * @param userId - The account to total.
  * @returns The total in credits.
  */
-export async function getGrantedCredits(userId: string): Promise<number> {
-  return toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)) / 1_000_000;
+export async function getGrantedCredits(userId: string): Promise<CreditDecimal> {
+  return fromMicroCredits(toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)));
 }
 
 /**
@@ -1107,4 +1093,76 @@ export async function hasActiveDesignationsTo(
   tx: DbTx,
 ): Promise<boolean> {
   return creditLotRepo.hasActiveDesignatedToStudio(studioId, tx);
+}
+
+
+/**
+ * Repay a locked Studio debt from a locked or newly created designated lot.
+ * The caller owns both locks and the transaction; the payer is always the lot owner.
+ * @param input - The validated funding facts.
+ * @param input.lot - The locked or newly created designated lot.
+ * @param input.studioId - The Studio receiving the designated funding.
+ * @param input.owedMicro - The Studio debt read under its debt lock.
+ * @param input.actorUserId - The product actor, or null for system repayment.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns The updated lot and exact debt repayment facts.
+ * @throws {Error} When any funding write fails; the caller's transaction rolls back.
+ */
+export async function repayDesignatedLot(input: {
+  lot: CreditLotEntity;
+  studioId: string;
+  owedMicro: CreditMicro;
+  actorUserId: string | null;
+}, tx: DbTx): Promise<{ lot: CreditLotEntity; repaidCredits: CreditDecimal; debtAfter: CreditDecimal }> {
+  const remainingMicro = parseCreditDecimal(input.lot.remainingCredits);
+  const repaidMicro = minCreditMicro(input.owedMicro, remainingMicro);
+  if (repaidMicro <= 0n) return { lot: input.lot, repaidCredits: serializeCreditMicro(0n), debtAfter: serializeCreditMicro(input.owedMicro) };
+  const repaid = serializeCreditMicro(repaidMicro);
+  const charged = await creditLotRepo.applyCharge(input.lot.id, repaid, tx);
+  const debtAfter = await creditLotRepo.adjustDebt(input.studioId, serializeCreditMicro(negateCreditMicro(repaidMicro)), tx);
+  await creditLotRepo.appendLedgerEntry({
+    payerUserId: input.lot.userId,
+    actorUserId: input.actorUserId,
+    entryType: "debt_repayment",
+    studioId: input.studioId,
+    amount: serializeCreditMicro(negateCreditMicro(repaidMicro)),
+    lotId: input.lot.id,
+  }, tx);
+  return { lot: { ...input.lot, remainingCredits: charged.remainingCredits, lifecycle: charged.lifecycle }, repaidCredits: repaid, debtAfter: serializeCreditMicro(parseCreditDecimal(debtAfter)) };
+}
+
+/**
+ * Grant operator funding to the personal identity already locked by the server.
+ * @param input - The validated funding facts.
+ * @param input.userId - The product account receiving credits.
+ * @param input.studioId - The Studio receiving the designated funding.
+ * @param input.kind - The compensation or gift source kind.
+ * @param input.credits - The exact credit quantity.
+ * @param input.reason - The original normalized operator reason.
+ * @param input.operationKey - The original request key owning this receipt.
+ * @param input.adminId - The authenticated back-office operator UUID.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns Immutable funding and repayment facts from this transaction.
+ * @throws {Error} When any source, receipt, lot or ledger write fails.
+ */
+export async function grantOperatorCredits(input: {
+  userId: string;
+  studioId: string;
+  kind: "compensation" | "gift";
+  credits: string;
+  reason: string;
+  operationKey: string;
+  adminId: string;
+}, tx: DbTx): Promise<{
+  sourceId: string; sourceKind: "compensation" | "gift"; lotId: string; personalStudioId: string;
+  grantedCredits: CreditDecimal; repaidCredits: CreditDecimal; remainingCredits: CreditDecimal; debtBefore: CreditDecimal; debtAfter: CreditDecimal;
+}> {
+  const debtBefore = serializeCreditMicro(parseCreditDecimal(await creditLotRepo.lockDebt(input.studioId, tx)));
+  const sourceId = randomUUID();
+  const grantedCredits = serializeCreditMicro(parseCreditDecimal(input.credits));
+  await creditSourceRepo.createOperatorSource({ ...input, id: sourceId, credits: grantedCredits }, tx);
+  const lot = await creditLotRepo.createLot({ sourceId, sourceKind: input.kind, userId: input.userId, purchasedCredits: grantedCredits, designatedStudioId: input.studioId }, tx);
+  const repaid = await repayDesignatedLot({ lot, studioId: input.studioId, owedMicro: parseCreditDecimal(debtBefore), actorUserId: null }, tx);
+  return { sourceId, sourceKind: input.kind, lotId: lot.id, personalStudioId: input.studioId, grantedCredits,
+    repaidCredits: repaid.repaidCredits, remainingCredits: serializeCreditMicro(parseCreditDecimal(repaid.lot.remainingCredits)), debtBefore, debtAfter: repaid.debtAfter };
 }

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 
 import { _resetForTests, destroyDoc, getDoc } from '@web/data/yjs/manager';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
@@ -14,7 +15,7 @@ const OBJECT = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number],
   rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true,
+  scale: [1, 1, 1] as [number, number, number], locked: false,
 };
 const EDITOR: SceneEnvironment = {
   readOnly: false, connected: true, hasEverSynced: true,
@@ -26,7 +27,7 @@ const openBrowserStore = vi.fn(() => { throw new Error('Scene content must stay 
 /** Build a scene from committed shared content and track its in-memory owner. */
 function scene(): { doc: Y.Doc; session: SceneSession } {
   const doc = getDoc(NAME);
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const result = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-content'), true);
   if (!result.ok) throw new Error('The shared scene fixture must contain its object');
   const session = getSceneSession(doc, NAME);

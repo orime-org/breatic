@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The internal API (inner#1410 §4): a second Hono app on its own port, for
@@ -14,6 +14,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { logger } from "@breatic/core";
+import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
 import { internalAuth } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -88,7 +89,16 @@ export function createInternalApp(): Hono {
       failClosed: (c) => c.json({ code: "unavailable" }, 503),
     }),
   );
-  app.use("*", bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ code: "invalid_body" }, 413) }));
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: MAX_BODY_BYTES,
+      onError: (c) => {
+        closeAfterRefusal(c);
+        return c.json({ code: "invalid_body" }, 413);
+      },
+    }),
+  );
   app.use("*", internalAuth());
   app.use("*", refuseHead);
   registerInternalRoutes(app);

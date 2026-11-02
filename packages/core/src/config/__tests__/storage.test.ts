@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -129,7 +129,7 @@ describe("storageConfigSchema — the idle window", () => {
 describe("storageConfigSchema — the transfer section", () => {
   const TRANSFER_DEFAULTS = {
     route_max_bytes: {
-      chat_message: 4194304,
+      chat_message: 6291456,
       canvas_paste: 25165824,
       node_history_snapshot: 25165824,
     },

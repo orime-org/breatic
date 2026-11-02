@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -3247,6 +3247,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const generate = screen.getByTestId('node-menu-generate');
     expect(generate).not.toHaveAttribute('data-disabled');
     expect(generate.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('offers extractable document types when opening a text node upload picker', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({
+      nodes: [{ id: 'text-upload', type: 'text', position: { x: 0, y: 0 }, data: { handling: false } }],
+    }));
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      renderSpace();
+      const node = document.querySelector('.react-flow__node');
+      if (node === null) throw new Error('Text node was not rendered');
+      fireEvent.contextMenu(node);
+      fireEvent.click(screen.getByTestId('node-menu-upload'));
+      expect(click).toHaveBeenCalledTimes(1);
+      const input = screen.getByTestId('canvas-upload-input') as HTMLInputElement;
+      const offered = input.accept.split(',');
+      expect(offered).not.toContain('.doc');
+      expect(offered).toEqual(expect.arrayContaining(['.txt', '.md', '.pdf', '.docx', '.xls', '.xlsx', 'text/*']));
+    } finally {
+      click.mockRestore();
+    }
   });
 
   // ---- Node-state gate: upload refused on a LOCKED node (bug 4) ----

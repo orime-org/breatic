@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Start the ingest Worker, or step aside when this checkout has not configured
@@ -39,8 +39,8 @@ if (!existsSync(CONFIG)) {
   process.exit(0);
 }
 
-// Every top-level `[[containers]]` block has to name this copy (README.md, "Each
-// of the three top-level `[[containers]]` blocks"). One left unnamed builds the
+// Every top-level `[[containers]]` block has to name this copy (see README.md).
+// One left unnamed builds the
 // same image ID as any other unnamed copy on this machine, and each rebuild of
 // one removes the tag the other's containers start from. Nothing reports that
 // when it happens, so it is checked here.

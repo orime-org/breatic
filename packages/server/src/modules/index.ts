@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@server` module barrel - server-private domain SERVICES only.
@@ -47,3 +47,5 @@ export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/r
 export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
+
+export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";

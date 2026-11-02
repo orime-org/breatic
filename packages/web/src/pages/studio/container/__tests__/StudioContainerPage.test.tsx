@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type * as ProjectsApiModule from '@web/data/api/projects';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,14 +24,14 @@ vi.mock('@web/data/api/studios', () => ({
 }));
 vi.mock('@web/data/api/credits', () => ({
   fetchStudioCredits: vi.fn().mockResolvedValue({
-    spendable: 4910,
+    spendable: '4910.000000',
     lots: [],
     ledger: { items: [], nextCursor: null },
   }),
 }));
 
 vi.mock('@web/data/api/projects', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
+  ...(await importOriginal<typeof ProjectsApiModule>()),
   projectsApi: { create: vi.fn() },
 }));
 import { studiosApi } from '@web/data/api/studios';

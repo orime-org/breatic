@@ -1,20 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * 支付关闭时的积分引擎（任务 #11）。
- *
- * **这是今天唯一在跑的那条路径**：每个开发环境、每个自部署实例都是支付关闭。
- * 它单独一个文件，因为开关是进程级的，跟旁边那个套件不能共存于同一个文件。
- *
- * 关掉支付之后余额是派生出来的、恒为零，加上「未指定不能花」，任何生成都会
- * 取不到笔。所以哨兵必须放在派生查询之外：预检直接放行、扣费什么都不动，
- * 但**用量记录照写** —— 不扣费的部署同样要知道自己产出了什么。
- *
- * 这让 `credit_ledger.lot_id` 必须可空：这一行没有对应的笔。这些行照样带着
- * 发起生成的人，账号流水恒按付款方取，所以它们出现在他自己的流水里、标着
- * 「未计费」。（`payer_user_id` 本身在 0064 之后是可空的，那是给欠账行用的：
- * 记下欠账的那一刻没有人付过钱。）
+ * Payment-disabled deployments record usage without drawing from credit lots.
+ * The process-wide payment setting needs a separate suite from billed cases.
+ * Unbilled ledger entries retain the payer and actor while their lot stays null.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -110,7 +100,7 @@ describe("支付关闭", () => {
     });
 
     // 不扣费，也不是「扣不出来」：这个部署本来就不收费。
-    expect(outcome).toMatchObject({ billed: false, charged: 0, shortfall: 0 });
+    expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "0.000000" });
 
     const [row] = await sql<
       {
@@ -165,7 +155,7 @@ describe("the account ledger on a deployment that charges nobody", () => {
     expect(page.items).toHaveLength(1);
     expect(page.items[0]).toMatchObject({
       kind: "unbilled",
-      amount: -42,
+      amount: "-42.000000",
       model: "seedream-4.0",
       studioId: fx.studioId,
     });
@@ -185,14 +175,9 @@ describe("支付关闭时的已消耗（任务 #12，计划 §4.6）", () => {
     const overview = await creditLotService.getOverview(fx.userId);
     const mine = overview.studios.find((s) => s.studioId === fx.studioId);
 
-    // 消耗和扣费是两个行为（user 2026-08-23）。支付关闭只是没有积分可扣，
-    // 消耗照样发生——`creditLot.service.ts` 那个分支的注释自己写着「a
-    // deployment that charges nobody still wants to know what it produced」。
-    //
-    // 而 sumSpentByStudio 有 isNotNull(lotId)，把这类行滤掉了。去掉那个条件
-    // 不影响支付开启：那时被统计的两类行（spend 与 debt_repayment）都挂着
-    // lot，扣不满写的是 debt_incurred、本来就不在 inArray 里。
+    // Unbilled spend still counts as Studio consumption without a credit lot;
+    // debt_incurred records the liability and is excluded from consumption.
     expect(mine).toBeDefined();
-    expect(Number(mine!.spent)).toBe(42);
+    expect(mine!.spent).toBe("42.000000");
   });
 });

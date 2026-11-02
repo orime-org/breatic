@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tests for the business limits config: the schema applies its defaults and
@@ -16,6 +16,7 @@ import { MONOREPO_ROOT } from "@breatic/core";
 import {
   limitsConfigSchema,
   getRequestBodyMaxBytes,
+  getRequestBodyLingerSeconds,
   getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -169,6 +170,30 @@ describe("request body limit", () => {
 
   it.each([0, 1.5])("(c) refuses %s like every other key here", (value) => {
     expect(() => limitsConfigSchema.parse({ request_body_max_bytes: value })).toThrow(ZodError);
+  });
+});
+
+/**
+ * inner#1782 test spec C1–C4: how long a refused connection keeps reading.
+ */
+describe("request body linger", () => {
+  it("C1: defaults to 30 seconds when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).request_body_linger_seconds).toBe(30);
+  });
+
+  it("C2: the shipped yaml sets 30 seconds and the getter returns it", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config", "limits.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(shipped.request_body_linger_seconds).toBe(30);
+    expect(getRequestBodyLingerSeconds()).toBe(30);
+  });
+
+  it.each([0, 1.5])("C3: refuses %s", (value) => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: value }).success).toBe(false);
+  });
+
+  it("C4: refuses more than 300 seconds, so the deadline always fits a timer", () => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 300 }).success).toBe(true);
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 301 }).success).toBe(false);
   });
 });
 

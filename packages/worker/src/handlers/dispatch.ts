@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * BullMQ job handlers for task execution.
@@ -11,6 +11,8 @@
  *
  * Anything else throws.
  */
+
+import { parseCreditDecimal } from "@breatic/shared";
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
@@ -48,6 +50,7 @@ import {
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import { resolveRegisteredProjectMedia } from "@worker/services/project-media.service.js";
 import {
   generationMetadata,
   nodeResultsFrom,
@@ -1182,7 +1185,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
       provider: run.provider,
       releaseHold: taskId,
     });
-    if (outcome.shortfall > 0) {
+    if (parseCreditDecimal(outcome.shortfall) > 0n) {
       // The studio's pool ran out mid-flight, or its credits were reassigned
       // while the task ran. The result is already delivered, so what is left
       // uncharged goes to reconciliation.
@@ -1541,35 +1544,42 @@ export async function persistOutputs(
         delete extra.buffer;
         delete extra.contentType;
       }
-    }
-
-    // Lane ③: a provider's temporary link. Anything already in our own bucket
-    // skips it — a local mini-tool's output is ours already, and pulling it
-    // would store a second copy (todo #1615 covers registering those).
-    if (
+    } else if (
       typeof next.url === "string" &&
-      next.url.startsWith("http") &&
-      adapter.keyFromUrl(next.url) === null
+      next.url.startsWith("http")
     ) {
-      const stored = await storeFromUrl(next.url, uploadContext());
-      if (!next.extra) next.extra = {};
-      (next.extra).url_original = next.url;
-      // The registered row's URL, its cover cut in the media container while
-      // this transfer's own finish waited on it, and what that run measured.
-      Object.assign(next, storedAsOutput(stored));
+      if (adapter.keyFromUrl(next.url) === null) {
+        // Lane ③: the ingest Worker pulls a provider's temporary link.
+        const stored = await storeFromUrl(next.url, uploadContext());
+        if (!next.extra) next.extra = {};
+        next.extra.url_original = next.url;
+        Object.assign(next, storedAsOutput(stored));
+      } else if (projectId !== undefined) {
+        // Existing objects are accepted without moving their bytes. The
+        // ledger owns both metadata and the optional eligible video cover.
+        const stored = await resolveRegisteredProjectMedia(projectId, next.url);
+        delete next.cover_url;
+        Object.assign(next, storedAsOutput(stored));
+      }
     }
 
     persisted.push(next);
   }
 
-  // Provider-level extras (non-output fields) may also carry URLs consumers
-  // read. They take lane ③ too, and stay best-effort: none of them is what the
-  // node shows, so a failure keeps the provider's own link rather than failing
-  // a generation that produced its deliverable.
+  // Provider-level extras can also carry media consumers read. Existing owned
+  // objects must be accepted through the Project directory. External links
+  // take lane ③ best-effort, retaining the provider's URL if transfer fails.
   for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.keyFromUrl(value) !== null) continue;
+    if (adapter.keyFromUrl(value) !== null) {
+      if (projectId !== undefined) {
+        const stored = await resolveRegisteredProjectMedia(projectId, value);
+        extras[field] = stored.fileUrl;
+        extras[`${field}_original`] = value;
+      }
+      continue;
+    }
     try {
       const stored = await storeFromUrl(value, uploadContext());
       // The canonical, not the key just written: on a dedup hit that key lost

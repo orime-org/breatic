@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Memory consolidator — folds the oldest part of a conversation into memory.
@@ -29,6 +29,8 @@
  * to a conversation that folds it again, and the charge is already keyed so
  * the second attempt is not paid for twice.
  */
+
+import { parseCreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
@@ -249,7 +251,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
       },
     );
 
-    if (outcome && outcome.shortfall > 0) {
+    if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {
       // The pool ran out, or its credits were reassigned while this ran. The
       // call already happened, so what could not be charged goes to
       // reconciliation.

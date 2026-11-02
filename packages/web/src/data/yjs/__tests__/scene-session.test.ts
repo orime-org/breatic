@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 import { SceneSession, getSceneSession, evictSceneSession } from '../scene-session';
 import { getDoc, destroyDoc } from '../manager';
@@ -11,11 +12,11 @@ import { applySceneCommand, readSceneDocument } from '../scene-document';
 const ID = '11111111-1111-4111-8111-111111111111';
 const OBJECT = { id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true };
+  scale: [1, 1, 1] as [number, number, number], locked: false };
 
 describe('scene session lifecycle', () => {
   it('preserves an unsupported objects root without constructing an editable scene', async () => {
-    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
+    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     doc.getText('objects').insert(0, 'invalid original objects root');
     const original = Y.encodeStateAsUpdate(doc);
     const session = new SceneSession(doc);
@@ -26,7 +27,7 @@ describe('scene session lifecycle', () => {
   });
   it('starts a new personal history after a tab closes and immediately reopens', async () => {
     const name = 'project-p/3d-s';
-    const doc = getDoc(name); doc.getMap('scene').set('formatVersion', 1);
+    const doc = getDoc(name); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     const session = getSceneSession(doc, name);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     session.execute({ type: 'create', objects: [OBJECT] });
@@ -40,7 +41,7 @@ describe('scene session lifecycle', () => {
     destroyDoc(name, doc); expect(doc.isDestroyed).toBe(true);
   });
   it('keeps gestures local, commits one undo step and cancels without changing committed content', () => {
-    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
+    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
     const session = new SceneSession(doc);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
@@ -61,7 +62,7 @@ describe('scene session lifecycle', () => {
   });
 
   it('ends the previous gesture synchronously when a command selects newly duplicated objects', () => {
-    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
+    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
     const awareness = new Awareness(doc);
     const session = new SceneSession(doc);
@@ -78,7 +79,7 @@ describe('scene session lifecycle', () => {
   });
 
   it('withdraws cancelled gestures immediately and republishes selection after focus returns', () => {
-    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
+    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
     const awareness = new Awareness(doc);
     const session = new SceneSession(doc);
@@ -96,7 +97,7 @@ describe('scene session lifecycle', () => {
   });
 
   it('cancels on remote lock and permission loss while viewer selection remains available', () => {
-    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
+    const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
     const session = new SceneSession(doc);
     const env = { readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted' as const, refused: false, awareness: null };

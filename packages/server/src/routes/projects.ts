@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project routes — CRUD, duplicate, and membership-aware reads.
@@ -13,6 +13,8 @@
  * §13.2): live canvas state lives in Yjs `project-{id}/canvas-{sid}`
  * docs, persisted by the collab service.
  */
+
+import { creditAmountFormatQuerySchema } from "@breatic/shared";
 
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
@@ -247,7 +249,7 @@ projects.get("/:id", async (c) => {
  * @returns `200` with `{ data: { spendable, held, available } }`; `404` when the
  *   caller cannot reach this project, which never leaks its existence
  */
-projects.get("/:id/credits", async (c) => {
+projects.get("/:id/credits", validate("query", creditAmountFormatQuerySchema), async (c) => {
   const user = c.get("user");
   const projectId = c.req.param("id");
   await projectService.assertAccess(projectId, user.id);

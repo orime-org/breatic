@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -7,7 +7,7 @@ import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { t, type SceneObject } from '@breatic/shared';
+import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
@@ -37,7 +37,7 @@ vi.mock('@web/lib/toast', async (importOriginal) => {
 const ID = '11111111-1111-4111-8111-111111111111';
 const OBJECT: SceneObject = {
   id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
-  position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true,
+  position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
 };
 const CONNECTION = { status: 'connected', synced: true } as const;
 const PEERS = [] as const;
@@ -61,7 +61,7 @@ function BoundEditor({ session }: { session: SceneSession }): React.JSX.Element 
  */
 function fixture(): { doc: Y.Doc; session: SceneSession; client: QueryClient } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const created = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-create'), true);
   const locked = applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('shared-lock'), true);
   if (!created.ok || !locked.ok) throw new Error('The scene feedback fixture must contain one locked object');

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { formatCredits, getLocale } from '@breatic/shared';
 
@@ -17,7 +17,7 @@ import { formatCredits, getLocale } from '@breatic/shared';
  * @param value - The amount, in credits.
  * @returns It, grouped, with at most two decimals.
  */
-export function formatCreditAmount(value: number): string {
+export function formatCreditAmount(value: number | string): string {
   return formatCredits(value, getLocale());
 }
 
@@ -29,6 +29,6 @@ export function formatCreditAmount(value: number): string {
  * @param value - The amount, in credits.
  * @returns It, grouped, with exactly two decimals.
  */
-export function formatCreditColumnAmount(value: number): string {
+export function formatCreditColumnAmount(value: number | string): string {
   return formatCredits(value, getLocale(), 2);
 }

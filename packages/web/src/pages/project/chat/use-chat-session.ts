@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 
 import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -14,7 +14,7 @@ import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
 import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { answerInSession, chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { answerInSession, chatSessionFor, sendInSession, shareSpacesInSession, stopChatSession } from '@web/stores/chat-sessions';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -90,6 +90,12 @@ export interface ChatSession {
    * (inner#1542); the turn that asked resumes. Resolves when that turn is over.
    */
   answer: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
+  /**
+   * Answer the request to look at Spaces the conversation on screen stopped
+   * at (inner#1552); the turn that asked resumes. Resolves when that turn is
+   * over.
+   */
+  shareSpaces: (answer: SpaceRequestAnswer) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
   /** The conversations fetched so far here, most recently used first. */
@@ -299,8 +305,8 @@ export function useChatSession(
     [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
-  const answer = React.useCallback(
-    async (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> => {
+  const answerCard = React.useCallback(
+    async (send: (opened: string, spaces: ChatSpaceContext) => Promise<void>): Promise<void> => {
       // The card is in the conversation on screen, which is where it goes.
       // The Spaces are read at the press, as for a typed message.
       const opened = conversationId;
@@ -311,9 +317,21 @@ export function useChatSession(
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
-      await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));
+      await send(opened, clipSpaceContext(spaces, limits, []));
     },
     [conversationId, readSpaces],
+  );
+
+  const answer = React.useCallback(
+    (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> =>
+      answerCard((opened, spaces) => answerInSession(opened, toolCallId, answers, spaces)),
+    [answerCard],
+  );
+
+  const shareSpaces = React.useCallback(
+    (shared: SpaceRequestAnswer): Promise<void> =>
+      answerCard((opened, spaces) => shareSpacesInSession(opened, shared, spaces)),
+    [answerCard],
   );
 
   const abort = React.useCallback((): void => {
@@ -454,6 +472,7 @@ export function useChatSession(
     loadEarlier,
     send,
     answer,
+    shareSpaces,
     abort,
     conversations,
     hasMoreConversations,

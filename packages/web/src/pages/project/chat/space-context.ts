@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a message tells the Agent about the reader's Spaces (inner#1413).
@@ -15,7 +15,8 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { isGenerationNodeType, spacesNewestFirst } from '@breatic/shared';
-import type { ChatAttachedChip, ChatDocumentBlock, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import type { ChatAttachedChip, ChatCanvasDetail, ChatDocumentBlock, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import type * as Y from 'yjs';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -84,7 +85,7 @@ function listed(space: ProjectSpace): ChatSpace {
  * @param name - The document name.
  * @returns True when its content is the synced content.
  */
-function holdsSynced(name: string): boolean {
+export function holdsSynced(name: string): boolean {
   return hasDoc(name) && readDocFacts(name).hasEverSynced;
 }
 
@@ -102,27 +103,33 @@ function selectedOn(spaceId: string, nodes: ReadonlyArray<{ id: string; parentId
 }
 
 /**
- * An open canvas's nodes and the links between them, each node with the run
- * settings of the model it would run and whether the reader selected it.
- * @param source - Where the read starts from.
- * @param space - The canvas.
- * @returns The canvas, or null while it or the model catalog has not loaded.
+ * A synced canvas's nodes and the links between them, each node with the run
+ * settings of the model it would run and whether the reader selected it. The
+ * open Space and a Space the Agent asked to look at are read by this one
+ * function, so both reach the Agent alike.
+ * @param doc - The canvas document, synced.
+ * @param spaceId - The canvas, whose render buffer says what is selected.
+ * @param queryClient - Holds each model's first voice.
+ * @param catalog - The model catalog.
+ * @param picked - Only these nodes, and a group's members with it; every node when absent.
+ * @returns The canvas, empty when none of the nodes can be handed over.
  */
-function readCanvas(source: SpaceContextSource, space: ProjectSpace): FitInput | null {
-  const name = docName.canvasSpace(source.projectId, space.id);
-  if (!holdsSynced(name)) return null;
-  const catalog = source.queryClient.getQueryData<ModelCatalog>(modelCatalogQuery().queryKey);
-  if (catalog === undefined) return null;
-  const doc = getDoc(name);
+export function readCanvas(
+  doc: Y.Doc,
+  spaceId: string,
+  queryClient: QueryClient,
+  catalog: ModelCatalog,
+  picked?: readonly string[],
+): FitInput {
   const nodes = readNodes(doc);
   // A first voice that is not cached is left out: nothing is asked for here.
   const snapshot = snapshotOfPick(
     { nodes, edges: readEdges(doc) },
-    nodes.map((n) => n.id),
-    pickReaders(source.queryClient, catalog, doc),
+    picked ?? nodes.map((n) => n.id),
+    pickReaders(queryClient, catalog, doc),
   );
   if (snapshot === null) return { nodes: [], edges: [] };
-  const selected = selectedOn(space.id, nodes);
+  const selected = selectedOn(spaceId, nodes);
   return {
     nodes: snapshot.nodes.map((entry) => {
       const kind = typeof entry.type === 'string' ? entry.type : '';
@@ -134,6 +141,40 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): FitInput |
     }),
     edges: snapshot.edges,
   };
+}
+
+/**
+ * An open canvas, read from what this tab holds.
+ * @param source - Where the read starts from.
+ * @param space - The canvas.
+ * @returns The canvas, or null while it or the model catalog has not loaded.
+ */
+function readOpenCanvas(source: SpaceContextSource, space: ProjectSpace): FitInput | null {
+  const name = docName.canvasSpace(source.projectId, space.id);
+  if (!holdsSynced(name)) return null;
+  const catalog = source.queryClient.getQueryData<ModelCatalog>(modelCatalogQuery().queryKey);
+  if (catalog === undefined) return null;
+  return readCanvas(getDoc(name), space.id, source.queryClient, catalog);
+}
+
+/** A canvas as it goes to the Agent: its content, its length before fitting, and how far it was cut. */
+export interface FittedCanvas {
+  content: string;
+  total_chars: number;
+  detail: ChatCanvasDetail;
+}
+
+/**
+ * A canvas fitted to the limit by level of detail.
+ * @param canvas - The canvas.
+ * @param max - The limit.
+ * @returns What goes.
+ */
+export function fitCanvasContent(canvas: FitInput, max: number): FittedCanvas {
+  const fitted = fitCanvas(canvas, max);
+  // A canvas with nothing on it goes as empty, as an empty document does.
+  const empty = canvas.nodes.length === 0;
+  return { content: empty ? '' : fitted.text, total_chars: empty ? 0 : fitted.total, detail: fitted.detail };
 }
 
 /** Content kept, and how long it was before it was cut. */
@@ -171,8 +212,8 @@ function documentBlocks(source: SpaceContextSource, space: ProjectSpace): ReadBl
   return handle === undefined ? null : readTopBlocks(handle.editor);
 }
 
-/** An open document as it goes: its content and the blocks the content shows. */
-interface ClippedDocument {
+/** A document as it goes: its content and the blocks the content shows. */
+export interface ClippedDocument {
   content: string;
   total: number;
   blocks: ChatDocumentBlock[];
@@ -185,10 +226,12 @@ interface ClippedDocument {
  * split goes not at all.
  * @param blocks - The blocks.
  * @param max - The limit.
+ * @param first - The number the first of them has in the whole document, so a
+ *   part of it keeps the numbers the whole would show.
  * @returns The content, its length before the cut, and the blocks it shows.
  */
-function clipDocument(blocks: readonly ReadBlock[], max: number): ClippedDocument {
-  const pieces = blocks.map((b, i) => `${i === 0 ? '' : '\n\n'}<!-- b:${String(i + 1)} -->\n${b.markdown}`);
+export function clipDocument(blocks: readonly ReadBlock[], max: number, first = 1): ClippedDocument {
+  const pieces = blocks.map((b, i) => `${i === 0 ? '' : '\n\n'}<!-- b:${String(first + i)} -->\n${b.markdown}`);
   const total = pieces.reduce((sum, piece) => sum + piece.length, 0);
   let content = '';
   const shown: ChatDocumentBlock[] = [];
@@ -219,7 +262,7 @@ function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurre
   const base = listed(space);
   if (!spaceContentReadable(space.type)) return { ...base, state: 'unreadable' };
   if (space.type === 'canvas') {
-    const canvas = readCanvas(source, space);
+    const canvas = readOpenCanvas(source, space);
     return canvas === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', canvas };
   }
   const blocks = documentBlocks(source, space);
@@ -289,19 +332,8 @@ export function clipSpaceContext(
   }
   const held = heldUnchanged(current.canvas.nodes, attached);
   const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, last: false } : n));
-  const fitted = fitCanvas({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars);
-  // A canvas with nothing on it goes as empty, as an empty document does.
-  const content = nodes.length === 0 ? '' : fitted.text;
   return {
     ...out,
-    current_space: {
-      id,
-      name,
-      kind,
-      state: 'loaded',
-      content,
-      total_chars: nodes.length === 0 ? 0 : fitted.total,
-      detail: fitted.detail,
-    },
+    current_space: { id, name, kind, state: 'loaded', ...fitCanvasContent({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars) },
   };
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -14,7 +14,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     renameConversation: vi.fn(),
@@ -134,7 +134,7 @@ describe('ChatPanel', () => {
     evictAllChatSessions();
     wire = stubChatWire();
     chatOpensWith([]);
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
   });
 
   afterEach(() => {
@@ -728,7 +728,7 @@ describe('deleting a conversation from the list', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     _resetForTests();
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [
         { id: 'c-1', title: 'one' },

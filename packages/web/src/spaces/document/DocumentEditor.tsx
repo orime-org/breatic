@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -40,6 +40,8 @@ import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
+import { sourceSpot } from '@web/spaces/document/document-proposal-landing';
+import { revealInTable, tableViewportOf } from '@web/spaces/document/document-table-reveal';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -84,6 +86,31 @@ const GUTTER_START: React.CSSProperties = { paddingLeft: BODY_GUTTER_START };
 interface LandedBox {
   location: ProposalLocation;
   style: { top: number; left: number; width: number; height: number };
+}
+
+/**
+ * The box around every rectangle given.
+ * @param rects - The rectangles, at least one.
+ * @returns Their bounding box.
+ */
+function boxAround(rects: readonly DOMRect[]): DOMRect {
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.right));
+  const bottom = Math.max(...rects.map((r) => r.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/**
+ * The part of a box inside a frame.
+ * @param box - The box.
+ * @param frame - The frame.
+ * @returns The box cut to the frame, empty when they do not meet.
+ */
+function cutTo(box: DOMRect, frame: DOMRect): DOMRect {
+  const left = Math.max(box.left, frame.left);
+  const top = Math.max(box.top, frame.top);
+  return new DOMRect(left, top, Math.max(0, Math.min(box.right, frame.right) - left), Math.max(0, Math.min(box.bottom, frame.bottom) - top));
 }
 
 /**
@@ -199,27 +226,68 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // runs its effects again when shown, and the reader may have scrolled away
   // since. Comment selection is issued once by the pickup's command outlet;
   // the rail consumes its current plugin state. A written block is scrolled
-  // to a third of the way down the viewport and outlined for a moment.
+  // to a third of the way down the viewport and outlined for a moment. A
+  // located proposal is shown the same way (inner#1646): the block it points
+  // at, or only a comment's quoted words, found in the document as it is now.
   const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
   const shown = React.useRef<ProposalLocation | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
     if (landed === null || landed.how === 'comment' || !isCurrentProposalLocation(landed, handle.editor)) return undefined;
-    const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
-    if (viewport === null || block === null || block === undefined) return undefined;
+    const spot = landed.how === 'source'
+      ? sourceSpot(handle.editor.prosemirrorState.doc, landed)
+      : { blockId: landed.blockId, ranges: null };
+    const block = spot === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(spot.blockId)}"]`);
+    if (viewport === null || spot === null || block === null || block === undefined) return undefined;
     shown.current = landed;
-    // A regular block's own content leaves its indented children out. A
+    // A landed block's own content leaves its indented children out. A
     // layout table is already its own content frame; descendants belong to
-    // its cells and cannot stand in for the whole table (inner#1619).
-    const content = block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
+    // its cells and cannot stand in for the whole table (inner#1619). A
+    // located block takes its children with it, as a rewrite replaces them
+    // and an insert goes after them (inner#1646).
+    const own = block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content') ?? block;
+    const content = landed.how === 'source' ? block : own;
+    const view = viewOf(handle.editor);
+    const words = spot.ranges === null || view === null ? null : spot.ranges.map((r) => {
+      const range = document.createRange();
+      const from = view.domAtPos(r.from);
+      const to = view.domAtPos(r.to);
+      range.setStart(from.node, from.offset);
+      range.setEnd(to.node, to.offset);
+      return range;
+    });
+    const start = words?.[0]?.startContainer;
+    const first = start instanceof HTMLElement ? start : start?.parentElement ?? null;
+    const table = first === null ? null : tableViewportOf(first);
+    const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
+    /**
+     * What the outline goes around: a landed block's own content, a located
+     * block with the blocks nested under it from its first line down, or the
+     * quoted words, cut to the part of their table's sideways frame on screen.
+     * @returns Its rectangle on screen.
+     */
+    const outlined = (): DOMRect => {
+      if (words === null || words.length === 0) {
+        // A located block's box takes in the margin above its first line;
+        // the outline starts at that line, so it stands off the words evenly.
+        const at = content.getBoundingClientRect();
+        const top = own.getBoundingClientRect().top;
+        return new DOMRect(at.left, top, at.width, at.bottom - top);
+      }
+      const around = boxAround(words.map((w) => w.getBoundingClientRect()));
+      return table === null ? around : cutTo(around, table.getBoundingClientRect());
+    };
+    // A table scrolls sideways in its own frame, which the body's scroll
+    // does not move: bring the quoted words' cell in there first, the way a
+    // comment's card does.
+    if (first !== null) revealInTable(first);
     /**
      * Measures the layout after asynchronously committed table chrome changes it.
      * @returns The outline's current coordinates and dimensions in its viewport.
      */
     const measure = (): LandedBox['style'] => {
-      const at = content.getBoundingClientRect();
+      const at = outlined();
       const frame = viewport.getBoundingClientRect();
-      const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
       return {
         top: at.top - frame.top + viewport.scrollTop - gap,
         left: at.left - frame.left + viewport.scrollLeft - gap,

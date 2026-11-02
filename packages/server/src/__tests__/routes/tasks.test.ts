@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tasks route tests — list, get, canvas task creation.
@@ -124,7 +124,7 @@ describe("Tasks routes", () => {
     });
 
     it("rejects with 402 when the balance is below the estimate — no task row created (#1580 #7 pre-check)", async () => {
-      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -148,7 +148,7 @@ describe("Tasks routes", () => {
       // 100 spendable, and the run as described prices at 150.
       vi.mocked(domain.estimateTaskCredits).mockResolvedValueOnce(150);
       mocks.creditHoldService.reserveCredits.mockImplementation(async (r: { amount: number }) =>
-        r.amount <= 100 ? { ok: true } : { ok: false, studioId: "s1", spendable: 100, held: 0 },
+        r.amount <= 100 ? { ok: true } : { ok: false, studioId: "s1", spendable: "100.000000", held: "0.000000", available: "100.000000" },
       );
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
@@ -374,7 +374,7 @@ describe("Tasks routes", () => {
       });
 
       it("creates nothing when the admission is refused", async () => {
-        mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+        mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
         const res = await send();
         expect(res.status).toBe(402);
         expect(mocks.taskService.create).not.toHaveBeenCalled();
@@ -465,7 +465,7 @@ describe("Tasks routes", () => {
     // and a refusal has to finish both — a task left `pending` is one no
     // worker will ever touch and no sweep will ever end.
     it("ends the task it created when the balance is short", async () => {
-      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -491,7 +491,7 @@ describe("Tasks routes", () => {
     // something only this route knows — whether a row exists — and a 500
     // raised before the row opened looks exactly like one raised after.
     it("answers with the row's own state once a row is open", async () => {
-      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -796,7 +796,7 @@ describe("Tasks routes", () => {
     // decision, stage 4). A toast with no row behind it would leave a node
     // sitting there with nothing to explain it.
     it("settles the row it opened when the balance is short", async () => {
-      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",

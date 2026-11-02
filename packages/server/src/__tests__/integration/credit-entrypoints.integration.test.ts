@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 碰积分的那几个入口，全部走新引擎（任务 #11）。
@@ -195,15 +195,14 @@ describe("充值到账", () => {
 
 describe("注册", () => {
   it("注册出来的账号一分积分都没有，也没有任何积分行", async () => {
-    // 旧模型给每个新账号开一行余额。新模型里积分只从付款长出来，所以一个
-    // 刚注册的账号在积分这边不该留下任何痕迹。
+    // Registration creates no personal Studio yet; its setup grants trial credits.
     const email = `reg-${seq++}-${Date.now()}@example.test`;
     const { user } = await authService.register(email, "correct horse battery");
     const counted = await sql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count FROM credit_lots WHERE user_id = ${user.id}
     `;
     expect(counted[0]?.count).toBe("0");
-    expect(await creditLotService.getUnassignedCredits(user.id)).toBe(0);
+    expect(await creditLotService.getUnassignedCredits(user.id)).toBe("0.000000");
   });
 });
 
@@ -305,11 +304,11 @@ describe("幂等扣费", () => {
       amount: 10,
     });
 
-    expect(first?.charged).toBe(10);
+    expect(first?.charged).toBe("10.000000");
     expect(second).toBeNull();
 
     const spendable = await creditLotService.getSpendableCredits(fx.studioId);
-    expect(spendable).toBe(90);
+    expect(spendable).toBe("90.000000");
   });
 });
 

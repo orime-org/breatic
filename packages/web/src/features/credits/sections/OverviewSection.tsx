@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { accountTotal } from '@breatic/shared';
+import { accountTotal, parseCreditDecimal, creditRatio } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import {
@@ -50,7 +50,7 @@ export function OverviewSection({
   const parts = React.useMemo(
     () =>
       overview.studios
-        .filter((studio) => studio.spendable > 0)
+        .filter((studio) => parseCreditDecimal(studio.spendable) > 0n)
         .map((studio) => ({
           key: studio.studioId,
           name: studio.studioName,
@@ -91,7 +91,7 @@ export function OverviewSection({
                 : dash
             }
             {...(overview.billing ? { unit } : {})}
-            {...(overview.billing && overview.unassignedCredits > 0
+            {...(overview.billing && parseCreditDecimal(overview.unassignedCredits) > 0n
               ? { hint: t('credits.unassignedHint') }
               : {})}
           />
@@ -103,7 +103,7 @@ export function OverviewSection({
             }
             {...(overview.billing ? { unit } : {})}
           />
-          {!overview.billing || overview.underRefundCredits === 0 ? null : (
+          {!overview.billing || parseCreditDecimal(overview.underRefundCredits) === 0n ? null : (
             <Figure
               size='part'
               label={t('credits.underRefund')}
@@ -114,7 +114,7 @@ export function OverviewSection({
           )}
         </div>
       </div>
-      {!overview.billing ? null : total === 0 ? (
+      {!overview.billing ? null : parseCreditDecimal(total) === 0n ? (
         <Notice
           title={t('credits.overviewEmpty.title')}
           body={t('credits.overviewEmpty.body')}
@@ -143,7 +143,7 @@ export function OverviewSection({
               <span
                 key={part.key}
                 style={{
-                  flexGrow: part.value,
+                  flexGrow: creditRatio(part.value, overview.assignedCredits),
                   flexBasis: 0,
                   background: part.color,
                 }}

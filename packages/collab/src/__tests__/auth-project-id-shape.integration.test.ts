@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A document name whose project part is not a uuid, through the real auth
@@ -77,7 +77,7 @@ async function authenticate(documentName: string): Promise<PromiseSettledResult<
     redis: getRedis(),
     resolveConnectionLimit: async () => 10,
     countConnections: async () => 0,
-    claimSeatFrom: async () => ({ outcome: "none" }),
+    hasOwnSeat: async () => "no" as const,
   });
   const [outcome] = await Promise.allSettled([
     hook({

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { MathUtils, Sphere, Vector3 } from 'three';
 import type { Box3, PerspectiveCamera } from 'three';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -21,6 +21,8 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
+  AWAITS_READER as REAL_AWAITS_READER,
+  REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
@@ -267,7 +269,7 @@ export const mocks = {
   creditHoldService: {
     reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
     releaseHold: vi.fn().mockResolvedValue(undefined),
-    getCreditPosition: vi.fn().mockResolvedValue({ spendable: 100, held: 0, available: 100 }),
+    getCreditPosition: vi.fn().mockResolvedValue({ spendable: "100.000000", held: "0.000000", available: "100.000000" }),
   },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
@@ -275,26 +277,26 @@ export const mocks = {
     // request carrying the header dies inside the check rather than being
     // refused at the door.
     REFKEY_PATTERN: /^[A-Za-z0-9_:.-]{1,255}$/,
-    getSpendableCredits: vi.fn().mockResolvedValue(100),
-    getStudioDebt: vi.fn().mockResolvedValue(0),
+    getSpendableCredits: vi.fn().mockResolvedValue("100.000000"),
+    getStudioDebt: vi.fn().mockResolvedValue("0.000000"),
     getOverview: vi.fn().mockResolvedValue({
-      assignedCredits: 0,
-      unassignedCredits: 0,
+      assignedCredits: "0.000000",
+      unassignedCredits: "0.000000",
       studios: [],
     }),
-    getUnassignedCredits: vi.fn().mockResolvedValue(0),
-    getGrantedCredits: vi.fn().mockResolvedValue(0),
+    getUnassignedCredits: vi.fn().mockResolvedValue("0.000000"),
+    getGrantedCredits: vi.fn().mockResolvedValue("0.000000"),
     chargeForGeneration: vi.fn().mockResolvedValue({
       billed: true,
-      charged: 5,
-      shortfall: 0,
+      charged: "5.000000",
+      shortfall: "0.000000",
       studioId: "s0000000-0000-4000-8000-000000000001",
       lotIds: ["l0000000-0000-4000-8000-000000000001"],
     }),
     chargeOnceForGeneration: vi.fn().mockResolvedValue({
       billed: true,
-      charged: 5,
-      shortfall: 0,
+      charged: "5.000000",
+      shortfall: "0.000000",
       studioId: "s0000000-0000-4000-8000-000000000001",
       lotIds: ["l0000000-0000-4000-8000-000000000001"],
     }),
@@ -658,6 +660,9 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
+  // The same reason: the tools a turn stops at for the reader (inner#1552).
+  AWAITS_READER: REAL_AWAITS_READER,
+  REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the document proposal the open document (inner#1509).

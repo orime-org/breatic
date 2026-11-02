@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
+import { z } from "zod";
+import { creditDecimalSchema, nonnegativeCreditDecimalSchema, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@shared/credit-amount.js";
 import type { CreditLotLifecycle } from "@shared/types/entities.js";
 
 /**
@@ -12,9 +14,8 @@ import type { CreditLotLifecycle } from "@shared/types/entities.js";
  * ledger row through two reshapes of the writer's, and typecheck stayed green
  * the whole time.
  *
- * Credits arrive as numbers. They are stored as `numeric(20, 6)` and every sum
- * runs in Postgres, so the conversion happens once, at the boundary where a
- * value stops being arithmetic and becomes something to show.
+ * Credits arrive as canonical six-place decimals. Arithmetic stays exact in
+ * micro-credits, including aggregate values wider than a single database row.
  */
 
 /**
@@ -95,6 +96,8 @@ export interface PurchaseRow {
   rowId: string;
   /** Where these credits came from. */
   sourceKind: CreditSourceKind;
+  /** The gift receipt provenance; absent for other source kinds. */
+  giftOrigin?: "registration" | "operator" | null;
   /** The payment behind this row; null when nobody paid. */
   paymentId: string | null;
   /** The listed price, before tax. Null on a row nobody paid for. */
@@ -117,9 +120,9 @@ export interface PurchaseRow {
   taxCents: number | null;
   currency: string;
   /** How many credits this row brought in. */
-  creditsGranted: number;
+  creditsGranted: CreditDecimal;
   /** How many are left. Null until it lands. */
-  remainingCredits: number | null;
+  remainingCredits: CreditDecimal | null;
   /** Where the lot stands. Null until it lands. */
   lifecycle: CreditLotLifecycle | null;
   /**
@@ -173,7 +176,7 @@ export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
 ];
 
 /**
- * What the account holds, counting everything it paid for.
+ * What the account holds across its credit lots.
  *
  * Three terms, and the third is the one that is easy to drop: leaving a pack
  * under refund out makes the total fall the moment it is asked about, with
@@ -182,15 +185,11 @@ export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
  * @param overview - What the account holds, and where.
  * @returns The total.
  */
-export function accountTotal(overview: CreditOverview): number {
-  return (
-    overview.assignedCredits +
-    overview.unassignedCredits +
-    overview.underRefundCredits
-  );
+export function accountTotal(overview: CreditOverview): CreditDecimal {
+  return serializeCreditMicro(parseCreditDecimal(overview.assignedCredits) + parseCreditDecimal(overview.unassignedCredits) + parseCreditDecimal(overview.underRefundCredits));
 }
 
-/** One purchase of this account's, as the overlay shows it. */
+/** One credit lot held by this account, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
   /**
@@ -201,8 +200,10 @@ export interface CreditLotView {
    * it asks: what the row says instead of a price.
    */
   sourceKind: CreditSourceKind;
-  purchasedCredits: number;
-  remainingCredits: number;
+  /** The gift receipt provenance; absent for other source kinds. */
+  giftOrigin?: "registration" | "operator" | null;
+  purchasedCredits: CreditDecimal;
+  remainingCredits: CreditDecimal;
   /**
    * The studio allowed to spend it; null means unassigned, so unspendable.
    *
@@ -256,8 +257,8 @@ export interface CreditLotView {
  */
 export interface StudioLotView {
   id: string;
-  purchasedCredits: number;
-  remainingCredits: number;
+  purchasedCredits: CreditDecimal;
+  remainingCredits: CreditDecimal;
   createdAt: string;
   /** Who bought it. Absent when their personal studio is gone. */
   buyerName: string | null;
@@ -299,13 +300,13 @@ export interface CreditLedgerView {
   model: string | null;
   provider: string | null;
   /**
-   * What this run came to, as a negative number.
+   * What this run came to, as a negative exact amount.
    *
    * On a `generation` or a `debt_repayment` it is what left this account's
-   * purchases. On an `unbilled` line nothing left them: the figure is what
+   * credit lots. On an `unbilled` line nothing left them: the figure is what
    * the run would have cost, which is why that line carries a word saying so.
    */
-  amount: number;
+  amount: CreditDecimal;
   createdAt: string;
 }
 
@@ -323,22 +324,22 @@ export interface StudioLedgerView {
   model: string | null;
   provider: string | null;
   /** What left the pool. This is the figure the amount column shows. */
-  charged: number;
+  charged: CreditDecimal;
   /** What the run used. Equal to `charged` unless a lot could not cover it. */
-  consumed: number;
+  consumed: CreditDecimal;
   /** The part of that no lot covered. */
-  owed: number;
+  owed: CreditDecimal;
   createdAt: string;
 }
 
 /** A studio's credits as a project's top bar reads them (inner#1611). */
 export interface ProjectCreditsView {
   /** Purchases less debt; below zero when the studio owes. */
-  spendable: number;
+  spendable: CreditDecimal;
   /** What running work holds until it is charged. */
-  held: number;
+  held: CreditDecimal;
   /** What the next run can take: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
-  available: number;
+  available: CreditDecimal;
 }
 
 /** What one studio holds and has spent, for its credits tab. */
@@ -347,13 +348,13 @@ export interface StudioCreditsView {
    * What this studio can spend right now, below zero when it owes. Present on
    * the first page only — it does not change between pages.
    */
-  spendable?: number;
+  spendable?: CreditDecimal;
   /** What it owes, as a positive number. First page only. */
-  debt?: number;
+  debt?: CreditDecimal;
   /** What running work holds until it is charged (inner#1611). First page only. */
-  held?: number;
+  held?: CreditDecimal;
   /** What the next run can take: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. First page only. */
-  available?: number;
+  available?: CreditDecimal;
   /** The lots it holds right now, newest first. First page only. */
   lots?: StudioLotView[];
   /** This studio's spending, one line per event, newest first. */
@@ -373,7 +374,7 @@ export interface StudioCreditSummary {
   /** Whether it is gone, which is why its balance reads as nothing. */
   deleted: boolean;
   /** What this studio can spend of this account's money. */
-  spendable: number;
+  spendable: CreditDecimal;
   /**
    * What it owes, or null when the reader no longer administers it.
    *
@@ -387,9 +388,9 @@ export interface StudioCreditSummary {
    * inside generate, and only an admin can act on it by pointing a purchase
    * at it.
    */
-  debt: number | null;
+  debt: CreditDecimal | null;
   /** What it has already spent of it. */
-  spent: number;
+  spent: CreditDecimal;
   /** How many of this account's lots point at it. */
   lotCount: number;
 }
@@ -397,15 +398,15 @@ export interface StudioCreditSummary {
 /** What an account holds, and where. */
 export interface CreditOverview {
   /** Sitting in studios, ready to spend. */
-  assignedCredits: number;
+  assignedCredits: CreditDecimal;
   /** Bought but pointed at no live studio, so unspendable until assigned. */
-  unassignedCredits: number;
+  unassignedCredits: CreditDecimal;
   /**
    * Under refund right now, so spendable nowhere. Held all the same, which is
    * why it belongs beside the other two: without it the figures stop adding
    * up to what was bought and not yet spent, the moment a refund is asked for.
    */
-  underRefundCredits: number;
+  underRefundCredits: CreditDecimal;
   /**
    * Whether this deployment charges for generation at all. Without it a fresh
    * account and a self-hosted install look identical on the wire: three zeros
@@ -415,3 +416,43 @@ export interface CreditOverview {
   /** Every studio this account has money in or has spent money in. */
   studios: StudioCreditSummary[];
 }
+
+const lifecycle = z.enum(["active", "depleted", "refund_pending", "refunding", "refunded"]);
+const id = z.string();
+const nullableText = z.string().nullable();
+const cash = z.number().int().nonnegative().nullable();
+const amount = nonnegativeCreditDecimalSchema;
+
+export const purchaseRowSchema = z.object({
+  rowId: id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), paymentId: id.nullable(), amountCents: cash, totalCents: cash, taxCents: cash,
+  currency: z.string(), creditsGranted: amount, remainingCredits: amount.nullable(), lifecycle: lifecycle.nullable(),
+  designatedStudioId: id.nullable(), designatedStudioName: nullableText, status: nullableText, createdAt: z.string(), canResend: z.boolean(),
+});
+export const creditLotViewSchema = z.object({
+  id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), purchasedCredits: amount, remainingCredits: amount,
+  designatedStudioId: id.nullable(), designatedStudioName: nullableText, designated: z.boolean(), paidCents: cash, currency: nullableText,
+  lifecycle, refundAttempts: z.number().int().nonnegative(), everSpent: z.boolean(), everRestored: z.boolean(), createdAt: z.string(),
+});
+export const studioLotViewSchema = z.object({ id, purchasedCredits: amount, remainingCredits: amount, createdAt: z.string(), buyerName: nullableText });
+export const creditLedgerViewSchema = z.object({
+  id, kind: z.enum(["generation", "debt_repayment", "unbilled"]), actorUserId: id.nullable(), actorName: nullableText,
+  studioId: id.nullable(), studioName: nullableText, projectId: id.nullable(), projectName: nullableText,
+  model: nullableText, provider: nullableText, amount: creditDecimalSchema, createdAt: z.string(),
+});
+export const studioLedgerViewSchema = z.object({
+  id, kind: z.enum(["generation", "debt_repayment"]), actorUserId: id.nullable(), actorName: nullableText,
+  projectId: id.nullable(), projectName: nullableText, model: nullableText, provider: nullableText,
+  charged: creditDecimalSchema, consumed: creditDecimalSchema, owed: creditDecimalSchema, createdAt: z.string(),
+});
+export const projectCreditsViewSchema = z.object({ spendable: creditDecimalSchema, held: amount, available: creditDecimalSchema });
+export const studioCreditsViewSchema = z.object({
+  spendable: creditDecimalSchema.optional(), debt: amount.optional(), held: amount.optional(), available: creditDecimalSchema.optional(),
+  lots: z.array(studioLotViewSchema).optional(), ledger: z.object({ items: z.array(studioLedgerViewSchema), nextCursor: nullableText }),
+});
+export const studioCreditSummarySchema = z.object({
+  studioId: id, studioName: z.string(), studioSlug: z.string(), deleted: z.boolean(), spendable: amount, debt: amount.nullable(), spent: amount, lotCount: z.number().int().nonnegative(),
+});
+export const creditOverviewSchema = z.object({ assignedCredits: amount, unassignedCredits: amount, underRefundCredits: amount, billing: z.boolean(), studios: z.array(studioCreditSummarySchema) });
+export const creditLotPageSchema = z.object({ items: z.array(creditLotViewSchema), nextCursor: nullableText });
+export const creditLedgerPageSchema = z.object({ items: z.array(creditLedgerViewSchema), nextCursor: nullableText });
+export const purchasePageSchema = z.object({ items: z.array(purchaseRowSchema), nextCursor: nullableText });

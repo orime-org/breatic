@@ -1,0 +1,10 @@
+defaults:
+  width: 1920
+  height: 1080
+  fps:
+    num: 24
+    den: 1
+assets:
+  page_size: 50
+  page_max: 100
+  backfill_batch_size: 200

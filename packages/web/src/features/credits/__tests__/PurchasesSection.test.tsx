@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The purchase history screen (task #13 §4.6).
@@ -14,6 +14,8 @@
  * call is made on the server and arrives as `canResend`: the timeout that
  * decides when a still-`sending` mail counts as stuck is only readable there.
  */
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -58,14 +60,14 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
 function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     rowId: 'p1',
-    sourceKind: 'payment' as PurchaseRow['sourceKind'],
-    paymentId: 'p1' as string | null,
-    amountCents: 2000 as number | null,
+    sourceKind: 'payment',
+    paymentId: 'p1',
+    amountCents: 2000,
     totalCents: 2240,
     taxCents: 240,
     currency: 'usd',
-    creditsGranted: 1700,
-    remainingCredits: 1700,
+    creditsGranted: '1700.000000' as CreditDecimal,
+    remainingCredits: '1700.000000' as CreditDecimal,
     lifecycle: 'active',
     designatedStudioId: 's1',
     designatedStudioName: 'Orime Studio',
@@ -416,13 +418,13 @@ describe('the purchase history', () => {
         row({
           paymentId: 'a',
           lifecycle: 'depleted',
-          remainingCredits: 0,
+          remainingCredits: '0.000000' as CreditDecimal,
           designatedStudioId: null,
           designatedStudioName: null,
         }),
         // Spent and still pointed somewhere: where the money went is the one
         // thing this row can still tell the buyer.
-        row({ paymentId: 'b', lifecycle: 'depleted', remainingCredits: 0 }),
+        row({ paymentId: 'b', lifecycle: 'depleted', remainingCredits: '0.000000' as CreditDecimal }),
       ],
       nextCursor: null,
     });

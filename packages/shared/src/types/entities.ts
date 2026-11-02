@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared entity interfaces for cross-layer data transfer.
@@ -462,6 +462,38 @@ export interface StudioAssetEntity {
   durationSeconds: number | null;
   createdAt: Date;
   deletedAt: Date | null;
+}
+
+/** A durable Project association with a registered physical asset. */
+export interface ProjectAssetReferenceEntity {
+  id: string;
+  projectId: string;
+  assetId: string;
+  displayName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+/** Canonical media available through a currently authorized Project. */
+export interface ProjectRegisteredAsset {
+  assetId: string;
+  projectReferenceId: string;
+  displayName: string | null;
+  kind: StudioAssetEntity["kind"];
+  fileUrl: string;
+  coverUrl: string | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/** A keyset page of Project-scoped registered media. */
+export interface ProjectAssetPage {
+  items: ProjectRegisteredAsset[];
+  nextCursor: string | null;
 }
 
 /** Payment entity. */

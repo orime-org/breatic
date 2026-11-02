@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 
-import type { StudioLedgerView, StudioLotView } from '@breatic/shared';
+import { parseCreditDecimal, serializeCreditMicro, maxCreditMicro } from '@breatic/shared';
+
+import type { CreditMicro, StudioLedgerView, StudioLotView } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -79,7 +81,7 @@ const SummaryRow = React.memo(function SummaryRow({
   label: string;
   /** A smaller line under the label, when the row needs one. */
   note?: string;
-  amount: number;
+  amount: string;
   strong?: boolean;
 }): React.JSX.Element {
   return (
@@ -135,13 +137,13 @@ const LedgerRow = React.memo(function LedgerRow({
   const note =
     entry.kind !== 'generation' || entry.charged === entry.consumed
       ? null
-      : entry.owed !== 0
+      : parseCreditDecimal(entry.owed) !== 0n
         ? t('studio.container.credits.noteShortfall', {
-          consumed: formatCreditAmount(-entry.consumed),
-          owed: formatCreditAmount(-entry.owed),
+          consumed: formatCreditAmount(serializeCreditMicro(-parseCreditDecimal(entry.consumed))),
+          owed: formatCreditAmount(serializeCreditMicro(-parseCreditDecimal(entry.owed))),
         })
         : t('studio.container.credits.noteUnbilled', {
-          consumed: formatCreditAmount(-entry.consumed),
+          consumed: formatCreditAmount(serializeCreditMicro(-parseCreditDecimal(entry.consumed))),
         });
   return (
     <tr data-testid={`studio-ledger-${entry.id}`} className='border-t border-border'>
@@ -255,17 +257,17 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   // more.
   // What running tasks hold until they are charged (inner#1611), and what is
   // left once they are taken off: the figure a run is admitted against.
-  const available = head.available ?? head.spendable ?? 0;
+  const available = head.available ?? head.spendable ?? '0.000000';
   // The part of the balance the holds take. Holds larger than the balance
   // take all of it, and a studio that owes has none for them to take, so the
   // rows above the total always add up to it.
-  const heldTaken = Math.max(0, head.spendable ?? 0) - Math.max(0, available);
+  const heldTaken = serializeCreditMicro(maxCreditMicro(0n as CreditMicro, parseCreditDecimal(head.spendable ?? '0.000000')) - maxCreditMicro(0n as CreditMicro, parseCreditDecimal(available)));
   const state =
-    (head.debt ?? 0) > 0
+    parseCreditDecimal(head.debt ?? '0.000000') > 0n
       ? 'debt'
-      : available > 0
+      : parseCreditDecimal(available) > 0n
         ? 'spendable'
-        : heldTaken > 0
+        : parseCreditDecimal(heldTaken) > 0n
           ? 'held'
           : (head.lots ?? []).length > 0
             ? 'depleted'
@@ -312,7 +314,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
             studio that owes without ever having been assigned a lot is the one
             reading most in need of the explanation: the balance is below zero
             and the only line that accounts for it is the debt. */}
-        {(head.lots ?? []).length === 0 && (head.debt ?? 0) === 0 ? (
+        {(head.lots ?? []).length === 0 && parseCreditDecimal(head.debt ?? '0.000000') === 0n ? (
           <p className='text-sm text-muted-foreground'>
             {t('studio.container.credits.lotsEmpty')}
           </p>
@@ -321,19 +323,19 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
             {(head.lots ?? []).map((lot) => (
               <LotRow key={lot.id} lot={lot} />
             ))}
-            {(head.debt ?? 0) > 0 ? (
+            {parseCreditDecimal(head.debt ?? '0.000000') > 0n ? (
               <SummaryRow
                 testId='studio-lots-debt'
                 label={t('studio.container.credits.lotsDebt')}
-                amount={-(head.debt ?? 0)}
+                amount={serializeCreditMicro(-parseCreditDecimal(head.debt ?? '0.000000'))}
               />
             ) : null}
-            {heldTaken > 0 ? (
+            {parseCreditDecimal(heldTaken) > 0n ? (
               <SummaryRow
                 testId='studio-lots-held'
                 label={t('studio.container.credits.lotsHeld')}
                 note={t('studio.container.credits.lotsHeldNote')}
-                amount={-heldTaken}
+                amount={serializeCreditMicro(-parseCreditDecimal(heldTaken))}
               />
             ) : null}
             <SummaryRow

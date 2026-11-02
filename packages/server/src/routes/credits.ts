@@ -1,14 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Credit routes (task #11) — the account's own view of its credits, and the
  * one write that decides whether they can be spent.
  *
- * Credits are bought per purchase and each purchase is assigned to one studio.
- * A purchase starts assigned to nothing, so until somebody points it at a
- * studio it buys nothing — which makes the designation endpoint below the
- * switch that turns money into capacity.
+ * Credits are held in lots from payments, gifts and compensation. Purchased
+ * lots become spendable after designation; granted lots arrive bound to the
+ * account's personal Studio.
  *
  * The studio-facing view lives on `/studio/:slug/credits` next to that
  * studio's other tabs, so it sits behind the studio role gate rather than
@@ -26,6 +25,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
+  creditAmountFormatQuerySchema,
   creditLotQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
@@ -46,6 +46,7 @@ credits.use(requireAuth);
  */
 credits.get(
   "/overview",
+  validate("query", creditAmountFormatQuerySchema),
   // Reconciling below reaches Stripe on every read, so this reader is a caller
   // of somebody else's API and is capped like one.
   rateLimitFor("credits-read", "user"),
@@ -88,7 +89,7 @@ credits.get(
 );
 
 /**
- * `GET /credits/lots` — this account's purchases, newest first.
+ * `GET /credits/lots` — this account's credit lots, newest first.
  * @returns `200` with one keyset page.
  */
 credits.get("/lots", validate("query", creditLotQuerySchema), async (c) => {
@@ -133,12 +134,12 @@ credits.patch(
     const lotId = c.req.valid("param").id;
     const studioId = c.req.valid("json").studioId;
     try {
-      const data = await studioCreditDesignation.designateLot({
+      await studioCreditDesignation.designateLot({
         lotId,
         requestingUserId: user.id,
         studioId,
       });
-      return c.json({ data });
+      return c.json({ data: await creditViewService.getLot(user.id, lotId) });
     } catch (err) {
       // Moving granted credits somewhere else is the one refusal here that
       // answers an attempt rather than a mistake, so it leaves a trace that

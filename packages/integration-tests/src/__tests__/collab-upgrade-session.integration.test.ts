@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it, vi } from "vitest";
@@ -175,7 +175,7 @@ async function start(fixture: ProjectFixture, timeout = 10_000): Promise<Running
     redis,
     resolveConnectionLimit: getProjectConcurrentEditorLimit,
     countConnections: (documentName) => registry.count(documentName),
-    claimSeatFrom: (documentName, userId) => registry.claimSeatFrom(documentName, userId),
+    hasOwnSeat: (documentName, userId) => registry.hasOwnSeat(documentName, userId),
   });
   const server = new Server({
     address: "127.0.0.1",
