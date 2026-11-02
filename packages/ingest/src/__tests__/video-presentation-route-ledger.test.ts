@@ -2,109 +2,108 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The presentation boundary over the real store (inner#1306 test plan §77,
- * cases R). Design §10.2: E1 is the presentation admission and the panel retry
- * (E7) goes through that same admission entry, so a `failed` transient ledger
- * becomes `pending` only through `accept`; a `read` never admits. The media
- * container cannot start in workerd, so `MEDIA` hands the route the same real
- * storage owner the store tests use.
+ * Ledger repair through the ingest presentation route over the real store and R2
+ * (inner#1306, test plan §89 rewrite of §77 R01–R03; frames-split design §3.5
+ * server/worker→ingest, §7.4 arbitration, §5.2 ledgerOnly repair).
+ *
+ * The route is the ingest DO's own HTTP surface. A read never repairs; the
+ * accept entry is the one admission entry for repair (§7.4 「重试与受理走同一受理入口」):
+ * with a selected version whose ledger failed transiently it makes the new job the
+ * writer of that toolInputId without a new carrier, keeps a content failure, and
+ * two concurrent repairs make one writer. The request carries the fields §3.5
+ * fixes (storageKey, sourceFingerprint, action, jobId, deadline, limits, pricing)
+ * plus the admission policy; the response is the store's view.
  */
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import type { VideoPresentationIngestSnapshot } from '@breatic/shared';
 import { videoPresentationRoute, type VideoPresentationEnv } from '@ingest/video-presentation-route.js';
-import { fixture, ORIGINAL, type LedgerFixture } from './helpers/source-ledger-fixture.js';
-
-const opaque = { codecName: 'vp9', pixelFormat: 'yuv420p', pixelAlpha: 0 as const, alphaMode: null, formatName: 'matroska,webm', videoStreamIndex: 0 };
+import { admission, bundle, H, planned, POLICY, source, T, withStore, type Admission, type MachineView } from './helpers/machine-store.js';
 
 /**
- * The route's environment, with the container namespace answering through the real store.
- * @param value - The fixture whose storage owner serves the key.
- * @returns The route environment.
- * @throws {never} Never.
+ * The route environment whose DO surface reaches the real store of one key.
+ * @param key - The storage key.
+ * @returns The environment.
  */
-function routeEnv(value: LedgerFixture): VideoPresentationEnv {
-  const owner = value.owner;
+function routeEnv(key: string): VideoPresentationEnv {
   return {
     INGEST_SHARED_SECRET: 'test-ingest-secret', BUCKET: env.BUCKET,
     MEDIA: { idFromName: (name: string) => name, get: () => ({
-      acceptPresentation: (admission: Parameters<typeof owner.accept>[0]) => owner.accept(admission),
-      readPresentation: (storageKey: string, sourceFingerprint: string) => owner.read(storageKey, sourceFingerprint),
+      acceptPresentation: (value: Admission) => withStore(key, (store) => store.accept(value)),
+      readPresentation: (storageKey: string, sourceFingerprint: string) => withStore(key, (store) => store.read(storageKey, sourceFingerprint)),
     }) },
   } as unknown as VideoPresentationEnv;
 }
 
 /**
- * Post one presentation operation through the real route.
- * @param value - The fixture.
- * @param body - The operation body.
- * @returns The parsed snapshot.
- * @throws {Error} When the route does not answer 200.
+ * Post one request to the route and read the view.
+ * @param key - The storage key.
+ * @param body - The request body.
+ * @returns The view.
  */
-async function post(value: LedgerFixture, body: Record<string, unknown>): Promise<VideoPresentationIngestSnapshot> {
+async function post(key: string, body: Record<string, unknown>): Promise<MachineView> {
   const response = await videoPresentationRoute(new Request('https://ingest.example.test/video-presentation', {
     method: 'POST', headers: { 'x-ingest-secret': 'test-ingest-secret', 'content-type': 'application/json' }, body: JSON.stringify(body),
-  }), routeEnv(value));
+  }), routeEnv(key));
   expect(response.status).toBe(200);
-  return response.json<VideoPresentationIngestSnapshot>();
+  return response.json<MachineView>();
 }
 
 /**
- * An accept body for the fixture's source under a new job.
- * @param value - The fixture.
- * @param jobId - The proposed job.
- * @returns The request body.
- * @throws {never} Never.
+ * A repair accept body for a new job.
+ * @param key - The storage key.
+ * @param jobId - The new job.
+ * @returns The body.
  */
-function acceptBody(value: LedgerFixture, jobId: string): Record<string, unknown> {
-  const { admission } = value;
-  return { action: 'accept', storageKey: admission.storageKey, sourceFingerprint: admission.sourceFingerprint, jobId, deadlineAt: admission.deadlineAt,
-    original: admission.original, contentType: admission.contentType, repair: true, limits: admission.limits, pricing: admission.pricing,
-    actorUserId: admission.actorUserId, projectId: admission.projectId, packedURL: admission.packedURL, manifestURL: admission.manifestURL,
-    sourceLedgerURL: admission.sourceLedgerURL, sourceLedgerTableURL: admission.sourceLedgerTableURL };
+function acceptBody(key: string, jobId: string): Record<string, unknown> {
+  const value = admission(key, jobId);
+  return {
+    action: 'accept', storageKey: key, sourceFingerprint: H, jobId, deadlineAt: value.deadlineAt, original: value.original, contentType: value.contentType,
+    repair: true, limits: value.limits, pricing: value.pricing, actorUserId: value.actorUserId, projectId: value.projectId,
+    packedURL: `https://assets.example.test/${key}.packed.mp4`, manifestURL: `https://assets.example.test/${key}.alpha.json`,
+    sourceLedgerURL: value.sourceLedgerURL, sourceLedgerTableURL: value.sourceLedgerTableURL, policy: POLICY,
+  };
 }
 
 /**
- * Settle the fixture with a ready native presentation and a failed ledger.
- * @param value - The fixture.
+ * A source whose version e of T is selected and whose ledger of T failed with the code.
  * @param code - The ledger failure code.
- * @returns Nothing.
- * @throws {Error} When a report is refused.
+ * @returns The storage key.
  */
-async function failLedger(value: LedgerFixture, code: string): Promise<void> {
-  expect(await value.owner.report({ ...value.identity, kind: 'probe', classification: 'confirmed_opaque', original: ORIGINAL, evidence: opaque })).toBe(true);
-  expect(await value.owner.report({ ...value.identity, kind: 'source_ledger_failed', error: code })).toBe(true);
-  expect(await value.owner.report({ ...value.identity, kind: 'finished', usage: { wallMs: 10, cpuUsec: 1 } })).toBe(true);
+async function selectedWithFailedLedger(code: string): Promise<string> {
+  const key = await source();
+  await withStore(key, async (store) => {
+    const a = await planned(store, key, 'job-a', 'identity');
+    await store.failLedger(a, T, code);
+    expect((await store.report(a, { kind: 'verified', bundle: await bundle(key, 'e'.repeat(64)) })).selected).toEqual({ kind: 'ready', version: { versionId: 'e'.repeat(64), toolInputId: T } });
+  });
+  return key;
 }
 
-describe('ledger retry through the presentation boundary (inner#1306 §77)', () => {
-  it('R01 a read leaves a transient ledger failure as it is; the accept entry moves it to pending under a new job', async () => {
-    const value = await fixture();
-    await failLedger(value, 'source_ledger_invalid');
-    const read = await post(value, { action: 'read', storageKey: value.admission.storageKey, sourceFingerprint: value.identity.sourceFingerprint });
-    expect(read.sourceLedger).toMatchObject({ state: 'failed', schemaVersion: 2, errorCode: 'source_ledger_invalid' });
-    expect(await post(value, { action: 'read', storageKey: value.admission.storageKey, sourceFingerprint: value.identity.sourceFingerprint })).toEqual(read);
-    const accepted = await post(value, acceptBody(value, 'route-retry'));
-    expect(accepted.sourceLedger).toEqual({ state: 'pending', schemaVersion: 2, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 2,
-      attempt: { jobId: 'route-retry', deadlineAt: value.identity.deadlineAt } });
-    expect(accepted.presentation).toEqual(read.presentation);
+describe('ledger repair through the presentation route (inner#1306 §7.4, §5.2)', () => {
+  it('R01 a read leaves a transient ledger failure as it is; the repair accept makes the new job the writer of the selected toolInputId', async () => {
+    const key = await selectedWithFailedLedger('source_ledger_invalid');
+    const read = await post(key, { action: 'read', storageKey: key, sourceFingerprint: H });
+    expect(read.ledgers[T]).toEqual({ kind: 'failed-transient', code: 'source_ledger_invalid' });
+    expect(await post(key, { action: 'read', storageKey: key, sourceFingerprint: H })).toEqual(read);
+    const accepted = await post(key, acceptBody(key, 'route-retry'));
+    expect(accepted.ledgers[T]).toEqual({ kind: 'pending', writer: 'route-retry', writerArchived: false, waiters: [] });
+    expect(accepted.selected).toEqual(read.selected);
   });
 
-  it('R02 the accept entry keeps a content ledger failure and starts no job', async () => {
-    const value = await fixture();
-    await failLedger(value, 'unsupported_rate');
-    const read = await post(value, { action: 'read', storageKey: value.admission.storageKey, sourceFingerprint: value.identity.sourceFingerprint });
-    expect(read.sourceLedger).toMatchObject({ state: 'failed', schemaVersion: 2, errorCode: 'unsupported_rate' });
-    expect(await post(value, acceptBody(value, 'content-route-retry'))).toEqual(read);
+  it('R02 the repair accept keeps a content ledger failure and makes no writer', async () => {
+    const key = await selectedWithFailedLedger('unsupported_rate');
+    const accepted = await post(key, acceptBody(key, 'content-route-retry'));
+    expect(accepted.ledgers[T]).toEqual({ kind: 'failed-content', code: 'unsupported_rate' });
+    expect(accepted.selected).toEqual({ kind: 'ready', version: { versionId: 'e'.repeat(64), toolInputId: T } });
   });
 
-  it('R03 two concurrent accepts for the same fingerprint start one producer job', async () => {
-    const value = await fixture();
-    await failLedger(value, 'expired');
-    const [a, b] = await Promise.all([post(value, acceptBody(value, 'route-a')), post(value, acceptBody(value, 'route-b'))]);
-    expect(a.sourceLedger).toMatchObject({ state: 'pending', schemaVersion: 2 });
-    expect(b).toEqual(a);
-    expect(['route-a', 'route-b']).toContain(a.attempt?.jobId);
+  it('R03 two concurrent repair accepts make one writer', async () => {
+    const key = await selectedWithFailedLedger('expired');
+    const [a, b] = await Promise.all([post(key, acceptBody(key, 'route-a')), post(key, acceptBody(key, 'route-b'))]);
+    const writers = [a, b].map((view) => (view.ledgers[T] as { writer?: string }).writer);
+    expect(new Set(writers).size).toBe(1);
+    expect(['route-a', 'route-b']).toContain(writers[0]);
+    expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toMatchObject({ kind: 'pending', writer: writers[0] });
   });
 });

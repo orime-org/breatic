@@ -90,13 +90,13 @@ type InstanceEvent =
   | { kind: 'Ask'; jobId: string }
   | { kind: 'Tp'; jobId: string }
   | { kind: 'Wa'; jobId: string }
-  | { kind: 'Both'; jobId: string; receipt: string; startedStreamProof?: boolean }
+  | { kind: 'Both'; jobId: string; receipt: string; startedStreamProof?: boolean; workTerminal?: boolean; samePlan?: boolean }
   | { kind: 'Err'; jobId: string; code: string }
   | { kind: 'Check'; failure: 'source_ledger_missing' | 'source_ledger_invalid' | null; proof?: string }
   | { kind: 'Repair'; jobId: string }
   | { kind: 'Change' }
   | { kind: 'H2'; receipt: string; workTerminal: boolean; samePlan: boolean };
-type InstanceEffect = { kind: 'write'; jobId: string } | { kind: 'reuse'; receipt: string } | { kind: 'Lr' } | { kind: 'Lt' } | { kind: 'Lc'; code: string } | { kind: 'candidate-failed'; code: string };
+type InstanceEffect = { kind: 'write'; jobId: string } | { kind: 'reuse'; receipt: string } | { kind: 'archive-receipt'; jobId: string; receipt: string } | { kind: 'Lr' } | { kind: 'Lt' } | { kind: 'Lc'; code: string } | { kind: 'candidate-failed'; code: string };
 
 interface MachineApi {
   advancePresentationCandidate: (record: Candidate, event: CandidateEvent, policy: { maxAutoRepairs: number }) => Step<Candidate, CandidateEffect>;
@@ -870,6 +870,22 @@ describe('L §7.4 companion instance per toolInputId', () => {
     expectRejected(instance({ ...PENDING, waiters: ['job-2'] }, { kind: 'Both', jobId: 'job-2', receipt: 'receipt-1' }), { ...PENDING, waiters: ['job-2'] });
   });
 
+  it('L14a a commit from an archived writer that nobody replaced is an L\' completion: ready only when the H2 conditions hold', () => {
+    const archived: Instance = { ...PENDING, writerArchived: true };
+    expect(instance(archived, { kind: 'Both', jobId: JOB, receipt: 'receipt-1', workTerminal: true, samePlan: true })).toEqual({ next: READY, effects: [{ kind: 'Lr' }], rejected: false });
+  });
+
+  it.each([
+    ['the current work is not terminal', { workTerminal: false, samePlan: true }],
+    ['the plan differs', { workTerminal: true, samePlan: false }],
+    ['the conditions are unknown', {}],
+  ])('L14b without the H2 conditions (%s) an archived writer\'s commit is recorded beside the instance, which stays pending', (_, conditions) => {
+    const archived: Instance = { ...PENDING, writerArchived: true };
+    expect(instance(archived, { kind: 'Both', jobId: JOB, receipt: 'receipt-1', ...conditions })).toEqual({
+      next: archived, effects: [{ kind: 'archive-receipt', jobId: JOB, receipt: 'receipt-1' }], rejected: false,
+    });
+  });
+
   it('L15 pending × the writer\'s transient failure is failed-transient (Lt); a content failure is failed-content (Lc with its code)', () => {
     expect(instance(PENDING, { kind: 'Err', jobId: JOB, code: 'resource_exhausted' })).toEqual({ next: { kind: 'failed-transient', code: 'resource_exhausted' }, effects: [{ kind: 'Lt' }], rejected: false });
     expect(instance(PENDING, { kind: 'Err', jobId: JOB, code: 'source_ledger_over_cap' })).toEqual({ next: { kind: 'failed-content', code: 'source_ledger_over_cap' }, effects: [{ kind: 'Lc', code: 'source_ledger_over_cap' }], rejected: false });
@@ -952,7 +968,7 @@ describe('L §7.4 companion instance per toolInputId', () => {
     const job = fc.constantFrom(JOB, 'job-2', 'job-3');
     const event: fc.Arbitrary<InstanceEvent> = fc.oneof(
       fc.record({ kind: fc.constantFrom('Ask' as const, 'Tp' as const, 'Wa' as const, 'Repair' as const), jobId: job }),
-      fc.record({ kind: fc.constant('Both' as const), jobId: job, receipt: fc.constantFrom('receipt-1', 'receipt-2') }),
+      fc.record({ kind: fc.constant('Both' as const), jobId: job, receipt: fc.constantFrom('receipt-1', 'receipt-2'), workTerminal: fc.boolean(), samePlan: fc.boolean() }),
       fc.record({ kind: fc.constant('Err' as const), jobId: job, code: fc.constantFrom('expired', 'resource_exhausted', 'invalid_edit', 'too_long', 'packed_over_cap') }),
       fc.record({ kind: fc.constant('Check' as const), failure: fc.constantFrom('source_ledger_missing' as const, 'source_ledger_invalid' as const, null) }),
     );
@@ -964,6 +980,8 @@ describe('L §7.4 companion instance per toolInputId', () => {
         if (next.kind === 'ready' && state.kind !== 'ready') {
           expect(item.kind).toBe('Both');
           expect(state.kind === 'pending' && item.kind === 'Both' && state.writer === item.jobId).toBe(true);
+          // An archived writer's commit makes it ready only as an L' completion under the H2 conditions.
+          if (state.kind === 'pending' && state.writerArchived && item.kind === 'Both') expect(item.workTerminal === true && item.samePlan === true).toBe(true);
         }
         for (const effect of effects) if (effect.kind === 'write') expect(['Ask', 'Tp', 'Wa', 'Repair']).toContain(item.kind);
         if (next.kind === 'failed-transient' || next.kind === 'failed-content') expect(['too_long', 'packed_over_cap', 'packed_clock_mismatch']).not.toContain(next.code);
