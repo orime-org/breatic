@@ -2830,7 +2830,7 @@
     "empty": "添加视频，开始编排 Timeline。",
     "video": "视频",
     "conflict": "冲突",
-    "conflictHelp": "片段重叠、所在轨道已被移除或超出视频范围。请选择片段并移动、改换轨道、裁剪或删除。",
+    "conflictHelp": "片段重叠、所在轨道已被移除、超出视频范围或视频已丢失。请选择片段并移动、改换轨道、裁剪或删除。",
     "conflictReason": {
       "overlap": "与其他片段重叠",
       "missing_track": "所在轨道已被移除",
@@ -2877,6 +2877,7 @@
       "insertFirst": "将插在主轨最前面"
     },
     "errors": {
+      "missing_source": "片段所用视频已丢失，请先删除该片段。",
       "readonly": "当前角色无法编辑。",
       "source_unavailable": "此视频不可用。请选择其他视频或重试。",
       "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",

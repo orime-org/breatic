@@ -55,7 +55,7 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
 
 /** Why a local edit was not applied. */
 export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_range' | 'id_taken'
-  | 'main_track' | 'track_not_empty' | 'source_unavailable';
+  | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source';
 
 /** The planned next document, or why the edit was refused. */
 export type TimelineEditPlan =
@@ -276,7 +276,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   }
   if (places && tracks[targetTrackId]?.kind !== 'visual') throw new Refused('track_missing');
   const subjectSource = command.operation === 'add_video' ? command.parameters.clip.sourceId : original?.sourceId ?? '';
-  if (command.operation !== 'delete' && sources[subjectSource] === undefined) throw new Refused('source_unavailable');
+  if (command.operation !== 'delete' && sources[subjectSource] === undefined) throw new Refused(original === undefined ? 'source_unavailable' : 'missing_source');
 
   const attached = linkage ? attachments(current) : new Map<string, string>();
   const fps = current.settings.fps;
@@ -289,7 +289,8 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    */
   const offset = (clip: TimelineVideoClip, frames: number): number => {
     const source = sources[clip.sourceId];
-    const value = source === undefined ? null : timelineSourceOffset(clip, source, fps, frames);
+    if (source === undefined) throw new Refused('missing_source');
+    const value = timelineSourceOffset(clip, source, fps, frames);
     if (value === null) throw new Refused('invalid_range');
     return value;
   };
@@ -399,10 +400,16 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
 
   // A local edit adds no new conflict: overwrite, packing and bumps leave no new overlapped frame, a range the
   // user sets must lie inside its source, and every other changed clip may keep, never grow, the out-of-source
-  // frames of the clip it came from. Merge conflicts stay until the user resolves them.
+  // frames of the clip it came from. Merge conflicts stay until the user resolves them; a clip that had already
+  // lost its source may still be carried along by packing or linkage, or lose its tail to an overwrite.
   for (const clip of Object.values(clips)) {
     const was = current.clips[clip.id];
     if (was !== undefined && RANGE_FIELDS.every((field) => was[field] === clip[field])) continue;
+    if (was !== undefined && sources[was.sourceId] === undefined && was.sourceInFrame === clip.sourceInFrame
+      && clip.durationFrames <= was.durationFrames) {
+      if (!timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
+      continue;
+    }
     if (!wellFormed(clip, sources)) throw new Refused('invalid_range');
     const source = sources[clip.sourceId] as TimelineVideoSource;
     const from = was ?? current.clips[effects.origins.get(clip.id) ?? ''];

@@ -2830,7 +2830,7 @@
     "empty": "新增影片，開始編排 Timeline。",
     "video": "影片",
     "conflict": "衝突",
-    "conflictHelp": "片段重疊、所在軌道已被移除或超出影片範圍。請選擇片段並移動、改換軌道、裁剪或刪除。",
+    "conflictHelp": "片段重疊、所在軌道已被移除、超出影片範圍或影片已遺失。請選擇片段並移動、改換軌道、裁剪或刪除。",
     "conflictReason": {
       "overlap": "與其他片段重疊",
       "missing_track": "所在軌道已被移除",
@@ -2877,6 +2877,7 @@
       "insertFirst": "將插在主軌最前面"
     },
     "errors": {
+      "missing_source": "片段所用影片已遺失，請先刪除該片段。",
       "readonly": "目前角色無法編輯。",
       "source_unavailable": "此影片無法使用。請選擇其他影片或重試。",
       "metadata_unavailable": "無法取得影片長度。請重試或選擇其他影片。",

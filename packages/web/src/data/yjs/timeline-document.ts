@@ -99,12 +99,13 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
  * @param origin - The transaction origin; a Y.UndoManager tracking it undoes this edit in one step.
  * @param newId - Supplies ids for clips cut by an overwrite and tracks created by a linkage bump.
  * @returns The applied plan, or why nothing was written.
- * @throws {Error} When the document or command is structurally invalid.
+ * @throws {Error} When the document is structurally invalid.
  */
 export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = createId): TimelineEditPlan {
-  const normalized = TimelineEditCommandSchema.parse(command);
+  const normalized = TimelineEditCommandSchema.safeParse(command);
+  if (!normalized.success) return { ok: false, reason: 'invalid_range' };
   const current = readTimelineDocument(doc);
-  const plan = planTimelineEdit(current, normalized, newId);
+  const plan = planTimelineEdit(current, normalized.data, newId);
   if (!plan.ok) return plan;
   const { next } = plan;
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.

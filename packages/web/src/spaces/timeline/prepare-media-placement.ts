@@ -3,9 +3,9 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
-import { durationToFrames, newId } from '@breatic/shared';
+import { durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
-import { planTimelineEdit, TimelineEditCommandSchema, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
+import { TimelineEditCommandSchema, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {
@@ -22,10 +22,10 @@ export interface TimelineMediaPlacementInput {
 
 /** A prepared immutable edit or a refusal that leaves the draft available. */
 export type TimelineMediaPlacementResult = { ok: true; command: TimelineEditCommand }
-  | { ok: false; reason: 'readonly' | 'metadata_unavailable' | TimelineEditRefusal };
+  | { ok: false; reason: 'readonly' | 'metadata_unavailable' | 'source_unavailable' | 'invalid_range' };
 
 /**
- * Prepare a fixed registered-video placement and dry-run it against the current document without writing.
+ * Build and validate the native command for a fixed registered-video placement; the edit itself plans it.
  * @param doc - The actual current Timeline content document.
  * @param input - The fixed draft and current authority to write.
  * @returns The prepared native command or a recoverable refusal.
@@ -62,7 +62,5 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     placement: input.placement,
   });
   if (!parsed.success) return { ok: false, reason: 'invalid_range' };
-  const plan = planTimelineEdit(current, parsed.data, newId);
-  if (!plan.ok) return { ok: false, reason: plan.reason };
   return { ok: true, command: parsed.data };
 }

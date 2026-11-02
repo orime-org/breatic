@@ -246,7 +246,6 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         const target = captured.trackId === 'new' ? { trackId: TIMELINE_MAIN_TRACK_ID, newTrackId: newId() } : { trackId: captured.trackId };
         const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId, canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
         if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
-        if (!canWrite) { publish({ errorKey: 'readonly' }); return; }
         const applied = inputs.edit(prepared.command);
         if (!applied.ok) { publish({ errorKey: applied.reason }); return; }
         close();

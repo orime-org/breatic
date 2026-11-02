@@ -2830,7 +2830,7 @@
     "empty": "Add a video to start your Timeline.",
     "video": "Video",
     "conflict": "Conflict",
-    "conflictHelp": "Clips overlap, sit on a removed track or fall outside their video. Select a clip and move it, change its track, trim or delete it.",
+    "conflictHelp": "Clips overlap, sit on a removed track, fall outside their video or lost their video. Select a clip and move it, change its track, trim or delete it.",
     "conflictReason": {
       "overlap": "Overlaps another clip",
       "missing_track": "Its track was removed",
@@ -2877,6 +2877,7 @@
       "insertFirst": "Inserts at the start of the main track"
     },
     "errors": {
+      "missing_source": "This clip's video is missing. Delete the clip first.",
       "readonly": "Editing is unavailable for your current role.",
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
