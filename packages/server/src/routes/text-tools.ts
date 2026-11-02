@@ -29,16 +29,32 @@ const textTools = new Hono<{ Variables: AuthVariables }>();
 textTools.use(requireAuth);
 
 /**
- * Refuse a selection or a document longer than the budgets in
- * `config/text-tools.yaml`. The numbers live in the yaml alone, so the check
- * runs here rather than in the request schema (the same split as chat's
- * `assertSayable`).
- * @param selection - The selected text, when the tool takes one.
- * @param document - The context sent alongside it, when the tool takes one.
- * @throws {ValidationError} When either is over its budget.
+ * Every character a request asks the model to read, whichever fields hold
+ * them.
+ * @param params - The request's fields.
+ * @returns Their total length.
  */
-function assertWithinBudgets(selection: string | undefined, document: string | undefined): void {
+function wordsIn(params: Record<string, unknown>): number {
+  return Object.values(params).reduce<number>((total, value) => {
+    if (typeof value === "string") return total + value.length;
+    if (Array.isArray(value)) return total + value.reduce<number>((sum, item) => sum + (typeof item === "string" ? item.length : 0), 0);
+    return total;
+  }, 0);
+}
+
+/**
+ * Refuse a selection, a document, or a request as a whole longer than the
+ * budgets in `config/text-tools.yaml`. The numbers live in the yaml alone, so
+ * the check runs here rather than in the request schema (the same split as
+ * chat's `assertSayable`). The whole request may hold no more than the two
+ * budgets together, whichever fields the words are in.
+ * @param params - The request's fields.
+ * @throws {ValidationError} When anything is over its budget.
+ */
+function assertWithinBudgets(params: Record<string, unknown>): void {
   const { selection_max_chars, context_max_chars } = getTextToolsConfig();
+  const selection = typeof params.selection === "string" ? params.selection : undefined;
+  const document = typeof params.document === "string" ? params.document : undefined;
   if (selection !== undefined && selection.length > selection_max_chars) {
     throw new ValidationError(
       t("server.text_tool.selection_too_long", { limit: selection_max_chars, actual: selection.length }),
@@ -47,6 +63,12 @@ function assertWithinBudgets(selection: string | undefined, document: string | u
   if (document !== undefined && document.length > context_max_chars) {
     throw new ValidationError(
       t("server.text_tool.document_too_long", { limit: context_max_chars, actual: document.length }),
+    );
+  }
+  const total = wordsIn(params);
+  if (total > selection_max_chars + context_max_chars) {
+    throw new ValidationError(
+      t("server.text_tool.document_too_long", { limit: selection_max_chars + context_max_chars, actual: total }),
     );
   }
 }
@@ -106,10 +128,12 @@ textTools.post(
       }
       throw err;
     }
-    assertWithinBudgets(
-      "selection" in params ? params.selection : undefined,
-      "document" in params ? params.document : undefined,
-    );
+    try {
+      assertWithinBudgets(params);
+    } catch (err) {
+      logger.warn({ userId: user.id, projectId, tool }, "text_tool_over_budget");
+      throw err;
+    }
     await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
 
     // The key a run is recorded and charged under is minted here for every
