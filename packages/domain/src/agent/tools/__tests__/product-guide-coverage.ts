@@ -88,6 +88,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.errors.main_track": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.track_not_empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.missing_source": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "timeline.errors.covers_missing_source": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.edit.magnetOn": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.edit.magnetOff": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.edit.newTrackZone": { excluded: REASONS.SAYS_WHAT_TO_PICK },

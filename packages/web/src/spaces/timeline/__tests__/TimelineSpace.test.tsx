@@ -1897,3 +1897,93 @@ describe('TimelineSpace refuses moving a clip whose video is missing (inner#1708
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
   });
 });
+
+describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', () => {
+  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
+  const COVERS = 'A clip in the way has lost its video. Delete that clip first.';
+
+  /**
+   * The warning toasts shown so far.
+   * @returns Their messages.
+   * @throws {never} Never.
+   */
+  function warnings(): unknown[] {
+    return vi.mocked(toast.warning).mock.calls.map(([message]) => message);
+  }
+
+  it('says a clip in the way lost its video in every locale (R3)', () => {
+    const expected: Record<string, string> = {
+      en: COVERS,
+      'zh-CN': '此处有片段的视频已丢失，请先删除那个片段。',
+      'zh-TW': '此處有片段的影片已遺失，請先刪除那個片段。',
+      ja: 'この位置にあるクリップの動画が見つかりません。先にそのクリップを削除してください。',
+      ko: '이 위치에 있는 클립의 동영상을 찾을 수 없습니다. 먼저 그 클립을 삭제하세요.',
+    };
+    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.errors.covers_missing_source'), tag).toBe(expected[tag]);
+  });
+
+  it('passes an in-point typed for a clip without its video to the planner, which refuses it with the missing-video toast (R1)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceInFrame: 4, sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const before = Y.encodeStateAsUpdate(doc);
+    commitField('timeline-clip-in', '2');
+    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.missing_source')));
+    expect(screen.queryByTestId('timeline-clip-field-error')).toBe(null);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('warns that a clip in the way lost its video when a drag would trim its head (R2)', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    const A = '30000000-0000-4000-8000-000000000071';
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE }), clipAt(A, 'v2', 60, 10)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + A);
+    fireEvent.click(clip);
+    const before = Y.encodeStateAsUpdate(doc);
+    // -110 px at 2 px per frame moves A from 60 to 5, over X's head at 10.
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', -10);
+    pointer(document, 'pointerMove', -110);
+    pointer(document, 'pointerUp', -110);
+    await waitFor(() => expect(warnings()).toContain(COVERS));
+    expect(t('timeline.errors.covers_missing_source')).toBe(COVERS);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+  });
+
+  it('shows the add dialog error when the new clip would trim the head of a clip without its video (R2)', async () => {
+    seedLayout([clipAt(X, 'v2', 20, 100, { sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const dialog = await openMaterial();
+    expect(within(dialog).getByTestId('timeline-material-track')).toHaveTextContent(t('timeline.track', { index: 2 }));
+    fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
+    fireEvent.change(screen.getByTestId('timeline-start-frame'), { target: { value: '0' } });
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(within(dialog).getByTestId('timeline-material-error')).toHaveTextContent(COVERS));
+    expect(Object.keys(layout().clips)).toEqual([X]);
+  });
+
+  it.each(['', '1e3', '5.0'])('hides the main-track insert hint for the start %j (R4)', async (text) => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + CLIP.id);
+    const dialog = await openMaterial();
+    await waitFor(() => expect(within(dialog).getByTestId('timeline-material-insert-hint')).toBeInTheDocument());
+    fireEvent.change(within(dialog).getByTestId('timeline-start-frame'), { target: { value: text } });
+    expect(within(dialog).queryByTestId('timeline-material-insert-hint')).toBe(null);
+  });
+
+  it.each(['', '1e3', '5.0'])('refuses the start %j on confirm, as the hint does (R4)', async (text) => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + CLIP.id);
+    const dialog = await openMaterial();
+    fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
+    fireEvent.change(within(dialog).getByTestId('timeline-start-frame'), { target: { value: text } });
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(within(dialog).getByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.invalid_range')));
+    expect(Object.keys(layout().clips)).toEqual([CLIP.id]);
+  });
+});

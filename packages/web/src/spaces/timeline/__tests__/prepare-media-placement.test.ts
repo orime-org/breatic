@@ -158,7 +158,7 @@ afterEach(() => {
 });
 
 /**
- * Prepare a placement that is valid as a command but refused by the planner, then apply it (inner#1708 P5).
+ * Prepare a placement the applied edit refuses, then apply it (inner#1708 P5, R5).
  * @param doc - The collaborative document.
  * @param input - The captured draft.
  * @param reason - The refusal the applied edit reports.
@@ -166,7 +166,7 @@ afterEach(() => {
  */
 function refusedOnApply(doc: Y.Doc, input: PlacementInput, reason: string): void {
   const result = prepareUnchanged(doc, input);
-  expect(result.ok, 'preparation only builds and validates the command').toBe(true);
+  expect(result.ok, 'preparation only builds the command').toBe(true);
   if (!result.ok) return;
   const before = Y.encodeStateAsUpdate(doc);
   expect(applyTimelineEdit(doc, result.command, 'local')).toEqual({ ok: false, reason });
@@ -269,11 +269,15 @@ describe('prepareTimelineMediaPlacement', () => {
   );
 
   it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY])(
-    'refuses an invalid placement frame %s while building the command',
+    'builds a command at frame %s and leaves its refusal to the applied edit (inner#1708 R5)',
     (startFrame) => {
-      expect(prepareUnchanged(seededDoc(), placementInput({ startFrame }))).toEqual({ ok: false, reason: 'invalid_range' });
+      refusedOnApply(seededDoc(), placementInput({ startFrame }), 'invalid_range');
     },
   );
+
+  it.each(['', 'x'.repeat(65)])('builds a command for the malformed track id %j and leaves its refusal to the applied edit (inner#1708 R5)', (trackId) => {
+    refusedOnApply(seededDoc(), placementInput({ trackId }), 'invalid_range');
+  });
 
   it('leaves a placement whose end overflows safe frames to the planner', () => {
     refusedOnApply(seededDoc(), placementInput({ startFrame: Number.MAX_SAFE_INTEGER }), 'invalid_range');
