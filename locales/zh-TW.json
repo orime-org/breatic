@@ -2878,6 +2878,7 @@
     },
     "errors": {
       "missing_source": "片段所用影片已遺失，請先刪除該片段。",
+      "covers_missing_source": "此處有片段的影片已遺失，請先刪除那個片段。",
       "readonly": "目前角色無法編輯。",
       "source_unavailable": "此影片無法使用。請選擇其他影片或重試。",
       "metadata_unavailable": "無法取得影片長度。請重試或選擇其他影片。",

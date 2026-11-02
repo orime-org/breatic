@@ -24,6 +24,16 @@ export function timelineClipIntervalValid(clip: Pick<TimelineVideoClip, 'startFr
 }
 
 /**
+ * A frame count typed by the user: digits only, so an empty field or any other notation is invalid.
+ * @param text - The field text.
+ * @returns The number, or NaN.
+ * @throws {never} Never.
+ */
+export function parseTimelineFrame(text: string): number {
+  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
+}
+
+/**
  * Check the integer placement bounds before doing any frame arithmetic.
  * @param clip - The current placement to check.
  * @throws {RangeError} When a bound or speed is invalid.

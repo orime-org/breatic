@@ -9,6 +9,7 @@ import type { TimelineEditCommand, TimelineEditPlacement, TimelineEditPlan } fro
 import { timelineApi } from '@web/data/api/timeline';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
@@ -204,8 +205,8 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       if (disposed || !snapshot.open || active !== null) return;
       if (!canWrite) { publish({ errorKey: 'readonly' }); return; }
       const captured = snapshot;
-      const startFrame = Number(captured.startFrame);
-      if (captured.startFrame.trim() === '' || !Number.isSafeInteger(startFrame) || startFrame < 0) { publish({ errorKey: 'invalid_range' }); return; }
+      const startFrame = parseTimelineFrame(captured.startFrame);
+      if (!Number.isSafeInteger(startFrame)) { publish({ errorKey: 'invalid_range' }); return; }
       if ((captured.mode === 'project' && captured.selected === null) || (captured.mode === 'local' && captured.file === null)) { publish({ errorKey: 'source_unavailable' }); return; }
       const operationId = newId();
       const operations = useSpaceOperationsStore.getState();

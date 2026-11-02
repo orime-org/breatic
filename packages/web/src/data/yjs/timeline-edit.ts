@@ -55,7 +55,7 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
 
 /** Why a local edit was not applied. */
 export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_range' | 'id_taken'
-  | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source';
+  | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source' | 'covers_missing_source';
 
 /** The planned next document, or why the edit was refused. */
 export type TimelineEditPlan =
@@ -289,7 +289,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    */
   const offset = (clip: TimelineVideoClip, frames: number): number => {
     const source = sources[clip.sourceId];
-    if (source === undefined) throw new Refused('missing_source');
+    if (source === undefined) throw new Refused('covers_missing_source');
     const value = timelineSourceOffset(clip, source, fps, frames);
     if (value === null) throw new Refused('invalid_range');
     return value;

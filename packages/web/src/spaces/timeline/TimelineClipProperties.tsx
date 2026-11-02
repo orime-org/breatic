@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { timelineSourceOverflow, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
-import { timelineClipIntervalValid } from '@web/data/yjs/timeline-time';
+import { parseTimelineFrame, timelineClipIntervalValid } from '@web/data/yjs/timeline-time';
 
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
@@ -38,16 +38,6 @@ function draftOf(clip: TimelineVideoClip): Record<Field, string> {
 }
 
 /**
- * A typed frame count: digits only, so an empty or other field stays invalid.
- * @param text - The field text.
- * @returns The number, or NaN.
- * @throws {never} Never.
- */
-function frameValue(text: string): number {
-  return /^\d+$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
-}
-
-/**
  * Track, start, in-point and duration of the selected clip; edits commit on Enter or blur.
  * @param props - The clip, its context and the commit callback.
  * @param props.spaceId - The Space, for field ids.
@@ -78,14 +68,14 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
   }, []);
   const commit = React.useCallback((field: Field): void => {
     const values = current.values;
-    const start = frameValue(values.start);
-    const sourceIn = frameValue(values.in);
-    const duration = frameValue(values.duration);
+    const start = parseTimelineFrame(values.start);
+    const sourceIn = parseTimelineFrame(values.in);
+    const duration = parseTimelineFrame(values.duration);
     const range = field === 'start'
       ? { ...clip, startFrame: start }
       : { ...clip, sourceInFrame: sourceIn, durationFrames: duration };
     const valid = timelineClipIntervalValid(range)
-      && (field === 'start' || (source !== undefined && timelineSourceOverflow(range, source, fps) === 0));
+      && (field === 'start' || source === undefined || timelineSourceOverflow(range, source, fps) === 0);
     if (!valid) { setDraft((previous) => ({ ...previous, error: field })); return; }
     if (field === 'start') {
       if (start !== clip.startFrame) onCommit({ operation: 'move', parameters: { clipId: clip.id, startFrame: start }, placement });

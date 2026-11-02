@@ -2878,6 +2878,7 @@
     },
     "errors": {
       "missing_source": "This clip's video is missing. Delete the clip first.",
+      "covers_missing_source": "A clip in the way has lost its video. Delete that clip first.",
       "readonly": "Editing is unavailable for your current role.",
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",

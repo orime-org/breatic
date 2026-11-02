@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
 import { durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
-import { TimelineEditCommandSchema, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {
@@ -25,7 +25,7 @@ export type TimelineMediaPlacementResult = { ok: true; command: TimelineEditComm
   | { ok: false; reason: 'readonly' | 'metadata_unavailable' | 'source_unavailable' | 'invalid_range' };
 
 /**
- * Build and validate the native command for a fixed registered-video placement; the edit itself plans it.
+ * Build the native command for a fixed registered-video placement; the edit itself validates and plans it.
  * @param doc - The actual current Timeline content document.
  * @param input - The fixed draft and current authority to write.
  * @returns The prepared native command or a recoverable refusal.
@@ -44,7 +44,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
   } catch {
     return { ok: false, reason: 'invalid_range' };
   }
-  const parsed = TimelineEditCommandSchema.safeParse({
+  const command: TimelineEditCommand = {
     operation: 'add_video',
     parameters: {
       source: {
@@ -60,7 +60,6 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
       ...(input.newTrackId === undefined ? {} : { newTrackId: input.newTrackId }),
     },
     placement: input.placement,
-  });
-  if (!parsed.success) return { ok: false, reason: 'invalid_range' };
-  return { ok: true, command: parsed.data };
+  };
+  return { ok: true, command };
 }

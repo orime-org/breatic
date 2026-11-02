@@ -6,6 +6,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineDocumentV1 } from '@breatic/shared';
 import { timelineInsertionIndex, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
+import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { Film, Upload } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -90,7 +91,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const confirm = React.useCallback((event: React.FormEvent): void => { event.preventDefault(); void draft.confirm(placement); }, [draft, placement]);
   const labels = useTimelineTrackLabels(document);
   const changeTrack = React.useCallback((value: string): void => draft.setTrack(value), [draft]);
-  const startFrame = Number(state.startFrame);
+  const startFrame = parseTimelineFrame(state.startFrame);
   const mainClips = React.useMemo(() => orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID), [document.clips]);
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
