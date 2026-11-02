@@ -44,7 +44,7 @@ import { RotateCcw, Sparkles, Square, X } from 'lucide-react';
 import { useSmoothText } from 'use-smooth-text';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, TEXT_TOOL_INSTRUCTIONS_MAX } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { WaitingDot } from '@web/components/WaitingDot';
@@ -197,7 +197,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const requests = React.useRef(new Map<number, AbortController>());
   // What the last failure said, when the server said something for this reader.
   const failure = React.useRef<string | null>(null);
-  const config = React.useRef<Promise<TextToolsConfig> | null>(null);
+  const configRequest = React.useRef<Promise<TextToolsConfig> | null>(null);
   const endsWithEditor = React.useRef<(() => void) | null>(null);
 
   // The effects carried out for the reducer, held in a ref so `dispatch` keeps
@@ -289,7 +289,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
 
   const launch = React.useCallback<AiLaunch>((command, opener) => {
     if (projectId === null) return;
-    const pending = (config.current ??= textToolsApi.config());
+    const pending = (configRequest.current ??= textToolsApi.config());
     void pending.then((config) => {
       const view = viewOf(editor);
       if (view === null) return;
@@ -323,7 +323,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos }))));
       dispatch({ type: 'open', command });
     }, () => {
-      config.current = null;
+      configRequest.current = null;
       toast.error(t('server.text_tool.failed'));
     });
   }, [dispatch, editor, projectId, t]);
@@ -523,6 +523,12 @@ function AiPanel({
   }), [editor, dispatch]);
 
   const title = titleOf(session.command, t);
+  // What the stop-or-retry button was when a press on it began. The button
+  // turns from stop into retry under a press that is still going on (the
+  // second click of a double click, a held key, a reveal that ends before the
+  // pointer is released), and that press is still a stop.
+  const pressedAsStop = React.useRef<boolean | null>(null);
+
   const close = React.useCallback(() => {
     dispatch({ type: 'close' });
   }, [dispatch]);
@@ -608,10 +614,21 @@ function AiPanel({
                   icon={buttons.stop
                     ? <Square className='mr-1.5 h-3.5 w-3.5' />
                     : <RotateCcw className='mr-1.5 h-3.5 w-3.5' />}
-                  onClick={() => {
+                  onPointerDown={() => {
+                    pressedAsStop.current = buttons.stop;
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.repeat) event.preventDefault();
+                    else pressedAsStop.current = buttons.stop;
+                  }}
+                  onClick={(event) => {
+                    const asStop = pressedAsStop.current ?? buttons.stop;
+                    pressedAsStop.current = null;
+                    if (event.detail > 1) return;
+                    if (!asStop) dispatch({ type: 'retry' });
                     // A finished answer still being written only needs the rest shown.
-                    if (buttons.stop && session.state !== 'streaming') flush();
-                    else dispatch({ type: buttons.stop ? 'stop' : 'retry' });
+                    else if (session.state === 'streaming') dispatch({ type: 'stop' });
+                    else flush();
                   }}
                 >
                   {t(buttons.stop ? 'spaces.document.ai.stop' : 'spaces.document.ai.retry')}
@@ -739,6 +756,7 @@ function Composer({
         rows={3}
         data-testid='doc-ai-instructions'
         autoComplete='off'
+        maxLength={TEXT_TOOL_INSTRUCTIONS_MAX}
         value={text}
         placeholder={t('spaces.document.ai.instructionsPlaceholder')}
         className='resize-none'

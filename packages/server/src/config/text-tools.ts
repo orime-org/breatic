@@ -147,11 +147,14 @@ export function textToolModels(): string[] {
   return [...new Set(Object.keys(PROMPTS).map((name) => getModelForTool(name)))];
 }
 
-/** Language instruction appended to the prompts whose output follows the input. */
+/**
+ * Language instruction appended to the prompts whose output follows the input.
+ * The request also carries the document around the selection, which can be in
+ * another language; the answer replaces the selection, so it follows that.
+ */
 const LANGUAGE_INSTRUCTION =
-  "\n\nIMPORTANT: Respond in the same language as the user's input. " +
-  "If the document or selection is in Chinese, respond in Chinese. " +
-  "If in English, respond in English. Match the input language exactly.";
+  "\n\nIMPORTANT: Respond in the language of the selected text, whatever language " +
+  "the surrounding document is in. Match the selected text's language exactly.";
 
 /**
  * Get the system prompt for a text tool.

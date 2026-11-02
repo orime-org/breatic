@@ -15,14 +15,14 @@ import type { StreamingApi } from "hono/utils/stream";
 import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { CUSTOM_INSTRUCTIONS_MAX, textToolSchema } from "@server/routes/schemas.js";
+import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { precheckCredits, projectService, textToolService } from "@server/modules";
 import { getTextToolsConfig } from "@server/config/text-tools.js";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import { ForbiddenError, NotFoundError, ValidationError, logger } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, TEXT_TOOL_INSTRUCTIONS_MAX } from "@breatic/shared";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -71,7 +71,7 @@ function assertWithinBudgets(params: Record<string, unknown>): void {
     );
   }
   const total = wordsIn(params);
-  const most = selection_max_chars + context_max_chars + CUSTOM_INSTRUCTIONS_MAX;
+  const most = selection_max_chars + context_max_chars + TEXT_TOOL_INSTRUCTIONS_MAX;
   if (total > most) {
     throw new ValidationError(t("server.text_tool.document_too_long", { limit: most, actual: total }));
   }

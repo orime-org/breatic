@@ -18,3 +18,6 @@ export const TEXT_TOOL_TONES = ["professional", "casual", "straightforward", "co
 
 /** A tone a selection can be rewritten in. */
 export type TextToolTone = (typeof TEXT_TOOL_TONES)[number];
+
+/** The most a custom instruction may say: the box holds no more, the request schema accepts no more. */
+export const TEXT_TOOL_INSTRUCTIONS_MAX = 2_000;

@@ -18,7 +18,9 @@
  *
  * Escape typed in the body closes the open dialog and leaves the keyboard in
  * the body (design §5.3): BlockNote's own Escape would blur the editor and
- * mark the key handled, so the dialog would never hear it.
+ * mark the key handled, so the dialog would never hear it. The suggestion
+ * menu and the link toolbar answer Escape in the body too, and while one of
+ * them is up the key is theirs.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -33,6 +35,7 @@ import {
   localRangeView,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
+import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 
@@ -127,7 +130,8 @@ export const documentAiRange = createExtension(() => {
     key: 'document-ai-range',
     keyboardShortcuts: {
       /**
-       * Closes the open dialog; a suggestion menu that is up keeps the key.
+       * Closes the open dialog; a suggestion menu or the link toolbar that
+       * is up keeps the key, one press taking away one thing.
        * @param ctx - The shortcut's context.
        * @param ctx.editor - The editor the key was typed in.
        * @returns True when the key closed a dialog.
@@ -135,6 +139,7 @@ export const documentAiRange = createExtension(() => {
       Escape: ({ editor }): boolean => {
         if (aiRangeIn(editor.prosemirrorState) === null) return false;
         if (editor.getExtension(SuggestionMenu)?.shown() === true) return false;
+        if (documentBarsOf(editor).linkToolbarUp) return false;
         const listeners = escapeListeners.get(editor);
         if (listeners === undefined || listeners.size === 0) return false;
         listeners.forEach((listener) => {
