@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type WebSocketRoute } from 'playwright/test';
 import { createDecoder, readVarString } from 'lib0/decoding';

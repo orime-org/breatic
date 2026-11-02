@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- The corrected initial migration already installs this exact schema. Avoid
 -- ALTER TABLE after its deferred FK events in the same migration transaction.

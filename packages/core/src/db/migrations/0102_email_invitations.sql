@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 ALTER TABLE project_invitations ALTER COLUMN invited_user_id DROP NOT NULL;
 --> statement-breakpoint

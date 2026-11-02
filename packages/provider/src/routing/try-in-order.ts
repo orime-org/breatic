@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { NoUpstreamAvailable, type UnavailableReason } from "@provider/errors.js";
 import { decide, type Failure, type Phase } from "@provider/routing/decide.js";

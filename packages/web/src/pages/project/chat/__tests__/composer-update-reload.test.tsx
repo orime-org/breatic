@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // After an update reload, the box shows the sentence the user had typed,
 // reference blocks included: the draft and the tray come back from two
