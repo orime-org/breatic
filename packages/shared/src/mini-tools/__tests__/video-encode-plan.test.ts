@@ -9,7 +9,9 @@
  *
  * Every expected value is written from the approved design: HDR transfers are
  * smpte2084 and arib-std-b67 and always encode; a candidate whose planSha256 and
- * producer/profile equal the selected version reuses its carrier; copy runs in
+ * producer/profile equal the selected version reuses its carrier; identity also
+ * needs an explicit colour matrix tag, so an untagged source is copied with the
+ * codec's metadata filter writing the resolved matrix, or encoded; copy runs in
  * the basic container only when twice the source plus the configured margin fits
  * its disk; an encoded carrier whose short side exceeds 1080 scales to short side
  * 1080 with the long side rounded as FFmpeg `scale=-2`, otherwise odd sides pad to
@@ -34,6 +36,8 @@ interface RouteInput {
   hdr: boolean;
   alpha: 'confirmed_alpha' | 'confirmed_opaque';
   identityQualified: boolean;
+  colorMatrixTagged: boolean;
+  codec: string;
   copyPreservesTimeline: boolean;
   sourceBytes: number;
   copyDiskMarginBytes: number;
@@ -66,8 +70,9 @@ interface EncodeApi {
   isHdrTransfer: (transfer: string | null | undefined) => boolean;
   chooseVideoCarrierRoute: (input: RouteInput) => Route;
   videoCarrierRouteStages: (route: Route) => string[];
+  videoCarrierTagFilter: (codec: string) => string | null;
   videoCarrierGeometry: (display: { width: number; height: number }, maxShortSide: number) => { width: number; height: number; displayRect: Rect | null };
-  videoPlanIsUnaltered: (plan: PlanShape, media: { mediaDuration: Rational }) => boolean;
+  videoPlanIsUnaltered: (plan: PlanShape) => boolean;
   estimateVideoJobSeconds: (work: JobWork, rates: ClassRates) => number;
   planVideoEncodeChunks: (input: { keyframes: readonly boolean[]; frameSeconds: number; targetSeconds: number }) => Chunk[];
   presentationEncodeFailure: (chunkCount: number, maxParallelChunks: number) => 'too_long' | null;
@@ -110,7 +115,7 @@ const GiB = 1024 ** 3;
 function routeInput(overrides: Partial<RouteInput> = {}): RouteInput {
   return {
     plan: { planSha256: P, producerVersion: 1, profileVersion: 1 }, selected: null, hdr: false, alpha: 'confirmed_opaque',
-    identityQualified: false, copyPreservesTimeline: false, sourceBytes: GiB, copyDiskMarginBytes: GiB / 2, basicDiskBytes: 4 * GiB, ...overrides,
+    identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, sourceBytes: GiB, copyDiskMarginBytes: GiB / 2, basicDiskBytes: 4 * GiB, ...overrides,
   };
 }
 
@@ -169,6 +174,29 @@ describe('RT §7.1 and §5.1 carrier route', () => {
       const alpha = hdr ? 'confirmed_opaque' as const : 'confirmed_alpha' as const;
       expect(route(routeInput({ hdr, alpha, identityQualified: qualified, copyPreservesTimeline: copies, sourceBytes: bytes }))).toBe('encode');
     }), { seed: 130801, numRuns: 100 });
+  });
+
+  it('RT10 an untagged source never plays the original: it is copied with its matrix tag written, or dispatched, or encoded', () => {
+    const route = required('chooseVideoCarrierRoute');
+    expect(route(routeInput({ colorMatrixTagged: false, identityQualified: true, copyPreservesTimeline: true }))).toBe('copy');
+    expect(route(routeInput({ colorMatrixTagged: false, identityQualified: true, copyPreservesTimeline: true, sourceBytes: 1.75 * GiB + 1 }))).toBe('dispatch_copy');
+    expect(route(routeInput({ colorMatrixTagged: false, identityQualified: true }))).toBe('encode');
+    for (const codec of ['hevc', 'vp9', 'av1']) expect(route(routeInput({ colorMatrixTagged: false, identityQualified: true, copyPreservesTimeline: true, codec }))).toBe('copy');
+  });
+
+  it('RT11 an untagged source whose codec has no metadata filter cannot gain its tag by copy and encodes', () => {
+    expect(required('chooseVideoCarrierRoute')(routeInput({ colorMatrixTagged: false, identityQualified: true, copyPreservesTimeline: true, codec: 'vp8' }))).toBe('encode');
+  });
+
+  it('RT12 an untagged source never takes identity (property)', () => {
+    const route = required('chooseVideoCarrierRoute');
+    fc.assert(fc.property(fc.boolean(), fc.constantFrom('h264', 'hevc', 'vp9', 'av1', 'vp8', 'mpeg4'), fc.integer({ min: 1, max: 4 * GiB }), (copies, codec, bytes) => {
+      expect(route(routeInput({ colorMatrixTagged: false, identityQualified: true, copyPreservesTimeline: copies, codec, sourceBytes: bytes }))).not.toBe('identity');
+    }), { seed: 130809, numRuns: 100 });
+  });
+
+  it.each([['h264', 'h264_metadata'], ['hevc', 'hevc_metadata'], ['vp9', 'vp9_metadata'], ['av1', 'av1_metadata'], ['vp8', null], ['mpeg4', null], ['prores', null]] as const)('RT13 a %s stream copy writes its matrix tag with %s', (codec, filter) => {
+    expect(required('videoCarrierTagFilter')(codec)).toBe(filter);
   });
 
   it.each([
@@ -238,17 +266,9 @@ function unaltered(): PlanShape {
   };
 }
 
-const MEDIA = { mediaDuration: r(17, 8) };
-
 describe('UA §5.3 unaltered origin mapping (direct original input and identity)', () => {
-  it('UA01 a plan without edits, rate changes, derived frames or derived support is unaltered', () => {
-    expect(required('videoPlanIsUnaltered')(unaltered(), MEDIA)).toBe(true);
-  });
-
-  it('UA02 one rate-1 edit from the media start covering the whole media is not an edit', () => {
-    const plan = unaltered();
-    plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(17, 8), presentationStart: r(0), rate: r(1) }];
-    expect(required('videoPlanIsUnaltered')(plan, MEDIA)).toBe(true);
+  it('UA01 a plan without edit spans, rate changes, derived frames or derived support is unaltered', () => {
+    expect(required('videoPlanIsUnaltered')(unaltered())).toBe(true);
   });
 
   it.each([
@@ -259,12 +279,12 @@ describe('UA §5.3 unaltered origin mapping (direct original input and identity)
     ['a single-frame support', (plan: PlanShape): void => { plan.originMapping.lastSource.support = 'single-frame'; }],
     ['a rate change', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(17, 16), presentationStart: r(0), rate: r(1, 2) }]; }],
     ['a cut between two edits', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(1), presentationStart: r(0), rate: r(1) }, { sourceStart: r(3, 2), sourceEnd: r(21, 8), presentationStart: r(1), rate: r(1) }]; }],
-    ['one edit ending before the media ends', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }]; }],
-    ['one edit starting after the media start', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(1, 8), sourceEnd: r(17, 8), presentationStart: r(0), rate: r(1) }]; }],
-  ])('UA03 a plan with %s is altered', (_, change) => {
+    // The assembler stores a whole-media rate-1 edit as no edit, so any recorded span is an edit.
+    ['one recorded rate-1 span', (plan: PlanShape): void => { plan.videoSpans = [{ sourceStart: r(0), sourceEnd: r(17, 8), presentationStart: r(0), rate: r(1) }]; }],
+  ])('UA02 a plan with %s is altered', (_, change) => {
     const plan = unaltered();
     change(plan);
-    expect(required('videoPlanIsUnaltered')(plan, MEDIA)).toBe(false);
+    expect(required('videoPlanIsUnaltered')(plan)).toBe(false);
   });
 });
 

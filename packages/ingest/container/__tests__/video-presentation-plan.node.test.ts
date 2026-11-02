@@ -7,7 +7,7 @@
  *
  * The probe is packet-level demux: `-show_packets` for pts, duration and the
  * keyframe flag, never `-show_frames`. Untagged colour resolves once by the
- * Chromium rule (height ≥ 720 → BT.709, else BT.601); display geometry applies
+ * coded height (≥ 720 → BT.709, else BT.601), whatever the rotation; display geometry applies
  * SAR as `scale=iw*sar:ih` and the display rotation. The assembler feeds the S6a
  * timeline and returns a plan the S6a ledger schema accepts.
  *
@@ -16,7 +16,8 @@
  * does (`iw*sar`), SAR 0:1 is 1:1 and a mirrored matrix keeps width and height; the
  * plan carries the source transfer and bit depth and the output conversion they
  * decide; the selected audio's start and end are snapped to the 48 kHz grid before
- * they feed the timeline.
+ * they feed the timeline; a single rate-1 edit from the media start covering the
+ * whole media is recorded as no edit (design 4d0e1f7c).
  */
 
 import fc from 'fast-check';
@@ -36,6 +37,7 @@ interface PlanInput {
   emptyEdits: Interval[];
   segmentDuration: Rational | null;
   videoSpans: EditSpan[] | null;
+  mediaDuration: Rational;
   audio: { start: Rational; end: Rational; spans: EditSpan[] | null } | null;
   display: { width: number; height: number };
   colorMatrix: string;
@@ -172,7 +174,11 @@ describe('CM §4.3 colour matrix resolved once into the plan', () => {
   it.each([
     [{ height: 720 }, 'bt709'], [{ height: 2160 }, 'bt709'], [{ height: 718 }, 'bt601'], [{ height: 480 }, 'bt601'],
     [{ color_space: 'unknown', height: 720 }, 'bt709'], [{ color_space: 'unknown', height: 718 }, 'bt601'],
-  ])('CM02 an untagged source %o resolves by the Chromium height rule to %s', (stream, matrix) => {
+    // A rotation does not change the rule: it reads the coded height.
+    [{ width: 1280, height: 718, side_data_list: [{ side_data_type: 'Display Matrix', rotation: 90 }] }, 'bt601'],
+    [{ width: 1280, height: 720, side_data_list: [{ side_data_type: 'Display Matrix', rotation: -90 }] }, 'bt709'],
+    [{ width: 718, height: 1280, side_data_list: [{ side_data_type: 'Display Matrix', rotation: 90 }] }, 'bt709'],
+  ])('CM02 an untagged source %o resolves by its coded height to %s', (stream, matrix) => {
     expect(probeExport('resolveVideoColorMatrix')(stream)).toBe(matrix);
   });
 });
@@ -209,7 +215,7 @@ const POLICY = { singleFrameDurationMs: 5000, emptyFill: 'black' as const };
  */
 function input(frames: PlanInput['frames'], overrides: Partial<PlanInput> = {}): PlanInput {
   return {
-    frames, sourceTimeBase: r(1, 1000), emptyEdits: [], segmentDuration: null, videoSpans: null, audio: null,
+    frames, sourceTimeBase: r(1, 1000), emptyEdits: [], segmentDuration: null, videoSpans: null, mediaDuration: r(100), audio: null,
     display: { width: 64, height: 48 }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, policy: POLICY, ...overrides,
   };
 }
@@ -338,6 +344,24 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
         lastSource: { support: 'declared', supportEnd: r(23999, 48000), hold: { kind: 'derived-hold', end: r(17999, 24000) } },
       },
     });
+    expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
+  });
+
+  it('PA10 a single rate-1 edit from the media start covering the whole media is recorded as no edit', () => {
+    const frames = [{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }, { sourcePtsTicks: '125', start: r(1, 8), declaredEnd: r(1, 4) }];
+    const plan = assemble()(input(frames, { mediaDuration: r(1, 4), videoSpans: [{ sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(0), rate: r(1) }] }));
+    expect(plan).toMatchObject({ videoSpans: null });
+    expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
+  });
+
+  it.each([
+    ['ending before the media ends', { sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(0), rate: r(1) }, r(3, 8)],
+    ['starting after the media start', { sourceStart: r(1, 8), sourceEnd: r(3, 8), presentationStart: r(0), rate: r(1) }, r(3, 8)],
+    ['at another rate', { sourceStart: r(0), sourceEnd: r(1, 2), presentationStart: r(0), rate: r(2) }, r(1, 2)],
+  ])('PA11 a single edit %s stays recorded', (_, span, mediaDuration) => {
+    const frames = [{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }, { sourcePtsTicks: '125', start: r(1, 8), declaredEnd: r(1, 4) }];
+    const plan = assemble()(input(frames, { mediaDuration, videoSpans: [span] }));
+    expect(plan).toMatchObject({ videoSpans: [span] });
     expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
   });
 
