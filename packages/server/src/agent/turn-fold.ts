@@ -105,13 +105,13 @@ export function foldTarget(lines: { keep: number; window: number; maxOutput: num
  * @param room - The window, the output reserve, the trigger, and the known count.
  * @param room.window - The main model's context window.
  * @param room.maxOutput - `max_output_tokens`.
- * @param room.trigger - `fold_trigger_tokens`; absent, only the window line applies.
+ * @param room.trigger - `fold_trigger_tokens`.
  * @param room.known - Input plus output the provider reported last; absent, nothing is checked.
  * @returns True when the turn must fold before it sends.
  * @throws {never} Never.
  */
-export function needsFold(room: { window: number; maxOutput: number; trigger?: number; known: number | undefined }): boolean {
-  return room.known !== undefined && room.known >= Math.min(room.trigger ?? Infinity, room.window - room.maxOutput);
+export function needsFold(room: { window: number; maxOutput: number; trigger: number; known: number | undefined }): boolean {
+  return room.known !== undefined && room.known >= Math.min(room.trigger, room.window - room.maxOutput);
 }
 
 /**
