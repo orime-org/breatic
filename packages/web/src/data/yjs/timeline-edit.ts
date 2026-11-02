@@ -234,9 +234,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @throws {never} Never.
    */
   function done(bumped: string[] = []): Extract<TimelineEditPlan, { ok: true }> {
-    const referenced = new Set(Object.values(clips).map((clip) => clip.sourceId));
-    const kept = Object.fromEntries(Object.entries(sources).filter(([id]) => referenced.has(id)));
-    return { ok: true, next: { ...current, tracks, clips, sources: kept }, created, removed: Object.keys(current.clips).filter((id) => clips[id] === undefined), bumped };
+    return { ok: true, next: { ...current, tracks, clips, sources }, created, removed: Object.keys(current.clips).filter((id) => clips[id] === undefined), bumped };
   }
   /**
    * The order for a new top track.

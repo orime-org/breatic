@@ -4,7 +4,7 @@
 import * as Y from "yjs";
 import {
   TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema,
-  type TimelineDocumentV1, type TimelineSettings,
+  TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineSettings,
 } from "@shared/timeline/schema.js";
 
 /**
@@ -50,7 +50,7 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
     const timeline = doc.getMap("timeline");
     timeline.set("schemaVersion", 1);
     timeline.set("settings", normalized);
-    attachTimelineRecord(doc.getMap("tracks"), "visual-1", { id: "visual-1", kind: "visual", order: 0 });
+    attachTimelineRecord(doc.getMap("tracks"), TIMELINE_MAIN_TRACK_ID, { id: TIMELINE_MAIN_TRACK_ID, kind: "visual", order: 0 });
     doc.getMap("clips");
     doc.getMap("sources");
   });

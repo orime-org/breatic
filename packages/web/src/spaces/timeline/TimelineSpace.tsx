@@ -144,7 +144,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [materialState.open, materialOpen, setMaterialOpen, material]);
   const [media, setMedia] = React.useState<HTMLVideoElement | null>(null);
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
-  const arrangement = React.useMemo(() => resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips, sources: document.sources, fps: document.settings.fps }), [document.tracks, clips, document.sources, document.settings.fps]);
+  const arrangement = React.useMemo(() => resolveTimelineArrangement(document), [document]);
   const readyIds = React.useMemo(() => new Set(arrangement.readyClipIds), [arrangement.readyClipIds]);
   const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;

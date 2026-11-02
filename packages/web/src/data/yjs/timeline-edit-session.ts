@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { applyTimelineEdit, reconcileTimelineSources } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, reconcileTimelineSources, timelineClipSourceId } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
@@ -62,8 +62,19 @@ function touched(from: RecordSnapshot, other: RecordSnapshot): RecordSnapshot {
     Object.entries(from[kind]).filter(([id, record]) => JSON.stringify(record) !== JSON.stringify(other[kind][id])),
   );
   const clips = pick('clips');
-  const named = new Set(Object.values(clips).map((clip) => clip.sourceId));
+  const named = new Set(Object.values(clips).map(timelineClipSourceId));
   return { clips, tracks: pick('tracks'), sources: Object.fromEntries(Object.entries(from.sources).filter(([id]) => named.has(id))) };
+}
+
+/**
+ * Combine two snapshots of one step, record by record.
+ * @param base - The snapshot whose records win.
+ * @param extra - Records to add where `base` has none.
+ * @returns The combined snapshot.
+ * @throws {never} Never.
+ */
+function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined): RecordSnapshot {
+  return { clips: { ...extra?.clips, ...base.clips }, tracks: { ...extra?.tracks, ...base.tracks }, sources: { ...extra?.sources, ...base.sources } };
 }
 
 /**
@@ -85,7 +96,8 @@ function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, before:
         const target = collection.get(id);
         if (!(target instanceof Y.Map)) continue;
         for (const [key, value] of Object.entries(record)) if (!target.has(key)) target.set(key, value);
-        if (kind === 'clips' && typeof record.sourceId === 'string') revived.push(record.sourceId);
+        const sourceId = kind === 'clips' ? timelineClipSourceId(record) : undefined;
+        if (sourceId !== undefined) revived.push(sourceId);
       }
     }
     reconcileTimelineSources(doc, { ...records?.sources, ...before }, revived);
@@ -148,8 +160,11 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
         const item = history.undoStack[history.undoStack.length - 1];
         if (plan.ok && item !== undefined) {
           const after = snapshotRecords(doc);
-          if (!item.meta.has('before')) item.meta.set('before', touched(before, after));
-          item.meta.set('after', touched(after, before));
+          // The top item is this edit's own step, a step it joined, or, for an edit that changed nothing, the
+          // previous step; merging keeps the earliest prior state and the latest result of every record.
+          const prior = item.meta.get('before') as RecordSnapshot | undefined;
+          item.meta.set('before', prior === undefined ? touched(before, after) : mergeSnapshots(prior, touched(before, after)));
+          item.meta.set('after', mergeSnapshots(touched(after, before), item.meta.get('after') as RecordSnapshot | undefined));
         }
         return plan;
       } finally {

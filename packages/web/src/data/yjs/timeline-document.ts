@@ -28,11 +28,11 @@ export function removeTimelineRecord(doc: Y.Doc, kind: 'clips' | 'tracks', id: s
 
 /**
  * The source id a clip record names, read from the raw record so a damaged record still counts as a reference.
- * @param record - A value of the clips map.
+ * @param record - A value of the clips map, or its JSON.
  * @returns Its string `sourceId`, if any.
  * @throws {never} Never.
  */
-function sourceIdOf(record: unknown): string | undefined {
+export function timelineClipSourceId(record: unknown): string | undefined {
   const id = record instanceof Y.Map ? record.get('sourceId') : typeof record === 'object' && record !== null ? (record as { sourceId?: unknown }).sourceId : undefined;
   return typeof id === 'string' ? id : undefined;
 }
@@ -50,7 +50,7 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
   const sources = doc.getMap<unknown>('sources');
   const referenced = new Set<string>();
   doc.getMap<unknown>('clips').forEach((record) => {
-    const id = sourceIdOf(record);
+    const id = timelineClipSourceId(record);
     if (id !== undefined) referenced.add(id);
   });
   /**
@@ -84,8 +84,7 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   doc.transact(() => {
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
-    const created = Object.values(next.clips).filter((clip) => current.clips[clip.id] === undefined).map((clip) => clip.sourceId);
-    reconcileTimelineSources(doc, next.sources, created);
+    reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => next.clips[id]?.sourceId ?? []));
   }, origin);
   return plan;
 }
