@@ -22,7 +22,6 @@ import fc from "fast-check";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
-  smoothStream: vi.fn((options: unknown) => ({ smoothing: options })),
 }));
 
 /** Budgets written into this suite's copy of `config/text-tools.yaml`. */
@@ -112,7 +111,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import { callOptionsFor, getModel } from "@breatic/domain";
-import { smoothStream } from "ai";
 import { parse } from "yaml";
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
@@ -441,9 +439,12 @@ describe("the budgets in config/text-tools.yaml", () => {
     const res = await createApp().request("/api/v1/mini-tools/text/config", { headers: AUTH });
 
     expect(res.status).toBe(200);
+    const shipped = parse(readFileSync(join(roots.real, "config", "text-tools.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(typeof shipped.reveal_chars_per_second).toBe("number");
     expect(((await res.json()) as { data: unknown }).data).toEqual({
       selectionMaxChars: BUDGET.selection,
       contextMaxChars: BUDGET.context,
+      revealCharsPerSecond: shipped.reveal_chars_per_second,
     });
   });
 });
@@ -475,20 +476,10 @@ describe("the model call", () => {
     expect(model.calls[0]).not.toHaveProperty("temperature");
   });
 
-  it("paces the answer from the configured stream_delay_ms and stream_burst_max_ms, reasoning dropped first", async () => {
-    const shipped = parse(readFileSync(join(roots.real, "config", "text-tools.yaml"), "utf-8")) as Record<string, unknown>;
-    expect(typeof shipped.stream_delay_ms).toBe("number");
-    expect(typeof shipped.stream_burst_max_ms).toBe("number");
-
+  it("streams the model's text as it comes: the reader's screen paces it", async () => {
     await run(bodyFor("polish"));
 
-    expect(vi.mocked(smoothStream)).toHaveBeenCalledWith({
-      delayInMs: shipped.stream_delay_ms,
-      chunking: expect.any(Function),
-    });
-    const transforms = model.calls[0]?.experimental_transform as unknown[];
-    expect(Array.isArray(transforms)).toBe(true);
-    expect(transforms.at(-1)).toBe(vi.mocked(smoothStream).mock.results.at(-1)?.value);
+    expect(model.calls[0]).not.toHaveProperty("experimental_transform");
   });
 
   it.each([

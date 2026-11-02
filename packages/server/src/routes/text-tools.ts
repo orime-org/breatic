@@ -64,11 +64,18 @@ async function writeEvent(s: StreamingApi, event: string, data: unknown): Promis
 
 /**
  * `GET /mini-tools/text/config` - the budgets the browser windows its
- * request to, from `config/text-tools.yaml`.
+ * request to and the pace it shows the answer at, from
+ * `config/text-tools.yaml`.
  */
 textTools.get("/config", (c) => {
-  const { selection_max_chars, context_max_chars } = getTextToolsConfig();
-  return c.json({ data: { selectionMaxChars: selection_max_chars, contextMaxChars: context_max_chars } });
+  const { selection_max_chars, context_max_chars, reveal_chars_per_second } = getTextToolsConfig();
+  return c.json({
+    data: {
+      selectionMaxChars: selection_max_chars,
+      contextMaxChars: context_max_chars,
+      revealCharsPerSecond: reveal_chars_per_second,
+    },
+  });
 });
 
 /**

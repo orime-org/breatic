@@ -14,7 +14,6 @@ import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from 
 
 import { stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import { textPacing } from "@server/modules/text-tool/text-pacing.js";
 import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
@@ -156,10 +155,6 @@ export async function* executeTextTool(
         cache: false,
       }),
       abortSignal: signal,
-      experimental_transform: textPacing({
-        delayMs: getTextToolsConfig().stream_delay_ms,
-        burstMaxMs: getTextToolsConfig().stream_burst_max_ms,
-      }),
       ...watch.streamOptions,
       onLanguageModelCallEnd: (event) => {
         totalTokens += event.usage.totalTokens ?? 0;

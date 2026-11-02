@@ -4,8 +4,8 @@
 /**
  * Text mini-tool configuration.
  *
- * The model, its thinking level, the two length budgets and the pace of the
- * streamed answer are loaded from
+ * The model, its thinking level, the two length budgets and the pace the
+ * reader's screen shows the answer at are loaded from
  * `config/text-tools.yaml`. System prompts are defined inline (not
  * user-configurable).
  */
@@ -22,8 +22,7 @@ const textToolsConfigSchema = z
     thinking_level: z.enum(["low", "medium", "high"]).default("low"),
     selection_max_chars: z.number().int().positive().default(40000),
     context_max_chars: z.number().int().positive().default(200000),
-    stream_delay_ms: z.number().int().nonnegative().default(20),
-    stream_burst_max_ms: z.number().int().positive().default(1500),
+    reveal_chars_per_second: z.number().int().positive().default(60),
   })
   .refine((config) => config.selection_max_chars <= config.context_max_chars, {
     message: "selection_max_chars must not exceed context_max_chars",

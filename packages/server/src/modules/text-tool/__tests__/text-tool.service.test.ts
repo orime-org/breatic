@@ -116,9 +116,7 @@ vi.mock("@breatic/domain", async () => ({
   },
 }));
 
-// The model double streams its own parts, so the smoothing transform the
-// service builds is never applied here.
-vi.mock("ai", () => ({ stepCountIs: () => () => false, smoothStream: () => undefined }));
+vi.mock("ai", () => ({ stepCountIs: () => () => false }));
 
 // Partial: whatever else the service reads from its config (the thinking level,
 // inner#1860) comes from the shipped file.

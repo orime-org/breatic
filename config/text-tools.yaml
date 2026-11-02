@@ -17,12 +17,8 @@ selection_max_chars: 40000
 # anything longer with 422. Must be at least selection_max_chars.
 context_max_chars: 200000
 
-# Milliseconds between words as the answer streams out. The model sends its
-# text in bursts; the server splits each burst into words and spaces them by
-# this much, so the reader sees the answer being written.
-stream_delay_ms: 20
-
-# Longest one burst of the answer may take to go out, in milliseconds. A burst
-# with more words than fit at stream_delay_ms each goes out several words at a
-# time, so a long answer is not held back after the model has finished.
-stream_burst_max_ms: 1500
+# How fast the reader's screen shows the answer, in characters per second.
+# The model sends its text in bursts; the AI dialog shows what has arrived at
+# this pace and speeds up on its own when it falls behind. Sent to the browser
+# by GET /mini-tools/text/config.
+reveal_chars_per_second: 60
