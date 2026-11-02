@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
 
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
+
 import type * as SceneDocument from '../scene-document';
 
 type SceneModule = typeof SceneDocument;
@@ -19,12 +21,11 @@ const incompatibleRoots = ['scene', 'objects'].flatMap((root) =>
 const ID = '11111111-1111-4111-8111-111111111111';
 const COPY = '22222222-2222-4222-8222-222222222222';
 const THIRD = '33333333-3333-4333-8333-333333333333';
-const FIELDS = ['name', 'position', 'rotation', 'scale', 'locked', 'exists'] as const;
 const ORIGINAL = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number],
   rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true,
+  scale: [1, 1, 1] as [number, number, number], locked: false,
 };
 
 /**
@@ -37,11 +38,11 @@ async function loadScene(): Promise<SceneModule> {
   return loader();
 }
 
-/** Creates an isolated version-one scene for a test. */
+/** Creates an isolated scene in the current format for a test. */
 function sceneDoc(): Y.Doc {
   const doc = new Y.Doc();
   documents.push(doc);
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   doc.getMap('objects');
   return doc;
 }
@@ -58,11 +59,11 @@ function replica(source: Y.Doc): Y.Doc {
 function incompatibleDocument(root: string, shape: RootShape, encoded: boolean): Y.Doc {
   const source = new Y.Doc();
   documents.push(source);
-  if (root === 'objects') source.getMap('scene').set('formatVersion', 1);
+  if (root === 'objects') source.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   if (shape === 'text') source.getText(root).insert(0, 'incompatible root');
   else if (shape === 'array') source.getArray(root).push(['incompatible root', 17]);
   else {
-    source.getMap(root).set(root === 'scene' ? 'formatVersion' : 'retained', root === 'scene' ? 1 : true);
+    source.getMap(root).set(root === 'scene' ? 'formatVersion' : 'retained', root === 'scene' ? SCENE_FORMAT_VERSION : true);
     const peer = new Y.Doc();
     documents.push(peer);
     peer.getText(root).insert(0, 'sequence merged into map');
@@ -116,7 +117,7 @@ describe('scene projection and command transactions', () => {
     expect(readSceneDocument(source).objects).toEqual([ORIGINAL]);
   });
 
-  it('creates immutable initial values and six prebuilt sequences outside personal undo', async () => {
+  it('creates one record of plain current values in a single local transaction under personal undo', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
     const origins: unknown[] = [];
@@ -124,41 +125,32 @@ describe('scene projection and command transactions', () => {
     expect(applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, origin, true)).toEqual({ ok: true, ids: [ID] });
     const record = doc.getMap('objects').get(ID) as Y.Map<unknown>;
     expect(record).toBeInstanceOf(Y.Map);
-    const { id: _id, ...initialValues } = ORIGINAL;
-    expect(record.get('initial')).toEqual({ ...initialValues, exists: false });
-    for (const field of FIELDS) {
-      expect(record.get(field)).toBeInstanceOf(Y.Array);
-      expect((record.get(field) as Y.Array<unknown>).toArray()).toEqual(field === 'exists' ? [true] : []);
-    }
-    expect(origins).toHaveLength(2);
-    expect(origins[0]).not.toBe(origin);
-    expect(origins[1]).toBe(origin);
+    const { id: _id, ...values } = ORIGINAL;
+    expect(record.toJSON()).toEqual(values);
+    for (const key of record.keys()) expect(record.get(key)).not.toBeInstanceOf(Y.AbstractType);
+    expect(origins).toEqual([origin]);
     expect(readSceneDocument(doc).objects).toEqual([ORIGINAL]);
     expect(history.undoStack).toHaveLength(1);
     history.undo();
     expect(readSceneDocument(doc).objects).toEqual([]);
-    expect(doc.getMap('objects').get(ID)).toBe(record);
-    for (const field of FIELDS) expect(record.get(field)).toBeInstanceOf(Y.Array);
+    expect(doc.getMap('objects').has(ID)).toBe(false);
     history.redo();
     expect(readSceneDocument(doc).objects).toEqual([ORIGINAL]);
     history.destroy();
   });
 
-  it('appends complete changed values and undoes an entire multi-object command in one step', async () => {
+  it('overwrites changed fields in place and undoes an entire multi-object command in one step', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol();
     expect(applySceneCommand(doc, { type: 'create', objects: [ORIGINAL, { ...ORIGINAL, id: COPY }] }, Symbol(), true)).toEqual({ ok: true, ids: [ID, COPY] });
     const history = createSceneHistory(doc, origin);
     const record = doc.getMap('objects').get(ID) as Y.Map<unknown>;
-    const initial = record.get('initial');
     const patch = { id: ID, name: 'Moved', position: [1, 2, 3] as [number, number, number], rotation: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number], scale: [2, 3, 4] as [number, number, number] };
     expect(applySceneCommand(doc, { type: 'patch', patches: [patch, { id: COPY, name: 'Peer' }] }, origin, true)).toEqual({ ok: true, ids: [ID, COPY] });
     expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, ...patch }, { ...ORIGINAL, id: COPY, name: 'Peer' }]);
-    expect(record.get('initial')).toEqual(initial);
-    for (const field of ['name', 'position', 'rotation', 'scale'] as const) {
-      expect((record.get(field) as Y.Array<unknown>).toArray()).toEqual([patch[field]]);
-    }
-    expect((record.get('exists') as Y.Array<unknown>).toArray()).toEqual([true]);
+    expect(doc.getMap('objects').get(ID)).toBe(record);
+    const { id: _id, ...patched } = { ...ORIGINAL, ...patch };
+    expect(record.toJSON()).toEqual(patched);
     expect(history.undoStack).toHaveLength(1);
     history.undo();
     expect(readSceneDocument(doc).objects).toEqual([ORIGINAL, { ...ORIGINAL, id: COPY }]);
@@ -265,7 +257,7 @@ describe('scene projection and command transactions', () => {
     history.destroy();
   });
 
-  it('duplicates a locked committed object into independent values and an unlocked new identity', async () => {
+  it('duplicates a locked committed object into an independent record and an unlocked new identity', async () => {
     const { applySceneCommand, readSceneDocument } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol();
     applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, origin, true);
@@ -273,11 +265,13 @@ describe('scene projection and command transactions', () => {
     applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, origin, true);
     expect(applySceneCommand(doc, { type: 'duplicate', copies: [{ sourceId: ID, id: COPY }] }, origin, true)).toEqual({ ok: true, ids: [COPY] });
     const copy = readSceneDocument(doc).objects.find((object) => object.id === COPY);
-    expect(copy).toMatchObject({ id: COPY, model: ORIGINAL.model, rotation: ORIGINAL.rotation, scale: [2, 3, 4], locked: false, exists: true });
+    expect(copy).toMatchObject({ id: COPY, model: ORIGINAL.model, rotation: ORIGINAL.rotation, scale: [2, 3, 4], locked: false });
     const sourceRecord = doc.getMap('objects').get(ID) as Y.Map<unknown>;
     const copyRecord = doc.getMap('objects').get(COPY) as Y.Map<unknown>;
-    expect(copyRecord.get('initial')).not.toBe(sourceRecord.get('initial'));
-    for (const field of FIELDS) expect(copyRecord.get(field)).not.toBe(sourceRecord.get(field));
+    expect(copyRecord).toBeInstanceOf(Y.Map);
+    expect(copyRecord).not.toBe(sourceRecord);
+    for (const key of copyRecord.keys()) expect(copyRecord.get(key)).not.toBeInstanceOf(Y.AbstractType);
+    for (const field of ['model', 'rotation', 'scale'] as const) expect(copyRecord.get(field)).not.toBe(sourceRecord.get(field));
     applySceneCommand(doc, { type: 'patch', patches: [{ id: COPY, name: 'Copy changed', position: [8, 9, 10] }] }, origin, true);
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)).toEqual({ ...ORIGINAL, name: 'Committed', scale: [2, 3, 4], locked: true });
     applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, origin, true);
@@ -285,22 +279,36 @@ describe('scene projection and command transactions', () => {
     expect(readSceneDocument(doc).objects.find((object) => object.id === COPY)).toEqual({ ...copy, name: 'Copy changed', position: [8, 9, 10] });
   });
 
-  it('preserves a hidden stable identity and refuses to duplicate or recreate it', async () => {
+  it('removes a deleted record, refuses to duplicate it and restores it through personal undo', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol();
     applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, Symbol(), true);
     const history = createSceneHistory(doc, origin);
-    const record = doc.getMap('objects').get(ID);
     expect(applySceneCommand(doc, { type: 'delete', ids: [ID] }, origin, true)).toEqual({ ok: true, ids: [ID] });
     expect(readSceneDocument(doc)).toMatchObject({ status: 'ready', objects: [], invalidObjects: [] });
-    expect(doc.getMap('objects').get(ID)).toBe(record);
+    expect(doc.getMap('objects').has(ID)).toBe(false);
     const before = Y.encodeStateAsUpdate(doc);
     expect(applySceneCommand(doc, { type: 'duplicate', copies: [{ sourceId: ID, id: COPY }] }, origin, true)).toEqual({ ok: false, reason: 'missing' });
-    expect(applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, origin, true)).toEqual({ ok: false, reason: 'duplicate' });
+    expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Gone' }] }, origin, true)).toEqual({ ok: false, reason: 'missing' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     history.undo(); expect(readSceneDocument(doc).objects).toEqual([ORIGINAL]);
     history.redo(); expect(readSceneDocument(doc).objects).toEqual([]);
     history.destroy();
+  });
+
+  it('reports an older format version as unsupported without reading or writing it', async () => {
+    const { applySceneCommand, planSceneCommand, readSceneDocument } = await loadScene();
+    const doc = new Y.Doc(); documents.push(doc);
+    doc.getMap('scene').set('formatVersion', 1);
+    const legacy = new Y.Map<unknown>();
+    doc.getMap('objects').set(ID, legacy);
+    legacy.set('initial', { ...ORIGINAL, exists: false });
+    legacy.set('exists', Y.Array.from([true]));
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readSceneDocument(doc)).toEqual({ status: 'unsupported', version: 1, objects: [], invalidObjects: [] });
+    expect(planSceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Changed' }] }, true)).toEqual({ ok: false, reason: 'unsupported' });
+    expect(applySceneCommand(doc, { type: 'create', objects: [{ ...ORIGINAL, id: COPY }] }, Symbol(), true)).toEqual({ ok: false, reason: 'unsupported' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it('preserves unknown format data and refuses commands without a write', async () => {
@@ -316,22 +324,21 @@ describe('scene projection and command transactions', () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
-  it.each(['plain-record', 'initial-exists', 'initial-lock', 'missing-sequence', 'wrong-sequence-type', 'bad-position', 'bad-rotation', 'bad-scale', 'bad-earlier-record', 'bad-boolean'])(
+  it.each(['plain-record', 'missing-model', 'bad-model', 'shared-type-field', 'bad-name', 'bad-position', 'bad-rotation', 'bad-scale', 'bad-boolean'])(
     'isolates a stored %s error while retaining valid neighbors and original bytes', async (damage) => {
       const { applySceneCommand, readSceneDocument, validateSceneRecovery } = await loadScene();
       const doc = sceneDoc();
       applySceneCommand(doc, { type: 'create', objects: [ORIGINAL, { ...ORIGINAL, id: COPY }] }, Symbol(), true);
       const record = doc.getMap('objects').get(ID) as Y.Map<unknown>;
       if (damage === 'plain-record') doc.getMap('objects').set(ID, { damaged: true });
-      else if (damage === 'initial-exists' || damage === 'initial-lock') {
-        record.set('initial', { ...(record.get('initial') as Record<string, unknown>), [damage === 'initial-exists' ? 'exists' : 'locked']: true });
-      } else if (damage === 'missing-sequence') record.delete('position');
-      else if (damage === 'wrong-sequence-type') record.set('position', [1, 2, 3]);
-      else if (damage === 'bad-position') (record.get('position') as Y.Array<unknown>).push([[Infinity, 0, 0]]);
-      else if (damage === 'bad-rotation') (record.get('rotation') as Y.Array<unknown>).push([[0, 0, 0, 0]]);
-      else if (damage === 'bad-scale') (record.get('scale') as Y.Array<unknown>).push([[0, 1, 1]]);
-      else if (damage === 'bad-earlier-record') (record.get('scale') as Y.Array<unknown>).push([[0, 1, 1], [1, 1, 1]]);
-      else (record.get('locked') as Y.Array<unknown>).push(['yes']);
+      else if (damage === 'missing-model') record.delete('model');
+      else if (damage === 'bad-model') record.set('model', { kind: 'builtin', id: 'tree' });
+      else if (damage === 'shared-type-field') record.set('position', Y.Array.from([1, 2, 3]));
+      else if (damage === 'bad-name') record.set('name', '   ');
+      else if (damage === 'bad-position') record.set('position', [Infinity, 0, 0]);
+      else if (damage === 'bad-rotation') record.set('rotation', [0, 0, 0, 0]);
+      else if (damage === 'bad-scale') record.set('scale', [0, 1, 1]);
+      else record.set('locked', 'yes');
       const before = Y.encodeStateAsUpdate(doc);
       const snapshot = readSceneDocument(doc);
       expect(snapshot.status).toBe('ready');
@@ -343,6 +350,26 @@ describe('scene projection and command transactions', () => {
       expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     },
   );
+
+  it.each([
+    { field: 'name', model: { kind: 'builtin' as const, id: 'box' as const }, value: 'box' },
+    { field: 'name', model: { kind: 'asset' as const, assetId: THIRD }, value: 'Model' },
+    { field: 'position', model: ORIGINAL.model, value: [0, 0, 0] },
+    { field: 'rotation', model: ORIGINAL.model, value: [0, 0, 0, 1] },
+    { field: 'scale', model: ORIGINAL.model, value: [1, 1, 1] },
+    { field: 'locked', model: ORIGINAL.model, value: false },
+  ])('reads a record without $field as the default and keeps it editable and deletable', async ({ field, model, value }) => {
+    const { applySceneCommand, readSceneDocument } = await loadScene();
+    const doc = sceneDoc(); const origin = Symbol();
+    const object = { ...ORIGINAL, model, name: 'Named', position: [4, 5, 6] as [number, number, number],
+      rotation: [0, 1, 0, 0] as [number, number, number, number], scale: [2, 2, 2] as [number, number, number] };
+    applySceneCommand(doc, { type: 'create', objects: [object] }, origin, true);
+    (doc.getMap('objects').get(ID) as Y.Map<unknown>).delete(field);
+    expect(readSceneDocument(doc)).toMatchObject({ status: 'ready', objects: [{ ...object, [field]: value }], invalidObjects: [] });
+    expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [7, 8, 9] }] }, origin, true)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(doc, { type: 'delete', ids: [ID] }, origin, true)).toEqual({ ok: true, ids: [ID] });
+    expect(doc.getMap('objects').has(ID)).toBe(false);
+  });
 
   it.each(['scene', 'objects'])('retains an incompatible %s root without throwing or mutating it', async (root) => {
     const { applySceneCommand, readSceneDocument, validateSceneRecovery } = await loadScene();
@@ -472,7 +499,7 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
     }), { seed: 1703, numRuns: 40 });
   });
 
-  it('keeps same-property tuples whole, converges under reordered updates, and reveals the remaining authors tuple on undo', async () => {
+  it('converges concurrent same-property tuples and keeps every record readable through either undo order', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     fc.assert(fc.property(fc.boolean(), fc.tuple(fc.integer(), fc.integer(), fc.integer()), fc.tuple(fc.integer(), fc.integer(), fc.integer()), (aFirst, pa, pb) => {
       const a = sceneDoc(); const oa = Symbol(); const ob = Symbol();
@@ -488,16 +515,17 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
       expect(readSceneDocument(leftOrder).objects).toEqual(readSceneDocument(rightOrder).objects);
       expect(readSceneDocument(a).objects).toEqual(readSceneDocument(leftOrder).objects);
       expect([pa, pb]).toContainEqual(readSceneDocument(a).objects[0]?.position);
-      const first = aFirst ? ha : hb; const second = aFirst ? hb : ha;
-      first.undo(); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, position: aFirst ? pb : pa }]);
-      second.undo(); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([ORIGINAL]);
+      for (const history of aFirst ? [ha, hb] : [hb, ha]) {
+        history.undo(); merge(a, b);
+        expect(readSceneDocument(a)).toEqual(readSceneDocument(b));
+        expect(readSceneDocument(a).invalidObjects).toEqual([]);
+        expect(readSceneDocument(a).objects).toHaveLength(1);
+      }
       ha.destroy(); hb.destroy();
     }), { seed: 1704, numRuns: 40 });
   });
 
-  it('keeps concurrent quaternion records normalized and atomic through personal undo', async () => {
+  it('keeps concurrent quaternion records normalized and readable through personal undo', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     const rotations: [number, number, number, number][] = [[0, 1, 0, 0], [0.5, 0.5, 0.5, 0.5], [1, 0, 0, 0]];
     fc.assert(fc.property(fc.constantFrom(...rotations), fc.constantFrom(...rotations), (ra, rb) => {
@@ -510,61 +538,236 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
       expect(readSceneDocument(a).objects).toEqual(readSceneDocument(b).objects);
       expect([ra, rb]).toContainEqual(readSceneDocument(a).objects[0]?.rotation);
       expect(readSceneDocument(a).invalidObjects).toEqual([]);
-      ha.undo(); merge(a, b);
-      expect(readSceneDocument(a).objects).toEqual([{ ...ORIGINAL, rotation: rb }]);
-      hb.undo(); merge(a, b);
-      expect(readSceneDocument(a).objects).toEqual([ORIGINAL]);
+      for (const history of [ha, hb]) {
+        history.undo(); merge(a, b);
+        expect(readSceneDocument(a)).toEqual(readSceneDocument(b));
+        expect(readSceneDocument(a).invalidObjects).toEqual([]);
+        expect([ORIGINAL.rotation, ra, rb]).toContainEqual(readSceneDocument(a).objects[0]?.rotation);
+      }
       ha.destroy(); hb.destroy();
     }), { seed: 1705, numRuns: 20 });
   });
 
-  it('keeps a concurrent delete effective until both authors undo in either order', async () => {
+  it('reads a field emptied by an undone concurrent write as its default and keeps the object deletable', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
-    fc.assert(fc.property(fc.boolean(), (aFirst) => {
-      const a = sceneDoc(); const oa = Symbol(); const ob = Symbol();
-      applySceneCommand(a, { type: 'create', objects: [ORIGINAL] }, Symbol(), true);
-      const b = replica(a); const ha = createSceneHistory(a, oa); const hb = createSceneHistory(b, ob);
-      applySceneCommand(a, { type: 'delete', ids: [ID] }, oa, true);
-      applySceneCommand(b, { type: 'delete', ids: [ID] }, ob, true); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([]);
-      (aFirst ? ha : hb).undo(); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([]);
-      (aFirst ? hb : ha).undo(); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([ORIGINAL]);
+    for (const [left, right] of [[1, 2], [2, 1]]) {
+      const a = sceneDoc(); a.clientID = left; const oa = Symbol(); const ob = Symbol();
+      applySceneCommand(a, { type: 'create', objects: [{ ...ORIGINAL, position: [3, 3, 3] }] }, Symbol(), true);
+      const b = new Y.Doc(); documents.push(b); b.clientID = right; Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+      const ha = createSceneHistory(a, oa); const hb = createSceneHistory(b, ob);
+      applySceneCommand(a, { type: 'patch', patches: [{ id: ID, position: [1, 1, 1] }] }, oa, true);
+      applySceneCommand(b, { type: 'patch', patches: [{ id: ID, position: [2, 2, 2] }] }, ob, true);
+      merge(a, b);
+      const winner = readSceneDocument(a).objects[0]?.position[0] === 1 ? ha : hb;
+      winner.undo(); merge(a, b);
+      expect((a.getMap('objects').get(ID) as Y.Map<unknown>).has('position')).toBe(false);
+      for (const doc of [a, b]) {
+        expect(readSceneDocument(doc)).toMatchObject({ objects: [{ ...ORIGINAL, position: [0, 0, 0] }], invalidObjects: [] });
+      }
+      expect(applySceneCommand(b, { type: 'delete', ids: [ID] }, ob, true)).toEqual({ ok: true, ids: [ID] });
+      merge(a, b);
+      for (const doc of [a, b]) expect(doc.getMap('objects').has(ID)).toBe(false);
       ha.destroy(); hb.destroy();
-    }), { seed: 1706, numRuns: 10 });
+    }
   });
 
-  it('retains late transforms on a hidden object and exposes them only after deletion undo', async () => {
+  it('restores the value my write replaced unless a peer wrote the field after my last write', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
-    fc.assert(fc.property(fc.tuple(fc.integer(), fc.integer(), fc.integer()), (position) => {
-      const a = sceneDoc(); const origin = Symbol();
-      applySceneCommand(a, { type: 'create', objects: [ORIGINAL] }, Symbol(), true);
-      const b = replica(a); const history = createSceneHistory(a, origin);
-      applySceneCommand(a, { type: 'delete', ids: [ID] }, origin, true);
-      applySceneCommand(b, { type: 'patch', patches: [{ id: ID, position }] }, Symbol(), true); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([]);
-      expect(documents.every((doc) => doc.getMap('objects').has(ID))).toBe(true);
-      history.undo(); merge(a, b);
-      for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, position }]);
-      history.destroy();
-    }), { seed: 1707, numRuns: 30 });
+    const a = sceneDoc(); const oa = Symbol(); const ob = Symbol();
+    applySceneCommand(a, { type: 'create', objects: [{ ...ORIGINAL, name: 'r0' }] }, ob, true);
+    const b = replica(a); const history = createSceneHistory(a, oa);
+    const rename = (doc: Y.Doc, origin: symbol, name: string): void => {
+      expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name }] }, origin, true).ok).toBe(true);
+      merge(a, b);
+    };
+    rename(a, oa, 'l1'); rename(b, ob, 'r1');
+    history.undo(); merge(a, b);
+    for (const doc of [a, b]) expect(readSceneDocument(doc).objects[0]?.name).toBe('r1');
+    rename(a, oa, 'l2');
+    history.undo(); merge(a, b);
+    for (const doc of [a, b]) expect(readSceneDocument(doc).objects[0]?.name).toBe('r1');
+    history.destroy();
+    const c = sceneDoc(); const oc = Symbol();
+    applySceneCommand(c, { type: 'create', objects: [{ ...ORIGINAL, name: 'r0' }] }, ob, true);
+    const d = replica(c); const sequence = createSceneHistory(c, oc);
+    const write = (doc: Y.Doc, origin: symbol, name: string): void => {
+      expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name }] }, origin, true).ok).toBe(true);
+      merge(c, d);
+    };
+    write(c, oc, 'l1'); write(d, ob, 'r1'); write(c, oc, 'l2');
+    sequence.undo(); merge(c, d);
+    for (const doc of [c, d]) expect(readSceneDocument(doc).objects[0]?.name).toBe('r1');
+    sequence.undo(); merge(c, d);
+    for (const doc of [c, d]) expect(readSceneDocument(doc).objects[0]?.name).toBe('r0');
+    sequence.destroy();
   });
 
-  it('retains peer edits through creation undo and prevents creation redo from overriding a peer deletion', async () => {
+  it('restores a deleted record with a peer edit made before the delete', async () => {
+    const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
+    const a = sceneDoc(); const origin = Symbol();
+    applySceneCommand(a, { type: 'create', objects: [ORIGINAL] }, Symbol(), true);
+    const b = replica(a); const history = createSceneHistory(a, origin);
+    applySceneCommand(b, { type: 'patch', patches: [{ id: ID, name: 'Peer value' }] }, Symbol(), true); merge(a, b);
+    applySceneCommand(a, { type: 'delete', ids: [ID] }, origin, true); merge(a, b);
+    for (const doc of [a, b]) expect(doc.getMap('objects').has(ID)).toBe(false);
+    history.undo(); merge(a, b);
+    for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, name: 'Peer value' }]);
+    history.destroy();
+  });
+
+  it('removes the record on creation undo and restores it with peer edits on redo', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
     const a = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(a, origin);
     applySceneCommand(a, { type: 'create', objects: [ORIGINAL] }, origin, true);
     const b = replica(a);
     applySceneCommand(b, { type: 'patch', patches: [{ id: ID, name: 'Peer value' }] }, Symbol(), true); merge(a, b);
     history.undo(); merge(a, b);
-    expect(readSceneDocument(a).objects).toEqual([]);
-    expect(documents.every((doc) => doc.getMap('objects').has(ID))).toBe(true);
+    for (const doc of [a, b]) {
+      expect(readSceneDocument(doc).objects).toEqual([]);
+      expect(doc.getMap('objects').has(ID)).toBe(false);
+    }
     history.redo(); merge(a, b);
-    expect(readSceneDocument(a).objects).toEqual([{ ...ORIGINAL, name: 'Peer value' }]);
-    applySceneCommand(b, { type: 'delete', ids: [ID] }, Symbol(), true); merge(a, b);
-    history.undo(); history.redo(); merge(a, b);
-    for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([]);
+    for (const doc of [a, b]) expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, name: 'Peer value' }]);
     history.destroy();
+  });
+
+  it('matches raw Yjs selective undo for my field writes interleaved with peer writes', async () => {
+    const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
+    const fieldValue = (field: 'name' | 'position' | 'scale', value: number): unknown =>
+      field === 'name' ? `N${value}` : field === 'position' ? [value, 0, 0] : [value + 1, 1, 1];
+    const step = fc.oneof(
+      fc.record({ kind: fc.constant('set' as const), mine: fc.boolean(), object: fc.constantFrom(ID, COPY),
+        field: fc.constantFrom('name' as const, 'position' as const, 'scale' as const), value: fc.nat(3) }),
+      fc.record({ kind: fc.constantFrom('undo' as const, 'redo' as const) }),
+    );
+    fc.assert(fc.property(fc.array(step, { maxLength: 30 }), (steps) => {
+      const peer = Symbol(); const mine = Symbol();
+      const a = sceneDoc(); applySceneCommand(a, { type: 'create', objects: [ORIGINAL, { ...ORIGINAL, id: COPY }] }, peer, true);
+      const b = replica(a); const history = createSceneHistory(a, mine);
+      const rawA = new Y.Doc(); const rawB = new Y.Doc(); documents.push(rawA, rawB);
+      rawA.transact(() => {
+        for (const id of [ID, COPY]) {
+          const { id: _id, ...values } = { ...ORIGINAL, id };
+          rawA.getMap('objects').set(id, new Y.Map(Object.entries(structuredClone(values))));
+        }
+      }, peer);
+      Y.applyUpdate(rawB, Y.encodeStateAsUpdate(rawA));
+      const rawHistory = new Y.UndoManager(rawA.getMap('objects'), { trackedOrigins: new Set([mine]), captureTimeout: 0 });
+      for (const action of steps) {
+        if (action.kind === 'set') {
+          const value = fieldValue(action.field, action.value);
+          applySceneCommand(action.mine ? a : b, { type: 'patch', patches: [{ id: action.object, [action.field]: value }] }, action.mine ? mine : peer, true);
+          const raw = action.mine ? rawA : rawB;
+          const record = raw.getMap('objects').get(action.object) as Y.Map<unknown>;
+          if (JSON.stringify(record.get(action.field)) !== JSON.stringify(value)) {
+            raw.transact(() => record.set(action.field, structuredClone(value)), action.mine ? mine : peer);
+          }
+        } else if (action.kind === 'undo') { history.undo(); rawHistory.undo(); }
+        else { history.redo(); rawHistory.redo(); }
+        merge(a, b); merge(rawA, rawB);
+        const expected = [ID, COPY].map((id) => ({ id, ...(rawA.getMap('objects').get(id) as Y.Map<unknown>).toJSON() }));
+        expect(readSceneDocument(a)).toEqual({ status: 'ready', version: SCENE_FORMAT_VERSION, objects: expected, invalidObjects: [] });
+        expect(readSceneDocument(b)).toEqual(readSceneDocument(a));
+      }
+      history.destroy(); rawHistory.destroy();
+    }), { seed: 1875, numRuns: 200 });
+  });
+
+  it('keeps every record readable and changeable after unsynced commands, undo and redo', async () => {
+    const { applySceneCommand, createSceneHistory, planSceneCommand, readSceneDocument } = await loadScene();
+    const ids = [ID, COPY, THIRD];
+    const step = fc.record({
+      mine: fc.boolean(), sync: fc.boolean(), object: fc.constantFrom(...ids), value: fc.nat(3),
+      kind: fc.constantFrom('create' as const, 'move' as const, 'rename' as const, 'lock' as const, 'delete' as const, 'undo' as const, 'redo' as const),
+    });
+    fc.assert(fc.property(fc.array(step, { maxLength: 40 }), (steps) => {
+      const a = sceneDoc(); const b = replica(a); const oa = Symbol(); const ob = Symbol();
+      const histories = new Map([[a, createSceneHistory(a, oa)], [b, createSceneHistory(b, ob)]]);
+      for (const action of steps) {
+        const doc = action.mine ? a : b; const origin = action.mine ? oa : ob;
+        if (action.kind === 'undo') histories.get(doc)?.undo();
+        else if (action.kind === 'redo') histories.get(doc)?.redo();
+        else {
+          const command = action.kind === 'create' ? { type: 'create' as const, objects: [{ ...ORIGINAL, id: action.object }] }
+            : action.kind === 'move' ? { type: 'patch' as const, patches: [{ id: action.object, position: [action.value, 0, 0] as [number, number, number] }] }
+              : action.kind === 'rename' ? { type: 'patch' as const, patches: [{ id: action.object, name: `N${action.value}` }] }
+                : action.kind === 'lock' ? { type: 'lock' as const, ids: [action.object], locked: action.value % 2 === 0 }
+                  : { type: 'delete' as const, ids: [action.object] };
+          applySceneCommand(doc, command, origin, true);
+        }
+        if (action.sync) merge(a, b);
+      }
+      merge(a, b);
+      expect(readSceneDocument(a)).toEqual(readSceneDocument(b));
+      for (const doc of [a, b]) {
+        const snapshot = readSceneDocument(doc);
+        expect(snapshot.invalidObjects).toEqual([]);
+        for (const object of snapshot.objects) {
+          expect(planSceneCommand(doc, { type: 'lock', ids: [object.id], locked: !object.locked }, true).ok).toBe(true);
+          if (!object.locked) expect(planSceneCommand(doc, { type: 'delete', ids: [object.id] }, true).ok).toBe(true);
+        }
+      }
+      for (const history of histories.values()) history.destroy();
+    }), { seed: 1876, numRuns: 300 });
+  });
+});
+
+describe('scene document size on a replica without personal history', () => {
+  /** Creates a writer with objects and a replica that only receives updates, as collab persists it. */
+  function writerAndReplica(applyCreate: SceneModule['applySceneCommand'], ids: readonly string[]): { writer: Y.Doc; stored: Y.Doc } {
+    const writer = sceneDoc();
+    expect(applyCreate(writer, { type: 'create', objects: ids.map((id) => ({ ...ORIGINAL, id })) }, Symbol(), true).ok).toBe(true);
+    return { writer, stored: replica(writer) };
+  }
+
+  /** Sends every pending writer update to the stored replica. */
+  function deliver(writer: Y.Doc, stored: Y.Doc): void {
+    Y.applyUpdate(stored, Y.encodeStateAsUpdate(writer, Y.encodeStateVector(stored)));
+  }
+
+  it('does not grow when one client keeps overwriting the same field', async () => {
+    const { applySceneCommand, createSceneHistory } = await loadScene();
+    const { writer, stored } = writerAndReplica(applySceneCommand, [ID]);
+    const origin = Symbol(); const history = createSceneHistory(writer, origin);
+    const base = Y.encodeStateAsUpdate(stored).byteLength;
+    for (let step = 1; step <= 10_000; step += 1) {
+      applySceneCommand(writer, { type: 'patch', patches: [{ id: ID, position: [step, 0, 0] }] }, origin, true);
+    }
+    deliver(writer, stored);
+    expect(Y.encodeStateAsUpdate(stored).byteLength - base).toBeLessThan(1024);
+    history.destroy();
+  });
+
+  it('grows by at most twelve bytes per written field when edits switch fields and objects', async () => {
+    const { applySceneCommand, createSceneHistory } = await loadScene();
+    const ids = [ID, COPY, THIRD];
+    fc.assert(fc.property(fc.array(fc.record({ object: fc.constantFrom(...ids), fields: fc.subarray(['name', 'position', 'scale'] as const, { minLength: 1 }) }), { minLength: 1, maxLength: 300 }), (edits) => {
+      const { writer, stored } = writerAndReplica(applySceneCommand, ids);
+      const origin = Symbol(); const history = createSceneHistory(writer, origin);
+      const base = Y.encodeStateAsUpdate(stored).byteLength;
+      let written = 0;
+      edits.forEach(({ object, fields }, index) => {
+        const value = index + 1;
+        const patch = { id: object, ...(fields.includes('name') ? { name: `N${value}` } : {}),
+          ...(fields.includes('position') ? { position: [value, 0, 0] as [number, number, number] } : {}),
+          ...(fields.includes('scale') ? { scale: [value, 1, 1] as [number, number, number] } : {}) };
+        expect(applySceneCommand(writer, { type: 'patch', patches: [patch] }, origin, true).ok).toBe(true);
+        written += fields.length;
+      });
+      deliver(writer, stored);
+      expect(Y.encodeStateAsUpdate(stored).byteLength - base).toBeLessThanOrEqual(written * 12 + 64);
+      history.destroy();
+    }), { seed: 1877, numRuns: 50 });
+  });
+
+  it('shrinks when objects are deleted', async () => {
+    const { applySceneCommand } = await loadScene();
+    const ids = Array.from({ length: 100 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`);
+    const { writer, stored } = writerAndReplica(applySceneCommand, ids);
+    const before = Y.encodeStateAsUpdate(stored).byteLength;
+    expect(applySceneCommand(writer, { type: 'delete', ids }, Symbol(), true).ok).toBe(true);
+    deliver(writer, stored);
+    expect(stored.getMap('objects').size).toBe(0);
+    expect(Y.encodeStateAsUpdate(stored).byteLength).toBeLessThan(before / 2);
   });
 });

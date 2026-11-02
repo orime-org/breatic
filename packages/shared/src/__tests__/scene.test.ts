@@ -11,7 +11,7 @@ const ASSET = "22222222-2222-4222-8222-222222222222";
 const VALUES = {
   name: "Figure", model: { kind: "builtin", id: "figure" },
   position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
-  locked: false, exists: true,
+  locked: false,
 };
 
 /**
@@ -25,9 +25,9 @@ function schema(name: string): ZodType {
 }
 
 describe("scene value schemas", () => {
-  it("declares exactly the six complete-value editable fields", () => {
+  it("declares exactly the five current-value editable fields", () => {
     expect((shared as unknown as Record<string, unknown>).SCENE_EDITABLE_FIELDS).toEqual([
-      "name", "position", "rotation", "scale", "locked", "exists",
+      "name", "position", "rotation", "scale", "locked",
     ]);
   });
 
@@ -83,12 +83,12 @@ describe("scene value schemas", () => {
   it.each([
     { id: "not-a-uuid" }, { name: "" }, { name: "   " }, { model: {} },
     { position: [0, 0] }, { rotation: [0, 0, 0, 0] }, { scale: [1, 0, 1] },
-    { locked: "false" }, { exists: "true" },
+    { locked: "false" }, { exists: true },
   ])("rejects an invalid object field %j", (invalid) => {
     expect(schema("SceneObjectSchema").safeParse({ id: ID, ...VALUES, ...invalid }).success).toBe(false);
   });
 
-  it.each(["name", "model", "position", "rotation", "scale", "locked", "exists"])(
+  it.each(["name", "model", "position", "rotation", "scale", "locked"])(
     "requires the complete %s field", (field) => {
       const incomplete: Record<string, unknown> = { ...VALUES };
       delete incomplete[field];
