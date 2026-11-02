@@ -14,6 +14,7 @@ export * from "@shared/mini-tools/consumption-identity.js";
 export * from "@shared/mini-tools/video-draft.js";
 export * from "@shared/mini-tools/video-presentation-table.js";
 export * from "@shared/mini-tools/video-presentation-timeline.js";
+export * from "@shared/mini-tools/video-encode-plan.js";
 export * from "@shared/mini-tools/video-plan.js";
 export * from "@shared/mini-tools/canonical-value.js";
 export * from "@shared/mini-tools/execution-record.js";

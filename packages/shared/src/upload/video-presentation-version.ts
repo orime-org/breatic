@@ -12,6 +12,7 @@
 import { z } from 'zod';
 import { hashMiniToolValue } from '@shared/mini-tools/canonical-value.js';
 import { presentationFrameCount, presentationTableSchema, type VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
+import { videoPlanOutput } from '@shared/mini-tools/video-encode-plan.js';
 import { checkPackedGeometry, pixel, rect } from '@shared/upload/video-presentation.js';
 import {
   attempt, compare, editSpan, exactTime, hash, httpsUrl, positiveCount, safeTick, sourceClock, sourceRunsValid, spansValid,
@@ -72,6 +73,9 @@ const originEntry = z.discriminatedUnion('kind', [
 const planShape = z.strictObject({
   display,
   colorMatrix: z.string().min(1),
+  // The source transfer and bit depth decide the output conversion (§3.2 item 2); both enter planSha256.
+  source: z.strictObject({ transfer: z.string().min(1).nullable(), bitDepth: positiveCount }),
+  output: z.strictObject({ toneMap: z.enum(['none', 'sdr-bt709']), framePngBitDepth: z.union([z.literal(8), z.literal(16)]) }),
   policy: z.strictObject({ singleFrameDurationMs: positiveCount, emptyFill: z.enum(['black', 'transparent']) }),
   presentation: presentationTableSchema,
   originMapping: z.strictObject({
@@ -90,7 +94,7 @@ const planShape = z.strictObject({
   // Matroska Info.Duration, kept as a source fact.
   segmentDuration: positiveTime.nullable(),
 });
-/** The presentation plan of §3.2: timing, derived-rule policy values, colour matrix and display geometry, never carrier choices. */
+/** The presentation plan of §3.2: timing, derived-rule policy values, colour matrix, display geometry and the source's output conversion, never carrier choices. */
 export type VideoPresentationPlan = z.infer<typeof planShape>;
 
 /**
@@ -122,13 +126,16 @@ function frameTicks(table: VideoPresentationTable, index: number): [number, numb
 
 /**
  * Check §7.16: the table tiles [0, display.duration); one origin entry per frame, the first real and no two empties adjacent;
- * the first real frame's lead and the last real frame's support and hold agree with their windows; spans are well formed.
+ * the first real frame's lead and the last real frame's support and hold agree with their windows; spans are well formed;
+ * the output conversion is the one the source decides (§3.2).
  * @param value - A structurally valid plan.
  * @returns Whether every invariant holds.
  * @throws {never} Never.
  */
 function planValid(value: VideoPresentationPlan): boolean {
   const { presentation: table, originMapping: map } = value;
+  const output = videoPlanOutput(value.source);
+  if (output.toneMap !== value.output.toneMap || output.framePngBitDepth !== value.output.framePngBitDepth) return false;
   const scale = table.timescale;
   let cursor = 0;
   for (const run of table.runs) {

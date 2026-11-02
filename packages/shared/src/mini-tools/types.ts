@@ -48,6 +48,9 @@ export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal"] 
 /** One of {@link CONTAINER_FAILURES}. */
 export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];
 
+/** The most outputs one container job may write; every container tool's result count stays within it. */
+export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
+
 /** Where a tool runs. */
 export type MiniToolRun =
   | { readonly kind: "planned" }
