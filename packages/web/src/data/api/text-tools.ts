@@ -41,6 +41,8 @@ export type TextStreamEvent =
 export interface TextToolsConfig {
   readonly selectionMaxChars: number;
   readonly contextMaxChars: number;
+  /** How fast the dialog shows the answer, in characters per second. */
+  readonly revealCharsPerSecond: number;
 }
 
 /** The stream's lifecycle callbacks. */

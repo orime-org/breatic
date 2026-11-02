@@ -254,7 +254,18 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
  */
 export async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
   const parsed = await markdownBlocks(markdown);
-  const { blocks: kept, count } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+  return keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+}
+
+/**
+ * What of some parsed blocks may be written into the body: our own media
+ * only, nested no deeper than the body allows.
+ * @param blocks - The parsed blocks.
+ * @param ourPrefix - Where our own media live, or null when not known.
+ * @returns The blocks kept, and how many outside media were left out.
+ */
+export function keepWritable(blocks: readonly WrittenBlock[], ourPrefix: string | null): { blocks: WrittenBlock[]; leftOut: number } {
+  const { blocks: kept, count } = ownMediaOnly(blocks, ourPrefix);
   return { blocks: withinBodyLevels(kept), leftOut: count };
 }
 

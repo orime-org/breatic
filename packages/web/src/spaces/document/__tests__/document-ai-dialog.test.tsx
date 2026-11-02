@@ -47,7 +47,8 @@ let toastError: MockInstance<typeof toast.error>;
 beforeEach(() => {
   stream.mockReset();
   config.mockReset();
-  config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+  // Shown at once unless a case is about the reading pace.
+  config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
   calls = fakeStreams(stream);
   toastError = vi.spyOn(toast, 'error').mockImplementation(() => '');
 });
@@ -188,6 +189,7 @@ describe('while the result streams in', () => {
   });
 
   it('shows what arrived at a reading pace, and offers insert and replace once all of it is on screen', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
     const { call } = await polishing();
     const long = 'word '.repeat(120).trim();
 
@@ -197,7 +199,9 @@ describe('while the result streams in', () => {
     await waitFor(() => {
       expect(shownButtons()).toContain('doc-ai-replace');
     }, { timeout: 5_000 });
-    expect(previewText()).toContain(long);
+    await waitFor(() => {
+      expect(previewText()).toContain(long);
+    });
   });
 
   it('shows each piece as it arrives and leaves the body as it was', async () => {
@@ -419,6 +423,36 @@ describe('how long a session lives', () => {
     expect(shownButtons()).toContain('doc-ai-replace');
   });
 
+  it('keeps drawing the words that come after its tab was hidden and shown again', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['Before']);
+    await waitFor(() => {
+      expect(previewText()).toContain('Before');
+    });
+    // Hidden while a parse is still waiting its turn.
+    await streams(calls[0]!, [' mid']);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    act(() => {
+      setHidden(true);
+    });
+    act(() => {
+      setHidden(false);
+    });
+    await streams(calls[0]!, [' after']);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Before mid after');
+    });
+  });
+
   it('ends with the editor, aborting its request', async () => {
     const { editor, call } = await polishing();
 
@@ -531,6 +565,21 @@ describe('the custom instruction', () => {
     expect(stream).not.toHaveBeenCalled();
   });
 
+  it('an Escape that belongs to the input method leaves the dialog and the instruction', async () => {
+    const box = await writing('Make it rhyme');
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 27, isComposing: true });
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 229 });
+      fireEvent.compositionStart(box);
+      fireEvent.compositionEnd(box);
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 27 });
+    });
+
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect((screen.getByTestId('doc-ai-instructions') as HTMLTextAreaElement).value).toBe('Make it rhyme');
+  });
+
   it('an Enter that belongs to the input method starts nothing', async () => {
     const box = await writing('Make it rhyme');
 
@@ -615,6 +664,19 @@ describe('when the original words or their block go (A7)', () => {
 });
 
 describe('the preview', () => {
+  it('leaves outside media out, as insert and replace do, and never loads them', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['![a cat](https://elsewhere.example/cat.png)\n\nA cat.'], true);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('A cat.');
+    });
+    const preview = screen.getByTestId('doc-ai-preview');
+    expect(preview.querySelector('img[src*="elsewhere.example"]')).toBeNull();
+    expect(preview.innerHTML).not.toContain('elsewhere.example');
+  });
+
   it('draws the result as the body draws blocks, inside copies of the body\'s own elements', async () => {
     const { call } = await polishing();
 

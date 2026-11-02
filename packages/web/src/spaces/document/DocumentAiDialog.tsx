@@ -41,6 +41,7 @@ import {
 import { AllSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { RotateCcw, Sparkles, Square, X } from 'lucide-react';
+import { useSmoothText } from 'use-smooth-text';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -63,7 +64,7 @@ import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-en
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { AI_TONES, DocumentAiLaunchContext, type AiLaunch } from '@web/spaces/document/document-ai-context';
+import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape, onAiRangeChange } from '@web/spaces/document/document-ai-range';
 import {
@@ -80,7 +81,8 @@ import { insertAiResult, replaceAiResult, type AiWriteResult } from '@web/spaces
 import { selectionMarkdown } from '@web/spaces/document/document-blocks-read';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { blockById, keepWritable, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { ourMediaPrefixReady, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -100,6 +102,8 @@ interface Opened {
   readonly insertBlockId: string | null;
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
+  /** How fast the answer is shown, in characters per second. */
+  readonly revealCharsPerSecond: number;
 }
 
 /**
@@ -145,10 +149,8 @@ function titleOf(command: AiCommand, t: (key: string) => string): string {
     case 'translate': {
       return `${t('spaces.document.commands.ai_translate')} · ${langFor(command.language).nativeName}`;
     }
-    case 'tone': {
-      const tone = AI_TONES.find((one) => one.id === command.style);
-      return `${t('spaces.document.commands.ai_tone')} · ${tone === undefined ? command.style : t(tone.labelKey)}`;
-    }
+    case 'tone':
+      return `${t('spaces.document.commands.ai_tone')} · ${t(TONE_LABEL_KEYS[command.style])}`;
   }
 }
 
@@ -304,6 +306,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       const next: Opened = {
         key: openings.current,
         base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, budgets.contextMaxChars) },
+        revealCharsPerSecond: budgets.revealCharsPerSecond,
         insertBlockId: aiInsertBlockId(view.state),
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
@@ -427,9 +430,21 @@ function AiPanel({
   dispatch,
 }: AiPanelProps): React.JSX.Element {
   const t = useTranslation();
+  // The model sends its text in bursts; the reader sees it at a reading pace
+  // that speeds up to catch any backlog within about a second.
+  const { text: shown, isComplete, flush } = useSmoothText(session.result, {
+    done: session.state !== 'streaming',
+    charsPerSecond: opened.revealCharsPerSecond,
+    granularity: 'word',
+  });
+  // Stop means stop: what has arrived is shown at once.
+  React.useEffect(() => {
+    if (session.state === 'stopped') flush();
+  }, [session.state, flush]);
   const buttons = aiDialogButtons({
     state: session.state,
     resultEmpty: session.result.trim() === '',
+    revealed: isComplete,
     rangePresent,
     insertBlockPresent,
   });
@@ -572,7 +587,12 @@ function AiPanel({
         ) : (
           <>
             {session.instructions !== null && <InstructionLine text={session.instructions} />}
-            <Preview editor={editor} session={session} />
+            <Preview
+              editor={editor}
+              text={shown}
+              moving={session.state === 'streaming' || !isComplete}
+              waiting={session.state === 'streaming' && shown.trim() === ''}
+            />
           </>
         )}
         {session.state !== 'composing' && (
@@ -727,6 +747,12 @@ function Composer({
           composition.mark();
         }}
         onKeyDown={(event) => {
+          // The input method's own Escape cancels its candidates; it is not
+          // the reader asking to close the dialog.
+          if (event.key === 'Escape' && keyBelongsToInputMethod(event.nativeEvent, composition)) {
+            event.stopPropagation();
+            return;
+          }
           if (event.key !== 'Enter' || event.shiftKey) return;
           if (keyBelongsToInputMethod(event.nativeEvent, composition)) return;
           event.preventDefault();
@@ -763,10 +789,22 @@ function InstructionLine({ text }: { text: string }): React.JSX.Element {
  * The result, drawn the way the body draws blocks.
  * @param props - The preview.
  * @param props.editor - The document editor, whose surroundings the preview copies.
- * @param props.session - The session, holding the result.
+ * @param props.text - The result as far as it is shown yet.
+ * @param props.moving - Whether the text is still growing.
+ * @param props.waiting - Whether no words have come yet.
  * @returns The preview.
  */
-function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession }): React.JSX.Element {
+function Preview({
+  editor,
+  text,
+  moving,
+  waiting,
+}: {
+  editor: ViewedEditor;
+  text: string;
+  moving: boolean;
+  waiting: boolean;
+}): React.JSX.Element {
   // One parser for the session, made and taken down with the panel.
   const [parser, setParser] = React.useState<ViewedEditor | null>(null);
   React.useEffect(() => {
@@ -778,14 +816,27 @@ function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession
     };
   }, []);
 
+  // Outside media never land in the body (insert and replace leave them
+  // out), so they are not drawn or fetched here either.
+  const [ourPrefix, setOurPrefix] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    void ourMediaPrefixReady().then((prefix) => {
+      if (live) setOurPrefix(prefix);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const [html, setHtml] = React.useState('');
-  const latest = React.useRef(session.result);
-  latest.current = session.result;
+  const latest = React.useRef(text);
+  latest.current = text;
   const timer = React.useRef<number | null>(null);
   React.useEffect(() => () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
   }, []);
-  const streaming = session.state === 'streaming';
+  const streaming = moving;
   React.useEffect(() => {
     if (parser === null) return;
     /**
@@ -794,7 +845,8 @@ function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession
     const parse = (): void => {
       timer.current = null;
       const markdown = latest.current;
-      setHtml(markdown.trim() === '' ? '' : parser.blocksToFullHTML(parser.tryParseMarkdownToBlocks(markdown) as never));
+      const kept = markdown.trim() === '' ? [] : keepWritable(parser.tryParseMarkdownToBlocks(markdown) as WrittenBlock[], ourPrefix).blocks;
+      setHtml(kept.length === 0 ? '' : parser.blocksToFullHTML(kept as never));
     };
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
@@ -804,7 +856,7 @@ function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.
     timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
-  }, [parser, session.result, streaming]);
+  }, [parser, text, streaming, ourPrefix]);
 
   const host = React.useRef<HTMLDivElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);
@@ -826,8 +878,6 @@ function Preview({ editor, session }: { editor: ViewedEditor; session: AiSession
     if (streaming) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [html, editor, streaming]);
 
-  // Until the first words, the Agent's waiting mark stands where they will.
-  const waiting = streaming && session.result.trim() === '';
   return (
     <ScrollArea viewportRef={scroller} className='min-h-16' viewportClassName='max-h-56 px-3 py-2.5'>
       {waiting && <WaitingDot />}

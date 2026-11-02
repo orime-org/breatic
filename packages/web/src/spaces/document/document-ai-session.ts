@@ -187,6 +187,8 @@ export interface AiDialogButtons {
 export interface AiButtonInputs {
   readonly state: AiSessionState;
   readonly resultEmpty: boolean;
+  /** Whether all of the result is on screen; it is revealed at a reading pace. */
+  readonly revealed: boolean;
   readonly rangePresent: boolean;
   readonly insertBlockPresent: boolean;
 }
@@ -196,13 +198,14 @@ export interface AiButtonInputs {
  * @param inputs - What decides them.
  * @param inputs.state - The session's state.
  * @param inputs.resultEmpty - Whether its result holds only blanks.
+ * @param inputs.revealed - Whether all of the result is on screen.
  * @param inputs.rangePresent - Whether the original range is on its words.
  * @param inputs.insertBlockPresent - Whether the insert block is in the body.
  * @returns The buttons.
  */
-export function aiDialogButtons({ state, resultEmpty, rangePresent, insertBlockPresent }: AiButtonInputs): AiDialogButtons {
+export function aiDialogButtons({ state, resultEmpty, revealed, rangePresent, insertBlockPresent }: AiButtonInputs): AiDialogButtons {
   const finished = state === 'stopped' || state === 'done';
-  const writable = finished && !resultEmpty;
+  const writable = finished && !resultEmpty && revealed;
   // The block gone says more than the words gone: neither can be written.
   const replaceReason: AiButtonReason | null = rangePresent ? null : insertBlockPresent ? 'rangeGone' : 'insertBlockGone';
   return {

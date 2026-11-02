@@ -31,10 +31,10 @@ import {
   BubbleMenuRule,
   BubbleMenuSubmenuRow,
 } from '@web/spaces/document/document-bubble-rows';
-import { TEXT_TOOL_LANGUAGES } from '@breatic/shared';
+import { TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from '@breatic/shared';
 import { langFor } from '@web/features/preferences/supported-langs';
 import type { AiCommand } from '@web/spaces/document/document-ai-session';
-import { AI_TONES, useDocumentAiLaunch } from '@web/spaces/document/document-ai-context';
+import { TONE_LABEL_KEYS, useDocumentAiLaunch } from '@web/spaces/document/document-ai-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
@@ -589,7 +589,7 @@ function aiSubItems(which: 'translate' | 'tone', t: (key: string) => string): Ai
   if (which === 'translate') {
     return TEXT_TOOL_LANGUAGES.map((code) => ({ id: code, label: langFor(code).nativeName, command: { id: 'translate', language: code } }));
   }
-  return AI_TONES.map((tone) => ({ id: tone.id, label: t(tone.labelKey), command: { id: 'tone', style: tone.id } }));
+  return TEXT_TOOL_TONES.map((tone) => ({ id: tone, label: t(TONE_LABEL_KEYS[tone]), command: { id: 'tone', style: tone } }));
 }
 
 /**
