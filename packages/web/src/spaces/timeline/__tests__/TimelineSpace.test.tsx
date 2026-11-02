@@ -1049,7 +1049,7 @@ describe('TimelineSpace clip actions', () => {
     await waitFor(() => expect(screen.getByTestId('timeline-clip-' + copy?.id)).toHaveAttribute('aria-pressed', 'true'));
   });
 
-  it.each([['toolbar', null], ['Delete', 'Delete'], ['Backspace', 'Backspace']] as const)('deletes from the %s and keeps the source', async (_name, key) => {
+  it.each([['toolbar', null], ['Delete', 'Delete'], ['Backspace', 'Backspace']] as const)('deletes from the %s and drops the source no clip references any more (inner#1708 L2)', async (_name, key) => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
     showTimeline();
     const clip = await screen.findByTestId('timeline-clip-' + CLIP.id);
@@ -1057,7 +1057,7 @@ describe('TimelineSpace clip actions', () => {
     if (key === null) fireEvent.click(screen.getByTestId('timeline-delete'));
     else press(clip, key);
     await waitFor(() => expect(layout().clips[CLIP.id]).toBe(undefined));
-    expect(layout().sources[SOURCE.id]).toEqual(SOURCE);
+    expect(layout().sources).toEqual({});
     expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
   });
 
@@ -1332,7 +1332,8 @@ describe('TimelineSpace add dialog targets', () => {
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
     fireEvent.click(screen.getByTestId('timeline-undo'));
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(0));
-    expect(Object.values(layout().sources)).toHaveLength(1);
+    // The addition wrote its source, so undoing it removes that source too (inner#1708 L5).
+    expect(Object.values(layout().sources)).toHaveLength(0);
   });
 });
 

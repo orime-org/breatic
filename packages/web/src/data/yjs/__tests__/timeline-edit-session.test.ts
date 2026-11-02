@@ -19,7 +19,7 @@ import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import {
-  MAIN, OFF, ON, SOURCE, cid, clip, connect, seededDoc, starts, timeline, track,
+  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, cid, clip, connect, seededDoc, starts, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const A = cid(1);
@@ -180,7 +180,7 @@ describe('Timeline edit session undo steps', () => {
     expect(session.getSnapshot()).toMatchObject({ canUndo: true, canRedo: false });
   });
 
-  it('removes an added clip on undo but keeps its source for other copies', () => {
+  it('removes an added clip and the source it added on undo (inner#1708 L5)', () => {
     const { mine, session } = pair();
     const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', assetId: '20000000-0000-4000-8000-000000000077' };
     const added = clip(cid(40), 'v2', 200, 30, { sourceId: fresh.id });
@@ -188,7 +188,22 @@ describe('Timeline edit session undo steps', () => {
     session.undo();
     const after = readTimelineDocument(mine);
     expect(after.clips[added.id]).toBe(undefined);
-    expect(after.sources[fresh.id]).toEqual(fresh);
+    expect(after.sources[fresh.id]).toBe(undefined);
+  });
+
+  it('keeps a source on undo while another copy still references it (inner#1708 L5)', () => {
+    const { mine, session } = pair();
+    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000078', assetId: '20000000-0000-4000-8000-000000000078' };
+    const first = clip(cid(41), 'v2', 200, 30, { sourceId: fresh.id });
+    const second = clip(cid(42), 'v2', 300, 30, { sourceId: fresh.id });
+    expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: first }, placement: OFF }).ok).toBe(true);
+    expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: second }, placement: OFF }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[second.id]).toBe(undefined);
+    expect(readTimelineDocument(mine).sources[fresh.id]).toEqual(fresh);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[first.id]).toBe(undefined);
+    expect(readTimelineDocument(mine).sources[fresh.id]).toBe(undefined);
   });
 
   it('caps the history at 50 steps, dropping the oldest', () => {
@@ -453,5 +468,231 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
     sync(mine, peer, mineFirst);
     expectComplete(mine, ADDED);
     expectComplete(peer, ADDED);
+  });
+});
+
+describe('Timeline edit session undoes and redoes sources with their clips (inner#1708 L5-L8)', () => {
+  /** The source X and Y share in these scenarios. */
+  const S = SHORT_SOURCE;
+  const M = cid(80);
+  const XS = cid(81);
+  const YS = cid(82);
+  const ADDED = cid(83);
+  const ELSEWHERE = Symbol('untracked-edit');
+  const remove = (clipId: string): TimelineEditCommand => ({ operation: 'delete', parameters: { clipId }, placement: OFF });
+
+  /**
+   * Two replicas in sync, each with its own session: a main clip of SOURCE, and X and Y on v2 sharing S.
+   * @param tracks - The tracks, main and v2 by default.
+   * @returns Both replicas and their sessions.
+   * @throws {Error} When seeding fails.
+   */
+  function shared(tracks = [track(MAIN, 0), track('v2', 1)]): { a: Y.Doc; b: Y.Doc; sessionA: TimelineEditSession; sessionB: TimelineEditSession } {
+    const a = keep(seededDoc(timeline([clip(M, MAIN, 0, 48), clip(XS, 'v2', 0, 20, { sourceId: S.id }), clip(YS, 'v2', 100, 20, { sourceId: S.id })], tracks, [SOURCE, S])));
+    const b = keep(new Y.Doc());
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    return { a, b, sessionA: sessionOf(a, NAME), sessionB: sessionOf(b, PEER_NAME) };
+  }
+
+  /**
+   * Exchange every update, the second replica receiving first, as the reference probe does.
+   * @param a - One replica.
+   * @param b - The other replica.
+   * @throws {never} Never.
+   */
+  function exchange(a: Y.Doc, b: Y.Doc): void {
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
+  }
+
+  /**
+   * Whether a replica stores S.
+   * @param doc - The replica.
+   * @returns True when S is in its sources.
+   * @throws {never} Never.
+   */
+  function holdsS(doc: Y.Doc): boolean {
+    return doc.getMap('sources').has(S.id);
+  }
+
+  /**
+   * Assert a replica reads, holds S unchanged and every clip names a stored source.
+   * @param doc - The replica.
+   * @param present - Clips that must exist.
+   * @param absent - Clips that must not exist.
+   * @throws {Error} When a check fails.
+   */
+  function expectResolved(doc: Y.Doc, present: string[], absent: string[] = []): void {
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    const document = readTimelineDocument(doc);
+    for (const id of present) expect(document.clips[id], `clip ${id}`).toMatchObject({ id, kind: 'video' });
+    for (const id of absent) expect(document.clips[id], `clip ${id}`).toBe(undefined);
+    for (const item of Object.values(document.clips)) expect(document.sources[item.sourceId], `source of ${item.id}`).toBeDefined();
+    if (present.some((id) => document.clips[id]?.sourceId === S.id)) expect(document.sources[S.id]).toEqual(S);
+  }
+
+  /**
+   * Assert a session's undo and redo availability.
+   * @param session - The session.
+   * @param canUndo - Expected undo availability.
+   * @param canRedo - Expected redo availability.
+   * @throws {Error} When either differs.
+   */
+  function expectStacks(session: TimelineEditSession, canUndo: boolean, canRedo: boolean): void {
+    expect(session.getSnapshot()).toMatchObject({ canUndo, canRedo });
+  }
+
+  it('restores the clip and its source on undo and deletes both again on redo (L5)', () => {
+    const { a, b, sessionA } = shared();
+    expect(applyTimelineEdit(a, remove(YS), ELSEWHERE).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionA.edit(remove(XS)).ok).toBe(true);
+    exchange(a, b);
+    expect(holdsS(a)).toBe(false);
+    expect(holdsS(b)).toBe(false);
+    expectStacks(sessionA, true, false);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS]);
+    expect(readTimelineDocument(b).sources[S.id]).toEqual(S);
+    expectStacks(sessionA, false, true);
+    sessionA.redo();
+    exchange(a, b);
+    for (const doc of [a, b]) { expectResolved(doc, [], [XS]); expect(holdsS(doc)).toBe(false); }
+    expectStacks(sessionA, true, false);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS]);
+    expectStacks(sessionA, false, true);
+  });
+
+  it('(a) keeps the source for a clip the peer revives while my edit sweeps it (L6, L8)', () => {
+    const { a, b, sessionA, sessionB } = shared();
+    expect(sessionB.edit(remove(YS)).ok).toBe(true);
+    exchange(a, b);
+    sessionB.undo();
+    expect(sessionA.edit(remove(XS)).ok).toBe(true);
+    expect(holdsS(a), 'my delete of the last clip I see sweeps S').toBe(false);
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [YS], [XS]);
+    expectStacks(sessionA, true, false);
+    expectStacks(sessionB, false, true);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS, YS]);
+    expectStacks(sessionA, false, true);
+  });
+
+  it('(b) keeps the source for the peer\'s revived clip when I redo the delete that swept it (L6, L8)', () => {
+    const { a, b, sessionA, sessionB } = shared();
+    expect(sessionB.edit(remove(YS)).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionA.edit(remove(XS)).ok).toBe(true);
+    expect(holdsS(a)).toBe(false);
+    exchange(a, b);
+    sessionA.undo();
+    exchange(a, b);
+    sessionB.undo();
+    exchange(a, b);
+    sessionA.redo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [YS], [XS]);
+    expectStacks(sessionA, true, false);
+    expectStacks(sessionB, false, true);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS, YS]);
+  });
+
+  it('(c) keeps the source when I redo a step that swept it as an orphan after the peer revived a clip (L6, L8)', () => {
+    const { a, b, sessionA, sessionB } = shared([track(MAIN, 0), track('v2', 1), track('v3', 2)]);
+    expect(applyTimelineEdit(a, remove(XS), ELSEWHERE).ok).toBe(true);
+    expect(sessionB.edit(remove(YS)).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionA.edit({ operation: 'delete_track', parameters: { trackId: 'v3' }, placement: OFF }).ok).toBe(true);
+    expect(holdsS(a), 'my unrelated edit sweeps the orphan S').toBe(false);
+    exchange(a, b);
+    sessionA.undo();
+    exchange(a, b);
+    sessionB.undo();
+    exchange(a, b);
+    sessionA.redo();
+    exchange(a, b);
+    for (const doc of [a, b]) {
+      expectResolved(doc, [YS], [XS]);
+      expect(readTimelineDocument(doc).tracks.v3).toBe(undefined);
+    }
+    expectStacks(sessionA, true, false);
+    expectStacks(sessionB, false, true);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expect(readTimelineDocument(doc).tracks.v3).toEqual(track('v3', 2));
+  });
+
+  it('(d) keeps the source the peer\'s revived clip needs when I undo an addition that re-set it (L6, L8)', () => {
+    const { a, b, sessionA, sessionB } = shared();
+    expect(applyTimelineEdit(a, remove(XS), ELSEWHERE).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionB.edit(remove(YS)).ok).toBe(true);
+    expect(holdsS(b), 'the peer sweeps S with its last clip').toBe(false);
+    exchange(a, b);
+    expect(sessionA.edit({ operation: 'add_video', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
+    exchange(a, b);
+    sessionB.undo();
+    exchange(a, b);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [YS], [ADDED, XS]);
+    sessionA.redo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [YS, ADDED], [XS]);
+    expectStacks(sessionA, true, false);
+    expectStacks(sessionB, false, true);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [YS], [ADDED]);
+  });
+
+  it('sweeps on redo so sources match the clips, and restores both on the next undo (L7, L8)', () => {
+    const { a, b, sessionA } = shared();
+    expect(applyTimelineEdit(a, remove(YS), ELSEWHERE).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionA.edit(remove(XS)).ok).toBe(true);
+    exchange(a, b);
+    expect(holdsS(a)).toBe(false);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS]);
+    sessionA.redo();
+    exchange(a, b);
+    for (const doc of [a, b]) {
+      expect(holdsS(doc)).toBe(false);
+      expect(Object.keys(readTimelineDocument(doc).sources)).toEqual([SOURCE.id]);
+    }
+    expectStacks(sessionA, true, false);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS]);
+    expectStacks(sessionA, false, true);
+  });
+
+  it('keeps the source for a clip the peer adds from it while I redo the delete that sweeps it (L7, L8)', () => {
+    const { a, b, sessionA, sessionB } = shared();
+    expect(applyTimelineEdit(a, remove(YS), ELSEWHERE).ok).toBe(true);
+    exchange(a, b);
+    expect(sessionA.edit(remove(XS)).ok).toBe(true);
+    exchange(a, b);
+    expect(holdsS(a)).toBe(false);
+    sessionA.undo();
+    exchange(a, b);
+    sessionA.redo();
+    expect(sessionB.edit({ operation: 'add_video', parameters: { source: S, clip: clip(ADDED, 'v2', 300, 20, { sourceId: S.id }) }, placement: OFF }).ok).toBe(true);
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [ADDED], [XS]);
+    expectStacks(sessionA, true, false);
+    expectStacks(sessionB, true, false);
+    sessionA.undo();
+    exchange(a, b);
+    for (const doc of [a, b]) expectResolved(doc, [XS, ADDED]);
   });
 });
