@@ -391,7 +391,11 @@ describe('closed', () => {
 });
 
 describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
-  const all = { resultEmpty: false, rangePresent: true, insertBlockPresent: true };
+  const all = { resultEmpty: false, revealed: true, rangePresent: true, insertBlockPresent: true };
+
+  it.each(['stopped', 'done'] as const)('%s, with the result not all on screen yet: no insert or replace', (state) => {
+    expect(aiDialogButtons({ state, ...all, revealed: false })).toEqual({ stop: false, retry: true, insert: null, replace: null });
+  });
 
   it('composing: close only', () => {
     expect(aiDialogButtons({ state: 'composing', ...all })).toEqual({ stop: false, retry: false, insert: null, replace: null });
@@ -444,15 +448,15 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
     expect(buttons.replace).toEqual({ disabled: false, reason: null });
   });
 
-  it('is decided by its four inputs alone, for every combination', () => {
+  it('is decided by its five inputs alone, for every combination', () => {
     const states: AiSessionState[] = ['composing', 'streaming', 'stopped', 'done', 'failed', 'closed'];
     fc.assert(
-      fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, rangePresent, insertBlockPresent) => {
-        const buttons = aiDialogButtons({ state, resultEmpty, rangePresent, insertBlockPresent });
+      fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, revealed, rangePresent, insertBlockPresent) => {
+        const buttons = aiDialogButtons({ state, resultEmpty, revealed, rangePresent, insertBlockPresent });
         const finished = state === 'stopped' || state === 'done';
         expect(buttons.stop).toBe(state === 'streaming');
         expect(buttons.retry).toBe(finished || state === 'failed');
-        const writable = finished && !resultEmpty;
+        const writable = finished && !resultEmpty && revealed;
         expect(buttons.insert !== null).toBe(writable);
         expect(buttons.replace !== null).toBe(writable);
         if (writable) {

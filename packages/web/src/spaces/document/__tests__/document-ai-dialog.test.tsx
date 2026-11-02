@@ -47,7 +47,7 @@ let toastError: MockInstance<typeof toast.error>;
 beforeEach(() => {
   stream.mockReset();
   config.mockReset();
-  config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000 });
+  config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
   calls = fakeStreams(stream);
   toastError = vi.spyOn(toast, 'error').mockImplementation(() => '');
 });
@@ -185,6 +185,19 @@ describe('while the result streams in', () => {
       expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
     });
     expect(screen.getByTestId('doc-ai-dialog').querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
+  it('shows what arrived at a reading pace, and offers insert and replace once all of it is on screen', async () => {
+    const { call } = await polishing();
+    const long = 'word '.repeat(120).trim();
+
+    await streams(call, [long], true);
+
+    expect(shownButtons()).not.toContain('doc-ai-replace');
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    }, { timeout: 5_000 });
+    expect(previewText()).toContain(long);
   });
 
   it('shows each piece as it arrives and leaves the body as it was', async () => {
