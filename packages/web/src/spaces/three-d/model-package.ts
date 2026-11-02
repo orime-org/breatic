@@ -5,7 +5,7 @@ import { strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js'
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 import type { LoadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
@@ -131,12 +131,13 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
     if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);
   }
   const loaded = loadedResources(json, support);
+  const everyBrowser = loadedResourcesInEveryBrowser(json);
   // GLTFLoader reads a used texture's image without checking it exists.
-  const imageless = loaded.textures.find((texture) => texture.image === undefined);
+  const imageless = everyBrowser.flatMap((resources) => resources.textures).find((texture) => texture.image === undefined);
   if (imageless) throw new ModelImportError('invalid', 'Model texture names no image', { detail: `textures[${imageless.texture}]` });
-  const missing = loadedFilePaths(json, entry, loaded).filter((path) => !files.has(path));
-  if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${[...new Set(missing)].join(', ')}`,
-    { detail: '', info: { entries: [], paths: [...files.keys()], missing: [...new Set(missing)] } });
+  const missing = [...new Set(everyBrowser.flatMap((resources) => loadedFilePaths(json, entry, resources)))].filter((path) => !files.has(path));
+  if (missing.length) throw new ModelImportError('missing', `Missing model resources: ${missing.join(', ')}`,
+    { detail: '', info: { entries: [], paths: [...files.keys()], missing } });
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const index of loaded.buffers) {
     const buffer = json.buffers?.[index];
@@ -153,6 +154,16 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
 }
 
 /**
+ * The URI GLTFLoader reads an image from: an image with a bufferView is read from that view, never its URI.
+ * @param image - The image declaration.
+ * @returns The URI, or undefined when the image is read from a bufferView or declares no URI.
+ * @throws {never} Never.
+ */
+export function loadedImageUri(image: NonNullable<GltfDocument['images']>[number] | undefined): string | undefined {
+  return image?.bufferView === undefined ? image?.uri : undefined;
+}
+
+/**
  * Name the files GLTFLoader reads for the loaded buffers and images; an image with a bufferView is read from that view, never its URI.
  * @param json - The checked glTF document.
  * @param entry - The model entry, which relative URIs resolve against.
@@ -162,7 +173,7 @@ export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuf
  */
 export function loadedFilePaths(json: GltfDocument, entry: string, loaded: LoadedResources): string[] {
   const uris = [...[...loaded.buffers].map((buffer) => json.buffers?.[buffer]?.uri),
-    ...[...loaded.images].map((image) => json.images?.[image]?.bufferView === undefined ? json.images?.[image]?.uri : undefined)];
+    ...[...loaded.images].map((image) => loadedImageUri(json.images?.[image]))];
   return [...new Set(uris.flatMap((uri) => uri === undefined || uri.startsWith('data:') ? [] : [resolveModelDependency(entry, uri)]))];
 }
 

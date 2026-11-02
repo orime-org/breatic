@@ -4,9 +4,9 @@
 import { imageDimensionsFromData } from 'image-dimensions';
 import type { SceneImportLimits } from '@breatic/shared';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
+import { loadedImageUri, readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import { loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 
 const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -51,9 +51,9 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
  */
 function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
   const { location } = read;
-  // GLTFLoader.loadImageSource reads an image's bufferView whenever it has one, and its URI only otherwise.
-  const bytes = image.bufferView !== undefined ? readImageView(read, image.bufferView)
-    : image.uri !== undefined ? readModelResource(read.model, image.uri, read.location, read.decoded) : undefined;
+  const uri = loadedImageUri(image);
+  const bytes = uri !== undefined ? readModelResource(read.model, uri, read.location, read.decoded)
+    : image.bufferView !== undefined ? readImageView(read, image.bufferView) : undefined;
   if (!bytes) throw new ModelImportError('invalid', 'Model image has no source', { detail: location });
   let dimensions: { width: number; height: number } | undefined;
   if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
@@ -70,7 +70,7 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
 }
 
 /**
- * Check the dimensions of the images GLTFLoader decodes, before the browser decodes their pixels.
+ * Check the dimensions of the images GLTFLoader decodes in any browser that can open the model, before the browser decodes their pixels.
  * A failure names the image by its file path, or by its index when the image is embedded.
  * @param model - Checked original glTF resources.
  * @param limits - Configured and device-adjusted texture dimension budget.
@@ -79,7 +79,7 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
 export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits): void {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   // loadedResources lists only images that exist.
-  for (const index of loadedResources(model.json, model.support).images) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
+  for (const index of new Set(loadedResourcesInEveryBrowser(model.json).flatMap((resources) => [...resources.images]))) checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], limits);
 }
 
 /**
@@ -90,6 +90,6 @@ export function validateModelTextureMetadata(model: ModelPackage, limits: SceneI
  * @throws {ModelImportError} When the image URI is malformed.
  */
 export function imageLocation(model: ModelPackage, index: number): string {
-  const uri = model.json.images?.[index]?.uri;
-  return uri !== undefined && !uri.startsWith('data:') && model.json.images?.[index]?.bufferView === undefined ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
+  const uri = loadedImageUri(model.json.images?.[index]);
+  return uri !== undefined && !uri.startsWith('data:') ? resolveModelDependency(model.entry, uri) : `images[${index}]`;
 }

@@ -226,3 +226,19 @@ export function loadedResources(json: GltfDocument, support: TextureFormatSuppor
   }
   return { textures, images, buffers, basisu, draco: dracoUsed };
 }
+
+/**
+ * Derive the resources GLTFLoader loads in every browser that can open the model: each combination of WebP and AVIF support,
+ * except those lacking a format the model lists in extensionsRequired, which GLTFLoader refuses outright.
+ * A registered package is shared with collaborators whose browsers may decode a texture from a different source than the importer's.
+ * @param json - The checked glTF document.
+ * @returns The loaded resources for each such browser.
+ * @throws {never} Never.
+ */
+export function loadedResourcesInEveryBrowser(json: GltfDocument): LoadedResources[] {
+  const required = new Set(json.extensionsRequired ?? []);
+  return [false, true].flatMap((webp) => [false, true].map((avif) => ({ webp, avif })))
+    .filter((support) => (support.webp || !required.has('EXT_texture_webp')) && (support.avif || !required.has('EXT_texture_avif')))
+    .map((support) => loadedResources(json, support));
+}
+

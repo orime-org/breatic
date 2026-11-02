@@ -148,6 +148,18 @@ describe('model texture metadata dimensions before decoding', () => {
     expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: edge - 1 })).toThrow(Error);
   });
 
+  it('checks the fallback image of a texture this browser decodes from AVIF', () => {
+    const source = model({
+      extensionsUsed: ['EXT_texture_avif'],
+      images: [{ uri: 'large.png' }, { uri: 'small.avif' }],
+      textures: [{ source: 0, extensions: { EXT_texture_avif: { source: 1 } } }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+    }, [['models/large.png', png(64, 64)], ['models/small.avif', png(16, 16)]]);
+
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 64 })).not.toThrow();
+    expect(() => validateModelTextureMetadata(source, { ...IMPORT_LIMITS, maxTextureEdge: 63 })).toThrow('dimension budget');
+  });
+
   it('checks dimensions inside image data URIs', () => {
     const source = model({ images: [{ uri: dataUri(png(32, 16), 'image/png') }] });
 

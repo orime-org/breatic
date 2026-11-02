@@ -356,4 +356,14 @@ describe('model import dialog footer during checks and after refusals (inner#169
     await act(async () => { fireEvent.click(confirm); });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
   });
+
+  it('keeps focus in the name field when clearing the name disables Import to scene', async () => {
+    const { controller } = await readyImport();
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    const name = screen.getByRole('textbox', { name: 'Model name' });
+    name.focus();
+    await act(async () => { fireEvent.change(name, { target: { value: '' } }); });
+    expect(screen.getByRole('button', { name: 'Import to scene' })).toBeDisabled();
+    expect(document.activeElement).toBe(name);
+  });
 });

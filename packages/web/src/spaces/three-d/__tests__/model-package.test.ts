@@ -429,3 +429,42 @@ describe('model-package names a damaged archive entry (inner#1690)', () => {
     expect(() => unpackModelArchive(bytes, IMPORT_LIMITS)).toThrow(expect.objectContaining({ code: 'invalid', detail: 'm/a.bin' }));
   });
 });
+
+describe('texture files a collaborator browser loads (inner#1690)', () => {
+  /**
+   * A one-triangle glTF whose single texture names an AVIF source extension.
+   * @param texture - The texture declaration.
+   * @param required - Whether EXT_texture_avif is listed in extensionsRequired.
+   * @returns The encoded glTF entry.
+   * @throws {never} Never.
+   */
+  function avifModel(texture: Record<string, unknown>, required = false): Uint8Array<ArrayBuffer> {
+    return textBytes(JSON.stringify({
+      asset: { version: '2.0' }, extensionsUsed: ['EXT_texture_avif'], ...(required && { extensionsRequired: ['EXT_texture_avif'] }),
+      scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+      buffers: [{ uri: 'mesh.bin', byteLength: GEOMETRY.byteLength }], bufferViews: [{ buffer: 0, byteLength: GEOMETRY.byteLength }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+      textures: [texture], images: [{ uri: 'color.png' }, { uri: 'color.avif' }],
+    }));
+  }
+  const fallback = { source: 0, extensions: { EXT_texture_avif: { source: 1 } } };
+
+  it('requires the fallback image on a browser that decodes AVIF', () => {
+    const files = new Map([['scene.gltf', avifModel(fallback)], ['mesh.bin', Uint8Array.from(GEOMETRY)], ['color.avif', new Uint8Array(8)]]);
+    expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: true })).toThrow('color.png');
+  });
+
+  it('requires the AVIF image on a browser that cannot decode it', () => {
+    const files = new Map([['scene.gltf', avifModel(fallback)], ['mesh.bin', Uint8Array.from(GEOMETRY)], ['color.png', new Uint8Array(8)]]);
+    expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: false })).toThrow('color.avif');
+  });
+
+  it('accepts a required AVIF texture without a fallback source', () => {
+    const files = new Map([['scene.gltf', avifModel({ extensions: { EXT_texture_avif: { source: 1 } } }, true)],
+      ['mesh.bin', Uint8Array.from(GEOMETRY)], ['color.avif', new Uint8Array(8)]]);
+    expect(inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: true }).entry).toBe('scene.gltf');
+  });
+});
+
