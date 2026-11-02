@@ -21,7 +21,7 @@ import type { JSONValue, ToolResultPart } from "ai";
 import { NOTHING_SAID_WHY, stripDsml } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
-import { ASK_USER } from "@breatic/domain";
+import { AWAITS_READER } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -38,13 +38,14 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * @returns True when it reaches the model.
  */
 function reachesTheModel(part: ToolPart): boolean {
-  // A questionnaire goes back as the call and the reader's answer once it has
-  // one (inner#1542), and not while it still waits: a call without its result
-  // makes the SDK refuse the request. A question turned away goes back as its
-  // refusal, which is how the model learns it was not asked. A question from
-  // before the card is in the reply as words, written there by the turn, so
-  // sending the call too would put it in the context twice.
-  if (part.toolName === ASK_USER) return part.failure?.kind === "turned_away" || isAnswer(part);
+  // A card -- a questionnaire (inner#1542) or a request to read Spaces
+  // (inner#1552) -- goes back as the call and the reader's answer once it has
+  // one, and not while it still waits: a call without its result makes the
+  // SDK refuse the request. A card turned away goes back as its refusal,
+  // which is how the model learns it was not shown. A question from before
+  // the card is in the reply as words, written there by the turn, so sending
+  // the call too would put it in the context twice.
+  if (AWAITS_READER.includes(part.toolName)) return part.failure?.kind === "turned_away" || isAnswer(part);
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 
@@ -72,7 +73,10 @@ function reachesTheModel(part: ToolPart): boolean {
  * @returns The output in its typed form, saying plainly when the tool failed
  */
 function toolOutput(part: ToolPart): ToolResultPart["output"] {
-  if (part.toolName === ASK_USER && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
+  // A card's answer is what the card holds: a questionnaire's answers, or a
+  // Space request's summary (its content lives only in the row's kept copy,
+  // which a row on this path does not have).
+  if (AWAITS_READER.includes(part.toolName) && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
   if (part.status === "error") {
     // The field is newer than some of the rows it is read off, and a row
     // written before it existed has none. An empty string reads as a call
@@ -230,13 +234,17 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 }
 
 /**
- * Whether a questionnaire call ended with the reader's answer, from the card
- * or as word that they wrote a message instead.
- * @param part - The `ask_user` part.
+ * Whether a card's call ended with the reader's answer: a questionnaire's
+ * answers, the Spaces shared or declined, or word that they wrote a message
+ * instead.
+ * @param part - The card's part.
  * @returns True when it holds such an answer.
  */
 function isAnswer(part: ToolPart): boolean {
   if (part.status !== "success") return false;
-  const output = part.output as { answers?: unknown; repliedInChat?: unknown } | null | undefined;
-  return Array.isArray(output?.answers) || output?.repliedInChat === true;
+  const output = part.output as
+    | { answers?: unknown; spaces?: unknown; declined?: unknown; repliedInChat?: unknown }
+    | null
+    | undefined;
+  return Array.isArray(output?.answers) || Array.isArray(output?.spaces) || output?.declined === true || output?.repliedInChat === true;
 }

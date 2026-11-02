@@ -773,17 +773,17 @@ describe("§4.2 refusals and claims", () => {
   it("T72: the read cap is the route's cap, bounded by the declared size", async () => {
     const w = await world();
     const caps = transferConfig().route_max_bytes;
-    // (a) chat: 5 MiB declared, chat caps at 4 MiB.
-    const chatKey = await grant(w, 5_242_880);
+    // (a) chat: 7 MiB declared, chat caps at 6 MiB.
+    const chatKey = await grant(w, 7_340_032);
     read.answer = async (key) => {
       throw new ObjectTooLarge(key);
     };
     const a = await post(app, CHAT, w.a.cookie, ref(chatKey));
-    expect(read.calls).toEqual([[chatKey, 4_194_304]]);
-    expect(caps.chat_message).toBe(4_194_304);
+    expect(read.calls).toEqual([[chatKey, 6_291_456]]);
+    expect(caps.chat_message).toBe(6_291_456);
     expect(a.status).toBe(413);
     expect(await a.json()).toEqual({
-      error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(4_194_304) }) },
+      error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(6_291_456) }) },
     });
     await expectClaimed(chatKey);
 

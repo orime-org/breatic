@@ -81,6 +81,7 @@ describe("GET /chat/stream-config", () => {
       "currentSpaceMaxChars",
       "heartbeatIntervalMs",
       "spaceListMaxItems",
+      "spaceReadTimeoutMs",
     ]);
   });
 

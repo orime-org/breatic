@@ -10,6 +10,7 @@ import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { QuestionnaireCard } from '@web/pages/project/chat/QuestionnaireCard';
+import { SpaceRequestCard } from '@web/pages/project/chat/SpaceRequestCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
@@ -212,6 +213,13 @@ export const MessageBubble = React.memo(function MessageBubble({
             ? null
             : message.questionnaires.map((questionnaire) => (
               <QuestionnaireCard key={questionnaire.toolCallId} questionnaire={questionnaire} />
+            ))}
+          {/* The other card a turn stops at: the Agent asking to look at
+            Spaces (inner#1552), drawn by the same rule. */}
+          {message.spaceRequests === undefined
+            ? null
+            : message.spaceRequests.map((request) => (
+              <SpaceRequestCard key={request.toolCallId} request={request} />
             ))}
           {/* A proposal stored in a shape this build can no longer place is
             named where its card would be, so the reader knows to ask again

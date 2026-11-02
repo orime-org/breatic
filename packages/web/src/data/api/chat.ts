@@ -91,6 +91,8 @@ export interface StreamConfig {
   currentSpaceMaxChars: number;
   /** How many of the project's Spaces one message may list. */
   spaceListMaxItems: number;
+  /** How long one requested Space may take to sync before it is given up on, in milliseconds. */
+  spaceReadTimeoutMs: number;
 }
 
 /**
