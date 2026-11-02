@@ -58,7 +58,7 @@ function touched(from: RecordSnapshot, other: RecordSnapshot): RecordSnapshot {
    * @returns Its touched records.
    * @throws {never} Never.
    */
-  const pick = (kind: keyof RecordSnapshot): Record<string, Record<string, unknown>> => Object.fromEntries(
+  const pick = (kind: 'clips' | 'tracks'): Record<string, Record<string, unknown>> => Object.fromEntries(
     Object.entries(from[kind]).filter(([id, record]) => JSON.stringify(record) !== JSON.stringify(other[kind][id])),
   );
   const clips = pick('clips');
