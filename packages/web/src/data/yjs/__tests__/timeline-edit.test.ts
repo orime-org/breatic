@@ -19,7 +19,7 @@ import {
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
 
 const REASONS = [
-  'target_missing', 'track_missing', 'invalid_range', 'overlap', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source',
+  'target_missing', 'track_missing', 'invalid_range', 'overlap', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source', 'covers_missing_source',
 ];
 
 /**
@@ -904,12 +904,32 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
       expect(accepted(plan(covered(20), move(W, 90, OFF))).next.clips[X]).toEqual({ ...covered(20).clips[X], durationFrames: 90 });
     });
 
-    it('refuses to trim its head, which needs its source', () => {
-      expect(plan(covered(20), move(W, 0, OFF))).toEqual({ ok: false, reason: 'missing_source' });
+    it('refuses to trim its head, which needs its source, as covers_missing_source (R2)', () => {
+      expect(plan(covered(20), move(W, 0, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
     });
 
-    it('refuses to split it, which needs its source', () => {
-      expect(plan(covered(20), move(W, 40, OFF))).toEqual({ ok: false, reason: 'missing_source' });
+    it('refuses to split it, which needs its source, as covers_missing_source (R2)', () => {
+      expect(plan(covered(20), move(W, 40, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
+    });
+
+    it.each([
+      ['an addition over its head', addVideo(clip(cid(67), V2, 0, 20), OFF)],
+      ['an addition over its middle', addVideo(clip(cid(67), V2, 40, 20), OFF)],
+    ] as const)('refuses %s as covers_missing_source (R2)', (_name, command) => {
+      expect(plan(covered(20), command)).toEqual({ ok: false, reason: 'covers_missing_source' });
+    });
+
+    it('refuses a duplicate that lands on its head as covers_missing_source (R2)', () => {
+      // W[200,220) duplicates to [220,240), over the head of X2[230,330) which lacks its source.
+      const X2 = cid(68);
+      const current = timeline([clip(W, V2, 200, 20), clip(X2, V2, 230, 100, { sourceId: MISSING })]);
+      expect(plan(current, duplicate(W, cid(69), OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
+    });
+
+    it('refuses a set_range that extends over its head as covers_missing_source (R2)', () => {
+      const X2 = cid(68);
+      const current = timeline([clip(W, V2, 200, 20), clip(X2, V2, 230, 100, { sourceId: MISSING })]);
+      expect(plan(current, setRange(W, 200, 0, 40, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
     });
   });
 });

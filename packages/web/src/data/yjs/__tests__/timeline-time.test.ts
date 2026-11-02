@@ -6,6 +6,7 @@ import fc from 'fast-check';
 
 import { durationToFrames } from '@breatic/shared';
 import {
+  parseTimelineFrame,
   timelineClipIntervalValid,
   timelineSourceSeconds,
   timelineTrimHead,
@@ -191,5 +192,15 @@ describe('timelineClipIntervalValid (inner#1708 Q2)', () => {
     ['an end past the largest safe integer', { startFrame: MAX, durationFrames: 1 }],
   ])('rejects %s', (_name, changes) => {
     expect(timelineClipIntervalValid({ ...clip, ...changes })).toBe(false);
+  });
+});
+
+describe('parseTimelineFrame (inner#1708 R4)', () => {
+  it.each([['0', 0], ['72', 72], [' 12 ', 12], ['007', 7]])('reads %j as %d', (text, frame) => {
+    expect(parseTimelineFrame(text)).toBe(frame);
+  });
+
+  it.each(['', ' ', '1e3', '5.0', '-1', 'abc', '+5', '0x10', '1 2'])('reads %j as not a frame', (text) => {
+    expect(parseTimelineFrame(text)).toBeNaN();
   });
 });
