@@ -8,6 +8,8 @@ export type UnavailableReason =
   | { upstream: string; kind: "missing_key"; envVar: string }
   /** The run sets a param to a value this upstream cannot take. */
   | { upstream: string; kind: "unsupported_input"; param: string; value: unknown }
+  /** The run is outside one of this upstream's own input limits, in its words. */
+  | { upstream: string; kind: "unsupported_input"; reason: string }
   | { upstream: string; kind: "failed"; failure: string; /** The status, for an `http_status` failure. */ status?: number };
 
 /** No upstream of a model could serve the call; each one says why. */

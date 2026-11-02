@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { NoUpstreamAvailable, UpstreamRequestRejected, type UnavailableReason } from "@provider/errors.js";
-import type { Route } from "@provider/pricing/estimate.js";
+import type { RejectedInput, Route } from "@provider/pricing/estimate.js";
 
 export type { Route } from "@provider/pricing/estimate.js";
 
@@ -17,8 +17,8 @@ export interface Candidate {
   envVar: string;
   /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
   estimateUsd?: number;
-  /** The param and value of this run the upstream cannot take; it is then skipped. */
-  unsupported?: { param: string; value: unknown };
+  /** Why the upstream cannot take this run (a param and value, or one of its own limits); it is then skipped. */
+  unsupported?: RejectedInput;
 }
 
 /** The upstreams to try, in order, and the ones skipped before trying. */

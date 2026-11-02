@@ -65,7 +65,8 @@ export type MediaAnswer = AnswerCommon &
     | { state: "send"; ticket: MediaTicket; step: { kind: StepKind } }
     | { state: "running"; ticket: MediaTicket; askAgainAt: number }
     | { state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string }
-    | { state: "failed"; reason: Error; costs: Cost[] }
+    /** Why: no upstream could take the run, one refused it, its task failed, a source was refused, or another error. */
+    | { state: "failed"; reason: NoUpstreamAvailable | UpstreamRequestRejected | UpstreamTaskFailed | MediaRefused | Error; costs: Cost[] }
   );
 
 /** What the run is asked to make. */
@@ -681,18 +682,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    */
   const route = async (model: string, input: MediaInput, chosen: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
     const rules = provider.pricingRules(model);
-    let candidates = candidatesOf(config, model, keyOf).map((c) => {
-      const unsupported = rejectedInput(rules, c.upstream, input.params);
+    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing: [] };
+    let candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c) => {
+      const unsupported = await rejectedInput(rules, c.upstream, run);
       return unsupported === undefined ? c : { ...c, unsupported };
-    });
+    }));
     if (chosen.mode === "cheapest") {
-      const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
-        params: input.params,
-        prompt: input.prompt,
-        durations,
-        placeholders: [],
-        durationsMissing: [],
-      });
+      const estimates = await orderByPrice(rules, provider.availability(model), run);
       candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.usd }));
     }
     return planRoute(model, chosen, candidates);

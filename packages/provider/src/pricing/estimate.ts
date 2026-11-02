@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
+import { holds, priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 
 /** How the caller wants its upstream chosen. */
 export type Route =
@@ -60,6 +60,15 @@ export const pricingRuleSchema = z.strictObject({
 export type PricingRule = z.infer<typeof pricingRuleSchema>;
 
 /**
+ * One input limit of an upstream's own: a JSONata condition over the run in the upstream's field names, read
+ * exactly as a pricing formula reads it, and the upstream's own words for the limit. A run it holds for cannot go there.
+ */
+export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1) });
+
+/** Why an upstream cannot take a run: one of our param values it does not take, or one of its own limits. */
+export type RejectedInput = { param: string; value: unknown } | { reason: string };
+
+/**
  * What the browser needs to price a run on one upstream: the one description of the entry the
  * model list carries, checked whole wherever it is read back.
  */
@@ -86,6 +95,8 @@ const upstreamPricingSchema = z.looseObject({
   limits: z.record(z.string(), z.array(z.union([z.string(), z.number(), z.boolean()]))).optional(),
   /** Per param holding voices, the voices this upstream has. */
   voices: z.record(z.string(), z.array(z.string())).optional(),
+  /** The upstream's own input limits, in order. */
+  rejects: z.array(rejectSchema).optional(),
 });
 
 /** What the browser needs to price a run on one upstream. */
@@ -140,6 +151,31 @@ function reads(formulas: readonly string[], field: string): boolean {
 }
 
 /**
+ * How an upstream names our params.
+ * @param rule - The upstream's pricing entry.
+ * @returns The upstream field of one of our params.
+ */
+function fieldNamer(rule: UpstreamPricing): (param: string) => string {
+  return (param) => rule.fields[param] ?? param;
+}
+
+/**
+ * A run in an upstream's field names, as its formulas and conditions read it: our params under its fields
+ * and clip lengths under the same fields; the prompt is the caller's to place.
+ * @param rule - The upstream's pricing entry.
+ * @param input - The prepared run.
+ * @returns The fields and the clip lengths.
+ */
+function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
+  const fieldOf = fieldNamer(rule);
+  const fields: Record<string, unknown> = {};
+  for (const [param, value] of Object.entries(input.params)) fields[fieldOf(param)] = value;
+  const durations: Record<string, readonly number[]> = {};
+  for (const [param, clips] of Object.entries(input.durations)) durations[fieldOf(param)] = clips;
+  return { fields, durations };
+}
+
+/**
  * What one upstream would charge for a run, and how sure that is.
  * @param rule - The upstream's pricing.
  * @param input - The prepared run.
@@ -147,17 +183,9 @@ function reads(formulas: readonly string[], field: string): boolean {
  * @throws {Error} When a formula does not produce a finite price.
  */
 async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<Estimate> {
-  /**
-   * The upstream field one of our params is priced under.
-   * @param param - Our param.
-   * @returns The field.
-   */
-  const fieldOf = (param: string): string => rule.fields[param] ?? param;
+  const fieldOf = fieldNamer(rule);
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
-  const fields: Record<string, unknown> = {};
-  for (const [param, value] of Object.entries(input.params)) fields[fieldOf(param)] = value;
-  const durations: Record<string, readonly number[]> = {};
-  for (const [param, clips] of Object.entries(input.durations)) durations[fieldOf(param)] = clips;
+  const { fields, durations } = upstreamRun(rule, input);
   let unknown = input.placeholders.some((p) => reads(formulas, fieldOf(p)))
     || input.durationsMissing.some((p) => billsBy(formulas, "get_duration", fieldOf(p)));
   const promptField = rule.prompt_field;
@@ -218,21 +246,30 @@ export function parsePricingRules(raw: unknown): PricingRules {
 }
 
 /**
- * The param and value of a run an upstream cannot take: a value outside its limits, or a voice it does not have.
- * A param the run leaves out or empty is always taken.
+ * Why an upstream cannot take a run: a value outside its limits, a voice it does not have, or the first of its
+ * own conditions (`rejects`) that holds. A param the run leaves out or empty is always taken, and is not there
+ * for a condition to read; neither is an empty prompt.
  * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
  * @param upstream - The upstream.
- * @param params - Our params of the run.
- * @returns The first param it cannot take and its value, or undefined when it takes the run or has no entry.
+ * @param input - The prepared run.
+ * @returns The param and value it cannot take, or the reason of its condition; undefined when it takes the run or has no entry.
+ * @throws {Error} When a condition fails to evaluate.
  */
-export function rejectedInput(rules: PricingRules, upstream: string, params: Readonly<Record<string, unknown>>): { param: string; value: unknown } | undefined {
+export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
   const rule = ruleOf(rules, upstream);
   if (rule === undefined) return undefined;
   const allowed = [...Object.entries(rule.limits ?? {}), ...Object.entries(rule.voices ?? {})];
   for (const [param, values] of allowed) {
-    const value = params[param];
+    const value = input.params[param];
     if (!isPresent(value)) continue;
     if (!values.some((v) => String(v) === String(value))) return { param, value };
+  }
+  if (rule.rejects === undefined) return undefined;
+  const present = Object.fromEntries(Object.entries(input.params).filter(([, value]) => isPresent(value)));
+  const { fields, durations } = upstreamRun(rule, { ...input, params: present });
+  if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = input.prompt;
+  for (const { when, reason } of rule.rejects) {
+    if (await holds(when, fields, durations)) return { reason };
   }
   return undefined;
 }
@@ -249,7 +286,7 @@ export async function orderByPrice(rules: PricingRules, availability: Availabili
   const out: (Estimate & { weight: number })[] = [];
   for (const { upstream, weight, configured } of availability.upstreams) {
     const rule = ruleOf(rules, upstream);
-    if (!configured || rule === undefined || rejectedInput(rules, upstream, input.params) !== undefined) continue;
+    if (!configured || rule === undefined || (await rejectedInput(rules, upstream, input)) !== undefined) continue;
     out.push({ ...(await estimateOn(rule, input)), weight });
   }
   return out.sort((a, b) => a.usd - b.usd || a.weight - b.weight);
@@ -269,17 +306,11 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
     const [head] = await orderByPrice(rules, availability, input);
     return head === undefined ? null : { usd: head.usd, bound: head.bound, upstream: head.upstream };
   }
-  /**
-   * An upstream's pricing entry when it can take this run.
-   * @param upstream - The upstream.
-   * @returns The entry, or undefined when it has none or cannot take the run.
-   */
-  const takes = (upstream: string): UpstreamPricing | undefined => {
-    const rule = ruleOf(rules, upstream);
-    return rule === undefined || rejectedInput(rules, upstream, input.params) !== undefined ? undefined : rule;
-  };
   const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
-  const chosen = route.mode === "upstream" ? configured.find((u) => u.upstream === route.upstream) : configured.find((u) => takes(u.upstream) !== undefined);
-  const rule = chosen === undefined ? undefined : takes(chosen.upstream);
-  return rule === undefined ? null : estimateOn(rule, input);
+  const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
+  for (const { upstream } of pool) {
+    const rule = ruleOf(rules, upstream);
+    if (rule !== undefined && (await rejectedInput(rules, upstream, input)) === undefined) return estimateOn(rule, input);
+  }
+  return null;
 }

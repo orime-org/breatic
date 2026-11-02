@@ -5,7 +5,8 @@ import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
-import { pricingRuleSchema } from "@provider/pricing/estimate.js";
+import { pricingRuleSchema, rejectSchema } from "@provider/pricing/estimate.js";
+import { formulaProblem } from "@provider/pricing/evaluate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -105,6 +106,11 @@ const bindingSchema = z.strictObject({
   drops: z.record(z.string(), z.union([z.literal("*"), z.array(choice), z.strictObject({ all_values: z.string().min(1) })])).optional(),
   /** Where a fal result puts its output files, as a dotted path. */
   output_field: z.string().min(1).optional(),
+  /**
+   * The upstream's own input limits our catalog lets a run exceed: a JSONata condition read as a pricing formula reads
+   * the run (upstream field names, the prompt under `prompt_field`, `get_duration`), and the limit as the upstream states it.
+   */
+  rejects: z.array(rejectSchema).optional(),
   pricing: pricingRule,
 });
 
@@ -275,7 +281,8 @@ function overlaps(a: string, b: string): boolean {
 }
 
 /**
- * The problems with what one binding writes: a fixed field another entry also writes, and a pricing formula reading a dotted field.
+ * The problems with what one binding writes: a fixed field another entry also writes, a pricing formula or a
+ * `rejects` condition reading a dotted field, and a condition that is not JSONata.
  * @param model - The model.
  * @param binding - Its binding.
  * @returns The problem lines.
@@ -294,6 +301,12 @@ function bindingFieldProblems(model: string, binding: MediaBinding): string[] {
   });
   for (const field of written.filter((f) => f.includes("."))) {
     if (formulas.some((f) => f.includes(field))) problems.push(`${model}: the binding to "${binding.upstream}" prices on "${field}", a dotted field pricing does not read`);
+  }
+  for (const { when } of binding.rejects ?? []) {
+    const problem = formulaProblem(when);
+    if (problem !== undefined) problems.push(`${model}: the binding to "${binding.upstream}" rejects when "${when}", which is not JSONata: ${problem}`);
+    const dotted = written.find((f) => f.includes(".") && when.includes(f));
+    if (dotted !== undefined) problems.push(`${model}: the binding to "${binding.upstream}" rejects when "${when}", which reads "${dotted}", a dotted field conditions do not read`);
   }
   return problems;
 }
