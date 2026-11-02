@@ -134,11 +134,11 @@ export function useApplyTemplate(
         return;
       }
 
-      // The template's own nodes found on the canvas, and the input nodes it
-      // placed, so the new ones can join their group.
+      // The template's own nodes found on the canvas, and the input nodes this
+      // instance placed, so the new ones can join their group.
       const ownInputs = [...match.inputs.values()].flatMap((fed) => [...fed.values()]).filter((id) => {
         const tag = templateTagOf(views.get(id));
-        return tag?.input === true && tag.template === template.id;
+        return tag?.input === true && tag.template === template.id && tag.anchor === nodeId;
       });
       const instance = new Set([...reuse.values(), ...ownInputs.map((id) => held.indexOf(id))]);
       const existing = new Map<number, ExistingNode>();

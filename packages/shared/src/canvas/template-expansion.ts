@@ -467,7 +467,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     const given = input.inputs.get(one.key);
     const fallback = one.feeds.map((fed) => given?.get(fed)).find((index) => index !== undefined);
     const index = fallback
-      ?? append({ role: "source", type: one.type, name: text(`input.${one.key}.name`), templateNode: { template: template.id, key: one.key, input: true } });
+      ?? append({ role: "source", type: one.type, name: text(`input.${one.key}.name`), templateNode: { template: template.id, key: one.key, input: true, anchor: input.anchorAt } });
     if (fallback === undefined) fresh.add(one.key);
     inputAt.set(one.key, new Map(one.feeds.map((fed) => [fed, given?.get(fed) ?? index])));
   }

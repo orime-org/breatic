@@ -286,12 +286,6 @@ function appendedOf(proposal: CanvasProposal, existing: ReadonlyMap<number, Exis
   return proposal.nodes.filter((_, i) => !existing.has(i));
 }
 
-/** A proposal node with the two fields 6.3 adds. */
-type TemplateProposalNode = ProposalNode & {
-  resource?: string;
-  templateNode?: { template: string; key: string; anchor?: number };
-};
-
 describe('useApplyTemplate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -387,7 +381,7 @@ describe('useApplyTemplate', () => {
       const added = appendedOf(proposal, existing);
       expect(added).toHaveLength(1);
       expect(added[0]).toMatchObject({ role: 'source', type: 'image', name });
-      expect((added[0] as TemplateProposalNode).templateNode).toEqual({ template: 'storyboard-grid-25', key: 'reference', input: true });
+      expect(added[0]?.templateNode).toEqual({ template: 'storyboard-grid-25', key: 'reference', input: true, anchor: 0 });
       expect(edgesOf(proposal, existing)).toEqual([`new:${name}->target`]);
       expect(refsOf(proposal, existing, 0)).toEqual([`new:${name}`]);
       expect(proposal.nodes[0]?.prompt).toContainEqual({
@@ -458,7 +452,7 @@ describe('useApplyTemplate', () => {
 
       const { proposal, existing } = placed(place);
       expect([...existing.keys()]).toEqual([0]);
-      const added = appendedOf(proposal, existing) as TemplateProposalNode[];
+      const added = appendedOf(proposal, existing);
       expect(added.map((n) => n.name).sort()).toEqual(
         ['Back view', 'Character', 'Fixture flow', 'Front view', 'Pose', 'Sheet', 'Style'].sort(),
       );
@@ -468,7 +462,7 @@ describe('useApplyTemplate', () => {
         resource: 'templates/fixture-flow/style.png',
         templateNode: { template: 'fixture-flow', key: 'style' },
       });
-      expect(added.find((n) => n.name === 'Pose')?.templateNode).toEqual({ template: 'fixture-flow', key: 'pose', input: true });
+      expect(added.find((n) => n.name === 'Pose')?.templateNode).toEqual({ template: 'fixture-flow', key: 'pose', input: true, anchor: 0 });
       expect(added.find((n) => n.name === 'Fixture flow')).toEqual(templateGuideNode(FLOW, 0));
       expect(edgesOf(proposal, existing)).toEqual(
         [
@@ -560,13 +554,28 @@ describe('useApplyTemplate', () => {
 
     it('marks an input node this template placed as part of the instance, and a reader\'s own input not', () => {
       seedFlowInstance('target');
-      setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true });
+      setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'target' });
       const place = vi.fn();
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { existing } = placed(place);
       expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-pose', 'target-sheet', 'target-style']);
     });
+
+    for (const [what, tag] of [
+      ['another instance of this template', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'elsewhere' }],
+      ['another template', { template: 'other', key: 'pose', input: true, anchor: 'target' }],
+    ] as const) {
+      it(`leaves an input node placed by ${what} out of the instance`, () => {
+        seedFlowInstance('target');
+        setNodeTemplateNode('p', 's', 'target-pose', tag);
+        const place = vi.fn();
+        apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+        const { existing } = placed(place);
+        expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
+      });
+    }
 
     it('leaves the earlier of two chained instances alone when applied on the later one', () => {
       seedFlowInstance('first');
@@ -626,7 +635,7 @@ describe('useApplyTemplate', () => {
       const place = vi.fn();
       apply(grid(), 'target', [ULTRA], place);
       const { proposal } = placed(place);
-      expect(proposal.nodes.some((n) => (n as TemplateProposalNode).templateNode?.key === 'guide')).toBe(false);
+      expect(proposal.nodes.some((n) => n.templateNode?.key === 'guide')).toBe(false);
     });
   });
 
@@ -701,7 +710,7 @@ describe('useApplyTemplate', () => {
       const place = vi.fn();
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       const { proposal, existing } = placed(place);
-      expect((proposal.nodes[indexOf(existing, 'target-style')] as TemplateProposalNode).resource).toBe('templates/fixture-flow/style.png');
+      expect(proposal.nodes[indexOf(existing, 'target-style')]?.resource).toBe('templates/fixture-flow/style.png');
     });
   });
 
@@ -723,7 +732,7 @@ describe('the view the panel matches on', () => {
     _resetForTests();
   });
 
-  it('carries data.templateNode from the document; the anchor and inputs carry none', () => {
+  it('carries data.templateNode from the document; the anchor and a reader\'s own inputs carry none', () => {
     seedFlowInstance('target');
     const views = readCanvasGraph('p', 's').nodes;
     const tagOf = (id: string): unknown =>

@@ -783,7 +783,7 @@ describe('expandTemplate', () => {
     });
     // A fresh input node carries its input's tag, so a later apply knows it as this instance's own.
     for (const input of ['pose', 'hero', 'place', 'palette']) {
-      expect(appendedAs(result, 1, input)).toEqual({ role: 'source', type: 'image', name: input, templateNode: { template: ID, key: input, input: true } });
+      expect(appendedAs(result, 1, input)).toEqual({ role: 'source', type: 'image', name: input, templateNode: { template: ID, key: input, input: true, anchor: 0 } });
     }
   });
 

@@ -1313,7 +1313,7 @@ describe('useNodeCreation', () => {
         templateNode: { template: 'fx', key: 'guide', anchor: 0 },
       } as unknown as CanvasProposal['nodes'][number];
 
-      /** A put-back upstream generate node with no tag, @ing the input at index 2. */
+      /** The reused upstream generate node's entry, @ing the input at index 2. */
       const SKETCH = { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] } as CanvasProposal['nodes'][number];
 
       /** A new input node feeding {@link SKETCH}. */
@@ -1941,7 +1941,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-input', 's-input'));
 
-        // The only new node is the input put back, which carries no template tag.
+        // The only new node is the input put back.
         result.current.placeProposalAt(
           {
             ...proposalOf(
@@ -2120,7 +2120,7 @@ describe('useNodeCreation', () => {
         expect(bodyToPlainText(canvasSpace.getTextBody('p-ex8', 's-ex8', byName.get('Fixture template')!)!)).toBe(GUIDE_TEXT);
       });
 
-      it('tags an input node the template places with its input key', () => {
+      it('tags an input node the template places with its input key and its anchor', () => {
         const anchor = seedAnchor('p-in8', 's-in8', { x: 1000, y: 500 });
         const before = idsNow('p-in8', 's-in8');
         const existing = new Map<number, ExistingNode>([
@@ -2130,7 +2130,7 @@ describe('useNodeCreation', () => {
 
         result.current.placeProposalAt(
           proposalOf(
-            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Hero', templateNode: { template: 'fx', key: 'hero', input: true } }],
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Hero', templateNode: { template: 'fx', key: 'hero', input: true, anchor: 0 } }],
             [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
           ),
           { x: 0, y: 0 },
@@ -2139,7 +2139,7 @@ describe('useNodeCreation', () => {
         );
 
         const [hero] = addedSince('p-in8', 's-in8', before);
-        expect(tagOf('p-in8', 's-in8', hero!.id)).toEqual({ template: 'fx', key: 'hero', input: true });
+        expect(tagOf('p-in8', 's-in8', hero!.id)).toEqual({ template: 'fx', key: 'hero', input: true, anchor });
       });
 
       it('points the guide of an agent proposal at the anchor node it placed', () => {
