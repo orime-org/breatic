@@ -1772,3 +1772,39 @@ describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)
     await release(20);
   });
 });
+
+describe('TimelineSpace heals dangling sources only for an Editor (inner#1708 H1, H2)', () => {
+  /**
+   * Remove the stored source under the existing clip through a remote update, as a merged peer sweep can.
+   * @throws {Error} When the update cannot be applied.
+   */
+  function dropSourceRemotely(): void {
+    const peer = new Y.Doc();
+    try {
+      Y.applyUpdate(peer, Y.encodeStateAsUpdate(currentDoc()));
+      peer.transact(() => peer.getMap('sources').delete(SOURCE.id), 'peer');
+      act(() => { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(peer, Y.encodeStateVector(currentDoc())), 'provider'); });
+    } finally { peer.destroy(); }
+  }
+
+  it('writes the source back for an Editor', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    dropSourceRemotely();
+    await waitFor(() => expect(currentDoc().getMap('sources').get(SOURCE.id)).toEqual(SOURCE));
+    expect(screen.getByTestId('timeline-undo')).toBeDisabled();
+  });
+
+  it('leaves the source missing for a Viewer and writes nothing', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
+    await screen.findByTestId('timeline-clip-' + X);
+    let ownUpdates = 0;
+    currentDoc().on('update', (_update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => { if (transaction.local) ownUpdates += 1; });
+    dropSourceRemotely();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(currentDoc().getMap('sources').has(SOURCE.id)).toBe(false);
+    expect(ownUpdates).toBe(0);
+  });
+});

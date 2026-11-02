@@ -448,7 +448,8 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
     // Magnet off: my move of B onto frame 0 overwrites and removes COVERED; the peer meanwhile moves COVERED to v2.
     const { mine, peer, session } = apart([clip(COVERED, MAIN, 0, 48), clip(B, MAIN, 48, 48)], seededByMe);
     const plan = session.edit(move(B, 0));
-    expect(plan.ok && plan.removed).toEqual([COVERED]);
+    expect(plan.ok).toBe(true);
+    expect(mine.getMap('clips').has(COVERED)).toBe(false);
     expect(applyTimelineEdit(peer, move(COVERED, 0, OFF, { trackId: 'v2' }), Symbol('peer')).ok).toBe(true);
     sync(mine, peer, mineFirst);
     session.undo();
@@ -748,5 +749,181 @@ describe('Timeline edit session undoes and redoes sources with their clips (inne
     sessionA.undo();
     exchange(a, b);
     for (const doc of [a, b]) expectResolved(doc, [XS, ADDED]);
+  });
+});
+
+describe('Timeline edit sessions heal dangling sources (inner#1708 H1, H2, H4, H5)', () => {
+  const M_CLIP = cid(90);
+  const C = cid(91);
+  const C2 = cid(92);
+  const C3 = cid(93);
+  const E = cid(94);
+  const SPLIT_X = cid(95);
+  const SPLIT_Y = cid(96);
+  const remove = (clipId: string): TimelineEditCommand => ({ operation: 'delete', parameters: { clipId }, placement: OFF });
+  const splitAt = (clipId: string, frame: number, newClipId: string): TimelineEditCommand => ({ operation: 'split', parameters: { clipId, frame, newClipId }, placement: OFF });
+  const ORDERS = [{ first: 1, second: 2 }, { first: 2, second: 1 }];
+
+  /**
+   * Wait for any write-back a session schedules after a transaction.
+   * @returns Once queued tasks ran.
+   * @throws {never} Never.
+   */
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  /**
+   * Two replicas with fixed client ids, loaded from one seed, each with a writable session.
+   * @param clips - The seeded clips.
+   * @param ids - The client ids of the first and second replica.
+   * @param sources - The seeded sources.
+   * @returns Both replicas and their sessions.
+   * @throws {Error} When seeding fails.
+   */
+  function writablePair(clips: ReturnType<typeof clip>[], ids: { first: number; second: number }, sources = [SOURCE]): { a: Y.Doc; b: Y.Doc; sa: TimelineEditSession; sb: TimelineEditSession } {
+    const seed = keep(seededDoc(timeline(clips, undefined, sources)));
+    const a = keep(new Y.Doc());
+    a.clientID = ids.first;
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(seed), 'remote');
+    const b = keep(new Y.Doc());
+    b.clientID = ids.second;
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(seed), 'remote');
+    const sa = sessionOf(a, NAME);
+    const sb = sessionOf(b, PEER_NAME);
+    sa.setCanWrite(true);
+    sb.setCanWrite(true);
+    return { a, b, sa, sb };
+  }
+
+  /**
+   * Exchange updates, let write-backs run and exchange them too.
+   * @param a - One replica.
+   * @param b - The other replica.
+   * @returns Once both replicas settled.
+   * @throws {never} Never.
+   */
+  async function settle(a: Y.Doc, b: Y.Doc): Promise<void> {
+    for (let round = 0; round < 3; round += 1) {
+      Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)), 'remote');
+      Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)), 'remote');
+      await flush();
+    }
+  }
+
+  /**
+   * Assert every clip record names a stored source, the given clips resolve to `value`, and both replicas agree.
+   * @param a - One replica.
+   * @param b - The other replica.
+   * @param present - Clips that must exist and resolve.
+   * @param value - The source those clips name.
+   * @throws {Error} When a check fails.
+   */
+  function expectHealed(a: Y.Doc, b: Y.Doc, present: string[], value: TimelineVideoSource): void {
+    for (const doc of [a, b]) {
+      const sources = doc.getMap('sources');
+      for (const [id, record] of doc.getMap('clips').entries()) {
+        const sourceId = record instanceof Y.Map ? record.get('sourceId') : undefined;
+        if (typeof sourceId === 'string') expect(sources.has(sourceId), `clip ${id} names a missing source`).toBe(true);
+      }
+      for (const id of present) {
+        expect(readTimelineDocument(doc).clips[id]?.sourceId, `clip ${id}`).toBe(value.id);
+        expect(sources.get(value.id)).toEqual(value);
+      }
+    }
+    for (const name of ['clips', 'tracks', 'sources']) expect(a.getMap(name).toJSON()).toEqual(b.getMap(name).toJSON());
+  }
+
+  it.each(ORDERS)('keeps the source for a part split concurrently while the peer deletes every clip on it (H1 sc6-lww, ids $first/$second)', async (ids) => {
+    const { a, b, sa, sb } = writablePair(
+      [clip(M_CLIP, MAIN, 0, 48), clip(C, 'v2', 0, 10, { sourceId: SHORT_SOURCE.id }), clip(E, 'v2', 50, 10, { sourceId: SHORT_SOURCE.id })], ids, [SOURCE, SHORT_SOURCE],
+    );
+    expect(sa.edit(splitAt(C, 5, SPLIT_X)).ok).toBe(true);
+    for (const id of [C, SPLIT_X, E]) expect(sa.edit(remove(id)).ok).toBe(true);
+    expect(a.getMap('sources').has(SHORT_SOURCE.id)).toBe(false);
+    expect(sb.edit(splitAt(E, 55, SPLIT_Y)).ok).toBe(true);
+    await settle(a, b);
+    expectHealed(a, b, [SPLIT_Y], SHORT_SOURCE);
+  });
+
+  it.each(ORDERS)('keeps the source for a clip my undo revives while the peer deletes its other clip (H1 different-clips, ids $first/$second)', async (ids) => {
+    const { a, b, sa, sb } = writablePair([clip(C, 'v2', 0, 48), clip(E, 'v2', 100, 48)], ids);
+    expect(sa.edit(remove(E)).ok).toBe(true);
+    await settle(a, b);
+    expect(sb.edit(move(C, 10)).ok).toBe(true);
+    sb.undo();
+    expect(sb.edit(remove(C)).ok).toBe(true);
+    sa.undo();
+    await settle(a, b);
+    expectHealed(a, b, [E], SOURCE);
+  });
+
+  it.each(ORDERS)('keeps the source for a duplicate made while the peer splits and deletes the original (H1 goal-e5-race, ids $first/$second)', async (ids) => {
+    const { a, b, sa, sb } = writablePair([clip(C, 'v2', 0, 48)], ids);
+    expect(sb.edit(splitAt(C, 20, C2)).ok).toBe(true);
+    expect(sb.edit(remove(C2)).ok).toBe(true);
+    expect(sb.edit(remove(C)).ok).toBe(true);
+    expect(sa.edit({ operation: 'duplicate', parameters: { clipId: C, newClipId: C3 }, placement: OFF }).ok).toBe(true);
+    await settle(a, b);
+    expectHealed(a, b, [C3], SOURCE);
+  });
+
+  it('writes a remembered source back after a remote update removes it under a clip, outside the undo history (H1)', async () => {
+    const { a, b, sa } = writablePair([clip(C, 'v2', 0, 48)], ORDERS[0] ?? { first: 1, second: 2 });
+    b.transact(() => b.getMap('sources').delete(SOURCE.id), 'peer');
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)), 'remote');
+    await flush();
+    expect(a.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+    expect(sa.getSnapshot()).toMatchObject({ canUndo: false, canRedo: false });
+  });
+
+  it.each([['never made writable', false], ['made read-only again', true]] as const)('never writes from a session %s, even over a dangling source (H2)', async (_name, toggled) => {
+    const seed = keep(seededDoc(timeline([clip(C, 'v2', 0, 48)])));
+    const viewer = keep(new Y.Doc());
+    Y.applyUpdate(viewer, Y.encodeStateAsUpdate(seed), 'remote');
+    const session = sessionOf(viewer, PEER_NAME);
+    if (toggled) {
+      session.setCanWrite(true);
+      session.setCanWrite(false);
+    }
+    let ownUpdates = 0;
+    viewer.on('update', (_update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => { if (transaction.local) ownUpdates += 1; });
+    seed.transact(() => seed.getMap('sources').delete(SOURCE.id), 'peer');
+    Y.applyUpdate(viewer, Y.encodeStateAsUpdate(seed, Y.encodeStateVector(viewer)), 'remote');
+    await flush();
+    expect(viewer.getMap('sources').has(SOURCE.id)).toBe(false);
+    expect(ownUpdates).toBe(0);
+  });
+
+  it('undoes and redoes a plain move without writing sources (H4)', () => {
+    const { mine, session } = pair();
+    expect(session.edit(move(X, 40)).ok).toBe(true);
+    let writes = 0;
+    mine.getMap('sources').observe(() => { writes += 1; });
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(10);
+    session.redo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(40);
+    expect(writes).toBe(0);
+  });
+
+  it('adds no undo step for a no-op edit while an orphan source is present (H5)', () => {
+    // My real edit deletes C; the peer deletes E, the other clip on SOURCE, leaving SOURCE unreferenced here.
+    const seeded = keep(seededDoc(timeline([clip(M_CLIP, 'v2', 0, 10, { sourceId: SHORT_SOURCE.id }), clip(C, 'v2', 100, 10), clip(E, 'v2', 200, 10)], undefined, [SOURCE, SHORT_SOURCE])));
+    const peer = keep(new Y.Doc());
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(seeded));
+    const session = sessionOf(seeded);
+    expect(session.edit(remove(C)).ok).toBe(true);
+    expect(applyTimelineEdit(peer, remove(E), Symbol('peer')).ok).toBe(true);
+    Y.applyUpdate(seeded, Y.encodeStateAsUpdate(peer), 'remote');
+    expect(seeded.getMap('sources').has(SOURCE.id)).toBe(true);
+    let updates = 0;
+    seeded.on('update', () => { updates += 1; });
+    expect(session.edit(move(M_CLIP, 0)).ok).toBe(true);
+    expect(updates).toBe(0);
+    session.undo();
+    expect(readTimelineDocument(seeded).clips[C]).toMatchObject({ id: C, sourceId: SOURCE.id });
+    expect(readTimelineDocument(seeded).sources[SOURCE.id]).toEqual(SOURCE);
+    expect(session.getSnapshot().canUndo).toBe(false);
   });
 });
