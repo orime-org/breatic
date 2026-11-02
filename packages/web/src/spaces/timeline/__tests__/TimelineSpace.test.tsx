@@ -1683,7 +1683,7 @@ describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)
     expect(t('timeline.conflictHelp')).toBe('Clips overlap, sit on a removed track or fall outside their video. Select a clip and move it, change its track, trim or delete it.');
   });
 
-  it.each(['damaged', 'overlap', 'missing_track', 'invalid_range', 'incompatible_track'])('has a %s reason in all five locales (F1c, F2)', (code) => {
+  it.each(['damaged', 'overlap', 'missing_track', 'invalid_range', 'incompatible_track', 'missing_source'])('has a %s reason in all five locales (F1c, F2, M3)', (code) => {
     for (const [tag, catalog] of LOCALE_CATALOGS) {
       const sentence = readPath(catalog, `timeline.conflictReason.${code}`);
       expect(typeof sentence, `${tag} timeline.conflictReason.${code}`).toBe('string');
@@ -1806,5 +1806,41 @@ describe('TimelineSpace heals dangling sources only for an Editor (inner#1708 H1
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(currentDoc().getMap('sources').has(SOURCE.id)).toBe(false);
     expect(ownUpdates).toBe(0);
+  });
+});
+
+describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () => {
+  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
+
+  it('says the missing video in every locale', () => {
+    const expected: Record<string, string> = {
+      en: 'Its video is missing', 'zh-CN': '所用视频已丢失', 'zh-TW': '所用影片已遺失', ja: '動画が見つかりません', ko: '동영상을 찾을 수 없습니다',
+    };
+    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.conflictReason.missing_source'), tag).toBe(expected[tag]);
+  });
+
+  it('lists the clip as a conflict naming the missing video, and an Editor can select and delete it', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    const row = await screen.findByTestId('timeline-conflict-' + X);
+    expect(screen.getByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.missing_source'));
+    fireEvent.click(row);
+    expect(row).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('timeline-delete'));
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+    expect(screen.queryByTestId('timeline-conflict-' + X)).toBe(null);
+  });
+
+  it('previews the clip below over its frames instead of failing', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + CLIP.id);
+    const seek = screen.getByRole('slider', { name: t('timeline.seek') });
+    seek.focus();
+    for (let step = 0; step < 15; step += 1) fireEvent.keyDown(seek, { key: 'ArrowRight' });
+    await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 15, total: 48 }))).toBeInTheDocument());
+    expect(screen.getByTestId('timeline-preview')).toHaveAttribute('data-active-clip-id', CLIP.id);
+    expect(screen.queryByText(t('timeline.transport.failed'))).toBe(null);
+    expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
   });
 });

@@ -141,6 +141,24 @@ describe('Timeline arrangement from the complete current document', () => {
     expect(resolveTimelineArrangement(documentOf([baseClip])).placements).toEqual([{ clipId: baseClip.id, status: 'ready', reasons: [] }]);
   });
 
+  it('reports a clip whose source is not stored as missing_source and keeps it out of the ready clips (inner#1708 M1)', () => {
+    const next = placement(1, 48, 12);
+    const result = resolveTimelineArrangement(documentOf([baseClip, next], tracks, {}));
+    expect(result.placements).toEqual([
+      { clipId: baseClip.id, status: 'conflict', reasons: [{ code: 'missing_source', relatedClipIds: [], startFrame: 0, endFrame: 48 }] },
+      { clipId: next.id, status: 'conflict', reasons: [{ code: 'missing_source', relatedClipIds: [], startFrame: 48, endFrame: 60 }] },
+    ]);
+    expect(result.readyClipIds).toEqual([]);
+    expect(result.hasConflicts).toBe(true);
+  });
+
+  it('keeps a clip whose source is stored ready next to one whose source is missing (inner#1708 M1)', () => {
+    const elsewhere = { ...placement(1, 48, 12), sourceId: '10000000-0000-4000-8000-0000000000ff' };
+    const result = resolveTimelineArrangement(documentOf([baseClip, elsewhere]));
+    expect(result.readyClipIds).toEqual([baseClip.id]);
+    expect(result.conflicts).toEqual([{ clipId: elsewhere.id, status: 'conflict', reasons: [{ code: 'missing_source', relatedClipIds: [], startFrame: 48, endFrame: 60 }] }]);
+  });
+
   describe('source range', () => {
     const fps = { num: 24, den: 1 };
     const source = {

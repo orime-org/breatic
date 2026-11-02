@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
+import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import { activeTimelineClipAt, nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineTracks, timelineTrackRank } from '@web/data/yjs/timeline-order';
 import type { TimelineVideoClip } from '@breatic/shared';
@@ -136,5 +137,17 @@ describe('tracks sharing an order (inner#1708 E3)', () => {
     const ready = new Set([onLower, onUpper]);
     expect(nextTimelinePlaybackBoundary(tied, ready, 0, 50)).toBe(10);
     expect(activeTimelineClipAt(tied, ready, 10)?.id).toBe(onLower);
+  });
+});
+
+describe('a clip whose source is missing (inner#1708 M1)', () => {
+  it('is not shown; the clip below it is', () => {
+    const below = cid(1);
+    const above = cid(2);
+    const document = timeline([clip(below, MAIN, 0, 48), clip(above, V2, 10, 20, { sourceId: '10000000-0000-4000-8000-0000000000ff' })]);
+    const ready = new Set(resolveTimelineArrangement(document).readyClipIds);
+    expect(ready.has(above)).toBe(false);
+    expect(activeTimelineClipAt(document, ready, 15)?.id).toBe(below);
+    expect(nextTimelinePlaybackBoundary(document, ready, 0, 60)).toBe(48);
   });
 });
