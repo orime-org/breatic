@@ -64,6 +64,24 @@ models:
           base_price: 450000
           formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/hunyuan3d-v3/text-to-3d
+        prompt_field: prompt
+        output_field: model_glb
+        params:
+          generate_type:
+            field: generate_type
+          enable_pbr:
+            field: enable_pbr
+          face_count:
+            field: face_count
+            absent_value: 500000
+        pricing:
+          kind: formula
+          base_price: 15000
+          formula: '{"total_price": base_price * ((generate_type = "Geometry" ? 15 : generate_type = "LowPoly" ? 30 : 25) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 10 : 0) + (face_count != 500000 ? 10 : 0))}'
+          discount_rate: 100
   hunyuan3d-v3-i23d:
     upstreams:
       - upstream: wavespeed
@@ -93,6 +111,57 @@ models:
           base_price: 450000
           formula: '{"total_price": base_price + (generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0) + ((back_image or left_image or right_image) ? 180000 : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/hunyuan3d-v3/image-to-3d
+        output_field: model_glb
+        params:
+          image:
+            field: input_image_url
+          back_image:
+            field: back_image_url
+          left_image:
+            field: left_image_url
+          right_image:
+            field: right_image_url
+          generate_type:
+            field: generate_type
+          enable_pbr:
+            field: enable_pbr
+          face_count:
+            field: face_count
+            absent_value: 500000
+        pricing:
+          kind: formula
+          base_price: 15000
+          formula: '{"total_price": base_price * ((generate_type = "Geometry" ? 15 : generate_type = "LowPoly" ? 30 : 25) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 10 : 0) + ((back_image_url or left_image_url or right_image_url) ? 10 : 0) + (face_count != 500000 ? 10 : 0))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: tencent/hunyuan-3d/3.0/image-to-3d
+        fixed:
+          mode: async
+        params:
+          image:
+            field: image
+          back_image:
+            field: back_image
+          left_image:
+            field: left_image
+          right_image:
+            field: right_image
+          generate_type:
+            field: generate_type
+          enable_pbr:
+            field: enable_pbr
+          face_count:
+            field: face_count
+            absent_value: 500000
+        pricing:
+          kind: formula
+          base_price: 630000
+          formula: '{"total_price": (generate_type = "LowPoly" ? 720000 : generate_type = "Geometry" ? 450000 : base_price) + ((enable_pbr = true and $not(generate_type = "Geometry")) ? 180000 : 0) + ((back_image or left_image or right_image) ? 180000 : 0)}'
+          discount_rate: 100
   hunyuan3d-v3.1-rapid:
     upstreams:
       - upstream: wavespeed
@@ -106,4 +175,16 @@ models:
           kind: formula
           base_price: 270000
           formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d
+        output_field: model_glb
+        params:
+          image:
+            field: input_image_url
+        pricing:
+          kind: formula
+          base_price: 15000
+          formula: '{"total_price": base_price * 15}'
           discount_rate: 100

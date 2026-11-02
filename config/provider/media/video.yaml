@@ -33,6 +33,45 @@ models:
           base_price: 100000
           formula: '{"total_price": base_price * (duration ? duration : 8) * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: google/gemini-omni-flash/v1.1/text-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 30000
+          formula: '{"total_price": base_price * duration * (resolution = "720p" ? 10 / 3 : resolution = "1080p" ? 5 : resolution = "4k" ? 10 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/gemini-omni-flash/1.1/text-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * duration * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
+          discount_rate: 100
   wan-3.0-text-to-video:
     upstreams:
       - upstream: wavespeed
@@ -55,6 +94,49 @@ models:
           base_price: 500000
           formula: '{"total_price": base_price * (resolution = "1080p" ? 2 : (resolution = "480p" ? 0.5 : 1)) * $min([$max([$ceil(duration), 2]), 30]) / 5}'
           discount_rate: 95
+      - upstream: fal
+        weight: 2
+        model_id: alibaba/wan-3.0/text-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          generate_audio:
+            field: audio
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: alibaba/wan/3.0/text-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1)}'
+          discount_rate: 100
   seedance-2.5-text-to-video:
     upstreams:
       - upstream: wavespeed
@@ -88,6 +170,70 @@ models:
           base_price: 900000
           formula: '{"total_price": ($scale := (resolution = "4k" ? 10 : resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1); $count(reference_videos) > 0 ? ($reference_duration := $min([$ceil(get_duration(reference_videos, min=2, max=30, total=30)), 30]); 110000 * $scale * ($max([2, $reference_duration]) + (duration ? duration : $max([4, $reference_duration])))) : base_price * $scale * duration / 5)}'
           discount_rate: 90
+      - upstream: fal
+        weight: 2
+        model_id: bytedance/seedance-2.5/us/text-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+            as: string
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+        drops:
+          audios: []
+          images: []
+          videos: []
+          style_images: "*"
+          shots: "*"
+        mentions:
+          images: "@image{n}"
+        pricing:
+          kind: formula
+          base_price: 21400
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 1.164 : resolution = "480p" ? 0.2205 : 0.473) / 0.0214}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/seedance/2.5/text-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+        drops:
+          audios: []
+          images: []
+          videos: []
+          style_images: "*"
+          shots: "*"
+        mentions:
+          images: "@image{n}"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 360000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2.5 : resolution = "480p" ? 0.5 : 1)}'
+          discount_rate: 100
   minimax-h3-text-to-video:
     upstreams:
       - upstream: wavespeed
@@ -107,6 +253,63 @@ models:
           kind: formula
           base_price: 700000
           formula: '{"total_price": $min([duration, 15]) / 5 * base_price * (resolution = "768p" ? 5 / 7 : 1)}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: minimax/h3/text-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+            supported:
+              - 5
+              - 6
+              - 7
+              - 8
+              - 9
+              - 10
+              - 11
+              - 12
+              - 13
+              - 14
+              - 15
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: minimax/h3/text-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 130000
+          formula: '{"total_price": duration * (resolution = "768p" ? 60000 : base_price)}'
           discount_rate: 100
   kling-v3.0-4k-text-to-video:
     upstreams:
@@ -137,6 +340,70 @@ models:
           base_price: 2100000
           formula: '{"total_price": base_price * duration / 5}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/kling-video/v3/4k/text-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+            as: string
+          multi_prompt:
+            field: multi_prompt
+            item_fields:
+              prompt:
+                field: prompt
+              duration:
+                field: duration
+                as: string
+          shot_type:
+            field: shot_type
+          auto_shots:
+            field: shot_type
+            values:
+              "true": intelligent
+            absent_value: false
+          negative_prompt:
+            field: negative_prompt
+          generate_audio:
+            field: generate_audio
+        pricing:
+          kind: formula
+          base_price: 420000
+          formula: '{"total_price": base_price * duration}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: kwaivgi/kling-video/v3/4k/text-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          multi_prompt:
+            field: multi_prompt
+          shot_type:
+            field: shot_type
+          auto_shots:
+            field: shot_type
+            values:
+              "true": intelligent
+            absent_value: false
+          generate_audio:
+            field: generate_audio
+        drops:
+          negative_prompt: []
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 420000
+          formula: '{"total_price": base_price * duration}'
+          discount_rate: 100
   gemini-omni-1.1-flash-image-to-video:
     upstreams:
       - upstream: wavespeed
@@ -161,6 +428,53 @@ models:
           base_price: 100000
           formula: '{"total_price": base_price * (duration ? duration : 8) * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: google/gemini-omni-flash/v1.1/image-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          image:
+            field: image_url
+          end_image:
+            field: end_image_url
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 30000
+          formula: '{"total_price": base_price * duration * (resolution = "720p" ? 10 / 3 : resolution = "1080p" ? 5 : resolution = "4k" ? 10 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/gemini-omni-flash/1.1/image-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          image:
+            field: image
+          end_image:
+            field: end_image
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * duration * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
+          discount_rate: 100
   minimax-h3-image-to-video:
     upstreams:
       - upstream: wavespeed
@@ -182,6 +496,67 @@ models:
           kind: formula
           base_price: 700000
           formula: '{"total_price": $min([duration, 15]) / 5 * base_price * (resolution = "768p" ? 5 / 7 : 1)}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: minimax/h3/image-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          duration:
+            field: duration
+            supported:
+              - 5
+              - 6
+              - 7
+              - 8
+              - 9
+              - 10
+              - 11
+              - 12
+              - 13
+              - 14
+              - 15
+          image:
+            field: image_url
+          end_image:
+            field: end_image_url
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: minimax/h3/image-to-video
+        prompt_field: prompt
+        params:
+          duration:
+            field: duration
+          image:
+            field: image
+          end_image:
+            field: end_image
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 130000
+          formula: '{"total_price": duration * (resolution = "768p" ? 60000 : base_price)}'
           discount_rate: 100
   wan-3.0-image-to-video:
     upstreams:
@@ -210,6 +585,59 @@ models:
           base_price: 500000
           formula: '{"total_price": base_price * (resolution = "1080p" ? 2 : (resolution = "480p" ? 0.5 : 1)) * $min([$max([$ceil(duration), 2]), 30]) / 5}'
           discount_rate: 95
+      - upstream: fal
+        weight: 2
+        model_id: alibaba/wan-3.0/image-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          duration:
+            field: duration
+          generate_audio:
+            field: audio
+          image:
+            field: start_image_url
+          end_image:
+            field: end_image_url
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: alibaba/wan/3.0/image-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          image:
+            field: image
+          end_image:
+            field: end_image
+          resolution:
+            field: resolution
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1)}'
+          discount_rate: 100
   seedance-2.5-image-to-video:
     upstreams:
       - upstream: wavespeed
@@ -234,6 +662,62 @@ models:
           base_price: 900000
           formula: '{"total_price": 900000 * (resolution = "4k" ? 10 : (resolution = "1080p" ? 5 : (resolution = "720p" ? 2 : 1))) * duration / 5}'
           discount_rate: 90
+      - upstream: fal
+        weight: 2
+        model_id: bytedance/seedance-2.5/us/image-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          duration:
+            field: duration
+            as: string
+          generate_audio:
+            field: generate_audio
+          image:
+            field: image_url
+          end_image:
+            field: end_image_url
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+        drops:
+          shots: "*"
+        pricing:
+          kind: formula
+          base_price: 21400
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 1.164 : resolution = "480p" ? 0.2205 : 0.473) / 0.0214}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/seedance/2.5/image-to-video
+        prompt_field: prompt
+        params:
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          image:
+            field: image
+          end_image:
+            field: end_image
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+        drops:
+          shots: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 360000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2.5 : resolution = "480p" ? 0.5 : 1)}'
+          discount_rate: 100
   kling-video-o3-4k-image-to-video:
     upstreams:
       - upstream: wavespeed
@@ -281,6 +765,70 @@ models:
           base_price: 2100000
           formula: '{"total_price": duration / 5 * base_price }'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/kling-video/o3/4k/image-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          duration:
+            field: duration
+            as: string
+          image:
+            field: image_url
+          multi_prompt:
+            field: multi_prompt
+            item_fields:
+              prompt:
+                field: prompt
+              duration:
+                field: duration
+                as: string
+          shot_type:
+            field: shot_type
+          auto_shots:
+            field: shot_type
+            values:
+              "true": intelligent
+            absent_value: false
+          generate_audio:
+            field: generate_audio
+        drops:
+          elements: []
+        pricing:
+          kind: formula
+          base_price: 420000
+          formula: '{"total_price": base_price * duration}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: kwaivgi/kling-video/o3/4k/image-to-video
+        prompt_field: prompt
+        params:
+          duration:
+            field: duration
+          image:
+            field: image
+          multi_prompt:
+            field: multi_prompt
+          shot_type:
+            field: shot_type
+          auto_shots:
+            field: shot_type
+            values:
+              "true": intelligent
+            absent_value: false
+          generate_audio:
+            field: generate_audio
+        drops:
+          elements: []
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 420000
+          formula: '{"total_price": base_price * duration}'
+          discount_rate: 100
   wan-2.2-animate-2:
     upstreams:
       - upstream: wavespeed
@@ -316,6 +864,35 @@ models:
           base_price: 50000
           formula: '{"total_price": $min([$ceil(get_duration(video)), 30]) * base_price}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/bytedance/dreamactor/v2
+        output_field: video
+        params:
+          image:
+            field: image_url
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": $min([$ceil(get_duration(video_url)), 30]) * base_price}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/dreamactor/2.0
+        params:
+          image:
+            field: image
+          video:
+            field: video
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": get_duration(video) * base_price}'
+          discount_rate: 100
   minimax-h3-reference-to-video:
     upstreams:
       - upstream: wavespeed
@@ -347,6 +924,85 @@ models:
           base_price: 700000
           formula: '{"total_price": base_price * (($min([duration, 15]) + $ceil($min([get_duration(reference_videos, min=2, max=15, total=15), 15]))) / 5 * (resolution = "768p" ? 5 / 7 : 1)) + ($count(reference_images) > 5 ? 50000 * ($count(reference_images) - 5) : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: minimax/h3/reference-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+            supported:
+              - 5
+              - 6
+              - 7
+              - 8
+              - 9
+              - 10
+              - 11
+              - 12
+              - 13
+              - 14
+              - 15
+          audios:
+            field: reference_audio_urls
+          images:
+            field: reference_image_urls
+          videos:
+            field: reference_video_urls
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          style_images: "*"
+          shots: "*"
+        mentions:
+          audios: Audio {n}
+          images: Image {n}
+          videos: Video {n}
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * duration * (resolution = "2k" ? 2.6 : 1.2) + ($count(reference_image_urls) > 5 ? 80000 * ($count(reference_image_urls) - 5) : 0)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: minimax/h3/reference-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          audios:
+            field: audios
+          images:
+            field: images
+          videos:
+            field: videos
+          resolution:
+            field: resolution
+            values:
+              768p: 768P
+              2k: 2K
+        drops:
+          style_images: "*"
+          shots: "*"
+        mentions:
+          audios: Audio {n}
+          images: Image {n}
+          videos: Video {n}
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 130000
+          formula: '{"total_price": duration * (resolution = "768p" ? 60000 : base_price) + ($count(images) > 5 ? 40000 * ($count(images) - 5) : 0)}'
+          discount_rate: 100
   gemini-omni-1.1-flash-reference-to-video:
     upstreams:
       - upstream: wavespeed
@@ -370,6 +1026,61 @@ models:
         mentions:
           images: <IMAGE_REF_{i}>
           videos: the reference video {n}
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * (duration ? duration : 8) * (resolution = "360p" ? 0.3 : resolution = "1080p" ? 1.5 : resolution = "4k" ? 3 : 1)}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: google/gemini-omni-flash/v1.1/reference-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          images:
+            field: image_urls
+          videos:
+            field: reference_video_urls
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        mentions:
+          images: <IMAGE_REF_{i}>
+          videos: <VIDEO_REF_{i}>
+        pricing:
+          kind: formula
+          base_price: 30000
+          formula: '{"total_price": base_price * (duration ? duration : 8) * (resolution = "720p" ? 10 / 3 : resolution = "1080p" ? 5 : resolution = "4k" ? 10 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/gemini-omni-flash/1.1/reference-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          images:
+            field: images
+          videos:
+            field: videos
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        fixed:
+          mode: async
+        mentions:
+          images: <IMAGE_REF_{i}>
+          videos: <VIDEO_REF_{i}>
         pricing:
           kind: formula
           base_price: 100000
@@ -408,6 +1119,71 @@ models:
           base_price: 500000
           formula: '{"total_price": base_price * (resolution = "1080p" ? 2 : (resolution = "480p" ? 0.5 : 1)) * ($min([duration, 30]) + $ceil($min([get_duration(reference_videos, min=1, max=15, total=15), 15]))) / 5}'
           discount_rate: 95
+      - upstream: fal
+        weight: 2
+        model_id: alibaba/wan-3.0/reference-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          generate_audio:
+            field: audio
+          audios:
+            field: reference_audio_urls
+          images:
+            field: reference_image_urls
+          videos:
+            field: reference_video_urls
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        mentions:
+          audios: Audio {n}
+          images: Image {n}
+          videos: Video {n}
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": base_price * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1) * ($min([duration, 30]) + $min([get_duration(reference_video_urls), 15]))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: alibaba/wan/3.0/reference-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          audios:
+            field: audios
+          images:
+            field: images
+          videos:
+            field: videos
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        fixed:
+          mode: async
+        mentions:
+          audios: Audio {n}
+          images: Image {n}
+          videos: Video {n}
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1) * ((duration ? duration : 5) + $ceil($min([get_duration(videos), 15])))}'
+          discount_rate: 100
   happyhorse-1.1-reference-to-video:
     upstreams:
       - upstream: wavespeed
@@ -432,6 +1208,55 @@ models:
           kind: formula
           base_price: 700000
           formula: '{"total_price": 700000 * (resolution = "1080p" ? 1.35 : 1) * duration / 5}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: alibaba/happy-horse/v1.1/reference-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          images:
+            field: image_urls
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        mentions:
+          images: character{n}
+        pricing:
+          kind: formula
+          base_price: 140000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 18 / 14 : 1)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: alibaba/happy-horse/1.1/reference-to-video
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          images:
+            field: images
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+          shots: "*"
+        fixed:
+          mode: async
+        mentions:
+          images: character{n}
+        pricing:
+          kind: formula
+          base_price: 140000
+          formula: '{"total_price": base_price * (duration ? duration : 5) * (resolution = "1080p" ? 18 / 14 : 1)}'
           discount_rate: 100
   flux-3-start-end-to-video:
     upstreams:
@@ -458,6 +1283,29 @@ models:
           base_price: 850000
           formula: '{"total_price": base_price * $min([$ceil($number(duration)), 20]) / 5 * ($lowercase($string(resolution)) = "1080p" ? 29 / 17 : 1)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: blackforestlabs/flux-3/first-last-frame-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          duration:
+            field: duration
+          end_image:
+            field: end_image_url
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+          image:
+            field: start_image_url
+        pricing:
+          kind: formula
+          base_price: 85000
+          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 290 / 85 : 2)}'
+          discount_rate: 100
   seedance-2.5-video-extend:
     upstreams:
       - upstream: wavespeed
@@ -478,6 +1326,59 @@ models:
           base_price: 1100000
           formula: '{"total_price": 110000 * (resolution = "4k" ? 10 : resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(video, min=2, max=30, total=30)), 30])]) + (duration ? duration : 5))}'
           discount_rate: 90
+      - upstream: fal
+        weight: 2
+        model_id: bytedance/seedance-2.5/us/reference-to-video
+        prompt_field: prompt
+        output_field: video
+        params:
+          duration:
+            field: duration
+            as: string
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+          video:
+            field: video_urls
+            as: list
+        fixed:
+          task: extension
+        pricing:
+          kind: formula
+          base_price: 21400
+          formula: '{"total_price": base_price * 0.6 * (resolution = "1080p" ? 1.164 : resolution = "720p" ? 0.473 : 0.2205) / 0.0214 * ($max([2, $min([$ceil(get_duration(video_urls)), 30])]) + (duration ? duration : 5))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/seedance/2.5/reference-to-video
+        prompt_field: prompt
+        params:
+          duration:
+            field: duration
+          generate_audio:
+            field: generate_audio
+          resolution:
+            field: resolution
+            supported:
+              - 480p
+              - 720p
+              - 1080p
+          video:
+            field: videos
+            as: list
+        fixed:
+          task_type: extend
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 110000
+          formula: '{"total_price": base_price * (resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(videos)), 30])]) + (duration ? duration : 5))}'
+          discount_rate: 100
   wan-3.0-video-edit:
     upstreams:
       - upstream: wavespeed
@@ -526,6 +1427,51 @@ models:
           base_price: 840000
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(video)), character_orientation = "image" ? 10 : 30])]) / 5 * base_price}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/kling-video/v3/pro/motion-control
+        prompt_field: prompt
+        output_field: video
+        params:
+          image:
+            field: image_url
+          video:
+            field: video_url
+          character_orientation:
+            field: character_orientation
+          keep_original_sound:
+            field: keep_original_sound
+        drops:
+          negative_prompt:
+            - ""
+        pricing:
+          kind: formula
+          base_price: 168000
+          formula: '{"total_price": base_price * $min([get_duration(video_url), character_orientation = "image" ? 10 : 30])}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: kwaivgi/kling-video/v3/pro/motion-control
+        prompt_field: prompt
+        params:
+          image:
+            field: image
+          video:
+            field: video
+          character_orientation:
+            field: character_orientation
+          keep_original_sound:
+            field: keep_original_sound
+        drops:
+          negative_prompt:
+            - ""
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 168000
+          formula: '{"total_price": base_price * get_duration(video)}'
+          discount_rate: 100
   omnihuman-1.5:
     upstreams:
       - upstream: wavespeed
@@ -540,6 +1486,36 @@ models:
           kind: formula
           base_price: 160000
           formula: '{"total_price": $min([$ceil(get_duration(audio)), 600]) * base_price}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/bytedance/omnihuman/v1.5
+        output_field: video
+        params:
+          audio:
+            field: audio_url
+          image:
+            field: image_url
+        pricing:
+          kind: formula
+          base_price: 160000
+          formula: '{"total_price": base_price * get_duration(audio_url)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/omnihuman/1.5
+        params:
+          audio:
+            field: audio
+          image:
+            field: image
+        fixed:
+          prompt: ""
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 160000
+          formula: '{"total_price": base_price * get_duration(audio)}'
           discount_rate: 100
   seedance-2.5-talking-avatar:
     upstreams:
@@ -574,6 +1550,35 @@ models:
           base_price: 135000
           formula: '{"total_price": $min([$ceil(get_duration(video)), 300]) * base_price}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/sync-lipsync/v3
+        output_field: video
+        params:
+          audio:
+            field: audio_url
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 8000000
+          formula: '{"total_price": base_price * get_duration(video_url) / 60}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: sync/lipsync/3.0/video-to-video
+        params:
+          audio:
+            field: audio
+          video:
+            field: video
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 135000
+          formula: '{"total_price": base_price * get_duration(video)}'
+          discount_rate: 100
   infinitetalk-video-to-video:
     upstreams:
       - upstream: wavespeed
@@ -591,6 +1596,46 @@ models:
           kind: formula
           base_price: 150000
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(audio)), 600])]) / 5 * base_price * (resolution = "720p" ? 2 : 1)}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/infinitalk/video-to-video
+        prompt_field: prompt
+        send_empty: true
+        output_field: video
+        params:
+          audio:
+            field: audio_url
+          resolution:
+            field: resolution
+          video:
+            field: video_url
+        fixed:
+          num_frames: 241
+        pricing:
+          kind: formula
+          base_price: 300000
+          formula: '{"total_price": ($seconds := $min([get_duration(audio_url), 241 / 25]); base_price * $seconds * ($seconds * 25 > 81 ? 1.25 : 1) * (resolution = "720p" ? 2 : 1))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: meigen/infinitetalk/video-to-video
+        prompt_field: prompt
+        send_empty: true
+        params:
+          audio:
+            field: audio
+          resolution:
+            field: resolution
+          video:
+            field: video
+        fixed:
+          num_frames: 241
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 300000
+          formula: '{"total_price": base_price * $min([get_duration(audio), 241 / 25]) * (resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
   infinitetalk-multi:
     upstreams:
@@ -633,6 +1678,24 @@ models:
           base_price: 835000
           formula: '{"total_price": $min([$ceil(get_duration(audio)), 15]) / 5 * base_price}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/sync-lipsync/react-1
+        output_field: video
+        params:
+          audio:
+            field: audio_url
+          emotion:
+            field: emotion
+          model_mode:
+            field: model_mode
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 10000000
+          formula: '{"total_price": base_price * $min([get_duration(audio_url), 15]) / 60}'
+          discount_rate: 100
   ltx-2.3-lipsync:
     upstreams:
       - upstream: wavespeed
@@ -666,6 +1729,44 @@ models:
           base_price: 100000
           formula: '{"total_price": ($billed_duration := $min([$max([$ceil(get_duration(video)), 3]), 600]); $rate := (target_resolution = "4k" ? 300000 : target_resolution = "2k" ? 250000 : target_resolution = "1080p" ? 200000 : 100000); $billed_duration / 5 * $rate)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/seedvr/upscale/video
+        output_field: video
+        params:
+          target_resolution:
+            field: target_resolution
+            values:
+              2k: 1440p
+              4k: 2160p
+          video:
+            field: video_url
+        fixed:
+          upscale_mode: target
+        pricing:
+          kind: formula
+          base_price: 1000
+          formula: '{"total_price": base_price * (target_resolution = "4k" ? 3840 * 2160 : target_resolution = "2k" ? 2560 * 1440 : target_resolution = "1080p" ? 1920 * 1080 : 1280 * 720) / 1000000 * 30 * get_duration(video_url)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/seedvr/upscale/video
+        params:
+          target_resolution:
+            field: target_resolution
+            values:
+              2k: 1440p
+              4k: 2160p
+          video:
+            field: video
+        fixed:
+          upscale_mode: target
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 1000
+          formula: '{"total_price": base_price * (target_resolution = "4k" ? 3840 * 2160 : target_resolution = "2k" ? 2560 * 1440 : target_resolution = "1080p" ? 1920 * 1080 : 1280 * 720) / 1000000 * 30 * get_duration(video)}'
+          discount_rate: 100
   rife-interpolation:
     upstreams:
       - upstream: wavespeed
@@ -678,4 +1779,16 @@ models:
           kind: formula
           base_price: 10000
           formula: '{"total_price": $max([1, $min([$ceil(get_duration(video)), 600])]) * base_price}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/rife/video
+        output_field: video
+        params:
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 1300
+          formula: '{"total_price": base_price * $max([1, $ceil(get_duration(video_url))])}'
           discount_rate: 100

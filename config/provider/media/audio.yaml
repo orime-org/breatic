@@ -62,6 +62,54 @@ models:
           base_price: 225000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mureka/v9.5/generate/song
+        prompt_field: prompt
+        output_field: audio
+        params:
+          lyrics:
+            field: lyrics
+          melody:
+            field: melody_id
+          song:
+            field: reference_id
+          vocal:
+            field: vocal_id
+        extra_steps:
+          - kind: upload_reference
+            endpoint: mureka/api/files/upload
+            at: before
+            for_param: song
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: upload_melody
+            endpoint: mureka/api/files/upload
+            at: before
+            for_param: melody
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: vocal
+            endpoint: mureka/api/voice/clone
+            at: before
+            for_param: vocal
+            reused: true
+            pricing:
+              kind: formula
+              base_price: 5000000
+              formula: ""
+              discount_rate: 100
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": base_price * (lyrics ? 30 : 100)}'
+          discount_rate: 100
   mureka-v9.5-generate-bgm:
     upstreams:
       - upstream: wavespeed
@@ -73,6 +121,16 @@ models:
           base_price: 225000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mureka/v9.5/generate/instrumental
+        prompt_field: prompt
+        output_field: audio
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": base_price * 30}'
+          discount_rate: 100
   lyria-3-pro-music:
     upstreams:
       - upstream: wavespeed
@@ -82,6 +140,19 @@ models:
         params:
           image:
             field: image
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/lyria3/pro
+        prompt_field: prompt
+        output_field: audio
+        params:
+          image:
+            field: image_url
         pricing:
           kind: formula
           base_price: 80000
@@ -136,6 +207,25 @@ models:
           base_price: 10000
           formula: '{"total_price": base_price * duration * num_samples}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mirelo-ai/sfx1.6/text-to-audio
+        prompt_field: text_prompt
+        output_field: audio
+        params:
+          loop:
+            field: ambience
+          double_output:
+            field: double_output
+          duration:
+            field: duration
+          num_samples:
+            field: num_samples
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * duration * num_samples}'
+          discount_rate: 100
   sonilo-sfx-v1:
     upstreams:
       - upstream: wavespeed
@@ -165,6 +255,20 @@ models:
           kind: formula
           base_price: 50000
           formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/hunyuan-video-foley
+        prompt_field: text_prompt
+        send_empty: true
+        output_field: video
+        params:
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * $max([1, $ceil(get_duration(video_url) / 10)])}'
           discount_rate: 100
   vocal-remover:
     upstreams:

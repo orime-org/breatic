@@ -31,6 +31,54 @@ models:
           base_price: 24000
           formula: '{"total_price": ((quality = "low") ? (resolution = "4k" ? 30000 : (resolution = "2k" ? 20000 : 10000)) : ((quality = "high") ? (resolution = "4k" ? 270000 : (resolution = "2k" ? 150000 : 90000)) : ((quality = "xhigh") ? (resolution = "4k" ? 480000 : (resolution = "2k" ? 270000 : 160000)) : ((quality = "max") ? (resolution = "4k" ? 1000000 : (resolution = "2k" ? 600000 : 360000)) : (resolution = "4k" ? 70000 : (resolution = "2k" ? 40000 : 24000))))))}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: openai/gpt-image-2.5/sunburst/text-to-image
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: image_size
+            values:
+              1:1: square_hd
+              4:3: landscape_4_3
+              3:4: portrait_4_3
+              16:9: landscape_16_9
+              9:16: portrait_16_9
+            supported:
+              - 1:1
+              - 4:3
+              - 3:4
+              - 16:9
+              - 9:16
+          quality:
+            field: quality
+        drops:
+          resolution:
+            - 1k
+        pricing:
+          kind: formula
+          base_price: 1000000
+          formula: '{"total_price": base_price * $lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : ((image_size in ["16:9", "9:16"]) ? {"low": 0.00441, "medium": 0.00951, "high": 0.03945, "xhigh": 0.07014, "max": 0.1578} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}), $exists(quality) ? quality : "high")}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: openai/gpt-image-2.5-sunburst
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          quality:
+            field: quality
+          resolution:
+            field: resolution
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 90000
+          formula: '{"total_price": (quality = "low") ? (resolution = "4k" ? 30000 : (resolution = "2k" ? 20000 : 10000)) : ((quality = "medium") ? (resolution = "4k" ? 70000 : (resolution = "2k" ? 40000 : 24000)) : ((quality = "xhigh") ? (resolution = "4k" ? 480000 : (resolution = "2k" ? 270000 : 160000)) : ((quality = "max") ? (resolution = "4k" ? 1000000 : (resolution = "2k" ? 600000 : 360000)) : (resolution = "4k" ? 270000 : (resolution = "2k" ? 150000 : 90000)))))}'
+          discount_rate: 100
   grok-imagine-image-v2.0-text-to-image:
     upstreams:
       - upstream: wavespeed
@@ -46,6 +94,45 @@ models:
           kind: formula
           base_price: 50000
           formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: xai/grok-imagine-image/v2.0/text-to-image
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          resolution:
+            field: resolution
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * (resolution = "2k" ? 8 : 6)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: xai/grok-imagine-image/2.0/text-to-image
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            supported:
+              - 1:1
+              - 16:9
+              - 9:16
+              - 4:3
+              - 3:4
+              - 3:2
+              - 2:3
+          resolution:
+            field: resolution
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 60000
+          formula: '{"total_price": (resolution = "2k") ? 80000 : 60000}'
           discount_rate: 100
   nano-banana-2:
     upstreams:
@@ -73,6 +160,67 @@ models:
           base_price: 70000
           formula: '{"total_price": ((resolution = "0.5k" ? 45000 : base_price * (resolution = "2k" ? 1.5 : (resolution = "4k" ? 2 : 1))) + (enable_web_search ? 14000 : 0) + (enable_image_search ? 14000 : 0)) }'
           discount_rate: 90
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/nano-banana-2
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          enable_image_search:
+            field: enable_image_search
+          enable_web_search:
+            field: enable_web_search
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        drops:
+          enable_camera: "*"
+          camera: "*"
+          lens: "*"
+          focal_length: "*"
+          aperture: "*"
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "0.5k" ? 0.75 : (resolution = "2k" ? 1.5 : (resolution = "4k" ? 2 : 1))) + ((enable_web_search or enable_image_search) ? 15000 : 0)}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/nano-banana-2
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          enable_image_search:
+            field: enable_image_search
+          enable_web_search:
+            field: enable_web_search
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        drops:
+          enable_camera: "*"
+          camera: "*"
+          lens: "*"
+          focal_length: "*"
+          aperture: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 67000
+          formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 101000 : (resolution = "4k" ? 151000 : 67000))) + ((enable_web_search or enable_image_search) ? 14000 : 0)}'
+          discount_rate: 100
   nano-banana-2-relight:
     upstreams:
       - upstream: wavespeed
@@ -105,6 +253,76 @@ models:
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/nano-banana-2/edit
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: image_urls
+          output_format:
+            field: output_format
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        drops:
+          light_azimuth: "*"
+          light_color: "*"
+          light_color_hex: "*"
+          light_elevation: "*"
+          light_intensity: "*"
+          light_quality: "*"
+          light_reference: "*"
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "0.5k" ? 0.75 : (resolution = "2k" ? 1.5 : (resolution = "4k" ? 2 : 1)))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/nano-banana-2/edit
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: images
+          output_format:
+            field: output_format
+            supported:
+              - jpeg
+              - png
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        drops:
+          light_azimuth: "*"
+          light_color: "*"
+          light_color_hex: "*"
+          light_elevation: "*"
+          light_intensity: "*"
+          light_quality: "*"
+          light_reference: "*"
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 67000
+          formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 101000 : (resolution = "4k" ? 151000 : 67000)))}'
+          discount_rate: 100
   nano-banana-2-quick-edit:
     upstreams:
       - upstream: wavespeed
@@ -126,6 +344,54 @@ models:
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/nano-banana-2/edit
+        prompt_field: prompt
+        output_field: images
+        params:
+          images:
+            field: image_urls
+          output_format:
+            field: output_format
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "0.5k" ? 0.75 : (resolution = "2k" ? 1.5 : (resolution = "4k" ? 2 : 1)))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: google/nano-banana-2/edit
+        prompt_field: prompt
+        params:
+          images:
+            field: images
+          output_format:
+            field: output_format
+            supported:
+              - jpeg
+              - png
+          resolution:
+            field: resolution
+            values:
+              0.5k: 0.5K
+              1k: 1K
+              2k: 2K
+              4k: 4K
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 67000
+          formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 101000 : (resolution = "4k" ? 151000 : 67000)))}'
+          discount_rate: 100
   recraft-v4.1-pro-text-to-vector:
     upstreams:
       - upstream: wavespeed
@@ -135,6 +401,25 @@ models:
         params:
           aspect_ratio:
             field: image_size
+        pricing:
+          kind: formula
+          base_price: 300000
+          formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/recraft/v4.1/pro/text-to-vector
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: image_size
+            values:
+              1:1: square_hd
+              16:9: landscape_16_9
+              9:16: portrait_16_9
+              4:3: landscape_4_3
+              3:4: portrait_4_3
         pricing:
           kind: formula
           base_price: 300000
@@ -177,6 +462,24 @@ models:
           base_price: 60000
           formula: '{"total_price": base_price + (($count(reference) > 0) ? 5000 : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: krea/v2/large/text-to-image
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          creativity:
+            field: creativity
+          style_images:
+            field: image_style_references
+            item_key: image_url
+        pricing:
+          kind: formula
+          base_price: 1000
+          formula: '{"total_price": base_price * (($type(image_style_references) = "array" and $count(image_style_references) > 0) ? 65 : 60)}'
+          discount_rate: 100
   ideogram-v3-quality:
     upstreams:
       - upstream: wavespeed
@@ -194,6 +497,56 @@ models:
           kind: formula
           base_price: 90000
           formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/ideogram/v3
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: image_size
+            values:
+              1:1: square_hd
+              16:9: landscape_16_9
+              9:16: portrait_16_9
+              4:3: landscape_4_3
+              3:4: portrait_4_3
+          rendering:
+            field: style
+            values:
+              Auto: AUTO
+              General: GENERAL
+              Realistic: REALISTIC
+              Design: DESIGN
+          style_images:
+            field: image_urls
+        fixed:
+          rendering_speed: QUALITY
+        pricing:
+          kind: formula
+          base_price: 30000
+          formula: '{"total_price": base_price * 3}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: ideogram-ai/ideogram-v3
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          style_images:
+            field: images
+        drops:
+          rendering:
+            - General
+        fixed:
+          rendering_speed: QUALITY
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 60000
+          formula: '{"total_price": 90000}'
           discount_rate: 100
   recraft-v4-style-text-to-image:
     upstreams:
@@ -245,6 +598,68 @@ models:
           base_price: 39000
           formula: '{"total_price": ((quality = "low") ? (resolution = "4k" ? 45000 : (resolution = "2k" ? 35000 : 25000)) : ((quality = "high") ? (resolution = "4k" ? 285000 : (resolution = "2k" ? 165000 : 105000)) : ((quality = "xhigh") ? (resolution = "4k" ? 495000 : (resolution = "2k" ? 285000 : 175000)) : ((quality = "max") ? (resolution = "4k" ? 1015000 : (resolution = "2k" ? 615000 : 375000)) : (resolution = "4k" ? 85000 : (resolution = "2k" ? 55000 : 39000)))))) + (($count(images) - 1) * 15000)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: openai/gpt-image-2.5/sunburst/edit
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: image_size
+            values:
+              1:1: square_hd
+              4:3: landscape_4_3
+              3:4: portrait_4_3
+              16:9: landscape_16_9
+              9:16: portrait_16_9
+            supported:
+              - auto
+              - 1:1
+              - 4:3
+              - 3:4
+              - 16:9
+              - 9:16
+            absent_value: auto
+          images:
+            field: image_urls
+          quality:
+            field: quality
+        drops:
+          resolution:
+            - 1k
+          style_images: "*"
+        mentions:
+          images: image {n}
+        pricing:
+          kind: formula
+          base_price: 1000000
+          formula: '{"total_price": base_price * ($lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : ((image_size in ["16:9", "9:16"]) ? {"low": 0.00441, "medium": 0.00951, "high": 0.03945, "xhigh": 0.07014, "max": 0.1578} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}), $exists(quality) ? quality : "high") + 0.008 * $count(image_urls))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: openai/gpt-image-2.5-sunburst/edit
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: images
+          quality:
+            field: quality
+          resolution:
+            field: resolution
+        drops:
+          style_images: "*"
+        mentions:
+          images: image {n}
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 105000
+          formula: '{"total_price": ((quality = "low") ? (resolution = "4k" ? 45000 : (resolution = "2k" ? 35000 : 25000)) : ((quality = "medium") ? (resolution = "4k" ? 85000 : (resolution = "2k" ? 55000 : 39000)) : ((quality = "xhigh") ? (resolution = "4k" ? 495000 : (resolution = "2k" ? 285000 : 175000)) : ((quality = "max") ? (resolution = "4k" ? 1015000 : (resolution = "2k" ? 615000 : 375000)) : (resolution = "4k" ? 285000 : (resolution = "2k" ? 165000 : 105000)))))) + $max([$count(images) - 1, 0]) * 15000}'
+          discount_rate: 100
   muse-image-edit:
     upstreams:
       - upstream: wavespeed
@@ -276,6 +691,28 @@ models:
         pricing:
           kind: formula
           base_price: 11000
+          formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: meta/muse-image/edit
+        prompt_field: prompt
+        output_field: images
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: image_urls
+          output_format:
+            field: output_format
+        drops:
+          style_images: "*"
+        mentions:
+          images: image {n}
+        pricing:
+          kind: formula
+          base_price: 10000
           formula: ""
           discount_rate: 100
   nano-banana-pro-edit-ultra:
@@ -325,6 +762,64 @@ models:
           base_price: 25000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/qwen-image-edit-2511-multiple-angles
+        prompt_field: additional_prompt
+        output_field: images
+        params:
+          distance:
+            field: zoom
+            values:
+              "0": 10
+              "1": 5
+              "2": 0
+          horizontal_angle:
+            field: horizontal_angle
+          images:
+            field: image_urls
+          output_format:
+            field: output_format
+          vertical_angle:
+            field: vertical_angle
+        mentions:
+          images: image {n}
+        pricing:
+          kind: formula
+          base_price: 35000
+          formula: ""
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: alibaba/qwen-image-edit/2511/multiple-angles
+        prompt_field: additional_prompt
+        params:
+          distance:
+            field: zoom
+            values:
+              "0": 10
+              "1": 5
+              "2": 0
+          horizontal_angle:
+            field: horizontal_angle
+          images:
+            field: images
+          output_format:
+            field: output_format
+            supported:
+              - jpeg
+              - png
+          vertical_angle:
+            field: vertical_angle
+        mentions:
+          images: image {n}
+        fixed:
+          mode: async
+        pricing:
+          kind: formula
+          base_price: 35000
+          formula: ""
+          discount_rate: 100
   pro-upscaler:
     upstreams:
       - upstream: wavespeed
@@ -350,6 +845,18 @@ models:
         params:
           image:
             field: image
+        pricing:
+          kind: formula
+          base_price: 18000
+          formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/bria/background/remove
+        output_field: image
+        params:
+          image:
+            field: image_url
         pricing:
           kind: formula
           base_price: 18000
@@ -386,6 +893,20 @@ models:
           base_price: 40000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/bria/eraser
+        output_field: image
+        params:
+          image:
+            field: image_url
+          mask_image:
+            field: mask_url
+        pricing:
+          kind: formula
+          base_price: 40000
+          formula: ""
+          discount_rate: 100
   seedream-v4.5-edit:
     upstreams:
       - upstream: wavespeed
@@ -395,6 +916,35 @@ models:
         params:
           images:
             field: images
+        pricing:
+          kind: formula
+          base_price: 40000
+          formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/bytedance/seedream/v4.5/edit
+        prompt_field: prompt
+        output_field: images
+        params:
+          images:
+            field: image_urls
+        fixed:
+          image_size: auto_2K
+        pricing:
+          kind: formula
+          base_price: 40000
+          formula: ""
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: bytedance/seedream/4.5/edit
+        prompt_field: prompt
+        params:
+          images:
+            field: images
+        fixed:
+          mode: async
         pricing:
           kind: formula
           base_price: 40000
