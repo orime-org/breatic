@@ -12,16 +12,46 @@ poll_interval_ms: 5000
 executions:
   video.remove-bg:
     model: "bria-fibo-video-background-remover"
+    # Encoding the model's input runs on standard-4, held to the same precheck as its other tools.
+    preparation:
+      container_class: "MiniToolContainerStd4"
+      precheck_seconds: 300
   # Provisional: reuse the existing eight-output job contract and cut's 300 s
   # precheck, not measured capacity. Std4 worst-sample qualification is pending.
   video.extract-frames:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 300
     max_outputs: 8
+    # Outputs one batch job writes; at most the job contract's eight.
+    max_outputs_per_job: 8
   video.split:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 300
     max_outputs: 8
+    max_outputs_per_job: 8
+
+# Chunked full-resolution encoding. Each chunk targets chunk_share of the
+# remaining task budget; a run uses at most max_parallel_chunks chunks, and a
+# presentation needing more fails as too_long. Encode jobs run only on
+# standard-4 (basic only probes and copies), so the rates are configured for it:
+# a job's seconds are start_seconds + (encoded + pre-roll frames) x (source
+# pixels / decode-convert rate + output pixels / encode rate). Rates were
+# measured on a maintainer machine held to standard-4 limits; replace them with
+# readings taken on Cloudflare standard-4. The copy route's disk margin is
+# derived from presentation.source_ledger and is not configured here.
+encoding:
+  chunk_share: 0.5
+  max_parallel_chunks: 8
+  encoder:
+    container_class: "MiniToolContainerStd4"
+    start_seconds: 3
+    encode_pixels_per_second: 163000000
+    # Source pixels per second, by source bit depth and dynamic range.
+    decode_convert_pixels_per_second:
+      sdr_8bit: 1950000000
+      sdr_10bit: 705000000
+      hdr_8bit: 152000000
+      hdr_10bit: 103000000
 
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:
@@ -45,6 +75,15 @@ presentation:
     iso_box_count: 100000
     matroska_element_count: 1000000
     matroska_max_blocks: 250000
+  # An encoded carrier: short side at most max_short_side, labelled SDR BT.709.
+  carrier:
+    container_class: "MiniToolContainerStd4"
+    max_short_side: 1080
+    color:
+      primaries: "bt709"
+      transfer: "bt709"
+      matrix: "bt709"
+      range: "tv"
 
 # Canonical results remain discoverable until their delivery is acknowledged.
 delivery:
