@@ -107,7 +107,8 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
         const dracoDownload = (): Promise<unknown> => (draco as DRACOLoader & { _initDecoder: () => Promise<unknown> })._initDecoder();
         if (dracoUsed) await dracoDownload();
         // GLTFLoader preloads a declared Draco decoder without handling a failed download; no loaded primitive needs it here.
-        else if (model.json.extensionsUsed?.includes('KHR_draco_mesh_compression')) void dracoDownload().catch(() => undefined);
+        // A download finishing after dispose creates the worker source URL that dispose found absent.
+        else if (model.json.extensionsUsed?.includes('KHR_draco_mesh_compression')) void dracoDownload().then(() => { if (disposed) draco.dispose(); }, () => undefined);
         if (ktx2 && basisu) await ktx2.init();
       } finally {
         // A dispose during the download found nothing to release; the finished download created the worker source URL.
