@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The frame a table scrolls sideways in (inner#1126 A12), with an edge on each

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 轨道的两部分解耦之后各自的状态（#1952）。

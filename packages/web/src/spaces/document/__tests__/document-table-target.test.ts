@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1126 §5.0, A17: the cell a table menu was opened on follows every

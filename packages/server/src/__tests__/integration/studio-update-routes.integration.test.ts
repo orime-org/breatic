@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio settings — `PATCH /api/v1/studio/:slug`, end-to-end through the real

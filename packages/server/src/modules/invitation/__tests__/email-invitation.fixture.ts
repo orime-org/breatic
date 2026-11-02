@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type postgres from "postgres";
 import * as projectInvites from "@server/modules/project-invite/projectInvite.service.js";

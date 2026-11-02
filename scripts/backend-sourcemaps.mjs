@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Box, Clock, FileText, Palette } from 'lucide-react';
 import type { SpaceType } from '@breatic/shared';

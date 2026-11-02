@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { afterEach, describe, expect, it, vi } from "vitest";
 const { config, connections } = vi.hoisted(() => ({ config: { REDIS_QUEUE_URL: "redis://localhost:6379/1" }, connections: [] as Record<string, unknown>[] }));
 vi.mock("@core/config/env.js", () => ({ env: config, MONOREPO_ROOT: decodeURIComponent(new URL("../../../../../", import.meta.url).pathname) }));

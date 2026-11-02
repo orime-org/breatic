@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Breatic itself is distributed under the Breatic Source-Available License 1.0
-(see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
+Breatic itself is distributed under the GNU Affero General Public License v3.0
+(`AGPL-3.0-only`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container

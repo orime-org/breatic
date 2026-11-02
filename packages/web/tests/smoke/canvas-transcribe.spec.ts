@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The approved transcription journey, from a node menu to its downstream text (inner#856). */
 import { execFileSync } from 'node:child_process';

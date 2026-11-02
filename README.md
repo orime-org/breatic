@@ -96,9 +96,15 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 ## License and permitted use
 
-Breatic is **open source** under the [Breatic Source-Available License v1.0](LICENSE), based on Apache 2.0 with additional conditions.
+Breatic is **open source** under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
 
-The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [contact@breatic.ai](mailto:contact@breatic.ai).
+You may use, study, modify and self-host Breatic for any purpose, including commercial use. If you modify Breatic and let other people use your modified version over a network, you must offer them its complete source code under the same license. See the license for the complete terms.
+
+The Breatic name and logo are trademarks of Orime, Inc. and are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md). The license places no restriction on the content you create with Breatic.
+
+### Generated content
+
+Breatic is a tool for AI-assisted content creation. Operators and users of a Breatic instance are responsible for making sure generated content complies with applicable law (copyright, trademark, privacy, data protection, defamation and content moderation), for holding the rights to the inputs they supply and to their downstream use, and for moderating content in their context of use. Orime, Inc. makes no warranty about the accuracy, legality, originality or safety of generated content.
 
 Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import type { Check } from "#repo-lint/check";
 import { agentRuleFiles } from "#repo-lint/checks/agent-rule-files";
 import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";

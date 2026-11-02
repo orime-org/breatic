@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 CREATE TABLE project_asset_refs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
