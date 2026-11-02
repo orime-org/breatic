@@ -20,7 +20,50 @@ export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords 
  * @throws {never} Never.
  */
 export function removeTimelineRecord(doc: Y.Doc, kind: 'clips' | 'tracks', id: string, origin: unknown): void {
-  doc.transact(() => { doc.getMap(kind).delete(id); }, origin);
+  doc.transact(() => {
+    doc.getMap(kind).delete(id);
+    if (kind === 'clips') reconcileTimelineSources(doc, {}, []);
+  }, origin);
+}
+
+/**
+ * The source id a clip record names, read from the raw record so a damaged record still counts as a reference.
+ * @param record - A value of the clips map.
+ * @returns Its string `sourceId`, if any.
+ * @throws {never} Never.
+ */
+function sourceIdOf(record: unknown): string | undefined {
+  const id = record instanceof Y.Map ? record.get('sourceId') : typeof record === 'object' && record !== null ? (record as { sourceId?: unknown }).sourceId : undefined;
+  return typeof id === 'string' ? id : undefined;
+}
+
+/**
+ * Bring `sources` to exactly the sources the clip records name, inside the caller's transaction. Sources in
+ * `reset` are written again even when present: a peer's concurrent removal deletes only the entry it saw, so a
+ * fresh write keeps the source for a reference this transaction creates or revives.
+ * @param doc - The content document.
+ * @param values - Source values by id that this writer may write.
+ * @param reset - Ids of sources a reference was just created or revived for.
+ * @throws {never} Never.
+ */
+export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
+  const sources = doc.getMap<unknown>('sources');
+  const referenced = new Set<string>();
+  doc.getMap<unknown>('clips').forEach((record) => {
+    const id = sourceIdOf(record);
+    if (id !== undefined) referenced.add(id);
+  });
+  /**
+   * Write one source value from `values`.
+   * @param id - The source id.
+   * @throws {never} Never.
+   */
+  const write = (id: string): void => {
+    if (values[id] !== undefined) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
+  };
+  for (const id of new Set(reset)) if (referenced.has(id)) write(id);
+  for (const id of referenced) if (!sources.has(id)) write(id);
+  for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);
 }
 
 /**
@@ -39,10 +82,10 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   if (!plan.ok) return plan;
   const { next } = plan;
   doc.transact(() => {
-    const sources = doc.getMap<unknown>('sources');
-    for (const [id, source] of Object.entries(next.sources)) if (!sources.has(id)) sources.set(id, freezeRecord(structuredClone(source)));
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
+    const created = Object.values(next.clips).filter((clip) => current.clips[clip.id] === undefined).map((clip) => clip.sourceId);
+    reconcileTimelineSources(doc, next.sources, created);
   }, origin);
   return plan;
 }
