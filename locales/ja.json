@@ -172,6 +172,7 @@
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "shared_space_too_long": "{name} から共有した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
       "ask_not_found": "この会話にこの質問カードはありません。",
@@ -426,7 +427,8 @@
         "readNodeHistory": "ノードの履歴の確認",
         "readActivity": "Project アクティビティの確認",
         "other": "{tool} の実行",
-        "readTemplate": "テンプレートの確認"
+        "readTemplate": "テンプレートの確認",
+        "requestSpace": "Space の閲覧依頼"
       }
     },
     "loadEarlier": "以前のメッセージを読み込む",
@@ -488,6 +490,7 @@
       "addComment": "コメントを追加",
       "apply": "置き換える",
       "insert": "挿入",
+      "locate": "位置を表示",
       "appliedComment": "コメントを追加しました",
       "appliedRewrite": "置き換えました",
       "appliedInsert": "挿入しました",
@@ -499,6 +502,7 @@
       "failedComment": "コメントを追加できませんでした。もう一度お試しください。",
       "failedRewrite": "置き換えられませんでした。もう一度お試しください。",
       "failedInsert": "挿入できませんでした。もう一度お試しください。",
+      "failedLocate": "位置を表示できませんでした。もう一度お試しください。",
       "lossy": "この段落の書式とコメントは置き換えられます。"
     },
     "thinking": "少し考えました",
@@ -521,6 +525,21 @@
       "show": "開く",
       "hide": "閉じる",
       "atLeastOne": "少なくとも1問に答えてください"
+    },
+    "spaceRequest": {
+      "title": "Agent が次の内容の閲覧を求めています",
+      "allow": "閲覧を許可",
+      "decline": "閲覧を拒否",
+      "shared": "Agent に共有しました",
+      "declined": "Agent に共有しませんでした",
+      "partBlocks": "{to, select, end {ブロック {from} 以降} other {ブロック {from}–{to}}}",
+      "partNodes": "{count} 個のノード",
+      "state": {
+        "unreadable": "読み取れません",
+        "gone": "削除済み",
+        "timedOut": "タイムアウト",
+        "failed": "読み取りに失敗"
+      }
     }
   },
   "canvas": {
@@ -1464,6 +1483,40 @@
     },
     "promptMark": {
       "reference": "@ で {label} を選択"
+    },
+    "shortcuts": {
+      "title": "キーボードショートカット",
+      "group": {
+        "edit": "編集",
+        "group": "グループ",
+        "select": "選択と移動",
+        "view": "表示",
+        "drawing": "描画ツール",
+        "exit": "終了"
+      },
+      "row": {
+        "delete": "削除",
+        "marquee": "範囲選択",
+        "toggleSelect": "選択に追加・選択から外す",
+        "nudge": "選択を少し移動",
+        "nudgeFar": "大きく移動",
+        "pan": "パン",
+        "zoom": "ズーム",
+        "brushSize": "ブラシ・マークのサイズ",
+        "deleteMark": "選択したマークを削除",
+        "closePanel": "パネルを閉じる",
+        "exitPick": "選択モードを終了",
+        "cancelNote": "注釈の配置をキャンセル"
+      },
+      "gesture": {
+        "dragEmpty": "空白部分をドラッグ",
+        "click": "クリック",
+        "arrowKeys": "矢印キー",
+        "scroll": "スクロール",
+        "spaceDrag": "Space + ドラッグ",
+        "pinch": "ピンチ",
+        "wheel": "ホイール"
+      }
     }
   },
   "auth": {
@@ -1944,12 +1997,13 @@
       "invalidObject": "読み取れないオブジェクト: {id}",
       "empty": "人物やブロックを追加してシーンを配置します。",
       "unsupported": "このシーンの形式に対応していません。ページを再読み込みしてください。",
+      "unsupportedOld": "このシーンは古い形式のため開けません。",
       "modelFailed": "モデルを読み込めませんでした。",
       "peerSelection": "{name}: {count} 個を選択中",
       "add": "追加",
       "generate": "AI 生成",
       "annotationsLater": "注釈（後日提供）",
-      "help": "ヘルプ",
+      "controls": "操作説明",
       "tasks": "生成タスク",
       "minimap": "シーンのミニマップ",
       "generationDev": "3D モデル生成は開発中です",
@@ -2019,9 +2073,7 @@
       "nodes": "ノードライブラリ",
       "upload": "素材をアップロード(混在ファイル可)",
       "comment": "Canvas に注釈を追加",
-      "collection": "Collection(近日対応)",
-      "help": "ヘルプ(近日対応)",
-      "feedback": "フィードバック / サポート(近日対応)"
+      "shortcuts": "キーボードショートカット"
     },
     "disabledTooltip": "Editor 権限が必要です"
   },
@@ -2495,7 +2547,12 @@
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
     },
-    "languageNotSaved": "言語をアカウントに保存できませんでした"
+    "languageNotSaved": "言語をアカウントに保存できませんでした",
+    "help": {
+      "trigger": "ヘルプ",
+      "manual": "ユーザーマニュアル",
+      "contact": "サポートに連絡"
+    }
   },
   "projectJoin": {
     "title": "この Project のメンバーではありません",
@@ -2709,6 +2766,7 @@
     "source": {
       "payment": "購入",
       "gift": "体験クレジット",
+      "operatorGift": "ギフトクレジット",
       "compensation": "補償",
       "discount": "割引"
     },
@@ -2759,7 +2817,7 @@
     "deletedStudio": "削除された Studio",
     "deletedBadge": "削除済み",
     "deletedStudioHint": "この Studio は存在しないため、残高は使えません",
-    "assignedLots": "{count} 件の購入を割り当て済み",
+    "assignedLots": "{count} 個のクレジットパックを割り当て済み",
     "noLotsHere": "割り当てられたクレジットはありません",
     "debtAndSpent": "未払い {debt} · 消費 {spent}",
     "spentOnly": "消費 {spent}",
@@ -2873,6 +2931,63 @@
       "title": "ページのバージョンが古くなっています",
       "description": "このページは古いバージョンのため、今回の操作は完了していません。再読み込みすると続行できます。",
       "refresh": "更新"
+    }
+  },
+  "timeline": {
+    "loading": "Timeline を読み込み中…",
+    "unavailable": "Timeline を利用できません。",
+    "incompatible": "この Timeline の内容を開けません。",
+    "empty": "動画を追加して Timeline の編集を始めましょう。",
+    "video": "動画",
+    "conflict": "競合",
+    "conflictHelp": "クリップが重複しています。クリップを選択して開始フレームを変更してください。",
+    "loadingMedia": "動画を読み込み中…",
+    "mediaUnavailable": "この動画を利用できません。",
+    "retry": "再試行",
+    "play": "再生",
+    "pause": "一時停止",
+    "seek": "プレビューフレーム",
+    "framePosition": "フレーム {frame} / {total}",
+    "tracks": "トラック",
+    "addMedia": "素材を追加",
+    "visualTrack": "映像 1",
+    "selectClip": "クリップを選択してプロパティを表示します。",
+    "clipFrames": "開始 {start} · 長さ {duration} フレーム",
+    "editStart": "開始フレームを変更",
+    "startFrame": "開始フレーム",
+    "apply": "適用",
+    "cancel": "キャンセル",
+    "transport": {
+      "paused": "一時停止中",
+      "playing": "再生中",
+      "waiting": "バッファリング中…",
+      "failed": "再生に失敗しました"
+    },
+    "material": {
+      "description": "動画を選択して追加位置を確認してください。",
+      "project": "Project の動画",
+      "local": "ローカルからアップロード",
+      "duration": "{seconds} 秒",
+      "durationPending": "長さを取得待ち",
+      "loading": "Project の動画を読み込み中…",
+      "listError": "Project の動画を読み込めませんでした。",
+      "empty": "この Project にはまだ動画がありません。",
+      "more": "さらに読み込む",
+      "chooseFile": "動画を選択",
+      "fileEmpty": "ローカルの動画ファイルを選択してください。",
+      "preparing": "動画を準備中…",
+      "progress": "アップロード中 {progress}%",
+      "confirm": "Timeline に追加"
+    },
+    "errors": {
+      "readonly": "現在の役割では編集できません。",
+      "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
+      "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
+      "invalid_range": "有効な開始フレームを入力してください。",
+      "overlap": "この位置は別のクリップと重複しています。開始フレームを変更してください。",
+      "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
+      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
+      "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。"
     }
   }
 }

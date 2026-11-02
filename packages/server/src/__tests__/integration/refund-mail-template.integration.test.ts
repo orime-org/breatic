@@ -35,6 +35,8 @@
  * sits among the integration tests for the real locale files and config.
  */
 
+import type { CreditDecimal } from "@breatic/shared";
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -78,7 +80,7 @@ function completed(over: Partial<Extract<RefundMailView, { kind: "refund_complet
     locale: "en",
     timeZone: "UTC",
     paymentId: PAYMENT_ID,
-    credits: 880,
+    credits: "880.000000" as CreditDecimal,
     purchasedAt: PURCHASED_AT,
     amountCents: 1080,
     currency: "usd",
@@ -99,7 +101,7 @@ function rejected(over: Partial<Extract<RefundMailView, { kind: "refund_rejected
     locale: "en",
     timeZone: "UTC",
     paymentId: PAYMENT_ID,
-    credits: 880,
+    credits: "880.000000" as CreditDecimal,
     purchasedAt: PURCHASED_AT,
     requestedAt: REQUESTED_AT,
     ...over,
@@ -118,7 +120,7 @@ function restored(over: Partial<Extract<RefundMailView, { kind: "refund_restored
     locale: "en",
     timeZone: "UTC",
     paymentId: PAYMENT_ID,
-    credits: 880,
+    credits: "880.000000" as CreditDecimal,
     purchasedAt: PURCHASED_AT,
     requestedAt: REQUESTED_AT,
     ...over,
@@ -153,12 +155,12 @@ async function purchaseHelpLine(locale: string): Promise<string> {
       taxCents: 80,
       totalCents: 1080,
       currency: "usd",
-      creditsGranted: 880,
+      creditsGranted: "880.000000" as CreditDecimal,
       grantedAt: PURCHASED_AT,
       consentTextVersion: CONSENT_CREDITS_VERSION,
       refundTextVersion: REFUND_CREDITS_VERSION,
       timeZone: "UTC",
-      balanceCredits: 880,
+      balanceCredits: "880.000000" as CreditDecimal,
     },
     "UTC",
   );

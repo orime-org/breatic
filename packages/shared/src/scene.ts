@@ -33,7 +33,6 @@ export const SceneObjectValuesSchema = z.object({
   rotation: SceneRotationSchema,
   scale: SceneScaleSchema,
   locked: z.boolean(),
-  exists: z.boolean(),
 }).strict();
 
 /** A projected object combines its stable document key with plain values. */
@@ -45,9 +44,8 @@ export type SceneModel = z.infer<typeof SceneModelSchema>;
 export type SceneObjectValues = z.infer<typeof SceneObjectValuesSchema>;
 export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
-/** The existing arrays created together with every stable object record. */
-export const SCENE_EDITABLE_FIELDS = ['name', 'position', 'rotation', 'scale', 'locked', 'exists'] as const;
-export type SceneEditableField = typeof SCENE_EDITABLE_FIELDS[number];
+/** Record keys that commands overwrite after creation; `model` is fixed at creation. */
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;
 
 /** Configured import budgets carried by the readable Project API. */
 export interface SceneImportLimits {

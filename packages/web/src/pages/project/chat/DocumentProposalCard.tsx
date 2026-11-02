@@ -104,9 +104,11 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
 /**
  * A card that lands an Agent's comment, rewrite or insert in a document
  * (inner#1509). It says which document and passage, what would change, and
- * offers the press; the project page opens the document and the document
- * Space lands it. A press that landed shows its result on the card; any other
- * ending is told in a toast and the card goes back to its buttons.
+ * offers the press, with Locate first to see the passage in the document
+ * before choosing (inner#1646); the project page opens the document and the document
+ * Space lands it. A landing press that landed shows its result on the card;
+ * any other ending of a landing press is told in a toast and the card goes
+ * back to its buttons; a locate press leaves the card as it was.
  *
  * Whether it landed is read off the open document whenever the document
  * changes, so a reload knows once the document is open and undoing a rewrite
@@ -126,9 +128,11 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const projectId = projectUuidFromRouteParam(routeParam);
   const card = useDocumentProposals((s) => s.cards[proposal.proposalId]);
   const viewing = useDocumentProposals((s) => s.pending[proposal.proposalId]?.action === 'view');
+  const locating = useDocumentProposals((s) => s.pending[proposal.proposalId]?.action === 'locate');
   const docVersion = useDocumentProposals((s) => s.docVersion[proposal.spaceId] ?? 0);
   const start = useDocumentProposals((s) => s.start);
   const view = useDocumentProposals((s) => s.view);
+  const locate = useDocumentProposals((s) => s.locate);
   const body = useReadBody(proposal);
   const changes = body?.changes ?? null;
 
@@ -153,6 +157,9 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const onView = React.useCallback(() => {
     view(proposal, action ?? 'write');
   }, [action, proposal, view]);
+  const onLocate = React.useCallback(() => {
+    locate(proposal);
+  }, [locate, proposal]);
 
   const where = t(proposal.kind === 'insert' ? 'chat.documentProposal.whereInsert' : 'chat.documentProposal.where', {
     name: proposal.spaceName,
@@ -246,11 +253,15 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           </Button>
         </div>
       ) : (
-        <ProposalActions>
+        <ProposalActions wrap>
+          {/* Locate reads only what the card already names, so an unread body does not hold it (inner#1646). */}
+          <ProposalAction loading={locating} disabled={working} onClick={onLocate}>
+            {t('chat.documentProposal.locate')}
+          </ProposalAction>
           {commentable ? (
             <ProposalAction
               loading={working && card?.action === 'comment'}
-              disabled={unread || (working && card?.action !== 'comment')}
+              disabled={unread || locating || (working && card?.action !== 'comment')}
               onClick={onComment}
             >
               {t('chat.documentProposal.addComment')}
@@ -259,7 +270,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           {proposal.kind === 'comment' ? null : (
             <ProposalAction
               loading={working && card?.action === 'write'}
-              disabled={unread || (working && card?.action !== 'write')}
+              disabled={unread || locating || (working && card?.action !== 'write')}
               onClick={onWrite}
             >
               {t(proposal.kind === 'insert' ? 'chat.documentProposal.insert' : 'chat.documentProposal.apply')}

@@ -40,7 +40,7 @@
  * hook itself no longer touches `yjs_documents` at all (#26).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from "vitest";
 import { createHash } from "node:crypto";
 import type * as CoreModule from "@breatic/core";
 import type { Redis } from "@breatic/core";
@@ -82,8 +82,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
     debug: vi.fn(),
   }),
 }));
-import { createAuthHook } from "../hooks/auth.js";
-import type { SeatClaim } from "@collab/services/connection-registry.js";
+import { createAuthHook, type CreateAuthHookOptions } from "../hooks/auth.js";
+import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
 function withCookie(token: string): Headers {
@@ -172,17 +172,16 @@ describe("createAuthHook", () => {
     connectionLimit?: number | ((projectId: string) => Promise<number>);
     countConnections?: (documentName: string) => Promise<number>;
     /**
-     * Take one of this person's own seats on this document, cluster-wide.
-     * Answers one of three ways, and the handshake treats each differently:
-     * `took` carries the member it removed, `none` means they hold no seat
-     * here (or another handshake got to all of them first), and `unknown`
-     * means Redis could not say — that one lets them in writable. Defaults
-     * to `none`, so a case that says nothing about it has nothing to take.
+     * Whether this person already holds a seat on this document, cluster-wide.
+     * `yes` lets a full document's handshake stay writable (the seat is
+     * replaced atomically later, in `connected`), `unknown` (Redis could not
+     * say) does too, `no` settles for read-only. Defaults to `no`, so a case
+     * that says nothing about it holds no seat.
      */
-    claimSeatFrom?: (
+    hasOwnSeat?: (
       documentName: string,
       userId: string,
-    ) => Promise<SeatClaim>;
+    ) => Promise<"yes" | "no" | "unknown">;
     /**
      * Documents this process already holds, keyed by document name — the
      * table Hocuspocus hands the hook as `instance.documents`. Empty by
@@ -202,9 +201,7 @@ describe("createAuthHook", () => {
       resolveConnectionLimit:
         typeof limit === "function" ? limit : async () => limit,
       countConnections: overrides?.countConnections ?? (async () => 0),
-      claimSeatFrom:
-        overrides?.claimSeatFrom ??
-        (async (): Promise<SeatClaim> => ({ outcome: "none" })),
+      hasOwnSeat: overrides?.hasOwnSeat ?? (async () => "no" as const),
     });
     type HookArgs = Parameters<typeof hook>[0];
     // Default: this process already holds the project's list, and it has the
@@ -379,7 +376,9 @@ describe("createAuthHook", () => {
 
     expect(ctx).toEqual({
       user: { id: "user-1", role: "owner" },
-      handedOverFrom: null,
+      // Writable on a content doc under the default ceiling of 100.
+      seatCap: 100,
+      arrivedAtMs: expect.any(Number),
       session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(false);
@@ -419,7 +418,8 @@ describe("createAuthHook", () => {
 
     expect(ctx).toEqual({
       user: { id: "user-1", role: "editor" },
-      handedOverFrom: null,
+      seatCap: null,
+      arrivedAtMs: expect.any(Number),
       session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(true);
@@ -543,197 +543,186 @@ describe("createAuthHook", () => {
     expect(countSpy).not.toHaveBeenCalled();
   });
 
-  // ── Handing a seat over to the arriving connection ────────────────
+  // ── Asking whether the arriving person already holds a seat (inner#1034) ──
   //
   // At capacity, before settling for read-only, the handshake asks whether
-  // the arriving person ALREADY holds a seat here. If they do, one of those
-  // is taken and this connection gets it. Their other tab goes read-only
-  // instead of this one — the invariant being that nobody is ever kept out
-  // by themselves.
-  //
-  // Two things this deliberately does NOT do. It never looks at whether the
-  // older connection is alive: a reconnect after a blip and a second tab are
-  // handled identically, and that is what removes the need to guess whether
-  // a socket is dead. And it does not send the demote instruction here — the
-  // framework can still abandon this connection between the document load
-  // and `connected` (hocuspocus-server.esm.js:868 returns silently when the
-  // socket has gone Closing/Closed), which on a cap of one would leave the
-  // person with a demoted tab and no new connection at all.
+  // the arriving person ALREADY holds a seat here. If they do, this connection
+  // is let in writable: the seat itself is replaced atomically by the script
+  // the `connected` hook runs, so nobody is ever kept out by themselves, and
+  // nothing is taken here — the framework can still abandon this connection
+  // before `connected`. The handshake hands `connected` the ceiling it judged
+  // by (`seatCap`, null when this connection takes no seat) and the moment it
+  // started (`arrivedAtMs`), which orders this person's connections.
 
-  it("takes one of the arriving person's own seats when the doc is full", async () => {
+  const CANVAS_DOC = `project-${PID}/canvas-${SID}`;
+
+  /**
+   * Run the hook once on a content doc as an editor with a ceiling of 2.
+   * @param options - What the cap lookups answer.
+   * @param options.count - The cluster-wide count.
+   * @param options.own - What `hasOwnSeat` answers.
+   * @param options.role - The member's role.
+   * @param options.documentName - The document.
+   * @param options.limit - The ceiling, or a resolver.
+   * @returns The context, the settled config and the three spies.
+   */
+  async function capCase(options: {
+    count: number;
+    own?: "yes" | "no" | "unknown";
+    role?: string;
+    documentName?: string;
+    limit?: number | ((projectId: string) => Promise<number>);
+  }): Promise<{
+    ctx: Record<string, unknown>;
+    connectionConfig: { readOnly: boolean };
+    resolveSpy: ReturnType<typeof vi.fn>;
+    countSpy: ReturnType<typeof vi.fn>;
+    ownSpy: ReturnType<typeof vi.fn>;
+  }> {
     getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(
-      async (): Promise<SeatClaim> => ({
-        outcome: "took",
-        member: "user-1:1000:inst-a:socket-old",
-      }),
+    loadProjectRoleMock.mockResolvedValue(options.role ?? "editor");
+    const limit = options.limit ?? 2;
+    const resolveSpy = vi.fn(async (projectId: string): Promise<number> =>
+      typeof limit === "function" ? limit(projectId) : limit,
     );
-    const hook = buildHook({
-      connectionLimit: 2,
-      countConnections: async () => 2,
-      claimSeatFrom: claimSpy,
-    });
+    const countSpy = vi.fn(async () => options.count);
+    const ownSpy = vi.fn(async () => options.own ?? ("no" as const));
+    const hook = buildHook({ connectionLimit: resolveSpy, countConnections: countSpy, hasOwnSeat: ownSpy });
     const connectionConfig = { readOnly: false };
-
-    const ctx = await hook({
+    const ctx = (await hook({
       token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
+      documentName: options.documentName ?? CANVAS_DOC,
       requestHeaders: withCookie("tok"),
       connectionConfig,
-    });
+    })) as unknown as Record<string, unknown>;
+    return { ctx, connectionConfig, resolveSpy, countSpy, ownSpy };
+  }
 
-    expect(claimSpy).toHaveBeenCalledWith(
-      `project-${PID}/canvas-${SID}`,
-      "user-1",
-    );
+  it("E-A01 hands a writable connection below the cap its ceiling, without asking about own seats", async () => {
+    const { ctx, connectionConfig, ownSpy } = await capCase({ count: 1 });
     expect(connectionConfig.readOnly).toBe(false);
-    // Carried to `connected`, which is where the instance holding that
-    // connection is actually told to demote it.
-    expect(ctx.handedOverFrom).toBe("user-1:1000:inst-a:socket-old");
+    expect(ctx.seatCap).toBe(2);
+    expect(ownSpy).not.toHaveBeenCalled();
+    expect("handedOverFrom" in ctx).toBe(false);
   });
 
-  it("settles for read-only when the seats belong to other people", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const hook = buildHook({
-      connectionLimit: 2,
-      countConnections: async () => 2,
-      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
-    });
-    const connectionConfig = { readOnly: false };
-
-    const ctx = await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig,
-    });
-
-    expect(connectionConfig.readOnly).toBe(true);
-    expect(ctx.handedOverFrom).toBeNull();
-  });
-
-  it("settles for read-only when another handshake claimed every candidate first", async () => {
-    // `none` covers both "holds none" and "held some, lost the race" — the
-    // handshake cannot tell them apart and does not need to.
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const hook = buildHook({
-      connectionLimit: 1,
-      countConnections: async () => 1,
-      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "none" }),
-    });
-    const connectionConfig = { readOnly: false };
-
-    await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig,
-    });
-
-    expect(connectionConfig.readOnly).toBe(true);
+  it("E-A02 lets a person who already holds a seat in writable on a full document", async () => {
+    const { ctx, connectionConfig, ownSpy } = await capCase({ count: 2, own: "yes" });
+    expect(connectionConfig.readOnly).toBe(false);
+    expect(ctx.seatCap).toBe(2);
+    expect(ownSpy).toHaveBeenCalledTimes(1);
+    expect(ownSpy).toHaveBeenCalledWith(CANVAS_DOC, "user-1");
+    expect(loggerWarn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "connection_cap_degraded" }),
+      "connection_cap_degraded",
+    );
   });
 
   // A single failed Redis command, not an outage: the count already answered
   // "full", and the query that would have found this person's own seat is the
-  // one that failed. `readOnly` is settled once at the handshake and nothing
-  // re-evaluates a live connection, so treating "could not find out" as
-  // "holds none" would pin them read-only on their own second tab for the
-  // life of that connection, long after Redis was fine again.
-  it("lets a member in when the seat query itself failed", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const hook = buildHook({
-      connectionLimit: 1,
-      countConnections: async () => 1,
-      claimSeatFrom: async (): Promise<SeatClaim> => ({ outcome: "unknown" }),
-    });
-    const connectionConfig = { readOnly: false };
-
-    const ctx = (await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig,
-    })) as { handedOverFrom: string | null };
-
+  // one that failed. Treating "could not find out" as "holds none" would pin
+  // them read-only on their own second tab for the life of that connection.
+  it("E-A03 lets a member in writable when the own-seat query failed", async () => {
+    const { ctx, connectionConfig } = await capCase({ count: 2, own: "unknown" });
     expect(connectionConfig.readOnly).toBe(false);
-    expect(ctx.handedOverFrom).toBeNull();
+    expect(ctx.seatCap).toBe(2);
   });
 
-  it("does not go looking for a seat to take when the doc is not full", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(
-      async (): Promise<SeatClaim> => ({ outcome: "none" }),
+  it("E-A04 settles for read-only on a full document where the person holds no seat", async () => {
+    const { ctx, connectionConfig } = await capCase({ count: 2, own: "no" });
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.seatCap).toBeNull();
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ liveCount: 2, cap: 2, reason: "connection_cap_degraded" }),
+      "connection_cap_degraded",
     );
-    const hook = buildHook({
-      connectionLimit: 2,
-      countConnections: async () => 1,
-      claimSeatFrom: claimSpy,
-    });
-
-    const ctx = await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig: { readOnly: false },
-    });
-
-    expect(claimSpy).not.toHaveBeenCalled();
-    expect(ctx.handedOverFrom).toBeNull();
   });
 
-  it("does not take a seat for a viewer, who is read-only either way", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("viewer");
-    const claimSpy = vi.fn(
-      async (): Promise<SeatClaim> => ({
-        outcome: "took",
-        member: "user-1:1000:inst-a:socket-old",
-      }),
-    );
-    const hook = buildHook({
-      connectionLimit: 1,
-      countConnections: async () => 5,
-      claimSeatFrom: claimSpy,
-    });
-
-    await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig: { readOnly: false },
-    });
-
-    expect(claimSpy).not.toHaveBeenCalled();
+  it("E-A05 gives a viewer no seat and asks nothing about the cap", async () => {
+    const { ctx, connectionConfig, resolveSpy, countSpy, ownSpy } = await capCase({ count: 0, role: "viewer" });
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.seatCap).toBeNull();
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(countSpy).not.toHaveBeenCalled();
+    expect(ownSpy).not.toHaveBeenCalled();
   });
 
-  it("does not take a seat on the meta doc, which has no cap", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    const claimSpy = vi.fn(
-      async (): Promise<SeatClaim> => ({
-        outcome: "took",
-        member: "user-1:1000:inst-a:socket-old",
-      }),
-    );
-    const hook = buildHook({
-      connectionLimit: 1,
-      countConnections: async () => 999,
-      claimSeatFrom: claimSpy,
-    });
-
-    await hook({
-      token: PLACEHOLDER_TOKEN,
+  it("E-A06 gives the meta doc no seat and asks nothing about the cap", async () => {
+    const { ctx, connectionConfig, resolveSpy, countSpy, ownSpy } = await capCase({
+      count: 999,
       documentName: `project-${PID}/meta`,
-      requestHeaders: withCookie("tok"),
-      connectionConfig: { readOnly: false },
+    });
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.seatCap).toBeNull();
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(countSpy).not.toHaveBeenCalled();
+    expect(ownSpy).not.toHaveBeenCalled();
+  });
+
+  it("E-A07 gives no seat when the ceiling cannot be resolved", async () => {
+    const { ctx, connectionConfig } = await capCase({
+      count: 0,
+      limit: async () => {
+        throw new Error("No live admin for studio st-1");
+      },
+    });
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.seatCap).toBeNull();
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "connection_limit_unresolved" }),
+      "connection_limit_unresolved",
+    );
+  });
+
+  it("E-A08 gives no seat under a ceiling of zero", async () => {
+    const { ctx, connectionConfig } = await capCase({ count: 0, own: "no", limit: 0 });
+    expect(connectionConfig.readOnly).toBe(true);
+    expect(ctx.seatCap).toBeNull();
+  });
+
+  describe("the arrival moment", () => {
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    expect(claimSpy).not.toHaveBeenCalled();
+    it("E-A09 is the moment the handshake started, not when it finished", async () => {
+      const T = 1_700_000_000_000;
+      vi.useFakeTimers();
+      vi.setSystemTime(T);
+      const { ctx } = await capCase({
+        count: 0,
+        limit: async () => {
+          vi.advanceTimersByTime(500);
+          return 2;
+        },
+      });
+      expect(ctx.arrivedAtMs).toBe(T);
+    });
+  });
+
+  it("E-A10 takes nothing that could write a seat: the handshake only counts and asks", () => {
+    expectTypeOf<keyof CreateAuthHookOptions>().toEqualTypeOf<
+      "redis" | "resolveConnectionLimit" | "countConnections" | "hasOwnSeat"
+    >();
+  });
+
+  // Every connection handed a ceiling takes a seat in `connected`, and
+  // `onDisconnect` releases only documents `shouldTrackConnection` covers
+  // (it has no `connectionConfig` to ask about writability). So the documents
+  // that get a ceiling must stay inside the ones that are released, or a seat
+  // is taken that nothing ever gives back.
+  it("only ever hands a ceiling to a document the disconnect side releases", async () => {
+    const names = [CANVAS_DOC, `project-${PID}/document-${DOC_SID}`, `project-${PID}/meta`];
+    for (const documentName of names) {
+      for (const role of ["owner", "editor", "viewer"]) {
+        for (const own of ["yes", "no", "unknown"] as const) {
+          for (const count of [0, 2]) {
+            const { ctx } = await capCase({ count, own, role, documentName });
+            if (ctx.seatCap !== null) expect(shouldTrackConnection(documentName)).toBe(true);
+          }
+        }
+      }
+    }
   });
 
   it("skips the cluster-wide count for a viewer (already read-only, no wasted Redis round-trip)", async () => {
@@ -1044,7 +1033,8 @@ describe("createAuthHook", () => {
 
     expect(ctx).toEqual({
       user: { id: "user-1", role: "viewer" },
-      handedOverFrom: null,
+      seatCap: null,
+      arrivedAtMs: expect.any(Number),
       session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     // SECURITY INVARIANT (root-caused 2026-06-18). The hook MUST mutate

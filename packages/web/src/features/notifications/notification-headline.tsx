@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { parseCreditDecimal } from '@breatic/shared';
+
 import * as React from 'react';
 import { Link } from 'react-router-dom';
 
@@ -30,7 +32,7 @@ import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
  * @returns The string value, or an empty string when absent / non-string.
  */
 function str(payload: Record<string, unknown>, key: string): string {
-  return typeof payload[key] === 'string' ? (payload[key] as string) : '';
+  return typeof payload[key] === 'string' ? (payload[key]) : '';
 }
 
 /**
@@ -40,8 +42,12 @@ function str(payload: Record<string, unknown>, key: string): string {
  */
 function creditsOf(payload: Record<string, unknown>): string {
   const raw = str(payload, 'credits');
-  const value = Number(raw);
-  return raw.trim() !== '' && Number.isFinite(value) ? formatCreditAmount(value) : '';
+  try {
+    parseCreditDecimal(raw);
+    return formatCreditAmount(raw);
+  } catch {
+    return '';
+  }
 }
 
 /**

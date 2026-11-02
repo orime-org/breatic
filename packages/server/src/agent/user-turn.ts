@@ -36,7 +36,9 @@ export interface PreparedPicture {
 }
 
 /**
- * The project's Spaces, one line each, the open one marked.
+ * The project's Spaces, one line each with its id, the open one marked. Names
+ * may repeat, so a tool that names a Space names it by the id given here
+ * (inner#1552).
  * @param spaces - The Spaces listed.
  * @param total - How many there are, listed or not.
  * @param openId - The Space the reader has open and turned on, if any.
@@ -45,7 +47,7 @@ export interface PreparedPicture {
  */
 function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: string | undefined): string {
   const lines = spaces.map(
-    (s) => `- ${JSON.stringify(s.name)} (${s.kind})${s.id === openId ? " — the reader has this one open" : ""}`,
+    (s) => `- ${JSON.stringify(s.name)} (${s.kind}, id: ${s.id})${s.id === openId ? " — the reader has this one open" : ""}`,
   );
   const unlisted = total - spaces.length;
   if (unlisted > 0) lines.push(`(${String(unlisted)} more not listed)`);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneModelImportDialog } from '@web/spaces/three-d/SceneModelImportDialog';
 import SceneModelImportHost from '@web/spaces/three-d/SceneModelImportHost';
@@ -29,7 +30,7 @@ const disposers: (() => void)[] = [];
  */
 async function readyImport(): Promise<{ controller: ModelImportController; prepared: PreparedModel; upload: ReturnType<typeof vi.fn>; session: SceneSession }> {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const session = new SceneSession(doc);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const prepared: PreparedModel = { file: new File(['model'], 'model.glb'), entry: 'model.glb', entries: ['model.glb'],
@@ -78,7 +79,7 @@ function dropFolder(folder: FileSystemDirectoryEntry): void {
  */
 function idleImport(): { controller: ModelImportController; prepare: ReturnType<typeof vi.fn> } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const session = new SceneSession(doc);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const prepare = vi.fn(() => new Promise<PreparedModel>(() => undefined));
@@ -168,7 +169,7 @@ describe('model import dialog controls', () => {
 
   it('states which import limit a selection exceeded, with both sizes', async () => {
     const doc = new Y.Doc();
-    doc.getMap('scene').set('formatVersion', 1);
+    doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     const session = new SceneSession(doc);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     const budget = { limit: 'expanded', allowed: 256 * 1024 * 1024, actual: 300 * 1024 * 1024 } as const;

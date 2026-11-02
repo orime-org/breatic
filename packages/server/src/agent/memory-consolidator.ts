@@ -30,6 +30,8 @@
  * the second attempt is not paid for twice.
  */
 
+import { parseCreditDecimal } from "@breatic/shared";
+
 import { stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
 import {
@@ -249,7 +251,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
       },
     );
 
-    if (outcome && outcome.shortfall > 0) {
+    if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {
       // The pool ran out, or its credits were reassigned while this ran. The
       // call already happened, so what could not be charged goes to
       // reconciliation.

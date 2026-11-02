@@ -172,6 +172,7 @@
       "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
       "current_space_too_long": "目前 Space 的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
+      "shared_space_too_long": "從 {name} 共享的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 個，這則有 {actual, number} 個。",
       "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
@@ -426,7 +427,8 @@
         "readNodeHistory": "查節點的歷史",
         "readActivity": "查 Project 活動",
         "other": "呼叫 {tool}",
-        "readTemplate": "讀範本"
+        "readTemplate": "讀範本",
+        "requestSpace": "請求查看 Space"
       }
     },
     "loadEarlier": "載入更早的訊息",
@@ -488,6 +490,7 @@
       "addComment": "新增批註",
       "apply": "直接修改",
       "insert": "插入",
+      "locate": "定位",
       "appliedComment": "已新增批註",
       "appliedRewrite": "已修改",
       "appliedInsert": "已插入",
@@ -499,6 +502,7 @@
       "failedComment": "沒能新增批註，再試一次。",
       "failedRewrite": "沒能修改，再試一次。",
       "failedInsert": "沒能插入，再試一次。",
+      "failedLocate": "沒能定位，再試一次。",
       "lossy": "這一段的格式和批註會被取代。"
     },
     "thinking": "思考了一會兒",
@@ -521,6 +525,21 @@
       "show": "展開",
       "hide": "收起",
       "atLeastOne": "至少回答一題"
+    },
+    "spaceRequest": {
+      "title": "Agent 想查看這些內容",
+      "allow": "同意查看",
+      "decline": "拒絕查看",
+      "shared": "已給 Agent 查看",
+      "declined": "沒有給 Agent 查看",
+      "partBlocks": "{to, select, end {第 {from} 塊起} other {第 {from}–{to} 塊}}",
+      "partNodes": "{count} 個節點",
+      "state": {
+        "unreadable": "無法讀取",
+        "gone": "已刪除",
+        "timedOut": "讀取逾時",
+        "failed": "讀取失敗"
+      }
     }
   },
   "canvas": {
@@ -1464,6 +1483,40 @@
     },
     "promptMark": {
       "reference": "請用 @ 選擇 {label}"
+    },
+    "shortcuts": {
+      "title": "鍵盤快捷鍵",
+      "group": {
+        "edit": "編輯",
+        "group": "群組",
+        "select": "選取與移動",
+        "view": "檢視",
+        "drawing": "繪製工具",
+        "exit": "退出"
+      },
+      "row": {
+        "delete": "刪除",
+        "marquee": "框選",
+        "toggleSelect": "加選或減選",
+        "nudge": "微移所選",
+        "nudgeFar": "移得更遠",
+        "pan": "平移",
+        "zoom": "縮放",
+        "brushSize": "畫筆或備註大小",
+        "deleteMark": "刪除選取的備註",
+        "closePanel": "關閉面板",
+        "exitPick": "退出選取",
+        "cancelNote": "取消放置註解"
+      },
+      "gesture": {
+        "dragEmpty": "拖曳空白處",
+        "click": "點擊",
+        "arrowKeys": "方向鍵",
+        "scroll": "捲動",
+        "spaceDrag": "空白鍵 + 拖曳",
+        "pinch": "雙指捏合",
+        "wheel": "滾輪"
+      }
     }
   },
   "auth": {
@@ -1944,12 +1997,13 @@
       "invalidObject": "無法讀取的物件：{id}",
       "empty": "新增人物或方塊，開始佈置場景。",
       "unsupported": "此場景使用目前頁面不支援的格式，請重新載入頁面。",
+      "unsupportedOld": "這個場景使用舊格式，無法開啟。",
       "modelFailed": "模型載入失敗。",
       "peerSelection": "{name}：選取 {count} 個物件",
       "add": "新增",
       "generate": "AI 生成",
       "annotationsLater": "批註（稍後提供）",
-      "help": "說明",
+      "controls": "操作說明",
       "tasks": "生成任務",
       "minimap": "場景小地圖",
       "generationDev": "3D 模型生成正在開發中",
@@ -2019,9 +2073,7 @@
       "nodes": "節點庫",
       "upload": "上傳素材(多檔案混合)",
       "comment": "在 Canvas 加註解",
-      "collection": "Collection(敬請期待)",
-      "help": "說明(敬請期待)",
-      "feedback": "意見回饋 / 客服(敬請期待)"
+      "shortcuts": "鍵盤快捷鍵"
     },
     "disabledTooltip": "需要 Editor 權限"
   },
@@ -2495,7 +2547,12 @@
       "language": "語言：{name}",
       "theme": "主題：{theme}"
     },
-    "languageNotSaved": "語言未儲存到帳號"
+    "languageNotSaved": "語言未儲存到帳號",
+    "help": {
+      "trigger": "說明",
+      "manual": "使用手冊",
+      "contact": "聯絡支援"
+    }
   },
   "projectJoin": {
     "title": "你還不是這個 Project 的成員",
@@ -2709,6 +2766,7 @@
     "source": {
       "payment": "儲值",
       "gift": "體驗點數",
+      "operatorGift": "贈送點數",
       "compensation": "補償",
       "discount": "優惠"
     },
@@ -2873,6 +2931,63 @@
       "title": "頁面版本已過期",
       "description": "目前頁面是舊版本，這次操作沒有完成。重新整理後即可繼續。",
       "refresh": "更新"
+    }
+  },
+  "timeline": {
+    "loading": "正在載入 Timeline…",
+    "unavailable": "Timeline 無法使用。",
+    "incompatible": "無法開啟此 Timeline 內容。",
+    "empty": "新增影片，開始編排 Timeline。",
+    "video": "影片",
+    "conflict": "衝突",
+    "conflictHelp": "片段重疊。請選擇片段並調整開始影格。",
+    "loadingMedia": "正在載入影片…",
+    "mediaUnavailable": "此影片無法使用。",
+    "retry": "重試",
+    "play": "播放",
+    "pause": "暫停",
+    "seek": "預覽影格",
+    "framePosition": "第 {frame} 影格 / 共 {total} 影格",
+    "tracks": "軌道",
+    "addMedia": "新增素材",
+    "visualTrack": "畫面 1",
+    "selectClip": "選擇片段以查看屬性。",
+    "clipFrames": "開始 {start} · 長度 {duration} 影格",
+    "editStart": "修改開始影格",
+    "startFrame": "開始影格",
+    "apply": "套用",
+    "cancel": "取消",
+    "transport": {
+      "paused": "已暫停",
+      "playing": "播放中",
+      "waiting": "緩衝中…",
+      "failed": "播放失敗"
+    },
+    "material": {
+      "description": "選擇影片並確認新增位置。",
+      "project": "Project 影片",
+      "local": "本機上傳",
+      "duration": "{seconds} 秒",
+      "durationPending": "長度待取得",
+      "loading": "正在載入 Project 影片…",
+      "listError": "無法載入 Project 影片。",
+      "empty": "此 Project 尚無影片。",
+      "more": "載入更多",
+      "chooseFile": "選擇影片",
+      "fileEmpty": "選擇本機影片檔案。",
+      "preparing": "正在準備影片…",
+      "progress": "正在上傳 {progress}%",
+      "confirm": "新增至 Timeline"
+    },
+    "errors": {
+      "readonly": "目前角色無法編輯。",
+      "source_unavailable": "此影片無法使用。請選擇其他影片或重試。",
+      "metadata_unavailable": "無法取得影片長度。請重試或選擇其他影片。",
+      "invalid_range": "請輸入有效的開始影格。",
+      "overlap": "此位置與其他片段重疊。請調整開始影格。",
+      "target_missing": "目標已變更。請檢查位置後重試。",
+      "upload": "上傳失敗。可使用已選檔案重試。",
+      "permission_changed": "編輯權限已變更。請再次確認新增此影片。"
     }
   }
 }

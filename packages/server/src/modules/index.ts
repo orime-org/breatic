@@ -47,3 +47,5 @@ export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/r
 export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
+
+export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";

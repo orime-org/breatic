@@ -14,6 +14,8 @@
  * docs, persisted by the collab service.
  */
 
+import { creditAmountFormatQuerySchema } from "@breatic/shared";
+
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
@@ -264,7 +266,7 @@ projects.get("/:id", async (c) => {
  * @returns `200` with `{ data: { spendable, held, available } }`; `404` when the
  *   caller cannot reach this project, which never leaks its existence
  */
-projects.get("/:id/credits", async (c) => {
+projects.get("/:id/credits", validate("query", creditAmountFormatQuerySchema), async (c) => {
   const user = c.get("user");
   const projectId = c.req.param("id");
   await projectService.assertAccess(projectId, user.id);

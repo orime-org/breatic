@@ -259,7 +259,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     const seeded = seedInitialStateMock.mock.calls.find((call) => call[0] === contentName)!;
     const scene = new Y.Doc();
     Y.applyUpdate(scene, seeded[1] as Uint8Array);
-    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 2 });
     expect(scene.getMap("objects").toJSON()).toEqual({});
 
     const entry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;

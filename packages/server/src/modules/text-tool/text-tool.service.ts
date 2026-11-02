@@ -10,6 +10,8 @@
  * response arrives, and the run is charged what the record adds up to.
  */
 
+import { serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
+
 import { stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import { t } from "@breatic/shared";
@@ -24,8 +26,8 @@ import { getRedis } from "@breatic/core";
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =
   | { type: "text_delta"; text: string }
-  | { type: "done"; tokens: number; creditsUsed: number }
-  | { type: "aborted"; tokens: number; creditsUsed: number }
+  | { type: "done"; tokens: number; creditsUsed: CreditDecimal }
+  | { type: "aborted"; tokens: number; creditsUsed: CreditDecimal }
   | { type: "error"; message: string; err: unknown };
 
 const LOCK_TTL_SECONDS = 120;
@@ -255,7 +257,7 @@ async function chargeRecorded(
   tool: string,
   modelString: string | null,
   tokens: number,
-): Promise<number> {
+): Promise<CreditDecimal> {
   // An OpenRouter call whose cost is not in hand is looked up and charged
   // later, under a key of its own.
   await calls?.handOff().catch((err: unknown) =>
@@ -263,7 +265,7 @@ async function chargeRecorded(
   );
   try {
     const credits = await usage.settle();
-    if (credits <= 0) return 0;
+    if (credits <= 0) return serializeCreditMicro(0n);
     const outcome = await creditLotService.chargeOnceForGeneration(
       usage.operation.operationKey,
       {
@@ -275,7 +277,7 @@ async function chargeRecorded(
         description: `Text tool: ${tool}`,
       },
     );
-    return outcome?.charged ?? 0;
+    return outcome?.charged ?? serializeCreditMicro(0n);
   } catch (err) {
     // The text is already generated and already streamed, so this failure
     // has nowhere to go: the caller gets its `done` event either way and
@@ -285,6 +287,6 @@ async function chargeRecorded(
       { err, userId, tool, tokens },
       "text_tool_credit_charge_failed",
     );
-    return 0;
+    return serializeCreditMicro(0n);
   }
 }

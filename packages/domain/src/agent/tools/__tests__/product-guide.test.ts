@@ -265,6 +265,13 @@ describe("what the guide says", () => {
     expect(proposals).toContain(`"${t("canvas.generatePanel.promptNotUsed")}"`);
   });
 
+  it("tells an older 3D scene format, shown without a reload button, from a newer one that offers reload", () => {
+    const scenes = section("3D spaces");
+    expect(scenes).toContain(`"${t("spaces.threeD.unsupportedOld")}"`);
+    expect(scenes.split(`"${t("spaces.threeD.unsupportedOld")}"`)[0]?.split(". ").at(-1)).toContain("no reload button");
+    expect(scenes).toContain(`"${t("spaces.threeD.unsupported")}"`);
+  });
+
   it("says a code block is three backticks followed by a space", () => {
     // The input rule only fires on the space after the fence.
     expect(renderProductGuide()).toMatch(/three backticks then a space for a code block/);
@@ -439,9 +446,9 @@ describe("what the guide says", () => {
     // Dropping takes any file; the picker is narrower, and the reader told to
     // pick a PDF there finds it greyed out.
     const page = webSource("pages/project/ProjectPage.tsx");
-    expect(page).toContain("accept='image/*,video/*,audio/*,text/*'");
+    expect(page).toContain("accept={`${uploadAcceptFor('all')},text/*`}");
     const making = section("Making nodes");
-    expect(making).toMatch(/file picker that lists pictures, videos, sounds and plain text files/);
+    expect(making).toMatch(/file picker that lists supported pictures, videos, sounds and plain text files/);
     expect(making).toMatch(/PDF, Word and Excel files go in by dropping or pasting them/);
   });
 

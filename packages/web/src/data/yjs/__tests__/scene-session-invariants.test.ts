@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import {
   SceneSession,
@@ -18,7 +19,7 @@ const MISSING = '33333333-3333-4333-8333-333333333333';
 const NAME = `project-${ID}/3d-${OTHER}`;
 const OBJECT = { id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
-  scale: [1, 1, 1] as [number, number, number], locked: false, exists: true };
+  scale: [1, 1, 1] as [number, number, number], locked: false };
 const EDITOR: SceneEnvironment = { readOnly: false, connected: true, hasEverSynced: true,
   writeAccess: 'granted', refused: false, awareness: null };
 const managed: { session: SceneSession; doc: Y.Doc; name: string }[] = [];
@@ -28,7 +29,7 @@ const peerDocs: Y.Doc[] = [];
 /** Create a live in-memory owner for shared scene content. */
 function fixture(name = NAME): { session: SceneSession; doc: Y.Doc } {
   const doc = new Y.Doc();
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
   const session = new SceneSession(doc);
   managed.push({ session, doc, name });

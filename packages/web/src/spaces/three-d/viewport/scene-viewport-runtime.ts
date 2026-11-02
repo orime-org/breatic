@@ -212,10 +212,10 @@ export class SceneViewportRuntime {
     if (this.gesture && (
       props.readOnly || props.mode !== previous.mode || props.cancelRevision !== previous.cancelRevision
       || !sameSelection(props.selectedIds, [...this.gesture.matrices.keys()])
-      || [...this.gesture.matrices.keys()].some((id) => !props.objects.some((object) => object.id === id && object.exists && !object.locked))
+      || [...this.gesture.matrices.keys()].some((id) => !props.objects.some((object) => object.id === id && !object.locked))
     )) this.endGesture(false);
     this.controls.setSensitivity(props.scaleSensitivity);
-    const visible = new Set(props.objects.filter((object) => object.exists).map((object) => object.id));
+    const visible = new Set(props.objects.map((object) => object.id));
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
         this.overview?.remove(id);
@@ -224,7 +224,6 @@ export class SceneViewportRuntime {
       }
     }
     for (const object of props.objects) {
-      if (!object.exists) continue;
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
@@ -263,7 +262,7 @@ export class SceneViewportRuntime {
         item.lease.release();
         return;
       }
-      const latest = this.props.objects.find((candidate) => candidate.id === object.id && candidate.exists);
+      const latest = this.props.objects.find((candidate) => candidate.id === object.id);
       if (!latest) {
         item.lease.release();
         return;
@@ -306,7 +305,7 @@ export class SceneViewportRuntime {
   private mutableObjects(): SceneObject[] {
     if (this.props.readOnly || this.props.selectedIds.length === 0) return [];
     const objects = this.props.selectedIds.map((id) => this.props.objects.find((object) => object.id === id));
-    if (objects.some((object) => !object || !object.exists || object.locked || !this.items.get(object.id)?.root)) return [];
+    if (objects.some((object) => !object || object.locked || !this.items.get(object.id)?.root)) return [];
     return objects.filter((object): object is SceneObject => object !== undefined);
   }
 
@@ -546,7 +545,7 @@ export class SceneViewportRuntime {
       for (const object of peer.gesture ?? []) {
         const root = this.items.get(object.id)?.root;
         const record = this.props.objects.find((item) => item.id === object.id);
-        if (!root || !record?.exists || record.locked) continue;
+        if (!root || !record || record.locked) continue;
         const preview = root.clone(true);
         applyObject(preview, object);
         this.addOutline(preview, peer.color);

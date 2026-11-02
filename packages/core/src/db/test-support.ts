@@ -22,6 +22,7 @@ import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
 import type { Sql } from "postgres";
+import { migrateConfirmedGiftDatabase } from "@core/db/legacy-gift-migration.js";
 import { createPgClient } from "@core/db/client.js";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 import * as schema from "@core/db/schema.js";
@@ -67,11 +68,18 @@ export function createTestDb(url: string, max = 3): TestDb {
  * Creates a throwaway single-connection client and closes it before
  * returning, so it leaves no open pool behind.
  * @param url - Postgres connection URL to migrate
+ * @param options - Optional fixture journal directory and explicit historical gift confirmation.
+ * @param options.migrationsFolder - A fixture journal directory when exercising an earlier release.
+ * @param options.legacyGiftConfirmation - An explicit confirmation of existing historical funding.
  * @returns The resolved migrations folder path
  * @throws {Error} if any migration fails
  */
-export async function migrateDatabase(url: string): Promise<{ migrationsFolder: string }> {
-  const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
+export async function migrateDatabase(url: string, options: { migrationsFolder?: string; legacyGiftConfirmation?: unknown } = {}): Promise<{ migrationsFolder: string }> {
+  const migrationsFolder = options.migrationsFolder ?? resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
+  if (options.legacyGiftConfirmation !== undefined) {
+    await migrateConfirmedGiftDatabase(url, migrationsFolder, options.legacyGiftConfirmation);
+    return { migrationsFolder };
+  }
   const client = createPgClient(url, { name: "core-integration-migrate", max: 1 });
   try {
     await migrate(drizzle(client), { migrationsFolder });

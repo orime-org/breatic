@@ -56,6 +56,7 @@ import * as Y from "yjs";
 
 import {
   createLogger,
+  getTimelineConfig,
   projectActivitiesRepo,
   writeSpaceEntry,
   type NewProjectActivity,
@@ -716,8 +717,8 @@ async function runCreate(
       // The name the creator gave the Space lives on its tab, in meta — the
       // content document carries no name of its own. What it does carry is
       // whatever that kind's initial content is: one empty paragraph for a
-      // Document, versioned scene roots for 3D, or empty content for Canvas/Timeline.
-      encodeInitialSpaceContent(type),
+      // Document and 3D seed their roots; Timeline also requires configured settings.
+      encodeInitialSpaceContent(type, type === "timeline" ? getTimelineConfig().defaults : undefined),
     );
   } catch (seedError) {
     logger.error(

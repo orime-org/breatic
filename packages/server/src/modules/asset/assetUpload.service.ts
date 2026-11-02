@@ -23,7 +23,7 @@ import {
   nodeHistoryService,
   nodeTaskService,
 } from "@breatic/domain";
-import { getStreamRedis, logger } from "@breatic/core";
+import { getStreamRedis, logger, projectAssetReferenceService } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { NodeTaskAction, NodeTaskResult } from "@breatic/shared";
 
@@ -134,6 +134,11 @@ export async function settleDedupHit(params: {
   nodeId?: string | undefined;
   spaceId?: string | undefined;
 }): Promise<void> {
+  await projectAssetReferenceService.recordProjectAssetReferences({
+    projectId: params.projectId,
+    assetIds: [params.hit.assetId],
+    displayNames: { [params.hit.assetId]: params.metadata.filename },
+  });
   // Nothing uploads on a hit, so no frame is cut and this is a video's only
   // chance to arrive with the one it already has. The node renders its poster
   // from `coverUrl`, and one that never gets it shows a modality icon for a

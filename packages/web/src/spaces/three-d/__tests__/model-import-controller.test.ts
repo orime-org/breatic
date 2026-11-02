@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import fc from 'fast-check';
 import type * as Y from 'yjs';
+import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { docName, destroyDoc, getDoc } from '@web/data/yjs/manager';
 import { readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, SceneSession } from '@web/data/yjs/scene-session';
@@ -68,7 +69,7 @@ function harness(): ImportHarness {
   const name = docName.threeDSpace(PROJECT_ID, SPACE_ID);
   const doc = getDoc(name);
   documents.set(name, doc);
-  doc.getMap('scene').set('formatVersion', 1);
+  doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const session = getSceneSession(doc, name);
   setReadOnly(session, false);
   const prepared = preparedModel();
@@ -173,7 +174,7 @@ describe('document-owned model imports (inner#1690)', () => {
 
     expect(objects).toHaveLength(1);
     expect(objects[0]).toEqual({ id: expect.any(String), name: 'Imported character', model: { kind: 'asset', assetId: ASSET_ID },
-      position: [4, 1, 8], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true });
+      position: [4, 1, 8], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false });
     expect(h.position).toHaveBeenCalledWith(h.prepared.bounds);
     expect(h.session.getSnapshot().selectedIds).toEqual([objects[0].id]);
     expect(h.controller.getSnapshot().phase).toBe('placed');
@@ -190,7 +191,7 @@ describe('document-owned model imports (inner#1690)', () => {
     setReadOnly(peer, false);
     const peerObject = { id: PEER_OBJECT_ID, name: 'Peer block', model: { kind: 'builtin' as const, id: 'box' as const },
       position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
-      scale: [1, 1, 1] as [number, number, number], locked: false, exists: true };
+      scale: [1, 1, 1] as [number, number, number], locked: false };
     try {
       expect(peer.execute({ type: 'create', objects: [peerObject] }).ok).toBe(true);
       await h.controller.select(h.files, h.prepared.entry);

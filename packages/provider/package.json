@@ -1,0 +1,51 @@
+{
+  "name": "@breatic/provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./pricing": {
+      "import": "./dist/pricing/index.js",
+      "types": "./src/pricing/index.ts",
+      "default": "./dist/pricing/index.js"
+    },
+    "./media": {
+      "import": "./dist/media/index.js",
+      "types": "./src/media/index.ts",
+      "default": "./dist/media/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --clean --sourcemap",
+    "dev": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/deepseek": "catalog:",
+    "@ai-sdk/google": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "@openrouter/ai-sdk-provider": "catalog:",
+    "ai": "catalog:",
+    "ipaddr.js": "catalog:",
+    "jsonata": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "fast-check": "catalog:",
+    "tsup": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
+  }
+}

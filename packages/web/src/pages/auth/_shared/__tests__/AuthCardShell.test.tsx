@@ -10,7 +10,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { OFFICIAL_HOME_URL, PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
+import {
+  OFFICIAL_HOME_URL,
+  PRIVACY_URL,
+  SUPPORT_EMAIL,
+  TERMS_URL,
+  TUTORIALS_URL,
+} from '@web/lib/official-home';
 
 /**
  * Render the shell around a stand-in form.
@@ -70,6 +76,20 @@ describe('AuthCardShell', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link.getAttribute('rel')).toContain('noreferrer');
     }
+  });
+
+  it('links the user manual and the support mailbox from the page footer, after the policies', () => {
+    renderShell();
+    const footer = screen.getByTestId('auth-page-footer');
+    const manual = within(footer).getByRole('link', { name: 'User manual' });
+    const contact = within(footer).getByRole('link', { name: 'Contact support' });
+    expect(manual).toHaveAttribute('href', TUTORIALS_URL);
+    expect(manual).toHaveAttribute('target', '_blank');
+    expect(manual.getAttribute('rel')).toContain('noreferrer');
+    expect(contact).toHaveAttribute('href', `mailto:${SUPPORT_EMAIL}`);
+    expect(contact).toHaveAttribute('target', '_blank');
+    const privacy = within(footer).getByRole('link', { name: 'Privacy Policy' });
+    expect(privacy.compareDocumentPosition(manual) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

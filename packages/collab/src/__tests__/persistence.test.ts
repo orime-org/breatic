@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as Y from "yjs";
 
 const {
   fetchDocDataMock,
@@ -69,7 +70,9 @@ describe("collab persistence delegation", () => {
   });
 
   it("fetchDoc returns the repo's stored bytes for the document name", async () => {
-    const bytes = new Uint8Array([1, 2, 3]);
+    const document = new Y.Doc();
+    const bytes = Y.encodeStateAsUpdate(document);
+    document.destroy();
     fetchDocDataMock.mockResolvedValue(bytes);
 
     const out = await fetchDoc({ documentName: "project-p/canvas-s" });
@@ -102,7 +105,9 @@ describe("collab persistence delegation", () => {
   });
 
   it("storeDoc upserts the document state through the repo", async () => {
-    const state = new Uint8Array([9, 9, 9]);
+    const document = new Y.Doc();
+    const state = Y.encodeStateAsUpdate(document);
+    document.destroy();
     await storeDoc({ documentName: "project-p/canvas-s", state });
     expect(upsertDocDataMock).toHaveBeenCalledWith("project-p/canvas-s", state);
   });

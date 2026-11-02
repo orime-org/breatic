@@ -214,7 +214,10 @@ export function renderProductGuide(): string {
       `${quoted(t("server.project.invite_mail_failed"))} Other refusals include ` +
       `${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
-      "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
+      "allows: the plan of the studio's admin, so only their upgrade raises it). Next is a question-mark icon " +
+      `with two entries: ${quoted(t("chrome.help.manual"))}, which opens the user manual on the official website ` +
+      `in a new tab, and ${quoted(t("chrome.help.contact"))}, which shows the support email address and starts an ` +
+      "email to it; the Studio page has the same icon beside its bell. Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -254,13 +257,11 @@ export function renderProductGuide(): string {
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
-      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))} or ` +
-      `${quoted(t("spaces.kind.threeD"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
+      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
       `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
       `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
-      `The ${quoted(t("spaces.kind.threeD"))} card has a ${quoted(t("spaces.kind.developmentBadge"))} badge at its top right to mark it as in development. ` +
-      `The fourth card, ${quoted(t("spaces.kind.timeline"))}, ` +
-      `stays greyed; hovering it shows ${quoted(t("spaces.create.notAvailable"))}. ` +
+      `The ${quoted(t("spaces.kind.threeD"))} and ${quoted(t("spaces.kind.timeline"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
       `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
@@ -407,6 +408,22 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
       `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
       `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
+    "A reply can also end with a card asking to look at Spaces other than the open one, headed " +
+      `${quoted(t("chat.spaceRequest.title"))}, with why the assistant asks and one line per Space: its icon and ` +
+      "name, and the part asked for when it asks for only part: a range of a Document's blocks, such as " +
+      `${quoted(t("chat.spaceRequest.partBlocks", { from: 3, to: 7 }))} or one running from a block to the end, ` +
+      `or some of a Canvas's nodes, such as ${quoted(t("chat.spaceRequest.partNodes", { count: 3 }))}; a Space ` +
+      "no longer in the Project reads " +
+      `${quoted(t("chat.spaceRequest.state.gone"))}. Two buttons sit under it: ` +
+      `${quoted(t("chat.spaceRequest.decline"))} on the left and ${quoted(t("chat.spaceRequest.allow"))} on the ` +
+      "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
+      "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
+      `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
+      `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
+      `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
+      `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
@@ -434,8 +451,8 @@ export function renderProductGuide(): string {
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
     "- Drop files onto the canvas, or paste one. Pictures, videos and sounds become nodes of their kind; one in " +
-      "a format that is not supported, or over the size limit, makes no node, and a message names it. A file " +
-      "whose contents turn out to be another format than its name says is refused after its node appears, and " +
+      "a format that is not supported, or over the size limit, makes no node, and a message names it. A media file " +
+      "whose stored bytes turn out to be an unsupported format is refused after its node appears, and " +
       "the node shows the failure. Any other file becomes a text node holding its text: plain text, PDF, Word " +
       "(.docx) and Excel (.xlsx, .xls) files work; other kinds, older .doc files included, show an error in the " +
       "node. An empty file makes no node, and a message names it. Several files at once arrive four to a row " +
@@ -443,7 +460,7 @@ export function renderProductGuide(): string {
       "alone. Files dropped on top of a node, or pasted while a node is selected, still make new nodes: to fill " +
       "a node that exists, use double-click or its right-click menu (next section).",
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
-      "that lists pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
+      "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
@@ -612,9 +629,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.annotation.edited"))}. A locked note shows no three dots. ` +
       "Deleting someone else's note from the canvas, unless you own the project, shows " +
       `${quoted(t("canvas.gate.notYours"))}`,
-    "Below a thin line the left menu has three more icons, " +
-      `${quoted(t("menu.item.collection"))}, ${quoted(t("menu.item.help"))} and ` +
-      `${quoted(t("menu.item.feedback"))}, which do nothing yet.`,
+    `Below a thin line the left menu has a keyboard icon, ${quoted(t("menu.item.shortcuts"))}, which opens a ` +
+      "list of the canvas's keyboard shortcuts and pointer gestures in groups: editing, grouping, selecting and " +
+      "moving, the view, drawing tools, and leaving a mode. Each entry names an action and its keys, two entries " +
+      "to a line, with the ⌘ and ⇧ symbols on a Mac and Ctrl+ and Shift+ elsewhere. A viewer can open it too and " +
+      "sees only the entries that work for them.",
     "",
     "## Moving around the canvas",
     "At the bottom right of a canvas is a bar, left to right: " +
@@ -1169,10 +1188,12 @@ export function renderProductGuide(): string {
     "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
       "followed after a · by the nearest heading at or above the passage, or " +
-      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. Its row of buttons ` +
+      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; a button that ` +
+      "does not fit moves whole onto a second line when a language's words do not fit side by side. A comment card " +
       "quotes the words the comment hangs on and shows the comment, with one " +
-      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
-      "taken out struck through in red and the new words in green, and two buttons: " +
+      `landing button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two landing buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
@@ -1181,7 +1202,19 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
       `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+    `Pressing ${quoted(t("chat.documentProposal.locate"))} opens the document, or switches to its tab, and ` +
+      "scrolls to and outlines for a moment what the proposal points at, writing nothing: a comment's quoted " +
+      "words, with a wide table scrolled sideways to them; the passage a rewrite replaces; the passage an insert " +
+      "goes after, or the last passage for an insert at the end. It works on a document the reader can only view " +
+      "too. The card keeps its buttons, so the reader can locate again or press a landing button next; the " +
+      "landing buttons wait while it spins. A proposal that already landed, as one may after a reload, is shown " +
+      `where it landed instead, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the card then ` +
+      "shows it landed. A passage that changed since the proposal is still shown, with the " +
+      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +
+      `when locating fails the toast says ${quoted(t("chat.documentProposal.failedLocate"))} Switching to another ` +
+      "Space, or closing the document's tab, while it still waits for the document ends the wait without a word; " +
+      `the same holds for ${quoted(t("chat.documentProposal.view"))}.`,
+    "Pressing a landing button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
       "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
       "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
       "meanwhile. A rewrite or an insert is one step " +
@@ -1212,6 +1245,27 @@ export function renderProductGuide(): string {
       "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
+    "## Timeline spaces",
+    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
+      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+      `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
+      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
+      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
+      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+    `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
+      `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
+      `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
+      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A permission change requires another confirmation after editing is available. ` +
+      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
+      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
+    `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
+      `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
       "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
@@ -1224,7 +1278,7 @@ export function renderProductGuide(): string {
       `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
       `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
       `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
-      `The question-mark icon opens ${quoted(t("spaces.threeD.help"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+      `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
@@ -1274,8 +1328,9 @@ export function renderProductGuide(): string {
     `During loading the viewport says ${quoted(t("spaces.threeD.loading"))}. A scene load failure says ` +
       `${quoted(t("spaces.threeD.loadFailed"))} and offers ${quoted(t("spaces.threeD.retry"))}; ${quoted(t("spaces.threeD.reload"))} reloads the page when offered. ` +
       `${quoted(t("spaces.threeD.modelFailed"))} has its own retry button for model loading. Unreadable objects appear as rows naming their object id, ` +
-      "while valid objects remain usable. An unsupported document format stays preserved and read-only, with " +
-      `${quoted(t("spaces.threeD.unsupported"))} and a reload button.`,
+      "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
+      `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
+      `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

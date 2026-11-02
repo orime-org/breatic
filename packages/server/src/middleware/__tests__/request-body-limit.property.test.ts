@@ -23,6 +23,8 @@ const { config, logged } = vi.hoisted(() => ({
 
 vi.mock("@server/config/limits.js", () => ({
   getRequestBodyMaxBytes: () => config.limit,
+  // LOOPBACK_PEER carries a socket, so a refusal reads the linger deadline.
+  getRequestBodyLingerSeconds: () => 30,
 }));
 
 vi.mock("@server/middleware/session-cookie.js", () => ({

@@ -93,6 +93,7 @@ import {
   SPACE_MIN_WIDTH,
 } from '@web/pages/project/agent-column-width';
 import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
+import { uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
 
 /** The session the left menu reads while no canvas is on screen. */
 const NO_CANVAS_SESSION = createCanvasSessionStore();
@@ -1036,7 +1037,7 @@ function ProjectWorkspace({
                           ref={uploadInputRef}
                           type='file'
                           multiple
-                          accept='image/*,video/*,audio/*,text/*'
+                          accept={`${uploadAcceptFor('all')},text/*`}
                           hidden
                           data-testid='canvas-upload-input'
                           onChange={(e) => {
@@ -1067,13 +1068,11 @@ function ProjectWorkspace({
                               if (placingAnnotation) endAnnotationPlacement();
                               else startAnnotationPlacement();
                             }
-                          // collection - placeholder (M1+)
-                          // help       - placeholder (M1+)
-                          // feedback   - placeholder (M1+)
                           // Comment is the one button here that arms a mode, so
-                          // it is the one that wears a pressed state; the rest
-                          // are fire and forget. The node-library (`nodes`)
-                          // button owns its own dropdown.
+                          // it is the one that wears a pressed state; upload is
+                          // fire and forget. The node-library (`nodes`) button
+                          // owns its own dropdown, and the shortcuts button its
+                          // own dialog.
                           }}
                         />
                         <ViewportToolbar

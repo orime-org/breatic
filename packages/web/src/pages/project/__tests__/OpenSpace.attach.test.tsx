@@ -87,15 +87,19 @@ describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab',
     ]);
   });
 
-  it('attaches for document tabs too — timeline still has no Yjs doc', () => {
+  it('attaches Document and Timeline through the same shared socket lifecycle', () => {
     render(
       tree([
         { id: 'd', type: 'document' },
         { id: 't', type: 'timeline' },
       ]),
     );
-    expect(providerInstances).toHaveLength(1);
-    expect(providerInstances[0].config.name).toBe('project-p1/document-d');
+    expect(providerInstances).toHaveLength(2);
+    expect(providerInstances.map((p) => p.config.name).sort()).toEqual([
+      'project-p1/document-d',
+      'project-p1/timeline-t',
+    ]);
+    expect(providerInstances[1]!.config.websocketProvider).toBe(providerInstances[0]!.config.websocketProvider);
   });
 
   it('gives a canvas and a document tab their own separate documents', () => {

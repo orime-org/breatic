@@ -172,6 +172,7 @@
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
       "current_space_too_long": "当前 Space 的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
+      "shared_space_too_long": "从 {name} 共享的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 个，这条有 {actual, number} 个。",
       "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。",
       "ask_not_found": "这条会话里没有这张问题卡片。",
@@ -426,7 +427,8 @@
         "readNodeHistory": "查节点的历史",
         "readActivity": "查 Project 活动",
         "other": "调用 {tool}",
-        "readTemplate": "读模板"
+        "readTemplate": "读模板",
+        "requestSpace": "请求查看 Space"
       }
     },
     "loadEarlier": "加载更早的消息",
@@ -488,6 +490,7 @@
       "addComment": "增加批注",
       "apply": "直接修改",
       "insert": "插入",
+      "locate": "定位",
       "appliedComment": "已增加批注",
       "appliedRewrite": "已修改",
       "appliedInsert": "已插入",
@@ -499,6 +502,7 @@
       "failedComment": "没能增加批注，再试一次。",
       "failedRewrite": "没能修改，再试一次。",
       "failedInsert": "没能插入，再试一次。",
+      "failedLocate": "没能定位，再试一次。",
       "lossy": "这一段的格式和批注会被替换。"
     },
     "thinking": "思考了一会儿",
@@ -521,6 +525,21 @@
       "show": "展开",
       "hide": "收起",
       "atLeastOne": "至少答一题"
+    },
+    "spaceRequest": {
+      "title": "Agent 想查看这些内容",
+      "allow": "同意查看",
+      "decline": "拒绝查看",
+      "shared": "已给 Agent 查看",
+      "declined": "没有给 Agent 查看",
+      "partBlocks": "{to, select, end {第 {from} 块起} other {第 {from}–{to} 块}}",
+      "partNodes": "{count} 个节点",
+      "state": {
+        "unreadable": "读不了",
+        "gone": "已删除",
+        "timedOut": "读取超时",
+        "failed": "读取失败"
+      }
     }
   },
   "canvas": {
@@ -1464,6 +1483,40 @@
     },
     "promptMark": {
       "reference": "请用 @ 选择 {label}"
+    },
+    "shortcuts": {
+      "title": "快捷键",
+      "group": {
+        "edit": "编辑",
+        "group": "编组",
+        "select": "选择与移动",
+        "view": "视图",
+        "drawing": "绘制工具",
+        "exit": "退出"
+      },
+      "row": {
+        "delete": "删除",
+        "marquee": "框选",
+        "toggleSelect": "加选或减选",
+        "nudge": "微移所选",
+        "nudgeFar": "移得更远",
+        "pan": "平移",
+        "zoom": "缩放",
+        "brushSize": "画笔或备注大小",
+        "deleteMark": "删除选中的备注",
+        "closePanel": "关闭面板",
+        "exitPick": "退出选取",
+        "cancelNote": "取消放批注"
+      },
+      "gesture": {
+        "dragEmpty": "拖动空白处",
+        "click": "点击",
+        "arrowKeys": "方向键",
+        "scroll": "滚动",
+        "spaceDrag": "空格 + 拖动",
+        "pinch": "双指捏合",
+        "wheel": "滚轮"
+      }
     }
   },
   "auth": {
@@ -1944,12 +1997,13 @@
       "invalidObject": "无法读取的对象：{id}",
       "empty": "添加人物或方块，开始布置场景。",
       "unsupported": "此场景使用当前页面不支持的格式，请重新加载页面。",
+      "unsupportedOld": "这个场景使用旧格式，无法打开。",
       "modelFailed": "模型加载失败。",
       "peerSelection": "{name}：选中 {count} 个对象",
       "add": "添加",
       "generate": "AI 生成",
       "annotationsLater": "批注（后续提供）",
-      "help": "帮助",
+      "controls": "操作说明",
       "tasks": "生成任务",
       "minimap": "场景小地图",
       "generationDev": "3D 模型生成正在开发中",
@@ -2019,9 +2073,7 @@
       "nodes": "节点库",
       "upload": "上传素材(多文件混合)",
       "comment": "在 Canvas 加批注",
-      "collection": "Collection(敬请期待)",
-      "help": "帮助(敬请期待)",
-      "feedback": "反馈 / 客服(敬请期待)"
+      "shortcuts": "快捷键"
     },
     "disabledTooltip": "需要 Editor 权限"
   },
@@ -2495,7 +2547,12 @@
       "language": "语言：{name}",
       "theme": "主题：{theme}"
     },
-    "languageNotSaved": "语言未保存到账号"
+    "languageNotSaved": "语言未保存到账号",
+    "help": {
+      "trigger": "帮助",
+      "manual": "用户手册",
+      "contact": "联系支持"
+    }
   },
   "projectJoin": {
     "title": "你还不是这个 Project 的成员",
@@ -2709,6 +2766,7 @@
     "source": {
       "payment": "充值",
       "gift": "体验积分",
+      "operatorGift": "赠送积分",
       "compensation": "补偿",
       "discount": "优惠"
     },
@@ -2873,6 +2931,63 @@
       "title": "页面版本已过期",
       "description": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。",
       "refresh": "更新"
+    }
+  },
+  "timeline": {
+    "loading": "正在加载 Timeline…",
+    "unavailable": "Timeline 不可用。",
+    "incompatible": "无法打开此 Timeline 内容。",
+    "empty": "添加视频，开始编排 Timeline。",
+    "video": "视频",
+    "conflict": "冲突",
+    "conflictHelp": "片段重叠。请选择片段并调整开始帧。",
+    "loadingMedia": "正在加载视频…",
+    "mediaUnavailable": "此视频不可用。",
+    "retry": "重试",
+    "play": "播放",
+    "pause": "暂停",
+    "seek": "预览帧",
+    "framePosition": "第 {frame} 帧 / 共 {total} 帧",
+    "tracks": "轨道",
+    "addMedia": "添加素材",
+    "visualTrack": "画面 1",
+    "selectClip": "选择片段以查看属性。",
+    "clipFrames": "开始 {start} · 时长 {duration} 帧",
+    "editStart": "修改开始帧",
+    "startFrame": "开始帧",
+    "apply": "应用",
+    "cancel": "取消",
+    "transport": {
+      "paused": "已暂停",
+      "playing": "播放中",
+      "waiting": "缓冲中…",
+      "failed": "播放失败"
+    },
+    "material": {
+      "description": "选择视频并确认添加位置。",
+      "project": "Project 视频",
+      "local": "本地上传",
+      "duration": "{seconds} 秒",
+      "durationPending": "时长待获取",
+      "loading": "正在加载 Project 视频…",
+      "listError": "无法加载 Project 视频。",
+      "empty": "此 Project 暂无视频。",
+      "more": "加载更多",
+      "chooseFile": "选择视频",
+      "fileEmpty": "选择本地视频文件。",
+      "preparing": "正在准备视频…",
+      "progress": "正在上传 {progress}%",
+      "confirm": "添加到 Timeline"
+    },
+    "errors": {
+      "readonly": "当前角色无法编辑。",
+      "source_unavailable": "此视频不可用。请选择其他视频或重试。",
+      "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
+      "invalid_range": "请输入有效的开始帧。",
+      "overlap": "此位置与其他片段重叠。请调整开始帧。",
+      "target_missing": "目标已变化。请检查位置后重试。",
+      "upload": "上传失败。可以使用已选文件重试。",
+      "permission_changed": "编辑权限已变化。请再次确认添加此视频。"
     }
   }
 }

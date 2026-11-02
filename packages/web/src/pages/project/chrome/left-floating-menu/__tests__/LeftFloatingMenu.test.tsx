@@ -36,14 +36,47 @@ describe('LeftFloatingMenu', () => {
     await expectNoA11yViolations(document.body);
   });
 
-  it('exposes the 6 mock-spec tools (3 upper + 3 placeholder lower)', () => {
+  it('exposes the three creation tools and, below the divider, only the shortcuts button', () => {
     setup();
-    expect(screen.getByTestId('tool-nodes')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-upload')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-comment')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-collection')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-help')).toBeInTheDocument();
-    expect(screen.getByTestId('tool-feedback')).toBeInTheDocument();
+    const ids = [...screen.getByTestId('left-floating-menu').querySelectorAll('[data-testid^="tool-"]')].map(
+      (el) => el.getAttribute('data-testid'),
+    );
+    expect(ids).toEqual(['tool-nodes', 'tool-upload', 'tool-comment', 'tool-shortcuts']);
+    expect(screen.getByTestId('left-menu-divider').nextElementSibling).toBe(
+      screen.getByTestId('tool-shortcuts'),
+    );
+  });
+
+  it('the shortcuts button opens the canvas shortcuts dialog', async () => {
+    const user = userEvent.setup();
+    const { onPick } = setup();
+    await user.click(screen.getByTestId('tool-shortcuts'));
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    expect(screen.getByTestId('shortcut-row-undo')).toBeInTheDocument();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('closing the shortcuts dialog with Escape returns focus to the shortcuts button', async () => {
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('tool-shortcuts');
+    await user.click(trigger);
+    await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('viewer (disabled): the shortcuts button stays usable and shows only the rows a viewer can use', async () => {
+    const user = userEvent.setup();
+    setup(true);
+    const trigger = screen.getByTestId('tool-shortcuts');
+    expect(trigger).toBeEnabled();
+    expect(screen.getByTestId('tool-upload')).toBeDisabled();
+    await user.click(trigger);
+    await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(screen.getByTestId('shortcut-row-pan')).toBeInTheDocument();
+    expect(screen.queryByTestId('shortcut-row-undo')).toBeNull();
   });
 
   it('lights the comment button while the annotation tool is armed', () => {
@@ -86,13 +119,13 @@ describe('LeftFloatingMenu', () => {
     );
   });
 
-  it('no fire-and-forget button (upload / placeholders) carries a featured / pressed visual', () => {
+  it('no fire-and-forget button (upload / shortcuts) carries a featured / pressed visual', () => {
     setup();
     // These stay pure actions: one press, one thing happens, nothing pinned.
     // The comment button left this family on 2026-09-14 — it arms a mode, so
     // it is the one button here that has something to be pressed ABOUT (see
     // the two armed cases above, and design §6.4.1).
-    for (const id of ['upload', 'collection', 'help', 'feedback']) {
+    for (const id of ['upload', 'shortcuts']) {
       const btn = screen.getByTestId(`tool-${id}`);
       expect(btn.hasAttribute('aria-pressed')).toBe(false);
       expect(btn.className).not.toContain('bg-foreground');

@@ -24,7 +24,7 @@ import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createConnectionRegistry, type ConnectionRegistry } from "@collab/services/connection-registry.js";
-import { shouldRegisterConnection, shouldTrackConnection } from "@collab/services/connection-tracking.js";
+import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import { getConnectionTimings } from "@collab/config.js";
 import {
   authFrame,
@@ -56,6 +56,10 @@ interface Client {
 interface Running {
   server: Server;
   registry: ConnectionRegistry;
+  /** What every `takeSeat` the `connected` hook ran answered, in order. */
+  takes: string[];
+  /** What every `hasOwnSeat` the handshake asked answered, in order. */
+  owns: string[];
   gate: ReturnType<typeof createUpgradeSessionGate>;
   disconnectMeta: () => Promise<void>;
 }
@@ -198,6 +202,8 @@ async function start(fixture: Fixture): Promise<Running> {
     pingIntervalMs: timings.pingIntervalMs,
     seatExpiryMs: timings.seatExpiryMs,
   });
+  const takes: string[] = [];
+  const owns: string[] = [];
   const server = new Server({
     address: "127.0.0.1",
     port: 0,
@@ -209,7 +215,11 @@ async function start(fixture: Fixture): Promise<Running> {
       redis: getRedis(),
       resolveConnectionLimit: getProjectConcurrentEditorLimit,
       countConnections: (documentName) => registry.count(documentName),
-      claimSeatFrom: (documentName, userId) => registry.claimSeatFrom(documentName, userId),
+      hasOwnSeat: async (documentName, userId) => {
+        const own = await registry.hasOwnSeat(documentName, userId);
+        owns.push(own);
+        return own;
+      },
     }),
     onLoadDocument: async ({ documentName, document }): Promise<void> => {
       if (documentName === projectMetaDocName(fixture.projectId)) {
@@ -221,21 +231,25 @@ async function start(fixture: Fixture): Promise<Running> {
         document.getMap("content").set("preserved", "existing-content");
       }
     },
-    connected: async ({ documentName, socketId, context, connectionConfig }): Promise<void> => {
-      if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
-        await registry.register(documentName, {
-          socketId,
-          userId: (context as AuthContext).user.id,
-          connectedAtMs: Date.now(),
-        });
-      }
+    // The production `connected` hook's seat step: the handshake hands over
+    // the ceiling it judged by (null when this connection takes no seat) and
+    // the moment it started, and the seat is taken atomically here.
+    connected: async ({ documentName, socketId, context }): Promise<void> => {
+      const auth = context as AuthContext;
+      if (auth.seatCap === null) return;
+      const result = await registry.takeSeat(
+        documentName,
+        { socketId, userId: auth.user.id, arrivedAtMs: auth.arrivedAtMs },
+        auth.seatCap,
+      );
+      takes.push(result.outcome);
     },
     onDisconnect: async ({ documentName, socketId }): Promise<void> => {
       if (shouldTrackConnection(documentName)) await registry.unregister(documentName, socketId);
     },
   });
   // Register ownership before starting so a failed listen is still cleaned up.
-  const active: Running = { server, registry, gate, disconnectMeta: async (): Promise<void> => {} };
+  const active: Running = { server, registry, takes, owns, gate, disconnectMeta: async (): Promise<void> => {} };
   servers.push(active);
   await server.listen();
   const meta = await server.hocuspocus.openDirectConnection(projectMetaDocName(fixture.projectId));
@@ -343,6 +357,11 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     const fullAgain = await connect(active, fixture, 3, "readonly");
     await write(active, fullAgain, "blocked-at-two", false);
     await seats(active, fixture, 2);
+    // Only the two writable handshakes took a seat, and both got one; each
+    // read-only handshake was a full document asking about a seat its
+    // distinct user never held.
+    expect(active.takes).toEqual(["seated", "seated"]);
+    expect(active.owns).toEqual(["no", "no"]);
   });
 
   it("uses ordinary base seats after saved SaaS expiry while old writable connections and content remain", async () => {
@@ -364,6 +383,8 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await expect.poll(() => afterExpiry.document.getMap("content").get("old-seat-after-expiry"))
       .toBe("old-seat-after-expiry");
     await seats(active, fixture, baseCap + 1);
+    expect(active.takes).toEqual(Array.from({ length: baseCap + 1 }, () => "seated"));
+    expect(active.owns).toEqual(["no"]);
   });
 
   it("preserves self-hosted provenance on expiry and grants its configured seats", async () => {
@@ -376,6 +397,7 @@ describe("persisted enterprise membership in real collab handshakes", () => {
       await seats(active, fixture, index + 1);
       await write(active, client, `self-hosted-seat-${index}`, true);
     }
+    expect(active.takes).toEqual(Array.from({ length: baseCap + 1 }, () => "seated"));
   });
 
   it("keeps legacy enterprise content readable while unresolved negotiated limits refuse new writes", async () => {
@@ -388,6 +410,7 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     expect(owner.document.getMap("content").toJSON()).toEqual({ preserved: "existing-content" });
     expect(editor.document.getMap("content").toJSON()).toEqual({ preserved: "existing-content" });
     await seats(active, fixture, 0);
+    expect(active.takes).toEqual([]);
   });
 
   it("reads the current Studio administrator on the next handshake and preserves prior connections", async () => {
@@ -407,6 +430,7 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await expect.poll(() => next.document.getMap("content").get("previous-admin-existing-seat"))
       .toBe("previous-admin-existing-seat");
     await seats(active, fixture, 1);
+    expect(active.takes).toEqual(["seated"]);
   });
 
   it("continues honoring a manual ordinary pro tier with no subscription at its configured seat boundary", async () => {
@@ -420,5 +444,7 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     const next = await connect(active, fixture, cap, "readonly");
     await write(active, next, "ordinary-pro-over-cap", false);
     await seats(active, fixture, cap);
+    expect(active.takes).toEqual(Array.from({ length: cap }, () => "seated"));
+    expect(active.owns).toEqual(["no"]);
   });
 });

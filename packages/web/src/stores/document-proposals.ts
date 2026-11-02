@@ -11,7 +11,8 @@
  * press was taken up, the document Space reports the landing; `reset` clears
  * them all when the project is left. Cards are kept by proposal id,
  * so several cards can wait on one document at once, and the document takes
- * them up in the order they were pressed.
+ * them up in the order they were pressed. A locate press waits the same way
+ * and ends the same way, but never touches the card's state (inner#1646).
  *
  * A card holds only where it stands: working, or landed. A press that did not
  * land is told with a toast, here where it is reported, and the card goes
@@ -35,10 +36,14 @@ export type DocumentProposalCardState = 'working' | 'applied';
 /**
  * How a press ended. `gone`: a "View" press found the change no longer in
  * the document. `mediaOnly`: nothing was left to write once the media whose
- * address is not in our storage were left out.
+ * address is not in our storage were left out. `located`: a locate press
+ * showed where the proposal points. `left`: the reader switched away from, or
+ * closed, the document a locate or "View" press was waiting on (inner#1646).
  */
 export type DocumentProposalOutcome =
   | 'applied'
+  | 'located'
+  | 'left'
   | 'changed'
   | 'blockGone'
   | 'readOnly'
@@ -88,15 +93,25 @@ function tell(proposal: DocumentProposal, action: LandingAction, outcome: Docume
     toast.error(t(FAILED_KEY[pressKind(proposal, action)]));
   } else if (outcome === 'applied' || outcome === 'mediaOnly') {
     if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
-  } else {
+  } else if (outcome !== 'located' && outcome !== 'left') {
     toast.warning(t(WARNING_KEY[outcome]));
   }
 }
 
-/** A press waiting for its document: landing it, or only showing where it landed. */
+/**
+ * Tells the reader how a locate press ended: it writes nothing, so only a
+ * passage or Document that is gone or changed, or a failure, is said.
+ * @param outcome - How it ended.
+ */
+function tellLocated(outcome: DocumentProposalOutcome): void {
+  if (outcome === 'failed') toast.error(t('chat.documentProposal.failedLocate'));
+  else if (outcome === 'changed' || outcome === 'blockGone' || outcome === 'spaceGone') toast.warning(t(WARNING_KEY[outcome]));
+}
+
+/** A press waiting for its document: landing it, showing where it landed, or showing where it points. */
 export interface PendingDocumentProposal {
   proposal: DocumentProposal;
-  action: LandingAction | 'view';
+  action: LandingAction | 'view' | 'locate';
   /** When it was pressed, relative to the other presses. */
   order: number;
 }
@@ -113,6 +128,8 @@ interface DocumentProposalsState {
   start: (proposal: DocumentProposal, action: LandingAction) => void;
   /** A "View" press on a card that landed the way given; writes nothing. */
   view: (proposal: DocumentProposal, landed: LandingAction) => void;
+  /** A locate press: shows where the proposal points, leaving the card as it is (inner#1646). */
+  locate: (proposal: DocumentProposal) => void;
   /** One document changed. */
   bump: (spaceId: string) => void;
   /** How a press ended, and how many media it left out: ignored for a card with no press waiting. */
@@ -167,21 +184,32 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
         pressed: s.pressed + 1,
       };
     }),
+  locate: (proposal) =>
+    set((s) => {
+      const id = proposal.proposalId;
+      if (s.pending[id] !== undefined) return s;
+      return {
+        pending: { ...s.pending, [id]: { proposal, action: 'locate', order: s.pressed } },
+        pressed: s.pressed + 1,
+      };
+    }),
   bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
   report: (proposalId, outcome, leftOut = 0) => {
     const { pending, cards } = get();
     const waiting = pending[proposalId];
     const card = cards[proposalId];
     if (waiting === undefined) return;
-    // A View press that could not reach its document wrote nothing and the
-    // change is still there: the card stays landed. When the editor could not
-    // be built the document Space shows why; a tab closed first ends the
-    // press with nothing to say.
-    if (waiting.action === 'view' && outcome === 'failed') {
+    // A locate press wrote nothing, and a View press that could not reach its
+    // document, or whose document the reader left, wrote nothing while the
+    // change is still there: the card keeps how it was. When the editor could
+    // not be built the document Space shows why; a tab closed or switched away
+    // from ends the press with nothing to say.
+    if (waiting.action === 'locate' || (waiting.action === 'view' && (outcome === 'failed' || outcome === 'left'))) {
       set((s) => {
         const { [proposalId]: _gone, ...rest } = s.pending;
         return { pending: rest };
       });
+      if (waiting.action === 'locate') tellLocated(outcome);
       return;
     }
     set((s) => ended(s, proposalId, outcome));

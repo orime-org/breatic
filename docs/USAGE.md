@@ -28,9 +28,26 @@ If you are joining an existing instance, use the address provided by its operato
 - **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
 - **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
 
+## Arrange videos in Timeline
+
+Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge marks the editor as under development. The current editor places videos on one visual track.
+
+| Control or action | Result |
+| --- | --- |
+| **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
+| Select a Project video or use **Choose video** | Select a registered Project video or a local video file. |
+| **Start frame**, then **Add to Timeline** | Confirm a whole-frame position and add the clip; a local file uploads and registers at this step. The default is the sequence end, and each addition creates an independent clip. |
+| Select a clip and press **Change start frame** | Enter its new whole-frame start and press **Apply**. Overlapping clips appear in the conflict list, where each row can be selected for adjustment. |
+| **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. Video buffering holds the frame until playback can continue. |
+| Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it. |
+
+A selected conflict row retains its selection border while you edit its start. Its properties show a short conflict status; the preview and conflict list provide the full adjustment instruction. A failed local upload retains its selected file and start frame in the open form for retry.
+
+Full multi-track editing, audio/image/text placement, Web Animation creation and video export are planned additions.
+
 ## Arrange a 3D scene
 
-Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D and Timeline; Canvas is selected by default. The 3D card carries **DEV**, and a project created with this type starts with a Space named **3D**.
+Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D and Timeline; Canvas is selected by default. The 3D and Timeline cards carry **DEV**, and a project created with this type starts with a Space named **3D**.
 
 | Control or action | Result |
 | --- | --- |
@@ -49,6 +66,8 @@ Switching Spaces retains unfinished property input; reopen Properties on return 
 
 <a id="keyboard-shortcuts"></a>
 ## Keyboard shortcuts
+
+The **?** button next to the bell in the Studio and Project top bars opens the **User manual** and **Contact support** (support@breatic.ai); the sign-in pages link both in their footer. On the canvas, the **Keyboard shortcuts** button at the bottom of the left menu lists every canvas shortcut and gesture for your platform; a Viewer sees only the ones that work for them. In a 3D Space, the **Controls** button at the bottom of the left rail describes the 3D controls.
 
 Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typing in chat, a text field or an editor. Editing actions require write permission. Locked items and nodes with running tasks may restrict deletion. Click the canvas before using a canvas shortcut.
 

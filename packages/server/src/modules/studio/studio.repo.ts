@@ -519,3 +519,25 @@ export async function countMembersByStudioIds(
     .groupBy(studioMembers.studioId);
   return new Map(rows.map((r) => [r.studioId, r.count]));
 }
+
+
+/**
+ * Lock and recheck the account's personal Studio for one grant decision.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns Its current personal Studio, or null when unavailable.
+ * @throws {Error} When the identity lock cannot be acquired.
+ */
+export async function lockPersonalForGrant(userId: string, tx: DbTx): Promise<Studio | null> {
+  const candidates = await tx.select({ id: studios.id }).from(studios)
+    .where(and(eq(studios.createdByUserId, userId), eq(studios.type, "personal"), isNull(studios.deletedAt))).limit(1);
+  const candidate = candidates[0];
+  if (!candidate) return null;
+  // Select the candidate first, then lock only immutable identity columns.
+  // A type change while this waits is judged on the returned current row.
+  const rows = await tx.select().from(studios)
+    .where(and(eq(studios.id, candidate.id), isNull(studios.deletedAt)))
+    .for("no key update").limit(1);
+  const row = rows[0];
+  return row && row.type === "personal" && row.createdByUserId === userId ? toEntity(row) : null;
+}

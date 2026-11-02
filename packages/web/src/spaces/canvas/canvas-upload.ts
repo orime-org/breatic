@@ -17,7 +17,6 @@ import {
   type UploadFailure,
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
@@ -27,7 +26,8 @@ import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-
  * file's MIME type to the canvas node it becomes. Media files (image / audio / video)
  * become a media node whose content the server writes through Yjs; every
  * non-media file becomes a text node whose content is read or extracted
- * locally (see `text-extract`), so no file is ever rejected.
+ * locally (see `text-extract`). Admission is checked separately by
+ * `checkFileAdmission`.
  */
 
 /** How an uploaded file maps onto the canvas. */
@@ -73,12 +73,12 @@ export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
  * gate takes but the picker omits is a file the reader cannot select. A family
  * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
  * model can be given.
- * @param modality - Which kind of node is being filled.
+ * @param modality - One media kind, or all supported media.
  * @returns A comma-separated `accept` value.
  */
-export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
+export function uploadAcceptFor(modality: 'image' | 'video' | 'audio' | 'all'): string {
   return uploadableSpellings()
-    .filter((type) => type.startsWith(`${modality}/`))
+    .filter((type) => modality === 'all' || type.startsWith(`${modality}/`))
     .join(',');
 }
 
@@ -388,7 +388,7 @@ export interface AssetNodeLike {
 function slotUrls(data: unknown): string[] {
   const bag = data as Record<string, unknown> | undefined;
   const urls: string[] = [];
-  for (const spec of allSlotSpecs() as SlotSpec[]) {
+  for (const spec of allSlotSpecs()) {
     for (const pick of readSlotPicks(spec, bag?.[spec.field])) {
       urls.push(pick.url);
       if (pick.thumbnail && pick.thumbnail !== pick.url) urls.push(pick.thumbnail);

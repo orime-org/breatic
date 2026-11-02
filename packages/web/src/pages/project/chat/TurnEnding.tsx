@@ -144,7 +144,8 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     message.sources !== undefined ||
     message.proposals !== undefined ||
     message.documentProposals !== undefined ||
-    message.questionnaires !== undefined;
+    message.questionnaires !== undefined ||
+    message.spaceRequests !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {
     return (
       <EndingLine testId='message-bubble-empty' text={t('chat.message.empty')} tone='neutral' />

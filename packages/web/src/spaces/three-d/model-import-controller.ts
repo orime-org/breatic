@@ -190,7 +190,7 @@ export class ModelImportController {
       const id = crypto.randomUUID();
       const result = this.inputs.session.execute({ type: 'create', objects: [{
         id, name: this.snapshot.name, model: { kind: 'asset', assetId }, position: this.inputs.position(prepared.bounds),
-        rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true,
+        rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
       }] });
       if (!result.ok) throw new ModelImportError('invalid', `Model placement refused: ${result.reason}`, { detail: '' });
       this.publish({ phase: 'placed', objectId: id, error: null });

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@provider/*": [
+        "./src/*"
+      ]
+    },
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
+  ]
+}
