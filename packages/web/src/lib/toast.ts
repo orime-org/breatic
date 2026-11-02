@@ -9,6 +9,10 @@ type ToastId = ReturnType<typeof sonnerToast.error>;
 
 /** Set once the page must reload; see {@link muteToasts}. */
 let muted = false;
+/** Repeat generation per content key; a new generation starts after the previous toast began closing. */
+const generations = new Map<string, number>();
+/** Content keys whose current toast has started its exit. */
+const closing = new Set<string>();
 
 /**
  * Derives the sonner options for a typed toast, adding a stable de-dup `id` from
@@ -30,8 +34,28 @@ function withDedupId(
   options?: ToastOptions,
 ): ToastOptions {
   if (options?.id !== undefined) return options;
-  if (typeof message === 'string') return { ...options, id: `${type}:${message}` };
-  return options;
+  if (typeof message !== 'string') return options;
+  const key = `${type}:${message}`;
+  // sonner keeps a timed-out or dismissed toast mounted for its exit animation and
+  // folds a same-id update into it, so a repeat fired in that window would vanish
+  // with it. Once the current toast starts closing, the next repeat takes a new id.
+  let generation = generations.get(key) ?? 0;
+  if (closing.delete(key)) generations.set(key, ++generation);
+  const id = generation === 0 ? key : `${key}#${generation}`;
+  /**
+   * Record that the toast now on screen for this content has started closing.
+   * @param closed - The toast sonner is closing.
+   * @param closed.id - The id sonner gave that toast.
+   */
+  const markClosing = (closed: { id: string | number }): void => {
+    if (closed.id === id) closing.add(key);
+  };
+  return {
+    ...options,
+    id,
+    onAutoClose: (closed) => { markClosing(closed); options?.onAutoClose?.(closed); },
+    onDismiss: (closed) => { markClosing(closed); options?.onDismiss?.(closed); },
+  };
 }
 
 /**

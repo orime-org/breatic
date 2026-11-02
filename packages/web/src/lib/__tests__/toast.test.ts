@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // tuple-indexable (the id assertions read call[1].id).
 const sonnerMock = vi.hoisted(() => {
   const typed = (): ReturnType<typeof vi.fn> =>
-    vi.fn((_message?: unknown, _options?: { id?: string }) => 'id');
+    vi.fn((_message?: unknown, _options?: { id?: string; onAutoClose?: (t: { id: string }) => void; onDismiss?: (t: { id: string }) => void }) => 'id');
   return {
     error: typed(),
     warning: typed(),
@@ -31,29 +31,29 @@ describe('toast wrapper — the app\'s single, typed, content-deduped entry poin
 
   it('derives a stable id from type + message so identical repeats refresh one toast', () => {
     toast.error('boom');
-    expect(sonnerMock.error).toHaveBeenCalledWith('boom', { id: 'error:boom' });
+    expect(sonnerMock.error).toHaveBeenCalledWith('boom', expect.objectContaining({ id: 'error:boom' }));
   });
 
   it('keys the id by TYPE too — the same text at different severities are distinct toasts', () => {
     toast.error('x');
     toast.warning('x');
-    expect(sonnerMock.error).toHaveBeenCalledWith('x', { id: 'error:x' });
-    expect(sonnerMock.warning).toHaveBeenCalledWith('x', { id: 'warning:x' });
+    expect(sonnerMock.error).toHaveBeenCalledWith('x', expect.objectContaining({ id: 'error:x' }));
+    expect(sonnerMock.warning).toHaveBeenCalledWith('x', expect.objectContaining({ id: 'warning:x' }));
   });
 
   it('merges caller options under the derived id', () => {
     toast.info('hi', { duration: 5000 });
-    expect(sonnerMock.info).toHaveBeenCalledWith('hi', {
+    expect(sonnerMock.info).toHaveBeenCalledWith('hi', expect.objectContaining({
       duration: 5000,
       id: 'info:hi',
-    });
+    }));
   });
 
   it('a caller-provided id WINS (e.g. warnNodeGate\'s fixed id)', () => {
     toast.warning('locked', { id: 'canvas-node-gate' });
-    expect(sonnerMock.warning).toHaveBeenCalledWith('locked', {
+    expect(sonnerMock.warning).toHaveBeenCalledWith('locked', expect.objectContaining({
       id: 'canvas-node-gate',
-    });
+    }));
   });
 
   it('a non-string message gets no auto id (content cannot be content-keyed)', () => {
@@ -95,5 +95,44 @@ describe('muteToasts — nothing else is worth reading once the page must reload
     expect(sonnerMock.warning).not.toHaveBeenCalled();
     expect(sonnerMock.success).not.toHaveBeenCalled();
     expect(sonnerMock.info).not.toHaveBeenCalled();
+  });
+
+  describe('a repeat that lands while the previous toast is closing', () => {
+    /** The options sonner received on the latest success call. */
+    const lastOptions = (): { id?: string; onAutoClose?: (t: { id: string }) => void; onDismiss?: (t: { id: string }) => void } =>
+      sonnerMock.success.mock.calls.at(-1)?.[1] ?? {};
+
+    it('shows as a new toast after the previous one closed on its own', () => {
+      toast.success('closing auto');
+      const first = lastOptions();
+      first.onAutoClose?.({ id: first.id ?? '' });
+      toast.success('closing auto');
+      expect(lastOptions().id).not.toBe(first.id);
+    });
+
+    it('shows as a new toast after the previous one was dismissed', () => {
+      toast.success('closing dismissed');
+      const first = lastOptions();
+      first.onDismiss?.({ id: first.id ?? '' });
+      toast.success('closing dismissed');
+      expect(lastOptions().id).not.toBe(first.id);
+    });
+
+    it('keeps refreshing the same toast while it is still showing', () => {
+      toast.success('still showing');
+      const first = lastOptions().id;
+      toast.success('still showing');
+      expect(lastOptions().id).toBe(first);
+    });
+
+    it('still calls the caller\'s own close callbacks', () => {
+      const onAutoClose = vi.fn(); const onDismiss = vi.fn();
+      toast.success('caller callbacks', { onAutoClose, onDismiss });
+      const options = lastOptions();
+      options.onAutoClose?.({ id: options.id ?? '' });
+      options.onDismiss?.({ id: options.id ?? '' });
+      expect(onAutoClose).toHaveBeenCalledOnce();
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
   });
 });
