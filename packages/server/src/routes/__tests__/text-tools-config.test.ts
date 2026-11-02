@@ -29,12 +29,13 @@ import { getModelForTool } from "@server/config/text-tools.js";
 import { textToolsRoute } from "@server/routes/text-tools.js";
 
 describe("the shipped text-tools config", () => {
-  it("hands the browser two positive budgets, the selection's no larger than the context's", async () => {
+  it("hands the browser two positive budgets, the selection's no larger than the context's, and a positive reveal speed", async () => {
     const res = await textToolsRoute.request("/config");
 
     expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { selectionMaxChars: unknown; contextMaxChars: unknown } };
-    expect(Object.keys(data).sort()).toEqual(["contextMaxChars", "selectionMaxChars"]);
+    const { data } = (await res.json()) as { data: { selectionMaxChars: unknown; contextMaxChars: unknown; revealCharsPerSecond: unknown } };
+    expect(Object.keys(data).sort()).toEqual(["contextMaxChars", "revealCharsPerSecond", "selectionMaxChars"]);
+    expect(Number.isInteger(data.revealCharsPerSecond) && (data.revealCharsPerSecond as number) > 0).toBe(true);
     expect(Number.isInteger(data.selectionMaxChars) && (data.selectionMaxChars as number) > 0).toBe(true);
     expect(Number.isInteger(data.contextMaxChars) && (data.contextMaxChars as number) > 0).toBe(true);
     expect(data.selectionMaxChars as number).toBeLessThanOrEqual(data.contextMaxChars as number);
