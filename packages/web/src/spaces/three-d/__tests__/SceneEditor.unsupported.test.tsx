@@ -6,18 +6,25 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { SCENE_FORMAT_VERSION, t, type SceneObject } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
+import type * as ToastModule from '@web/lib/toast';
+
+const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 
 vi.mock('@web/data/api/scene', () => ({
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
   resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
 }));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof ToastModule>();
+  return { ...actual, toast: { ...actual.toast, error: reportError } };
+});
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (): React.JSX.Element => <div data-testid='scene-viewport-boundary' />,
 }));
@@ -43,6 +50,8 @@ function renderVersion(version: number): void {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', version);
   const session = new SceneSession(doc);
+  session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true,
+    writeAccess: 'granted', refused: false, awareness: null });
   sessions.push(session);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><TooltipProvider><BoundEditor session={session} /></TooltipProvider></QueryClientProvider>);
@@ -50,6 +59,7 @@ function renderVersion(version: number): void {
 
 afterEach(() => {
   cleanup();
+  reportError.mockClear();
   for (const session of sessions.splice(0)) { session.destroy(); session.doc.destroy(); }
 });
 
@@ -65,5 +75,16 @@ describe('SceneEditor unsupported format states', () => {
     renderVersion(SCENE_FORMAT_VERSION + 1);
     expect(screen.getByText(t('spaces.threeD.unsupported'))).toBeTruthy();
     expect(screen.getByRole('button', { name: t('spaces.threeD.reload') })).toBeTruthy();
+  });
+
+  it.each([
+    { label: 'older', offset: -1 },
+    { label: 'newer', offset: 1 },
+  ])('ignores editing shortcuts in an $label format without an error toast', ({ offset }) => {
+    renderVersion(SCENE_FORMAT_VERSION + offset);
+    for (const init of [{ key: 'Backspace' }, { key: 'Delete' }, { key: 'd', metaKey: true }, { key: 'd', ctrlKey: true }]) {
+      fireEvent.keyDown(window, init);
+    }
+    expect(reportError).not.toHaveBeenCalled();
   });
 });

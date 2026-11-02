@@ -138,6 +138,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || !ownsKeyboard(event.target) || event.isComposing || event.keyCode === 229) return;
+      if (session.getSnapshot().status !== 'ready') return;
       const modifier = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (event.key === 'Escape') {
