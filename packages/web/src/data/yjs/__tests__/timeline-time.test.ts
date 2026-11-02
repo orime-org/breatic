@@ -6,6 +6,7 @@ import fc from 'fast-check';
 
 import { durationToFrames } from '@breatic/shared';
 import {
+  timelineClipIntervalValid,
   timelineSourceSeconds,
   timelineTrimHead,
   validateTimelineRange,
@@ -161,5 +162,34 @@ describe('timelineTrimHead (inner#1708 D4)', () => {
     // One Timeline frame at 25 fps is 24/25 of a frame of a 24 fps source.
     expect(timelineTrimHead(placed, source, fps25, 1)).toBe(null);
     expect(timelineTrimHead(placed, source, fps25, 25)).toBe(24);
+  });
+});
+
+describe('timelineClipIntervalValid (inner#1708 Q2)', () => {
+  const MAX = Number.MAX_SAFE_INTEGER;
+
+  it.each([
+    ['the fixture clip', {}],
+    ['a start at frame 0 and one frame', { startFrame: 0, durationFrames: 1 }],
+    ['an end exactly at the largest safe integer', { startFrame: MAX - 1, durationFrames: 1 }],
+    ['a large in-point', { sourceInFrame: MAX }],
+  ])('accepts %s', (_name, changes) => {
+    expect(timelineClipIntervalValid({ ...clip, ...changes })).toBe(true);
+  });
+
+  it.each([
+    ['a negative start', { startFrame: -1 }],
+    ['a fractional start', { startFrame: 0.5 }],
+    ['a start beyond safe integers', { startFrame: MAX + 1 }],
+    ['a negative in-point', { sourceInFrame: -1 }],
+    ['a fractional in-point', { sourceInFrame: 1.5 }],
+    ['an unsafe in-point', { sourceInFrame: MAX + 1 }],
+    ['a zero duration', { durationFrames: 0 }],
+    ['a negative duration', { durationFrames: -1 }],
+    ['a fractional duration', { durationFrames: 1.5 }],
+    ['a NaN duration', { durationFrames: Number.NaN }],
+    ['an end past the largest safe integer', { startFrame: MAX, durationFrames: 1 }],
+  ])('rejects %s', (_name, changes) => {
+    expect(timelineClipIntervalValid({ ...clip, ...changes })).toBe(false);
   });
 });

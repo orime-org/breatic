@@ -58,6 +58,17 @@ function reasonOf(result: TimelineEditPlan): string {
   return result.ok ? 'ok' : result.reason;
 }
 
+/**
+ * Clips the plan removed, read from the documents (inner#1708 Q1: the plan carries no `removed`).
+ * @param before - The planned-against document.
+ * @param result - The accepted plan.
+ * @returns The removed ids, sorted.
+ * @throws {never} Never.
+ */
+function removedIn(before: TimelineDocumentV1, result: Accepted): string[] {
+  return Object.keys(before.clips).filter((id) => result.next.clips[id] === undefined).sort();
+}
+
 const move = (clipId: string, startFrame: number, placement: TimelineEditPlacement, target: { trackId?: string; newTrackId?: string } = {}): TimelineEditCommand =>
   ({ operation: 'move', parameters: { clipId, startFrame, ...target }, placement });
 const setRange = (clipId: string, startFrame: number, sourceInFrame: number, durationFrames: number, placement: TimelineEditPlacement): TimelineEditCommand =>
@@ -173,7 +184,8 @@ describe('planTimelineEdit move', () => {
     const result = accepted(plan(base, move(A, 100, ON)));
     expect(starts(result.next, MAIN)).toEqual([[B, 0, 24], [C, 24, 48], [A, 72, 48]]);
     expect(result.next.clips[O]?.startFrame).toBe(2);
-    expect(result.removed).toEqual([]);
+    expect(removedIn(base, result)).toEqual([]);
+    expect(result).not.toHaveProperty('removed');
     expect(result.bumped).toEqual([]);
   });
 
@@ -234,8 +246,9 @@ describe('planTimelineEdit move', () => {
   it('overwrites on a sub track: a fully covered clip is removed, a covered head or tail is trimmed', () => {
     const P = cid(21);
     const Q = cid(22);
-    const covered = accepted(plan(timeline([clip(P, V2, 10, 5), clip(Q, V2, 200, 30)]), move(Q, 0, ON)));
-    expect(covered.removed).toEqual([P]);
+    const coveredBefore = timeline([clip(P, V2, 10, 5), clip(Q, V2, 200, 30)]);
+    const covered = accepted(plan(coveredBefore, move(Q, 0, ON)));
+    expect(removedIn(coveredBefore, covered)).toEqual([P]);
     expect(covered.next.clips[P]).toBeUndefined();
 
     const head = accepted(plan(timeline([clip(P, V2, 50, 100), clip(Q, V2, 200, 30)]), move(Q, 40, ON)));
@@ -505,7 +518,7 @@ describe('planTimelineEdit delete', () => {
     const result = accepted(plan(base, remove(B, ON)));
     expect(starts(result.next, MAIN)).toEqual([[A, 0, 48], [C, 48, 48]]);
     expect(result.next.clips[O]).toBeUndefined();
-    expect([...result.removed].sort()).toEqual([B, O].sort());
+    expect(removedIn(base, result)).toEqual([B, O].sort());
     expect(result.next.sources).toEqual(base.sources);
   });
 
@@ -513,7 +526,7 @@ describe('planTimelineEdit delete', () => {
     const result = accepted(plan(base, remove(B, MAGNET_ONLY)));
     expect(starts(result.next, MAIN)).toEqual([[A, 0, 48], [C, 48, 48]]);
     expect(result.next.clips[O]?.startFrame).toBe(50);
-    expect(result.removed).toEqual([B]);
+    expect(removedIn(base, result)).toEqual([B]);
   });
 
   it('leaves a gap with the magnet off and still deletes a linked overlay', () => {
@@ -761,7 +774,7 @@ describe('planTimelineEdit invariants over random documents', () => {
       expect(next.tracks[id]).toBeUndefined();
     }
     for (const id of Object.keys(next.clips)) if (before.clips[id] === undefined) expect(result.created).toContain(id);
-    expect([...result.removed].sort()).toEqual(Object.keys(before.clips).filter((id) => next.clips[id] === undefined).sort());
+    expect(result).not.toHaveProperty('removed');
     for (const id of result.bumped) expect(next.clips[id]?.trackId).not.toBe(before.clips[id]?.trackId);
   }
 
@@ -813,7 +826,7 @@ describe('planTimelineEdit leaves sources to the writer (inner#1708 Q1)', () => 
   it('keeps the source of a clip an overwrite removes', () => {
     const current = timeline([clip(A, MAIN, 0, 48), clip(W, V2, 10, 20, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]);
     const result = accepted(plan(current, move(A, 0, OFF, { trackId: V2 })));
-    expect(result.removed).toEqual([W]);
+    expect(removedIn(current, result)).toEqual([W]);
     expect(result.next.sources).toEqual(current.sources);
   });
 

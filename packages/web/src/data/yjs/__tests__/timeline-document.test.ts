@@ -282,7 +282,7 @@ describe('Timeline native edit transactions', () => {
     const plan = accepted(applyTimelineEdit(doc, addVideo(nextClip, ON, source), ORIGIN));
     expect(starts(readTimelineDocument(doc), V2)).toEqual([[clip.id, 0, 24], [nextClip.id, 24, 48]]);
     expect(readTimelineDocument(doc).clips[clip.id]).toEqual({ ...clip, trackId: V2, durationFrames: 24 });
-    expect(plan.removed).toEqual([]);
+    expect(Object.keys(plan.next.clips).sort()).toEqual([clip.id, nextClip.id].sort());
   });
 
   it('inserts an addition on the magnetic main track by the drop frame instead of refusing it', () => {
@@ -946,5 +946,26 @@ describe('timelineClipSourceId (inner#1708 Q2)', () => {
     doc.getMap('clips').set('x', record);
     record.set('sourceId', 3);
     expect(timelineClipSourceId(record)).toBe(undefined);
+  });
+});
+
+describe('An accepted plan that changes nothing writes nothing (inner#1708 H5)', () => {
+  const X = cid(97);
+
+  it.each([
+    ['a move to the current start', move(X, 0, OFF)],
+    ['a set_range to the current range', setRange(X, 0, 0, 10, OFF)],
+  ])('opens no transaction for %s, even with an orphan source present', (_name, command) => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    const before = Y.encodeStateAsUpdate(doc);
+    let transactions = 0;
+    let updates = 0;
+    doc.on('afterTransaction', () => { transactions += 1; });
+    doc.on('update', () => { updates += 1; });
+    expect(applyTimelineEdit(doc, command, ORIGIN).ok).toBe(true);
+    expect(transactions).toBe(0);
+    expect(updates).toBe(0);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
   });
 });
