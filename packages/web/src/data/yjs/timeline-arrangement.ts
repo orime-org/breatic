@@ -4,7 +4,7 @@
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
-import { validateTimelineRange } from '@web/data/yjs/timeline-time';
+import { timelineClipIntervalValid, validateTimelineRange } from '@web/data/yjs/timeline-time';
 
 /** One stable diagnostic, retained alongside the unmodified placement. */
 export interface TimelineArrangementReason {
@@ -35,9 +35,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
     const track = tracks.get(clip.trackId);
     if (!track) reasons.push({ code: 'missing_track', ...detail });
     else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
-    if (!Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0
-      || !Number.isSafeInteger(clip.durationFrames) || clip.durationFrames < 1
-      || !Number.isSafeInteger(endFrame) || outsideSource(clip, document.sources[clip.sourceId], document)) reasons.push({ code: 'invalid_range', ...detail });
+    if (!timelineClipIntervalValid(clip) || outsideSource(clip, document.sources[clip.sourceId], document)) reasons.push({ code: 'invalid_range', ...detail });
     return { clip, endFrame, reasons };
   });
 

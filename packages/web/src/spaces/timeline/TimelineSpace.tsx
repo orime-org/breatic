@@ -138,6 +138,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
   // Activity suspends effects while hidden; uploads read the current rendered role.
   material.setCanWrite(!readOnly);
+  session.setCanWrite(!readOnly);
   React.useEffect(() => {
     if (!materialState.open && materialOpen) setMaterialOpen(false);
     if (materialState.open && !materialOpen) material.close();

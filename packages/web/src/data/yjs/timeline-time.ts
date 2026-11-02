@@ -10,17 +10,26 @@ import {
 export type TimelineRangeValidation = { valid: true } | { valid: false; reason: 'invalid_range' };
 
 /**
+ * Whether a clip's frame bounds are a stored clip's: safe integers, a non-negative start and in-point, a positive
+ * duration and a safe end.
+ * @param clip - The placement bounds.
+ * @returns Whether the interval is valid.
+ * @throws {never} Never.
+ */
+export function timelineClipIntervalValid(clip: Pick<TimelineVideoClip, 'startFrame' | 'sourceInFrame' | 'durationFrames'>): boolean {
+  return Number.isSafeInteger(clip.startFrame) && clip.startFrame >= 0
+    && Number.isSafeInteger(clip.sourceInFrame) && clip.sourceInFrame >= 0
+    && Number.isSafeInteger(clip.durationFrames) && clip.durationFrames >= 1
+    && Number.isSafeInteger(clip.startFrame + clip.durationFrames);
+}
+
+/**
  * Check the integer placement bounds before doing any frame arithmetic.
  * @param clip - The current placement to check.
  * @throws {RangeError} When a bound or speed is invalid.
  */
 function assertClip(clip: TimelineVideoClip): void {
-  if (!Number.isSafeInteger(clip.startFrame) || clip.startFrame < 0
-    || !Number.isSafeInteger(clip.sourceInFrame) || clip.sourceInFrame < 0
-    || !Number.isSafeInteger(clip.durationFrames) || clip.durationFrames < 1
-    || !Number.isSafeInteger(clip.startFrame + clip.durationFrames)) {
-    throw new RangeError('Invalid Timeline clip interval');
-  }
+  if (!timelineClipIntervalValid(clip)) throw new RangeError('Invalid Timeline clip interval');
   assertRate(clip.rate);
 }
 

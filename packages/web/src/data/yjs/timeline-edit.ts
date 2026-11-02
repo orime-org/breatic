@@ -8,7 +8,7 @@ import {
 } from '@breatic/shared';
 
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
-import { timelineSourceOffset, timelineSourceRoom } from '@web/data/yjs/timeline-time';
+import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceRoom } from '@web/data/yjs/timeline-time';
 
 /** The editing user's local placement switches, carried with each command. */
 export interface TimelineEditPlacement { magnet: boolean; linkage: boolean }
@@ -59,7 +59,7 @@ export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_
 
 /** The planned next document, or why the edit was refused. */
 export type TimelineEditPlan =
-  | { ok: true; next: TimelineDocumentV1; created: string[]; removed: string[]; bumped: string[] }
+  | { ok: true; next: TimelineDocumentV1; created: string[]; bumped: string[] }
   | { ok: false; reason: TimelineEditRefusal };
 
 /** Carries a refusal out of a nested planning step. */
@@ -191,9 +191,7 @@ function attachments(document: TimelineDocumentV1): Map<string, string> {
  * @throws {never} Never.
  */
 function wellFormed(clip: TimelineVideoClip, sources: Record<string, TimelineVideoSource>): boolean {
-  return sources[clip.sourceId] !== undefined
-    && [clip.startFrame, clip.sourceInFrame, clip.durationFrames, endOf(clip)].every(Number.isSafeInteger)
-    && clip.startFrame >= 0 && clip.sourceInFrame >= 0 && clip.durationFrames >= 1;
+  return sources[clip.sourceId] !== undefined && timelineClipIntervalValid(clip);
 }
 
 /**
@@ -234,7 +232,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @throws {never} Never.
    */
   function done(bumped: string[] = []): Extract<TimelineEditPlan, { ok: true }> {
-    return { ok: true, next: { ...current, tracks, clips, sources }, created, removed: Object.keys(current.clips).filter((id) => clips[id] === undefined), bumped };
+    return { ok: true, next: { ...current, tracks, clips, sources }, created, bumped };
   }
   /**
    * The order for a new top track.

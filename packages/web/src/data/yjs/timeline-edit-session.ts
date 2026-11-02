@@ -5,7 +5,9 @@ import * as Y from 'yjs';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { applyTimelineEdit, reconcileTimelineSources, timelineClipSourceId } from '@web/data/yjs/timeline-document';
+import {
+  applyTimelineEdit, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId, timelineReferencedSourceIds,
+} from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
@@ -21,6 +23,7 @@ export interface TimelineEditSession {
   undo: () => void;
   redo: () => void;
   select: (clipId: string | null) => void;
+  setCanWrite: (canWrite: boolean) => void;
   dispose: () => void;
 }
 
@@ -79,15 +82,16 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
 
 /**
  * Repair the document after an undo or redo: give every present record of the step's snapshot the fields it
- * lacks, write again the sources its present clips name, write back any named source that is missing, and drop
- * sources no clip names. A pop restores or deletes only this session's items, so a peer's concurrent or earlier
- * edits can leave a revived clip without fields or without its source, or a source without a clip.
+ * lacks, write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
+ * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
+ * fields or without its source, or a source without a clip.
  * @param doc - The document.
  * @param records - The snapshot of the step just undone or redone, when the step has one.
- * @param before - The sources as they were just before the pop.
+ * @param clipsBefore - The clip ids present just before the pop.
+ * @param known - Source values this session has seen.
  * @throws {never} Never.
  */
-function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, before: Record<string, unknown>): void {
+function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, unknown>>): void {
   doc.transact(() => {
     const revived: string[] = [];
     for (const kind of ['clips', 'tracks'] as const) {
@@ -96,11 +100,11 @@ function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, before:
         const target = collection.get(id);
         if (!(target instanceof Y.Map)) continue;
         for (const [key, value] of Object.entries(record)) if (!target.has(key)) target.set(key, value);
-        const sourceId = kind === 'clips' ? timelineClipSourceId(record) : undefined;
+        const sourceId = kind === 'clips' && !clipsBefore.has(id) ? timelineClipSourceId(record) : undefined;
         if (sourceId !== undefined) revived.push(sourceId);
       }
     }
-    reconcileTimelineSources(doc, { ...records?.sources, ...before }, revived);
+    reconcileTimelineSources(doc, { ...records?.sources, ...known }, revived);
   }, REPAIR_ORIGIN);
 }
 
@@ -133,12 +137,30 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     added = stackItem;
     while (history.undoStack.length > MAX_UNDO_DEPTH) history.undoStack.shift();
   });
-  // The sources just before the current pop, the values a repair may write back.
-  let beforePop: Record<string, unknown> = {};
+  // The clips just before the current pop, to tell the clips it revives.
+  let clipsBeforePop = new Set<string>();
+  // Every source value seen since the session opened; a source never changes once written, so any copy is current.
+  const known: Record<string, unknown> = {};
+  let canWrite = false;
+  /**
+   * Remember the current sources and, for a session that may write, write back any referenced source a merge
+   * removed. Concurrent writes to one key keep only one, so the remover's own write can win and then be swept,
+   * leaving a peer's new or revived clip without its source; every editor that saw the value restores it.
+   */
+  const restoreMissingSources = (): void => {
+    if (disposed) return;
+    const sources = doc.getMap<unknown>('sources');
+    sources.forEach((value, id) => { known[id] = value; });
+    if (!canWrite) return;
+    const missing = [...timelineReferencedSourceIds(doc)].some((id) => !sources.has(id) && known[id] !== undefined);
+    if (missing) doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN);
+  };
+  restoreMissingSources();
+  doc.on('afterAllTransactions', restoreMissingSources);
   // A peer's edit to a record this step deleted lands in the deleted map, and undo restores only what this
   // session removed, so a revived record can lack fields or its source; repair it from the step's snapshot.
   history.on('stack-item-popped', ({ stackItem, type }: { stackItem: { meta: Map<string, unknown> }; type: 'undo' | 'redo' }) => {
-    repairAfterPop(doc, stackItem.meta.get(type === 'undo' ? 'before' : 'after') as RecordSnapshot | undefined, beforePop);
+    repairAfterPop(doc, stackItem.meta.get(type === 'undo' ? 'before' : 'after') as RecordSnapshot | undefined, clipsBeforePop, known);
     if (added !== null && added !== stackItem) for (const [key, value] of stackItem.meta) added.meta.set(key, value);
   });
   doc.on('update', refresh);
@@ -174,13 +196,13 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     },
     undo() {
       added = null;
-      beforePop = doc.getMap('sources').toJSON();
+      clipsBeforePop = new Set(doc.getMap('clips').keys());
       history.undo();
       refresh();
     },
     redo() {
       added = null;
-      beforePop = doc.getMap('sources').toJSON();
+      clipsBeforePop = new Set(doc.getMap('clips').keys());
       history.redo();
       refresh();
     },
@@ -188,10 +210,14 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       selected = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
       refresh();
     },
+    setCanWrite(value) {
+      canWrite = value;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       doc.off('update', refresh);
+      doc.off('afterAllTransactions', restoreMissingSources);
       listeners.clear();
       history.destroy();
     },

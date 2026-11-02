@@ -38,21 +38,33 @@ export function timelineClipSourceId(record: unknown): string | undefined {
 }
 
 /**
- * Bring `sources` to exactly the sources the clip records name, inside the caller's transaction. Sources in
- * `reset` are written again even when present: a peer's concurrent removal deletes only the entry it saw, so a
- * fresh write keeps the source for a reference this transaction creates or revives.
+ * The source ids the clip records name, damaged records included.
  * @param doc - The content document.
- * @param values - Source values by id that this writer may write.
- * @param reset - Ids of sources a reference was just created or revived for.
+ * @returns The referenced source ids.
  * @throws {never} Never.
  */
-export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
-  const sources = doc.getMap<unknown>('sources');
+export function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
   const referenced = new Set<string>();
   doc.getMap<unknown>('clips').forEach((record) => {
     const id = timelineClipSourceId(record);
     if (id !== undefined) referenced.add(id);
   });
+  return referenced;
+}
+
+/**
+ * Write referenced sources inside the caller's transaction: the ones in `reset` even when present, and any that is
+ * missing, each from `values` when it holds it. Concurrent writes to one key keep only one of them, so a fresh
+ * write narrows the window in which a peer's removal leaves a reference without its source; writing back a missing
+ * one closes it.
+ * @param doc - The content document.
+ * @param values - Source values by id that this writer may write.
+ * @param reset - Ids of sources a reference was just created or revived for.
+ * @throws {never} Never.
+ */
+export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
+  const sources = doc.getMap<unknown>('sources');
+  const referenced = timelineReferencedSourceIds(doc);
   /**
    * Write one source value from `values`.
    * @param id - The source id.
@@ -63,6 +75,19 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
   for (const id of referenced) if (!sources.has(id)) write(id);
+}
+
+/**
+ * Bring `sources` to exactly the sources the clip records name, inside the caller's transaction.
+ * @param doc - The content document.
+ * @param values - Source values by id that this writer may write.
+ * @param reset - Ids of sources a reference was just created or revived for.
+ * @throws {never} Never.
+ */
+export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
+  restoreTimelineSources(doc, values, reset);
+  const sources = doc.getMap<unknown>('sources');
+  const referenced = timelineReferencedSourceIds(doc);
   for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);
 }
 
@@ -81,6 +106,8 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   const plan = planTimelineEdit(current, normalized, newId);
   if (!plan.ok) return plan;
   const { next } = plan;
+  // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
+  if (JSON.stringify([next.tracks, next.clips]) === JSON.stringify([current.tracks, current.clips])) return plan;
   doc.transact(() => {
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
