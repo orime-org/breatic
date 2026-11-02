@@ -13,7 +13,7 @@ import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-im
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
-import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
@@ -288,7 +288,7 @@ async function readModelBytes(response: Response, maxBytes: number, signal: Abor
 export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, limits: SceneImportLimits, renderer?: WebGLRenderer): Promise<Group> {
   signal.throwIfAborted();
   const textureLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, renderer?.capabilities.maxTextureSize ?? limits.maxTextureEdge) };
-  validateModelTextureMetadata(model, limits, textureLimits.maxTextureEdge);
+  const sizes = validateModelTextureMetadata(model, limits, textureLimits.maxTextureEdge);
   const { textures, basisu, draco } = loadedResources(model.json, model.support);
   const decoder = createModelDecoder(model, limits, renderer, { basisu, draco });
   const bytes = model.files.get(model.entry)!;
@@ -309,7 +309,12 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       const failed = textures.find((_, position) => decoded[position] === null);
       // inspectModelFiles refused every used texture that names no image.
       if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: imageLocation(model, failed.image!) });
-      validateModelTextures(result.scenes, textureLimits);
+      validateModelTextures(result.scenes, textureLimits, {
+        sourceOf: (texture) => result.parser.associations.get(texture)?.textures,
+        local: new Map(textures.map(({ texture, image }) => [texture, image])),
+        browsers: loadedResourcesInEveryBrowser(model.json).map((resources) => new Map(resources.textures.map(({ texture, image }) => [texture, image]))),
+        sizes,
+      });
       return result.scene;
     } catch (error) {
       disposeModelTemplate(root);

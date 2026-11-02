@@ -42,14 +42,21 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
   return readModelResource(model, buffer.uri, location, read.decoded).subarray(offset, offset + view.byteLength);
 }
 
+/** An image's declared pixel dimensions. */
+export interface ImageSize {
+  width: number;
+  height: number;
+}
+
 /**
  * Read one image's declared dimensions and hold them to the edge budget.
  * @param read - The model, the decoded data URIs and the image location.
  * @param image - The glTF image declaration.
  * @param limits - The texture dimension budget for this image.
+ * @returns The image's declared dimensions.
  * @throws {ModelImportError} When the image is invalid or exceeds its dimension budget.
  */
-function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): void {
+function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['images']>[number], limits: SceneImportLimits): ImageSize {
   const { location } = read;
   const uri = loadedImageUri(image);
   const bytes = uri !== undefined ? readModelResource(read.model, uri, read.location, read.decoded)
@@ -67,6 +74,7 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
     throw new ModelImportError('budget', 'Model texture exceeds its configured dimension budget', { detail: location,
       budget: { limit: 'textureEdge', allowed: limits.maxTextureEdge, actual: edge } });
   }
+  return dimensions;
 }
 
 /**
@@ -76,16 +84,19 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
  * @param model - Checked original glTF resources.
  * @param limits - Configured texture dimension budget, shared by every collaborator.
  * @param deviceMaxEdge - The largest texture edge this device uploads; the configured edge when there is no device limit.
+ * @returns The declared dimensions of every checked image, by image index.
  * @throws {ModelImportError} When an image is invalid or exceeds its dimension budget.
  */
-export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits, deviceMaxEdge = limits.maxTextureEdge): void {
+export function validateModelTextureMetadata(model: ModelPackage, limits: SceneImportLimits, deviceMaxEdge = limits.maxTextureEdge): Map<number, ImageSize> {
   const decoded = new Map<string, Uint8Array<ArrayBuffer>>();
   const local = loadedResources(model.json, model.support).images;
   const deviceLimits = { ...limits, maxTextureEdge: Math.min(limits.maxTextureEdge, deviceMaxEdge) };
   // loadedResources lists only images that exist.
+  const sizes = new Map<number, ImageSize>();
   for (const index of new Set(loadedResourcesInEveryBrowser(model.json).flatMap((resources) => [...resources.images]))) {
-    checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], local.has(index) ? deviceLimits : limits);
+    sizes.set(index, checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], local.has(index) ? deviceLimits : limits));
   }
+  return sizes;
 }
 
 /**

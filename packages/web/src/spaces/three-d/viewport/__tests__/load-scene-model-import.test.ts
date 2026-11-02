@@ -352,6 +352,42 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
   }
 
+  it.each([[8192, true], [16, false]])('holds the texture bytes another browser decodes (an AVIF of %i px) to the cumulative budget', async (edge, refused) => {
+    const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+    const png = (size: number): Uint8Array<ArrayBuffer> => {
+      const bytes = Uint8Array.from(PNG);
+      new DataView(bytes.buffer).setUint32(16, size);
+      new DataView(bytes.buffer).setUint32(20, size);
+      return bytes;
+    };
+    const files = new Map<string, Uint8Array<ArrayBuffer>>([['color.png', png(16)], ['color.avif', png(edge)]]);
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 16, height: 16, close: vi.fn() })));
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn((blob: Blob) => `blob:${(blob as File).name ?? 'image'}`);
+      static revokeObjectURL = vi.fn();
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(png(16))));
+    vi.stubGlobal('Image', class {
+      height = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      /** Decode GLTFLoader's AVIF probe image as a browser without AVIF support does. */
+      set src(_value: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    });
+    const model = triangle({
+      extensionsUsed: ['EXT_texture_avif'],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+      textures: [{ source: 0, extensions: { EXT_texture_avif: { source: 1 } } }],
+      images: [{ uri: 'color.png' }, { uri: 'color.avif' }],
+    }, [...files]);
+    const parsed = parseSceneModel({ ...model, support: { webp: true, avif: false } }, new AbortController().signal, IMPORT_LIMITS);
+    if (refused) await expect(parsed).rejects.toThrow(expect.objectContaining({ code: 'budget', budget: expect.objectContaining({ limit: 'textureBytes' }) }));
+    else disposeModelTemplate(await parsed);
+  });
+
   it('loads a model whose unused texture has no source', async () => {
     const root = await parseSceneModel(triangle({ textures: [{ sampler: 0 }], samplers: [{}] }), new AbortController().signal, IMPORT_LIMITS);
     templates.add(root);
