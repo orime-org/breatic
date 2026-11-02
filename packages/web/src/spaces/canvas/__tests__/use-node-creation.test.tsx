@@ -1879,7 +1879,8 @@ describe('useNodeCreation', () => {
 
       it('on a second apply, leaves a locked group around the reused template nodes alone and groups the new nodes apart', () => {
         const PAD = GROUP_PADDING;
-        const anchor = seedAnchor('p-shut', 's-shut', { x: 1000, y: 500 });
+        // The anchor was moved away from the instance, so lining up on it and on the reused node differ.
+        const anchor = seedAnchor('p-shut', 's-shut', { x: 1000, y: 3000 });
         const up = seed('p-shut', 's-shut', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
         const frame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
         const groupId = seedGroup('p-shut', 's-shut', frame, [{ id: up, position: { x: PAD, y: PAD } }], true);
@@ -1909,6 +1910,9 @@ describe('useNodeCreation', () => {
         expect(fresh.some((n) => n.parentId === groupId)).toBe(false);
         expect(placed.groupId).toBeDefined();
         expect(fresh.every((n) => n.parentId === placed.groupId)).toBe(true);
+        // No group is joined, so the flow lines up on the anchor, not on the node in the locked group.
+        const abs = absolute('p-shut', 's-shut');
+        for (const n of fresh) expect(abs.get(n.id)!.y).toBeGreaterThan(2000);
         const [kept] = canvasSpace.readNodePlacements('p-shut', 's-shut').filter((pl) => pl.id === groupId);
         expect({ x: kept!.x, y: kept!.y, width: kept!.width, height: kept!.height }).toEqual(frame);
       });

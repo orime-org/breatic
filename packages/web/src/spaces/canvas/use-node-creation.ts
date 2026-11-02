@@ -271,11 +271,10 @@ function arrangeProposal(
   // When a reused node of this instance sits in the group the new nodes join,
   // the flow lines up on it, so a node put back lands in its place in the
   // instance wherever the reader has since moved the anchor.
-  const alignOn = joinGroup === undefined
-    ? undefined
-    : [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id);
-  const [alignIndex, alignId] = alignOn ? [alignOn[0], alignOn[1].nodeId] : [anchorIndex, anchorId];
-  const alignAt = placements.find((p) => p.id === alignId) ?? start;
+  const alignIndex = (joinGroup
+    && [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id)?.[0])
+    ?? anchorIndex;
+  const alignAt = placements.find((p) => p.id === existing.get(alignIndex)?.nodeId) ?? start;
   const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
   const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
   const added = lined.filter((_, i) => !existing.has(i));
