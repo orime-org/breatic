@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { AlphaPackedIdentity, SourceLedgerDeclaration, SourceLedgerMeasurement, SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
+import type { PresentationCapability, SourceLedgerDeclaration, SourceLedgerMeasurement, SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
 import { hashStoredObject } from '@ingest/stored-object.js';
 
-/** The production store and real-storage test fixture expose these same ports. */
+/** The production store and real-storage test fixture expose these same ports, per toolInputId instance. */
 export interface SourceLedgerOwner {
-  claimSourceLedger(identity: AlphaPackedIdentity, declaration: SourceLedgerDeclaration): Promise<SourceLedgerWriteClaim | null>;
-  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: SourceLedgerMeasurement): Promise<boolean>;
-  releaseSourceLedger(identity: AlphaPackedIdentity, owner: string): Promise<void>;
+  claimSourceLedger(identity: PresentationCapability, toolInputId: string, declaration: SourceLedgerDeclaration): Promise<SourceLedgerWriteClaim | null>;
+  commitLedger(identity: PresentationCapability, toolInputId: string, owner: string, measured: SourceLedgerMeasurement): Promise<boolean>;
+  releaseSourceLedger(identity: PresentationCapability, toolInputId: string, owner: string): Promise<void>;
 }
 
 /**
@@ -59,15 +59,15 @@ async function split(body: ReadableStream<Uint8Array>, tableLength: number, ledg
 }
 
 /**
- * Writes the producer's one body as its two objects through their durable claim.
+ * Writes the producer's one body as its two objects through the toolInputId writer's durable claim.
  * @param input - Real R2, original owner and complete trusted producer stream.
  * @returns A physical publication acknowledgement.
  * @throws {Error} When the original stream or physical storage cannot complete.
  */
 export async function writeVideoSourceLedger(input: {
-  bucket: R2Bucket; owner: SourceLedgerOwner; identity: AlphaPackedIdentity; declaration: SourceLedgerDeclaration; body: ReadableStream<Uint8Array>;
+  bucket: R2Bucket; owner: SourceLedgerOwner; identity: PresentationCapability; toolInputId: string; declaration: SourceLedgerDeclaration; body: ReadableStream<Uint8Array>;
 }): Promise<{ ok: boolean; status: number }> {
-  const claim = await input.owner.claimSourceLedger(input.identity, input.declaration);
+  const claim = await input.owner.claimSourceLedger(input.identity, input.toolInputId, input.declaration);
   if (claim === null) { await input.body.cancel(); return { ok: false, status: 409 }; }
   let committed = false;
   const controller = new AbortController();
@@ -96,12 +96,12 @@ export async function writeVideoSourceLedger(input: {
       throw error;
     }
     if (table === null || ledger === null) return { ok: false, status: 409 };
-    committed = await input.owner.completeSourceLedger(input.identity, claim.owner, {
+    committed = await input.owner.commitLedger(input.identity, input.toolInputId, claim.owner, {
       etag: ledger.etag, size: ledger.size, sha256: await hashStoredObject(input.bucket, claim.key),
       table: { etag: table.etag, size: table.size, sha256: await hashStoredObject(input.bucket, claim.table.key) },
     });
     return { ok: committed, status: committed ? 200 : 409 };
   } finally {
-    if (!committed) await input.owner.releaseSourceLedger(input.identity, claim.owner);
+    if (!committed) await input.owner.releaseSourceLedger(input.identity, input.toolInputId, claim.owner);
   }
 }
