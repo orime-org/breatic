@@ -128,8 +128,9 @@ describe("a run is sent only where its input can go (critical path)", () => {
             });
           }
           const rules = provider.pricingRules("m");
-          const takes = (name: Name): boolean => keyed[NAMES.indexOf(name)]! && rejectedInput(rules, name, params) === undefined;
           const input = { prompt: "a fox", params };
+          const refusal = new Map(await Promise.all(NAMES.map(async (n) => [n, await rejectedInput(rules, n, { ...input, durations: {}, placeholders: [], durationsMissing: [] })] as const)));
+          const takes = (name: Name): boolean => keyed[NAMES.indexOf(name)]! && refusal.get(name) === undefined;
           // The order the route tries: configured upstreams that can take the input.
           const expected: Name[] = route.mode === "upstream"
             ? NAMES.filter((n) => n === route.upstream && takes(n))
@@ -156,18 +157,18 @@ describe("a run is sent only where its input can go (critical path)", () => {
             expect(answer.state).toBe("failed");
             const reason = (answer as Extract<MediaAnswer, { state: "failed" }>).reason;
             expect(reason).toBeInstanceOf(NoUpstreamAvailable);
-            const refusing = NAMES.filter((n) => (route.mode !== "upstream" || route.upstream === n) && keyed[NAMES.indexOf(n)]! && rejectedInput(rules, n, params) !== undefined);
+            const refusing = NAMES.filter((n) => (route.mode !== "upstream" || route.upstream === n) && keyed[NAMES.indexOf(n)]! && refusal.get(n) !== undefined);
             for (const n of refusing) expect((reason as NoUpstreamAvailable).reasons).toContainEqual(expect.objectContaining({ upstream: n, kind: "unsupported_input" }));
             expect(estimate).toBeNull();
             return;
           }
           // The first upstream sent to can take the input, and is the one the estimate priced.
-          expect(rejectedInput(rules, submitted[0]!, params)).toBeUndefined();
+          expect(refusal.get(submitted[0]!)).toBeUndefined();
           expect(estimate?.upstream).toBe(submitted[0]);
           // Each upstream is tried once, in the route's order, until one accepts or the last one refuses.
           const stopAt = expected.findIndex((n) => answers[NAMES.indexOf(n)] === "accept");
           expect(submitted).toEqual(stopAt < 0 ? expected : expected.slice(0, stopAt + 1));
-          for (const n of submitted) expect(rejectedInput(rules, n, params)).toBeUndefined();
+          for (const n of submitted) expect(refusal.get(n)).toBeUndefined();
           const last = answers[NAMES.indexOf(submitted.at(-1)!)];
           if (last === "accept") expect(answer.state).toBe("running");
           else if (last === "busy") expect(notAccepted).toBe(true);
