@@ -1002,6 +1002,93 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     expect(codeWords(editor)).toEqual(['codeTitle\n\npara\n\n- x\n- y']);
   });
 
+  /**
+   * The blocks with their nested blocks, as labels.
+   * @param editor - The editor.
+   * @returns `type:words[nested]` per top-level block.
+   */
+  function tree(editor: Editor): string[] {
+    const label = (block: Block): string => {
+      const words = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
+      const nested = (block.children ?? []).map(label);
+      return `${block.type}:${words}${nested.length > 0 ? `[${nested.join(',')}]` : ''}`;
+    };
+    return (editor.document as Block[]).map(label);
+  }
+
+  /**
+   * Copies a range of a fresh document and pastes it at a point of the same document.
+   * @param blocks - The document.
+   * @param from - Where the copy starts: a line's words and an offset in them.
+   * @param to - Where it ends.
+   * @param at - Where it is pasted.
+   * @returns The blocks after the paste.
+   */
+  async function copyPaste(blocks: unknown[], from: [string, number], to: [string, number], at: [string, number]): Promise<string[]> {
+    const { editor } = await openReady(blocks as Parameters<typeof open>[0]);
+    const html = copyOf(editor, positionOf(editor, from[0], from[1]), positionOf(editor, to[0], to[1]));
+    pasteAtPoint(editor, positionOf(editor, at[0], at[1]), { 'blocknote/html': html, 'text/html': html, 'text/plain': 'x' });
+    await settled();
+    const out = tree(editor);
+    unmountAll();
+    return out;
+  }
+
+  const item = (words: string, children: unknown[] = []): unknown => ({ type: 'bulletListItem', content: words, children });
+  const para = (words: string): unknown => ({ type: 'paragraph', content: words });
+
+  it('pastes one item copied to its nested item\'s start as that item alone, never nesting the line it lands in', async () => {
+    const doc = [item('par', [item('kid')]), para('next'), para('abcd')];
+    const kept = ['bulletListItem:par[bulletListItem:kid]', 'paragraph:next'];
+    expect(await copyPaste(doc, ['par', 0], ['kid', 0], ['abcd', 2])).toEqual([...kept, 'paragraph:abpar', 'paragraph:cd']);
+    expect(await copyPaste(doc, ['par', 0], ['kid', 0], ['abcd', 4])).toEqual([...kept, 'paragraph:abcdpar']);
+    expect(await copyPaste(doc, ['par', 0], ['kid', 0], ['abcd', 0])).toEqual([...kept, 'bulletListItem:par', 'paragraph:abcd']);
+  });
+
+  it('pastes lines copied to a nested item\'s start with their last line kept whole, as the same lines at the top level', async () => {
+    const doc = [para('lead'), item('par', [item('kid')]), para('abcd')];
+    const kept = ['paragraph:lead', 'bulletListItem:par[bulletListItem:kid]'];
+    expect(await copyPaste(doc, ['lead', 0], ['kid', 0], ['abcd', 2])).toEqual([...kept, 'paragraph:ablead', 'bulletListItem:par', 'paragraph:cd']);
+    expect(await copyPaste(doc, ['lead', 0], ['kid', 0], ['abcd', 0])).toEqual([...kept, 'paragraph:lead', 'bulletListItem:par', 'paragraph:abcd']);
+  });
+
+  it('joins words copied into a nested item\'s words with the line they land in, with media among them too', async () => {
+    const doc = [para('lead'), item('par', [item('kid')]), para('abcd')];
+    const kept = ['paragraph:lead', 'bulletListItem:par[bulletListItem:kid]'];
+    expect(await copyPaste(doc, ['lead', 2], ['kid', 2], ['abcd', 2])).toEqual([...kept, 'paragraph:abad', 'bulletListItem:par', 'paragraph:kicd']);
+    expect(await copyPaste(doc, ['lead', 2], ['kid', 2], ['abcd', 0])).toEqual([...kept, 'paragraph:ad', 'bulletListItem:par', 'paragraph:kiabcd']);
+    const mixed = [para('lead'), { type: 'image', props: { url: PIC } }, item('par', [item('kid')]), para('abcd')];
+    expect(await copyPaste(mixed, ['lead', 2], ['kid', 2], ['abcd', 2])).toEqual(['paragraph:lead', 'image:', 'bulletListItem:par[bulletListItem:kid]', 'paragraph:abad', 'image:', 'bulletListItem:par', 'paragraph:kicd']);
+  });
+
+  it('joins words copied from a nested item\'s middle with the line they land in', async () => {
+    const doc = [item('p1', [item('k1k1')]), item('p2', [item('k2k2')]), para('xxyy')];
+    expect((await copyPaste(doc, ['k1k1', 2], ['k2k2', 2], ['xxyy', 2])).slice(2)).toEqual(['paragraph:xxk1', 'bulletListItem:p2', 'paragraph:k2yy']);
+  });
+
+  it('pastes a copy whose end is an empty code block with no empty code block', async () => {
+    const lines = [para('lead'), para('foo'), { type: 'codeBlock', content: 'code' }, para('abcd')];
+    expect((await copyPaste(lines, ['lead', 4], ['code', 0], ['abcd', 2])).slice(3)).toEqual(['paragraph:ab', 'paragraph:foo', 'paragraph:cd']);
+    const code = [{ type: 'codeBlock', content: 'code' }, para('yy'), para('abcd')];
+    expect((await copyPaste(code, ['code', 4], ['yy', 2], ['abcd', 2])).slice(2)).toEqual(['paragraph:ab', 'paragraph:yycd']);
+    expect((await copyPaste(code, ['code', 4], ['yy', 2], ['abcd', 4])).slice(2)).toEqual(['paragraph:abcd', 'paragraph:yy']);
+  });
+
+  it('selects a whole line dragged to a line\'s start without reaching into that line', async () => {
+    const { editor } = await openReady([{ type: 'paragraph', content: 'foo' }, { type: 'paragraph', content: 'next' }, { type: 'paragraph', content: 'xy' }]);
+    dragWithin(editor, positionOf(editor, 'foo', 0), positionOf(editor, 'next', 0), positionOf(editor, 'xy', 0));
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:next', 'paragraph:foo', 'paragraph:xy']);
+    expect(selected(editor)).toBe('text:foo');
+  });
+
+  it('drops lines dragged to a nested item\'s start as they paste there', async () => {
+    const { editor } = await openReady([para('lead'), item('par', [item('kid')]), para('abcd')] as Parameters<typeof open>[0]);
+    dragWithin(editor, positionOf(editor, 'lead', 0), positionOf(editor, 'kid', 0), positionOf(editor, 'abcd', 2));
+    await settled();
+    expect(tree(editor).slice(1)).toEqual(['paragraph:ablead', 'bulletListItem:par', 'paragraph:cd']);
+  });
+
   it('pastes a whole line copied to the next line\'s start into a line\'s end, an empty heading and a line\'s start as their words', async () => {
     const whole = await openReady([{ type: 'paragraph', content: 'hello' }, { type: 'paragraph', content: 'next' }, { type: 'paragraph', content: 'xy' }]);
     const line = copyOf(whole.editor, positionOf(whole.editor, 'hello', 0), positionOf(whole.editor, 'next', 0));
