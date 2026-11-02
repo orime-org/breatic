@@ -96,9 +96,15 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 ## 许可证与允许用途
 
-Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**开源**项目，以 Apache 2.0 为基础附加条款。
+Breatic 是**开源**项目，采用 [GNU Affero General Public License v3.0](LICENSE)（`AGPL-3.0-only`）。
 
-许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [contact@breatic.ai](mailto:contact@breatic.ai)。
+你可以出于任何目的使用、研究、修改和自行部署 Breatic，包括商业用途。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。完整条款以许可证为准。
+
+Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范围内，使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。许可证不限制你用 Breatic 创作的内容。
+
+### 生成内容
+
+Breatic 是 AI 辅助内容创作工具。Breatic 实例的运营者和用户须自行负责：生成内容符合适用法律（版权、商标、隐私、数据保护、名誉权与内容审核），对所提供的输入及其后续使用拥有相应权利，并按使用场景做好内容审核。Orime, Inc. 不对生成内容的准确性、合法性、原创性或安全性作任何保证。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
 
