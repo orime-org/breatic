@@ -9,7 +9,7 @@ import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import * as sharedIndex from '@breatic/shared';
 import * as spaceContent from '@breatic/shared/space-content';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
-import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineRecord, timelineClipSourceId } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineClip, timelineClipSourceId } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
@@ -691,17 +691,15 @@ describe('Removing damaged records and the read entry (inner#1708 F1b)', () => {
     return doc;
   }
 
-  it('removes one damaged record in one transaction with the given origin', () => {
+  it('removes one damaged clip record in one transaction with the given origin (inner#1708 N2)', () => {
     const doc = damagedDoc();
     const origins: unknown[] = [];
     doc.on('afterTransaction', (transaction: Y.Transaction) => { origins.push(transaction.origin); });
-    removeTimelineRecord(doc, 'clips', BAD_CLIP, ORIGIN);
+    removeTimelineClip(doc, BAD_CLIP, ORIGIN);
     expect(origins).toEqual([ORIGIN]);
     expect(doc.getMap('clips').has(BAD_CLIP)).toBe(false);
     expect(doc.getMap('clips').has(clip.id)).toBe(true);
-    removeTimelineRecord(doc, 'tracks', BAD_TRACK, OTHER_ORIGIN);
-    expect(origins).toEqual([ORIGIN, OTHER_ORIGIN]);
-    expect(readTimelineContent(doc).damaged).toEqual({ clips: [], tracks: [] });
+    expect(readTimelineContent(doc).damaged).toEqual({ clips: [], tracks: [BAD_TRACK] });
   });
 
   it('reads through the shared space-content entry that integration tests use, and edits only in web', () => {
@@ -814,7 +812,7 @@ describe('Timeline edits sweep unreferenced sources (inner#1708 L2)', () => {
   });
 });
 
-describe('Removing a clip or track record and its source (inner#1708 L3)', () => {
+describe('Removing a clip record and its source (inner#1708 L3, N2)', () => {
   const X = cid(61);
   const Y2 = cid(62);
   const DAMAGED = cid(63);
@@ -823,30 +821,40 @@ describe('Removing a clip or track record and its source (inner#1708 L3)', () =>
     const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
     damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
     const seen = recordTransactions(doc);
-    removeTimelineRecord(doc, 'clips', DAMAGED, ORIGIN);
+    removeTimelineClip(doc, DAMAGED, ORIGIN);
     expect(seen).toEqual([{ origin: ORIGIN, sources: true }]);
     expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 
   it('keeps the source another valid clip still references', () => {
     const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10)]));
-    removeTimelineRecord(doc, 'clips', X, ORIGIN);
+    removeTimelineClip(doc, X, ORIGIN);
     expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 
   it('keeps the source a damaged record still names', () => {
     const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(Y2, V2, 100, 10, { sourceId: SHORT_SOURCE.id })], undefined, [SOURCE, SHORT_SOURCE]));
     damagedClip(doc, DAMAGED, SHORT_SOURCE.id);
-    removeTimelineRecord(doc, 'clips', Y2, ORIGIN);
+    removeTimelineClip(doc, Y2, ORIGIN);
     expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
   });
 
-  it('never touches sources when removing a track record', () => {
+  it('opens no transaction for an absent clip, even with an orphan source present', () => {
     const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
     const seen = recordTransactions(doc);
-    removeTimelineRecord(doc, 'tracks', V2, ORIGIN);
-    expect(seen).toEqual([{ origin: ORIGIN, sources: false }]);
+    let updates = 0;
+    doc.on('update', () => { updates += 1; });
+    removeTimelineClip(doc, cid(64), ORIGIN);
+    expect(seen).toEqual([]);
+    expect(updates).toBe(0);
     expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
+  });
+
+  it('adds no undo step for an absent clip', () => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    const undo = undoManager(doc, ORIGIN);
+    removeTimelineClip(doc, cid(64), ORIGIN);
+    expect(undo.undoStack).toHaveLength(0);
   });
 });
 
@@ -965,6 +973,26 @@ describe('An accepted plan that changes nothing writes nothing (inner#1708 H5)',
     expect(applyTimelineEdit(doc, command, ORIGIN).ok).toBe(true);
     expect(transactions).toBe(0);
     expect(updates).toBe(0);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
+  });
+});
+
+describe('A no-op edit is compared record by record, whatever the key order (inner#1708 N1)', () => {
+  const FIRST = cid(98);
+  const SECOND = cid(99);
+
+  it.each([
+    ['a sub-track move of a clip that is not the last key', [fixtureClip(FIRST, V2, 0, 10), fixtureClip(SECOND, V2, 40, 10)], move(FIRST, 0, OFF)],
+    ['a magnetic main-track move of a clip that is not the last key', [fixtureClip(FIRST, MAIN, 0, 10), fixtureClip(SECOND, MAIN, 10, 10)], move(FIRST, 0, ON)],
+    ['a set_range to the current range of a clip that is not the last key', [fixtureClip(FIRST, V2, 0, 10), fixtureClip(SECOND, V2, 40, 10)], setRange(FIRST, 0, 0, 10, OFF)],
+  ] as const)('opens no transaction for %s, with an orphan source present', (_name, clips, command) => {
+    const doc = docFrom(timeline([...clips], undefined, [SOURCE, SHORT_SOURCE]));
+    const before = Y.encodeStateAsUpdate(doc);
+    let transactions = 0;
+    doc.on('afterTransaction', () => { transactions += 1; });
+    expect(applyTimelineEdit(doc, command, ORIGIN).ok).toBe(true);
+    expect(transactions).toBe(0);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
   });

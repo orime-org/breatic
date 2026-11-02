@@ -927,3 +927,20 @@ describe('Timeline edit sessions heal dangling sources (inner#1708 H1, H2, H4, H
     expect(session.getSnapshot().canUndo).toBe(false);
   });
 });
+
+describe('Timeline edit session ignores a no-op on a clip that is not the last key (inner#1708 N1)', () => {
+  it('undoes the real edit in one step after a no-op move with an orphan source present', () => {
+    const FIRST = cid(101);
+    const SECOND = cid(102);
+    const doc = keep(seededDoc(timeline([clip(FIRST, 'v2', 0, 10), clip(SECOND, 'v2', 40, 10)], undefined, [SOURCE])));
+    const session = sessionOf(doc);
+    session.setCanWrite(true);
+    expect(session.edit(move(SECOND, 60)).ok).toBe(true);
+    doc.transact(() => doc.getMap('sources').set(SHORT_SOURCE.id, SHORT_SOURCE), 'remote');
+    expect(session.edit(move(FIRST, 0)).ok).toBe(true);
+    expect(doc.getMap('sources').has(SHORT_SOURCE.id)).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(doc).clips[SECOND]?.startFrame).toBe(40);
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+});
