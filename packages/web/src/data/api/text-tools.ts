@@ -37,7 +37,7 @@ export type TextStreamEvent =
   | { readonly type: 'done' }
   | { readonly type: 'error'; readonly message: string };
 
-/** The budgets the browser windows a request to. */
+/** The budgets the browser windows a request to, and the pace it shows the answer at. */
 export interface TextToolsConfig {
   readonly selectionMaxChars: number;
   readonly contextMaxChars: number;
@@ -104,7 +104,7 @@ export const textToolsApi = {
 
   /**
    * The budgets from `GET /mini-tools/text/config`.
-   * @returns The longest selection and context a request may carry.
+   * @returns The longest selection and context a request may carry, and the reveal speed.
    */
   config(): Promise<TextToolsConfig> {
     return apiGet<TextToolsConfig>('/mini-tools/text/config');

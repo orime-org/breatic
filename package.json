@@ -87,7 +87,8 @@
       "prosemirror-view@1.42.6": "patches/prosemirror-view@1.42.6.patch",
       "@hocuspocus/server@4.6.0": "patches/@hocuspocus__server@4.6.0.patch",
       "@blocknote/core@0.56.0": "patches/@blocknote__core@0.56.0.patch",
-      "@tiptap/extension-collaboration-caret@3.31.4": "patches/@tiptap__extension-collaboration-caret@3.31.4.patch"
+      "@tiptap/extension-collaboration-caret@3.31.4": "patches/@tiptap__extension-collaboration-caret@3.31.4.patch",
+      "use-smooth-text@0.1.1": "patches/use-smooth-text@0.1.1.patch"
     }
   }
 }

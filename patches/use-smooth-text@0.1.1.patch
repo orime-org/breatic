@@ -1,0 +1,32 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 1b605255570e06461334376e5ef25efd69bb9549..cb1bfe8eba0932670c506717caa8154b2b6f757a 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -74,8 +74,9 @@ function isReset(prevSource, nextSource) {
+ 
+ // src/useSmoothText.ts
+ function prefersReducedMotion() {
+-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++  // breatic: motion is part of the product (packages/web/AGENTS.md, user
++  // 2026-07-03); the reveal paces every reader alike.
++  return false;
+ }
+ function useSmoothText(fullText, options = {}) {
+   const { granularity = "char", charsPerSecond = DEFAULT_CHARS_PER_SECOND, done = false } = options;
+diff --git a/dist/index.js b/dist/index.js
+index 34b3ba38ff877efb84c5ca4833ab6aa8cfda7dea..ba46a63fc07fa0b37484ee4238b84ce4e959b61b 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -72,8 +72,9 @@ function isReset(prevSource, nextSource) {
+ 
+ // src/useSmoothText.ts
+ function prefersReducedMotion() {
+-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++  // breatic: motion is part of the product (packages/web/AGENTS.md, user
++  // 2026-07-03); the reveal paces every reader alike.
++  return false;
+ }
+ function useSmoothText(fullText, options = {}) {
+   const { granularity = "char", charsPerSecond = DEFAULT_CHARS_PER_SECOND, done = false } = options;

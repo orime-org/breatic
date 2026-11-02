@@ -246,6 +246,9 @@ patchedDependencies:
   prosemirror-view@1.42.6:
     hash: b5ej5jmfcxeucg3jh365cdjlaa
     path: patches/prosemirror-view@1.42.6.patch
+  use-smooth-text@0.1.1:
+    hash: cv5palnsceoiokbnnysl45ve7a
+    path: patches/use-smooth-text@0.1.1.patch
   y-prosemirror@1.3.7:
     hash: w7begeqdb2nj3x4orlnysjlzdm
     path: patches/y-prosemirror@1.3.7.patch
@@ -1151,7 +1154,7 @@ importers:
         version: 1.4.0
       use-smooth-text:
         specifier: 0.1.1
-        version: 0.1.1(react@19.3.0)
+        version: 0.1.1(patch_hash=cv5palnsceoiokbnnysl45ve7a)(react@19.3.0)
       vanilla-cookieconsent:
         specifier: 3.1.0
         version: 3.1.0
@@ -22098,7 +22101,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  use-smooth-text@0.1.1(react@19.3.0):
+  use-smooth-text@0.1.1(patch_hash=cv5palnsceoiokbnnysl45ve7a)(react@19.3.0):
     dependencies:
       react: 19.3.0
 

@@ -15,7 +15,7 @@ import type { StreamingApi } from "hono/utils/stream";
 import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { textToolSchema } from "@server/routes/schemas.js";
+import { CUSTOM_INSTRUCTIONS_MAX, textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { precheckCredits, projectService, textToolService } from "@server/modules";
@@ -28,14 +28,18 @@ const textTools = new Hono<{ Variables: AuthVariables }>();
 
 textTools.use(requireAuth);
 
+/** Fields that pick from a fixed list rather than carry words. */
+const CHOICE_FIELDS = new Set(["language", "style"]);
+
 /**
- * Every character a request asks the model to read, whichever fields hold
- * them.
+ * Every character a request asks the model to read, whichever free-text
+ * fields hold them.
  * @param params - The request's fields.
  * @returns Their total length.
  */
 function wordsIn(params: Record<string, unknown>): number {
-  return Object.values(params).reduce<number>((total, value) => {
+  return Object.entries(params).reduce<number>((total, [field, value]) => {
+    if (CHOICE_FIELDS.has(field)) return total;
     if (typeof value === "string") return total + value.length;
     if (Array.isArray(value)) return total + value.reduce<number>((sum, item) => sum + (typeof item === "string" ? item.length : 0), 0);
     return total;
@@ -47,7 +51,8 @@ function wordsIn(params: Record<string, unknown>): number {
  * budgets in `config/text-tools.yaml`. The numbers live in the yaml alone, so
  * the check runs here rather than in the request schema (the same split as
  * chat's `assertSayable`). The whole request may hold no more than the two
- * budgets together, whichever fields the words are in.
+ * budgets and the longest custom instruction together, whichever fields the
+ * words are in: as much as the dialog can send, and no more.
  * @param params - The request's fields.
  * @throws {ValidationError} When anything is over its budget.
  */
@@ -66,10 +71,9 @@ function assertWithinBudgets(params: Record<string, unknown>): void {
     );
   }
   const total = wordsIn(params);
-  if (total > selection_max_chars + context_max_chars) {
-    throw new ValidationError(
-      t("server.text_tool.document_too_long", { limit: selection_max_chars + context_max_chars, actual: total }),
-    );
+  const most = selection_max_chars + context_max_chars + CUSTOM_INSTRUCTIONS_MAX;
+  if (total > most) {
+    throw new ValidationError(t("server.text_tool.document_too_long", { limit: most, actual: total }));
   }
 }
 

@@ -290,23 +290,23 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const launch = React.useCallback<AiLaunch>((command, opener) => {
     if (projectId === null) return;
     const pending = (config.current ??= textToolsApi.config());
-    void pending.then((budgets) => {
+    void pending.then((config) => {
       const view = viewOf(editor);
       if (view === null) return;
       const { selection } = view.state;
       if (selection.empty || selection instanceof CellSelection) return;
       const markdown = selectionMarkdown(editor, view);
       if (markdown.trim() === '') return;
-      if (markdown.length > budgets.selectionMaxChars) {
-        toast.error(t('server.text_tool.selection_too_long', { actual: markdown.length, limit: budgets.selectionMaxChars }));
+      if (markdown.length > config.selectionMaxChars) {
+        toast.error(t('server.text_tool.selection_too_long', { actual: markdown.length, limit: config.selectionMaxChars }));
         return;
       }
       const bar = selection instanceof AllSelection ? opener?.getBoundingClientRect() ?? null : null;
       openings.current += 1;
       const next: Opened = {
         key: openings.current,
-        base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, budgets.contextMaxChars) },
-        revealCharsPerSecond: budgets.revealCharsPerSecond,
+        base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, config.contextMaxChars) },
+        revealCharsPerSecond: config.revealCharsPerSecond,
         insertBlockId: aiInsertBlockId(view.state),
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
@@ -590,7 +590,7 @@ function AiPanel({
             <Preview
               editor={editor}
               text={shown}
-              moving={session.state === 'streaming' || !isComplete}
+              streaming={session.state === 'streaming' || !isComplete}
               waiting={session.state === 'streaming' && shown.trim() === ''}
             />
           </>
@@ -609,7 +609,9 @@ function AiPanel({
                     ? <Square className='mr-1.5 h-3.5 w-3.5' />
                     : <RotateCcw className='mr-1.5 h-3.5 w-3.5' />}
                   onClick={() => {
-                    dispatch({ type: buttons.stop ? 'stop' : 'retry' });
+                    // A finished answer still being written only needs the rest shown.
+                    if (buttons.stop && session.state !== 'streaming') flush();
+                    else dispatch({ type: buttons.stop ? 'stop' : 'retry' });
                   }}
                 >
                   {t(buttons.stop ? 'spaces.document.ai.stop' : 'spaces.document.ai.retry')}
@@ -790,19 +792,19 @@ function InstructionLine({ text }: { text: string }): React.JSX.Element {
  * @param props - The preview.
  * @param props.editor - The document editor, whose surroundings the preview copies.
  * @param props.text - The result as far as it is shown yet.
- * @param props.moving - Whether the text is still growing.
+ * @param props.streaming - Whether the text is still growing.
  * @param props.waiting - Whether no words have come yet.
  * @returns The preview.
  */
 function Preview({
   editor,
   text,
-  moving,
+  streaming,
   waiting,
 }: {
   editor: ViewedEditor;
   text: string;
-  moving: boolean;
+  streaming: boolean;
   waiting: boolean;
 }): React.JSX.Element {
   // One parser for the session, made and taken down with the panel.
@@ -836,7 +838,6 @@ function Preview({
   React.useEffect(() => () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
   }, []);
-  const streaming = moving;
   React.useEffect(() => {
     if (parser === null) return;
     /**

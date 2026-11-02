@@ -417,10 +417,10 @@ describe("the budgets in config/text-tools.yaml", () => {
   });
 
   it.each([
-    ["polish", { instructions: "i".repeat(BUDGET.selection + BUDGET.context + 1) }],
-    ["generate", { instructions: "i".repeat(BUDGET.selection + BUDGET.context + 1) }],
-    ["character", { name: "Ada", context: "c".repeat(BUDGET.selection + BUDGET.context + 1) }],
-  ])("refuses a %s request whose words add up past both budgets, whichever field holds them", async (tool, extra) => {
+    ["polish", { instructions: "i".repeat(BUDGET.selection + BUDGET.context + 2000 + 1) }],
+    ["generate", { instructions: "i".repeat(BUDGET.selection + BUDGET.context + 2000 + 1) }],
+    ["character", { name: "Ada", context: "c".repeat(BUDGET.selection + BUDGET.context + 2000 + 1) }],
+  ])("refuses a %s request whose words add up past both budgets and the longest instruction, whichever field holds them", async (tool, extra) => {
     const res = await post(bodyFor(tool, extra));
 
     expect(res.status).toBe(422);

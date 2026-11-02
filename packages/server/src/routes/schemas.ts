@@ -47,7 +47,7 @@ import { creditLotService } from "@breatic/domain";
  */
 const TEXT_TOOL_HARD_CEILING = 2_000_000;
 /** The most a custom request may say. */
-const CUSTOM_INSTRUCTIONS_MAX = 2_000;
+export const CUSTOM_INSTRUCTIONS_MAX = 2_000;
 
 const textToolBase = z.object({
   project_id: z.string().uuid(),

@@ -209,8 +209,10 @@ export function aiDialogButtons({ state, resultEmpty, revealed, rangePresent, in
   // The block gone says more than the words gone: neither can be written.
   const replaceReason: AiButtonReason | null = rangePresent ? null : insertBlockPresent ? 'rangeGone' : 'insertBlockGone';
   return {
-    stop: state === 'streaming',
-    retry: finished || state === 'failed',
+    // An answer the server has finished can still be being written on
+    // screen; until it is all shown, that is still the output, and stop applies.
+    stop: state === 'streaming' || (finished && !revealed),
+    retry: (finished && revealed) || state === 'failed',
     insert: writable ? { disabled: !insertBlockPresent, reason: insertBlockPresent ? null : 'insertBlockGone' } : null,
     replace: writable ? { disabled: !rangePresent, reason: replaceReason } : null,
   };
