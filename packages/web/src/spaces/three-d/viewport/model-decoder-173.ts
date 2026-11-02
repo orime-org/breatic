@@ -37,13 +37,20 @@ export interface ModelDecoder {
 }
 
 /**
- * Report extensions outside the capabilities registered by this exact loader.
+ * Report extensions outside the capabilities registered by this exact loader, and required WebP or AVIF textures this browser cannot decode.
  * @param model - Checked model envelope with original extension declarations.
  * @returns Unsupported required and optional extension identifiers.
  * @throws {never} Never.
  */
 export function getUnsupportedModelExtensions(model: ModelPackage): { required: string[]; optional: string[] } {
-  const required = model.json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value)) ?? [];
+  /**
+   * Whether this browser cannot decode the texture format an extension names.
+   * @param value - An extension identifier.
+   * @returns True for WebP or AVIF this browser cannot decode.
+   * @throws {never} Never.
+   */
+  const undecodable = (value: string): boolean => (value === 'EXT_texture_webp' && !model.support.webp) || (value === 'EXT_texture_avif' && !model.support.avif);
+  const required = model.json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) || undecodable(value)) ?? [];
   const requiredSet = new Set(model.json.extensionsRequired ?? []);
   const optional = model.json.extensionsUsed?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) && !requiredSet.has(value)) ?? [];
   return { required, optional };
