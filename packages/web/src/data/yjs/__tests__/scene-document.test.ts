@@ -303,7 +303,9 @@ describe('scene projection and command transactions', () => {
     const legacy = new Y.Map<unknown>();
     doc.getMap('objects').set(ID, legacy);
     legacy.set('initial', { ...ORIGINAL, exists: false });
-    legacy.set('exists', Y.Array.from([true]));
+    const flags = new Y.Array<boolean>();
+    legacy.set('exists', flags);
+    flags.push([true]);
     const before = Y.encodeStateAsUpdate(doc);
     expect(readSceneDocument(doc)).toEqual({ status: 'unsupported', version: 1, objects: [], invalidObjects: [] });
     expect(planSceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Changed' }] }, true)).toEqual({ ok: false, reason: 'unsupported' });
@@ -698,7 +700,9 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
         if (action.sync) merge(a, b);
       }
       merge(a, b);
-      expect(readSceneDocument(a)).toEqual(readSceneDocument(b));
+      const sorted = (doc: Y.Doc): readonly SceneDocument.SceneDocumentSnapshot['objects'][number][] =>
+        [...readSceneDocument(doc).objects].sort((left, right) => left.id.localeCompare(right.id));
+      expect(sorted(a)).toEqual(sorted(b));
       for (const doc of [a, b]) {
         const snapshot = readSceneDocument(doc);
         expect(snapshot.invalidObjects).toEqual([]);

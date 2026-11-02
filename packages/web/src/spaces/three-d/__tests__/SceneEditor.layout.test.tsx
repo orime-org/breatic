@@ -7,7 +7,7 @@ import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { t, type SceneObject } from '@breatic/shared';
+import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
@@ -32,8 +32,8 @@ function Bound({ session }: { session: SceneSession }): React.JSX.Element {
     readObjects={() => readSceneDocument(session.doc).objects} ownsKeyboard={() => true} UnlockIcon={Unlock} />;
 }
 function setup(): { session: SceneSession; doc: Y.Doc; page: ReturnType<typeof render>; client: QueryClient } {
-  const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', 1);
-  const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Box' : 'Figure', model: { kind: 'builtin', id: 'box' }, position: [index, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true }));
+  const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
+  const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Box' : 'Figure', model: { kind: 'builtin', id: 'box' }, position: [index, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }));
   applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true);
   const session = new SceneSession(doc);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });

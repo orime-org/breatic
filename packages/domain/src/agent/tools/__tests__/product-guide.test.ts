@@ -268,7 +268,7 @@ describe("what the guide says", () => {
   it("tells an older 3D scene format, shown without a reload button, from a newer one that offers reload", () => {
     const scenes = section("3D spaces");
     expect(scenes).toContain(`"${t("spaces.threeD.unsupportedOld")}"`);
-    expect(scenes).toMatch(new RegExp(`"${t("spaces.threeD.unsupportedOld")}"[^.]*no reload button`));
+    expect(scenes.split(`"${t("spaces.threeD.unsupportedOld")}"`)[0]?.split(". ").at(-1)).toContain("no reload button");
     expect(scenes).toContain(`"${t("spaces.threeD.unsupported")}"`);
   });
 

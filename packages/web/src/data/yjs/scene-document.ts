@@ -5,13 +5,12 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 
 import {
-  SCENE_EDITABLE_FIELDS, SCENE_FORMAT_VERSION, SceneObjectSchema, SceneObjectValuesSchema, getSceneRootMap,
-  type SceneEditableField, type SceneObject, type SceneObjectValues,
+  SCENE_FORMAT_VERSION, SceneObjectSchema, SceneObjectValuesSchema, getSceneRootMap,
+  type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues,
 } from '@breatic/shared';
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
-const SYSTEM_ORIGIN = Symbol('scene-stable-record');
 const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
   .partial().extend({ id: z.string().uuid() }).strict();
 
@@ -35,31 +34,35 @@ export interface SceneDocumentSnapshot {
 
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
 interface SceneCreation { id: string; values: SceneObjectValues }
-type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[] }
+type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; deletes: string[] }
   | { ok: false; reason: SceneCommandFailure };
 
 /**
- * Read complete values from stable arrays without mutating stored JSON.
+ * Values read for an editable key that has no live value. Two members writing
+ * the same key at once, followed by the winner's undo, leaves the key empty;
+ * the object stays visible and editable, as canvas nodes do.
+ * @param model - The record's model, which names the fallback.
+ * @returns Defaults for every editable key.
+ */
+function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
+  return { name: model.kind === 'builtin' ? model.id : 'Model', position: [0, 0, 0],
+    rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
+}
+
+/**
+ * Read one record of current values without mutating stored JSON.
  * @param id - Stable scene object identity.
- * @param value - Stored scene value to validate or format.
- * @returns Validated plain object with independently owned JSON tuples.
- * @throws {Error} When the record structure or initial flags are invalid.
- * @throws {z.ZodError} When stored values do not match the scene format.
+ * @param value - Stored scene value to validate.
+ * @returns Validated plain object.
+ * @throws {Error} When the record is not a shared map.
+ * @throws {z.ZodError} When the model or a stored value does not match the scene format.
  */
 function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
-  const initial = SceneObjectValuesSchema.parse(value.get('initial'));
-  if (initial.exists || initial.locked) throw new Error('Invalid initial protection or existence flag');
-  const current: Record<string, unknown> = { ...initial, id };
-  for (const field of SCENE_EDITABLE_FIELDS) {
-    const sequence: unknown = value.get(field);
-    if (!(sequence instanceof Y.Array)) throw new Error(`Missing ${field} sequence`);
-    const schema = SceneObjectValuesSchema.shape[field];
-    const values: unknown[] = sequence.toArray();
-    for (const item of values) schema.parse(item);
-    current[field] = values.length ? values[values.length - 1] : initial[field];
-  }
-  return SceneObjectSchema.parse(current);
+  const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
+  const stored: Record<string, unknown> = {};
+  value.forEach((item: unknown, key: string) => { stored[key] = item; });
+  return SceneObjectSchema.parse({ ...editableDefaults(model), ...stored, model, id });
 }
 
 /**
@@ -84,14 +87,22 @@ export function readSceneDocument(doc: Y.Doc): SceneDocumentSnapshot {
   if (status === 'ready') {
     records.forEach((value: unknown, id: string) => {
       try {
-        const object = readRecord(id, value);
-        if (object.exists) objects.push(object);
+        objects.push(readRecord(id, value));
       } catch (error) {
         invalidObjects.push({ id, error: String(error) });
       }
     });
   }
   return { status, version, objects, invalidObjects };
+}
+
+/**
+ * Whether a stored format version predates this build; such scenes stay unopened and unchanged.
+ * @param version - The document's `formatVersion` value.
+ * @returns True for a number lower than the current format version.
+ */
+export function isOlderSceneFormat(version: unknown): boolean {
+  return typeof version === 'number' && version < SCENE_FORMAT_VERSION;
 }
 
 /**
@@ -142,7 +153,7 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], deletes: [] };
 
   if (command.type === 'create' || command.type === 'duplicate') {
     const requested = command.type === 'create' ? command.objects.map((object) => object.id) : command.copies.map((copy) => copy.id);
@@ -162,10 +173,9 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
     }
     for (const creation of creations) {
       const parsed = SceneObjectSchema.safeParse(creation);
-      if (!parsed.success || parsed.data.locked || !parsed.data.exists) return { ok: false, reason: 'invalid' };
+      if (!parsed.success || parsed.data.locked) return { ok: false, reason: 'invalid' };
       const { id, ...values } = parsed.data;
-      plan.creates.push({ id, values: { ...values, exists: false, locked: false } });
-      plan.writes.push({ id, field: 'exists', value: true });
+      plan.creates.push({ id, values });
     }
     plan.ids = requested;
     return plan;
@@ -189,14 +199,14 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
   } else if (command.type === 'lock') {
     if (typeof command.locked !== 'boolean') return { ok: false, reason: 'invalid' };
     ids.forEach((id) => plan.writes.push({ id, field: 'locked', value: command.locked }));
-  } else ids.forEach((id) => plan.writes.push({ id, field: 'exists', value: false }));
+  } else plan.deletes.push(...ids);
   plan.ids = ids;
   plan.writes = plan.writes.filter((write) => JSON.stringify(byId.get(write.id)?.[write.field]) !== JSON.stringify(write.value));
   return plan;
 }
 
 /**
- * Apply a validated command; a command that appends field values creates one undo item.
+ * Apply a validated command in one local transaction, which is one personal undo item.
  * @param doc - Live collaborative scene document.
  * @param command - User operation to validate against current committed scene data.
  * @param origin - Origin tracked only by this local command history.
@@ -207,22 +217,12 @@ export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: sym
   const plan = planSceneCommand(doc, command, canEdit);
   if (!plan.ok) return plan;
   const objects = doc.getMap<unknown>('objects');
-  if (plan.creates.length) {
-    doc.transact(() => {
-      for (const creation of plan.creates) {
-        const record = new Y.Map<unknown>();
-        record.set('initial', structuredClone(creation.values));
-        SCENE_EDITABLE_FIELDS.forEach((field) => record.set(field, new Y.Array<unknown>()));
-        objects.set(creation.id, record);
-      }
-    }, SYSTEM_ORIGIN);
-  }
   doc.transact(() => {
-    for (const write of plan.writes) {
-      const record = objects.get(write.id) as Y.Map<unknown>;
-      const sequence = record.get(write.field) as Y.Array<unknown>;
-      sequence.push([structuredClone(write.value)]);
+    for (const creation of plan.creates) {
+      objects.set(creation.id, new Y.Map<unknown>(Object.entries(structuredClone(creation.values))));
     }
+    for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, structuredClone(write.value));
+    for (const id of plan.deletes) objects.delete(id);
   }, origin);
   return { ok: true, ids: plan.ids };
 }

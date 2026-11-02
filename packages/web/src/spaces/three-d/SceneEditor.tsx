@@ -8,6 +8,7 @@ import { Lock } from 'lucide-react';
 import { type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset } from '@web/data/api/scene';
+import { isOlderSceneFormat } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -184,7 +185,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     pendingFocusIds.current.add(id);
     const object: SceneObject = { id, model: { kind: 'builtin', id: kind },
       name: kind === 'figure' ? figureName : boxName,
-      position: [session.getSnapshot().objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true };
+      position: [session.getSnapshot().objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
     if (!session.execute({ type: 'create', objects: [object] }).ok) pendingFocusIds.current.delete(id);
   }, [session, figureName, boxName]);
 
@@ -328,7 +329,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties, tasksText]);
   return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
     <div className='absolute inset-0' data-testid='scene-stage' style={stageStyle}>
-      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
+      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'>{isOlderSceneFormat(snapshot.version)
+        ? <p>{t('spaces.threeD.unsupportedOld')}</p>
+        : <><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></>}</div>
         : snapshot.status === 'loading' ? <div className='grid h-full place-items-center p-4 text-sm'>{connection.status === 'authFailed' ? t('spaces.threeD.refused') : t('spaces.threeD.loading')}</div>
           : controls.isError || rendererFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
             setRendererFailed(false); setRendererRevision((value) => value + 1); void controls.refetch();

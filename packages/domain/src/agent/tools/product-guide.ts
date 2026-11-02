@@ -1312,8 +1312,9 @@ export function renderProductGuide(): string {
     `During loading the viewport says ${quoted(t("spaces.threeD.loading"))}. A scene load failure says ` +
       `${quoted(t("spaces.threeD.loadFailed"))} and offers ${quoted(t("spaces.threeD.retry"))}; ${quoted(t("spaces.threeD.reload"))} reloads the page when offered. ` +
       `${quoted(t("spaces.threeD.modelFailed"))} has its own retry button for model loading. Unreadable objects appear as rows naming their object id, ` +
-      "while valid objects remain usable. An unsupported document format stays preserved and read-only, with " +
-      `${quoted(t("spaces.threeD.unsupported"))} and a reload button.`,
+      "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
+      `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
+      `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

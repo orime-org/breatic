@@ -1980,6 +1980,7 @@
       "invalidObject": "読み取れないオブジェクト: {id}",
       "empty": "人物やブロックを追加してシーンを配置します。",
       "unsupported": "このシーンの形式に対応していません。ページを再読み込みしてください。",
+      "unsupportedOld": "このシーンは古い形式のため開けません。",
       "modelFailed": "モデルを読み込めませんでした。",
       "peerSelection": "{name}: {count} 個を選択中",
       "add": "追加",
