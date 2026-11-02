@@ -1679,8 +1679,8 @@ describe('TimelineSpace round-four review fixes (inner#1708 F1c, F2, F3, F4, F5)
     expect(await screen.findByTestId('timeline-reason-' + X)).toHaveTextContent(t('timeline.conflictReason.incompatible_track'));
   });
 
-  it('explains how to resolve conflicts including changing the track (F2)', () => {
-    expect(t('timeline.conflictHelp')).toBe('Clips overlap, sit on a removed track or fall outside their video. Select a clip and move it, change its track, trim or delete it.');
+  it('explains how to resolve conflicts including changing the track (F2, P2)', () => {
+    expect(t('timeline.conflictHelp')).toBe('Clips overlap, sit on a removed track, fall outside their video or lost their video. Select a clip and move it, change its track, trim or delete it.');
   });
 
   it.each(['damaged', 'overlap', 'missing_track', 'invalid_range', 'incompatible_track', 'missing_source'])('has a %s reason in all five locales (F1c, F2, M3)', (code) => {
@@ -1842,5 +1842,58 @@ describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () =
     expect(screen.getByTestId('timeline-preview')).toHaveAttribute('data-active-clip-id', CLIP.id);
     expect(screen.queryByText(t('timeline.transport.failed'))).toBe(null);
     expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
+  });
+});
+
+describe('TimelineSpace refuses moving a clip whose video is missing (inner#1708 P2)', () => {
+  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
+
+  it('says what to do in every locale', () => {
+    const errors: Record<string, string> = {
+      en: 'This clip\'s video is missing. Delete the clip first.',
+      'zh-CN': '片段所用视频已丢失，请先删除该片段。',
+      'zh-TW': '片段所用影片已遺失，請先刪除該片段。',
+      ja: 'クリップの動画が見つかりません。先にクリップを削除してください。',
+      ko: '클립의 동영상을 찾을 수 없습니다. 먼저 클립을 삭제하세요.',
+    };
+    const help: Record<string, string> = {
+      en: 'Clips overlap, sit on a removed track, fall outside their video or lost their video. Select a clip and move it, change its track, trim or delete it.',
+      'zh-CN': '片段重叠、所在轨道已被移除、超出视频范围或视频已丢失。请选择片段并移动、改换轨道、裁剪或删除。',
+      'zh-TW': '片段重疊、所在軌道已被移除、超出影片範圍或影片已遺失。請選擇片段並移動、改換軌道、裁剪或刪除。',
+      ja: 'クリップが重複しているか、トラックが削除されたか、動画の範囲外か、動画が見つかりません。クリップを選択して移動、トラックの変更、トリム、または削除してください。',
+      ko: '클립이 겹치거나, 트랙이 삭제되었거나, 동영상 범위를 벗어났거나, 동영상을 찾을 수 없습니다. 클립을 선택하고 이동, 트랙 변경, 트리밍 또는 삭제하세요.',
+    };
+    for (const [tag, catalog] of LOCALE_CATALOGS) {
+      expect(readPath(catalog, 'timeline.errors.missing_source'), tag).toBe(errors[tag]);
+      expect(readPath(catalog, 'timeline.conflictHelp'), tag).toBe(help[tag]);
+    }
+  });
+
+  it('warns with the missing-video message when a nudge would move it', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    const before = Y.encodeStateAsUpdate(doc);
+    press(clip, 'ArrowRight');
+    await waitFor(() => expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toContain('This clip\'s video is missing. Delete the clip first.'));
+    expect(t('timeline.errors.missing_source')).toBe('This clip\'s video is missing. Delete the clip first.');
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('warns with the missing-video message when a drag would move it', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14, { sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    const before = Y.encodeStateAsUpdate(doc);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 40);
+    pointer(document, 'pointerUp', 40);
+    await waitFor(() => expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toContain('This clip\'s video is missing. Delete the clip first.'));
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
   });
 });

@@ -157,6 +157,22 @@ afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
 });
 
+/**
+ * Prepare a placement that is valid as a command but refused by the planner, then apply it (inner#1708 P5).
+ * @param doc - The collaborative document.
+ * @param input - The captured draft.
+ * @param reason - The refusal the applied edit reports.
+ * @throws {Error} When preparation refuses it or the applied edit writes or reports otherwise.
+ */
+function refusedOnApply(doc: Y.Doc, input: PlacementInput, reason: string): void {
+  const result = prepareUnchanged(doc, input);
+  expect(result.ok, 'preparation only builds and validates the command').toBe(true);
+  if (!result.ok) return;
+  const before = Y.encodeStateAsUpdate(doc);
+  expect(applyTimelineEdit(doc, result.command, 'local')).toEqual({ ok: false, reason });
+  expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+}
+
 describe('prepareTimelineMediaPlacement', () => {
   it('prepares the complete default command without writing until native apply', () => {
     const doc = seededDoc();
@@ -252,12 +268,16 @@ describe('prepareTimelineMediaPlacement', () => {
     },
   );
 
-  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER])(
-    'refuses an invalid or overflowing placement at frame %s',
+  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'refuses an invalid placement frame %s while building the command',
     (startFrame) => {
       expect(prepareUnchanged(seededDoc(), placementInput({ startFrame }))).toEqual({ ok: false, reason: 'invalid_range' });
     },
   );
+
+  it('leaves a placement whose end overflows safe frames to the planner', () => {
+    refusedOnApply(seededDoc(), placementInput({ startFrame: Number.MAX_SAFE_INTEGER }), 'invalid_range');
+  });
 
   it('allows a clip whose exclusive end is exactly the largest safe frame', () => {
     const startFrame = Number.MAX_SAFE_INTEGER - 48;
@@ -271,7 +291,7 @@ describe('prepareTimelineMediaPlacement', () => {
   it('reports a missing target track without recreating it', () => {
     const doc = seededDoc();
     doc.getMap('tracks').delete('visual-1');
-    expect(prepareUnchanged(doc, placementInput())).toEqual({ ok: false, reason: 'track_missing' });
+    refusedOnApply(doc, placementInput(), 'track_missing');
     expect(readTimelineDocument(doc).tracks).toEqual({});
   });
 
@@ -280,19 +300,19 @@ describe('prepareTimelineMediaPlacement', () => {
     addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
     const draft = placementInput({ trackId: 'visual-2' });
     doc.getMap('tracks').delete('visual-2');
-    expect(prepareUnchanged(doc, draft)).toEqual({ ok: false, reason: 'track_missing' });
+    refusedOnApply(doc, draft, 'track_missing');
   });
 
   it('refuses an audio track rather than choosing a different visual track', () => {
     const doc = seededDoc();
     addTrack(doc, { id: 'audio-1', kind: 'audio', order: 1 });
-    expect(prepareUnchanged(doc, placementInput({ trackId: 'audio-1' }))).toEqual({ ok: false, reason: 'track_missing' });
+    refusedOnApply(doc, placementInput({ trackId: 'audio-1' }), 'track_missing');
   });
 
   it('never overwrites an existing clip with a reused clip identity', () => {
     const doc = seededDoc();
     const existing = occupy(doc, 0);
-    expect(prepareUnchanged(doc, placementInput({ clipId: OTHER_CLIP_ID }))).toEqual({ ok: false, reason: 'id_taken' });
+    refusedOnApply(doc, placementInput({ clipId: OTHER_CLIP_ID }), 'id_taken');
     expect(readTimelineDocument(doc).clips).toEqual({ [OTHER_CLIP_ID]: existing.parameters.clip });
   });
 
@@ -314,7 +334,7 @@ describe('prepareTimelineMediaPlacement', () => {
   it('refuses a new track id that is already taken', () => {
     const doc = seededDoc();
     addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
-    expect(prepareUnchanged(doc, placementInput({ newTrackId: 'visual-2' }))).toEqual({ ok: false, reason: 'id_taken' });
+    refusedOnApply(doc, placementInput({ newTrackId: 'visual-2' }), 'id_taken');
   });
 
   it.each([0, 1, 47, 48, 95, 96])('accepts a sub-track placement at frame %s over an existing clip as an overwrite', (startFrame) => {
