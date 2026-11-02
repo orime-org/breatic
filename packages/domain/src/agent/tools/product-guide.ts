@@ -1237,7 +1237,8 @@ export function renderProductGuide(): string {
       "Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
       `Clips marked ${quoted(t("timeline.conflict"))} also appear in a selectable conflict list, each row saying why, for example ` +
-      `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes. ` +
+      `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
+      `${quoted(t("timeline.conflictReason.missing_source"))}, which deleting the clip fixes. ` +
       `A row reading ${quoted(t("timeline.conflictReason.damaged"))} offers ${quoted(t("timeline.edit.delete"))}. ${quoted(t("timeline.conflictHelp"))}`,
     `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
       `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +

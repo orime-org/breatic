@@ -56,7 +56,7 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
   });
 }
 
-/** Records left out of a read because they fail their schema, listed so a user can see and delete them. */
+/** Records left out of a read because they fail their schema; damaged clips are listed for the user to delete. */
 export interface TimelineDamagedRecords { clips: string[]; tracks: string[] }
 
 /**

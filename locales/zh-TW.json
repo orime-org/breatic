@@ -2836,7 +2836,8 @@
       "missing_track": "所在軌道已被移除",
       "invalid_range": "超出影片範圍",
       "incompatible_track": "所在軌道類型不符",
-      "damaged": "該片段已無法讀取"
+      "damaged": "該片段已無法讀取",
+      "missing_source": "所用影片已遺失"
     },
     "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",

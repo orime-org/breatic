@@ -2836,7 +2836,8 @@
       "missing_track": "所在轨道已被移除",
       "invalid_range": "超出视频范围",
       "incompatible_track": "所在轨道类型不符",
-      "damaged": "该片段已无法读取"
+      "damaged": "该片段已无法读取",
+      "missing_source": "所用视频已丢失"
     },
     "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",

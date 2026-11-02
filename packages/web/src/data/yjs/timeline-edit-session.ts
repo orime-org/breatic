@@ -27,12 +27,8 @@ export interface TimelineEditSession {
   dispose: () => void;
 }
 
-/** Clip and track records by id, as JSON, for the records one undo step touched, with the sources those clips name. */
-interface RecordSnapshot {
-  clips: Record<string, Record<string, unknown>>;
-  tracks: Record<string, Record<string, unknown>>;
-  sources: Record<string, unknown>;
-}
+/** Clip and track records by id, as JSON, for the records one undo step touched. */
+interface RecordSnapshot { clips: Record<string, Record<string, unknown>>; tracks: Record<string, Record<string, unknown>> }
 
 // Writes that complete revived records and their sources; untracked, so they never become an undo step of their own.
 const REPAIR_ORIGIN = Symbol('timeline-record-repair');
@@ -44,11 +40,11 @@ const REPAIR_ORIGIN = Symbol('timeline-record-repair');
  * @throws {never} Never.
  */
 function snapshotRecords(doc: Y.Doc): RecordSnapshot {
-  return { clips: doc.getMap('clips').toJSON(), tracks: doc.getMap('tracks').toJSON(), sources: doc.getMap('sources').toJSON() };
+  return { clips: doc.getMap('clips').toJSON(), tracks: doc.getMap('tracks').toJSON() };
 }
 
 /**
- * The records of `from` whose content differs from `other`, including ones `other` lacks, with the sources of `from` those clips name.
+ * The records of `from` whose content differs from `other`, including ones `other` lacks.
  * @param from - The snapshot to keep records from.
  * @param other - The snapshot on the other side of the edit.
  * @returns The touched records of `from`.
@@ -64,9 +60,7 @@ function touched(from: RecordSnapshot, other: RecordSnapshot): RecordSnapshot {
   const pick = (kind: 'clips' | 'tracks'): Record<string, Record<string, unknown>> => Object.fromEntries(
     Object.entries(from[kind]).filter(([id, record]) => JSON.stringify(record) !== JSON.stringify(other[kind][id])),
   );
-  const clips = pick('clips');
-  const named = new Set(Object.values(clips).map(timelineClipSourceId));
-  return { clips, tracks: pick('tracks'), sources: Object.fromEntries(Object.entries(from.sources).filter(([id]) => named.has(id))) };
+  return { clips: pick('clips'), tracks: pick('tracks') };
 }
 
 /**
@@ -77,7 +71,7 @@ function touched(from: RecordSnapshot, other: RecordSnapshot): RecordSnapshot {
  * @throws {never} Never.
  */
 function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined): RecordSnapshot {
-  return { clips: { ...extra?.clips, ...base.clips }, tracks: { ...extra?.tracks, ...base.tracks }, sources: { ...extra?.sources, ...base.sources } };
+  return { clips: { ...extra?.clips, ...base.clips }, tracks: { ...extra?.tracks, ...base.tracks } };
 }
 
 /**
@@ -104,7 +98,7 @@ function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBe
         if (sourceId !== undefined) revived.push(sourceId);
       }
     }
-    reconcileTimelineSources(doc, { ...records?.sources, ...known }, revived);
+    reconcileTimelineSources(doc, known, revived);
   }, REPAIR_ORIGIN);
 }
 

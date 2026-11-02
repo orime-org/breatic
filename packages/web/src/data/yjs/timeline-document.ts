@@ -12,17 +12,18 @@ import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, 
 export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords } from '@breatic/shared/space-content';
 
 /**
- * Delete one clip or track record, damaged or not, in one transaction.
+ * Delete one clip record, damaged or not, and the sources no clip names any more, in one transaction; an absent
+ * clip writes nothing.
  * @param doc - The content document.
- * @param kind - The collection.
- * @param id - The record id.
+ * @param id - The clip id.
  * @param origin - The transaction origin.
  * @throws {never} Never.
  */
-export function removeTimelineRecord(doc: Y.Doc, kind: 'clips' | 'tracks', id: string, origin: unknown): void {
+export function removeTimelineClip(doc: Y.Doc, id: string, origin: unknown): void {
+  if (!doc.getMap('clips').has(id)) return;
   doc.transact(() => {
-    doc.getMap(kind).delete(id);
-    if (kind === 'clips') reconcileTimelineSources(doc, {}, []);
+    doc.getMap('clips').delete(id);
+    reconcileTimelineSources(doc, {}, []);
   }, origin);
 }
 
@@ -107,13 +108,25 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   if (!plan.ok) return plan;
   const { next } = plan;
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
-  if (JSON.stringify([next.tracks, next.clips]) === JSON.stringify([current.tracks, current.clips])) return plan;
+  if (sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips)) return plan;
   doc.transact(() => {
     writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
     writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
     reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => next.clips[id]?.sourceId ?? []));
   }, origin);
   return plan;
+}
+
+/**
+ * Whether two collections hold the same records by id, whatever their key order.
+ * @param before - The current records.
+ * @param after - The planned records.
+ * @returns Whether no record is added, removed or changed.
+ * @throws {never} Never.
+ */
+function sameRecords(before: Readonly<Record<string, object>>, after: Readonly<Record<string, object>>): boolean {
+  return Object.keys(before).length === Object.keys(after).length
+    && Object.entries(after).every(([id, record]) => JSON.stringify(before[id]) === JSON.stringify(record));
 }
 
 /**

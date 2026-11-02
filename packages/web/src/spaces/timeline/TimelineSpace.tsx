@@ -7,7 +7,7 @@ import { Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, 
 import { useQueryClient } from '@tanstack/react-query';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { resolveTimelineArrangement, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
-import { removeTimelineRecord } from '@web/data/yjs/timeline-document';
+import { removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { activeTimelineClipAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
@@ -174,7 +174,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     if (!plan.ok) toast.warning(t(`timeline.errors.${plan.reason}`));
     return plan;
   }, [readOnly, editWithNotice, t]);
-  const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineRecord(doc, 'clips', clipId, session.origin); }, [readOnly, doc, session]);
+  const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineClip(doc, clipId, session.origin); }, [readOnly, doc, session]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 

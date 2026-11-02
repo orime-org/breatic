@@ -8,7 +8,7 @@ import { timelineClipIntervalValid, validateTimelineRange } from '@web/data/yjs/
 
 /** One stable diagnostic, retained alongside the unmodified placement. */
 export interface TimelineArrangementReason {
-  code: 'overlap' | 'missing_track' | 'incompatible_track' | 'invalid_range';
+  code: 'overlap' | 'missing_track' | 'incompatible_track' | 'invalid_range' | 'missing_source';
   relatedClipIds: string[];
   startFrame: number | null;
   endFrame: number | null;
@@ -22,7 +22,7 @@ export interface TimelineArrangement { placements: TimelinePlacement[]; conflict
 
 /**
  * Diagnose the complete merged layout without moving or removing clips.
- * @param document - The current document; a clip outside its source is invalid_range.
+ * @param document - The current document; a clip outside its source is invalid_range, one whose source is gone is missing_source.
  * @returns Stable readiness and conflict classifications.
  * @throws {never} Never.
  */
@@ -35,7 +35,9 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
     const track = tracks.get(clip.trackId);
     if (!track) reasons.push({ code: 'missing_track', ...detail });
     else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
-    if (!timelineClipIntervalValid(clip) || outsideSource(clip, document.sources[clip.sourceId], document)) reasons.push({ code: 'invalid_range', ...detail });
+    const source = document.sources[clip.sourceId];
+    if (source === undefined) reasons.push({ code: 'missing_source', ...detail });
+    if (!timelineClipIntervalValid(clip) || outsideSource(clip, source, document)) reasons.push({ code: 'invalid_range', ...detail });
     return { clip, endFrame, reasons };
   });
 

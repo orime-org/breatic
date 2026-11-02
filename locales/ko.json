@@ -2836,7 +2836,8 @@
       "missing_track": "트랙이 삭제되었습니다",
       "invalid_range": "동영상 범위를 벗어났습니다",
       "incompatible_track": "다른 종류의 트랙에 있습니다",
-      "damaged": "이 클립을 더 이상 읽을 수 없습니다"
+      "damaged": "이 클립을 더 이상 읽을 수 없습니다",
+      "missing_source": "동영상을 찾을 수 없습니다"
     },
     "loadingMedia": "동영상 불러오는 중…",
     "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",

@@ -2836,7 +2836,8 @@
       "missing_track": "Its track was removed",
       "invalid_range": "Outside its video",
       "incompatible_track": "On a track of another kind",
-      "damaged": "This clip can no longer be read"
+      "damaged": "This clip can no longer be read",
+      "missing_source": "Its video is missing"
     },
     "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",

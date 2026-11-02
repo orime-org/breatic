@@ -2836,7 +2836,8 @@
       "missing_track": "トラックが削除されました",
       "invalid_range": "動画の範囲外です",
       "incompatible_track": "種類の異なるトラックにあります",
-      "damaged": "このクリップは読み込めなくなりました"
+      "damaged": "このクリップは読み込めなくなりました",
+      "missing_source": "動画が見つかりません"
     },
     "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
