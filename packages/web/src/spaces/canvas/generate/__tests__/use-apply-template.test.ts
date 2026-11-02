@@ -31,7 +31,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
 
-import { addEdge, addNode, createGroup, readCanvasGraph, setNodeLocked } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, createGroup, readCanvasGraph, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
@@ -387,7 +387,7 @@ describe('useApplyTemplate', () => {
       const added = appendedOf(proposal, existing);
       expect(added).toHaveLength(1);
       expect(added[0]).toMatchObject({ role: 'source', type: 'image', name });
-      expect((added[0] as TemplateProposalNode).templateNode).toBeUndefined();
+      expect((added[0] as TemplateProposalNode).templateNode).toEqual({ template: 'storyboard-grid-25', key: 'reference', input: true });
       expect(edgesOf(proposal, existing)).toEqual([`new:${name}->target`]);
       expect(refsOf(proposal, existing, 0)).toEqual([`new:${name}`]);
       expect(proposal.nodes[0]?.prompt).toContainEqual({
@@ -468,7 +468,7 @@ describe('useApplyTemplate', () => {
         resource: 'templates/fixture-flow/style.png',
         templateNode: { template: 'fixture-flow', key: 'style' },
       });
-      expect(added.find((n) => n.name === 'Pose')?.templateNode).toBeUndefined();
+      expect(added.find((n) => n.name === 'Pose')?.templateNode).toEqual({ template: 'fixture-flow', key: 'pose', input: true });
       expect(added.find((n) => n.name === 'Fixture flow')).toEqual(templateGuideNode(FLOW, 0));
       expect(edgesOf(proposal, existing)).toEqual(
         [
@@ -556,6 +556,16 @@ describe('useApplyTemplate', () => {
       expect(appendedOf(proposal, existing)).toEqual([]);
       expect(proposal.nodes[0]).toMatchObject({ mode: 'i2i', model: 'model-final' });
       expect(proposal.nodes[indexOf(existing, 'target-sheet')]).toMatchObject({ mode: 'i2i', model: 'model-sheet' });
+    });
+
+    it('marks an input node this template placed as part of the instance, and a reader\'s own input not', () => {
+      seedFlowInstance('target');
+      setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true });
+      const place = vi.fn();
+      apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+      const { existing } = placed(place);
+      expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-pose', 'target-sheet', 'target-style']);
     });
 
     it('leaves the earlier of two chained instances alone when applied on the later one', () => {

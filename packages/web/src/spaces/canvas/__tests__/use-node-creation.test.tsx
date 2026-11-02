@@ -2114,6 +2114,28 @@ describe('useNodeCreation', () => {
         expect(bodyToPlainText(canvasSpace.getTextBody('p-ex8', 's-ex8', byName.get('Fixture template')!)!)).toBe(GUIDE_TEXT);
       });
 
+      it('tags an input node the template places with its input key', () => {
+        const anchor = seedAnchor('p-in8', 's-in8', { x: 1000, y: 500 });
+        const before = idsNow('p-in8', 's-in8');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-in8', 's-in8'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Hero', templateNode: { template: 'fx', key: 'hero', input: true } }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [hero] = addedSince('p-in8', 's-in8', before);
+        expect(tagOf('p-in8', 's-in8', hero!.id)).toEqual({ template: 'fx', key: 'hero', input: true });
+      });
+
       it('points the guide of an agent proposal at the anchor node it placed', () => {
         const { result } = renderHook(() => useNodeCreation('p-ag1', 's-ag1'));
 

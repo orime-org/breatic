@@ -311,11 +311,12 @@ const proposalNodeSchema = z.object({
   resource: z.string().optional(),
   /**
    * The template node this node stands for (inner#1345): its template and key,
-   * and for the guide text node the index of the anchor it explains. Written
-   * after the template check, never by the model.
+   * and for the guide text node the index of the anchor it explains; an input
+   * node carries its input's key with `input`. Written after the template
+   * check, never by the model.
    */
   templateNode: z
-    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional() })
+    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional(), input: z.literal(true).optional() })
     .optional(),
 });
 

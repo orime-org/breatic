@@ -447,7 +447,7 @@ describe("the guide text node answerFor appends (design 6.7 step 8)", () => {
 
 describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", () => {
   for (const anchorKey of [false, true]) {
-    it(`marks each non-anchor template node, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
+    it(`marks each non-anchor template node and each input, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
       const shape = agentShape(SHEET, { anchorKey });
       const answer = placedAnswer(answerFor(shape.sent, undefined, FIXTURES));
       expect(answer.nodes.some((node) => "template" in node)).toBe(false);
@@ -459,7 +459,7 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
       expect(node("node:sheet")?.templateNode).toBeUndefined();
       expect(node("node:sheet")?.resource).toBeUndefined();
       for (const input of ["pose", "front", "back", "character"]) {
-        expect(node(`input:${input}`)?.templateNode).toBeUndefined();
+        expect(node(`input:${input}`)?.templateNode).toEqual({ template: "fixture-sheet", key: input, input: true });
         expect(node(`input:${input}`)?.resource).toBeUndefined();
       }
       expect(parsed.nodes).toHaveLength(shape.sent.nodes.length + 1);
@@ -499,7 +499,8 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     };
     const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
     expect(answer.nodes).toHaveLength(3);
-    expect(answer.nodes.map((node) => node.templateNode)).toEqual([undefined, undefined, undefined]);
+    // The first instance's input is its own; the first anchor, fed on into the second, stays the first's.
+    expect(answer.nodes.map((node) => node.templateNode)).toEqual([{ template: "fixture-solo", key: "reference", input: true }, undefined, undefined]);
   });
 
   it("places two whole instances in one proposal, each with its own guide", () => {

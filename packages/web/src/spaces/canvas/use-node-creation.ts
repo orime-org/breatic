@@ -559,6 +559,7 @@ export function useNodeCreation(
                 template: tag.template,
                 key: tag.key,
                 ...(anchor === undefined || anchor === '' ? {} : { anchor }),
+                ...(tag.input ? { input: true as const } : {}),
               });
             });
             // Words last, once every node and edge is in place: a ref lands as

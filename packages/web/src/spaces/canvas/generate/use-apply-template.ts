@@ -10,6 +10,7 @@ import {
   proposalMarkSegments,
   t,
   templateSkeleton,
+  type CanvasNodeFields,
   type CanvasProposal,
   type GenerationTemplate,
   type ModelEntry,
@@ -73,11 +74,15 @@ export function useApplyTemplate(
       const rails = new Map(graph.nodes.map((n) => [n.id, deriveReferences(n.id, graph.nodes, graph.edges, new Map())]));
       const nodes = new Map<string, TemplateGraphNode>(
         graph.nodes.map((n): [string, TemplateGraphNode] => {
-          const tag = n.type === 'group' || n.type === 'annotation' ? undefined : n.data.templateNode;
-          const keyed = tag !== undefined && tag.key !== TEMPLATE_GUIDE_KEY;
+          const tag = templateTagOf(n);
+          const marks = tag === undefined || tag.key === TEMPLATE_GUIDE_KEY
+            ? {}
+            : tag.input
+              ? { inputTag: { template: tag.template, input: tag.key } }
+              : { tag: { template: tag.template, key: tag.key } };
           // Every node keeps the template's settings here: applying writes
           // each one it reuses back to them (inner#1345 6.5 step 3).
-          return [n.id, { id: n.id, type: n.type as TemplateGraphNode['type'], ...(keyed ? { tag: { template: tag.template, key: tag.key } } : {}), keeps: true }];
+          return [n.id, { id: n.id, type: n.type as TemplateGraphNode['type'], ...marks, keeps: true }];
         }),
       );
       const incoming = new Map([...rails].map(([id, rows]) => [id, rows.map((row) => ({ from: row.sourceNodeId }))]));
@@ -129,8 +134,13 @@ export function useApplyTemplate(
         return;
       }
 
-      // The template's own nodes found on the canvas, so the new ones can join their group.
-      const instance = new Set(reuse.values());
+      // The template's own nodes found on the canvas, and the input nodes it
+      // placed, so the new ones can join their group.
+      const ownInputs = [...match.inputs.values()].flatMap((fed) => [...fed.values()]).filter((id) => {
+        const tag = templateTagOf(views.get(id));
+        return tag?.input === true && tag.template === template.id;
+      });
+      const instance = new Set([...reuse.values(), ...ownInputs.map((id) => held.indexOf(id))]);
       const existing = new Map<number, ExistingNode>();
       const proposalNodes: ProposalNode[] = held.map((id, index) => {
         const view = views.get(id) as CanvasNodeView;
@@ -182,6 +192,15 @@ function writable(view: CanvasNodeView): boolean {
   if (block === null) return true;
   warnNodeGate(t(block.toastKey));
   return false;
+}
+
+/**
+ * The generation template tag a node carries.
+ * @param view - The node.
+ * @returns Its tag, or undefined for a group, an annotation or an untagged node.
+ */
+function templateTagOf(view: CanvasNodeView | undefined): NonNullable<CanvasNodeFields['data']['templateNode']> | undefined {
+  return view === undefined || view.type === 'group' || view.type === 'annotation' ? undefined : view.data.templateNode;
 }
 
 /**
