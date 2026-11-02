@@ -121,10 +121,11 @@ export function estimateHeight(node: ProposalNode): number {
  * centred on the point the reader was looking at.
  * @param proposal - What is being placed.
  * @param centre - The viewport centre, in flow coordinates.
+ * @param order - Each node's rank within its column, top first; the proposal's own order where left out.
  * @returns One footprint per node, in the same order.
  * @throws {never} Never.
  */
-export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[] {
+export function planFlowLayout(proposal: CanvasProposal, centre: Spot, order?: readonly number[]): Placed[] {
   // The same depths the card's little diagram is drawn from. The card splits
   // its chips into runs on top of this, so a node wired to nothing gets a row
   // of its own there; here it stands in the first column beside whatever else
@@ -145,6 +146,13 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   layer.forEach((at, index) => {
     columns.set(at, [...(columns.get(at) ?? []), index]);
   });
+  /**
+   * A node's place within its column.
+   * @param index - The node.
+   * @returns Its rank, top first.
+   */
+  const rank = (index: number): number => order?.[index] ?? index;
+  for (const members of columns.values()) members.sort((a, b) => rank(a) - rank(b));
 
   // Each column is stacked downwards and then centred on the point, so a
   // column of one sits level with the middle of a column of three.

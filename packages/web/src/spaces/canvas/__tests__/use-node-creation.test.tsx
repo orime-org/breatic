@@ -1843,6 +1843,47 @@ describe('useNodeCreation', () => {
         expect(absolute('p-share', 's-share').get(fresh!.id)).toEqual({ x: PAD, y: PAD });
       });
 
+      it('puts a node back in its own cell of a column, above the reused nodes the template lists after it', () => {
+        const PAD = GROUP_PADDING;
+        const STEP = EMPTY_NODE_SIZE.height + ROW_GAP_PX;
+        const anchor = seedAnchor('p-col', 's-col', { x: 3000, y: 500 });
+        const side = seed('p-col', 's-col', 'image', { x: PAD, y: PAD + STEP }, { name: 'Side', templateNode: { template: 'fx', key: 'side' } });
+        const back = seed('p-col', 's-col', 'image', { x: PAD, y: PAD + 2 * STEP }, { name: 'Back', templateNode: { template: 'fx', key: 'back' } });
+        const character = seed('p-col', 's-col', 'image', { x: 0, y: 2000 }, { name: 'Character' });
+        const frame = { x: 1000, y: 200, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: 3 * STEP + 2 * PAD };
+        seedGroup('p-col', 's-col', frame, [{ id: side, position: { x: PAD, y: PAD + STEP } }, { id: back, position: { x: PAD, y: PAD + 2 * STEP } }]);
+        const before = idsNow('p-col', 's-col');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot') }],
+          [1, { nodeId: side, mention: mentionOf(side, 'Side'), instance: true }],
+          [2, { nodeId: back, mention: mentionOf(back, 'Back'), instance: true }],
+          [3, { nodeId: character, mention: mentionOf(character, 'Character') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-col', 's-col'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Side' }, { role: 'source', type: 'image', name: 'Back' }, { role: 'source', type: 'image', name: 'Character' }, { role: 'source', type: 'image', name: 'Front' }],
+            [
+              { fromIndex: 3, toIndex: 4, into: 'pool' },
+              { fromIndex: 3, toIndex: 1, into: 'pool' },
+              { fromIndex: 3, toIndex: 2, into: 'pool' },
+              { fromIndex: 4, toIndex: 0, into: 'pool' },
+              { fromIndex: 1, toIndex: 0, into: 'pool' },
+              { fromIndex: 2, toIndex: 0, into: 'pool' },
+            ],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+          [0, 2, 3, 5, 1],
+        );
+
+        const [front] = addedSince('p-col', 's-col', before);
+        // Front is first in its column, one step above Side, where the first apply put it.
+        expect(absolute('p-col', 's-col').get(front!.id)).toEqual({ x: frame.x + PAD, y: frame.y + PAD });
+      });
+
       it('on a second apply, prefers the anchor\'s own group to the group the reused template nodes sit in', () => {
         const PAD = GROUP_PADDING;
         // The reader dragged the anchor into a group of its own after the first apply.

@@ -159,8 +159,10 @@ export interface NodeCreation {
    * in, on that node, over whatever is there (inner#1846). They join the
    * anchor's unlocked group, else the unlocked group a reused node of this template sits in,
    * else two or more of them make a group of their own under
-   * `proposal.groupName`. If a write fails part way, everything this press wrote is taken
-   * back, out of undo history, and the error is rethrown.
+   * `proposal.groupName`. `order` stacks each column in the template's own
+   * order, so a node put back takes the cell its template gives it. If a
+   * write fails part way, everything this press wrote is taken back, out of
+   * undo history, and the error is rethrown.
    * @throws {Error} When a write fails part way; nothing is left on the canvas
    *   or in undo history.
    */
@@ -169,6 +171,7 @@ export interface NodeCreation {
     start: Spot,
     occupied: readonly Rect[],
     existing?: ReadonlyMap<number, ExistingNode>,
+    order?: readonly number[],
   ) => PlacedProposal;
 }
 
@@ -207,6 +210,7 @@ interface Arrangement {
  * @param start - Where a proposal placed on its own is aimed.
  * @param occupied - What a proposal placed on its own must not cover.
  * @param existing - The indices already on the canvas.
+ * @param order - Each index's rank within its column, as {@link planFlowLayout} takes it.
  * @returns The arrangement.
  * @throws {never} Never.
  */
@@ -217,9 +221,10 @@ function arrangeProposal(
   start: Spot,
   occupied: readonly Rect[],
   existing: ReadonlyMap<number, ExistingNode>,
+  order?: readonly number[],
 ): Arrangement {
   if (existing.size === 0) {
-    const aimed = planFlowLayout(proposal, start);
+    const aimed = planFlowLayout(proposal, start, order);
     // Two or more nodes land as one group, so the group's rect is what has
     // to be clear; a single node needs only its own.
     const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
@@ -246,7 +251,7 @@ function arrangeProposal(
     const toIndex = indexOf.get(edge.target);
     return fromIndex === undefined || toIndex === undefined ? [] : [{ fromIndex, toIndex }];
   });
-  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 });
+  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 }, order);
   const anchorIndex = Math.min(...existing.keys());
   const anchorId = existing.get(anchorIndex)?.nodeId;
   const placements = readNodePlacements(projectId, spaceId);
@@ -468,9 +473,10 @@ export function useNodeCreation(
       start: Spot,
       occupied: readonly Rect[],
       existing: ReadonlyMap<number, ExistingNode> = new Map(),
+      order?: readonly number[],
     ): PlacedProposal => {
       const fresh = proposal.nodes.map((_, i) => !existing.has(i));
-      const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing);
+      const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
       const { spots, bounds, aimedGroup, joinGroup } = arrangement;
       const nodeIds: string[] = proposal.nodes.map((_, i) => existing.get(i)?.nodeId ?? '');
       let groupId: string | undefined;

@@ -1403,9 +1403,9 @@ function CanvasSpaceInner({
   // in the places its earlier instance holds (inner#1345 6.5), where its flow
   // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
-      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },

@@ -30,7 +30,7 @@ import { templateParams, templateServed } from '@web/spaces/canvas/generate/temp
 import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
-export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>) => unknown;
+export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => unknown;
 
 /**
  * Applies a picked template to a generate panel's node (inner#977,
@@ -165,8 +165,24 @@ export function useApplyTemplate(
         // The group two or more new nodes may form is named after the template.
         groupName: t(`canvas.template.${template.id}.name`),
       };
+      // Each column stacks in the template's own order, the anchor and its
+      // nodes first, then its inputs, the guide last, so a node put back takes
+      // the cell the first apply gave it.
+      const nodeRank = new Map([template.anchor, ...template.nodes.map((node) => node.key).filter((key) => key !== template.anchor)].map((key, rank) => [key, rank]));
+      const inputRank = new Map(template.inputs.map((input, rank) => [input.key, nodeRank.size + rank]));
+      const last = nodeRank.size + inputRank.size;
+      const heldRank = new Map<number, number>([[0, 0]]);
+      for (const [key, index] of reuse) heldRank.set(index, nodeRank.get(key) ?? last);
+      for (const [key, fed] of inputs) for (const index of fed.values()) heldRank.set(index, inputRank.get(key) ?? last);
+      const order = proposal.nodes.map((node, index) => {
+        const held = heldRank.get(index);
+        if (held !== undefined) return held;
+        const tag = node.templateNode;
+        if (tag === undefined || tag.key === TEMPLATE_GUIDE_KEY) return last + index;
+        return (tag.input ? inputRank.get(tag.key) : nodeRank.get(tag.key)) ?? last + index;
+      });
       try {
-        placeTemplate(proposal, existing);
+        placeTemplate(proposal, existing, order);
       } catch {
         toast.error(t('canvas.template.applyFailed'));
         return;

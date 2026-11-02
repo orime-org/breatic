@@ -31,7 +31,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
 
-import { addEdge, addNode, createGroup, readCanvasGraph, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, createGroup, readCanvasGraph, removeNode, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
@@ -576,6 +576,21 @@ describe('useApplyTemplate', () => {
         expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
       });
     }
+
+    it('hands the placing the template\'s own node order, so a node put back stacks where the template puts it', () => {
+      seedFlowInstance('target');
+      removeNode('p', 's', 'target-style');
+      const place = vi.fn();
+      apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+
+      const { proposal, existing } = placed(place);
+      const order = place.mock.calls[0]?.[2] as readonly number[] | undefined;
+      const style = proposal.nodes.findIndex((n) => n.name === 'Style');
+      // The template lists its own nodes before its inputs: the anchor, then sheet, then style, then pose.
+      expect(order?.[0]).toBeLessThan(order?.[indexOf(existing, 'target-sheet')] ?? -1);
+      expect(order?.[indexOf(existing, 'target-sheet')]).toBeLessThan(order?.[style] ?? -1);
+      expect(order?.[style]).toBeLessThan(order?.[indexOf(existing, 'target-pose')] ?? -1);
+    });
 
     it('leaves the earlier of two chained instances alone when applied on the later one', () => {
       seedFlowInstance('first');
