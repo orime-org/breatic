@@ -117,11 +117,9 @@ export function validateSceneRecovery(doc: Y.Doc): void {
   if (version !== undefined && (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1)) {
     throw new Error('Invalid scene format version');
   }
-  const snapshot = readSceneDocument(doc);
-  if (snapshot.status === 'loading' && (scene.size > 0 || objects.size > 0)) {
+  if (version === undefined && (scene.size > 0 || objects.size > 0)) {
     throw new Error('Missing scene format version');
   }
-  // Invalid objects remain independently inspectable, just as on the wire.
 }
 
 /**
