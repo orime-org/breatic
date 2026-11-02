@@ -553,8 +553,9 @@ record. Yjs merges consecutive overwrites of one field by one client, so such ed
 do not grow the stored document, while edits that switch fields or objects leave
 about 9 bytes per written field. The collab copy has no UndoManager and collects
 deleted content. A key left empty by a concurrent write followed by its writer's
-undo reads as its default (origin, identity rotation, unit scale, unlocked, the
-model's name); only a missing model or a wrongly typed value makes a record invalid.
+undo reads as its default (origin, identity rotation, unit scale, unlocked, and as
+the name the built-in model id or `Model` for an asset); a non-map record, a missing
+or invalid model, a value that fails its schema or an unknown key makes a record invalid.
 
 `packages/web/src/data/yjs/scene-document.ts` projects valid objects while
 retaining invalid records and reporting their errors. Command planning checks the
