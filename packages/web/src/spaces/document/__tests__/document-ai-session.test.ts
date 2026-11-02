@@ -393,8 +393,8 @@ describe('closed', () => {
 describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
   const all = { resultEmpty: false, revealed: true, rangePresent: true, insertBlockPresent: true };
 
-  it.each(['stopped', 'done'] as const)('%s, with the result not all on screen yet: no insert or replace', (state) => {
-    expect(aiDialogButtons({ state, ...all, revealed: false })).toEqual({ stop: false, retry: true, insert: null, replace: null });
+  it.each(['stopped', 'done'] as const)('%s, with the result still being written on screen: stop, no retry, insert or replace', (state) => {
+    expect(aiDialogButtons({ state, ...all, revealed: false })).toEqual({ stop: true, retry: false, insert: null, replace: null });
   });
 
   it('composing: close only', () => {
@@ -454,8 +454,8 @@ describe('the buttons the dialog shows (§5.3, A5, A7)', () => {
       fc.property(fc.constantFrom(...states), fc.boolean(), fc.boolean(), fc.boolean(), fc.boolean(), (state, resultEmpty, revealed, rangePresent, insertBlockPresent) => {
         const buttons = aiDialogButtons({ state, resultEmpty, revealed, rangePresent, insertBlockPresent });
         const finished = state === 'stopped' || state === 'done';
-        expect(buttons.stop).toBe(state === 'streaming');
-        expect(buttons.retry).toBe(finished || state === 'failed');
+        expect(buttons.stop).toBe(state === 'streaming' || (finished && !revealed));
+        expect(buttons.retry).toBe((finished && revealed) || state === 'failed');
         const writable = finished && !resultEmpty && revealed;
         expect(buttons.insert !== null).toBe(writable);
         expect(buttons.replace !== null).toBe(writable);

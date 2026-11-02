@@ -427,6 +427,15 @@ describe("the budgets in config/text-tools.yaml", () => {
     expect(model.calls).toHaveLength(0);
   });
 
+  it.each([
+    ["custom", { selection: "s".repeat(BUDGET.selection), document: `${"s".repeat(BUDGET.selection)}${"d".repeat(BUDGET.context - BUDGET.selection)}`, instructions: "i".repeat(2000) }],
+    ["translate", { selection: "s".repeat(BUDGET.selection), document: `${"s".repeat(BUDGET.selection)}${"d".repeat(BUDGET.context - BUDGET.selection)}`, language: "zh-CN" }],
+  ])("accepts a %s request with every part at its own limit", async (tool, extra) => {
+    const res = await post(bodyFor(tool, extra));
+
+    expect(res.status).toBe(200);
+  });
+
   it("refuses a document one character over context_max_chars with 422", async () => {
     const document = `${SEL}${"d".repeat(BUDGET.context + 1 - SEL.length)}`;
 

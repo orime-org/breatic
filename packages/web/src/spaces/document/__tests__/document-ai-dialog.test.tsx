@@ -204,6 +204,24 @@ describe('while the result streams in', () => {
     });
   });
 
+  it('offers stop while the answer is still being written after the server is done, and stop shows the rest at once', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+    const { call } = await polishing();
+    const long = 'word '.repeat(120).trim();
+    await streams(call, [long], true);
+
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-stop']);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-stop'));
+    });
+
+    expect(shownButtons()).toContain('doc-ai-replace');
+    await waitFor(() => {
+      expect(previewText()).toContain(long);
+    });
+    expect(calls).toHaveLength(1);
+  });
+
   it('shows each piece as it arrives and leaves the body as it was', async () => {
     const { call } = await polishing();
     const before = sharedBodyMarkup();
