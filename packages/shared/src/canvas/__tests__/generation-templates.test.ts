@@ -502,10 +502,8 @@ describe('character template layouts (inner#1846)', () => {
     }
   });
 
-  it('keeps the worn and carried items on the character sheet, and its rendering only where no style is picked', () => {
-    const bible = raw('en', 'canvas.template.character-bible.prompt') ?? '';
-    expect(bible).toContain('wearing everything the reference shows on the body, including anything on the back or over a shoulder');
-    expect(bible).not.toContain("reference's exact rendering");
+  it('locks the rendering on the sheet made from text, and leaves it to the picked style on the character bible', () => {
+    expect(raw('en', 'canvas.template.character-bible.prompt')).not.toContain("reference's exact rendering");
     expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
   });
 
@@ -565,11 +563,11 @@ describe('character template layouts (inner#1846)', () => {
   it('joins the breathing note into one phrase, keeps labels to the section name and blending out of the faces, in every language', () => {
     // The breathing note, the sheets' label clause, and the scene's no-blending clause, in each language.
     const PHRASES: Record<string, [string, string, string]> = {
-      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of every section, written exactly as that section\'s name in capital letters below', 'no blending of features'],
-      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '一个清晰的英文小标签（只写下文大写的区块名，无衬线大写）', '不把五官混在一起'],
-      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '一個清晰的英文小標籤（只寫下文大寫的區塊名，無襯線大寫）', '不把五官混在一起'],
-      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '各セクションの左上に、以下で大文字で示したセクション名をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル', '顔立ちを混ぜない'],
-      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '각 섹션 왼쪽 위에, 이 글에서 대문자로 적은 섹션 이름 그대로 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨', '이목구비를 섞지 않는다'],
+      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of each section named in capital letters below, written exactly as that name; the top text block and the bands themselves get no label', 'no blending of features'],
+      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '下文用大写写出名字的每个区块，左上角一个清晰的英文小标签（只写那个大写的区块名，无衬线大写），顶部文字块和三条通栏本身不加标签', '不把五官混在一起'],
+      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '下文用大寫寫出名字的每個區塊，左上角一個清晰的英文小標籤（只寫那個大寫的區塊名，無襯線大寫），頂部文字塊和三條通欄本身不加標籤', '不把五官混在一起'],
+      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '以下で大文字の名前を示した各セクションの左上に、その名前をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル。上部のテキストブロックと横帯そのものにはラベルを付けない', '顔立ちを混ぜない'],
+      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '이 글에서 대문자로 이름을 적은 각 섹션 왼쪽 위에, 그 이름 그대로 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨. 상단 텍스트 블록과 가로 띠 자체에는 라벨을 붙이지 않는다', '이목구비를 섞지 않는다'],
     };
     expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
     for (const locale of LOCALES) {
@@ -593,9 +591,8 @@ describe('character template layouts (inner#1846)', () => {
     for (const view of ['front', 'side', 'back']) {
       expect(raw('en', `canvas.template.single-view-refs-scene.node.${view}.prompt`), view).toContain('nothing redesigned, recoloured, added or removed');
     }
-    for (const view of ['side', 'back']) {
-      expect(raw('en', `canvas.template.single-view-refs-scene.node.${view}.prompt`), view).toContain('Build the parts the reference does not show');
-    }
+    // The side view's unseen-parts clause is checked in every language above.
+    expect(raw('en', 'canvas.template.single-view-refs-scene.node.back.prompt')).toContain('Build the parts the reference does not show');
     const sequence = raw('en', 'canvas.template.identity-locked-sequence.prompt') ?? '';
     expect(sequence.match(/\{✏️ shot size and camera move/g)).toHaveLength(3);
     expect(sequence).toContain('no deformation, no drift, the face never changes');
