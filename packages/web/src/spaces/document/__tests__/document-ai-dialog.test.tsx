@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { BlockNoteEditor } from '@blocknote/core';
 
-import { t } from '@breatic/shared';
+import { TextSelection } from '@tiptap/pm/state';
+import { TEXT_TOOL_INSTRUCTIONS_MAX, t } from '@breatic/shared';
 
 const stream = vi.hoisted(() => vi.fn());
 const config = vi.hoisted(() => vi.fn());
@@ -286,6 +287,79 @@ describe('stop', () => {
   });
 });
 
+describe('a press on stop', () => {
+  it('a double click while the answer is still being written shows the rest and sends nothing more', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+    const { call } = await polishing();
+    await streams(call, ['word '.repeat(120).trim()], true);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 2 });
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace']);
+  });
+
+  it('a double click while the answer streams stops it and sends nothing more', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hello']);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 2 });
+    });
+
+    expect(call.signal?.aborted).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a press that began on stop does not retry when the answer finishes before it is released', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 600 });
+    const { call } = await polishing();
+    await streams(call, ['word '.repeat(60).trim()], true);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    act(() => {
+      fireEvent.pointerDown(button);
+    });
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    }, { timeout: 5_000 });
+    await act(async () => {
+      fireEvent.click(button, { detail: 1 });
+    });
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it('the repeats of a held Enter do not press the retry that stop turned into', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hello']);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.keyDown(button, { key: 'Enter' });
+      fireEvent.click(button, { detail: 0 });
+    });
+
+    expect(screen.getByTestId('doc-ai-retry')).toBe(button);
+    expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('a failure', () => {
   it('toasts once and leaves close and retry over an empty result', async () => {
     const { call } = await polishing();
@@ -356,6 +430,36 @@ describe('closing', () => {
     expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
     expect(call.signal?.aborted).toBe(true);
     expect(view.hasFocus()).toBe(true);
+  });
+
+  it('Escape in the body while the link toolbar is up takes the toolbar away and leaves the dialog', async () => {
+    const editor = await selected('<p>hello <a href="https://example.com/">world</a></p>', 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.focus();
+      let inLink = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (inLink < 0 && node.isText && node.marks.some((mark) => mark.type.name === 'link')) inLink = pos + 1;
+      });
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, inLink)));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(view.dom, { key: 'Escape' });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).toBeNull();
+    });
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect(calls[0]!.signal?.aborted).toBe(false);
   });
 
   it('Escape typed in a field outside the dialog and the body leaves it open', async () => {
@@ -533,6 +637,12 @@ describe('the custom instruction', () => {
     fireEvent.change(box, { target: { value: words } });
     return box;
   }
+
+  it('holds no more than the server accepts', async () => {
+    const box = await writing('');
+
+    expect(box.maxLength).toBe(TEXT_TOOL_INSTRUCTIONS_MAX);
+  });
 
   it('starts with only the box and close', async () => {
     await writing('');
