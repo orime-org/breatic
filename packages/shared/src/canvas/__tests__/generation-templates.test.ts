@@ -560,23 +560,24 @@ describe('character template layouts (inner#1846)', () => {
     }
   });
 
-  it('joins the breathing note into one phrase, keeps labels to the section name and blending out of the faces, in every language', () => {
-    // The breathing note, the sheets' label clause, and the scene's no-blending clause, in each language.
-    const PHRASES: Record<string, [string, string, string]> = {
-      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of each section named in capital letters below, written exactly as that name; the top text block and the bands themselves get no label', 'no blending of features'],
-      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '下文用大写写出名字的每个区块，左上角一个清晰的英文小标签（只写那个大写的区块名，无衬线大写），顶部文字块和三条通栏本身不加标签', '不把五官混在一起'],
-      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '下文用大寫寫出名字的每個區塊，左上角一個清晰的英文小標籤（只寫那個大寫的區塊名，無襯線大寫），頂部文字塊和三條通欄本身不加標籤', '不把五官混在一起'],
-      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '以下で大文字の名前を示した各セクションの左上に、その名前をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル。上部のテキストブロックと横帯そのものにはラベルを付けない', '顔立ちを混ぜない'],
-      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '이 글에서 대문자로 이름을 적은 각 섹션 왼쪽 위에, 그 이름 그대로 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨. 상단 텍스트 블록과 가로 띠 자체에는 라벨을 붙이지 않는다', '이목구비를 섞지 않는다'],
+  it('joins the breathing note into one phrase, allows only the section labels and keeps blending out of the faces, in every language', () => {
+    // The breathing note, the sheets' label clause and their closing text rule, and the scene's no-blending clause, in each language.
+    const PHRASES: Record<string, [string, string, string, string]> = {
+      en: ['controlled breathing (lips slightly parted while slowly exhaling)', 'a clear English label in small sans-serif capitals at the top left of each section named in capital letters below, written exactly as that name, and no other label anywhere; the top text block and the bands themselves get no label', 'no blending of features', 'No text except those section labels and the top text block.'],
+      'zh-CN': ['呼吸控制（嘴唇微张着缓缓呼气）', '下文用大写写出名字的每个区块，左上角一个清晰的英文小标签（只写那个大写的区块名，无衬线大写），别处不加任何标签，顶部文字块和三条通栏本身也不加标签', '不把五官混在一起', '除这些区块标签和顶栏文字外不出现其他文字。'],
+      'zh-TW': ['呼吸控制（嘴唇微張著緩緩吐氣）', '下文用大寫寫出名字的每個區塊，左上角一個清晰的英文小標籤（只寫那個大寫的區塊名，無襯線大寫），別處不加任何標籤，頂部文字塊和三條通欄本身也不加標籤', '不把五官混在一起', '除這些區塊標籤和頂欄文字外不出現其他文字。'],
+      ja: ['抑えた呼吸（唇を少し開いてゆっくり息を吐く）', '以下で大文字の名前を示した各セクションの左上に、その名前をそのまま書いた、小さなサンセリフ大文字のはっきりした英語ラベル。それ以外の場所にはどこにもラベルを付けず、上部のテキストブロックと横帯そのものにもラベルを付けない', '顔立ちを混ぜない', 'これらのセクションラベルと上の帯のテキストブロック以外に文字は入れない。'],
+      ko: ['절제된 호흡(입술을 살짝 벌리고 천천히 내쉼)', '이 글에서 대문자로 이름을 적은 각 섹션 왼쪽 위에, 그 이름 그대로 적은, 작은 산세리프 대문자로 된 선명한 영어 라벨. 그 밖의 곳에는 어디에도 라벨을 붙이지 않고, 상단 텍스트 블록과 가로 띠 자체에도 라벨을 붙이지 않는다', '이목구비를 섞지 않는다', '이 섹션 라벨들과 상단 텍스트 블록 외에는 글자를 넣지 않는다.'],
     };
     expect(Object.keys(PHRASES).sort()).toEqual([...LOCALES].sort());
     for (const locale of LOCALES) {
-      const [breathing, label, unblended] = PHRASES[locale]!;
+      const [breathing, label, unblended, closing] = PHRASES[locale]!;
       for (const id of ['character-bible', 'expression-sheet', 'character-design-from-text']) {
         expect(raw(locale, `canvas.template.${id}.prompt`), `${locale} ${id}`).toContain(breathing);
       }
       for (const id of ['character-bible', 'character-design-from-text']) {
         expect(raw(locale, `canvas.template.${id}.prompt`), `${locale} ${id}`).toContain(label);
+        expect(raw(locale, `canvas.template.${id}.prompt`), `${locale} ${id}`).toContain(closing);
       }
       expect(raw(locale, 'canvas.template.single-view-refs-scene.prompt'), locale).toContain(unblended);
     }
