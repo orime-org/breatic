@@ -172,7 +172,7 @@ describe('scene projection and command transactions', () => {
     expect(readSceneDocument(doc).objects).toEqual([{ ...ORIGINAL, position: [4, 5, 6] }]);
   });
 
-  it('rejects repeated targets without appending partial patch, delete or lock records', async () => {
+  it('rejects repeated targets without writing partial patch, delete or lock changes', async () => {
     const { applySceneCommand } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol();
     applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, origin, true);
@@ -214,7 +214,16 @@ describe('scene projection and command transactions', () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
-  it('rejects invalid multi-object creates and conflicting identities before stable records are added', async () => {
+  it('rejects a lock command whose locked value is not a boolean without writing', async () => {
+    const { applySceneCommand } = await loadScene();
+    const doc = sceneDoc(); const origin = Symbol();
+    applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, origin, true);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(applySceneCommand(doc, { type: 'lock', ids: [ID], locked: 'yes' as unknown as boolean }, origin, true)).toEqual({ ok: false, reason: 'invalid' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('rejects invalid multi-object creates and conflicting identities without writing', async () => {
     const { applySceneCommand } = await loadScene();
     const doc = sceneDoc(); const origin = Symbol(); const empty = Y.encodeStateAsUpdate(doc);
     expect(applySceneCommand(doc, { type: 'create', objects: [ORIGINAL, { ...ORIGINAL, id: COPY, scale: [0, 1, 1] }] }, origin, true)).toEqual({ ok: false, reason: 'invalid' });

@@ -125,10 +125,10 @@ export function validateSceneRecovery(doc: Y.Doc): void {
 }
 
 /**
- * Bind personal command history to stable records; remote and setup origins are excluded.
+ * Bind personal command history to the objects root; only this client's command origin is tracked.
  * @param doc - Live collaborative scene document.
  * @param origin - Origin tracked only by this local command history.
- * @returns Personal undo manager observing only local command inserts.
+ * @returns Personal undo manager over local record creations, field overwrites and deletions.
  */
 export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
   const root = doc.share.get('objects');
@@ -145,7 +145,7 @@ export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
  * @param doc - Live collaborative scene document.
  * @param command - User operation to validate against current committed scene data.
  * @param canEdit - Current write permission derived from role and connection facts.
- * @returns Atomic field writes and creations, or the typed refusal.
+ * @returns Record creations, field overwrites and deletions, or the typed refusal.
  */
 export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boolean): ScenePlan {
   if (!canEdit) return { ok: false, reason: 'readOnly' };

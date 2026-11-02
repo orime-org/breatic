@@ -45,5 +45,4 @@ export type SceneObjectValues = z.infer<typeof SceneObjectValuesSchema>;
 export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
 /** Record keys that commands overwrite after creation; `model` is fixed at creation. */
-export const SCENE_EDITABLE_FIELDS = ['name', 'position', 'rotation', 'scale', 'locked'] as const;
-export type SceneEditableField = typeof SCENE_EDITABLE_FIELDS[number];
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;

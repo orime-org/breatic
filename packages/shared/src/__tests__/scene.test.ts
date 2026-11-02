@@ -25,12 +25,6 @@ function schema(name: string): ZodType {
 }
 
 describe("scene value schemas", () => {
-  it("declares exactly the five current-value editable fields", () => {
-    expect((shared as unknown as Record<string, unknown>).SCENE_EDITABLE_FIELDS).toEqual([
-      "name", "position", "rotation", "scale", "locked",
-    ]);
-  });
-
   it("accepts a finite position tuple without changing its values", () => {
     expect(schema("SceneVectorSchema").parse([-2.5, 0, 7])).toEqual([-2.5, 0, 7]);
   });
