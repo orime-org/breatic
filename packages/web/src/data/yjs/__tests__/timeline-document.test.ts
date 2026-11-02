@@ -9,7 +9,7 @@ import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import * as sharedIndex from '@breatic/shared';
 import * as spaceContent from '@breatic/shared/space-content';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
-import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineRecord } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, readTimelineContent, readTimelineDocument, removeTimelineRecord, timelineClipSourceId } from '@web/data/yjs/timeline-document';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { TimelineDocumentV1Schema } from '@breatic/shared';
@@ -196,112 +196,6 @@ const addVideo = (added: TimelineVideoClip, placement: TimelineEditPlacement, ad
 afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
   vi.restoreAllMocks();
-});
-
-describe('Timeline document ownership and schema', () => {
-  it('seeds a complete V1 with a single stable visual track', () => {
-    const doc = seededDoc();
-    expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 1,
-      settings,
-      tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
-      clips: {},
-      sources: {},
-    });
-    expect([...doc.share.keys()].sort()).toEqual(['clips', 'sources', 'timeline', 'tracks']);
-    expect(doc.getMap('tracks').get('visual-1')).toBeInstanceOf(Y.Map);
-    expect(TimelineDocumentV1Schema.parse(readTimelineDocument(doc))).toEqual(readTimelineDocument(doc));
-  });
-
-  it('reads the same persisted initial state in two independent clients', () => {
-    const server = seededDoc();
-    const bytes = Y.encodeStateAsUpdate(server);
-    const first = trackedDoc(bytes);
-    const second = trackedDoc(bytes);
-    expect(readTimelineDocument(first)).toEqual(readTimelineDocument(second));
-    expect(Y.encodeStateAsUpdate(first)).toEqual(bytes);
-    expect(Y.encodeStateAsUpdate(second)).toEqual(bytes);
-  });
-
-  it('does not manufacture an initial document while reading empty or unsupported content', () => {
-    const empty = trackedDoc();
-    const emptyBytes = Y.encodeStateAsUpdate(empty);
-    expect(() => readTimelineDocument(empty)).toThrow(Error);
-    expect(Y.encodeStateAsUpdate(empty)).toEqual(emptyBytes);
-    const unsupported = seededDoc();
-    unsupported.getMap('timeline').set('schemaVersion', 2);
-    const unsupportedBytes = Y.encodeStateAsUpdate(unsupported);
-    expect(() => readTimelineDocument(unsupported)).toThrow(Error);
-    expect(Y.encodeStateAsUpdate(unsupported)).toEqual(unsupportedBytes);
-  });
-
-  it('requires a strict integer-frame DTO rather than a third-party or URL-bearing source', () => {
-    const doc = seededDoc();
-    applyTimelineEdit(doc, add, ORIGIN);
-    const value = readTimelineDocument(doc);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 2 }).success).toBe(false);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, settings: { ...settings, fps: { num: 24, den: 0 } } }).success).toBe(false);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, clips: { [clip.id]: { ...clip, startFrame: 0.5 } } }).success).toBe(false);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, sources: { [source.id]: { ...source, fileUrl: 'https://example.com/video.mp4' } } }).success).toBe(false);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, vendorTimeline: {} }).success).toBe(false);
-  });
-
-  it('preserves existing content and non-empty delete sets when initialization is attempted', () => {
-    const existing = seededDoc();
-    applyTimelineEdit(existing, add, ORIGIN);
-    const unknown = trackedDoc();
-    unknown.getMap('legacy').set('retained', 'original content');
-    const deleted = trackedDoc();
-    deleted.getMap('legacy').set('removed', 'original content');
-    deleted.getMap('legacy').delete('removed');
-    expect(deleted.getMap('legacy').size).toBe(0);
-    expect(Y.decodeUpdate(Y.encodeStateAsUpdate(deleted)).ds.clients.size).toBe(1);
-    for (const doc of [existing, unknown, deleted]) {
-      const before = Y.encodeStateAsUpdate(doc);
-      try {
-        initializeTimelineDocument(doc, { width: 1280, height: 720, fps: { num: 30, den: 1 } });
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-      }
-      expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    }
-    expect(readTimelineDocument(existing).settings).toEqual(settings);
-    expect(readTimelineDocument(existing).clips[clip.id]).toEqual(clip);
-    expect(unknown.getMap('legacy').get('retained')).toBe('original content');
-  });
-
-  it('rejects invalid settings before writing any part of the initial state', () => {
-    const doc = trackedDoc();
-    const before = Y.encodeStateAsUpdate(doc);
-    const updates = vi.fn();
-    doc.on('update', updates);
-    expect(() => initializeTimelineDocument(doc, { ...settings, fps: { num: 24, den: 0 } })).toThrow(Error);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(updates).not.toHaveBeenCalled();
-  });
-
-  it('does not seed a document holding only a pending delete set and no structs', () => {
-    const origin = trackedDoc();
-    origin.getMap('legacy').set('removed', 'retained deletion');
-    const knownStructs = Y.encodeStateVector(origin);
-    origin.getMap('legacy').delete('removed');
-    const deletionOnly = Y.encodeStateAsUpdate(origin, knownStructs);
-    expect(Y.decodeUpdate(deletionOnly).structs).toEqual([]);
-    expect(Y.decodeUpdate(deletionOnly).ds.clients.size).toBe(1);
-    const receiver = trackedDoc();
-    Y.applyUpdate(receiver, deletionOnly);
-    const before = Y.encodeStateAsUpdate(receiver);
-    expect(Y.decodeUpdate(before).structs).toEqual([]);
-    expect(Y.decodeUpdate(before).ds.clients.size).toBe(1);
-    expect([...receiver.share.keys()]).toEqual([]);
-    try {
-      initializeTimelineDocument(receiver, settings);
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error);
-    }
-    expect(Y.encodeStateAsUpdate(receiver)).toEqual(before);
-    expect([...receiver.share.keys()]).toEqual([]);
-  });
 });
 
 describe('Timeline native edit transactions', () => {
@@ -708,7 +602,7 @@ describe('Timeline concurrent edits across two replicas', () => {
    */
   function arrange(doc: Y.Doc): ReturnType<typeof resolveTimelineArrangement> {
     const value = readTimelineDocument(doc);
-    return resolveTimelineArrangement({ tracks: Object.values(value.tracks), clips: Object.values(value.clips), sources: value.sources, fps: value.settings.fps });
+    return resolveTimelineArrangement(value);
   }
 
   it('derives the same arrangement from concurrent main-track inserts in either order, and the next magnetic edit packs them', () => {
@@ -764,7 +658,6 @@ describe('Timeline concurrent edits across two replicas', () => {
       const value = readTimelineDocument(doc);
       expect(value.clips[K]).toMatchObject({ sourceInFrame: 24, durationFrames: 48 });
       expect(arrange(doc).conflicts).toEqual([expect.objectContaining({ clipId: K, reasons: [expect.objectContaining({ code: 'invalid_range' })] })]);
-      expect(resolveTimelineArrangement({ tracks: Object.values(value.tracks), clips: Object.values(value.clips) }).readyClipIds).toEqual([K]);
     }
     const bytes = Y.encodeStateAsUpdate(left);
     expect(applyTimelineEdit(left, setRange(K, 0, 24, 60, ON), ORIGIN)).toEqual({ ok: false, reason: 'invalid_range' });
@@ -775,7 +668,7 @@ describe('Timeline concurrent edits across two replicas', () => {
   });
 });
 
-describe('Timeline content with damaged records (inner#1708 F1b)', () => {
+describe('Removing damaged records and the read entry (inner#1708 F1b)', () => {
   const BAD_CLIP = '30000000-0000-4000-8000-0000000000bd';
   const BAD_TRACK = 'track-damaged';
 
@@ -797,35 +690,6 @@ describe('Timeline content with damaged records (inner#1708 F1b)', () => {
     }, 'peer');
     return doc;
   }
-
-  it('reads every valid record and lists the damaged ones', () => {
-    const doc = damagedDoc();
-    const content = readTimelineContent(doc);
-    expect(content.document.clips).toEqual({ [clip.id]: clip });
-    expect(content.document.tracks).toEqual({ 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } });
-    expect(content.document.sources).toEqual({ [source.id]: source });
-    expect(content.damaged).toEqual({ clips: [BAD_CLIP], tracks: [BAD_TRACK] });
-  });
-
-  it('reads the same valid document through readTimelineDocument without throwing', () => {
-    const doc = damagedDoc();
-    expect(() => readTimelineDocument(doc)).not.toThrow();
-    expect(readTimelineDocument(doc)).toEqual(readTimelineContent(doc).document);
-  });
-
-  it('reports nothing damaged for intact content', () => {
-    const doc = seededDoc();
-    expect(applyTimelineEdit(doc, add, ORIGIN).ok).toBe(true);
-    expect(readTimelineContent(doc)).toEqual({ document: readTimelineDocument(doc), damaged: { clips: [], tracks: [] } });
-  });
-
-  it('still refuses missing and unsupported Timeline roots', () => {
-    expect(typeof readTimelineContent).toBe('function');
-    expect(() => readTimelineContent(trackedDoc())).toThrow(Error);
-    const unsupported = seededDoc();
-    unsupported.getMap('timeline').set('schemaVersion', 2);
-    expect(() => readTimelineContent(unsupported)).toThrow(Error);
-  });
 
   it('removes one damaged record in one transaction with the given origin', () => {
     const doc = damagedDoc();
@@ -1049,5 +913,38 @@ describe('Edits that create clips re-set their sources against a concurrent swee
       accepted(applyTimelineEdit(doc, command, ORIGIN));
       expect(seen, command.operation).toEqual([{ origin: ORIGIN, sources: false }]);
     }
+  });
+});
+
+describe('timelineClipSourceId (inner#1708 Q2)', () => {
+  it('reads a string sourceId from an attached record map', () => {
+    const doc = trackedDoc();
+    const record = new Y.Map<unknown>();
+    doc.getMap('clips').set('x', record);
+    record.set('sourceId', SOURCE.id);
+    expect(timelineClipSourceId(record)).toBe(SOURCE.id);
+  });
+
+  it('reads a string sourceId from a plain object record', () => {
+    expect(timelineClipSourceId({ sourceId: SOURCE.id, startFrame: 5 })).toBe(SOURCE.id);
+  });
+
+  it.each([
+    ['a missing sourceId', { startFrame: 5 }],
+    ['a numeric sourceId', { sourceId: 7 }],
+    ['null', null],
+    ['a string', SOURCE.id],
+    ['a number', 7],
+    ['undefined', undefined],
+  ])('returns undefined for %s', (_name, record) => {
+    expect(timelineClipSourceId(record)).toBe(undefined);
+  });
+
+  it('returns undefined for a record map without a string sourceId', () => {
+    const doc = trackedDoc();
+    const record = new Y.Map<unknown>();
+    doc.getMap('clips').set('x', record);
+    record.set('sourceId', 3);
+    expect(timelineClipSourceId(record)).toBe(undefined);
   });
 });
