@@ -328,11 +328,16 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{tasksText}</p>,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties, tasksText]);
+  // An older-format scene is never opened, so no editing chrome is shown around its message.
+  if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
+    return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
+      <div className='flex h-full items-center justify-center p-4 text-sm' data-testid='scene-stage'><p>{t('spaces.threeD.unsupportedOld')}</p></div>
+    </div>;
+  }
   return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
     <div className='absolute inset-0' data-testid='scene-stage' style={stageStyle}>
-      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'>{isOlderSceneFormat(snapshot.version)
-        ? <p>{t('spaces.threeD.unsupportedOld')}</p>
-        : <><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></>}</div>
+      {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'>
+        <p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
         : snapshot.status === 'loading' ? <div className='grid h-full place-items-center p-4 text-sm'>{connection.status === 'authFailed' ? t('spaces.threeD.refused') : t('spaces.threeD.loading')}</div>
           : controls.isError || rendererFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
             setRendererFailed(false); setRendererRevision((value) => value + 1); void controls.refetch();

@@ -71,6 +71,20 @@ describe('SceneEditor unsupported format states', () => {
     expect(screen.queryByRole('button', { name: t('spaces.threeD.reload') })).toBeNull();
   });
 
+  it('shows only the older-format sentence, without the creation rail, viewport toolbar or minimap', () => {
+    renderVersion(SCENE_FORMAT_VERSION - 1);
+    expect(screen.getByText(t('spaces.threeD.unsupportedOld'))).toBeTruthy();
+    expect(screen.queryByTestId('scene-left-menu')).toBeNull();
+    expect(screen.queryByTestId('scene-viewport-toolbar')).toBeNull();
+    expect(screen.queryByTestId('scene-map')).toBeNull();
+  });
+
+  it('keeps the creation rail and viewport toolbar for a newer format', () => {
+    renderVersion(SCENE_FORMAT_VERSION + 1);
+    expect(screen.getByTestId('scene-left-menu')).toBeTruthy();
+    expect(screen.getByTestId('scene-viewport-toolbar')).toBeTruthy();
+  });
+
   it('shows the newer-format sentence with a reload button', () => {
     renderVersion(SCENE_FORMAT_VERSION + 1);
     expect(screen.getByText(t('spaces.threeD.unsupported'))).toBeTruthy();
