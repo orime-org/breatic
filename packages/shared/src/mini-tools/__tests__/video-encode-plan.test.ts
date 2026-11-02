@@ -15,9 +15,10 @@
  * the basic container only when twice the source plus the configured margin fits
  * its disk; an encoded carrier whose short side exceeds 1080 scales to short side
  * 1080 with the long side rounded as FFmpeg `scale=-2`, otherwise odd sides pad to
- * even and record the picture rectangle; a job's seconds are its fixed seconds
- * plus (encoded + pre-roll frames) × output pixels over the throughput for its
- * class, source bit depth and SDR/HDR; chunk boundaries are the source keyframes
+ * even and record the picture rectangle; a job's seconds are its start seconds
+ * plus (encoded + pre-roll frames) × (source pixels over the decode-convert rate
+ * for the source bit depth and SDR/HDR + output pixels over the encode rate),
+ * with no download term; chunk boundaries are the source keyframes
  * nearest the target, the earlier on a tie; presentation over the parallel cap is
  * `too_long`; job ids follow the §5.4 formats with indices from 0 and attempts
  * from 1; batches respect both caps.
@@ -44,8 +45,8 @@ interface RouteInput {
   basicDiskBytes: number;
 }
 interface Rect { x: number; y: number; width: number; height: number }
-interface JobWork { encodedFrames: number; prerollFrames: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean }
-interface ClassRates { jobFixedSeconds: number; throughputPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; hdr_8bit: number; hdr_10bit: number } }
+interface JobWork { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean }
+interface ClassRates { startSeconds: number; encodePixelsPerSecond: number; decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; hdr_8bit: number; hdr_10bit: number } }
 interface Chunk { start: number; end: number }
 type JobSpec =
   | { kind: 'presentation-probe'; jobId: string }
@@ -288,50 +289,62 @@ describe('UA §5.3 unaltered origin mapping (direct original input and identity)
   });
 });
 
-const STD4: ClassRates = { jobFixedSeconds: 30, throughputPixelsPerSecond: { sdr_8bit: 165_058_560, sdr_10bit: 82_529_280, hdr_8bit: 55_019_520, hdr_10bit: 41_264_640 } };
+// Test rates chosen so each term is whole seconds: one 1080p output frame encodes in 1 s; one 4K source frame
+// decodes and converts in 1 s (8-bit SDR), 2 s (10-bit SDR), 3 s (8-bit HDR) or 4 s (10-bit HDR).
+const RATES: ClassRates = { startSeconds: 3, encodePixelsPerSecond: 2_073_600, decodeConvertPixelsPerSecond: { sdr_8bit: 8_294_400, sdr_10bit: 4_147_200, hdr_8bit: 2_764_800, hdr_10bit: 2_073_600 } };
 
 /**
- * A job's work with defaults: 8-bit SDR 4K, no pre-roll.
+ * A job's work with defaults: ten frames of an 8-bit SDR 4K source encoded at 1080p, no pre-roll.
  * @param overrides - Fields to change.
  * @returns The work.
  */
 function work(overrides: Partial<JobWork> = {}): JobWork {
-  return { encodedFrames: 199, prerollFrames: 0, outputWidth: 3840, outputHeight: 2160, bitDepth: 8, hdr: false, ...overrides };
+  return { encodedFrames: 10, prerollFrames: 0, sourceWidth: 3840, sourceHeight: 2160, outputWidth: 1920, outputHeight: 1080, bitDepth: 8, hdr: false, ...overrides };
+}
+
+/**
+ * Rates with every rate set to one value.
+ * @param rate - The rate.
+ * @returns The rates with 7 s start.
+ */
+function uniform(rate: number): ClassRates {
+  return { startSeconds: 7, encodePixelsPerSecond: rate, decodeConvertPixelsPerSecond: { sdr_8bit: rate, sdr_10bit: rate, hdr_8bit: rate, hdr_10bit: rate } };
 }
 
 describe('ES §5.4 job estimate', () => {
-  it('ES01 seconds are the fixed seconds plus (encoded + pre-roll frames) × output pixels over the matching throughput', () => {
+  it('ES01 seconds are the start seconds plus (encoded + pre-roll frames) × (source pixels ÷ decode-convert rate + output pixels ÷ encode rate)', () => {
     const estimate = required('estimateVideoJobSeconds');
-    // 199 frames of 4K at 19.9 fps of 4K (165,058,560 pixels per second) take 10 s, plus 30 s fixed.
-    expect(estimate(work(), STD4)).toBe(40);
-    expect(estimate(work({ prerollFrames: 199 }), STD4)).toBe(50);
-    expect(estimate(work({ bitDepth: 10 }), STD4)).toBe(50);
-    expect(estimate(work({ hdr: true }), STD4)).toBe(60);
-    expect(estimate(work({ bitDepth: 10, hdr: true }), STD4)).toBe(70);
-    // Basic 8-bit SDR: 48 frames of 1080p at 4.8 fps of 1080p (9,953,280 pixels per second) take 10 s.
-    const basic = { jobFixedSeconds: 5, throughputPixelsPerSecond: { sdr_8bit: 9_953_280, sdr_10bit: 1, hdr_8bit: 1, hdr_10bit: 1 } };
-    expect(estimate(work({ encodedFrames: 48, outputWidth: 1920, outputHeight: 1080 }), basic)).toBe(15);
+    expect(estimate(work(), RATES)).toBe(23);
+    expect(estimate(work({ prerollFrames: 5 }), RATES)).toBe(33);
+    expect(estimate(work({ bitDepth: 10 }), RATES)).toBe(33);
+    expect(estimate(work({ hdr: true }), RATES)).toBe(43);
+    expect(estimate(work({ bitDepth: 10, hdr: true }), RATES)).toBe(53);
+    // Decode counts source pixels and encode output pixels: a 1080p source encoded at 4K costs 1/4 s to decode and 4 s to encode per frame.
+    expect(estimate(work({ sourceWidth: 1920, sourceHeight: 1080, outputWidth: 3840, outputHeight: 2160 }), RATES)).toBe(45.5);
   });
 
-  it('ES02 the estimate grows with frames, pre-roll and pixels and shrinks with throughput (property)', () => {
+  it('ES02 the estimate grows with frames, pre-roll, source and output pixels and shrinks with either rate (property)', () => {
     const estimate = required('estimateVideoJobSeconds');
-    fc.assert(fc.property(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 1_000_000_000 }), (frames, preroll, width, height, rate) => {
-      const rates = { jobFixedSeconds: 7, throughputPixelsPerSecond: { sdr_8bit: rate, sdr_10bit: rate, hdr_8bit: rate, hdr_10bit: rate } };
-      const base = estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width, outputHeight: height }), rates);
+    fc.assert(fc.property(fc.integer({ min: 1, max: 100_000 }), fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 1_000_000_000 }), (frames, preroll, width, height, rate) => {
+      const job = work({ encodedFrames: frames, prerollFrames: preroll, sourceWidth: width, sourceHeight: height, outputWidth: height, outputHeight: width });
+      const base = estimate(job, uniform(rate));
       expect(base).toBeGreaterThan(7);
-      expect(estimate(work({ encodedFrames: frames + 1, prerollFrames: preroll, outputWidth: width, outputHeight: height }), rates)).toBeGreaterThan(base);
-      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll + 1, outputWidth: width, outputHeight: height }), rates)).toBeGreaterThan(base);
-      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width + 1, outputHeight: height }), rates)).toBeGreaterThan(base);
-      const faster = { ...rates, throughputPixelsPerSecond: { sdr_8bit: rate * 2, sdr_10bit: rate * 2, hdr_8bit: rate * 2, hdr_10bit: rate * 2 } };
-      expect(estimate(work({ encodedFrames: frames, prerollFrames: preroll, outputWidth: width, outputHeight: height }), faster)).toBeLessThan(base);
+      expect(estimate({ ...job, encodedFrames: frames + 1 }, uniform(rate))).toBeGreaterThan(base);
+      expect(estimate({ ...job, prerollFrames: preroll + 1 }, uniform(rate))).toBeGreaterThan(base);
+      expect(estimate({ ...job, sourceWidth: width + 1 }, uniform(rate))).toBeGreaterThan(base);
+      expect(estimate({ ...job, outputWidth: height + 1 }, uniform(rate))).toBeGreaterThan(base);
+      expect(estimate(job, { ...uniform(rate), encodePixelsPerSecond: rate * 2 })).toBeLessThan(base);
+      expect(estimate(job, { ...uniform(rate), decodeConvertPixelsPerSecond: { ...uniform(rate).decodeConvertPixelsPerSecond, sdr_8bit: rate * 2 } })).toBeLessThan(base);
     }), { seed: 130803, numRuns: 200 });
   });
 
   it.each([
-    ['zero encoded frames', work({ encodedFrames: 0 }), STD4], ['negative pre-roll', work({ prerollFrames: -1 }), STD4],
-    ['zero output width', work({ outputWidth: 0 }), STD4], ['fractional frames', work({ encodedFrames: 1.5 }), STD4],
-    ['a 12-bit source', work({ bitDepth: 12 as 8 }), STD4], ['zero throughput', work(), { ...STD4, throughputPixelsPerSecond: { ...STD4.throughputPixelsPerSecond, sdr_8bit: 0 } }],
-    ['negative fixed seconds', work(), { ...STD4, jobFixedSeconds: -1 }],
+    ['zero encoded frames', work({ encodedFrames: 0 }), RATES], ['negative pre-roll', work({ prerollFrames: -1 }), RATES],
+    ['zero source width', work({ sourceWidth: 0 }), RATES], ['zero output width', work({ outputWidth: 0 }), RATES],
+    ['fractional frames', work({ encodedFrames: 1.5 }), RATES], ['a 12-bit source', work({ bitDepth: 12 as 8 }), RATES],
+    ['zero encode rate', work(), { ...RATES, encodePixelsPerSecond: 0 }],
+    ['zero decode-convert rate', work(), { ...RATES, decodeConvertPixelsPerSecond: { ...RATES.decodeConvertPixelsPerSecond, sdr_8bit: 0 } }],
+    ['negative start seconds', work(), { ...RATES, startSeconds: -1 }],
   ])('ES03 rejects %s', (_, job, rates) => {
     const estimate = required('estimateVideoJobSeconds');
     expect(() => estimate(job, rates)).toThrow(RangeError);
