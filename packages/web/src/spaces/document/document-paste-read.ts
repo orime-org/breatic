@@ -30,7 +30,7 @@ export interface ReadBlock {
   readonly [BODY_NODE]?: PMNode;
   /** Whether the block is an open end of the body's own copy with no words. */
   readonly [OPEN_EDGE]?: true;
-  /** Whether the copy's end opens into this block's nested lines. */
+  /** Whether the block is the nested line of words the copy's end opens into, read out to the top level. */
   readonly [OPEN_NESTED]?: true;
 }
 
@@ -41,8 +41,9 @@ export interface ReadBlock {
 export const OPEN_EDGE: unique symbol = Symbol('open edge');
 
 /**
- * Marks the last block of a copy whose end opens into nested lines: its own
- * HTML pasted as it is puts an empty nested line back, so it goes by blocks.
+ * Marks the line of words a copy's end opens into when that line is nested:
+ * it is read out to the top level as the copy's last line, where it joins the
+ * line it lands in, which only a placement by blocks does.
  */
 export const OPEN_NESTED: unique symbol = Symbol('open nested end');
 
@@ -701,49 +702,80 @@ export function readBodyContent(reader: BlockReader, html: string, schema: Schem
 }
 
 /**
- * The body's own copy with its open ends marked. ProseMirror records how deep
- * each end of a copied slice is open (`data-pm-slice`); an open end with no
- * words is the boundary of a line the copy only touched, which joins the line
- * it lands in and is no line of its own (`OPEN_EDGE`).
+ * The body's own copy with its open ends read the same at any depth.
+ * ProseMirror records how deep each end of a copied slice is open
+ * (`data-pm-slice`, plus two levels per node of the context it wraps the
+ * slice in). Each end opens into one line, which this reads as a top-level
+ * block: the nested line the end opens into is read out of its parent, and
+ * the parents the start opens through, whose words lie before the copy, are
+ * left out. An open end with no words is the boundary of a line the copy only
+ * touched, which joins the line it lands in and is no line of its own
+ * (`OPEN_EDGE`); it has no type of its own and reads as an empty paragraph.
  * @param blocks - The blocks read.
  * @param html - The copy's clipboard HTML.
  * @returns The blocks.
  */
 function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] {
-  const marker = /data-pm-slice="(\d+) (\d+)/.exec(html);
-  const out = [...blocks];
-  if (marker === null || out.length < 2) return out;
+  const marker = /data-pm-slice="(\d+) (\d+) ([^"]*)"/.exec(html);
+  if (marker === null) return [...blocks];
+  /**
+   * How many lines an end opens through: each block group and block container
+   * it opens is one level, the slice's context included.
+   * @param open - The end's open depth, as `data-pm-slice` records it.
+   * @returns The lines.
+   */
+  const levels = (open: string): number => Math.floor((Number(open) + 2 * contextDepth(marker[3]!) - 1) / 2);
   /**
    * Whether a block is a line with no words and nothing nested.
    * @param block - The block.
    * @returns True for such a line.
    */
   const blank = (block: ReadBlock | undefined): boolean => block !== undefined && wordsIn(block.content) === '' && (block.children ?? []).length === 0;
+  const out = [...blocks];
+  const start = levels(marker[1]!);
+  let wrappers = 0;
+  while (wrappers < start - 1 && blank(out[wrappers])) wrappers += 1;
+  if (wrappers > 0 && wrappers < out.length && !blank(out[wrappers])) out.splice(0, wrappers);
+  const end = levels(marker[2]!);
   /**
-   * How many lines an end opens through: each block group and block container
-   * it opens is one level, so a slice opened into a nested item's line ends in
-   * one empty line per level.
-   * @param open - The end's open depth, as `data-pm-slice` records it.
-   * @returns The lines.
-   */
-  const levels = (open: string): number => Math.floor((Number(open) - 1) / 2);
-  for (let i = 0, n = levels(marker[1]!); i < n && i < out.length - 1 && blank(out[i]); i += 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
-  for (let i = out.length - 1, n = levels(marker[2]!); out.length - 1 - i < n && i > 0 && blank(out[i]); i -= 1) out[i] = { ...out[i]!, [OPEN_EDGE]: true };
-  /**
-   * A block without the empty line an end opened into its nested lines reads
-   * as: the deepest last nested line, when it has no words.
+   * A block without the nested line its end opens into, and that line.
    * @param block - The block.
-   * @returns The block.
+   * @param depth - How many levels of nested lines the end still opens through.
+   * @returns The block and the line, or no line when the end opens no deeper.
    */
-  const withoutOpenNestedEnd = (block: ReadBlock): ReadBlock => {
+  const openLine = (block: ReadBlock, depth: number): [ReadBlock, ReadBlock | null] => {
     const children = block.children ?? [];
     const last = children[children.length - 1];
-    if (last === undefined) return block;
-    if ((last.children ?? []).length > 0) return { ...block, children: [...children.slice(0, -1), withoutOpenNestedEnd(last)] };
-    return blank(last) ? { ...block, children: children.slice(0, -1) } : block;
+    if (depth === 0 || last === undefined) return [block, null];
+    const [kept, line] = openLine(last, depth - 1);
+    if (line === null) return [{ ...block, children: children.slice(0, -1) }, last];
+    return [{ ...block, children: [...children.slice(0, -1), kept] }, line];
   };
-  // An end opened into nested lines reads as an empty nested line, which its
-  // own HTML pasted as it is puts back too, so such content goes by blocks.
-  if (levels(marker[2]!) > 1) out[out.length - 1] = { ...withoutOpenNestedEnd(out[out.length - 1]!), [OPEN_NESTED]: true };
+  if (end > 1 && out.length > 0) {
+    const [kept, line] = openLine(out[out.length - 1]!, end - 1);
+    if (line !== null) out.splice(out.length - 1, 1, kept, blank(line) ? line : { ...line, [OPEN_NESTED]: true });
+  }
+  /**
+   * An open end with no words, as the empty paragraph it reads as.
+   * @param block - The block.
+   * @returns The marked block.
+   */
+  const edge = (block: ReadBlock): ReadBlock => ({ type: 'paragraph', content: [], children: [], [OPEN_EDGE]: true, ...(block[BODY_NODE] === undefined ? {} : { [BODY_NODE]: block[BODY_NODE] }) });
+  for (let i = 0; i < start && i < out.length - 1 && blank(out[i]); i += 1) out[i] = edge(out[i]!);
+  for (let i = out.length - 1; out.length - 1 - i < end && i > 0 && blank(out[i]); i -= 1) out[i] = edge(out[i]!);
   return out;
+}
+
+/**
+ * How many nodes the context of a copied slice wraps it in.
+ * @param context - The context ProseMirror writes into `data-pm-slice`, HTML-escaped or not.
+ * @returns The count; none when it cannot be read.
+ */
+function contextDepth(context: string): number {
+  try {
+    const nodes: unknown = JSON.parse(context.replaceAll('&quot;', '"'));
+    return Array.isArray(nodes) ? Math.floor(nodes.length / 2) : 0;
+  } catch {
+    return 0;
+  }
 }

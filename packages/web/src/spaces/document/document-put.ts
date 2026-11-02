@@ -173,12 +173,13 @@ function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: bo
 }
 
 /**
- * Whether content holds an open end of a copy with no words, which only a
- * placement by blocks leaves out where it would stand alone.
+ * Whether content carries a copy's open end as a marked block (an empty open
+ * end, or the nested line an end opens into, read out to the top level),
+ * which only a placement by blocks handles.
  * @param blocks - The blocks.
  * @returns True when it does.
  */
-function hasOpenEdge(blocks: readonly ReadBlock[]): boolean {
+function carriesOpenEnd(blocks: readonly ReadBlock[]): boolean {
   return blocks.some((block) => block[OPEN_EDGE] === true || block[OPEN_NESTED] === true);
 }
 
@@ -410,7 +411,7 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
   const from = view.state.selection.from;
   if (inside.length > 0) {
     if (code) editor.pasteText(wordsOf(inside));
-    else pasteWordsOf(editor, hasOpenEdge(content.blocks) ? { ...content, paste: null } : content, inside);
+    else pasteWordsOf(editor, carriesOpenEnd(content.blocks) ? { ...content, paste: null } : content, inside);
   }
   const after = view.state.selection;
   const words: Placed | null = inside.length > 0 ? { kind: 'range', from: Math.min(from, after.head), to: after.head } : null;
@@ -642,7 +643,7 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
     if (table !== null) return putTableInCells(view, table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
-  const words = !holdsBlocks(content.blocks) && !hasOpenEdge(content.blocks);
+  const words = !holdsBlocks(content.blocks) && !carriesOpenEnd(content.blocks);
   if (selection instanceof NodeSelection && !selection.node.isInline) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
   if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);
   const replaced = !selection.empty || opened;
@@ -811,7 +812,7 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     // back's start, so a range over it takes leading and trailing media. At
     // the line's start nothing is split and both ends stay at block bounds.
     from = front === null ? start : start + 2 + offset;
-    to = lastWords ? backStart + 2 + backWords.size : front === null ? backStart : backStart + 2;
+    to = lastWords && (front !== null || backWords.size > 0) ? backStart + 2 + backWords.size : front === null ? backStart : backStart + 2;
   }
   if (caret !== null) tr.setSelection(TextSelection.create(tr.doc, caret));
   view.dispatch(tr.scrollIntoView());
