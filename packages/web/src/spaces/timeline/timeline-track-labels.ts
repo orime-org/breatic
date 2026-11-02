@@ -14,7 +14,7 @@ export interface TimelineTrackLabel { id: string; label: string }
 export interface TimelineTrackLabels { visual: TimelineTrackLabel[]; nameOf: (trackId: string) => string | null }
 
 /**
- * Name the document's visual tracks: the main track, then "Track N" counted bottom-up from 1.
+ * Name the document's visual tracks bottom-up: the main track, then "Visual N" where N is the track's 1-based position among visual tracks (the first sub track is 2).
  * @param document - The current Timeline.
  * @returns The bottom-up visual tracks and a lookup that returns null for a missing track.
  * @throws {never} Never.
