@@ -37,7 +37,7 @@ function configured(): Record<string, unknown> {
   return {
     ...current,
     encoding: {
-      chunk_share: 0.25, max_parallel_chunks: 3,
+      chunk_share: 0.25, max_parallel_chunks: 3, chunk_retries: 2,
       encoder: { container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000, decode_convert_pixels_per_second: { sdr_8bit: 8000, sdr_10bit: 7000, hdr_8bit: 6000, hdr_10bit: 5000 } },
     },
     presentation: { ...current.presentation, carrier: { container_class: 'MiniToolContainerStd4', max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
@@ -116,7 +116,7 @@ describe('EC S6b encoding and carrier configuration', () => {
 
   it('EC04 encoder rates exist only for standard-4: basic only probes and copies', () => {
     const encoding = (getMiniToolsConfig() as unknown as { encoding: Record<string, unknown> }).encoding;
-    expect(Object.keys(encoding).sort()).toEqual(['chunk_share', 'copy_disk_margin_bytes', 'encoder', 'max_parallel_chunks']);
+    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'copy_disk_margin_bytes', 'encoder', 'max_parallel_chunks']);
     expect((encoding.encoder as Record<string, unknown>).container_class).toBe('MiniToolContainerStd4');
   });
 
@@ -144,3 +144,30 @@ describe('EC S6b encoding and carrier configuration', () => {
     expect(miniToolsConfigSchema.safeParse(patched(configured(), path, value)).success).toBe(false);
   });
 });
+
+describe('EC S6c retry caps (design aed2b550 §5.4 配置初值, §7.1, §7.1.1)', () => {
+  it('EC06 the YAML, the getter and the loader default give chunk_retries 3 and max_auto_repairs 3', () => {
+    const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as Record<string, Record<string, Record<string, unknown>>>;
+    expect(raw.encoding!.chunk_retries).toBe(3);
+    expect(raw.presentation!.source_ledger!.max_auto_repairs).toBe(3);
+    const config = getMiniToolsConfig() as unknown as { encoding: { chunk_retries: number }; presentation: { source_ledger: { max_auto_repairs: number } } };
+    expect(config.encoding.chunk_retries).toBe(3);
+    expect(config.presentation.source_ledger.max_auto_repairs).toBe(3);
+    const omitted = patched(patched(configured(), ['encoding', 'chunk_retries'], undefined), ['presentation', 'source_ledger', 'max_auto_repairs'], undefined);
+    expect(miniToolsConfigSchema.parse(omitted)).toMatchObject({ encoding: { chunk_retries: 3 }, presentation: { source_ledger: { max_auto_repairs: 3 } } });
+  });
+
+  it('EC07 keeps configured caps, zero included', () => {
+    const input = patched(patched(configured(), ['encoding', 'chunk_retries'], 0), ['presentation', 'source_ledger', 'max_auto_repairs'], 5);
+    expect(miniToolsConfigSchema.parse(input)).toMatchObject({ encoding: { chunk_retries: 0 }, presentation: { source_ledger: { max_auto_repairs: 5 } } });
+  });
+
+  it.each([
+    ['a negative chunk_retries', ['encoding', 'chunk_retries'], -1], ['a fractional chunk_retries', ['encoding', 'chunk_retries'], 1.5],
+    ['a negative max_auto_repairs', ['presentation', 'source_ledger', 'max_auto_repairs'], -1], ['a fractional max_auto_repairs', ['presentation', 'source_ledger', 'max_auto_repairs'], 2.5],
+  ] as const)('EC08 rejects %s after accepting the valid configuration', (_, path, value) => {
+    expect(miniToolsConfigSchema.safeParse(configured()).success).toBe(true);
+    expect(miniToolsConfigSchema.safeParse(patched(configured(), path, value)).success).toBe(false);
+  });
+});
+

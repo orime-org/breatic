@@ -126,7 +126,10 @@ const JOB = 'job-1';
 const D = 1_900_000_000_000;
 const T = 'c'.repeat(64);
 const T2 = 'b'.repeat(64);
-const POLICY = { maxAutoRepairs: 2 };
+// Config values (design §5.4 配置初值): presentation.source_ledger.max_auto_repairs and encoding.chunk_retries, both 3.
+const MAX_AUTO_REPAIRS = 3;
+const CHUNK_RETRIES = 3;
+const POLICY = { maxAutoRepairs: MAX_AUTO_REPAIRS };
 
 const NONE: Candidate = { state: 'none', archived: false, jobId: null, deadlineAt: null, route: null, stage: null, toolInputId: null, pinned: false, failure: null, autoRepairs: 0 };
 const ACCEPTED: Candidate = { ...NONE, state: 'accepted', jobId: JOB, deadlineAt: D };
@@ -205,6 +208,11 @@ describe('A §7.1 candidate: none and accepted rows', () => {
 
   it('A07 accepted × Sg is refused: no stage has started', () => {
     expectRejected(candidate(ACCEPTED, { kind: 'Sg', jobId: JOB, stage: 'encode' }), ACCEPTED);
+  });
+
+  it('A07b accepted × Ev is refused: no stage is authorised before St', () => {
+    expectRejected(candidate(ACCEPTED, { kind: 'Ev', jobId: JOB, fact: { kind: 'verified' } }), ACCEPTED);
+    expectRejected(candidate(ACCEPTED, { kind: 'Ev', jobId: JOB, fact: { kind: 'plan', route: 'encode', toolInputId: T, ledger: 'absent' } }), ACCEPTED);
   });
 
   it('A08 accepted × Er fails with the code; × Ar archives the accepted record', () => {
@@ -335,12 +343,14 @@ describe('A §7.1 candidate: verified and failed rows', () => {
     expectKept(candidate({ ...VERIFIED, archived: true, pinned: false }, { kind: 'Lr', toolInputId: T, selected: false }), { ...VERIFIED, archived: true, pinned: false });
   });
 
-  it('A25 verified × Lt starts a same-toolInputId ledgerOnly repair while repairs remain, then keeps waiting', () => {
-    const first = candidate(VERIFIED, { kind: 'Lt', toolInputId: T, selected: false });
-    expect(first).toEqual({ next: { ...VERIFIED, autoRepairs: 1 }, effects: [{ kind: 'repair-ledger', toolInputId: T }], rejected: false });
-    const second = candidate(first.next, { kind: 'Lt', toolInputId: T, selected: false });
-    expect(second).toEqual({ next: { ...VERIFIED, autoRepairs: 2 }, effects: [{ kind: 'repair-ledger', toolInputId: T }], rejected: false });
-    expectKept(candidate(second.next, { kind: 'Lt', toolInputId: T, selected: false }), second.next);
+  it('A25 verified × Lt starts a same-toolInputId ledgerOnly repair up to max_auto_repairs (3) times, then keeps waiting', () => {
+    let record = VERIFIED;
+    for (let repair = 1; repair <= MAX_AUTO_REPAIRS; repair += 1) {
+      const step = candidate(record, { kind: 'Lt', toolInputId: T, selected: false });
+      expect(step).toEqual({ next: { ...VERIFIED, autoRepairs: repair }, effects: [{ kind: 'repair-ledger', toolInputId: T }], rejected: false });
+      record = step.next;
+    }
+    expectKept(candidate(record, { kind: 'Lt', toolInputId: T, selected: false }), record);
     expectKept(candidate(VERIFIED, { kind: 'Lt', toolInputId: T, selected: true }), VERIFIED);
   });
 
@@ -436,6 +446,19 @@ const OPEN: Chunk = { state: 'open', attempt: 1, retries: 2, failure: null, atte
 describe('K §7.1.1 chunk set: chunk and attempt levels', () => {
   it('K01 none × Sub opens attempt 1 with the configured retries and dispatches its attempt-scoped job id', () => {
     expect(chunk(EMPTY_CHUNK, { kind: 'Sub', retries: 2 })).toEqual({ next: OPEN, effects: [{ kind: 'dispatch', jobId: `video-presentation:${JOB}:chunk:2:a1` }], rejected: false });
+  });
+
+  it('K01a with chunk_retries 3 a chunk is tried at most four times before it fails the candidate', () => {
+    let state = chunk(EMPTY_CHUNK, { kind: 'Sub', retries: CHUNK_RETRIES }).next;
+    expect(state).toMatchObject({ state: 'open', attempt: 1, retries: 3 });
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const step = chunk(state, { kind: 'Fail', attempt, code: 'resource_exhausted', usage: null });
+      expect(step.effects).toEqual([{ kind: 'dispatch', jobId: `video-presentation:${JOB}:chunk:2:a${attempt + 1}` }]);
+      state = step.next;
+    }
+    const last = chunk(state, { kind: 'Fail', attempt: 4, code: 'resource_exhausted', usage: null });
+    expect(last.next).toMatchObject({ state: 'failed', attempt: 4, retries: 0, failure: 'resource_exhausted' });
+    expect(last.effects).toEqual([{ kind: 'candidate-failed', code: 'resource_exhausted' }]);
   });
 
   it('K02 none × Done or Fail is refused; × Exp keeps none', () => {

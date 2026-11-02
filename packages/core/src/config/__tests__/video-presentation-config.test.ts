@@ -14,7 +14,7 @@ describe('platform presentation container configuration (inner#1306)', () => {
     const config = getMiniToolsConfig() as unknown as Record<string, unknown>;
     expect(config.presentation).toEqual({ container_class: 'MediaContainer', max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: {
       max_bytes: 16777216, probe_stdout_bytes: 67108864, metadata_bytes: 16777216,
-      iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000,
+      iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000, max_auto_repairs: 3,
     },
     // Design §4.3 and §8.2 (S6b): encoded carriers run on standard-4, short side at most 1080, SDR BT.709 labels.
     carrier: { container_class: 'MiniToolContainerStd4', max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } });

@@ -9,11 +9,13 @@ import { MONOREPO_ROOT } from '@core/config/env.js';
 import { getMiniToolsConfig, miniToolsConfigSchema } from '@core/config/mini-tools.js';
 
 // §2 removes frame-count ceilings, not byte/metadata/container structure budgets.
-const DEFAULTS = { max_bytes: 16777216, probe_stdout_bytes: 67108864, metadata_bytes: 16777216, iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000 };
-const CUSTOM = { max_bytes: 8388608, probe_stdout_bytes: 33554432, metadata_bytes: 2097152, iso_box_count: 80000, matroska_element_count: 500000, matroska_max_blocks: 125000 };
+// Design aed2b550 (S6c) adds max_auto_repairs (initial 3) beside the six byte and structure budgets.
+const DEFAULTS = { max_bytes: 16777216, probe_stdout_bytes: 67108864, metadata_bytes: 16777216, iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000, max_auto_repairs: 3 };
+const CUSTOM = { max_bytes: 8388608, probe_stdout_bytes: 33554432, metadata_bytes: 2097152, iso_box_count: 80000, matroska_element_count: 500000, matroska_max_blocks: 125000, max_auto_repairs: 5 };
 // Design §4.3 and §8.2 (S6b): the encoded presentation carrier's class, short-side cap and SDR BT.709 labels are presentation settings.
 const CARRIER = { container_class: 'MiniToolContainerStd4', max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } };
-const FIELDS = Object.keys(DEFAULTS) as (keyof typeof DEFAULTS)[];
+// The budgets must be positive; max_auto_repairs may be zero and is covered by the S6c config cases.
+const FIELDS = ['max_bytes', 'probe_stdout_bytes', 'metadata_bytes', 'iso_box_count', 'matroska_element_count', 'matroska_max_blocks'] as const;
 const INVALID = [{ label: 'zero', value: 0 }, { label: 'negative', value: -1 }, { label: 'fractional', value: 1.5 }, { label: 'infinity', value: Infinity }, { label: 'NaN', value: NaN }, { label: 'unsafe', value: Number.MAX_SAFE_INTEGER + 1 }];
 
 /** Supplies one policy through the real loader. @throws {Error} When configuration cannot load. */
@@ -23,7 +25,7 @@ function withLedger(sourceLedger: unknown): Record<string, unknown> {
 }
 
 describe('S4 source ledger byte and structure policy without frame caps', () => {
-  it('K01 ships exactly the six retained budgets in YAML and getter', () => {
+  it('K01 ships exactly the six retained budgets and the auto-repair cap in YAML and getter', () => {
     const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as { presentation: Record<string, unknown> };
     expect(raw.presentation.source_ledger).toEqual(DEFAULTS);
     expect(getMiniToolsConfig().presentation.source_ledger).toEqual(DEFAULTS);
@@ -43,7 +45,7 @@ describe('S4 source ledger byte and structure policy without frame caps', () => 
     expect(miniToolsConfigSchema.parse(withLedger(CUSTOM)).presentation.source_ledger).toEqual(CUSTOM);
     for (const value of [1, Number.MAX_SAFE_INTEGER]) {
       const policy = Object.fromEntries(FIELDS.map((field) => [field, value]));
-      expect(miniToolsConfigSchema.parse(withLedger(policy)).presentation.source_ledger).toEqual(policy);
+      expect(miniToolsConfigSchema.parse(withLedger(policy)).presentation.source_ledger).toEqual({ ...policy, max_auto_repairs: 3 });
     }
   });
   it.each(FIELDS)('K05 overrides %s without replacing the other five defaults', (field) => {
