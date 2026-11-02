@@ -477,6 +477,34 @@ export interface LocalRangeTracker {
 }
 
 /**
+ * The plugin view of one instance: the broadcast of its range and the tracker
+ * that names the range in Yjs terms, the tracker first on every change.
+ * @param view - The editor view.
+ * @param watch - The instance's broadcast, whose view tells listeners.
+ * @param watch.view - The broadcast's plugin view.
+ * @param tracker - The instance's tracker.
+ * @returns The view's update and teardown.
+ */
+export function localRangeView(
+  view: EditorView,
+  watch: { readonly view: (view: EditorView) => PluginView },
+  tracker: LocalRangeTracker,
+): PluginView {
+  const watching = watch.view(view);
+  const naming = tracker.view(view);
+  return {
+    update: (next, prev): void => {
+      naming.update(next, prev);
+      watching.update?.(next, prev);
+    },
+    destroy: (): void => {
+      naming.destroy();
+      watching.destroy?.();
+    },
+  };
+}
+
+/**
  * One instance of local-range carrying.
  * @param read - The range the instance's plugin holds in a state, or null
  *   while it holds none; the same object while the range has not changed.

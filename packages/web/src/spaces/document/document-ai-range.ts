@@ -30,6 +30,7 @@ import {
   aimAt,
   changesText,
   localRangeTracker,
+  localRangeView,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
@@ -183,20 +184,7 @@ export const documentAiRange = createExtension(() => {
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
-        view: (view) => {
-          const watching = watch.view(view);
-          const naming = tracker.view(view);
-          return {
-            update: (next, prev): void => {
-              naming.update(next, prev);
-              watching.update?.(next, prev);
-            },
-            destroy: (): void => {
-              naming.destroy();
-              watching.destroy?.();
-            },
-          };
-        },
+        view: (view) => localRangeView(view, watch, tracker),
       }),
     ],
   };
