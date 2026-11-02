@@ -41,10 +41,10 @@ type CandidateEvent =
   | { kind: 'Ev'; jobId: string; fact: { kind: 'plan'; route: Route; toolInputId: string; ledger: LedgerKind; ledgerCode?: string } | { kind: 'verified' } }
   | { kind: 'Er'; jobId: string; code: string }
   | { kind: 'Ar' }
-  | { kind: 'Rt'; jobId: string; deadlineAt: number }
+  | { kind: 'Rt'; jobId: string; deadlineAt: number; ledgerMissing?: boolean }
   | { kind: 'Lr' | 'Lt'; toolInputId: string; selected: boolean }
   | { kind: 'Lc'; toolInputId: string; code: string; selected: boolean };
-type CandidateEffect = { kind: 'dispatch'; stage: string } | { kind: 'publish'; toolInputId: string } | { kind: 'repair-ledger'; toolInputId: string };
+type CandidateEffect = { kind: 'dispatch'; stage: string } | { kind: 'publish'; toolInputId: string } | { kind: 'repair-ledger'; toolInputId: string } | { kind: 'recheck-publish'; toolInputId: string };
 interface Step<T, E> { next: T; effects: E[]; rejected: boolean }
 
 interface AttemptItem { attempt: number; jobId: string; state: 'pending' | 'done' | 'failed'; usage: number | null; usageRecorded: boolean; failure: string | null }
@@ -73,13 +73,13 @@ type ObjectEvent =
   | { kind: 'Put'; won: boolean }
   | { kind: 'Measure'; matches: boolean; receipt: string }
   | { kind: 'Publish'; ok: boolean; receipt: string }
-  | { kind: 'Stop'; committed: boolean }
+  | { kind: 'Stop'; committed: boolean | 'unknown' }
   | { kind: 'Verify'; complete: boolean; matches: boolean; receipt: string }
   | { kind: 'Replace'; receipt: string };
 
 type LedgerItem = { kind: 'absent'; archived: boolean } | { kind: 'waiting'; jobId: string; archived: boolean } | { kind: 'merged'; jobId: string; toolInputId: string; archived: boolean } | { kind: 'failed'; jobId: string; code: string; archived: boolean };
 type ItemEvent = { kind: 'Ask'; jobId: string; ledgerOnly: boolean } | { kind: 'Tp'; jobId: string; toolInputId: string } | { kind: 'Err'; jobId: string; code: string } | { kind: 'Ar' };
-type ItemEffect = { kind: 'instance-tp'; toolInputId: string; jobId: string } | { kind: 'instance-err'; toolInputId: string; jobId: string; code: string } | { kind: 'candidate-failed'; code: string };
+type ItemEffect = { kind: 'instance-tp'; toolInputId: string; jobId: string } | { kind: 'instance-err'; toolInputId: string; jobId: string; code: string } | { kind: 'instance-wa'; toolInputId: string; jobId: string } | { kind: 'candidate-failed'; code: string };
 type Instance =
   | { kind: 'absent' }
   | { kind: 'pending'; writer: string; writerArchived: boolean; waiters: string[] }
@@ -90,10 +90,12 @@ type InstanceEvent =
   | { kind: 'Ask'; jobId: string }
   | { kind: 'Tp'; jobId: string }
   | { kind: 'Wa'; jobId: string }
-  | { kind: 'Both'; jobId: string; receipt: string }
+  | { kind: 'Both'; jobId: string; receipt: string; startedStreamProof?: boolean }
   | { kind: 'Err'; jobId: string; code: string }
-  | { kind: 'Check'; failure: 'source_ledger_missing' | 'source_ledger_invalid' | null }
-  | { kind: 'Repair'; jobId: string };
+  | { kind: 'Check'; failure: 'source_ledger_missing' | 'source_ledger_invalid' | null; proof?: string }
+  | { kind: 'Repair'; jobId: string }
+  | { kind: 'Change' }
+  | { kind: 'H2'; receipt: string; workTerminal: boolean; samePlan: boolean };
 type InstanceEffect = { kind: 'write'; jobId: string } | { kind: 'reuse'; receipt: string } | { kind: 'Lr' } | { kind: 'Lt' } | { kind: 'Lc'; code: string } | { kind: 'candidate-failed'; code: string };
 
 interface MachineApi {
@@ -238,6 +240,8 @@ describe('A §7.1 candidate: building row and the frozen route', () => {
     ['a skipped stage', PLANNED_ENCODE, 'stitch'], ['the same stage again', { ...PLANNED_ENCODE, stage: 'encode' }, 'encode'],
     ['a stage of another route', PLANNED_ENCODE, 'copy'], ['a stage before the plan', BUILDING_PLAN, 'encode'],
     ['an archived record', { ...PLANNED_ENCODE, archived: true, pinned: false }, 'encode'],
+    // publish is reached only through complete verified evidence (building × Ev), never through Sg.
+    ['the publish stage', { ...PLANNED_ENCODE, stage: 'stitch' }, 'publish'], ['the publish stage of identity', PLANNED_IDENTITY, 'publish'],
   ] as const)('A13 Sg is refused for %s', (_, record, stage) => {
     expectRejected(candidate(record, { kind: 'Sg', jobId: JOB, stage }), record);
   });
@@ -276,6 +280,34 @@ describe('A §7.1 candidate: building row and the frozen route', () => {
 
   it.each(['Lr', 'Lt'] as const)('A20 building × %s keeps the record', (kind) => {
     expectKept(candidate(PLANNED_ENCODE, { kind, toolInputId: T, selected: false }), PLANNED_ENCODE);
+  });
+});
+
+describe('A §7.1 candidate: Rt and Ev cells', () => {
+  it.each([['accepted', ACCEPTED], ['building', PLANNED_ENCODE]] as const)('A30 %s × Rt replays the active record: unchanged, no effects', (_, record) => {
+    expectKept(candidate(record, { kind: 'Rt', jobId: 'job-2', deadlineAt: D + 1 }), record);
+  });
+
+  it('A31 verified × Rt with a missing ledger repairs only the same toolInputId; otherwise it is unchanged', () => {
+    expect(candidate(VERIFIED, { kind: 'Rt', jobId: 'job-2', deadlineAt: D + 1, ledgerMissing: true })).toEqual({ next: VERIFIED, effects: [{ kind: 'repair-ledger', toolInputId: T }], rejected: false });
+    expectKept(candidate(VERIFIED, { kind: 'Rt', jobId: 'job-2', deadlineAt: D + 1, ledgerMissing: false }), VERIFIED);
+  });
+
+  it('A32 failed × Rt leaves the original row: the retry is an independent new job', () => {
+    expectKept(candidate(FAILED, { kind: 'Rt', jobId: 'job-2', deadlineAt: D + 1, ledgerMissing: true }), FAILED);
+  });
+
+  it('A33 verified × the same evidence replays; different evidence is refused', () => {
+    expectKept(candidate(VERIFIED, { kind: 'Ev', jobId: JOB, fact: { kind: 'verified' } }), VERIFIED);
+    expectKept(candidate(VERIFIED, { kind: 'Ev', jobId: JOB, fact: { kind: 'plan', route: 'encode', toolInputId: T, ledger: 'absent' } }), VERIFIED);
+    expectRejected(candidate(VERIFIED, { kind: 'Ev', jobId: JOB, fact: { kind: 'plan', route: 'copy', toolInputId: T, ledger: 'ready' } }), VERIFIED);
+    expectRejected(candidate(VERIFIED, { kind: 'Ev', jobId: JOB, fact: { kind: 'plan', route: 'encode', toolInputId: T2, ledger: 'ready' } }), VERIFIED);
+  });
+
+  it('A34 failed × Ev stays failed: a current record asks P to recheck its publication, an archived one never activates P', () => {
+    expect(candidate(FAILED, { kind: 'Ev', jobId: JOB, fact: { kind: 'verified' } })).toEqual({ next: FAILED, effects: [{ kind: 'recheck-publish', toolInputId: T }], rejected: false });
+    const archived = { ...FAILED, archived: true };
+    expectKept(candidate(archived, { kind: 'Ev', jobId: JOB, fact: { kind: 'verified' } }), archived);
   });
 });
 
@@ -437,19 +469,21 @@ describe('K §7.1.1 chunk set: chunk and attempt levels', () => {
     });
   });
 
-  it('K07 open × Exp fails the chunk as expired and every in-flight attempt with it', () => {
+  it('K07 open × Exp fails the chunk as expired with every in-flight attempt, without failing the candidate', () => {
     const step = chunk(OPEN, { kind: 'Exp' });
     expect(step.next.state).toBe('failed');
     expect(step.next.failure).toBe('expired');
     expect(step.next.attempts).toEqual([{ ...pendingItem(1), state: 'failed', failure: 'expired' }]);
+    // The candidate expires through its own Er, not through this chunk event.
+    expect(step.effects).toEqual([]);
   });
 
-  it('K08 a report from an older attempt writes only that attempt item', () => {
+  it('K08 a late completion of an older failed attempt records its usage, keeps the item failed and leaves the chunk', () => {
     const second: Chunk = { state: 'open', attempt: 2, retries: 1, failure: null, attempts: [{ ...pendingItem(1), state: 'failed', failure: 'resource_exhausted' }, pendingItem(2)] };
     const late = chunk(second, { kind: 'Done', attempt: 1, usage: 9 });
     expect(late.next.state).toBe('open');
     expect(late.next.attempt).toBe(2);
-    expect(late.next.attempts[0]!.usage).toBe(9);
+    expect(late.next.attempts[0]).toEqual({ ...pendingItem(1), state: 'failed', failure: 'resource_exhausted', usage: 9 });
     expect(late.next.attempts[1]).toEqual(pendingItem(2));
     expect(late.effects).toEqual([]);
   });
@@ -461,12 +495,11 @@ describe('K §7.1.1 chunk set: chunk and attempt levels', () => {
     expectKept(chunk(done, { kind: 'Exp' }), done);
   });
 
-  it('K10 failed refuses Sub and keeps its state when a late completion arrives', () => {
+  it('K10 failed refuses Sub; a late completion records usage only, the item and chunk stay failed and the candidate is not touched', () => {
     const failed: Chunk = { ...OPEN, retries: 0, state: 'failed', failure: 'invalid_edit', attempts: [{ ...pendingItem(1), state: 'failed', failure: 'invalid_edit' }] };
     expectRejected(chunk(failed, { kind: 'Sub', retries: 2 }), failed);
     const late = chunk(failed, { kind: 'Done', attempt: 1, usage: 4 });
-    expect(late.next.state).toBe('failed');
-    expect(late.next.attempts[0]!.usage).toBe(4);
+    expect(late.next).toEqual({ ...failed, attempts: [{ ...failed.attempts[0]!, usage: 4 }] });
     expect(late.effects).toEqual([]);
   });
 
@@ -580,6 +613,8 @@ describe('P §7.2 selected bundle', () => {
 
   it('P07 ready(A) × Chk keeps it; × Bad invalidates A; × New keeps A; × Src forgets it; × Late keeps A', () => {
     expect(select(READY_A, { kind: 'Chk', proof: 'complete', version: A }).next).toEqual(READY_A);
+    // A complete proof of another version is ignored: only Pub switches the selection.
+    expect(select(READY_A, { kind: 'Chk', proof: 'complete', version: B_NEW }).next).toEqual(READY_A);
     expect(select(READY_A, { kind: 'Bad' }).next).toEqual(INVALID_A);
     expect(select(READY_A, { kind: 'New' }).next).toEqual(READY_A);
     expect(select(READY_A, { kind: 'Src' }).next).toEqual(UNKNOWN);
@@ -652,6 +687,10 @@ describe('R §7.3 stored object role', () => {
     expectRejected(advance(object('writing'), { kind: 'Publish', ok: true, receipt: 'r1' }), object('writing'));
     expect(advance(object('writing'), { kind: 'Put', won: true })).toEqual({ next: object('complete'), rejected: false });
     expect(advance(object('writing'), { kind: 'Stop', committed: false })).toEqual({ next: object('absent'), rejected: false });
+  });
+
+  it('R02a writing × Stop with an unknown commit outcome stays writing until a real check, never reports absent', () => {
+    expect(advance(object('writing'), { kind: 'Stop', committed: 'unknown' })).toEqual({ next: object('writing'), rejected: false });
   });
 
   it('R03 complete: a matching measurement records the receipt, a mismatch invalidates; Publish is refused without a measurement', () => {
@@ -753,6 +792,10 @@ describe('L §7.4 companion admission item', () => {
     expect(item(MERGED, { kind: 'Err', jobId: JOB, code: 'invalid_edit' })).toEqual({ next: MERGED, effects: [{ kind: 'instance-err', toolInputId: T, jobId: JOB, code: 'invalid_edit' }], rejected: false });
   });
 
+  it('L07a merged × Ar archives the item and hands the instance a Wa for this job', () => {
+    expect(item(MERGED, { kind: 'Ar' })).toEqual({ next: { ...MERGED, archived: true }, effects: [{ kind: 'instance-wa', toolInputId: T, jobId: JOB }], rejected: false });
+  });
+
   it('L07 failed replays Ask, refuses Tp and keeps its first code', () => {
     const failed: LedgerItem = { kind: 'failed', jobId: JOB, code: 'classification_unknown', archived: false };
     expectKept(item(failed, { kind: 'Ask', jobId: JOB, ledgerOnly: false }), failed);
@@ -849,6 +892,36 @@ describe('L §7.4 companion instance per toolInputId', () => {
     expect(instance(ABSENT, { kind: 'Repair', jobId: JOB })).toEqual({ next: PENDING, effects: [{ kind: 'write', jobId: JOB }], rejected: false });
     expect(instance(PENDING, { kind: 'Repair', jobId: 'job-2' }).next).toEqual({ ...PENDING, waiters: ['job-2'] });
     expectKept(instance(READY, { kind: 'Repair', jobId: 'job-2' }), READY);
+  });
+
+  it('L23 Wa from a job that is not the writer leaves the instance', () => {
+    expectKept(instance({ ...PENDING, waiters: ['job-2'] }, { kind: 'Wa', jobId: 'job-2' }), { ...PENDING, waiters: ['job-2'] });
+  });
+
+  it('L24 failed-transient × Both keeps the original ready only with a double proof of the originally started stream', () => {
+    const failed: Instance = { kind: 'failed-transient', code: 'resource_exhausted' };
+    expect(instance(failed, { kind: 'Both', jobId: JOB, receipt: 'receipt-1', startedStreamProof: true })).toEqual({ next: READY, effects: [{ kind: 'Lr' }], rejected: false });
+    expect(instance(failed, { kind: 'Both', jobId: JOB, receipt: 'receipt-1', startedStreamProof: false }).next).toEqual(failed);
+  });
+
+  it('L25 failed-content × Check with a valid same-version proof corrects the fact to ready; without one it stays', () => {
+    const failed: Instance = { kind: 'failed-content', code: 'invalid_edit' };
+    expect(instance(failed, { kind: 'Check', failure: null, proof: 'receipt-1' })).toEqual({ next: READY, effects: [{ kind: 'Lr' }], rejected: false });
+    expectKept(instance(failed, { kind: 'Check', failure: null }), failed);
+  });
+
+  it.each([['absent', ABSENT], ['pending', PENDING], ['ready', READY], ['failed-transient', { kind: 'failed-transient', code: 'expired' }], ['failed-content', { kind: 'failed-content', code: 'invalid_edit' }]] as const)('L26 Change leaves the %s instance as it is: a new target is another instance', (_, state) => {
+    expectKept(instance(state, { kind: 'Change' }), state);
+  });
+
+  it('L27 H2 attaches the archived receipt only when the work is terminal, no writer is active, nothing current is ready and the plan is the same', () => {
+    const recover = { kind: 'H2' as const, receipt: 'receipt-9', workTerminal: true, samePlan: true };
+    expect(instance(ABSENT, recover)).toEqual({ next: { kind: 'ready', receipt: 'receipt-9' }, effects: [{ kind: 'Lr' }], rejected: false });
+    expect(instance({ kind: 'failed-transient', code: 'expired' }, recover).next).toEqual({ kind: 'ready', receipt: 'receipt-9' });
+    expect(instance(ABSENT, { ...recover, workTerminal: false }).next).toEqual(ABSENT);
+    expect(instance(ABSENT, { ...recover, samePlan: false }).next).toEqual(ABSENT);
+    expect(instance(PENDING, recover).next).toEqual(PENDING);
+    expect(instance(READY, recover).next).toEqual(READY);
   });
 
   it('LP01 one writer at a time, ready only from the writer\'s Both, writes only after Tp, Ask or Repair, candidate codes never stored (property)', () => {
