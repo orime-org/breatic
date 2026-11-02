@@ -1313,6 +1313,12 @@ describe('useNodeCreation', () => {
         templateNode: { template: 'fx', key: 'guide', anchor: 0 },
       } as unknown as CanvasProposal['nodes'][number];
 
+      /** A put-back upstream generate node with no tag, @ing the input at index 2. */
+      const SKETCH = { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] } as CanvasProposal['nodes'][number];
+
+      /** A new input node feeding {@link SKETCH}. */
+      const CHARACTER = { role: 'source', type: 'image', name: 'Character' } as CanvasProposal['nodes'][number];
+
       /** The fixture's upstream generate node, fed by its resource at index 2. */
       const UPSTREAM = {
         role: 'generate',
@@ -1823,7 +1829,7 @@ describe('useNodeCreation', () => {
 
         result.current.placeProposalAt(
           proposalOf(
-            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
             [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
           ),
           { x: 0, y: 0 },
@@ -1939,7 +1945,7 @@ describe('useNodeCreation', () => {
         result.current.placeProposalAt(
           {
             ...proposalOf(
-              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
               [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
             ),
             groupName: 'Fixture template',
@@ -1971,7 +1977,7 @@ describe('useNodeCreation', () => {
 
         result.current.placeProposalAt(
           proposalOf(
-            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] }, { role: 'source', type: 'image', name: 'Character' }],
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
             [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
           ),
           { x: 0, y: 0 },
