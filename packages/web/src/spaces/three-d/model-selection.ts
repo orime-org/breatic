@@ -71,7 +71,7 @@ export async function inspectModelSelection(sources: readonly ModelSource[], ent
     }
     const selected = entry ?? entries[0];
     const model = inspectModelFiles(collection, selected, limits, support);
-    return { model, artifact: packModelFiles(collection, selected, limits, support), entries, paths };
+    return { model, artifact: packModelFiles(model, limits), entries, paths };
   } catch (error) {
     const failure = contentFailure(error);
     throw info ? failure.withInfo({ ...info, missing: failure.info?.missing ?? [] }) : failure;

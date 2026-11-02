@@ -3,12 +3,25 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import type { SceneImportLimits } from '@breatic/shared';
 import { Zip, ZipDeflate, ZipPassThrough, strFromU8, strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
 import { IMPORT_LIMITS, TEXTURE_FORMATS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import {
   inspectModelFiles, normalizeModelPath, packModelFiles, readModelJson,
   readRegisteredModelPackage, resolveModelDependency, unpackModelArchive,
 } from '@web/spaces/three-d/model-package';
+
+/**
+ * Pack a selection the way the import does: inspect it, then pack the checked model.
+ * @param files - Original resources under their relative paths.
+ * @param entry - The chosen model entry.
+ * @param limits - Configured budgets.
+ * @returns The model asset bytes.
+ * @throws {ModelImportError} When inspection or an output budget refuses the selection.
+ */
+function pack(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits): Uint8Array<ArrayBuffer> {
+  return packModelFiles(inspectModelFiles(files, entry, limits, TEXTURE_FORMATS), limits);
+}
 
 const ENTRY = 'character/scene.gltf';
 const GEOMETRY = new Uint8Array(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer);
@@ -87,7 +100,7 @@ describe('model-package original content and entry contract (inner#1690)', () =>
   it('keeps a single self-contained GLB byte-for-byte, including arbitrary model metadata', () => {
     fc.assert(fc.property(fc.string(), (name) => {
       const original = glb(name);
-      const packed = packModelFiles(new Map([['model.glb', original]]), 'model.glb', IMPORT_LIMITS, TEXTURE_FORMATS);
+      const packed = pack(new Map([['model.glb', original]]), 'model.glb', IMPORT_LIMITS);
       expect(Array.from(packed)).toEqual(Array.from(original));
     }));
   });
@@ -95,7 +108,7 @@ describe('model-package original content and entry contract (inner#1690)', () =>
   it('keeps both selected GLBs in a ZIP and records the chosen second model as its entry', () => {
     const first = glb('First model');
     const second = glb('Selected model');
-    const packed = packModelFiles(new Map([['first.glb', first], ['second.glb', second]]), 'second.glb', IMPORT_LIMITS, TEXTURE_FORMATS);
+    const packed = pack(new Map([['first.glb', first], ['second.glb', second]]), 'second.glb', IMPORT_LIMITS);
     const files = unzipSync(packed);
 
     expect(Object.keys(files).sort()).toEqual(['files/first.glb', 'files/second.glb', 'manifest.json']);
@@ -106,9 +119,9 @@ describe('model-package original content and entry contract (inner#1690)', () =>
 
   it('produces identical complete ZIP bytes for every ordering of the same chosen files', () => {
     const files = [...sourceFiles()];
-    const expected = packModelFiles(new Map(files), ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS);
+    const expected = pack(new Map(files), ENTRY, IMPORT_LIMITS);
     fc.assert(fc.property(fc.shuffledSubarray(files, { minLength: files.length, maxLength: files.length }), (order) => {
-      expect(Array.from(packModelFiles(new Map(order), ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS))).toEqual(Array.from(expected));
+      expect(Array.from(pack(new Map(order), ENTRY, IMPORT_LIMITS))).toEqual(Array.from(expected));
     }));
     const unpacked = unzipSync(expected);
     expect(JSON.parse(strFromU8(unpacked['manifest.json']))).toEqual({ formatVersion: 1, entryPath: `files/${ENTRY}` });
@@ -116,7 +129,7 @@ describe('model-package original content and entry contract (inner#1690)', () =>
 
   it('preserves glTF, geometry, texture and an existing user manifest as separate original bytes', () => {
     const original = sourceFiles();
-    const packed = packModelFiles(original, ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS);
+    const packed = pack(original, ENTRY, IMPORT_LIMITS);
     const unpacked = unzipSync(packed);
 
     expect(Object.keys(unpacked).sort()).toEqual([...original.keys()].map((path) => `files/${path}`).concat('manifest.json').sort());
@@ -129,7 +142,7 @@ describe('model-package original content and entry contract (inner#1690)', () =>
   it('preserves an arbitrary selected resource together with a self-contained model', () => {
     fc.assert(fc.property(fc.uint8Array({ maxLength: 64 }), (resource) => {
       const original = glb();
-      const packed = packModelFiles(new Map([['model.glb', original], ['resource.bin', Uint8Array.from(resource)]]), 'model.glb', IMPORT_LIMITS, TEXTURE_FORMATS);
+      const packed = pack(new Map([['model.glb', original], ['resource.bin', Uint8Array.from(resource)]]), 'model.glb', IMPORT_LIMITS);
       const unpacked = unzipSync(packed);
       expect(Object.keys(unpacked).sort()).toEqual(['files/model.glb', 'files/resource.bin', 'manifest.json']);
       expect(Array.from(unpacked['files/model.glb'])).toEqual(Array.from(original));
@@ -214,11 +227,11 @@ describe('model-package configurable budget boundaries', () => {
 
   it('includes ZIP headers and the manifest in the generated artifact byte budget', () => {
     const original = sourceFiles();
-    const expected = packModelFiles(original, ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS);
+    const expected = pack(original, ENTRY, IMPORT_LIMITS);
     const limits = { ...IMPORT_LIMITS, maxArtifactBytes: expected.byteLength };
 
-    expect(Array.from(packModelFiles(original, ENTRY, limits, TEXTURE_FORMATS))).toEqual(Array.from(expected));
-    expect(() => packModelFiles(original, ENTRY, { ...limits, maxArtifactBytes: expected.byteLength - 1 }, TEXTURE_FORMATS)).toThrow(Error);
+    expect(Array.from(pack(original, ENTRY, limits))).toEqual(Array.from(expected));
+    expect(() => pack(original, ENTRY, { ...limits, maxArtifactBytes: expected.byteLength - 1 })).toThrow(Error);
   });
 
   it('applies the artifact byte budget to a GLB returned without ZIP wrapping', () => {
@@ -226,12 +239,12 @@ describe('model-package configurable budget boundaries', () => {
     const files = new Map([['model.glb', original]]);
     const limits = { ...IMPORT_LIMITS, maxArtifactBytes: original.byteLength };
 
-    expect(Array.from(packModelFiles(files, 'model.glb', limits, TEXTURE_FORMATS))).toEqual(Array.from(original));
-    expect(() => packModelFiles(files, 'model.glb', { ...limits, maxArtifactBytes: original.byteLength - 1 }, TEXTURE_FORMATS)).toThrow(Error);
+    expect(Array.from(pack(files, 'model.glb', limits))).toEqual(Array.from(original));
+    expect(() => pack(files, 'model.glb', { ...limits, maxArtifactBytes: original.byteLength - 1 })).toThrow(Error);
   });
 
   it('uses the registered artifact budget when a packaged asset is larger than the local selection budget', () => {
-    const bytes = packModelFiles(sourceFiles(), ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS);
+    const bytes = pack(sourceFiles(), ENTRY, IMPORT_LIMITS);
     const limits = { ...IMPORT_LIMITS, maxInputBytes: 1, maxArtifactBytes: bytes.byteLength };
     const model = readRegisteredModelPackage(bytes, limits, TEXTURE_FORMATS);
 
@@ -243,21 +256,21 @@ describe('model-package configurable budget boundaries', () => {
   it('checks source file and expanded-byte budgets before packaging', () => {
     const files = sourceFiles();
     const size = [...files.values()].reduce((sum, bytes) => sum + bytes.length, 0);
-    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxFiles: files.size - 1 }, TEXTURE_FORMATS)).toThrow(Error);
-    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size - 1 }, TEXTURE_FORMATS)).toThrow(Error);
+    expect(() => pack(files, ENTRY, { ...IMPORT_LIMITS, maxFiles: files.size - 1 })).toThrow(Error);
+    expect(() => pack(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size - 1 })).toThrow(Error);
     const manifest = textBytes(JSON.stringify({ formatVersion: 1, entryPath: `files/${ENTRY}` }));
-    expect(() => packModelFiles(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size + manifest.length - 1 }, TEXTURE_FORMATS)).toThrow(Error);
+    expect(() => pack(files, ENTRY, { ...IMPORT_LIMITS, maxExpandedBytes: size + manifest.length - 1 })).toThrow(Error);
   });
 
   it('rejects noncanonical original resource paths at the package boundary', () => {
     const files = sourceFiles();
     files.set('./notes.txt', textBytes('Original notes'));
-    expect(() => packModelFiles(files, ENTRY, IMPORT_LIMITS, TEXTURE_FORMATS)).toThrow('Invalid model resource path');
+    expect(() => pack(files, ENTRY, IMPORT_LIMITS)).toThrow('Invalid model resource path');
   });
 
   it('packages a valid empty glTF envelope without buffer or image declarations', () => {
     const original = textBytes('{"asset":{"version":"2.0"}}');
-    const bytes = packModelFiles(new Map([['scene.gltf', original]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
+    const bytes = pack(new Map([['scene.gltf', original]]), 'scene.gltf', IMPORT_LIMITS);
     expect(Array.from(readRegisteredModelPackage(bytes, IMPORT_LIMITS, TEXTURE_FORMATS).files.get('files/scene.gltf')!)).toEqual(Array.from(original));
   });
 
@@ -342,7 +355,7 @@ describe('model-package configurable budget boundaries', () => {
 
 describe('registered model-package zip64 directories (inner#1690)', () => {
   it.each([[10, 0xffff, 2], [16, 0xffffffff, 4]] as const)('refuses a registered package whose end record defers to zip64 at offset %i', (field, marker, width) => {
-    const bytes = packModelFiles(new Map([['scene.gltf', textBytes(JSON.stringify(gltfDocument('mesh.bin')))], ['mesh.bin', GEOMETRY.slice()]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
+    const bytes = pack(new Map([['scene.gltf', textBytes(JSON.stringify(gltfDocument('mesh.bin')))], ['mesh.bin', GEOMETRY.slice()]]), 'scene.gltf', IMPORT_LIMITS);
     const view = new DataView(bytes.buffer);
     let end = bytes.byteLength - 22;
     while (view.getUint32(end, true) !== 0x06054b50) end -= 1;

@@ -376,6 +376,41 @@ describe('model import dialog footer during checks and after refusals (inner#169
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import to scene' })));
   });
 
+  /**
+   * Start a check from Add accompanying files after a missing-files refusal, leaving its result to the test.
+   * @throws {never} Never directly.
+   */
+  async function supplementCheck(): Promise<PromiseWithResolvers<PreparedModel>> {
+    const failing = idleImport();
+    const result = Promise.withResolvers<PreparedModel>();
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('missing', 'Missing model resources: mesh.bin', { detail: '', info: { entries: [], paths: ['a.gltf'], missing: ['mesh.bin'] } }));
+    failing.prepare.mockReturnValueOnce(result.promise);
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.gltf', file: new File(['{}'], 'a.gltf') }]); });
+    const add = screen.getByRole('button', { name: 'Add accompanying files' });
+    add.focus();
+    fireEvent.click(add);
+    await act(async () => { fireEvent.change(screen.getByTestId('model-import-dialog').querySelector('input[type="file"]')!, { target: { files: [new File(['b'], 'mesh.bin')] } }); });
+    return result;
+  }
+
+  it('hands focus to Choose files when a check started from Add accompanying files ends in another refusal', async () => {
+    const result = await supplementCheck();
+    await act(async () => { result.reject(new ModelImportError('budget', 'Model is too large', { detail: '', budget: { limit: 'textureBytes', allowed: 1, actual: 2 } })); await result.promise.catch(() => undefined); });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose files' })));
+  });
+
+  it('hands focus left on the dialog itself to Import to scene when the check ends ready', async () => {
+    const result = await supplementCheck();
+    // A browser's focus scope moves focus from an unmounted control to the dialog before React effects run.
+    act(() => { screen.getByTestId('model-import-dialog').focus(); });
+    await act(async () => {
+      result.resolve({ file: new File(['model'], 'a.gltf'), entry: 'a.gltf', entries: ['a.gltf'], paths: ['a.gltf', 'mesh.bin'], bounds: { center: [0, 0, 0], min: [0, 0, 0] }, dispose: vi.fn() });
+      await result.promise;
+    });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Import to scene' })));
+  });
+
   it('keeps the main-file choice mounted while the chosen file is checked', async () => {
     const failing = idleImport();
     const files = [{ path: 'a.glb', file: new File(['a'], 'a.glb') }, { path: 'b.glb', file: new File(['b'], 'b.glb') }];

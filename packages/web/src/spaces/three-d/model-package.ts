@@ -375,15 +375,13 @@ export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImpor
 
 /**
  * Preserve selected source bytes in a deterministic model asset.
- * @param files - Original resources under their relative paths.
- * @param entry - The user's chosen model entry.
+ * @param model - The model package inspectModelFiles checked from the selected resources and entry.
  * @param limits - Configured output budgets.
- * @param support - The browser's WebP and AVIF support.
  * @returns An original self-contained GLB or the versioned ZIP bytes.
- * @throws {Error} When dependencies or output budgets are invalid.
+ * @throws {ModelImportError} When an output budget is exceeded.
  */
-export function packModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits, support: TextureFormatSupport): Uint8Array<ArrayBuffer> {
-  const model = inspectModelFiles(files, entry, limits, support);
+export function packModelFiles(model: ModelPackage, limits: SceneImportLimits): Uint8Array<ArrayBuffer> {
+  const { files, entry } = model;
   if (files.size > limits.maxFiles) {
     throw new ModelImportError('budget', 'Model exceeds its configured file count', { detail: '', budget: { limit: 'files', allowed: limits.maxFiles, actual: files.size } });
   }
