@@ -613,13 +613,11 @@ models:
               16:9: landscape_16_9
               9:16: portrait_16_9
             supported:
-              - auto
               - 1:1
               - 4:3
               - 3:4
               - 16:9
               - 9:16
-            absent_value: auto
           images:
             field: image_urls
           quality:
