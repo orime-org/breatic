@@ -42,6 +42,8 @@ executions:
 encoding:
   chunk_share: 0.5
   max_parallel_chunks: 8
+  # A failed chunk attempt is retried this many times before the presentation fails.
+  chunk_retries: 3
   encoder:
     container_class: "MiniToolContainerStd4"
     start_seconds: 3
@@ -75,6 +77,8 @@ presentation:
     iso_box_count: 100000
     matroska_element_count: 1000000
     matroska_max_blocks: 250000
+    # Automatic repairs after a transient ledger failure of the selected presentation.
+    max_auto_repairs: 3
   # An encoded carrier: short side at most max_short_side, labelled SDR BT.709.
   carrier:
     container_class: "MiniToolContainerStd4"

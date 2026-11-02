@@ -59,10 +59,12 @@ const encoderDefaults = {
   decode_convert_pixels_per_second: { sdr_8bit: 1_950_000_000, sdr_10bit: 705_000_000, hdr_8bit: 152_000_000, hdr_10bit: 103_000_000 },
 };
 const pixelRate = z.number().positive().finite();
-const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, encoder: encoderDefaults };
+const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults };
 const encodingSchema = z.strictObject({
   chunk_share: z.number().positive().max(1).default(encodingDefaults.chunk_share),
   max_parallel_chunks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.max_parallel_chunks),
+  // Retries after a chunk attempt fails; a chunk runs at most chunk_retries + 1 attempts (design §7.1.1).
+  chunk_retries: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.chunk_retries),
   encoder: z.strictObject({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
@@ -103,6 +105,7 @@ const sourceLedgerDefaults = {
   iso_box_count: 100_000,
   matroska_element_count: 1_000_000,
   matroska_max_blocks: 250_000,
+  max_auto_repairs: 3,
 };
 const sourceLedgerConfigSchema = z.strictObject({
   max_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_bytes),
@@ -111,6 +114,8 @@ const sourceLedgerConfigSchema = z.strictObject({
   iso_box_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.iso_box_count),
   matroska_element_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_element_count),
   matroska_max_blocks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_max_blocks),
+  // Automatic ledger repairs after a transient ledger failure of a selected presentation (design §7.1).
+  max_auto_repairs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_auto_repairs),
 });
 
 /**
