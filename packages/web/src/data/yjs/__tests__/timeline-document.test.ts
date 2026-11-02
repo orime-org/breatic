@@ -1028,3 +1028,21 @@ describe('A no-op edit is compared record by record, whatever the key order (inn
     expect(storedSources(doc)).toEqual([SOURCE.id, SHORT_SOURCE.id].sort());
   });
 });
+
+describe('applyTimelineEdit refuses structurally invalid command values instead of throwing (inner#1708 P3)', () => {
+  const X = cid(100);
+
+  it.each([
+    ['a start past the largest safe integer', move(X, Number.MAX_SAFE_INTEGER + 1, OFF)],
+    ['a fractional start', move(X, 0.5, OFF)],
+    ['a negative start', move(X, -1, OFF)],
+    ['a zero duration', setRange(X, 0, 0, 0, OFF)],
+  ] as const)('returns invalid_range and writes nothing for %s', (_name, command) => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)]));
+    const before = Y.encodeStateAsUpdate(doc);
+    let result: ReturnType<typeof applyTimelineEdit> | undefined;
+    expect(() => { result = applyTimelineEdit(doc, command, ORIGIN); }).not.toThrow();
+    expect(result).toEqual({ ok: false, reason: 'invalid_range' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+});

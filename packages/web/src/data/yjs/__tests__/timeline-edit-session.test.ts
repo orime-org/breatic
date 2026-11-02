@@ -944,3 +944,18 @@ describe('Timeline edit session ignores a no-op on a clip that is not the last k
     expect(session.getSnapshot().canUndo).toBe(false);
   });
 });
+
+describe('Timeline edit session refuses a nudge past the largest safe frame (inner#1708 P3)', () => {
+  it('returns invalid_range instead of throwing and adds no undo step', () => {
+    const near = Number.MAX_SAFE_INTEGER - 10;
+    const doc = keep(seededDoc(timeline([clip(X, 'v2', 0, 10)])));
+    const session = sessionOf(doc);
+    expect(session.edit(move(X, near)).ok).toBe(true);
+    let result: ReturnType<TimelineEditSession['edit']> | undefined;
+    expect(() => { result = session.edit(move(X, near + 24)); }).not.toThrow();
+    expect(result).toEqual({ ok: false, reason: 'invalid_range' });
+    expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(near);
+    session.undo();
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+});

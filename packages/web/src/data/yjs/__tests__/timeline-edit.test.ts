@@ -19,7 +19,7 @@ import {
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
 
 const REASONS = [
-  'target_missing', 'track_missing', 'invalid_range', 'overlap', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable',
+  'target_missing', 'track_missing', 'invalid_range', 'overlap', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source',
 ];
 
 /**
@@ -839,5 +839,77 @@ describe('planTimelineEdit leaves sources to the writer (inner#1708 Q1)', () => 
     ]) expect(accepted(plan(current, command)).next.sources, command.operation).toEqual(current.sources);
     expect(accepted(plan(current, addVideo(clip(cid(43), V2, 400, 10, { sourceId: fresh.id }), OFF, undefined, fresh))).next.sources)
       .toEqual({ ...current.sources, [fresh.id]: fresh });
+  });
+});
+
+describe('planTimelineEdit around a clip whose source is already missing (inner#1708 P1)', () => {
+  const MISSING = '10000000-0000-4000-8000-0000000000ff';
+  const X = cid(61);
+  const M = cid(62);
+  const W = cid(63);
+  /** Main A[0,10), X[10,20) without its source, C[20,30). */
+  const packed = timeline([clip(A, MAIN, 0, 10), clip(X, MAIN, 10, 10, { sourceId: MISSING }), clip(C, MAIN, 20, 10)]);
+
+  /**
+   * Assert X moved to `startFrame` and kept every other field.
+   * @param result - The accepted plan.
+   * @param before - X before the edit.
+   * @param startFrame - Its expected start.
+   * @throws {Error} When X changed otherwise.
+   */
+  function expectOnlyMoved(result: Accepted, before: TimelineVideoClip | undefined, startFrame: number): void {
+    expect(result.next.clips[X]).toEqual({ ...before, startFrame });
+    expect(result.next.sources[MISSING]).toBe(undefined);
+  }
+
+  it.each([
+    ['deleting the clip before it', remove(A, MAGNET_ONLY), 0],
+    ['trimming the clip before it shorter', setRange(A, 0, 0, 5, MAGNET_ONLY), 5],
+    ['duplicating the clip before it', duplicate(A, cid(64), MAGNET_ONLY), 20],
+    ['moving the clip after it in front of it', move(C, 10, MAGNET_ONLY), 20],
+    ['adding a clip at frame 0', addVideo(clip(cid(65), MAIN, 0, 10), MAGNET_ONLY), 20],
+  ] as const)('repacks it on the magnetic main track when %s', (_name, command, startFrame) => {
+    expectOnlyMoved(accepted(plan(packed, command)), packed.clips[X], startFrame);
+  });
+
+  it('shifts it with its main clip under linkage', () => {
+    const linked = timeline([clip(A, MAIN, 0, 48), clip(M, MAIN, 48, 48), clip(X, V2, 60, 10, { sourceId: MISSING })]);
+    const result = accepted(plan(linked, remove(A, ON)));
+    expect(result.next.clips[X]).toEqual({ ...linked.clips[X], startFrame: 12 });
+  });
+
+  it.each([
+    ['move', move(X, 40, OFF)],
+    ['set_range', setRange(X, 10, 0, 5, OFF)],
+    ['split', split(X, 15, cid(66), OFF)],
+    ['duplicate', duplicate(X, cid(66), OFF)],
+    ['a track change', move(X, 10, OFF, { trackId: V2 })],
+  ] as const)('refuses %s of the clip itself with missing_source', (_name, command) => {
+    expect(plan(packed, command)).toEqual({ ok: false, reason: 'missing_source' });
+  });
+
+  it('deletes the clip itself', () => {
+    expect(accepted(plan(packed, remove(X, MAGNET_ONLY))).next.clips[X]).toBe(undefined);
+  });
+
+  describe('when an overwrite reaches it on a sub track', () => {
+    /** X[0,100) on V2 without its source; W[200, 200 + length) on V2. */
+    const covered = (length: number): TimelineDocumentV1 => timeline([clip(X, V2, 0, 100, { sourceId: MISSING }), clip(W, V2, 200, length)]);
+
+    it('removes it when covered whole', () => {
+      expect(accepted(plan(covered(120), move(W, 0, OFF))).next.clips[X]).toBe(undefined);
+    });
+
+    it('trims only its tail', () => {
+      expect(accepted(plan(covered(20), move(W, 90, OFF))).next.clips[X]).toEqual({ ...covered(20).clips[X], durationFrames: 90 });
+    });
+
+    it('refuses to trim its head, which needs its source', () => {
+      expect(plan(covered(20), move(W, 0, OFF))).toEqual({ ok: false, reason: 'missing_source' });
+    });
+
+    it('refuses to split it, which needs its source', () => {
+      expect(plan(covered(20), move(W, 40, OFF))).toEqual({ ok: false, reason: 'missing_source' });
+    });
   });
 });
