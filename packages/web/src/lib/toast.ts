@@ -9,52 +9,45 @@ type ToastId = ReturnType<typeof sonnerToast.error>;
 
 /** Set once the page must reload; see {@link muteToasts}. */
 let muted = false;
-/** Repeat generation per content key; a new generation starts after the previous toast began closing. */
+/** Repeat generation per toast key; it advances once the toast on screen for that key starts closing. */
 const generations = new Map<string, number>();
-/** Content keys whose current toast has started its exit. */
-const closing = new Set<string>();
 
 /**
- * Derives the sonner options for a typed toast, adding a stable de-dup `id` from
- * `type + message` unless the caller already set one. sonner de-duplicates by
- * id, so identical repeats REFRESH the one toast (resetting its timer) instead
- * of stacking a pile of collapsed bars — "new refreshes old" (user 2026-07-18).
+ * Derives the sonner options for a typed toast, keyed by the caller's `id` or,
+ * for a string message, by `type + message`. sonner de-duplicates by id, so
+ * identical repeats REFRESH the one toast (resetting its timer) instead of
+ * stacking a pile of collapsed bars — "new refreshes old" (user 2026-07-18).
  * Two DIFFERENT messages (or the same text at a different severity) get
  * different ids and still stack, so distinct notices are never swallowed. A
- * non-string message (a ReactNode) has no stable content key, so it gets no
- * auto id (pass an explicit `options.id` if such a toast must de-dup).
+ * non-string message (a ReactNode) without an id has no stable key and is
+ * passed through unchanged.
  * @param type - The semantic toast type — drives both the color and the id prefix.
  * @param message - The toast content.
- * @param options - Caller options; a caller-provided `id` wins.
- * @returns The options to pass to sonner, with the derived id (or unchanged).
+ * @param options - Caller options; a caller-provided `id` is the key.
+ * @returns The options to pass to sonner.
  */
 function withDedupId(
   type: string,
   message: ToastMessage,
   options?: ToastOptions,
 ): ToastOptions {
-  if (options?.id !== undefined) return options;
-  if (typeof message !== 'string') return options;
-  const key = `${type}:${message}`;
+  const key = options?.id !== undefined ? String(options.id) : typeof message === 'string' ? `${type}:${message}` : undefined;
+  if (key === undefined) return options;
   // sonner keeps a timed-out or dismissed toast mounted for its exit animation and
   // folds a same-id update into it, so a repeat fired in that window would vanish
-  // with it. Once the current toast starts closing, the next repeat takes a new id.
-  let generation = generations.get(key) ?? 0;
-  if (closing.delete(key)) generations.set(key, ++generation);
+  // with it. Once the toast starts closing, the next repeat takes a new id.
+  const generation = generations.get(key) ?? 0;
   const id = generation === 0 ? key : `${key}#${generation}`;
   /**
-   * Record that the toast now on screen for this content has started closing.
-   * @param closed - The toast sonner is closing.
-   * @param closed.id - The id sonner gave that toast.
+   * Start a new generation for this key once its toast begins closing.
+   * @throws {never} Never.
    */
-  const markClosing = (closed: { id: string | number }): void => {
-    if (closed.id === id) closing.add(key);
-  };
+  const closed = (): void => { generations.set(key, generation + 1); };
   return {
     ...options,
     id,
-    onAutoClose: (closed) => { markClosing(closed); options?.onAutoClose?.(closed); },
-    onDismiss: (closed) => { markClosing(closed); options?.onDismiss?.(closed); },
+    onAutoClose: (toastClosed) => { closed(); options?.onAutoClose?.(toastClosed); },
+    onDismiss: (toastClosed) => { closed(); options?.onDismiss?.(toastClosed); },
   };
 }
 

@@ -118,6 +118,27 @@ describe('muteToasts — nothing else is worth reading once the page must reload
       expect(lastOptions().id).not.toBe(first.id);
     });
 
+    it('keeps refreshing the new toast when the repeat after a close repeats again', () => {
+      toast.success('closed then twice');
+      const first = lastOptions();
+      first.onAutoClose?.({ id: first.id ?? '' });
+      toast.success('closed then twice');
+      const second = lastOptions().id;
+      toast.success('closed then twice');
+      expect(second).not.toBe(first.id);
+      expect(lastOptions().id).toBe(second);
+    });
+
+    it('shows a caller-keyed toast again after the previous one closed', () => {
+      const warned = (): { id?: string; onAutoClose?: (t: { id: string }) => void } => sonnerMock.warning.mock.calls.at(-1)?.[1] ?? {};
+      toast.warning('locked', { id: 'probe-gate' });
+      const first = warned();
+      expect(first.id).toBe('probe-gate');
+      first.onAutoClose?.({ id: first.id ?? '' });
+      toast.warning('locked', { id: 'probe-gate' });
+      expect(warned().id).not.toBe('probe-gate');
+    });
+
     it('keeps refreshing the same toast while it is still showing', () => {
       toast.success('still showing');
       const first = lastOptions().id;
