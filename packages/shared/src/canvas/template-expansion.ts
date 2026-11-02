@@ -36,7 +36,7 @@ export interface TemplateGraphNode {
   type: ProposalNodeType;
   /** Set on a non-anchor template node: which template and key it stands for. */
   tag?: { template: string; key: TemplateNodeKey };
-  /** Set on a node the agent sent for one of a template's inputs. */
+  /** Set on a node given for one of a template's inputs: tagged by the agent, or placed by the template on the canvas. */
   inputTag?: { template: string; input: string };
   /** Whether the node keeps the template's mode and model; the caller decides. */
   keeps: boolean;
