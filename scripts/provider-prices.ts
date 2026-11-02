@@ -28,6 +28,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
@@ -103,18 +104,27 @@ function writeJson(path: string, content: unknown): void {
   writeFileSync(path, `${JSON.stringify(content, null, 2)}\n`);
 }
 
+/** How often a rate-limited request is asked again before the run gives up. */
+const RATE_LIMIT_RETRIES = 6;
+
 /**
- * One upstream answer as JSON.
+ * One upstream answer as JSON; a 429 is asked again after the upstream's Retry-After, or a doubling wait.
  * @param url - The address.
  * @param init - The request.
  * @returns The answer.
  * @throws {Error} When the upstream does not answer 2xx.
  */
 async function json(url: string, init: RequestInit = {}): Promise<unknown> {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${init.method ?? "GET"} ${url} answered ${res.status}: ${text.slice(0, 300)}`);
-  return JSON.parse(text) as unknown;
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });
+    const text = await res.text();
+    if (res.status === 429 && attempt < RATE_LIMIT_RETRIES) {
+      await sleep((Number(res.headers.get("retry-after")) || 2 ** attempt * 2) * 1000);
+      continue;
+    }
+    if (!res.ok) throw new Error(`${init.method ?? "GET"} ${url} answered ${res.status}: ${text.slice(0, 300)}`);
+    return JSON.parse(text) as unknown;
+  }
 }
 
 /**
