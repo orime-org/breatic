@@ -555,7 +555,7 @@ describe("poll — answers that are not the task's ending", () => {
     return stored(expectState(await r.send(stored(planned.ticket), live()), "running").ticket);
   }
 
-  it.each([500, 502, 503, 429])("answers running when the question got a %i", async (status) => {
+  it.each([408, 500, 502, 503, 429])("answers running when the question got a %i", async (status) => {
     const r = runner();
     const ticket = await sentThen(r, () => ({ status, body: {} }));
     expectState(await r.poll(ticket, live()), "running");
