@@ -8,15 +8,18 @@
 
 import { z } from 'zod';
 import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
+import type { MiniToolPlanTarget } from '@shared/upload/mini-tool-plan-types.js';
 
 const budget = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+/** The libx264 presets a presentation encode may use. */
+export const x264PresetSchema = z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']) satisfies z.ZodType<MiniToolPlanTarget['preset']>;
 /** Limits are validated at the edge and frozen for the original accepted job; the ledger has byte and parser budgets, never a frame count ceiling. */
 export const videoPresentationProcessLimitsSchema: z.ZodType<VideoPresentationProcessLimits> = z.strictObject({
   sourceLedger: z.strictObject({
     maxBytes: budget, probeStdoutBytes: budget, metadataBytes: budget, isoBoxCount: budget, matroskaElementCount: budget, matroskaMaxBlocks: budget,
   }).optional(),
   maxSourceBytes: z.number().int().positive(), maxPackedBytes: z.number().int().positive(),
-  crf: z.number().int().min(0).max(51), preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']),
+  crf: z.number().int().min(0).max(51), preset: x264PresetSchema,
   probeStdoutBytes: z.number().int().positive(), analysisStdoutBytes: z.number().int().positive(), stderrTailBytes: z.number().int().positive(),
 });
 

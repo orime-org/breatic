@@ -7,9 +7,13 @@ import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { CONTAINER_FAILURES } from "@shared/mini-tools/types.js";
 import { ingestMeasurements } from "@shared/upload/ingest-client.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
-import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+import { x264PresetSchema } from "@shared/upload/video-presentation-policy.js";
+import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
+import type { MiniToolPlanEntry, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
-export type { MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop } from "@shared/upload/mini-tool-plan-types.js";
+export type {
+  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget,
+} from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
 const storageKey = z.string().min(1).max(500);
@@ -20,6 +24,36 @@ const profile = miniToolAnalysisInputSchema.options[0].shape.profile;
 const pixelRect = z.strictObject({ x: index, y: index, width: z.number().int().positive(), height: z.number().int().positive() });
 const frameCrop = z.strictObject({ sourceWidth: z.number().int().positive(), sourceHeight: z.number().int().positive(), rect: pixelRect })
   .refine((crop) => crop.rect.x + crop.rect.width <= crop.sourceWidth && crop.rect.y + crop.rect.height <= crop.sourceHeight);
+const ordinals = z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start);
+const ZERO = { numerator: "0", denominator: "1" };
+const time = exactTime.refine((value) => compare(value, ZERO) >= 0n, "Expected a non-negative time");
+const positiveTime = exactTime.refine((value) => compare(value, ZERO) > 0n, "Expected a positive time");
+const interval = z.strictObject({ start: time, end: time }).refine((value) => compare(value.end, value.start) > 0n);
+const entry = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime })
+    .refine((span) => compare(span.decodeStart, span.clipStart) <= 0n && compare(span.displayEnd, span.displayStart) > 0n),
+  z.strictObject({ kind: z.literal("empty"), fill: z.enum(["black", "transparent"]), window: interval }),
+]);
+
+/**
+ * The presentation interval an entry covers.
+ * @param value - A validated entry.
+ * @returns Its start and end.
+ * @throws {never} Never.
+ */
+function entryInterval(value: MiniToolPlanEntry): { start: { numerator: string; denominator: string }; end: { numerator: string; denominator: string } } {
+  return value.kind === "source" ? { start: value.displayStart, end: value.displayEnd } : value.window;
+}
+
+// Entries are in presentation order, end to end, and two derived-empty frames never sit side by side (§7.17).
+const entries = z.array(entry).min(1).refine((list) => list.every((value, at) => at === 0 ||
+  (compare(entryInterval(list[at - 1]!).end, entryInterval(value).start) === 0n && !(value.kind === "empty" && list[at - 1]!.kind === "empty"))));
+const evenSide = z.number().int().positive().refine((value) => value % 2 === 0);
+const target = z.strictObject({
+  width: evenSide, height: evenSide, displayRect: pixelRect.nullable(), colorMatrix: z.string().min(1),
+  toneMap: z.enum(["none", "sdr-bt709"]), alpha: z.enum(["none", "packed"]), crf: z.number().int().min(0).max(51), preset: x264PresetSchema,
+}).refine((value) => value.displayRect === null || (value.displayRect.x + value.displayRect.width <= value.width && value.displayRect.y + value.displayRect.height <= value.height));
+const windowRecipe = { inputId, window: ordinals, timescale: z.number().int().positive(), entries, target };
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
 export const miniToolPlanLimitsSchema = z.strictObject({
@@ -36,12 +70,14 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
   z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile, orientation: z.literal("display").optional() }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),
-  // Presentation carrier jobs (§7.17): only the outer shape; the clip entries are S6d's.
-  z.strictObject({ kind: z.literal("copy_carrier"), inputId }),
-  z.strictObject({ kind: z.literal("chunk_encode"), inputId, window: z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start) }),
-  z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(storageKey).min(1) }),
+  // Presentation carrier jobs (§7.17, §5.4): the worker writes the window's entries and the target from the plan.
+  z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1) }),
+  z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe }),
+  // Each chunk is a bound job input carrying its plan duration; the recipe's own input is the source the audio comes from.
+  z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(z.strictObject({ inputId, duration: positiveTime })).min(1),
+    audio: interval.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
-  z.strictObject({ kind: z.literal("prepare_model_input"), inputId, window: z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start) }),
+  z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: interval.nullable() }),
 ]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */
@@ -68,7 +104,8 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
   const keys = new Set(request.inputs.map((input) => input.storageKey));
   const indices = new Set<number>();
   for (const output of request.outputs) {
-    if (!ids.has(output.recipe.inputId)) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
+    const named = output.recipe.kind === "stitch" ? [output.recipe.inputId, ...output.recipe.chunks.map((chunk) => chunk.inputId)] : [output.recipe.inputId];
+    if (named.some((id) => !ids.has(id))) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
     if (indices.has(output.outputIndex)) ctx.addIssue({ code: "custom", message: "Duplicate output index" });
     indices.add(output.outputIndex);
     for (const key of [output.storageKey, ...(output.coverKey === undefined ? [] : [output.coverKey])]) {
