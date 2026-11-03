@@ -95,11 +95,13 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const maxOutputs = config.executions[request.tool].max_outputs;
   if (request.outputs.length > maxOutputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const { binding, sourceKey } = await resolveSource(request.draft.source);
-  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: "read", storageKey: sourceKey, sourceFingerprint: binding.contentHash });
-  const receipt = snapshot.sourceLedger?.state === "ready" ? snapshot.sourceLedger.receipt : null;
+  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+    action: "read", storageKey: sourceKey, sourceFingerprint: binding.contentHash, targetPolicyVersion: config.presentation.policy_version,
+  });
+  // ponytail: E1 adapts the S6c snapshot shape only; the compact-table admission of the selected version is round E3.
+  const receipt = snapshot.ledger?.state === "ready" ? snapshot.ledger.receipt : null;
   const storage = await getStorageAdapter();
-  if ((snapshot.presentation?.state !== "native" && snapshot.presentation?.state !== "alpha_ready")
-    || snapshot.presentation.sourceFingerprint !== binding.contentHash || receipt?.schemaVersion !== 2
+  if (snapshot.presentation === null || snapshot.presentation.sourceFingerprint !== binding.contentHash || receipt?.schemaVersion !== 2
     || receipt.sourceFingerprint !== binding.contentHash || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey))
     || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey))
     || canonicalMiniToolValue(receipt) !== canonicalMiniToolValue(request.source_ledger)) throw new ValidationError(t("server.mini_tool.foreignSource"));
@@ -114,7 +116,8 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
     throw new ValidationError(t("server.mini_tool.foreignSource"));
   }
   if (outputs.length > maxOutputs || canonicalMiniToolValue(outputs) !== canonicalMiniToolValue(request.outputs)) throw new ValidationError(t("server.mini_tool.foreignSource"));
-  return { ...common, tool: request.tool, binding, sourceKey, sourceLedger: receipt, model: request.tool, ...containerEstimate(request.tool, config) };
+  // The frozen receipt is the request's own; the check above proved it canonically equal to the selected ledger's.
+  return { ...common, tool: request.tool, binding, sourceKey, sourceLedger: request.source_ledger, model: request.tool, ...containerEstimate(request.tool, config) };
 }
 
 /**
