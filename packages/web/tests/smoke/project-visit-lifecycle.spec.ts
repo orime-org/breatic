@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { expect } from 'playwright/test';
+import type { RecentFeedItem } from '@web/data/api/studios';
+import type { ProjectVisitOpened } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR } from '../helpers/space';
 import { selectInBody } from '../helpers/editor-keys';
 import { liveModuleUrl } from '../helpers/live-module';
-import { inspectVisitDb, nextVisit, readVisit, reconnectProject, saveVisitEvidence, saveVisitScreenshot, watchVisits, type VisitReceipt } from '../helpers/project-visits';
+import { inspectVisitDb, nextVisit, readVisit, reconnectProject, saveVisitEvidence, saveVisitScreenshot, watchVisits, type RecordedVisitLookup, type VisitReceipt } from '../helpers/project-visits';
 
 test('real Project entry, keyboard SPA return and browser Back create distinct visits', async ({ page }) => {
   const projectId = smokeProjectId();
@@ -65,7 +67,7 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
     const userUrl = await liveModuleUrl(page, 'stores/current-user.ts');
     const refreshedAccount = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/auth/me' && response.request().method() === 'GET');
     await page.evaluate(async (url) => {
-      const current = await import(/* @vite-ignore */ url) as { refreshCurrentUser: () => Promise<void>; useCurrentUserStore: { getState: () => { user: { id: string } | null } } };
+      const current = await import(/* @vite-ignore */ url) as typeof import('@web/stores/current-user');
       if (!current.useCurrentUserStore.getState().user) throw new Error('The live auth singleton is empty');
       await current.refreshCurrentUser();
     }, userUrl);
@@ -78,7 +80,7 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
     await restoreRefresh; await expect(page.getByTestId('archived-banner')).toHaveCount(0);
     await reconnectProject(page, projectId);
     await expect(editor).toHaveAttribute('contenteditable', 'true'); await expect(editor).toContainText(marker);
-    const queried = await dataOf<VisitReceipt & { status: 'recorded' }>(await page.request.get(`/api/v1/projects/${projectId}/opened/${original.visit_id}`), 'original receipt after passive activity');
+    const queried = await dataOf<RecordedVisitLookup>(await page.request.get(`/api/v1/projects/${projectId}/opened/${original.visit_id}`), 'original receipt after passive activity');
     expect(queried).toEqual({ status: 'recorded', ...original });
     expect(traffic.posts).toHaveLength(1);
     const persisted = await inspectVisitDb(original);
@@ -114,16 +116,17 @@ test('a committed opened response lost in transit is queried by its original ide
   try {
     const recoveredAnswer = page.waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname.startsWith(`/api/v1/projects/${projectId}/opened/`));
     await openSmokeProject(page);
-    const recovered = await dataOf<VisitReceipt & { status: 'recorded' }>(await recoveredAnswer, 'real original-result recovery');
+    const recovered = await dataOf<RecordedVisitLookup>(await recoveredAnswer, 'real original-result recovery');
     expect(committed).toBeDefined();
     expect(recovered).toMatchObject({ ...committed, status: 'recorded' });
     await expect(page.getByTestId('space-drawer-trigger')).toBeVisible();
     expect(traffic.posts).toHaveLength(1);
-    const before = await dataOf<Array<{ id: string; lastOpenedAt: string }>>(await page.request.get('/api/v1/studios/recent'), 'recent before original replay');
-    const replay = await dataOf<VisitReceipt>(await page.request.post(`/api/v1/projects/${projectId}/opened`, { data: { visit_id: committed!.visit_id } }), 'actual original identity replay');
+    const before = await dataOf<RecentFeedItem[]>(await page.request.get('/api/v1/studios/recent'), 'recent before original replay');
+    expect(before.some((item) => item.projectId === projectId)).toBe(true);
+    const replay = await dataOf<ProjectVisitOpened>(await page.request.post(`/api/v1/projects/${projectId}/opened`, { data: { visit_id: committed!.visit_id } }), 'actual original identity replay');
     expect(replay).toMatchObject(committed!);
     const after = await dataOf<typeof before>(await page.request.get('/api/v1/studios/recent'), 'recent after original replay');
-    expect(after.map(({ id, lastOpenedAt }) => ({ id, lastOpenedAt }))).toEqual(before.map(({ id, lastOpenedAt }) => ({ id, lastOpenedAt })));
+    expect(after.map(({ projectId, lastOpenedAt }) => ({ projectId, lastOpenedAt }))).toEqual(before.map(({ projectId, lastOpenedAt }) => ({ projectId, lastOpenedAt })));
     await page.getByTestId('top-bar-back').click();
     await expect(page.locator(`a[href$="-${projectId}"]`)).toHaveCount(1);
     const next = nextVisit(page, projectId);

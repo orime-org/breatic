@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { expect, type Page, type Request, type Response } from 'playwright/test';
-import type { HocuspocusProvider } from '@hocuspocus/provider';
-import type { Doc } from 'yjs';
+import type { AccountActivityKind, ProjectVisitLookup, ProjectVisitOpened, ProjectVisitReceipt, ProjectVisitRequest } from '@breatic/shared';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
@@ -11,13 +10,10 @@ import { test } from './slot';
 import { dataOf } from './api';
 import { liveModuleUrl, YJS_MANAGER } from './live-module';
 
-/** The minimum persisted receipt observed over the actual API. */
-export interface VisitReceipt {
-  account_id: string;
-  project_id: string;
-  visit_id: string;
-  occurred_at: string;
-}
+/** The agreed wire receipt; the browser must not invent a second response shape. */
+export type VisitReceipt = ProjectVisitReceipt;
+/** The recorded branch of the shared original-result response. */
+export type RecordedVisitLookup = Extract<ProjectVisitLookup, { status: 'recorded' }>;
 
 /** A browser's actual access submissions, independent of React internals. */
 export interface VisitTraffic { posts: Array<{ projectId: string; visitId: string; observedAt: string }>; stop: () => void }
@@ -29,7 +25,7 @@ export function watchVisits(page: Page): VisitTraffic {
   function observe(request: Request): void {
     const match = /\/api\/v1\/projects\/([^/]+)\/opened$/.exec(new URL(request.url()).pathname);
     if (request.method() !== 'POST' || match === null) return;
-    const body = request.postDataJSON() as { visit_id?: string };
+    const body = request.postDataJSON() as ProjectVisitRequest;
     posts.push({ projectId: match[1], visitId: body.visit_id ?? '', observedAt: new Date().toISOString() });
   }
   page.on('request', observe);
@@ -51,7 +47,7 @@ export async function saveVisitScreenshot(page: Page, name: string): Promise<voi
 }
 
 /** A minimal owned-project database snapshot, with no user profile or content. */
-export interface VisitDbSnapshot { events: Array<{ kind: string; visit_id: string | null; occurred_at: string }> }
+export interface VisitDbSnapshot { events: Array<{ kind: AccountActivityKind; visit_id: string | null; occurred_at: string }> }
 
 /** Read actual persisted events using the configured root bootstrap, without reading env files. @throws {Error} When ownership or DB inspection fails. */
 export async function inspectVisitDb(receipt: VisitReceipt): Promise<VisitDbSnapshot> {
@@ -77,7 +73,7 @@ export function nextVisit(page: Page, projectId: string): Promise<Response> {
 
 /** Read and validate a matching persisted receipt. @throws {Error} When the server refuses or mismatches it. */
 export async function readVisit(response: Pick<Response, 'ok' | 'status' | 'text' | 'json'>, projectId: string): Promise<VisitReceipt> {
-  const result = await dataOf<VisitReceipt & { ok: true }>(response, 'actual page entry');
+  const result = await dataOf<ProjectVisitOpened>(response, 'actual page entry');
   expect(result.ok).toBe(true);
   expect(result.project_id).toBe(projectId);
   expect(result.visit_id).toMatch(/^[0-9a-f-]{36}$/i);
@@ -89,12 +85,8 @@ export async function readVisit(response: Pick<Response, 'ok' | 'status' | 'text
 export async function reconnectProject(page: Page, projectId: string): Promise<void> {
   const urls = { manager: await liveModuleUrl(page, YJS_MANAGER), socket: await liveModuleUrl(page, 'data/yjs/collab-socket.tsx') };
   await Promise.all([page.waitForEvent('websocket'), page.evaluate(async ({ urls, projectId }) => {
-    const manager = await import(/* @vite-ignore */ urls.manager) as {
-      hasDoc: (name: string) => boolean; getDoc: (name: string) => Doc; docName: { projectMeta: (id: string) => string };
-    };
-    const socket = await import(/* @vite-ignore */ urls.socket) as {
-      acquireDocProvider: (name: string, doc: Doc) => HocuspocusProvider; releaseDocProvider: (name: string) => void;
-    };
+    const manager = await import(/* @vite-ignore */ urls.manager) as typeof import('@web/data/yjs/manager');
+    const socket = await import(/* @vite-ignore */ urls.socket) as typeof import('@web/data/yjs/collab-socket');
     const name = manager.docName.projectMeta(projectId);
     if (!manager.hasDoc(name)) throw new Error('The real Project meta document is absent');
     const provider = socket.acquireDocProvider(name, manager.getDoc(name));

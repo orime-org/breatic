@@ -5,7 +5,8 @@ import { expect, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 import { smokeProjectId, openSmokeProject } from '../helpers/project';
 import { dataOf } from '../helpers/api';
-import { inspectVisitDb, nextVisit, readVisit, saveVisitEvidence, watchVisits, type VisitReceipt } from '../helpers/project-visits';
+import type { ProjectVisitRequest } from '@breatic/shared';
+import { inspectVisitDb, nextVisit, readVisit, saveVisitEvidence, watchVisits, type RecordedVisitLookup } from '../helpers/project-visits';
 
 interface PageShow { persisted: boolean; path: string; absoluteAt: string; navigationType: string | null; documentId: string }
 interface CacheTelemetry { pageshows: PageShow[]; navigationType: string | null; notRestoredReasonsSupported: boolean; notRestoredReasons: unknown }
@@ -54,8 +55,8 @@ test('a real Chrome cross-document Back records whether bfcache restored and sta
     expect((await returnedAnswer).ok()).toBe(true);
     // Chrome can evict CDP response bodies while switching restored documents.
     // The actual request identity plus actual GET reads the same committed fact.
-    const returnedId = ((await returnedRequest).postDataJSON() as { visit_id: string }).visit_id;
-    const returned = await dataOf<VisitReceipt & { status: 'recorded' }>(await page.request.get(`/api/v1/projects/${projectId}/opened/${returnedId}`), 'real Chrome Back original receipt');
+    const returnedId = ((await returnedRequest).postDataJSON() as ProjectVisitRequest).visit_id;
+    const returned = await dataOf<RecordedVisitLookup>(await page.request.get(`/api/v1/projects/${projectId}/opened/${returnedId}`), 'real Chrome Back original receipt');
     expect(returned.status).toBe('recorded'); expect(returned.visit_id).toBe(returnedId);
     await expect(page.getByTestId('space-drawer-trigger')).toBeVisible();
     expect(returned.visit_id).not.toBe(first.visit_id);
@@ -69,9 +70,9 @@ test('a real Chrome cross-document Back records whether bfcache restored and sta
       expect(projectShows.length).toBeGreaterThan(1);
       expect(traffic.posts).toHaveLength(projectShows.length);
       expect(new Set(traffic.posts.map((post) => post.visitId)).size).toBe(projectShows.length);
-      const receipts: Array<VisitReceipt & { status: 'recorded' }> = [];
+      const receipts: RecordedVisitLookup[] = [];
       for (const post of traffic.posts) {
-        const receipt = await dataOf<VisitReceipt & { status: 'recorded' }>(await page.request.get(`/api/v1/projects/${projectId}/opened/${post.visitId}`), 'actual activation original receipt');
+        const receipt = await dataOf<RecordedVisitLookup>(await page.request.get(`/api/v1/projects/${projectId}/opened/${post.visitId}`), 'actual activation original receipt');
         expect(receipt).toMatchObject({ status: 'recorded', account_id: first.account_id, project_id: projectId, visit_id: post.visitId });
         receipts.push(receipt);
       }
