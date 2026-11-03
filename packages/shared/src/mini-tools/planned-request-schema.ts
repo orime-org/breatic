@@ -4,7 +4,6 @@
 import { z } from "zod";
 import { miniToolRequestSchema, type MiniToolRequest } from "@shared/mini-tools/request-schema.js";
 import { videoToolAnalysisRefSchema, videoToolDraftSchema } from "@shared/mini-tools/video-draft.js";
-import { videoSourceLedgerReceiptV2Schema } from "@shared/upload/video-source-ledger.js";
 
 const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const seconds = z.number().nonnegative();
@@ -15,7 +14,10 @@ export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("frame"), frameIndex: index, pts: seconds }),
   z.strictObject({ kind: z.literal("segment"), range }),
 ]);
-const common = { project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(), analysis_refs: z.array(videoToolAnalysisRefSchema) };
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+/** The tool input each request input was planned against (§7.11, §7.13); the single-input tools name theirs `source`. */
+export const miniToolPresentationRefSchema = z.strictObject({ source: z.strictObject({ toolInputId: hash, planSha256: hash }) });
+const common = { project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(), analysis_refs: z.array(videoToolAnalysisRefSchema), presentation_ref: miniToolPresentationRefSchema };
 const destination = { outputIndex: index, nodeId: z.uuid() };
 const removal = z.strictObject({
   ...common, tool: z.literal("video.remove-bg"), draft: videoToolDraftSchema("video.remove-bg"),
@@ -23,12 +25,10 @@ const removal = z.strictObject({
 });
 const frames = z.strictObject({
   ...common, tool: z.literal("video.extract-frames"), draft: videoToolDraftSchema("video.extract-frames"),
-  source_ledger: videoSourceLedgerReceiptV2Schema,
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[1] })),
 });
 const split = z.strictObject({
   ...common, tool: z.literal("video.split"), draft: videoToolDraftSchema("video.split"),
-  source_ledger: videoSourceLedgerReceiptV2Schema,
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[2] })),
 });
 /** Complete press-frozen drafts and ordered output mappings for planned execution. */
