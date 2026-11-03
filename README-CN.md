@@ -1,14 +1,31 @@
-# Breatic
+<h1 align="center">Breatic</h1>
 
-[English](README.md) | **简体中文**
+<p align="center"><strong>面向创意团队的实时协作 AI 工作空间。</strong></p>
+<p align="center">线上已开放 · 源码公开 · 桌面浏览器</p>
 
-**面向创意团队的实时协作 AI 工作空间。**
+<p align="center">
+  <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_cn">官网</a> ·
+  <a href="https://breatic.ai/login?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_cn">在线体验</a> ·
+  <a href="https://youtu.be/mc1XAqtJD_M">45秒英文演示</a> ·
+  <a href="docs/USAGE-CN.md">使用指南</a> ·
+  <a href="https://discord.gg/Yeu6A4aejN">Discord</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
+  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
+  <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
+</p>
+
+<p align="center" dir="ltr">
+  <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="README-TW.md">繁體中文</a> · <a href="README-JA.md">日本語</a> · <a href="README-KO.md">한국어</a> · <a href="README-ES.md">Español</a> · <a href="README-PT-BR.md">Português</a><br>
+  <a href="README-DE.md">Deutsch</a> · <a href="README-FR.md">Français</a> · <a href="README-AR.md">العربية</a> · <a href="README-RU.md">Русский</a> · <a href="README-UK.md">Українська</a> · <a href="README-TR.md">Türkçe</a> · <a href="README-TH.md">ภาษาไทย</a>
+</p>
+
+---
 
 将创作简报、场景与媒体组织在同一个项目里。在 Document Space 中写作，在 Canvas Space 中生成和调整素材，与 AI Agent 和团队共同推进创作，让每个环节都保留作品的上下文。
-
-**线上已开放 · 源码公开 · 桌面浏览器**
-
-[在线体验][hosted-app] · [观看45秒英文演示](https://youtu.be/mc1XAqtJD_M) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
 
 官方在线服务提供免费的 Starter 会员档。AI 生成积分单独购买，不包含在会员套餐内，具体见[会员与积分定价][hosted-pricing]。
 
@@ -59,6 +76,8 @@ Agent 可以先提出改写方案，团队查看后再决定是否替换共享�
 4. **一起评审和交付。** 与协作者比较结果，选定素材并下载，用于最终制作。
 
 时间范围是创作规划：Space 名称不会设置片段时长，也不会自动合成成片，可在 Timeline 中编排和预览视频，成片整理与导出由视频编辑器完成。[配图使用指南](docs/USAGE-CN.md#example-from-a-brief-to-a-visual) 展示从简报到视觉素材的实例。
+
+<a id="get-started"></a>
 
 ## 开始使用
 
