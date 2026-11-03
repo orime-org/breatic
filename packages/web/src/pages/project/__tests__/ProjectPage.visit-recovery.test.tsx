@@ -58,7 +58,7 @@ type Recovery = typeof RECOVERIES[number];
 const project: ProjectDetail = {
   id: PROJECT, name: 'Recovery Project', description: null, thumbnailUrl: null,
   createdAt: '', updatedAt: '', studioId: '00000000-0000-4000-8000-000000000021',
-  createdByUserId: ACCOUNT, myRole: 'owner', deletedAt: null, archivedAt: null, canRestore: false,
+  createdByUserId: ACCOUNT, myRole: 'owner', deletedAt: null, archivedAt: null, canRestore: false, canManageMeta: true, canLeave: false,
 };
 
 /** Preserve the actual receipt identity and full precision server instant. @throws {never} Never. */
@@ -102,7 +102,7 @@ async function restore(client: QueryClient, signal: Recovery): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks(); boundary.listeners.clear();
   useUIStore.setState({ chatPanelCollapsed: true });
-  useCurrentUserStore.setState({ user: { id: ACCOUNT, name: 'Account', email: 'account@example.test', personalStudio: { name: 'Account', slug: 'account' }, membershipTier: 'base' }, bootstrapped: true });
+  useCurrentUserStore.setState({ user: { id: ACCOUNT, name: 'Account', email: 'account@example.test', personalStudio: { name: 'Account', slug: 'account', avatarUrl: null }, membershipTier: 'base' }, bootstrapped: true });
   boundary.get.mockResolvedValue(project);
   boundary.post.mockImplementation(async (_projectId: string, visitId: string) => receipt(visitId));
   boundary.lookup.mockImplementation(async (_projectId: string, visitId: string): Promise<ProjectVisitLookup> => ({ status: 'recorded', ...receipt(visitId) }));
