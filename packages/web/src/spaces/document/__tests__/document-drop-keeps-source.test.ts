@@ -26,7 +26,7 @@ it('keeps a moved line where it was when its drop puts nothing', async () => {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'move me', 0), positionOf(editor, 'move me', 4))));
   view.focus();
   view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
-  (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+  (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
   const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
   for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
   const at = positionOf(editor, 'xxyy', 2);

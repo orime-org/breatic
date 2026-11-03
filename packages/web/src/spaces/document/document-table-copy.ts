@@ -205,6 +205,12 @@ export const documentTableCopyExtension = createExtension(({ editor }) => ({
     new Plugin({
       key: new PluginKey('documentTableCopy'),
       props: {
+        // A drag of the selection carries what its copy does (words in a cell
+        // without the table around them, a range leaving a table with the
+        // table): ProseMirror keeps this slice at dragstart (`view.dragging`),
+        // before the selection can move (Outline `TableCell.ts` clips the same).
+        transformCopied: (slice, view) =>
+          (slice.eq(view.state.selection.content()) ? tableClippedBlocks(view)?.slice : null) ?? slice,
         handleDOMEvents: {
           copy: (view, event) => {
             const clipped = tableClipped(editor as unknown as CopyEditor, view);

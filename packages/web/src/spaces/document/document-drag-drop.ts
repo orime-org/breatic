@@ -15,8 +15,8 @@
  *
  * A TEXT DRAG IS NOT A ROW. When the reader drags a selection,
  * `view.dragging` is ProseMirror's own and no row was picked up: the drop is
- * put as its paste at the drop point (`dropAsPaste`), and a drag the paste
- * would put nothing of is ProseMirror's own drop (A19).
+ * put as its paste at the drop point (`dropAsPaste`), and a drag its paste
+ * would put nothing of changes nothing (A19).
  */
 
 import { createExtension } from '@blocknote/core';

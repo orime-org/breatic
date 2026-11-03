@@ -11,7 +11,7 @@
  * block split it, a table in a cell splits that table.
  *
  * What is put is the drag's own content as ProseMirror took it at dragstart,
- * read as its paste reads the body's own copy, each block keeping the node it
+ * what its copy would carry, read as its paste reads the body's own copy, each block keeping the node it
  * came from, so the placement puts the body's own words back with their
  * marks: a move keeps its comments and row ids, a copy drops both
  * (`document-comment-paste.ts`, `landingSlice`, `landingAsDrop`). A line the
@@ -34,7 +34,6 @@ import { toast } from '@web/lib/toast';
 import { readBodyContent, type BlockReader } from '@web/spaces/document/document-paste-read';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
-import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 
 /** The editor a drop is put by. */
 type Editor = Parameters<typeof putContent>[0] & BlockReader;
@@ -63,13 +62,11 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const tr = view.state.tr;
   if (removes && node === undefined) tr.deleteSelection();
   else if (removes) node!.replace(tr);
-  // The drag's own content as ProseMirror took it at dragstart: the slice it
-  // hands over has already been through the paste transforms against the
-  // selection the drag began from, and the paste below runs them again
-  // against the drop point.
-  // A drag of the selection takes what its copy would (words in a cell
-  // without the table around them, a range leaving a table with the table).
-  const dragged = (node === undefined && !selection.empty ? tableClippedBlocks(view)?.slice : null) ?? view.dragging?.slice ?? slice;
+  // The drag's own content as ProseMirror took it at dragstart, through the
+  // copy transforms (`document-table-copy.ts`): the slice it hands over has
+  // also been through the paste transforms against the selection the drag
+  // began from, and the paste below runs them against the drop point.
+  const dragged = view.dragging?.slice ?? slice;
   const content = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
   const read = readBodyContent(editor, view.serializeForClipboard(content).dom.innerHTML, view.state.schema);
   if (!holdsContent(read.blocks)) return true;

@@ -488,7 +488,7 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
   function dragSelection(editor: Editor, at: number, keys = { started: true, copyKey: false, collapsed: false }): void {
     const view = editor.prosemirrorView;
     view.focus();
-    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: keys.started };
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: keys.started };
     if (keys.collapsed) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
     dropFormats(editor, at, { 'text/html': '<p>x</p>' }, 1, keys.copyKey);
   }
@@ -662,6 +662,28 @@ describe('a drag within the body into a table cell (design §5.4.7, A14)', () =>
     }
   });
 
+  it('copies lines dragged out of a cell with new row ids, the lines left in the cell keeping theirs', async () => {
+    const { editor } = await openReady([
+      tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'paragraph', content: 'aaaa' }, { type: 'paragraph', content: 'bb' }] }, 'zzzz'] }] }),
+      { type: 'paragraph', content: 'xyzw' },
+    ]);
+    const ids = (): string[] => {
+      const found: string[] = [];
+      editor.prosemirrorView.state.doc.descendants((node) => {
+        if (node.type.name === 'blockContainer') found.push(`${node.textContent}:${String(node.attrs['id'])}`);
+        return true;
+      });
+      return found;
+    };
+    const before = ids().filter((entry) => entry.startsWith('aaaa:') || entry.startsWith('bb:'));
+    dragWithin(editor, positionOf(editor, 'aaaa', 0), positionOf(editor, 'bb', 2), positionOf(editor, 'xyzw', 4), { started: false, copyKey: true, collapsed: false });
+    await settled();
+    const after = ids();
+    expect(after).toEqual(expect.arrayContaining(before));
+    const all = after.map((entry) => entry.slice(entry.lastIndexOf(':') + 1));
+    expect(new Set(all).size).toBe(all.length);
+  });
+
   it('fills cells from the drop with cells selected in another table, each row as wide as before', async () => {
     const { editor } = await openReady([
       tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
@@ -703,7 +725,7 @@ describe('a drag within the body into a block that takes only words (design §5.
     const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
     view.focus();
-    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
     dropFormats(editor, at, { 'text/html': '<p>x</p>' });
   }
 
@@ -754,7 +776,9 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     // A drag from this body starts with a dragstart in it, which BlockNote's
     // `UniqueID` reads to keep the row ids a move carries.
     view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
-    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    // ProseMirror's dragstart keeps the slice its copy would carry, the copy
+    // transforms applied (prosemirror-view `input.ts`, `serializeForClipboard`).
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
     if (collapsed) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
     dropFormats(editor, at, { 'text/html': '<p>x</p>' });
   }
@@ -976,7 +1000,7 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     const before = view.state.doc.toJSON();
     view.focus();
     view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
-    (view as unknown as { dragging: unknown }).dragging = { slice: view.state.selection.content(), move: true };
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
     dropFormats(editor, positionOf(editor, 'a2', 1), { 'text/html': '<p>x</p>' });
     await settled();
     expect(view.state.doc.toJSON()).toEqual(before);
@@ -1178,6 +1202,19 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     dragWithin(cell.editor, positionOf(cell.editor, 'aaaa', 1), positionOf(cell.editor, 'aaaa', 3), positionOf(cell.editor, 'zzzz', 2));
     await settled();
     expect(cellWords(cell.editor)).toEqual(['aa/bb', 'zzaazz']);
+  });
+
+  it('drops words dragged out of a cell as their copy pastes there when the selection has moved to the drop point, as Safari moves it while hovering', async () => {
+    const doc = [tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'paragraph', content: 'aaaa' }, { type: 'paragraph', content: 'bb' }] }, 'zzzz'] }] } as never), para('xyzw')];
+    const body = await openReady(doc as Parameters<typeof open>[0]);
+    dragWithin(body.editor, positionOf(body.editor, 'aaaa', 1), positionOf(body.editor, 'aaaa', 3), positionOf(body.editor, 'xyzw', 2), true);
+    await settled();
+    expect(lines(body.editor)).toEqual(['table', 'paragraph:xyaazw']);
+    unmountAll();
+    const cell = await openReady(doc as Parameters<typeof open>[0]);
+    dragWithin(cell.editor, positionOf(cell.editor, 'aaaa', 1), positionOf(cell.editor, 'aaaa', 3), positionOf(cell.editor, 'zzzz', 2), true);
+    await settled();
+    expect(cellWords(cell.editor)).toEqual(['aaaa/bb', 'zzaazz']);
   });
 
   it('pastes a whole line copied in a cell as that line, no empty line after it', async () => {

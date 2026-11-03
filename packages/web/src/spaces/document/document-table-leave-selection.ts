@@ -15,8 +15,8 @@
  * the body-edge selection's end in text), which makes its range every word of
  * the table; what has to act on the whole table, the blocks without words at
  * its edges included, reads `heldRange`: the decoration
- * drawing every cell selected, copying (`document-table-copy.ts`) and a
- * drag's content (`transformCopied`).
+ * drawing every cell selected, and copying and a drag's content
+ * (`document-table-copy.ts`).
  *
  * Deleting is the selection's own replace, `replaceHeld`, shared by
  * `TableSpanSelection` and the body-edge selection: each table it takes
@@ -362,13 +362,6 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
           if (tables.from !== null && tr.storedMarks === null) tr.setStoredMarks([]);
           view.dispatch(tr.insertText(text).scrollIntoView());
           return true;
-        },
-        // A drag of such a selection carries the whole table, which the drop
-        // takes away (`tr.deleteSelection()`, the selection's own replace).
-        transformCopied: (slice, view) => {
-          const range = heldRange(view.state.selection);
-          if (range === null || !slice.eq(view.state.selection.content())) return slice;
-          return view.state.doc.slice(range.from, range.to);
         },
         handleDOMEvents: {
           compositionstart: (view) => {
