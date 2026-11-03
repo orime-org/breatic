@@ -318,14 +318,15 @@ export async function storeMiniToolAnalysisTransition(id: string, update: {
  * @param data.spaceId - The canvas Space holding its source node.
  * @param data.params - The frozen analysis and backend execution inputs.
  * @param data.model - The served model, when this analysis calls one.
+ * @param tx - The admission transaction that also writes the analysis pin, if any.
  * @returns Whether this caller inserted the task.
  * @throws {Error} When a database write fails.
  */
 export async function claimAnalysisTask(data: {
   id: string; userId: string; projectId: string; spaceId: string;
   params: Record<string, unknown>; model?: string;
-}): Promise<boolean> {
-  const rows = await db.insert(tasks).values({
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db).insert(tasks).values({
     ...data, taskType: "mini_tool_analysis", mode: "append", source: "mini_tool",
   }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
   return rows.length === 1;
@@ -500,6 +501,21 @@ export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId
         WHERE output->>'nodeId' IN (${sql.join(nodeIds.map((id) => sql`${id}`), sql`, `)}))
     LIMIT 1`);
   return rows.length > 0;
+}
+
+/**
+ * The output indexes every execution admitted as a retry of one run has taken over.
+ * @param runId - The retried run.
+ * @param tx - The retry admission's transaction.
+ * @returns The distinct output indexes.
+ * @throws {Error} When the query fails.
+ */
+export async function listMiniToolRetriedOutputIndexes(runId: string, tx: DbTx): Promise<number[]> {
+  const rows = await tx.execute<{ output_index: number }>(sql`
+    SELECT DISTINCT (output_index)::int AS output_index FROM ${tasks},
+      jsonb_array_elements_text(${tasks.params}->'miniToolExecution'->'retry'->'outputIndexes') AS output_index
+    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.params}->'miniToolExecution'->'retry'->>'runId' = ${runId}`);
+  return rows.map((row) => Number(row.output_index));
 }
 
 /**

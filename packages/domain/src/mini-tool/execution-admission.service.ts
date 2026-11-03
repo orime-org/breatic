@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getNodeTaskConfig, getStorageAdapter, projectAuthService, type MiniToolsConfig, type DbTx } from "@breatic/core";
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getNodeTaskConfig, projectAuthService, type MiniToolsConfig, type DbTx } from "@breatic/core";
 import {
-  TaskStatus, ceilToCreditCent, readVideoPresentationCompact, readVideoPresentationLedger, t, videoPresentationAtIngest, videoPresentationKeyframeFlags,
-  videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
+  TaskStatus, ceilToCreditCent, readVideoPresentationCompact, readVideoPresentationLedger, t, videoPresentationKeyframeFlags,
+  type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
@@ -14,12 +14,14 @@ import {
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
+import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as taskRepo from "@domain/task/task.repo.js";
+import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 /** Frozen common planning facts owned by the physical SQL task. */
 interface ExecutionPlan {
@@ -249,32 +251,6 @@ function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsCon
 }
 
 /**
- * Require the request's tool input to be the selected version's, with its ledger ready (§7.11); a target-policy
- * preparation in progress does not matter.
- * @param request - The fresh request.
- * @param binding - The registered source.
- * @param sourceKey - Its storage key.
- * @param config - The acceptance snapshot.
- * @returns The selected version and its receipt.
- * @throws {ValidationError} When the tool input is not the selected, ready one.
- * @throws {Error} When ingest fails.
- */
-async function selectedToolInput(request: MiniToolPlannedRequest, binding: MiniToolSourceBinding, sourceKey: string, config: MiniToolsConfig): Promise<{ versionId: string; receipt: VideoPresentationLedgerReceipt }> {
-  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
-    action: "read", storageKey: sourceKey, sourceFingerprint: binding.contentHash, targetPolicyVersion: config.presentation.policy_version,
-  });
-  const ref = request.presentation_ref.source;
-  const selected = snapshot.presentation;
-  const receipt = snapshot.ledger?.state === "ready" ? snapshot.ledger.receipt : null;
-  const storage = await getStorageAdapter();
-  if (selected === null || selected.sourceFingerprint !== binding.contentHash || selected.toolInputId !== ref.toolInputId || selected.planSha256 !== ref.planSha256
-    || receipt === null || receipt.sourceFingerprint !== binding.contentHash || receipt.toolInputId !== ref.toolInputId || receipt.planSha256 !== ref.planSha256
-    || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey, ref.toolInputId))
-    || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey, ref.toolInputId))) throw new ValidationError(t("server.mini_tool.foreignSource"));
-  return { versionId: selected.versionId, receipt };
-}
-
-/**
  * Refuse a run whose standard-4 job count exceeds the parallel cap, with its reason.
  * @param jobs - The planned job count.
  * @param config - The acceptance snapshot.
@@ -300,7 +276,7 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   const config = structuredClone(getMiniToolsConfig());
   const settings = config.executions["video.remove-bg"];
   const prepared = await prepareVideoRemoveBackground(request.draft.source, settings.model);
-  const { versionId, receipt } = await selectedToolInput(request, prepared.binding, prepared.sourceKey, config);
+  const { versionId, receipt } = await selectedToolInput(request.presentation_ref.source, prepared.binding, prepared.sourceKey, config);
   const ledger = await readVideoPresentationLedger(receipt, { maxBytes: config.presentation.source_ledger.max_bytes }, { deadlineAt });
   const { duration } = ledger.plan.display;
   const model = await estimateModelCredits(prepared.model, { params: prepared.params, durations: { video: [Number(duration.numerator) / Number(duration.denominator)] }, sources: ["video"] });
@@ -331,7 +307,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const maxOutputs = config.executions[request.tool].max_outputs;
   if (request.outputs.length > maxOutputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const { binding, sourceKey } = await resolveSource(request.draft.source);
-  const { versionId, receipt } = await selectedToolInput(request, binding, sourceKey, config);
+  const { versionId, receipt } = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config);
   const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
   const table = await readVideoPresentationCompact(receipt, limits, { deadlineAt });
   const ledger = await readVideoPresentationLedger(receipt, limits, { deadlineAt });
@@ -374,7 +350,12 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
   const fingerprint = await hashMiniToolValue(request);
   const previous = await taskRepo.getMiniToolExecutionTask(request.run_id);
   if (previous !== null) return replay(previous, request, userId, fingerprint);
-  const claim = "retry" in request ? await claimRetry(request, userId, fingerprint) : await claimPrepared(await prepare(request), request, userId, fingerprint);
+  let claim: { accepted: AcceptedMiniToolExecution; inserted: boolean };
+  if ("retry" in request) claim = await claimRetry(request, userId, fingerprint);
+  else {
+    const plan = await prepare(request);
+    claim = await db.transaction((tx) => claimPrepared(plan, request, userId, fingerprint, tx));
+  }
   if (!claim.inserted) {
     const winner = await taskRepo.getMiniToolExecutionTask(request.run_id);
     if (winner === null) throw new ConflictError(t("server.idempotency.mismatch"));
@@ -392,17 +373,20 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
  * @param request - The fresh or retry identity.
  * @param userId - The new execution's actor.
  * @param fingerprint - Complete request fingerprint.
- * @param tx - Original retry arbitration transaction, if any.
+ * @param tx - The admission transaction; the run's execution pin is written in it (§7.15).
  * @returns The frozen plan and whether its task UUID was claimed.
- * @throws {Error} When hashing or task persistence fails.
+ * @throws {Error} When hashing, task or pin persistence fails.
  */
-async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecutionRequest, userId: string, fingerprint: string, tx?: DbTx): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
+async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecutionRequest, userId: string, fingerprint: string, tx: DbTx): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
   const accepted: AcceptedMiniToolExecution = { ...plan, requestFingerprint: fingerprint, planFingerprint: await hashMiniToolValue(plan) };
   const inserted = await taskRepo.claimMiniToolExecutionTask({ id: request.run_id, userId, projectId: request.project_id, spaceId: request.space_id,
     taskType: request.tool === "video.extract-frames" ? "image" : "video", model: accepted.model, params: { miniToolExecution: accepted },
     ...(request.tool === "video.remove-bg" ? {} : { result: { miniToolExecution: { schemaVersion: 1, runId: accepted.taskId, status: "pending", planFingerprint: accepted.planFingerprint,
       resultVersion: 0, sourceBindings: [accepted.binding], outputs: accepted.outputs.map((output) => ({ ...output, result: null, late: false })), usage: [], billingState: "idle", error: null } } }),
   }, tx);
+  // The run's inputs stay alive until it can no longer be retried (§7.15 execution row).
+  const toolInputId = accepted.presentationRef.source.toolInputId;
+  if (inserted) await presentationPinService.acquire({ holderKind: "execution", holderId: accepted.taskId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(accepted.sourceKey, toolInputId) }, tx);
   return { accepted, inserted };
 }
 
@@ -453,7 +437,17 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;
     const retried = { taskId: request.run_id, outputs, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry };
     // A removal retry reuses the original prepared model input and reruns only generate: it quotes the frozen model part alone.
-    if (frozen.tool === "video.remove-bg") return claimPrepared({ ...frozen, ...retried, credits: frozen.modelCredits }, request, userId, fingerprint, tx);
+    if (frozen.tool === "video.remove-bg") {
+      const claim = await claimPrepared({ ...frozen, ...retried, credits: frozen.modelCredits }, request, userId, fingerprint, tx);
+      // The retry reuses the original's prepared input, so it pins that input for itself (§7.15 prepared row).
+      if (claim.inserted) {
+        for (const held of await presentationPinService.heldPrepared(original.id, tx)) {
+          await presentationPinService.acquire({ holderKind: "prepared", holderId: request.run_id, toolInputId: held.toolInputId, preparedKey: held.preparedKey, objectKeys: [held.preparedKey] }, tx);
+        }
+        await releaseTakenOver(original.id, record, tx);
+      }
+      return claim;
+    }
     const chosen = new Set(request.retry.outputIndexes);
     const layout = { batches: frozen.layout.batches.map((batch) => batch.filter((index) => chosen.has(index))).filter((batch) => batch.length > 0),
       encodes: frozen.layout.encodes.filter((encode) => chosen.has(encode.outputIndex)) };
@@ -462,6 +456,24 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     // The same quote rule as a fresh run, over the retried outputs' frozen jobs, start seconds and standard-4 price (§5.4);
     // the subset is drawn from the frozen plan, so nothing here reads today's configuration.
     const seconds = layoutSeconds(layout, works, frozen.container.startSeconds);
-    return claimPrepared({ ...frozen, ...retried, layout, outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
+    const claim = await claimPrepared({ ...frozen, ...retried, layout, outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
+    if (claim.inserted) await releaseTakenOver(original.id, record, tx);
+    return claim;
   });
+}
+
+/**
+ * End the retryability of a run once every failed output has been taken over by an admitted retry, which holds its
+ * own pins (§7.15 end of retryability): release the run's execution and prepared pins in the retry's admission transaction.
+ * @param runId - The retried run.
+ * @param record - Its current record.
+ * @param tx - The retry admission's transaction, after the retry's own pins were written.
+ * @returns Nothing.
+ * @throws {Error} When the read or the release fails.
+ */
+async function releaseTakenOver(runId: string, record: ReturnType<typeof recordFromPlan>, tx: DbTx): Promise<void> {
+  const taken = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(runId, tx));
+  if (!record.outputs.every((output) => output.result?.status !== "failed" || taken.has(output.outputIndex))) return;
+  await presentationPinService.release({ holderKind: "execution", holderId: runId }, tx);
+  await presentationPinService.release({ holderKind: "prepared", holderId: runId }, tx);
 }

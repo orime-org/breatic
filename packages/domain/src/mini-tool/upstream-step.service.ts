@@ -15,6 +15,7 @@ import { miniToolConsumptionRecordSchema, miniToolSettlementSchema } from "@doma
 import { openMiniToolConsumptionForStepAttempt } from "@domain/mini-tool/consumption-producer.service.js";
 import { completeResolvedMiniToolExecutionConsumptionSet } from "@domain/mini-tool/execution.service.js";
 import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson, type MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
+import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 export type { MiniToolStepJson, MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
 /** A pure operation-owned result decoder; no provider or storage IO belongs here. */
@@ -37,6 +38,11 @@ export interface RecordMiniToolStepIdentityResult { step: UpstreamStep; consumpt
 export interface RecordMiniToolStepResultInput {
   taskId: string; stepId: string; identity: MiniToolConsumptionIdentity;
   outcome: "done" | "failed"; result: unknown; error?: Record<string, MiniToolStepJson>;
+  /**
+   * Presentation pins written with a newly stored preparation result (§7.15 prepared row, release points): the final prepared
+   * output the run now keeps, and outputs it no longer needs (a failed attempt's, chunks after their stitch).
+   */
+  presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[] };
 }
 /** Explicit attempt resolution can only describe that particular original request. */
 export interface FailMiniToolStepInput {
@@ -159,6 +165,11 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
     const terminal = step.status === "done" || step.status === "failed";
     if (request.outcome === "failed" && !terminal) state.error = request.error!;
     await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, terminal ? {} : { status: request.outcome }, tx);
+    const pins = request.presentation;
+    if (pins?.prepared !== undefined) {
+      await presentationPinService.acquire({ holderKind: "prepared", holderId: task.id, toolInputId: pins.prepared.toolInputId, preparedKey: pins.prepared.preparedKey, objectKeys: [pins.prepared.preparedKey] }, tx);
+    }
+    if (pins?.retire !== undefined) await presentationPinService.retire(pins.retire, tx);
     return reread(task.id, step.id, tx);
   });
   if (answer instanceof Error) throw answer;
@@ -196,7 +207,11 @@ const scope = { taskId: z.uuid(), stepId: z.uuid() };
 const jsonObject = z.record(z.string(), z.json());
 const beginSchema = z.strictObject({ ...scope, attemptId: z.uuid(), deadlineAt: z.number().int().positive(), requestBody: jsonObject, chargeTo: z.enum(["user", "platform"]) });
 const identitySchema = z.strictObject({ ...scope, attemptId: z.uuid(), predictionId: z.string().min(1) });
-const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIdentitySchema, outcome: z.enum(["done", "failed"]), result: z.unknown(), error: jsonObject.optional() });
+const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIdentitySchema, outcome: z.enum(["done", "failed"]), result: z.unknown(), error: jsonObject.optional(),
+  presentation: z.strictObject({
+    prepared: z.strictObject({ toolInputId: z.string().regex(/^[a-f0-9]{64}$/), preparedKey: z.string().min(1) }).optional(),
+    retire: z.array(z.string().min(1)).optional(),
+  }).optional() });
 const failureSchema = z.strictObject({ ...scope, error: jsonObject, attempt: z.strictObject({ attemptId: z.uuid(), proof: z.enum(["not_sent", "rejected"]) }).optional() });
 
 /**

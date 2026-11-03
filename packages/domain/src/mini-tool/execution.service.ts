@@ -16,6 +16,7 @@ import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { synchronizeMiniToolDelivery } from "@domain/mini-tool/delivery-state.js";
+import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 /** Queue transport carries a discriminator and task identity, never a second frozen plan. */
 export interface MiniToolExecutionJob {
@@ -99,6 +100,11 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       finish: plan.task.status === "pending" || plan.task.status === "running",
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
+    // No failed output: nothing can retry this run, so its pins end with this commit (§7.15 end of retryability).
+    if (status === "completed") {
+      await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
+      await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
+    }
     if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
     else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
     const task = await currentTask(id, tx);

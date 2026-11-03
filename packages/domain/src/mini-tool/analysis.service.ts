@@ -4,8 +4,8 @@
 import { z } from "zod";
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { ceilToCreditCent, extractPromptText, t, type ConsentSnapshot } from "@breatic/shared";
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
+import { ceilToCreditCent, extractPromptText, t, videoPresentationLedgerReceiptSchema, type ConsentSnapshot } from "@breatic/shared";
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
@@ -13,6 +13,8 @@ import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
+import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 export { miniToolAnalysisRequestSchema, type MiniToolAnalysisRequest } from "@breatic/shared/mini-tools";
 
@@ -24,6 +26,10 @@ export const miniToolFrozenAnalysisSchema = z.strictObject({
   kind: z.enum(["people", "scene_cuts", "tracked_mask"]), source: videoToolSourceRefSchema,
   binding: miniToolSourceBindingSchema, analysisInput: miniToolAnalysisInputSchema,
   inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  // The selected tool input and its receipts, frozen as an execution freezes them (design §7.11).
+  presentationRef: miniToolPresentationRefSchema,
+  ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }),
+  versionIds: z.strictObject({ source: z.string().regex(/^[a-f0-9]{64}$/) }),
 });
 
 export type MiniToolFrozenAnalysis = z.infer<typeof miniToolFrozenAnalysisSchema>;
@@ -294,6 +300,7 @@ export async function accept(
   const previous = await taskRepo.getAnalysisTask(body.analysisRunId);
   if (previous !== null) return replay(previous, body, userId, requestFingerprint);
   const { binding, sourceKey } = await resolveSource(body.source);
+  const { versionId, receipt } = await selectedToolInput(body.presentationRef.source, binding, sourceKey, structuredClone(getMiniToolsConfig()));
   const profile = getMiniToolsConfig().analyses[body.kind].profile;
   const params = body.kind === "tracked_mask" ? { ...body.params, trackingPrompt: extractPromptText(body.params.trackingPrompt) } : body.params;
   const analysisInput = projectMiniToolAnalysisInput({ kind: body.kind, source: { canonicalURL: binding.canonicalURL }, profile, params });
@@ -309,11 +316,18 @@ export async function accept(
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId,
     spaceId: body.spaceId, hostNodeId: body.hostNodeId, draftId: body.draftId,
     revision: body.revision, kind: body.kind, source: body.source, binding, analysisInput, inputFingerprint,
+    presentationRef: body.presentationRef, ledgerReceipts: { source: receipt }, versionIds: { source: versionId },
   };
   const taskParams: MiniToolAnalysisTaskParams = { analysis, requestFingerprint, sourceKey, credits: await estimate(body.kind, analysisInput) };
-  const inserted = await taskRepo.claimAnalysisTask({
-    id: body.analysisRunId, userId, projectId: body.projectId, spaceId: body.spaceId,
-    params: taskParams, ...(body.kind === "tracked_mask" ? { model: profile.id } : {}),
+  const toolInputId = body.presentationRef.source.toolInputId;
+  const inserted = await db.transaction(async (tx) => {
+    const claimed = await taskRepo.claimAnalysisTask({
+      id: body.analysisRunId, userId, projectId: body.projectId, spaceId: body.spaceId,
+      params: taskParams, ...(body.kind === "tracked_mask" ? { model: profile.id } : {}),
+    }, tx);
+    // The analysis keeps its input's L alive until it ends (§7.15 analysis row).
+    if (claimed) await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(sourceKey, toolInputId) }, tx);
+    return claimed;
   });
   if (!inserted) {
     const winner = await taskRepo.getAnalysisTask(body.analysisRunId);
@@ -399,6 +413,7 @@ async function recordLockedAnalysis(task: taskRepo.AnalysisTaskRow, incoming: Mi
     analysis, status, errorMessage: status === "completed" ? null : task.errorMessage,
     finish: current.status === "pending" || current.status === "running",
   }, tx);
+  await presentationPinService.release({ holderKind: "analysis", holderId: task.id }, tx);
   return recordFromTask(updated);
 }
 
@@ -455,5 +470,6 @@ async function failLockedAnalysis(task: taskRepo.AnalysisTaskRow, failure: Recor
   const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
     analysis, status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "mini_tool_analysis_failed", finish: true,
   }, tx);
+  await presentationPinService.release({ holderKind: "analysis", holderId: task.id }, tx);
   return recordFromTask(updated);
 }
