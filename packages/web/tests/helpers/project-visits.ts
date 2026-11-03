@@ -6,6 +6,8 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Doc } from 'yjs';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { test } from './slot';
 import { dataOf } from './api';
 import { liveModuleUrl, YJS_MANAGER } from './live-module';
 
@@ -18,7 +20,7 @@ export interface VisitReceipt {
 }
 
 /** A browser's actual access submissions, independent of React internals. */
-export interface VisitTraffic { posts: Array<{ projectId: string; visitId: string }>; stop: () => void }
+export interface VisitTraffic { posts: Array<{ projectId: string; visitId: string; observedAt: string }>; stop: () => void }
 
 /** Observe actual opened submissions without replacing their execution. @throws {never} Never. */
 export function watchVisits(page: Page): VisitTraffic {
@@ -28,10 +30,24 @@ export function watchVisits(page: Page): VisitTraffic {
     const match = /\/api\/v1\/projects\/([^/]+)\/opened$/.exec(new URL(request.url()).pathname);
     if (request.method() !== 'POST' || match === null) return;
     const body = request.postDataJSON() as { visit_id?: string };
-    posts.push({ projectId: match[1], visitId: body.visit_id ?? '' });
+    posts.push({ projectId: match[1], visitId: body.visit_id ?? '', observedAt: new Date().toISOString() });
   }
   page.on('request', observe);
   return { posts, stop: () => { page.off('request', observe); } };
+}
+
+/** Persist evidence even with the list reporter, then link it as a test artifact. @throws {Error} When the artifact cannot be written. */
+export async function saveVisitEvidence(name: string, value: unknown): Promise<void> {
+  const path = test.info().outputPath(`${name}.json`);
+  await writeFile(path, JSON.stringify(value, null, 2));
+  await test.info().attach(name, { path, contentType: 'application/json' });
+}
+
+/** Persist the actual rendered screen before attaching it. @throws {Error} When capture or writing fails. */
+export async function saveVisitScreenshot(page: Page, name: string): Promise<void> {
+  const path = test.info().outputPath(`${name}.png`);
+  await writeFile(path, await page.screenshot());
+  await test.info().attach(name, { path, contentType: 'image/png' });
 }
 
 /** A minimal owned-project database snapshot, with no user profile or content. */

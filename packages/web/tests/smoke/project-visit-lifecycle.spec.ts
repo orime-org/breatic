@@ -8,7 +8,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR } from '../helpers/space';
 import { selectInBody } from '../helpers/editor-keys';
 import { liveModuleUrl } from '../helpers/live-module';
-import { inspectVisitDb, nextVisit, readVisit, reconnectProject, watchVisits, type VisitReceipt } from '../helpers/project-visits';
+import { inspectVisitDb, nextVisit, readVisit, reconnectProject, saveVisitEvidence, saveVisitScreenshot, watchVisits, type VisitReceipt } from '../helpers/project-visits';
 
 test('real Project entry, keyboard SPA return and browser Back create distinct visits', async ({ page }) => {
   const projectId = smokeProjectId();
@@ -35,7 +35,7 @@ test('real Project entry, keyboard SPA return and browser Back create distinct v
   expect(traffic.posts).toHaveLength(3);
   const persisted = await inspectVisitDb(third);
   for (const receipt of [first, second, third]) expect(persisted.events.filter((event) => event.visit_id === receipt.visit_id)).toEqual([{ kind: 'project_access', visit_id: receipt.visit_id, occurred_at: receipt.occurred_at }]);
-  await test.info().attach('actual-navigation-receipts', { body: JSON.stringify({ first, second, third, posts: traffic.posts, persisted }, null, 2), contentType: 'application/json' });
+  await saveVisitEvidence('actual-navigation-receipts', { first, second, third, posts: traffic.posts, persisted });
   traffic.stop();
 });
 
@@ -88,10 +88,10 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
       await page.getByTestId('theme-toggle').click(); await page.getByTestId(`theme-option-${theme}`).click();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await expect(editor).toContainText(marker);
-      await test.info().attach(`actual-project-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
+      await saveVisitScreenshot(page, `actual-project-${theme}`);
     }
     expect(traffic.posts).toHaveLength(1);
-    await test.info().attach('passive-entry-evidence', { body: JSON.stringify({ original, queried, persisted, posts: traffic.posts, crossDayFixture: false }, null, 2), contentType: 'application/json' });
+    await saveVisitEvidence('passive-entry-evidence', { original, queried, persisted, posts: traffic.posts, crossDayFixture: false });
   } finally {
     if (archived) await dataOf(await page.request.post(`/api/v1/projects/${projectId}/restore`), 'restore for cleanup');
     if (spaceId) await deleteSpace(page, spaceId);
@@ -132,6 +132,6 @@ test('a committed opened response lost in transit is queried by its original ide
     expect(fresh.visit_id).not.toBe(committed!.visit_id);
     const persisted = await inspectVisitDb(fresh);
     for (const receipt of [committed!, fresh]) expect(persisted.events.filter((event) => event.visit_id === receipt.visit_id)).toEqual([{ kind: 'project_access', visit_id: receipt.visit_id, occurred_at: receipt.occurred_at }]);
-    await test.info().attach('lost-response-original-evidence', { body: JSON.stringify({ committed, recovered, replay, fresh, before, after, persisted, posts: traffic.posts }, null, 2), contentType: 'application/json' });
+    await saveVisitEvidence('lost-response-original-evidence', { committed, recovered, replay, fresh, before, after, persisted, posts: traffic.posts });
   } finally { await page.unroute(path); traffic.stop(); }
 });
