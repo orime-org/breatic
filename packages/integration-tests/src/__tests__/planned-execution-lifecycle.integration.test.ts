@@ -21,6 +21,19 @@ import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
+import { fakeIngestJobs, INGEST_ENV } from "./ingest-jobs-fake.js";
+import * as shared from "@breatic/shared";
+
+/**
+ * The provider body once the single first-attempt preparation is done: the prepared object's public URL replaces the
+ * frozen reference (E3b; design §5.3).
+ * @param f - The fixture.
+ * @returns The resolved body.
+ */
+function resolvedBody(f: ExecutionFixture): Record<string, unknown> {
+  const keyFor = (shared as unknown as { videoPresentationWorkKeyFor: (key: string, id: string) => string }).videoPresentationWorkKeyFor;
+  return { ...f.plan.body, video: `https://assets.example.test/${keyFor(f.plan.sourceKey, `${f.taskId}:prep:0:a1`)}` };
+}
 
 const { runPrediction, storeFromUrl } = vi.hoisted(() => ({ runPrediction: vi.fn<typeof wavespeedModule.runPrediction>(), storeFromUrl: vi.fn<typeof uploadModule.storeFromUrl>() }));
 vi.mock("@worker/providers/wavespeed.js", async (original) => ({ ...await original<typeof wavespeedModule>(), runPrediction }));
@@ -30,11 +43,12 @@ const TEMP = "https://provider.example.test/original.webm";
 let pg: ReturnType<typeof createPgClient>;
 
 beforeAll(() => {
-  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-lifecycle-key", UPLOAD_BASE_URL: "https://assets.example.test" }); loadLocales(); initLogger("planned-execution-fixture");
+  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-lifecycle-key", UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV }); loadLocales(); initLogger("planned-execution-fixture");
   pg = createPgClient(inject("DATABASE_URL"), { name: "planned-wrapper-fixtures", max: 6 });
 });
-beforeEach(() => { vi.resetAllMocks(); });
-afterAll(async () => { await pg.end(); initCore(process.env); });
+// S6e E3b (inner#1306 §90): the removal's model input is prepared on standard-4 before generate.
+beforeEach(() => { vi.resetAllMocks(); fakeIngestJobs(); });
+afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
 /** Build the actual narrow producer envelope, with local queue controls only.
  * @throws {never} Never.
@@ -71,7 +85,8 @@ function remote(f: ExecutionFixture): void {
  * @throws {Error} If a fixture owner disappears.
  */
 async function onlyStep(f: ExecutionFixture): Promise<Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number]> {
-  const rows = await upstreamStepRepo.listSteps(f.taskId); expect(rows).toHaveLength(1); return rows[0]!;
+  // Preparation container_job rows precede the one generate step (E3b).
+  const rows = (await upstreamStepRepo.listSteps(f.taskId)).filter((row) => row.kind === "generate"); expect(rows).toHaveLength(1); return rows[0]!;
 }
 /** Seed a pre-existing returned fact using the actual step owner, independent from any new wrapper.
  * @throws {Error} When original persistence fails.
@@ -111,14 +126,14 @@ describe("narrow planned job reaches the original persistent lifecycle", () => {
     const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing fixture task"); const d = await taskDeadline(task.id, task.createdAt);
     await dispatch(j);
     const actual = await observations(f); expect(actual.record).toMatchObject({ runId: f.taskId, status: "completed", resultVersion: 1, outputs: [{ ...f.plan.outputs[0], result: f.registered, late: false }] });
-    expect(runPrediction).toHaveBeenCalledExactlyOnceWith(expect.any(Object), f.plan.provider.model_id, f.plan.body, expect.objectContaining({ deadlineAt: d, retryStarting: false }));
+    expect(runPrediction).toHaveBeenCalledExactlyOnceWith(expect.any(Object), f.plan.provider.model_id, resolvedBody(f), expect.objectContaining({ deadlineAt: d, retryStarting: false }));
     expect(storeFromUrl).toHaveBeenCalledExactlyOnceWith(TEMP, expect.objectContaining({ actingUserId: f.userId, projectId: f.projectId, generationTaskId: f.taskId, deadlineAt: d, knownAlpha: true }));
     expect(actual.source).toEqual([{ content: f.plan.binding.canonicalURL, status: "success", task_id: null }]); expect(actual.target).toEqual([{ content: f.registered.canonicalURL, status: "success", task_id: f.taskId }]);
   });
   it("W04 does not re-resolve source or reselect the currently served catalog model", async () => {
     const f = await seedExecution(pg); remote(f); expect(modelCatalog.getModelCatalog().video.some((m) => m.name === f.plan.model)).toBe(false);
     await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.plan.binding.assetId}`;
-    await runMiniToolExecutionTask(job(f), "token"); expect(runPrediction).toHaveBeenCalledExactlyOnceWith(expect.any(Object), f.plan.provider.model_id, f.plan.body, expect.any(Object)); expect((await executionSnapshot(pg, f)).params).toEqual({ miniToolExecution: f.plan });
+    await runMiniToolExecutionTask(job(f), "token"); expect(runPrediction).toHaveBeenCalledExactlyOnceWith(expect.any(Object), f.plan.provider.model_id, resolvedBody(f), expect.any(Object)); expect((await executionSnapshot(pg, f)).params).toEqual({ miniToolExecution: f.plan });
   });
   it("W15 sees active0 before the first adapter and sees pending mirror immediately after the actual identity callback", async () => {
     const f = await seedExecution(pg, "pending", false); remote(f);

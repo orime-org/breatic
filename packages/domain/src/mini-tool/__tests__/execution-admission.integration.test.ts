@@ -121,11 +121,13 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
     containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }],
+    // §3.2 item 1: the preparation's retry cap is frozen at admission (encoding.chunk_retries).
+    chunkRetries: 3,
   },
   // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
   credits: 35,
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
-  planFingerprint: "45fface9c516b44cea4dab8ca7877c9d38766a5c53f91b3e091bec5f141db2e1",
+  planFingerprint: "1eca4c99f876f8d338c1c472525963d67f0825111f506a06addcce7ba4713a48",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
@@ -397,6 +399,8 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(accepted.body.video).toEqual({ kind: "prepared", inputId: "source", job: `${f.body.run_id}:prep:0` });
     expect(accepted.presentationRef).toEqual(f.body.presentation_ref);
     expect(accepted.preparation.chunks).toEqual([{ start: 0, end: 1011 }]);
+    // §3.2 item 1: the preparation's retry cap is frozen with it.
+    expect(accepted.preparation).toMatchObject({ chunkRetries: core.getMiniToolsConfig().encoding.chunk_retries });
   });
 
   it("RB-A02 quotes the model from the display duration plus the preparation at max(precheck, planned work)", async () => {
@@ -443,6 +447,21 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(accepted.presentationRef).toEqual(original.presentationRef);
     expect(accepted.ledgerReceipts).toEqual(original.ledgerReceipts);
     expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
+  });
+
+  it("RB-R02 a failed-output retry reruns only generate: its quote is the frozen model part alone, without the preparation it does not rerun", async () => {
+    const f = await seed(); const start = startRecorder();
+    await acceptMiniToolExecution(f.body, f.userId, start);
+    const original = start.mock.calls[0]![0] as unknown as { planFingerprint: string; binding: unknown; outputs: unknown[] };
+    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
+      resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
+        result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });
+    await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
+    await acceptMiniToolExecution(retry as never, f.userId, start);
+    const model = await estimateModelCredits("bria-fibo-video-background-remover", { params: {}, durations: { video: [5.055] }, sources: ["video"] });
+    expect(start.mock.calls[0]![0].credits).toBe(model!.credits + std4Credits(300));
+    expect(start.mock.calls[1]![0].credits).toBe(model!.credits);
   });
 });
 

@@ -20,7 +20,7 @@ import {
 } from "@breatic/core";
 import type * as shared from "@breatic/shared";
 import { NO_CONSENT } from "@breatic/shared";
-import { miniToolConsumptionKey, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
+import { miniToolConsumptionKey, miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
   beginMiniToolStepAttempt, creditHoldService, miniToolExecutionService, modelCatalog,
   recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo,
@@ -313,8 +313,25 @@ describe("HTTP press and durable SQL identity remain distinct (A05-A13)", () => 
 });
 
 describe("existing credit and acknowledgement ownership (A14-A17 / preparation A14-A17)", () => {
+  it("A18 a failed-output removal retry holds only the frozen model quote, so a balance of 30 covers it (inner#1306 §90 E3b)", async () => {
+    const f = await seed(35); await accepted(f, await post(f)); const plan = (await parent(f)).params.miniToolExecution;
+    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
+      resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: { code: "provider_failed" } } })),
+      usage: [], billingState: "idle", error: { code: "provider_failed" } });
+    await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+    await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
+    await creditHoldService.releaseHold(f.body.run_id);
+    // Leave exactly the 30-credit model quote available: the preparation is not rerun, so it is not held again.
+    await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: randomUUID(), amount: 5, ttlMs: getNodeTaskConfig().default_budget_ms });
+    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
+    const response = await post(f, retry);
+    expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: retry.run_id, status: "pending" } } });
+    const held = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${retry.run_id}`;
+    expect([...held]).toEqual([{ amount: 30, status: "held" }]);
+  });
   it.each(["no_credits", "credits_held"] as const)("A15 refuses %s after opening only the original target row", async (reason) => {
-    const f = await seed(reason === "no_credits" ? 0 : 30);
+    // The lot covers the 35-credit removal quote (model 30 + preparation 5), so a 30-credit hold leaves it short only by the hold.
+    const f = await seed(reason === "no_credits" ? 0 : 35);
     if (reason === "credits_held") await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: randomUUID(), amount: 30, ttlMs: getNodeTaskConfig().default_budget_ms });
     const response = await post(f); expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: f.body.run_id, status: "failed" } });
     const task = await parent(f); expect(task.status).toBe("failed"); expect(task.error_message).toBe(reason);

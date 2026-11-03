@@ -15,6 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
+import type * as coreModule from "@breatic/core";
 import {
   assetRepo, beginMiniToolStepAttempt, miniToolConsumptionRecordSchema, miniToolStepStateSchema,
   recordMiniToolStepIdentity, taskRepo, upstreamStepRepo,
@@ -33,6 +34,15 @@ import { seedStudioFixture, type StudioFixture } from "@server/__tests__/integra
 const { runPrediction, storeFromUrl } = vi.hoisted(() => ({
   runPrediction: vi.fn<typeof wavespeedModule.runPrediction>(), storeFromUrl: vi.fn<typeof uploadModule.storeFromUrl>(),
 }));
+// Today's configuration can differ from what a run froze at admission (§3.2 item 1); WP06 changes the chunk retry cap.
+const overrides = vi.hoisted(() => ({ chunkRetries: undefined as number | undefined }));
+vi.mock("@breatic/core", async (original) => {
+  const actual = await original<typeof coreModule>();
+  return { ...actual, getMiniToolsConfig: (): ReturnType<typeof actual.getMiniToolsConfig> => {
+    const config = actual.getMiniToolsConfig();
+    return overrides.chunkRetries === undefined ? config : { ...config, encoding: { ...config.encoding, chunk_retries: overrides.chunkRetries } };
+  } };
+});
 vi.mock("@worker/providers/wavespeed.js", async (original) => ({ ...await original<typeof wavespeedModule>(), runPrediction }));
 vi.mock("@worker/handlers/backend-upload.js", async (original) => ({ ...await original<typeof uploadModule>(), storeFromUrl }));
 
@@ -59,9 +69,9 @@ const GOLDEN = {
   presentationRef: { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } }, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) },
   preparation: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }] },
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3 },
   credits: 35,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "f8b3e974d351574f4de430c0b83f4e05f54c0d3bc2b8a2cd0db87cb5ffd04067",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "330a3063c9822fa080a4bfbe676901dbd436e871da565cf29e4b33069c40b699",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -88,7 +98,7 @@ function doneReport(request: Record<string, unknown>): Record<string, unknown> {
   return { schemaVersion: 2, state: "done", outputs: [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }], usage: { wallMs: 1000, cpuUsec: 2000000 } };
 }
 beforeEach(() => {
-  vi.resetAllMocks(); configure();
+  vi.resetAllMocks(); configure(); overrides.chunkRetries = undefined;
   jobs.submitted.length = 0; jobs.scripted.clear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -119,7 +129,7 @@ async function planHash(plan: AcceptedMiniToolExecution): Promise<string> {
  * @throws {Error} When fixture SQL or the original deadline owner fails.
  */
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("f8b3e974d351574f4de430c0b83f4e05f54c0d3bc2b8a2cd0db87cb5ffd04067");
+  expect(await planHash(GOLDEN)).toBe("330a3063c9822fa080a4bfbe676901dbd436e871da565cf29e4b33069c40b699");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
@@ -232,7 +242,13 @@ describe("SQL frozen removal execution and provider persistence", () => {
       const after = await step(f); expect(after).toMatchObject({ id: before.id, status: "submitted", predictionId: PREDICTION });
       const consumption = miniToolConsumptionRecordSchema.parse(after.output.miniToolConsumption);
       expect(consumption).toMatchObject({ identity: { kind: "provider", provider: "wavespeed", predictionId: PREDICTION }, state: "pending", chargeTo: "user", creditMultiplier: 1, costUsd: null, credits: null });
-      expect((await parent(f)).result.settlement).toMatchObject({ consumptionSetComplete: false, pendingConsumptionKeys: [consumption.consumptionKey] });
+      // The preparation step's container consumption is opened with its job and priced later, like every container step (§7.6; execution design §6.22).
+      const preparationKeys = (await upstreamStepRepo.listSteps(f.plan.taskId)).filter((row) => row.kind === "container_job")
+        .map((row) => miniToolConsumptionRecordSchema.parse(row.output.miniToolConsumption).consumptionKey);
+      expect(preparationKeys).toHaveLength(1);
+      const settlement = (await parent(f)).result.settlement as { consumptionSetComplete: boolean; pendingConsumptionKeys: string[] };
+      expect(settlement.consumptionSetComplete).toBe(false);
+      expect([...settlement.pendingConsumptionKeys].sort()).toEqual([consumption.consumptionKey, ...preparationKeys].sort());
       observedQuestion = true; throw waiting;
     });
     await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBe(waiting);
@@ -330,7 +346,7 @@ describe("persisted lane and complete plan are checked before paid boundaries", 
     expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled();
   });
   it("rejects a body changed without updating its original plan hash", async () => {
-    const f = await seed(); const changed = structuredClone(f.plan); changed.body.video = "https://provider.example.test/replaced.mp4";
+    const f = await seed(); const changed = structuredClone(f.plan); (changed.body as unknown as { video: unknown }).video = "https://provider.example.test/replaced.mp4";
     await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...changed } })} WHERE id=${f.plan.taskId}`;
     await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toThrow(); expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled();
   });
@@ -390,7 +406,7 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
 
   it("WP04 a preparation over one chunk share runs as chunk_encode jobs plus a stitch, and generate uses the stitched object", async () => {
     const f = await seed(); completeProvider(); backend(f);
-    const plan = structuredClone(f.plan) as unknown as { preparation: { chunks: { start: number; end: number }[] } } & typeof f.plan;
+    const plan = structuredClone(f.plan);
     plan.preparation.chunks = [{ start: 0, end: 500 }, { start: 500, end: 1011 }];
     plan.planFingerprint = await planHash(plan);
     await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
@@ -419,6 +435,23 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     await runMiniToolRemoveBackground(retry.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
     expect(jobs.submitted).toEqual([]);
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, `${f.plan.taskId}:prep:0:a1`));
+  });
+
+  it("WP06 the preparation retry cap is the one frozen at admission, not today's encoding.chunk_retries", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const plan = structuredClone(f.plan);
+    (plan as unknown as { preparation: { chunkRetries: number } }).preparation.chunkRetries = 1;
+    plan.planFingerprint = await planHash(plan);
+    await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
+    overrides.chunkRetries = 3;
+    for (const attempt of [1, 2, 3, 4]) {
+      jobs.scripted.set(`${f.plan.taskId}:prep:0:a${attempt}`, { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
+    }
+    for (let pickup = 0; pickup < 6; pickup += 1) {
+      await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch(() => undefined);
+    }
+    expect(preparations(f).map((request) => request.jobId)).toEqual([`${f.plan.taskId}:prep:0:a1`, `${f.plan.taskId}:prep:0:a2`]);
+    expect(runPrediction).not.toHaveBeenCalled();
   });
 });
 

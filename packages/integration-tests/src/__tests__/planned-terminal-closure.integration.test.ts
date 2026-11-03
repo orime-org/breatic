@@ -25,6 +25,7 @@ import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { fakeIngestJobs, INGEST_ENV } from "./ingest-jobs-fake.js";
 
 const { runPrediction, storeFromUrl } = vi.hoisted(() => ({ runPrediction: vi.fn<typeof wavespeedModule.runPrediction>(), storeFromUrl: vi.fn<typeof uploadModule.storeFromUrl>() }));
 vi.mock("@worker/providers/wavespeed.js", async (original) => ({ ...await original<typeof wavespeedModule>(), runPrediction }));
@@ -40,12 +41,13 @@ interface Captured { err: Error; ctx: Record<string, unknown> }
 
 beforeAll(async () => {
   initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-terminal-fixture",
-    STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused", UPLOAD_BASE_URL: "https://assets.example.test" });
+    STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused", UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV });
   loadLocales(); initLogger("planned-terminal-fixture"); pg = createPgClient(inject("DATABASE_URL"), { name: "planned-terminal-fixtures", max: 8 });
   const { createApp } = await import("@server/app.js"); app = createApp();
 });
-beforeEach(() => { vi.resetAllMocks(); });
-afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); });
+// S6e E3b (inner#1306 §90): the removal's model input is prepared on standard-4 before generate.
+beforeEach(() => { vi.resetAllMocks(); fakeIngestJobs(); });
+afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
 /** Seed a funded original run and real target row, without invoking a provider or browser.
  * @throws {Error} On an actual fixture or credit-owner failure.
@@ -143,7 +145,8 @@ async function terminalFixture(f: ExecutionFixture): Promise<void> {
  * @throws {Error} When the fixture's original step is absent.
  */
 async function step(f: ExecutionFixture): Promise<Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number]> {
-  const steps = await upstreamStepRepo.listSteps(f.taskId); expect(steps).toHaveLength(1); return steps[0]!;
+  // Preparation container_job rows precede the one generate step (E3b).
+  const steps = (await upstreamStepRepo.listSteps(f.taskId)).filter((row) => row.kind === "generate"); expect(steps).toHaveLength(1); return steps[0]!;
 }
 
 describe("terminal cleanup proves original call identities independently of actual amounts", () => {
