@@ -17,7 +17,7 @@ breatic is the real-time collaborative AI workspace for creative teams: a TypeSc
 | [docs/DD-PROCESS.md](docs/DD-PROCESS.md) | before designing anything that hits a trigger in its section 1 |
 | [docs/TDD-MANDATE.md](docs/TDD-MANDATE.md) | before writing tests for new or changed behaviour, and for critical-path test requirements |
 | [docs/TEST-MANDATE.md](docs/TEST-MANDATE.md) | before writing or running smoke and E2E tests, or deciding which test tier a case belongs to |
-| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | before scoping accessibility work or answering an accessibility finding |
+| [docs/ACCESSIBILITY-BOUNDARY.md](docs/ACCESSIBILITY-BOUNDARY.md) | before scoping accessibility work or answering an accessibility finding |
 | [self-host/DEVELOPMENT.md](self-host/DEVELOPMENT.md) | when setting up local development from scratch |
 
 ## Commands
@@ -137,7 +137,7 @@ Upload and generation paths only insert objects, never delete them (dedup losers
 
 - **The product is live with real users and data; Yjs document data evolves like any other production data.** Check: about to argue "not launched yet" or "no users"? That reason no longer exists.
 - **breatic supports desktop web only: hover may be a primary interaction, and there are no tap fallbacks, touch gestures or mobile layouts.** A finding that touch is not covered is answered with this policy.
-- **The product does not support screen readers: anything that only works with screen-reader support (`aria-label`, `aria-live`, `alt`, announcements, screen-reader-driven flows) is out of scope and never a defect, while keyboard reach, visible focus, readable contrast, understandable errors and semantic HTML are always built.** Viewers seeing and hearing existing content is a permission matter and fully supported. Answer screen-reader findings from any review with this policy; never claim WCAG 2.1 AA or EN 301 549 conformance, but describe what is done truthfully. Check: does anyone besides a screen-reader user benefit? Yes → build it. Read [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for the full boundary.
+- **The product does not support screen readers: anything that only works with screen-reader support (`aria-label`, `aria-live`, `alt`, announcements, screen-reader-driven flows) is out of scope and never a defect, while keyboard reach, visible focus, readable contrast, understandable errors and semantic HTML are always built.** Viewers seeing and hearing existing content is a permission matter and fully supported. Answer screen-reader findings from any review with this policy; never claim WCAG 2.1 AA or EN 301 549 conformance, but describe what is done truthfully. Check: does anyone besides a screen-reader user benefit? Yes → build it. Read [docs/ACCESSIBILITY-BOUNDARY.md](docs/ACCESSIBILITY-BOUNDARY.md) for the full boundary.
 - **Membership tiers differ only in capacity, collaboration size, commercial use and governance; every creative feature and model works on every tier.** Check: about to switch off a generation feature by tier? Wrong; tiers only limit capacity.
 - **"Stored in the database" means a SQL column; a key inside a Yjs document (stored as a blob in `yjs_documents.data`) is that document's internal structure and needs no schema justification.** A real SQL column keeps the full bar: soft delete, `created_at`, a hand-written migration.
 - **"Tab" means a Space tab on the Project page, not a browser tab.** Closing a Space tab detaches that Space's Yjs document while the project connection stays alive.
