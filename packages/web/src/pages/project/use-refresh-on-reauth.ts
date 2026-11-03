@@ -19,8 +19,14 @@ import { isReauthCloseReason } from '@breatic/shared';
  * this page always holds, so listening there sees each change once.
  * @param provider - The project's meta document provider, null until it exists.
  * @param projectId - The project.
+ * @param onAuthenticated - Recheck the current original visit after authentication succeeds.
+ * @throws {never} Query failures remain in their query state.
  */
-export function useRefreshOnReauth(provider: HocuspocusProvider | null, projectId: string): void {
+export function useRefreshOnReauth(
+  provider: HocuspocusProvider | null,
+  projectId: string,
+  onAuthenticated?: () => void,
+): void {
   const queryClient = useQueryClient();
   React.useEffect(() => {
     if (provider === null) return undefined;
@@ -34,8 +40,10 @@ export function useRefreshOnReauth(provider: HocuspocusProvider | null, projectI
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     };
     provider.on('close', onClose);
+    if (onAuthenticated) provider.on('authenticated', onAuthenticated);
     return () => {
       provider.off('close', onClose);
+      if (onAuthenticated) provider.off('authenticated', onAuthenticated);
     };
-  }, [provider, projectId, queryClient]);
+  }, [provider, projectId, queryClient, onAuthenticated]);
 }

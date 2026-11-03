@@ -171,11 +171,14 @@ export default function ProjectPage(): React.JSX.Element {
   });
 
   // Page-entry identity outlives query loading, permission rechecks and providers.
-  useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error, {
+  const visit = useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error, {
     accountId: userId ?? null,
     navigationKey: location.key,
     accountSource: PROJECT_VISIT_ACCOUNT_SOURCE,
   });
+  const recheckVisit = React.useCallback(() => {
+    if (visit.status === 'pending' || visit.status === 'unconfirmed') void visit.refresh();
+  }, [visit]);
 
   const { refetch } = projectQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
@@ -196,7 +199,7 @@ export default function ProjectPage(): React.JSX.Element {
         the key the workspace would carry one project's state into another's
         address. The socket is shared while the authorized workspace is mounted.
       */}
-      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
+      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
     </CollabSocketProvider>
   );
 }
@@ -233,14 +236,17 @@ function useRestoredPreferences(userId: string | undefined, projectId: string): 
  * @param root0 - Workspace props.
  * @param root0.projectId - Resolved project uuid (slug already stripped).
  * @param root0.project - The resource already authorized by the backend.
+ * @param root0.onAuthenticated - Recheck the current visit after connection authentication.
  * @returns The project workspace, or a loading screen while the socket connects.
  */
 function ProjectWorkspace({
   projectId,
   project,
+  onAuthenticated,
 }: {
   projectId: string;
   project: ProjectDetail;
+  onAuthenticated: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
 
@@ -336,7 +342,7 @@ function ProjectWorkspace({
   // Archived, restored, a role changed: collab closes the documents and the
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
-  useRefreshOnReauth(provider, projectId);
+  useRefreshOnReauth(provider, projectId, onAuthenticated);
   // The top bar's credits are read again whenever they may have moved: this
   // reader's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);

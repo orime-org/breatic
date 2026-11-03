@@ -76,6 +76,12 @@ export function useRecordProjectOpen(
   React.useEffect(() => {
     if (enabled) visit.start();
   }, [visit, enabled]);
+  React.useEffect(() => queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+    const key = event.query.queryKey;
+    if (key.length !== 2 || key[0] !== 'project' || key[1] !== projectId) return;
+    if (visit.status === 'pending' || visit.status === 'unconfirmed') void visit.refresh();
+  }), [projectId, queryClient, visit]);
   React.useEffect(() => {
     /**
      * A persisted page is a real entry, rather than a provider reconnect.
