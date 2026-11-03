@@ -47,6 +47,8 @@ type FrozenToolInput = {
 export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
   | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"];
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
+    /** The model's own quote, frozen apart from the preparation so a failed-output retry quotes generate alone. */
+    modelCredits: number;
     /** The standard-4 model-input preparation (§5.3): its policy and presentation-frame chunk windows. */
     preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number } }
   | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout; container: MiniToolContainerPolicy;
@@ -308,7 +310,7 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
     body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
     presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt }, versionIds: { source: versionId }, preparation,
-    credits: model.credits + containerCredits(preparation, layout.seconds) };
+    modelCredits: model.credits, credits: model.credits + containerCredits(preparation, layout.seconds) };
 }
 
 /**
@@ -448,8 +450,8 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;
     const retried = { taskId: request.run_id, outputs, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry };
-    // A removal retry reuses the original prepared model input and its frozen quote; it runs no new preparation.
-    if (frozen.tool === "video.remove-bg") return claimPrepared({ ...frozen, ...retried }, request, userId, fingerprint, tx);
+    // A removal retry reuses the original prepared model input and reruns only generate: it quotes the frozen model part alone.
+    if (frozen.tool === "video.remove-bg") return claimPrepared({ ...frozen, ...retried, credits: frozen.modelCredits }, request, userId, fingerprint, tx);
     const chosen = new Set(request.retry.outputIndexes);
     const layout = { batches: frozen.layout.batches.map((batch) => batch.filter((index) => chosen.has(index))).filter((batch) => batch.length > 0),
       encodes: frozen.layout.encodes.filter((encode) => chosen.has(encode.outputIndex)) };
