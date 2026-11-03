@@ -1052,3 +1052,7 @@ export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "
 
 export * from "@shared/credit-amount.js";
 export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedgerViewSchema, studioLedgerViewSchema, projectCreditsViewSchema, studioCreditsViewSchema, studioCreditSummarySchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, purchasePageSchema } from "@shared/types/credit.js";
+
+export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
+export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
+export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";

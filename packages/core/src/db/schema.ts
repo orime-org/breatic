@@ -34,6 +34,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type {
+  AccountActivityKind,
   Attribution,
   ConsentRecord,
   ConsentSnapshot,
@@ -3272,3 +3273,36 @@ export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
  result: jsonb("result").$type<ReclaimItemResult>().notNull(),
  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
+
+// ── Account interaction history and collection coverage ──────────────
+export const accountActivityEvents = pgTable("account_activity_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+  kind: text("kind").$type<AccountActivityKind>().notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+  visitId: uuid("visit_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_user_visit_idx").on(table.userId, table.visitId),
+  index("account_activity_user_time_idx").on(table.userId, table.occurredAt),
+  index("account_activity_time_user_idx").on(table.occurredAt, table.userId),
+  check("account_activity_kind_check", sql`${table.kind} IN ('project_access','generation_started','project_action','agent_started','project_edit')`),
+  check("account_activity_project_check", sql`${table.kind} NOT IN ('project_access','project_edit') OR ${table.projectId} IS NOT NULL`),
+  check("account_activity_visit_check", sql`(${table.kind} = 'project_access') = (${table.visitId} IS NOT NULL)`),
+]);
+
+export const accountActivityCoverage = pgTable("account_activity_coverage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  version: integer("version").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_activity_coverage_open_idx").on(table.version).where(sql`${table.endedAt} IS NULL`),
+  index("account_activity_coverage_version_time_idx").on(table.version, table.startedAt),
+  check("account_activity_coverage_version_check", sql`${table.version} > 0`),
+  check("account_activity_coverage_interval_check", sql`${table.endedAt} IS NULL OR ${table.endedAt} > ${table.startedAt}`),
+]);

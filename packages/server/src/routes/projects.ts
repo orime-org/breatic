@@ -14,7 +14,7 @@
  * docs, persisted by the collab service.
  */
 
-import { creditAmountFormatQuerySchema } from "@breatic/shared";
+import { projectVisitRequestSchema, creditAmountFormatQuerySchema } from "@breatic/shared";
 
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
@@ -35,7 +35,7 @@ import {
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { getSceneConfig, projectAuthService } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
+import { logger, NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
 import type { ProjectDetail } from "@breatic/shared";
 
@@ -263,16 +263,33 @@ projects.get("/:id/credits", validate("query", creditAmountFormatQuerySchema), a
  * A dedicated write endpoint: the `GET /:id` open path writes nothing, while
  * recording an open is an explicit write the project page fires on mount. NOT behind
  * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
- * collapsing no-access to a `404` so existence is never leaked) and UPSERTs
- * idempotently, so re-opening just bumps the timestamp in place.
- * @returns `200` with `{ data: { ok: true } }`; `404` when the caller cannot
+ * collapsing no-access to a `404` so existence is never leaked). A stable
+ * visit UUID replays its original receipt without moving the recent feed.
+ * @returns `200` with `ok` and the original visit receipt; `404` when the caller cannot
  *   access the project
  */
-projects.post("/:id/opened", async (c) => {
+projects.post("/:id/opened", validate("json", projectVisitRequestSchema), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
-  await recentService.recordOpen(id, user.id);
-  return c.json({ data: { ok: true } });
+  const { visit_id } = c.req.valid("json");
+  try {
+    const receipt = await recentService.recordOpen(id, user.id, visit_id);
+    return c.json({ data: { ok: true as const, ...receipt } });
+  } catch (err) {
+    logger.error({ err: err instanceof Error && err.cause instanceof Error ? err.cause : err,
+      ctx: { operation: "record_project_visit", userId: user.id, projectId: id, visitId: visit_id } }, "Project visit admission failed");
+    throw err;
+  }
+});
+
+/**
+ * `GET /projects/:id/opened/:visitId` — look up this account's original visit.
+ * @returns A minimal recorded receipt or an unconfirmed binding, never Project data.
+ * @throws {ValidationError} When either route identity is malformed.
+ */
+projects.get("/:id/opened/:visitId", validate("param", z.object({ id: z.uuid(), visitId: z.uuid() })), async (c) => {
+  const { id, visitId } = c.req.valid("param");
+  return c.json({ data: await recentService.lookupOpen(id, c.get("user").id, visitId) });
 });
 
 /**
