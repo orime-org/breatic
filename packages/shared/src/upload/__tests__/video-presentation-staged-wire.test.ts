@@ -332,32 +332,80 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     expect(new Set([key, videoPresentationKeyFor(KEY), videoSourceLedgerKeyFor(KEY, 'e'.repeat(64)), KEY]).size).toBe(4);
   });
 
-  it.each([
-    ['copy_carrier', { kind: 'copy_carrier', inputId: INPUT }],
-    ['chunk_encode', { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 96 } }],
-    ['stitch', { kind: 'stitch', inputId: INPUT, chunks: ['video/canonical.webm.c0', 'video/canonical.webm.c1'] }],
-    // S6e E3b (§7.17, §5.3): the model input over its presentation window, written as an intermediate object.
-    ['prepare_model_input', { kind: 'prepare_model_input', inputId: INPUT, window: { start: 0, end: 1011 } }],
-  ])('RC01 admits the %s recipe on a standard-4 job request', (_name, recipe) => {
-    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
-    const request = {
+  // S6d D3 (§91 D-1, D-2, D3-1; design §7.17 `segment`/`chunk_encode` rows): the worker reads the full ledger and writes the
+  // window's clip spans in presentation order (decodeStart, clipStart, displayStart/displayEnd and rate each their own
+  // field) with derived-empty spans as `{ kind: 'empty', fill, window }`, plus the target block from the plan; the
+  // container never reads the full ledger. A stitch binds each chunk as a job input and carries the plan duration of each.
+  const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+  const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
+  const SPAN = { kind: 'source', decodeStart: r(8, 5), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(49, 25), rate: r(1) };
+  const EMPTY = { kind: 'empty', fill: 'black', window: { start: r(49, 25), end: r(2) } };
+  const ENTRIES = [SPAN, EMPTY];
+  const CHUNK_A = '6c3b1d2e-0a4f-4d5e-9b8a-1c2d3e4f5a6b';
+  const CHUNK_B = '7d4c2e3f-1b5a-4e6f-8c9b-2d3e4f5a6b7c';
+  const chunkEncode = { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET };
+  const stitch = { kind: 'stitch', inputId: INPUT, chunks: [{ inputId: CHUNK_A, duration: r(48, 25) }, { inputId: CHUNK_B, duration: r(2, 25) }], audio: { start: r(0), end: r(2) }, target: TARGET };
+  const modelInput = { kind: 'prepare_model_input', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET };
+  const chunkInputs = [{ inputId: CHUNK_A, storageKey: `${KEY}.c0` }, { inputId: CHUNK_B, storageKey: `${KEY}.c1` }];
+
+  /**
+   * A standard-4 job request around one recipe, binding every input it names.
+   * @param recipe - The recipe.
+   * @param inputs - Extra bound inputs.
+   * @returns The request.
+   */
+  function jobOf(recipe: Record<string, unknown>, inputs: { inputId: string; storageKey: string }[] = []): Record<string, unknown> {
+    return {
       schemaVersion: 2, jobId: chunkJob, containerClass: 'MiniToolContainerStd4', deadlineAt: D,
       limits: { probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
-      inputs: [{ inputId: INPUT, storageKey: KEY }],
+      inputs: [{ inputId: INPUT, storageKey: KEY }, ...inputs],
       outputs: [{ outputIndex: 0, storageKey: `${KEY}.${chunkJob}`, contentType: 'video/mp4', recipe }],
     };
+  }
+
+  it.each([
+    ['copy_carrier', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601' }, false],
+    ['chunk_encode', chunkEncode, false],
+    ['stitch', stitch, true],
+    ['stitch without audio', { ...stitch, audio: null }, true],
+    ['chunk_encode for an odd, padded carrier', { ...chunkEncode, target: { ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } } }, false],
+    ['chunk_encode tone mapping HDR', { ...chunkEncode, target: { ...TARGET, toneMap: 'sdr-bt709' } }, false],
+    // S6e E3b (§7.17, §5.3): the model input over its presentation window, written as an intermediate object.
+    ['prepare_model_input', modelInput, false],
+  ] as const)('RC01 admits the %s recipe on a standard-4 job request', (_name, recipe, withChunks) => {
+    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
+    const request = jobOf(recipe, withChunks ? chunkInputs : []);
     expect(miniToolPlanJobRequestSchema.parse(request)).toEqual(request);
   });
 
   it.each([
-    ['a chunk window ending at its start', { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 48 } }],
-    ['a negative chunk window', { kind: 'chunk_encode', inputId: INPUT, window: { start: -1, end: 4 } }],
-    ['a stitch of no chunks', { kind: 'stitch', inputId: INPUT, chunks: [] }],
-    ['a model input over an empty window', { kind: 'prepare_model_input', inputId: INPUT, window: { start: 4, end: 4 } }],
-    ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT }],
-    ['clip entries, which are S6d\'s', { kind: 'chunk_encode', inputId: INPUT, window: { start: 0, end: 4 }, entries: [] }],
+    ['the earlier window-only chunk', { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 96 } }],
+    ['a chunk of no entries', { ...chunkEncode, entries: [] }],
+    ['entries that leave a gap', { ...chunkEncode, entries: [SPAN, { ...EMPTY, window: { start: r(2), end: r(51, 25) } }] }],
+    ['entries that overlap', { ...chunkEncode, entries: [{ ...SPAN, displayEnd: r(2) }, EMPTY] }],
+    ['a span that ends at its start', { ...chunkEncode, entries: [{ ...SPAN, displayEnd: r(48, 25) }, { ...EMPTY, window: { start: r(48, 25), end: r(2) } }] }],
+    ['a span decoded from after its clip start', { ...chunkEncode, entries: [{ ...SPAN, decodeStart: r(49, 25) }, EMPTY] }],
+    ['a span of zero rate', { ...chunkEncode, entries: [{ ...SPAN, rate: r(0) }, EMPTY] }],
+    ['a span named by the earlier sourceStart', { ...chunkEncode, entries: [{ kind: 'source', sourceStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(49, 25), rate: r(1) }, EMPTY] }],
+    ['two empty entries in a row', { ...chunkEncode, entries: [SPAN, { ...EMPTY, window: { start: r(49, 25), end: r(99, 50) } }, { ...EMPTY, window: { start: r(99, 50), end: r(2) } }] }],
+    ['an empty entry of another fill', { ...chunkEncode, entries: [SPAN, { ...EMPTY, fill: 'white' }] }],
+    ['a target without its tone map', { ...chunkEncode, target: { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', alpha: 'none', crf: 18, preset: 'medium' } }],
+    ['a display rectangle outside the coded size', { ...chunkEncode, target: { ...TARGET, displayRect: { x: 0, y: 0, width: 321, height: 180 } } }],
+    ['an odd coded size', { ...chunkEncode, target: { ...TARGET, width: 161 } }],
+    ['an unknown alpha packing', { ...chunkEncode, target: { ...TARGET, alpha: 'stacked' } }],
+    ['the earlier key-list stitch', { kind: 'stitch', inputId: INPUT, chunks: ['video/canonical.webm.c0'] }],
+    ['a stitch chunk without its duration', { ...stitch, chunks: [{ inputId: CHUNK_A }] }],
+    ['a stitch of no chunks', { ...stitch, chunks: [] }],
+    ['a stitch whose chunk is the source input', { ...stitch, chunks: [{ inputId: INPUT, duration: r(2) }] }],
+    ['a copy without the plan matrix', { kind: 'copy_carrier', inputId: INPUT }],
+    ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT, timescale: 25, entries: ENTRIES, target: TARGET }],
   ])('RC02 rejects %s', (_name, recipe) => {
-    expect(miniToolPlanRecipeSchema.safeParse({ kind: 'copy_carrier', inputId: INPUT }).success).toBe(true);
+    expect(miniToolPlanRecipeSchema.safeParse(chunkEncode).success).toBe(true);
     expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);
+  });
+
+  it('RC03 a stitch job request binds every chunk it names as an input', () => {
+    expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs)).success).toBe(true);
+    expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs.slice(0, 1))).success).toBe(false);
   });
 });
