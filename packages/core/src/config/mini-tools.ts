@@ -76,11 +76,10 @@ const encodingSchema = z.strictObject({
   copy_disk_margin_bytes: z.number().optional(),
 });
 
-// The encoded presentation carrier (design §4.3, §8.2).
-const carrierDefaults = { container_class: "MiniToolContainerStd4", max_short_side: 1080, color: { primaries: "bt709", transfer: "bt709", matrix: "bt709", range: "tv" } };
+// The encoded presentation carrier (design §4.3, §8.2); it is encoded on encoding.encoder.container_class.
+const carrierDefaults = { max_short_side: 1080, color: { primaries: "bt709", transfer: "bt709", matrix: "bt709", range: "tv" } };
 const colorTag = z.string().min(1);
 const carrierSchema = z.strictObject({
-  container_class: z.string().min(1).default(carrierDefaults.container_class),
   max_short_side: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(carrierDefaults.max_short_side),
   color: z.strictObject({ primaries: colorTag, transfer: colorTag, matrix: colorTag, range: colorTag }).default(carrierDefaults.color),
 });
@@ -141,6 +140,8 @@ export const miniToolsConfigSchema = z
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
+      // The target presentation policy every admission and read freezes (design §3.2 item 1); a configured block names it.
+      policy_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       // Every uploadable video gets a presentation and a ledger: this equals storage.upload.max_upload_bytes.
       max_source_bytes: z.number().int().positive().default(2_147_483_648),
       max_packed_bytes: z.number().int().positive().default(1_073_741_824),
@@ -148,7 +149,7 @@ export const miniToolsConfigSchema = z
       preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
       source_ledger: sourceLedgerConfigSchema.default(sourceLedgerDefaults),
       carrier: carrierSchema.default(carrierDefaults),
-    }).default({ container_class: "MediaContainer", max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults, carrier: carrierDefaults }),
+    }).default({ container_class: "MediaContainer", policy_version: 1, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults, carrier: carrierDefaults }),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),
@@ -191,9 +192,6 @@ export const miniToolsConfigSchema = z
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {
       ctx.addIssue({ code: "custom", path: ["presentation", "container_class"], message: "Presentation names an undeclared container class" });
-    }
-    if (!(config.presentation.carrier.container_class in config.classes)) {
-      ctx.addIssue({ code: "custom", path: ["presentation", "carrier", "container_class"], message: "The carrier names an undeclared container class" });
     }
     for (const [path, name] of [[["encoding", "encoder", "container_class"], config.encoding.encoder.container_class], [["executions", "video.remove-bg", "preparation", "container_class"], config.executions["video.remove-bg"].preparation.container_class]] as const) {
       if (!(name in config.classes)) ctx.addIssue({ code: "custom", path: [...path], message: "Names an undeclared container class" });

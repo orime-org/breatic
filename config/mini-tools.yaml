@@ -64,6 +64,8 @@ plan_limits:
 # Automatic presentation preparation is platform funded and uses the metadata container.
 presentation:
   container_class: "MediaContainer"
+  # The target presentation policy; raise it when a policy change must prepare every source again.
+  policy_version: 1
   # Equal to storage.yaml upload.max_upload_bytes: every uploadable video is presented.
   max_source_bytes: 2147483648
   max_packed_bytes: 1073741824
@@ -79,9 +81,9 @@ presentation:
     matroska_max_blocks: 250000
     # Automatic repairs after a transient ledger failure of the selected presentation.
     max_auto_repairs: 3
-  # An encoded carrier: short side at most max_short_side, labelled SDR BT.709.
+  # An encoded carrier: short side at most max_short_side, labelled SDR BT.709;
+  # it is encoded on encoding.encoder.container_class.
   carrier:
-    container_class: "MiniToolContainerStd4"
     max_short_side: 1080
     color:
       primaries: "bt709"
