@@ -52,7 +52,7 @@ export interface VisitDbSnapshot { events: Array<{ kind: AccountActivityKind; vi
 /** Read actual persisted events using the configured root bootstrap, without reading env files. @throws {Error} When ownership or DB inspection fails. */
 export async function inspectVisitDb(receipt: VisitReceipt): Promise<VisitDbSnapshot> {
   const output = await new Promise<string>((resolveOutput, reject) => {
-    const child = spawn('pnpm', ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'packages/web/tests/helpers/project-visits-db.ts'], {
+    const child = spawn('pnpm', ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'scripts/inspect-smoke-project-visits.ts'], {
       cwd: resolve(__dirname, '../../../..'), stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
     });
     let stdout = ''; let stderr = '';

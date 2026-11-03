@@ -9,8 +9,8 @@ import type { AccountActivityKind } from '@breatic/shared';
 // Neither the test nor the agent opens or prints the runtime environment file.
 /** Inspect only the supplied slot-owned fixture, closing its configured pool. @throws {Error} If input, ownership or persistence is invalid. */
 async function main(): Promise<void> {
-  await import('../../../server/src/bootstrap-config.js');
-  const core = await import('../../../core/dist/index.js');
+  await import('../packages/server/src/bootstrap-config.js');
+  const core = await import('../packages/core/dist/index.js');
   try {
     const input = JSON.parse(await text(process.stdin)) as { accountId?: unknown; projectId?: unknown; visitId?: unknown };
     for (const value of [input.accountId, input.projectId, input.visitId]) {
