@@ -10,13 +10,19 @@
  */
 
 import {
-  videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationVersionSchema, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
-  type VideoPresentationAdmissionPolicy, type VideoPresentationIngestPricing, type VideoPresentationLedgerReceipt, type VideoPresentationProcessLimits,
-  type VideoPresentationUsageFact, type VideoPresentationVersion,
+  videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationObjectURL, videoPresentationVersionId, videoPresentationVersionSchema,
+  videoPresentationWorkKeyFor, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
+  type VideoPresentationAdmissionPolicy, type VideoPresentationCarrierReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
+  type VideoPresentationEncoding, type VideoPresentationIngestLedger, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
+  type VideoPresentationLedgerReceipt, type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact,
+  type VideoPresentationVersion,
 } from '@breatic/shared';
 import type { VideoPresentation, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
-import type { VideoCarrierRoute } from '@shared/mini-tools/video-encode-plan.js';
+import {
+  chooseVideoCarrierRoute, estimateVideoJobSeconds, planVideoEncodeChunks, presentationEncodeFailure, videoCarrierRouteStages, videoContainerJobId,
+  type VideoCarrierIdentity, type VideoCarrierRoute, type VideoCarrierStage, type VideoCarrierRouteInput, type VideoEncodeChunk, type VideoJobWork,
+} from '@shared/mini-tools/video-encode-plan.js';
 import {
   advanceLedgerAdmission, advancePresentationCandidate, advancePresentationChunk, advancePresentationLedger, advanceSelectedPresentation,
   NO_PRESENTATION_CANDIDATE, NO_PRESENTATION_CHUNK,
@@ -40,15 +46,16 @@ export interface VideoPresentationAdmission {
   pricing?: VideoPresentationIngestPricing;
   targetPolicyVersion?: number;
   policy?: VideoPresentationAdmissionPolicy;
+  encoding?: VideoPresentationEncoding;
   actorUserId?: string;
   projectId?: string | null;
-  packedURL?: string;
-  manifestURL?: string;
-  sourceLedgerURL?: string;
-  sourceLedgerTableURL?: string;
+  /** Every derived object's public URL is this base joined to its key. */
+  publicBaseURL?: string;
 }
 /** One accepted job's identity. */
 export interface PresentationJobIdentity { storageKey?: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
+/** A job named without its deadline: the deadline lives in the DO admission record (§5.1 step 1). */
+export interface PresentationJobRef { storageKey: string; sourceFingerprint: string; jobId: string }
 /** One accepted job's private capability: its identity and the token `prepare` granted. */
 export interface PresentationCapability extends PresentationJobIdentity { token: string }
 /** The producer's declaration of its one write: the full ledger and the compact table written before it. */
@@ -65,9 +72,9 @@ export interface SourceLedgerMeasurement extends StoredObjectReceipt { table: St
 /** A job's measured container usage and whether its SQL record was acknowledged. */
 export interface PresentationUsage { wallMs: number; cpuUsec: number | null; acknowledged: boolean }
 /** A container unit of the candidate, without its job id. */
-export type PresentationChunkUnit = { kind: 'presentation-chunk'; chunk: number } | { kind: 'presentation-stitch' } | { kind: 'presentation-copy' };
-/** One unit report. */
-export type PresentationChunkReport = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number } | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
+export type PresentationChunkUnit = VideoPresentationChunkUnit;
+/** One unit report; a stitch or copy Done carries the job DO's measured receipt of its carrier. */
+export type PresentationChunkReport = VideoPresentationChunkReport;
 /** One reported fact of a job. */
 export type PresentationReport =
   | { kind: 'verified'; bundle: { versionId: string; toolInputId: string; descriptor: unknown } }
@@ -87,9 +94,33 @@ export interface PresentationView {
   usageFact?: VideoPresentationUsageFact;
 }
 
+/** What a basic execution needs before it plans. */
+export interface PresentationGrant {
+  /** The granted capability; null when the job is unknown, archived, past its deadline or refused St. */
+  capability: PresentationCapability | null;
+  /** Whether the job planned already (or cannot plan any more): a replay never probes again. */
+  planned: boolean;
+  /** For a ledger-only repair writer, the toolInputId it writes. */
+  ledgerOnly: string | null;
+  admission: VideoPresentationAdmission | null;
+  /** The selected version's identity, from which the reuse route is decided. */
+  selected: VideoCarrierIdentity | null;
+}
+
 /** Durable gate shared by the production container and the storage-only test object. */
 export type PresentationStorageGate = <T>(work: () => Promise<T>) => Promise<T>;
 
+/** What `preparePresentation` records with the plan: the route, its work and the plan-derived facts the DO publishes from. */
+export interface PresentationPlanFacts {
+  route: VideoCarrierRoute;
+  toolInputId: string;
+  planSha256: string;
+  producerVersion: number;
+  profileVersion: number;
+  display: VideoPresentationVersion['display'];
+  playbackClock: VideoPresentationVersion['playbackClock'];
+  work: VideoPresentationPrepareAnswer['work'];
+}
 interface JobRecord {
   admission: VideoPresentationAdmission;
   token: string;
@@ -98,6 +129,9 @@ interface JobRecord {
   planSha256: string | null;
   bundle: unknown;
   chunks: Record<string, PresentationChunk>;
+  prepared?: PresentationPlanFacts;
+  /** The measured carrier receipt of each done stitch or copy unit. */
+  receipts?: Record<string, VideoPresentationCarrierReceipt>;
 }
 interface LedgerOnlyJob { admission: VideoPresentationAdmission; token: string; toolInputId: string }
 interface ClaimRecord { claim: SourceLedgerWriteClaim; declaration: SourceLedgerDeclaration; planSha256: string; status: 'active' | 'released' | 'refused' }
@@ -149,6 +183,44 @@ function workTerminal(candidate: PresentationCandidate | undefined): boolean {
   return candidate === undefined || candidate.state === 'failed' || candidate.state === 'verified';
 }
 
+/**
+ * One instance in the §10.1 wire states: absent is null, both failure kinds are `failed` with their code.
+ * @param instance - The store instance, if any.
+ * @returns The wire ledger.
+ * @throws {never} Never.
+ */
+export function wireLedger(instance: PresentationLedgerInstance<NonNullable<VideoPresentationIngestLedger['receipt']>> | undefined): VideoPresentationIngestLedger | null {
+  if (instance === undefined || instance.kind === 'absent') return null;
+  switch (instance.kind) {
+    case 'pending': return { state: 'pending', receipt: null, failure: null };
+    case 'ready': return { state: 'ready', receipt: instance.receipt, failure: null };
+    default: return { state: 'failed', receipt: null, failure: instance.code };
+  }
+}
+
+/**
+ * Project the store view to the ingest snapshot (§3.5 response row, §5.1 step 6): the selected bundle, the target
+ * policy's preparation and the L state of the selected toolInputId alone, never the full arrays or every instance.
+ * @param view - The store view; a stand-in answering another shape projects to nothing selected.
+ * @param storageKey - The registered key.
+ * @param sourceFingerprint - The source fingerprint.
+ * @returns The snapshot.
+ * @throws {never} Never.
+ */
+export function presentationSnapshot(view: Partial<PresentationView>, storageKey: string, sourceFingerprint: string): VideoPresentationIngestSnapshot {
+  const presentation = view.presentation ?? null;
+  const candidate = view.candidate;
+  return {
+    sourceBinding: { storageKey, sourceFingerprint },
+    presentation,
+    preparation: candidate?.jobId == null || view.targetPolicyVersion == null ? null : {
+      targetPolicyVersion: view.targetPolicyVersion, jobId: candidate.jobId, stage: candidate.stage as VideoCarrierStage | null, failure: candidate.failure,
+    },
+    ledger: presentation === null ? null : wireLedger(view.ledgers?.[presentation.toolInputId]),
+    ...(view.usageFact === undefined ? {} : { usageFact: view.usageFact }),
+  };
+}
+
 /** One canonical key's presentation state machine over durable storage and R2. */
 export class VideoPresentationStore {
   /**
@@ -191,7 +263,7 @@ export class VideoPresentationStore {
           for (const effect of archived.effects) if (effect.kind === 'instance-wa') await this.ledgerEvent(state, effect.toolInputId, { kind: 'Wa', jobId: effect.jobId });
           state.archive.push(current);
         }
-        const requested = input.limits?.sourceLedger !== undefined && input.sourceLedgerURL !== undefined && input.sourceLedgerTableURL !== undefined;
+        const requested = input.limits?.sourceLedger !== undefined && input.publicBaseURL !== undefined;
         state.current = {
           admission: { ...input }, token: crypto.randomUUID(),
           candidate: advancePresentationCandidate(NO_PRESENTATION_CANDIDATE, { kind: 'Ad', jobId: input.jobId, deadlineAt: input.deadlineAt }, this.policy(input)).next,
@@ -227,16 +299,70 @@ export class VideoPresentationStore {
   }
 
   /**
+   * Grant one basic execution (St) and report what planning it needs: whether the job already planned, its frozen
+   * admission and the selected version's identity (the reuse route is decided from it).
+   * @param identity - The job identity.
+   * @param now - The current time.
+   * @returns The grant.
+   * @throws {Error} When durable storage fails.
+   */
+  grantPresentation(identity: PresentationJobRef, now: number): Promise<PresentationGrant> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.findRef(state, identity);
+      const none: PresentationGrant = { capability: null, planned: true, ledgerOnly: null, admission: null, selected: null };
+      if (state === undefined || found === undefined || found.kind === 'archived' || now >= found.job.admission.deadlineAt) return none;
+      const capability = { ...identity, deadlineAt: found.job.admission.deadlineAt, token: found.job.token };
+      if (found.kind === 'ledger') return { ...none, capability, ledgerOnly: found.job.toolInputId, admission: found.job.admission };
+      const step = await this.candidateEvent(state, found.job, { kind: 'St', jobId: identity.jobId, now });
+      if (step.rejected) return none;
+      await this.save(state);
+      const selected = state.selected.kind === 'ready' ? state.presentation : null;
+      return { capability, planned: found.job.candidate.route !== null || found.job.candidate.state !== 'building', ledgerOnly: null, admission: found.job.admission,
+        selected: selected === null ? null : { planSha256: selected.planSha256, producerVersion: selected.producerVersion, profileVersion: selected.profileVersion } };
+    });
+  }
+
+  /**
+   * The worker-only answer to `prepare` (E2-3): the snapshot plus the capability, the recorded plan and work, the
+   * candidate's own ledger, the job's units and the frozen pricing and attribution. D comes only from the capability.
+   * @param identity - The job identity.
+   * @param now - The current time.
+   * @returns The answer.
+   * @throws {Error} When durable storage fails.
+   */
+  prepareAnswer(identity: PresentationJobRef, now: number): Promise<VideoPresentationPrepareAnswer> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.findRef(state, identity);
+      const snapshot = presentationSnapshot(this.view(state), identity.storageKey, identity.sourceFingerprint);
+      const admission = found?.job.admission;
+      const capability = found === undefined || now >= admission!.deadlineAt ? null : { token: found.job.token, deadlineAt: admission!.deadlineAt };
+      const job = found === undefined || found.kind === 'ledger' ? null : found.job;
+      const facts = capability === null ? undefined : job?.prepared;
+      const plan = facts === undefined ? null : { route: facts.route, stages: videoCarrierRouteStages(facts.route), toolInputId: facts.toolInputId, planSha256: facts.planSha256 };
+      const units = Object.fromEntries(Object.entries(job?.chunks ?? {}).map(([key, chunk]) => [key, {
+        state: chunk.state, attempt: chunk.attempt, attempts: chunk.attempts.map(({ attempt, jobId, state: attemptState, usageRecorded }) => ({ attempt, jobId, state: attemptState, usageRecorded })),
+      }]));
+      const frozen = admission?.pricing === undefined || admission.actorUserId === undefined ? null
+        : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null };
+      return { ...snapshot, capability, plan, work: facts?.work ?? { kind: 'none' },
+        candidateLedger: plan === null ? null : wireLedger(state?.ledgers[plan.toolInputId]?.instance), units, frozen };
+    });
+  }
+
+  /**
    * Record the plan fact (Tp): freeze the route and toolInputId, then let the toolInputId's instance decide the writer.
    * @param identity - The current job's capability.
    * @param plan - The route, toolInputId and plan digest.
    * @param plan.route - The carrier route.
    * @param plan.toolInputId - The tool input identity.
    * @param plan.planSha256 - The plan digest.
+   * @param facts - The plan-derived facts `preparePresentation` publishes from, recorded with the plan.
    * @returns Whether this job is the instance's writer, and the view.
    * @throws {Error} When durable storage fails.
    */
-  planPresentation(identity: PresentationCapability, plan: { route: VideoCarrierRoute; toolInputId: string; planSha256: string }): Promise<{ writer: boolean; view: PresentationView }> {
+  planPresentation(identity: PresentationCapability, plan: { route: VideoCarrierRoute; toolInputId: string; planSha256: string }, facts?: PresentationPlanFacts): Promise<{ writer: boolean; view: PresentationView }> {
     return this.gate(async () => {
       const state = await this.load();
       const found = state === undefined ? undefined : this.find(state, identity, identity.token);
@@ -247,6 +373,7 @@ export class VideoPresentationStore {
       const step = await this.candidateEvent(state, job, { kind: 'Ev', jobId: identity.jobId, fact: { kind: 'plan', route: plan.route, toolInputId: plan.toolInputId, ledger: instance.kind, ...ledgerCode } });
       if (!step.rejected) {
         job.planSha256 ??= plan.planSha256;
+        if (facts !== undefined) job.prepared ??= facts;
         const item = advanceLedgerAdmission(job.item, { kind: 'Tp', jobId: identity.jobId, toolInputId: plan.toolInputId });
         job.item = item.next;
         for (const effect of item.effects) {
@@ -273,9 +400,84 @@ export class VideoPresentationStore {
       const state = await this.load();
       const found = state === undefined ? undefined : this.find(state, identity, identity.token);
       if (state === undefined || found?.kind !== 'current') return false;
+      if (stage === 'publish') {
+        const verified = await this.publishWork(state, found.job);
+        if (verified) await this.save(state);
+        return verified;
+      }
       const step = await this.candidateEvent(state, found.job, { kind: 'Sg', jobId: identity.jobId, stage });
       if (!step.rejected) await this.save(state);
       return !step.rejected;
+    });
+  }
+
+  /**
+   * Publish after a dispatched copy or a stitch (§5.1 step 4): the done unit's forwarded receipt must match the DO's own
+   * measurement of the R2 object; the DO then assembles the bundle, computes its versionId and submits it as verified.
+   * @param state - The state.
+   * @param job - The current job.
+   * @returns Whether the candidate is now verified.
+   * @throws {Error} When R2 fails.
+   */
+  private async publishWork(state: PresentationState, job: JobRecord): Promise<boolean> {
+    const facts = job.prepared;
+    const { candidate, admission } = job;
+    if (facts === undefined || candidate.state !== 'building' || (facts.route !== 'dispatch_copy' && facts.route !== 'encode')) return false;
+    const unit = unitKey(admission.jobId, { kind: facts.route === 'encode' ? 'presentation-stitch' : 'presentation-copy' });
+    const receipt = job.receipts?.[unit];
+    if (job.chunks[unit]?.state !== 'done' || receipt === undefined) return false;
+    const head = await this.bucket.head(receipt.storageKey);
+    const sha256 = head?.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType || sha256 !== receipt.sha256) return false;
+    const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), etag: head.etag, size: head.size, sha256, contentType: receipt.contentType };
+    const bundle = await this.assembleVersion(job, facts, carrier);
+    const step = advancePresentationCandidate(candidate, { kind: 'Ev', jobId: admission.jobId, fact: { kind: 'verified' } }, this.policy(admission));
+    if (step.next.state === 'verified') job.bundle = bundle;
+    await this.applyCandidateStep(state, job, step);
+    return job.candidate.state === 'verified';
+  }
+
+  /**
+   * Assemble a version bundle over a measured carrier: the versionId hashes the target policy, the plan's producer and
+   * profile, the display and the carrier's measured bytes (§3.2).
+   * @param job - The job.
+   * @param facts - Its recorded plan facts.
+   * @param carrier - The measured carrier receipt.
+   * @returns The bundle.
+   * @throws {Error} When the version input is invalid.
+   */
+  private async assembleVersion(job: JobRecord, facts: PresentationPlanFacts, carrier: Extract<VideoPresentationVersion['playback'], { kind: 'native' }>['carrier']): Promise<VideoPresentationVersion> {
+    const { admission } = job;
+    const policyVersion = admission.targetPolicyVersion ?? 1;
+    const versionId = await videoPresentationVersionId({ sourceFingerprint: admission.sourceFingerprint, policyVersion, producerVersion: facts.producerVersion,
+      profileVersion: facts.profileVersion, planSha256: facts.planSha256, display: facts.display, playback: { sha256: carrier.sha256, size: carrier.size, contentType: carrier.contentType } });
+    return {
+      schemaVersion: 1, sourceFingerprint: admission.sourceFingerprint, versionId, toolInputId: facts.toolInputId, planSha256: facts.planSha256, policyVersion,
+      producerVersion: facts.producerVersion, profileVersion: facts.profileVersion,
+      original: admission.original ?? { width: null, height: null, duration: null }, display: facts.display,
+      playback: { kind: 'native', carrier, displayRect: null }, playbackClock: facts.playbackClock,
+    };
+  }
+
+  /**
+   * Publish the reuse route (§7.1): the selected carrier under the new target policy, as a new versionId.
+   * @param identity - The current job's capability.
+   * @returns Whether the candidate is now verified.
+   * @throws {Error} When storage fails.
+   */
+  publishReuse(identity: PresentationCapability): Promise<boolean> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.find(state, identity, identity.token);
+      const selected = state?.presentation;
+      if (state === undefined || found?.kind !== 'current' || found.job.prepared?.route !== 'reuse' || selected === null || selected === undefined) return false;
+      const job = found.job;
+      const bundle = await this.assembleVersion(job, job.prepared!, selected.playback.carrier);
+      const step = advancePresentationCandidate(job.candidate, { kind: 'Ev', jobId: identity.jobId, fact: { kind: 'verified' } }, this.policy(job.admission));
+      if (step.next.state === 'verified') job.bundle = { ...bundle, playback: selected.playback };
+      await this.applyCandidateStep(state, job, step);
+      await this.save(state);
+      return job.candidate.state === 'verified';
     });
   }
 
@@ -295,9 +497,19 @@ export class VideoPresentationStore {
       const job = found.job;
       const key = unitKey(identity.jobId, unit);
       const chunkIdentity = { ...unit, jobId: identity.jobId };
-      const event = report.kind === 'Sub' ? { kind: 'Sub' as const, retries: job.admission.policy?.chunkRetries ?? 0 } : report;
-      const step = advancePresentationChunk(job.chunks[key] ?? NO_PRESENTATION_CHUNK, event, chunkIdentity);
+      const before = job.chunks[key] ?? NO_PRESENTATION_CHUNK;
+      let event: Parameters<typeof advancePresentationChunk>[1];
+      if (report.kind === 'Sub') event = { kind: 'Sub', retries: job.admission.policy?.chunkRetries ?? 0 };
+      else if (report.kind === 'Done') event = { kind: 'Done', attempt: report.attempt, usage: report.usage };
+      else event = report;
+      const step = advancePresentationChunk(before, event, chunkIdentity);
       if (step.rejected) return false;
+      // A carrier receipt counts only for the attempt that completed the unit, naming that attempt's own output key.
+      if (report.kind === 'Done' && report.receipt !== undefined && before.state === 'open' && step.next.state === 'done') {
+        const attemptJob = videoContainerJobId({ ...chunkIdentity, attempt: report.attempt });
+        if (report.receipt.storageKey !== videoPresentationWorkKeyFor(job.admission.storageKey, attemptJob)) return false;
+        job.receipts = { ...job.receipts, [key]: report.receipt };
+      }
       job.chunks[key] = step.next;
       for (const effect of step.effects) {
         if (effect.kind === 'candidate-failed') await this.candidateEvent(state, job, { kind: 'Er', jobId: identity.jobId, code: effect.code });
@@ -418,7 +630,7 @@ export class VideoPresentationStore {
       const limits = admission.limits?.sourceLedger;
       const within = (value: unknown, ceiling: number): boolean => Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= ceiling;
       if (instance.kind !== 'pending' || instance.writer !== identity.jobId || instance.writerArchived || identity.jobId in record.claims ||
-        limits === undefined || admission.sourceLedgerURL === undefined || admission.sourceLedgerTableURL === undefined ||
+        limits === undefined || admission.publicBaseURL === undefined ||
         (declaration.planSha256 !== undefined && declaration.planSha256 !== record.planSha256) ||
         declaration.producerVersion !== 2 || !within(declaration.byteLength, limits.maxBytes) || !within(declaration.table?.byteLength, limits.maxBytes) ||
         !within(declaration.table.frameCount, Number.MAX_SAFE_INTEGER)) return null;
@@ -633,9 +845,9 @@ export class VideoPresentationStore {
       table!.etag !== measured.table.etag || table!.size !== measured.table.size) return null;
     const parsed = videoPresentationLedgerReceiptSchema.safeParse({
       schemaVersion: 2, sourceFingerprint: admission.sourceFingerprint, toolInputId, planSha256: claimed.planSha256, producerVersion: claimed.declaration.producerVersion,
-      attempt: { jobId: admission.jobId, deadlineAt: admission.deadlineAt }, url: admission.sourceLedgerURL,
+      attempt: { jobId: admission.jobId, deadlineAt: admission.deadlineAt }, url: this.objectURL(admission, claimed.claim.key),
       etag: measured.etag, size: measured.size, sha256: measured.sha256, contentType: 'application/json',
-      table: { url: admission.sourceLedgerTableURL, sha256: measured.table.sha256, size: measured.table.size, contentType: 'application/json', frameCount: claimed.declaration.table.frameCount },
+      table: { url: this.objectURL(admission, claimed.claim.table.key), sha256: measured.table.sha256, size: measured.table.size, contentType: 'application/json', frameCount: claimed.declaration.table.frameCount },
     });
     return parsed.success ? { receipt: parsed.data, owner: claimed.claim.owner, tableETag: measured.table.etag } : null;
   }
@@ -761,6 +973,18 @@ export class VideoPresentationStore {
   }
 
   /**
+   * Locate a job by its id and source alone, as `prepare` names it.
+   * @param state - The state.
+   * @param identity - The job reference.
+   * @returns The job, or undefined.
+   * @throws {never} Never.
+   */
+  private findRef(state: PresentationState, identity: PresentationJobRef): FoundJob | undefined {
+    const found = this.find(state, { ...identity, deadlineAt: Number.NaN }, null, true);
+    return found?.job.admission.sourceFingerprint === identity.sourceFingerprint ? found : undefined;
+  }
+
+  /**
    * The caps frozen into an admission.
    * @param admission - The admission.
    * @returns The candidate policy.
@@ -768,6 +992,18 @@ export class VideoPresentationStore {
    */
   private policy(admission: VideoPresentationAdmission): { maxAutoRepairs: number } {
     return { maxAutoRepairs: admission.policy?.maxAutoRepairs ?? 0 };
+  }
+
+  /**
+   * The public URL of an object derived from the admission's frozen public base.
+   * @param admission - The admission.
+   * @param key - The storage key.
+   * @returns The URL.
+   * @throws {Error} When the admission froze no public base.
+   */
+  private objectURL(admission: VideoPresentationAdmission, key: string): string {
+    if (admission.publicBaseURL === undefined) throw new Error('The admission froze no public base');
+    return videoPresentationObjectURL(admission.publicBaseURL, key);
   }
 
   /**
@@ -815,4 +1051,110 @@ export class VideoPresentationStore {
   private save(state: PresentationState): Promise<void> {
     return this.storage.put(STATE_KEY, state);
   }
+}
+
+/** What the basic execution's probe found (design §5.1 step 2): the plan identity, the route facts and the plan-derived facts. */
+export type PresentationProbe =
+  | { kind: 'failed'; code: string }
+  | {
+    kind: 'planned';
+    toolInputId: string;
+    planSha256: string;
+    /** The route facts; `selected`, the copy margin and the basic disk are supplied from the DO's own state. */
+    routeInput: Omit<VideoCarrierRouteInput, 'selected' | 'copyDiskMarginBytes' | 'basicDiskBytes'>;
+    /** Whether each presentation frame is a source keyframe. */
+    keyframes: boolean[];
+    work: VideoJobWork;
+    display: VideoPresentationVersion['display'];
+    playbackClock: VideoPresentationVersion['playbackClock'];
+  };
+/** A carrier the basic execution produced itself (identity, or a copy that fits its disk), verified. */
+export type PresentationCarrierOutcome = { kind: 'verified'; bundle: { versionId: string; toolInputId: string; descriptor: unknown } } | { kind: 'failed'; code: string };
+/** The basic container's work, injected so the orchestration is tested over the real store with a fake container. */
+export interface PresentationContainerPort {
+  probe(capability: PresentationCapability): Promise<PresentationProbe>;
+  writeLedger(capability: PresentationCapability, toolInputId: string): Promise<void>;
+  carrier(capability: PresentationCapability, route: 'identity' | 'copy'): Promise<PresentationCarrierOutcome>;
+  usage(): Promise<{ wallMs: number; cpuUsec: number | null } | null>;
+}
+
+// Cloudflare sizes container disks in decimal gigabytes.
+const DISK_BYTES_PER_GB = 1_000_000_000;
+
+/**
+ * The encode chunks of a plan (§5.4): each targets the frozen share of the remaining budget, measured with the frozen rates.
+ * @param probe - The planned probe.
+ * @param encoding - The frozen encoding parameters.
+ * @param remainingSeconds - Seconds left before the job's deadline.
+ * @returns The chunks.
+ * @throws {RangeError} When the work or the budget is out of range.
+ */
+function encodeChunks(probe: Extract<PresentationProbe, { kind: 'planned' }>, encoding: VideoPresentationEncoding, remainingSeconds: number): VideoEncodeChunk[] {
+  const { work } = probe;
+  const frameSeconds = (estimateVideoJobSeconds(work, encoding.encoder) - encoding.encoder.startSeconds) / (work.encodedFrames + work.prerollFrames);
+  return planVideoEncodeChunks({ keyframes: probe.keyframes, frameSeconds, targetSeconds: encoding.chunkShare * remainingSeconds });
+}
+
+/**
+ * One basic execution of a presentation job (design §5.1 steps 1, 2 and 5): grant the job, probe and plan, record the
+ * plan so the toolInputId's instance decides the writer, let the writer write full and compact, choose the route from
+ * the probe facts and the frozen encoding and basic disk, publish identity, in-basic copy and reuse here, answer the
+ * dispatched work, fail an encode over the frozen chunk cap `too_long`, and report the basic execution's usage. A
+ * replay of a started job never probes again.
+ * @param store - The canonical key's store.
+ * @param identity - The job identity.
+ * @param port - The basic container.
+ * @param now - The current time.
+ * @returns The worker-only answer.
+ * @throws {Error} When storage, R2 or the container fails.
+ */
+export async function preparePresentation(store: VideoPresentationStore, identity: PresentationJobRef, port: PresentationContainerPort, now: number): Promise<VideoPresentationPrepareAnswer> {
+  const grant = await store.grantPresentation(identity, now);
+  const { capability, admission } = grant;
+  if (capability !== null && admission !== null && grant.ledgerOnly !== null) {
+    if ((await store.read(identity.storageKey, identity.sourceFingerprint)).ledgers[grant.ledgerOnly]?.kind === 'pending') await port.writeLedger(capability, grant.ledgerOnly);
+  } else if (capability !== null && admission !== null && !grant.planned) {
+    await planAndProduce(store, capability, admission, grant.selected, port, now);
+    const usage = await port.usage();
+    if (usage !== null) await store.report(capability, { kind: 'finished', usage });
+  }
+  return store.prepareAnswer(identity, now);
+}
+
+/**
+ * Probe, plan, write the ledger when this job is its writer, and take the route as far as the basic execution goes.
+ * @param store - The store.
+ * @param capability - The granted capability.
+ * @param admission - The frozen admission.
+ * @param selected - The selected version's identity.
+ * @param port - The basic container.
+ * @param now - The current time.
+ * @returns Nothing.
+ * @throws {Error} When storage, R2 or the container fails.
+ */
+async function planAndProduce(store: VideoPresentationStore, capability: PresentationCapability, admission: VideoPresentationAdmission,
+  selected: VideoCarrierIdentity | null, port: PresentationContainerPort, now: number): Promise<void> {
+  const probe = await port.probe(capability);
+  if (probe.kind === 'failed') { await store.fail(capability, probe.code); return; }
+  const { encoding, pricing } = admission;
+  if (encoding === undefined || pricing === undefined) { await store.fail(capability, 'admission_invalid'); return; }
+  const route = chooseVideoCarrierRoute({ ...probe.routeInput, selected, copyDiskMarginBytes: encoding.copyDiskMarginBytes,
+    basicDiskBytes: pricing.basic.size.disk_gb * DISK_BYTES_PER_GB });
+  const chunks = route === 'encode' ? encodeChunks(probe, encoding, (capability.deadlineAt - now) / 1000) : [];
+  const tooLong = route === 'encode' ? presentationEncodeFailure(chunks.length, encoding.maxParallelChunks) : null;
+  const work: PresentationPlanFacts['work'] = route === 'dispatch_copy' ? { kind: 'dispatch_copy' }
+    : route === 'encode' && tooLong === null ? { kind: 'encode', chunks } : { kind: 'none' };
+  const { planSha256, producerVersion, profileVersion } = probe.routeInput.plan;
+  const facts: PresentationPlanFacts = { route, toolInputId: probe.toolInputId, planSha256, producerVersion, profileVersion,
+    display: probe.display, playbackClock: probe.playbackClock, work };
+  const { writer, view } = await store.planPresentation(capability, { route, toolInputId: probe.toolInputId, planSha256 }, facts);
+  if (writer) await port.writeLedger(capability, probe.toolInputId);
+  if (view.candidate.state !== 'building') return;
+  if (tooLong !== null) { await store.fail(capability, tooLong); return; }
+  if (route === 'reuse') { await store.publishReuse(capability); return; }
+  if (route !== 'identity' && route !== 'copy') return;
+  if (route === 'copy' && !await store.advanceStage(capability, 'copy')) return;
+  const carrier = await port.carrier(capability, route);
+  if (carrier.kind === 'failed') await store.fail(capability, carrier.code);
+  else await store.report(capability, { kind: 'verified', bundle: carrier.bundle });
 }
