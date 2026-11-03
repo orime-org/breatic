@@ -19,8 +19,8 @@
 </p>
 
 <p align="center" dir="ltr">
-  <a href="README.md">English</a> · <a href="README-CN.md">简体中文</a> · <a href="README-ES.md">Español</a> · <a href="README-PT-BR.md">Português</a> · <a href="README-DE.md">Deutsch</a> · <a href="README-FR.md">Français</a> · <strong>繁體中文</strong><br>
-  <a href="README-KO.md">한국어</a> · <a href="README-JA.md">日本語</a> · <a href="README-AR.md">العربية</a> · <a href="README-RU.md">Русский</a> · <a href="README-UK.md">Українська</a> · <a href="README-TR.md">Türkçe</a> · <a href="README-TH.md">ภาษาไทย</a>
+  <a href="README.md">English</a> · <a href="README-CN.md">简体中文</a> · <strong>繁體中文</strong> · <a href="README-JA.md">日本語</a> · <a href="README-KO.md">한국어</a> · <a href="README-ES.md">Español</a> · <a href="README-PT-BR.md">Português</a><br>
+  <a href="README-DE.md">Deutsch</a> · <a href="README-FR.md">Français</a> · <a href="README-AR.md">العربية</a> · <a href="README-RU.md">Русский</a> · <a href="README-UK.md">Українська</a> · <a href="README-TR.md">Türkçe</a> · <a href="README-TH.md">ภาษาไทย</a>
 </p>
 
 ---
