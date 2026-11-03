@@ -207,7 +207,7 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     const core = await import('@breatic/core');
     const settings = getMiniToolsConfig();
     const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings,
-      presentation: { ...settings.presentation, policy_version: 7 } } as unknown as ReturnType<typeof getMiniToolsConfig>);
+      presentation: { ...settings.presentation, policy_version: 7 } });
     try {
       await resolveVideoPresentation(input);
     } finally { spy.mockRestore(); }
