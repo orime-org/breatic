@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Media in pasted content, kept only when its address is one of ours
@@ -147,7 +147,9 @@ function strip(fragment: Fragment, prefix: string | null): { fragment: Fragment;
     if (inner.count === 0) {
       kept.push(node);
     } else if (node.type.name !== 'blockGroup' || inner.fragment.childCount > 0) {
-      kept.push(node.copy(inner.fragment));
+      // A table cell holds at least one block: one emptied keeps an empty
+      // paragraph.
+      kept.push(node.type.createAndFill(node.attrs, inner.fragment, node.marks) ?? node.copy(inner.fragment));
     }
   });
   return { fragment: Fragment.from(kept), count };

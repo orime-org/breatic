@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -807,5 +807,48 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
 
     await waitFor(() => expect(editable()).not.toBeNull());
     expect(editable()).not.toBe(before);
+  });
+});
+
+describe('PromptEditor — reporting a prompt already in the fragment', () => {
+  /**
+   * A container that mirrors the reported text in its own state, as the
+   * generate panels do (`useGenerateSubmitState`).
+   * @param props - The fragment to edit.
+   * @returns The editor and the mirrored text.
+   */
+  function Mirror({ fragment }: { fragment: Y.XmlFragment }): React.JSX.Element {
+    const [text, setText] = React.useState('');
+    return (
+      <>
+        <output data-testid='mirrored-prompt'>{text}</output>
+        <PromptEditor
+          fragment={fragment}
+          placeholder='Describe'
+          onTextChange={setText}
+          onAtMentionsChange={vi.fn()}
+          references={[]}
+          referenceKinds={[]}
+          mentionEmptyLabel='No references'
+        />
+      </>
+    );
+  }
+
+  it('reports it to the container without updating the container while the editor renders', async () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('a filled-in template prompt')]);
+    fragment.insert(0, [paragraph]);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(<Mirror fragment={fragment} />);
+      await waitFor(() => expect(screen.getByTestId('mirrored-prompt')).toHaveTextContent('a filled-in template prompt'));
+      const updateDuringRender = errors.mock.calls.filter((call) => String(call[0]).includes('Cannot update a component'));
+      expect(updateDuringRender).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

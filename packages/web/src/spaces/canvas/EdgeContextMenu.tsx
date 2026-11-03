@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Trash2 } from 'lucide-react';
 import * as React from 'react';
@@ -13,6 +13,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 
 interface EdgeContextMenuProps {
   /** Whether the menu is open (driven by the canvas's edge right-click handler). */
@@ -62,7 +63,7 @@ export const EdgeContextMenu = React.memo(function EdgeContextMenu({
           <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
           {t('canvas.edge.delete')}
           <DropdownMenuShortcut>
-            {formatShortcut({ key: 'Delete' })}
+            {formatShortcut(CANVAS_KEY_SHORTCUTS.delete)}
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DropdownMenuContent>

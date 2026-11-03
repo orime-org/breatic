@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as React from 'react';
@@ -164,7 +164,7 @@ export function DocumentSpace({
 
   // Cards the reader pressed in the chat for this document land here, once
   // there is an editor and the connection has said whether it may write.
-  const landed = useDocumentProposalPickup(spaceId, shown, writeAccess, intercepted || unavailable);
+  const landed = useDocumentProposalPickup(spaceId, shown, writeAccess, intercepted || unavailable, name);
 
   // The guarded whole-document delete: the extension asks instead of deleting
   // (see document-select-all-guard.ts), and this mount answers with the dialog.

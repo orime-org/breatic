@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What `judge_likelihood` sends, what it answers with, and how it fails.
@@ -23,6 +23,12 @@ import type * as sharedModule from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
 const httpRequestMock = vi.fn();
+
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 vi.mock("@breatic/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof sharedModule>();
@@ -176,9 +182,9 @@ describe("judge_likelihood is in the agent's hands", () => {
     expect(judgeLikelihood.metadata).toMatchObject({ runningLine: expect.any(String) });
   });
 
-  it("is left out of a deployment with no key", () => {
+  it("is left out of a deployment with no key", async () => {
     apiKey = undefined;
-    const config = buildAgentConfig({ basePrompt: "base" });
+    const config = await buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
   });
 

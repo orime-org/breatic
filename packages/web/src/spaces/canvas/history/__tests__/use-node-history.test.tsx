@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -79,6 +79,7 @@ beforeEach(() => {
     referencePoolCap: 50,
     nodeHistoryPageSize: 2,
     understandMaxBytes: 20_971_520,
+    understandLongMediaMaxBytes: 2_147_483_648,
     waveformMaxSeconds: 3600,
     waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
   });

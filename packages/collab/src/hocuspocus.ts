@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Hocuspocus server configuration.
@@ -8,6 +8,7 @@
  * - PostgreSQL persistence (document storage)
  * - Redis extension (multi-instance sync)
  * - Throttle extension (connection rate limiting)
+ * - Session admission extension (before native WebSocket upgrade)
  * - Authentication hook (session token verification)
  *
  * All tunable parameters are loaded from `config/collab.yaml`.
@@ -33,30 +34,32 @@ import {
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
+import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
-  type SeatClaim,
+  type OwnSeat,
+  type SeatRefreshResult,
 } from "@collab/services/connection-registry.js";
 import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
 import { closeIfSessionEnded } from "@collab/services/session-revocation.js";
-import {
-  shouldRegisterConnection,
-  shouldTrackConnection,
-} from "@collab/services/connection-tracking.js";
+import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import {
   createLiveConnections,
   type HeldConnection,
 } from "@collab/services/live-connections.js";
 import {
   createSeatHandover,
+  demoteForSeat,
   type SeatHandover,
 } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  SyncConfirmRequestSchema,
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
@@ -65,8 +68,9 @@ import {
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
-import { createPongHandler } from "@collab/services/socket-liveness.js";
-import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+import { createLivenessHandler } from "@collab/services/socket-liveness.js";
+import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
+import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,
@@ -81,7 +85,7 @@ import {
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
+import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import {
   handleSpaceRpc,
 } from "@collab/services/space-rpc.js";
@@ -118,9 +122,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop + this process's instance id
+ * @returns Configured server, admission stop boundary, seat-handover channel, timed store loop and instance id.
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string; stopUpgradeSessions: () => void }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -140,30 +144,45 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     seatExpiryMs: timings.seatExpiryMs,
   });
 
-  // What this instance holds, indexed by socket. A pong arrives on a socket
-  // and refreshes every seat that socket carries plus the presence record of
-  // whoever owns its meta connection; a demote request names a socket and
-  // asks whether it is one of ours.
+  // What this instance holds, indexed by socket. A sign of life (a pong, a
+  // ping or any message) arrives on a socket and refreshes every seat that
+  // socket carries plus the presence record of whoever owns its meta
+  // connection, both to the time the socket was last heard; a demote request
+  // names a socket and asks whether it is one of ours.
   //
   // Both of those answer the same question — is this connection still there —
-  // so both hang off the one thing that answers it without the page running:
-  // the transport's pong, replied to by the browser's network stack under
-  // RFC 6455. Awareness frames come from a JS timer that a browser throttles
-  // to once a minute in a tab hidden for over five minutes.
+  // so both hang off what the transport itself keeps the socket open on. Of
+  // those, the pong is answered by the browser's network stack under RFC 6455
+  // without the page running; awareness frames come from a JS timer that a
+  // browser throttles to once a minute in a tab hidden for over five minutes,
+  // so they add refreshes but are never relied on.
+  //
+  // A renewal can report that an arrival retried on a sign of life replaced
+  // one of the person's earlier seats. The demote channel that carries that
+  // request is built below, from this table, so the handler reaches it late.
   const liveConnections = createLiveConnections({
-    onPong: createPongHandler({
-      refreshSeats: (socketId: string): Promise<void> =>
-        connectionRegistry.refreshSocket(socketId),
+    onAlive: createLivenessHandler({
+      refreshSeats: (socketId: string, heardAt: number): Promise<SeatRefreshResult[]> =>
+        connectionRegistry.refreshSocket(socketId, heardAt),
+      requestDemote: (documentName: string, member: string): Promise<void> =>
+        seatHandover.requestDemote(documentName, member),
       presencePolicy: {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
       },
     }),
+    pingIntervalMs: timings.pingIntervalMs,
   });
 
-  // Taking a seat is one ZREM from any instance; demoting the connection it
-  // came from can only be done where that connection lives, so the request
-  // goes out on a channel every instance listens to — including this one.
+  // Contexts of connections `connected` refused as a second connection to a
+  // document on one socket (see there), so their `onDisconnect` releases
+  // nothing.
+  const refusedDuplicates = new WeakSet<object>();
+
+  // Replacing a seat happens in Redis, from any instance; demoting the
+  // connection it came from can only be done where that connection lives, so
+  // the request goes out on a channel every instance listens to — including
+  // this one.
   const seatHandover = createSeatHandover({
     channelPrefix: infra.redisKeyPrefix,
     publisher: getCollabRedis(),
@@ -176,12 +195,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connectionRegistry.forgetSeat(documentName, member),
   });
   // Subscribing is part of starting: an instance that silently failed to
-  // subscribe would keep taking seats and never demote the connections it
-  // took them from, so those people would hold a seat and a writable
-  // connection at once.
+  // subscribe would never demote its own connections when any instance
+  // replaced their seats, so those people would hold a seat and a writable
+  // connection at once until that connection's next sign of life.
   await seatHandover.start();
 
-  // Session lookup client for the onAuthenticate hook. Uses the
+  // Native upgrade admission and document authentication share the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
   // client server / worker use) — a session GET is a plain command, so
   // it shares the per-process singleton rather than hand-rolling a
@@ -231,8 +250,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     : null;
   if (connectionGate) extensions.push(connectionGate);
 
+  const sessionGate = createUpgradeSessionGate({
+    redis: authRedis,
+    recordFailedUpgrade: connectionGate?.recordFailedUpgrade,
+  });
+  extensions.push(sessionGate);
+
   // Authentication — verifies session token AND per-project
-  // ownership. See packages/collab/src/auth.ts.
+  // ownership. See packages/collab/src/hooks/auth.ts.
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
@@ -254,14 +279,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     countConnections: (documentName: string): Promise<number> =>
       connectionRegistry.count(documentName),
 
-    // At capacity, the handshake takes one of the arriving person's own
-    // seats rather than settling for read-only, so nobody is kept out by
-    // themselves. Acting on what it took is the `connected` hook's job.
-    claimSeatFrom: (
-      documentName: string,
-      userId: string,
-    ): Promise<SeatClaim> =>
-      connectionRegistry.claimSeatFrom(documentName, userId),
+    // At capacity, the handshake asks whether the arriving person already
+    // holds a seat rather than settling for read-only, so nobody is kept out
+    // by themselves. Replacing that seat is the `connected` hook's job.
+    hasOwnSeat: (documentName: string, userId: string): Promise<OwnSeat> =>
+      connectionRegistry.hasOwnSeat(documentName, userId),
   });
 
   // Assembled after the server exists, because the gate's final store
@@ -269,9 +291,23 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // so reading it late is safe.
   const storeGate: { current?: UnloadGate } = {};
 
+  // A frame carries at most 128 KiB; larger messages arrive chunked and are
+  // reassembled within the limits in config/collab.yaml (inner#1585).
+  const limits = getReassemblyLimits();
+  const frameAssembler = createFrameAssembler({
+    maxMessageBytes: limits.maxMessageBytes,
+    budgetBytes: limits.budgetBytes,
+    idleTimeoutMs: limits.idleTimeoutMs,
+    userOf: sessionGate.userOf,
+  });
+
   const wsServer = new Server({
     port: infra.port,
     quiet: cfg.quiet,
+    websocketOptions: { maxPayload: limits.frameMaxBytes },
+    receiveFrame: frameAssembler.receiveFrame,
+    onPeerClose: frameAssembler.onPeerClose,
+    onPeerError: frameAssembler.onPeerError,
 
     // The library installs its own SIGINT / SIGQUIT / SIGTERM handler by
     // default (`stopOnSignals`, hocuspocus-server.esm.js:1675-1682) and it is
@@ -362,12 +398,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         // already means "do not intercept" — the safe side. So the load
         // continues.
         try {
-          if (publishDocumentSchema(document)) {
-            logger.info(
-              { documentName, reason: "document_schema_published" },
-              "document_schema_published",
-            );
-          }
+          keepDocumentSchemaPublished(
+            document,
+            { force: getCollabConfig().document_schema.force_publish },
+            () => {
+              logger.info(
+                { documentName, reason: "document_schema_published" },
+                "document_schema_published",
+              );
+            },
+          );
         } catch (err) {
           logger.error(
             { err, documentName, reason: "document_schema_publish_failed" },
@@ -376,10 +416,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
         return;
       }
-
     },
 
-    // Register this connection in the cross-instance registry for the
+    // Take this connection's seat in the cross-instance registry for the
     // per-document cap (#1421). The `connected` hook fires only AFTER
     // Hocuspocus has created the Connection object (and wired its
     // onClose → onDisconnect), so a member registered here is guaranteed
@@ -390,43 +429,73 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // onDisconnect never fires for a connection whose load failed). Meta
     // docs are exempt from the cap → not tracked.
     //
-    // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). `connectionConfig` here
-    // is the very object the auth hook mutated: the framework builds one per
-    // document per connection (ClientConnection.ts:620), spreads that same
-    // `hookPayload` into the onAuthenticate call (:518) and into this
-    // `connected` one (:433). So `readOnly` has already settled by the time
-    // this runs, and reading it needs no second channel through `context`.
+    // ONLY WRITABLE CONNECTIONS TAKE A SEAT (#88). The auth hook is the one
+    // place that decides whether a connection may write and under which
+    // ceiling; it hands that ceiling over as `seatCap`, null for a
+    // connection that takes no seat. The seat script decides atomically
+    // against that ceiling, so handshakes that all counted "one seat left"
+    // cannot all get it.
     connected: async ({
       documentName,
       socketId,
       context,
       instance,
-      connectionConfig,
       connection,
     }) => {
       const auth = context as AuthContext;
-      // Remembering the socket is also what starts listening for its pongs,
-      // once, however many documents it carries.
-      const connectedAtMs = liveConnections.remember(
+      // One connection per document per socket. A session-aware client
+      // (`documentName\0sessionId`) can open a document twice on one socket,
+      // and both arrive with the same document name and socket id — the key
+      // of every per-connection record here, so the second would overwrite
+      // the first's and closing it would take the first one's seat. Our web
+      // client opens one provider per document. Decided here rather than in
+      // `onAuthenticate`: two handshakes sent together both pass that hook
+      // before either connection exists, while by now the first one has been
+      // remembered. The previous connection's `onDisconnect` has already
+      // forgotten it, so a reconnect of the same document is let in.
+      if (liveConnections.find(documentName, socketId) !== undefined) {
+        refusedDuplicates.add(context as object);
+        logger.warn(
+          { userId: auth.user.id, documentName, socketId, reason: "duplicate_document_on_socket" },
+          "auth_rejected",
+        );
+        connection.close({ code: 4403, reason: "duplicate-document-on-socket" });
+        return;
+      }
+      // Remembering the socket is also what starts listening for its signs of
+      // life, once, however many documents it carries.
+      liveConnections.remember(
         socketId,
         documentName,
         connection as unknown as HeldConnection,
       );
 
-      if (shouldRegisterConnection(documentName, connectionConfig.readOnly)) {
-        await connectionRegistry.register(documentName, {
-          socketId,
-          userId: auth.user.id,
-          connectedAtMs,
-        });
-      }
-
-      // The handshake took a seat from one of this person's other
-      // connections. Now that this one exists, whichever instance holds that
-      // other connection is told to demote it — doing that any earlier risks
-      // demoting their other tab for a connection that never arrives.
-      if (auth.handedOverFrom !== null) {
-        await seatHandover.requestDemote(documentName, auth.handedOverFrom);
+      if (auth.seatCap !== null) {
+        const seat = await connectionRegistry.takeSeat(
+          documentName,
+          { socketId, userId: auth.user.id, arrivedAtMs: auth.arrivedAtMs },
+          auth.seatCap,
+        );
+        if (seat.outcome === "replaced") {
+          // One of this person's earlier connections gave up its seat. Now
+          // that this one exists, whichever instance holds that one is told
+          // to demote it.
+          await seatHandover.requestDemote(documentName, seat.replaced);
+        } else if (seat.outcome === "full") {
+          // Lost the race for the last seat: the handshake counted room, and
+          // another arrival's script ran first.
+          demoteForSeat(connection, {
+            reason: "connection_cap_race_degraded",
+            socketId,
+            userId: auth.user.id,
+            documentName,
+            liveCount: seat.liveCount,
+            cap: auth.seatCap,
+          });
+        }
+        // `unknown` keeps writing and retries on the next sign of life (the
+        // registry logged it); `gone` means the connection left or was demoted
+        // first.
       }
 
       // The id comes from what onAuthenticate resolved out of the credential,
@@ -467,21 +536,26 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     onDisconnect: async ({ documentName, context, socketId }) => {
+      // A refused duplicate held nothing; what is recorded under its socket
+      // and document belongs to the connection it duplicated.
+      if (refusedDuplicates.has(context as object)) return;
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean
-      // disconnect, so the count drops immediately (a crash instead lets it
-      // expire via the registry TTL). onDisconnect fires for every connection
+      // disconnect, so the count drops immediately (a crash instead leaves its
+      // score to age past the seat expiry, and the next seat script or count
+      // prunes it). onDisconnect fires for every connection
       // the `connected` hook saw, both being bound to the Connection object's
       // lifecycle. Meta / non-project docs were never tracked.
       //
-      // THIS IS DELIBERATELY WIDER THAN THE REGISTER SIDE (#88). Registration
-      // also asks whether the connection was writable; this one cannot —
-      // `onDisconnectPayload` carries no `connectionConfig` at all. It does
-      // not need to: removing a member that was never added is a no-op, so
-      // unregistering every tracked document is correct and idempotent. The
-      // asymmetry is safe in this direction only, and a test in
-      // `connection-tracking.test.ts` pins that registration stays a subset.
+      // THIS IS DELIBERATELY WIDER THAN THE REGISTER SIDE (#88). A seat is
+      // taken only by a connection the auth hook handed a ceiling, i.e. a
+      // writable one; this side cannot ask — `onDisconnectPayload` carries no
+      // `connectionConfig` at all. It does not need to: removing a member
+      // that was never added is a no-op, so unregistering every tracked
+      // document is correct and idempotent. The asymmetry is safe in this
+      // direction only, and a test in `auth.test.ts` pins that a ceiling is
+      // only ever handed to a document this side releases.
       // The socket outlives any one document on it: closing a Space tab ends
       // that document's connection while the project stays open. Dropping it
       // here is what keeps this instance from answering a later demote with a
@@ -536,20 +610,31 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
-    // parse, route to the handler, and send the response on the requesting
-    // connection, which matches it by request `id`.
-    onStateless: async ({ documentName, payload, connection }) => {
+    // Content receipts share the requesting Connection's update queue.
+    // Meta requests dispatch Space lifecycle commands on their original channel.
+    onStateless: async ({ documentName, document, payload, connection }) => {
       const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
+      if (!parsed) return;
 
       let json: unknown;
       try {
         json = JSON.parse(payload);
-      } catch {
-        return; // non-JSON stateless message (e.g. frontend cache invalidate)
+      } catch (err) {
+        logger.error({ err, ctx: { documentName } }, "Invalid stateless payload");
+        return;
       }
+
+      if (parsed.kind === "canvas" || parsed.kind === "document") {
+        const request = SyncConfirmRequestSchema.safeParse(json);
+        if (!request.success) return;
+        try {
+          replySyncConfirmation(document, connection, request.data.id);
+        } catch (err) {
+          logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
+        }
+        return;
+      }
+      if (parsed.kind !== "meta") return;
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
       if (!reqResult.success) return;
@@ -583,7 +668,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection.sendStateless(JSON.stringify(response));
     },
 
-    // Document size limit — reject updates that would exceed max.
+    // Document size limit: a document past it is only logged (warn).
     onChange: async ({ documentName, document }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
@@ -614,7 +699,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // no one number to print. Name its SOURCE instead: an operator reading
     // this banner needs to know where to look, and a stale key name would
     // send them to a file that no longer has it.
-    concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
+    concurrentEditorsFrom: "current Studio admin membership reading: configured or negotiated concurrent_editors",
     // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
     // able to read what this process is enforcing.
@@ -666,5 +751,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     seatHandover,
     storeLoop,
     instanceId,
+    stopUpgradeSessions: sessionGate.stop,
   };
 }

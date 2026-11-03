@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -115,6 +115,7 @@ export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
 export * as uploadFinishService from "@domain/asset/upload-finish.service.js";
 export {
@@ -124,6 +125,7 @@ export {
 } from "@domain/asset/upload-finish.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
 export * as videoPresentationService from "@domain/asset/video-presentation.service.js";
@@ -161,9 +163,12 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
+  AWAITS_READER,
+  REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
@@ -183,7 +188,34 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
-export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
+export {
+  createAgentPicturePreparer,
+  type AgentPictureSource,
+  type AgentPictureSourceAsset,
+  type AgentPictureFacts,
+  type AgentPictureUnavailable,
+  type PreparedAgentPicture,
+  type PrepareAgentPictures,
+  type ToolPictureContext,
+  type AgentPicturePreparation,
+} from "@domain/agent/prepare-agent-pictures.js";
+export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
+export {
+  projectAgentRequest,
+  expandAgentPictures,
+  agentPictureOutputOf,
+  AGENT_PICTURE_PROJECTION_VERSION,
+  AGENT_TOOL_PICTURE_MARKER,
+  agentPictureLabelFor,
+  type AgentPicture,
+  type AgentPicturePolicy,
+  type AgentGenerationStep,
+  type AgentPictureOutput,
+  type AgentRequestProjection,
+  type ProjectedAgentRequest,
+} from "@domain/agent/project-agent-request.js";
 export { instructionsText } from "@domain/agent/instructions.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
@@ -204,6 +236,7 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
 export { getVoiceSampleConfig, voiceSampleUrl } from "@domain/model-catalog/voice-sample-config.js";
+export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
@@ -249,15 +282,49 @@ export {
   MediaUnavailable,
   UNDERSTAND_PINS,
   UnderstandRefused,
+  understandMediaInBatches,
+  LongMediaBatchFailureError,
+  openLongMediaBatchOperation,
+  longMediaInputDigest,
+  longMediaOperationId,
+  advanceLongMediaSegmentation,
   understandMediaAt,
   readingLimitsUntil,
 } from "@domain/understand/index.js";
+export {
+  openUnderstandOperation,
+  getUnderstandOperation,
+  listDueUnderstandDispatches,
+  applyUnderstandOperationEvent,
+  applyUnderstandDispatchEvent,
+  claimUnderstandOperationLease,
+  renewUnderstandOperationLease,
+  releaseUnderstandOperationLease,
+  beginUnderstandBatchAttempt,
+  markUnderstandBatchAttemptSending,
+  markUnderstandBatchAttemptUnknown,
+  saveUnderstandBatchAttemptResult,
+} from "@domain/understand/operation.repo.js";
 export type {
+  DueUnderstandDispatch,
+  OpenUnderstandOperationInput,
+  UnderstandOperationLease,
+  UnderstandOperationLeaseMutation,
+} from "@domain/understand/operation.repo.js";
+export type {
+  LongMediaBatchCheckpoint,
+  LongMediaBatchOperation,
+  LongMediaBatchOperationInput,
+  LongMediaBatchInterval,
+  LongMediaBatchStart,
+  LongMediaBatchLimits,
+  LongMediaSegmentReference,
   MediaKind,
   RefusalKind,
   UnavailableKind,
   UnderstandAnswer,
   UnderstandAt,
+  UnderstandMediaInBatchesRequest,
 } from "@domain/understand/index.js";
 
 // ── Mail (notification mail sent by the worker) ──
@@ -269,3 +336,5 @@ export * as miniToolExecutionService from "@domain/mini-tool/execution.service.j
 export * as miniToolDeliveryService from "@domain/mini-tool/delivery.service.js";
 export type { MiniToolDeliveryOutput, MiniToolDeliveryState, MiniToolDeliveryContext, MiniToolDeliveryAck, MiniToolDeliveryAcknowledgement, MiniToolDeliveryDeferral, MiniToolDeliveryCursor, PendingMiniToolDelivery, PendingMiniToolDeliveryPage } from "@domain/mini-tool/delivery.service.js";
 export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompletion } from "@domain/mini-tool/execution.service.js";
+
+export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";

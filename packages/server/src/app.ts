@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Hono application factory.
@@ -15,6 +15,7 @@ import { localeMiddleware } from "@server/middleware/i18n.js";
 import { analyticsConsentMiddleware } from "@server/middleware/analytics-consent.js";
 import { loggerMiddleware } from "@server/middleware/logger.js";
 import { metricsMiddleware } from "@server/infra/metrics.js";
+import { requestBodyLimit } from "@server/middleware/request-body-limit.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
 import { authRoute } from "@server/routes/auth.js";
 import { chatRoute } from "@server/routes/chat.js";
@@ -34,6 +35,7 @@ import { videoPresentationRoute } from "@server/routes/video-presentation.js";
 import { accountRoute } from "@server/routes/account.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
 import { activitiesRoute } from "@server/routes/activities.js";
+import { projectAssetsRoute } from "@server/routes/project-assets.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
@@ -64,6 +66,10 @@ export function createApp(): Hono {
   app.use("*", analyticsConsentMiddleware);
   app.use("*", loggerMiddleware);
   app.use("*", metricsMiddleware);
+  // Before every route, signed-in or not: a body past the limit is refused
+  // before anything reads it (inner#1006). After locale for the refusal's
+  // language, after the logger so a refusal still has its request line.
+  app.use("*", requestBodyLimit);
   app.onError(errorHandler);
 
   // ── Routes ────────────────────────────────────
@@ -107,6 +113,7 @@ export function createApp(): Hono {
   app.route("/api/v1/account/subscription", subscriptionRoute);
   app.route("/api/v1/account", accountRoute);
   app.route("/api/v1/projects", activitiesRoute);
+  app.route("/api/v1/projects", projectAssetsRoute);
 
   return app;
 }

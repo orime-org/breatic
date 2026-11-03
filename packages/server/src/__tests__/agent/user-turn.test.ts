@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One user message as the model is sent it: what it attached, then what it
@@ -10,7 +10,19 @@ import { describe, it, expect } from "vitest";
 
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
-import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
+import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel as modelUserTurn } from "@server/agent/user-turn.js";
+
+/**
+ * Narrow the legacy fixtures, which supply no prepared pictures, to their text contract.
+ * @param args - The original fixture arguments.
+ * @returns The unchanged text result.
+ * @throws {Error} When a fixture unexpectedly produces native media content.
+ */
+function userTurnForModel(...args: Parameters<typeof modelUserTurn>): string {
+  const content = modelUserTurn(...args);
+  if (typeof content !== "string") throw new Error("A legacy fixture without prepared pictures must remain text");
+  return content;
+}
 
 const image: ChatAttachedChip = {
   id: "a1",
@@ -99,14 +111,14 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document) — the reader has this one open\n- "Cast" (canvas)',
+      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the reader has this one open\n- "Cast" (canvas, id: s2)',
     );
   });
 
   it("marks none as open when the reader turned the open Space off", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 2 });
 
-    expect(turn).toContain('- "Storyboard" (document)\n- "Cast" (canvas)');
+    expect(turn).toContain('- "Storyboard" (document, id: s1)\n- "Cast" (canvas, id: s2)');
     expect(turn).not.toContain("the reader has this one open");
     expect(turn).not.toContain("## The Space the reader has open");
   });
@@ -114,7 +126,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
   it("says how many Spaces were left off the list", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 5 });
 
-    expect(turn).toContain('- "Cast" (canvas)\n(3 more not listed)');
+    expect(turn).toContain('- "Cast" (canvas, id: s2)\n(3 more not listed)');
   });
 
   it("puts the reader's words under their own heading after the Spaces", () => {

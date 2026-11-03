@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { CanvasProposal } from '@breatic/shared';
 
@@ -14,10 +14,13 @@ import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manag
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { ROW_GAP_PX, occupiedRects, planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
-import { GROUP_PADDING, groupRectForMembers } from '@web/spaces/canvas/group-geometry';
+import { GUIDE_STEP_PX, LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
+import { EMPTY_NODE_SIZE, GROUP_PADDING, groupRectForMembers, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
+import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
-import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
 import { canvasApi } from '@web/data/api/canvas';
@@ -1279,6 +1282,1276 @@ describe('useNodeCreation', () => {
         second!.y >= first!.y + first!.height ||
         first!.y >= second!.y + second!.height;
       expect(apart).toBe(true);
+    });
+
+    describe('landing a template around nodes already on the canvas (inner#1345)', () => {
+      const GUIDE_TEXT = 'Fixture template\n1. Split the grid\n2. Upscale each cell';
+      const STYLE_PATH = 'templates/fx/style.png';
+
+      /**
+       * The anchor placeholder a template rewrites.
+       * @param prompt - Its prompt.
+       * @returns The proposal node.
+       */
+      const anchorSlot = (prompt: CanvasProposal['nodes'][number]['prompt']): CanvasProposal['nodes'][number] => ({
+        role: 'generate',
+        type: 'image',
+        name: 'Anchor',
+        mode: 'i2i',
+        model: 'tpl-model',
+        takesPrompt: true,
+        params: { ratio: '1:1' },
+        prompt,
+      });
+
+      /** The guide text node of the fixture template, pointing at index 0. */
+      const GUIDE = {
+        role: 'written',
+        type: 'text',
+        name: 'Fixture template',
+        prompt: [{ text: GUIDE_TEXT }],
+        templateNode: { template: 'fx', key: 'guide', anchor: 0 },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /** The reused upstream generate node's entry, @ing the input at index 2. */
+      const SKETCH = { role: 'generate', type: 'image', name: 'Sketch', mode: 't2i', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ ref: 2 }] } as CanvasProposal['nodes'][number];
+
+      /** A new input node feeding {@link SKETCH}. */
+      const CHARACTER = { role: 'source', type: 'image', name: 'Character' } as CanvasProposal['nodes'][number];
+
+      /** The fixture's upstream generate node, fed by its resource at index 2. */
+      const UPSTREAM = {
+        role: 'generate',
+        type: 'image',
+        name: 'Sketch',
+        mode: 't2i',
+        model: 'tpl-model',
+        takesPrompt: true,
+        params: {},
+        prompt: [{ text: 'a sketch in ' }, { ref: 2 }],
+        templateNode: { template: 'fx', key: 'up' },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /** The fixture's resource node. */
+      const STYLE = {
+        role: 'source',
+        type: 'image',
+        name: 'Style',
+        resource: STYLE_PATH,
+        templateNode: { template: 'fx', key: 'style' },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /**
+       * A proposal out of nodes and edges.
+       * @param nodes - Its nodes.
+       * @param edges - Its edges.
+       * @returns The proposal.
+       */
+      const proposalOf = (
+        nodes: CanvasProposal['nodes'],
+        edges: CanvasProposal['edges'] = [],
+      ): CanvasProposal => ({ nodes, edges, rationale: '' });
+
+      /**
+       * Put a node on the canvas directly, the way it would already be there.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param type - Its type.
+       * @param at - Its stored position (relative to its group when it has one).
+       * @param data - Data written over the empty node's.
+       * @param parentId - Its group.
+       * @returns Its id.
+       */
+      const seed = (
+        projectId: string,
+        spaceId: string,
+        type: CreatableNodeType,
+        at: { x: number; y: number },
+        data: Record<string, unknown> = {},
+        parentId?: string,
+      ): string => {
+        const node = createEmptyNode(type, at, 'u-9');
+        canvasSpace.addNode(projectId, spaceId, {
+          ...node,
+          ...(parentId === undefined ? {} : { parentId }),
+          data: { ...node.data, ...data },
+        });
+        return node.id;
+      };
+
+      /**
+       * Put a generation node on the canvas on a model of its own.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param at - Its stored position.
+       * @param name - Its name.
+       * @param parentId - Its group.
+       * @returns Its id.
+       */
+      const seedAnchor = (
+        projectId: string,
+        spaceId: string,
+        at: { x: number; y: number },
+        name = 'My shot',
+        parentId?: string,
+      ): string => {
+        const id = seed(projectId, spaceId, 'image', at, { name }, parentId);
+        canvasSpace.setNodeMode(projectId, spaceId, id, 'i2i', 'old-model', { 'old-model': { ratio: '4:3' } });
+        canvasSpace.setNodeModel(projectId, spaceId, id, 'i2i', 'old-model', { 'old-model': { ratio: '4:3' } });
+        return id;
+      };
+
+      /**
+       * Put a group around nodes already on the canvas.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param rect - The group's rect.
+       * @param members - Its members, at their positions inside it.
+       * @param locked - Whether the group is locked.
+       * @returns Its id.
+       */
+      const seedGroup = (
+        projectId: string,
+        spaceId: string,
+        rect: { x: number; y: number; width: number; height: number },
+        members: Array<{ id: string; position: { x: number; y: number } }>,
+        locked = false,
+      ): string => {
+        const id = `grp-${projectId}`;
+        canvasSpace.createGroup(projectId, spaceId, createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, 'u-9'), members);
+        if (locked) canvasSpace.setNodeLocked(projectId, spaceId, id, true);
+        return id;
+      };
+
+      /**
+       * A mention of a node already on the canvas, as its rail row shows it.
+       * @param nodeId - The node.
+       * @param label - The name on its row.
+       * @param thumbnail - The picture on its row.
+       * @returns The mention.
+       */
+      const mentionOf = (nodeId: string, label: string, thumbnail?: string): ProposalMention => ({
+        sourceNodeId: nodeId,
+        label,
+        kind: 'image',
+        ...(thumbnail === undefined ? {} : { thumbnail }),
+      });
+
+      /**
+       * Every node's absolute top-left, by id.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @returns The positions.
+       */
+      const absolute = (projectId: string, spaceId: string): Map<string, { x: number; y: number }> => {
+        const { nodes } = canvasSpace.readCanvasGraph(projectId, spaceId);
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        return new Map(
+          nodes.map((n) => {
+            const group = n.parentId === undefined ? undefined : byId.get(n.parentId);
+            return [n.id, { x: n.position.x + (group?.position.x ?? 0), y: n.position.y + (group?.position.y ?? 0) }];
+          }),
+        );
+      };
+
+      /**
+       * The nodes on a Space that are not in a set of ids taken earlier.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param before - The ids that were there before.
+       * @returns The new nodes.
+       */
+      const addedSince = (
+        projectId: string,
+        spaceId: string,
+        before: ReadonlySet<string>,
+      ): canvasSpace.CanvasNodeView[] =>
+        canvasSpace.readCanvasGraph(projectId, spaceId).nodes.filter((n) => !before.has(n.id));
+
+      /**
+       * The ids on a Space now.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @returns The ids.
+       */
+      const idsNow = (projectId: string, spaceId: string): Set<string> =>
+        new Set(canvasSpace.readCanvasGraph(projectId, spaceId).nodes.map((n) => n.id));
+
+      /**
+       * A node's template tag as its view carries it.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param id - The node.
+       * @returns The tag, or undefined.
+       */
+      const tagOf = (projectId: string, spaceId: string, id: string | undefined): unknown =>
+        (contentAt(canvasSpace.readCanvasGraph(projectId, spaceId).nodes, id) as { templateNode?: unknown }).templateNode;
+
+      /**
+       * Whether two rects share any area.
+       * @param a - One rect.
+       * @param b - The other.
+       * @returns True when they overlap.
+       */
+      const overlaps = (a: Rect, b: Rect): boolean =>
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+      let ingestUrl: MockInstance<typeof canvasApi.ingestUrl>;
+
+      beforeEach(() => {
+        vi.mocked(toast.error).mockClear();
+        vi.mocked(toast.info).mockClear();
+        ingestUrl = vi.spyOn(canvasApi, 'ingestUrl').mockResolvedValue({ task_id: 't-1' });
+      });
+
+      afterEach(() => {
+        ingestUrl.mockRestore();
+      });
+
+      it('writes the template onto the existing anchor instead of placing a new node, keeping its other model records', () => {
+        const anchor = seedAnchor('p-ex1', 's-ex1', { x: 1000, y: 500 });
+        const paramsByModel = { 'old-model': { ratio: '4:3' }, 'tpl-model': { ratio: '1:1' } };
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex1', 's-ex1'));
+
+        result.current.placeProposalAt(proposalOf([anchorSlot([{ text: 'template words' }])]), { x: 0, y: 0 }, [], existing);
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-ex1', 's-ex1');
+        expect(nodes).toHaveLength(1);
+        const view = contentAt(nodes, anchor);
+        expect(view.name).toBe('My shot');
+        expect(view.mode).toBe('i2i');
+        expect(view.model).toBe('tpl-model');
+        expect(view.paramsByModel).toEqual(paramsByModel);
+        expect(canvasSpace.getPromptFragment('p-ex1', 's-ex1', anchor, 'i2i')!.toJSON()).toContain('template words');
+      });
+
+      it('@s a reused reference under the name and picture its rail row shows, and leaves the reference as it was', () => {
+        const HERO = 'https://ours.example/image/hero.png';
+        const anchor = seedAnchor('p-ex2', 's-ex2', { x: 1000, y: 500 });
+        const input = seed('p-ex2', 's-ex2', 'image', { x: 640, y: 500 }, { name: 'Hero photo', content: HERO });
+        canvasSpace.addEdge('p-ex2', 's-ex2', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo', HERO) }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex2', 's-ex2'));
+
+        result.current.placeProposalAt(
+          proposalOf([
+            anchorSlot([{ text: 'pose of ' }, { ref: 1 }]),
+            { role: 'source', type: 'image', name: 'character reference' },
+          ]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-ex2', 's-ex2');
+        expect(nodes).toHaveLength(2);
+        expect(edges).toHaveLength(1);
+        const written = canvasSpace.getPromptFragment('p-ex2', 's-ex2', anchor, 'i2i')!.toJSON();
+        expect(written).toContain(`sourceNodeId="${input}"`);
+        expect(written).toContain('label="Hero photo"');
+        expect(written).toContain(`thumbnail="${HERO}"`);
+        const reference = contentAt(nodes, input);
+        expect(reference.name).toBe('Hero photo');
+        expect(reference.model).toBeUndefined();
+        expect(reference.mode).toBeUndefined();
+      });
+
+      it('places a new reference right beside a top-level anchor on an empty canvas, wired and @\'d', () => {
+        const anchor = seedAnchor('p-ex3', 's-ex3', { x: 1000, y: 500 });
+        const before = idsNow('p-ex3', 's-ex3');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex3', 's-ex3'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex3', 's-ex3', before);
+        expect(added).toHaveLength(1);
+        const fresh = added[0]!;
+        expect(fresh.parentId).toBeUndefined();
+        expect(absolute('p-ex3', 's-ex3').get(fresh.id)).toEqual({ x: 1000 - LAYER_STEP_PX, y: 500 });
+        expect(canvasSpace.readCanvasGraph('p-ex3', 's-ex3').edges.map((e) => `${e.source}->${e.target}`)).toEqual([
+          `${fresh.id}->${anchor}`,
+        ]);
+        const written = canvasSpace.getPromptFragment('p-ex3', 's-ex3', anchor, 'i2i')!.toJSON();
+        expect(written).toContain(`sourceNodeId="${fresh.id}"`);
+        expect(written).toContain('label="character reference"');
+      });
+
+      it('groups two or more new nodes beside a top-level anchor on their own, under the proposal\'s name, leaving the anchor out', () => {
+        const anchor = seedAnchor('p-ex4', 's-ex4', { x: 1000, y: 500 });
+        const before = idsNow('p-ex4', 's-ex4');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex4', 's-ex4'));
+
+        const placed = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex4', 's-ex4', before);
+        const groups = added.filter((n) => n.type === 'group');
+        const fresh = added.filter((n) => n.type !== 'group');
+        expect(groups).toHaveLength(1);
+        const group = groups[0]!;
+        expect(placed.groupId).toBe(group.id);
+        if (group.type !== 'group') throw new Error('no group was placed');
+        expect(group.data.name).toBe('Fixture template');
+        expect(fresh.map((n) => n.type).sort()).toEqual(['image', 'image', 'text']);
+        expect(fresh.every((n) => n.parentId === group.id)).toBe(true);
+        // The anchor stays where it was, outside the group.
+        expect(canvasSpace.readCanvasGraph('p-ex4', 's-ex4').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
+        const abs = absolute('p-ex4', 's-ex4');
+        expect(abs.get(anchor)).toEqual({ x: 1000, y: 500 });
+        // The frame wraps the new nodes alone and keeps clear of the anchor.
+        const rects = fresh.map((n) => ({
+          ...abs.get(n.id)!,
+          width: EMPTY_NODE_SIZE.width,
+          height: n.type === 'text' ? textFootprintHeight(GUIDE_TEXT) : EMPTY_NODE_SIZE.height,
+        }));
+        const [frame] = canvasSpace.readNodePlacements('p-ex4', 's-ex4').filter((pl) => pl.type === 'group');
+        expect({ x: frame!.x, y: frame!.y, width: frame!.width, height: frame!.height }).toEqual(groupRectForMembers(rects));
+        expect(overlaps({ x: frame!.x, y: frame!.y, width: frame!.width ?? 0, height: frame!.height ?? 0 }, { x: 1000, y: 500, ...EMPTY_NODE_SIZE })).toBe(false);
+      });
+
+      it('makes no group for a single new node beside a top-level anchor', () => {
+        const anchor = seedAnchor('p-ex4b', 's-ex4b', { x: 1000, y: 500 });
+        const before = idsNow('p-ex4b', 's-ex4b');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex4b', 's-ex4b'));
+
+        const placed = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
+              [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex4b', 's-ex4b', before);
+        expect(added).toHaveLength(1);
+        expect(added[0]!.parentId).toBeUndefined();
+        expect(placed.groupId).toBeUndefined();
+      });
+
+      it('keeps a new node where the flow lines it up, over a neighbour on the anchor\'s left', () => {
+        const anchor = seedAnchor('p-ex5', 's-ex5', { x: 1000, y: 500 });
+        const before = idsNow('p-ex5', 's-ex5');
+        const neighbour = { x: 1000 - LAYER_STEP_PX, y: 500, width: 100, height: 100 };
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex5', 's-ex5'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [neighbour],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-ex5', 's-ex5', before);
+        // Beside the anchor, on the neighbour: closeness to the anchor comes first.
+        expect(absolute('p-ex5', 's-ex5').get(fresh!.id)).toEqual({ x: 1000 - LAYER_STEP_PX, y: 500 });
+        expect(absolute('p-ex5', 's-ex5').get(anchor)).toEqual({ x: 1000, y: 500 });
+      });
+
+      it('keeps a new node at its flow spot even where a reused reference sits, leaving the reference as it was', () => {
+        const anchor = seedAnchor('p-ex6', 's-ex6', { x: 1000, y: 500 });
+        // Exactly where the arrangement puts the second node of the column.
+        const input = seed('p-ex6', 's-ex6', 'image', { x: 1000 - LAYER_STEP_PX, y: 620 }, { name: 'Hero photo' });
+        canvasSpace.addEdge('p-ex6', 's-ex6', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const inputRect = { x: 1000 - LAYER_STEP_PX, y: 620, ...EMPTY_NODE_SIZE };
+        const before = idsNow('p-ex6', 's-ex6');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex6', 's-ex6'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [
+              anchorSlot([{ ref: 1 }, { text: ' and ' }, { ref: 2 }]),
+              { role: 'source', type: 'image', name: 'character reference' },
+              { role: 'source', type: 'image', name: 'second reference' },
+            ],
+            [{ fromIndex: 2, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [inputRect],
+          existing,
+        );
+
+        const added = addedSince('p-ex6', 's-ex6', before);
+        expect(added).toHaveLength(1);
+        const abs = absolute('p-ex6', 's-ex6');
+        const at = abs.get(added[0]!.id)!;
+        expect(at.x).toBe(1000 - LAYER_STEP_PX);
+        expect(overlaps({ ...at, ...EMPTY_NODE_SIZE }, inputRect)).toBe(true);
+        expect(abs.get(input)).toEqual({ x: inputRect.x, y: inputRect.y });
+      });
+
+      it('groups only the new nodes when a template reuses a reference, leaving the reference where it was', () => {
+        const anchor = seedAnchor('p-ex7', 's-ex7', { x: 1000, y: 500 });
+        const input = seed('p-ex7', 's-ex7', 'image', { x: 300, y: -400 }, { name: 'Hero photo' });
+        canvasSpace.addEdge('p-ex7', 's-ex7', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const before = idsNow('p-ex7', 's-ex7');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex7', 's-ex7'));
+
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [
+                anchorSlot([{ ref: 1 }, { text: ' with ' }, { ref: 2 }, { text: ' and ' }, { ref: 3 }]),
+                { role: 'source', type: 'image', name: 'Hero photo' },
+                { role: 'source', type: 'image', name: 'pose' },
+                { role: 'source', type: 'image', name: 'outfit' },
+              ],
+              [{ fromIndex: 2, toIndex: 0, into: 'pool' }, { fromIndex: 3, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex7', 's-ex7', before);
+        const group = added.find((n) => n.type === 'group');
+        expect(group).toBeDefined();
+        const fresh = added.filter((n) => n.type !== 'group');
+        expect(fresh).toHaveLength(2);
+        expect(fresh.every((n) => n.parentId === group!.id)).toBe(true);
+        const nodes = canvasSpace.readCanvasGraph('p-ex7', 's-ex7').nodes;
+        expect(nodes.find((n) => n.id === input)?.parentId).toBeUndefined();
+        expect(nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
+        const abs = absolute('p-ex7', 's-ex7');
+        expect(abs.get(input)).toEqual({ x: 300, y: -400 });
+        expect(abs.get(anchor)).toEqual({ x: 1000, y: 500 });
+      });
+
+      it('on a second apply, puts the new nodes into the unlocked group that holds the reused template nodes', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-again', 's-again', { x: 1000, y: 500 });
+        // The first apply's group, around the template's upstream node.
+        const up = seed('p-again', 's-again', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const groupId = seedGroup(
+          'p-again',
+          's-again',
+          { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: up, position: { x: PAD, y: PAD } }],
+        );
+        canvasSpace.addEdge('p-again', 's-again', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-again', 's-again');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-again', 's-again'));
+
+        const placed = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-again', 's-again', before);
+        expect(added.some((n) => n.type === 'group')).toBe(false);
+        expect(added).toHaveLength(2);
+        expect(added.every((n) => n.parentId === groupId)).toBe(true);
+        expect(placed.groupId).toBeUndefined();
+        expect(canvasSpace.readCanvasGraph('p-again', 's-again').nodes.find((n) => n.id === anchor)?.parentId).toBeUndefined();
+      });
+
+      it('puts an input back into its place in the instance when the anchor shares the instance\'s group and was moved inside it', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-share', 's-share', { x: 2000, y: 2000 });
+        const up = seed('p-share', 's-share', 'image', { x: PAD + LAYER_STEP_PX, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        // The first apply joined the anchor's group; the reader then dragged the anchor further inside it.
+        const groupId = seedGroup('p-share', 's-share', { x: 0, y: 0, width: 3000, height: 3000 }, [
+          { id: up, position: { x: PAD + LAYER_STEP_PX, y: PAD } },
+          { id: anchor, position: { x: 2000, y: 2000 } },
+        ]);
+        canvasSpace.addEdge('p-share', 's-share', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-share', 's-share');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-share', 's-share'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-share', 's-share', before);
+        expect(fresh!.parentId).toBe(groupId);
+        // One layer left of the reused node it feeds, back in its place in the instance.
+        expect(absolute('p-share', 's-share').get(fresh!.id)).toEqual({ x: PAD, y: PAD });
+      });
+
+      it('puts a node back in its own cell of a column, above the reused nodes the template lists after it', () => {
+        const PAD = GROUP_PADDING;
+        const STEP = EMPTY_NODE_SIZE.height + ROW_GAP_PX;
+        const anchor = seedAnchor('p-col', 's-col', { x: 3000, y: 500 });
+        const side = seed('p-col', 's-col', 'image', { x: PAD, y: PAD + STEP }, { name: 'Side', templateNode: { template: 'fx', key: 'side' } });
+        const back = seed('p-col', 's-col', 'image', { x: PAD, y: PAD + 2 * STEP }, { name: 'Back', templateNode: { template: 'fx', key: 'back' } });
+        const character = seed('p-col', 's-col', 'image', { x: 0, y: 2000 }, { name: 'Character' });
+        const frame = { x: 1000, y: 200, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: 3 * STEP + 2 * PAD };
+        seedGroup('p-col', 's-col', frame, [{ id: side, position: { x: PAD, y: PAD + STEP } }, { id: back, position: { x: PAD, y: PAD + 2 * STEP } }]);
+        const before = idsNow('p-col', 's-col');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot') }],
+          [1, { nodeId: side, mention: mentionOf(side, 'Side'), instance: true }],
+          [2, { nodeId: back, mention: mentionOf(back, 'Back'), instance: true }],
+          [3, { nodeId: character, mention: mentionOf(character, 'Character') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-col', 's-col'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Side' }, { role: 'source', type: 'image', name: 'Back' }, { role: 'source', type: 'image', name: 'Character' }, { role: 'source', type: 'image', name: 'Front' }],
+            [
+              { fromIndex: 3, toIndex: 4, into: 'pool' },
+              { fromIndex: 3, toIndex: 1, into: 'pool' },
+              { fromIndex: 3, toIndex: 2, into: 'pool' },
+              { fromIndex: 4, toIndex: 0, into: 'pool' },
+              { fromIndex: 1, toIndex: 0, into: 'pool' },
+              { fromIndex: 2, toIndex: 0, into: 'pool' },
+            ],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+          [0, 2, 3, 5, 1],
+        );
+
+        const [front] = addedSince('p-col', 's-col', before);
+        // Front is first in its column, one step above Side, where the first apply put it.
+        expect(absolute('p-col', 's-col').get(front!.id)).toEqual({ x: frame.x + PAD, y: frame.y + PAD });
+      });
+
+      it('on a second apply, prefers the anchor\'s own group to the group the reused template nodes sit in', () => {
+        const PAD = GROUP_PADDING;
+        // The reader dragged the anchor into a group of its own after the first apply.
+        const anchor = seedAnchor('p-both', 's-both', { x: 3000 + PAD, y: 500 + PAD });
+        const anchorFrame = { x: 3000, y: 500, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const anchorGroupId = seedGroup('p-both', 's-both', anchorFrame, [{ id: anchor, position: { x: PAD, y: PAD } }]);
+        const up = seed('p-both', 's-both', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const instanceFrame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        canvasSpace.createGroup('p-both', 's-both', createGroupNode('grp-first-apply', { x: instanceFrame.x, y: instanceFrame.y }, instanceFrame.width, instanceFrame.height, 'u-9'), [{ id: up, position: { x: PAD, y: PAD } }]);
+        canvasSpace.addEdge('p-both', 's-both', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-both', 's-both');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-both', 's-both'));
+
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const fresh = addedSince('p-both', 's-both', before);
+        expect(fresh).toHaveLength(2);
+        expect(fresh.every((n) => n.parentId === anchorGroupId)).toBe(true);
+        // Lined up on the anchor, so they stand within a few layers left of it, far from the reused node.
+        const abs = absolute('p-both', 's-both');
+        for (const n of fresh) expect(abs.get(n.id)!.x).toBeGreaterThan(3000 - 3 * LAYER_STEP_PX);
+        const [kept] = canvasSpace.readNodePlacements('p-both', 's-both').filter((pl) => pl.id === 'grp-first-apply');
+        expect({ x: kept!.x, y: kept!.y, width: kept!.width, height: kept!.height }).toEqual(instanceFrame);
+      });
+
+      it('on a second apply, leaves a locked group around the reused template nodes alone and groups the new nodes apart', () => {
+        const PAD = GROUP_PADDING;
+        // The anchor was moved away from the instance, so lining up on it and on the reused node differ.
+        const anchor = seedAnchor('p-shut', 's-shut', { x: 1000, y: 3000 });
+        const up = seed('p-shut', 's-shut', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const frame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-shut', 's-shut', frame, [{ id: up, position: { x: PAD, y: PAD } }], true);
+        canvasSpace.addEdge('p-shut', 's-shut', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-shut', 's-shut');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-shut', 's-shut'));
+
+        const placed = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const fresh = addedSince('p-shut', 's-shut', before).filter((n) => n.type !== 'group');
+        expect(fresh).toHaveLength(2);
+        expect(fresh.some((n) => n.parentId === groupId)).toBe(false);
+        expect(placed.groupId).toBeDefined();
+        expect(fresh.every((n) => n.parentId === placed.groupId)).toBe(true);
+        // No group is joined, so the flow lines up on the anchor, not on the node in the locked group.
+        const abs = absolute('p-shut', 's-shut');
+        for (const n of fresh) expect(abs.get(n.id)!.y).toBeGreaterThan(2000);
+        const [kept] = canvasSpace.readNodePlacements('p-shut', 's-shut').filter((pl) => pl.id === groupId);
+        expect({ x: kept!.x, y: kept!.y, width: kept!.width, height: kept!.height }).toEqual(frame);
+      });
+
+      it('on a second apply that only puts back an input, puts it into the group the reused template nodes sit in', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-input', 's-input', { x: 1000, y: 500 });
+        const up = seed('p-input', 's-input', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const groupId = seedGroup(
+          'p-input',
+          's-input',
+          { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: up, position: { x: PAD, y: PAD } }],
+        );
+        canvasSpace.addEdge('p-input', 's-input', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-input', 's-input');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-input', 's-input'));
+
+        // The only new node is the input put back.
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-input', 's-input', before);
+        expect(added).toHaveLength(1);
+        expect(added[0]!.parentId).toBe(groupId);
+      });
+
+      it('puts an input back into its place in the instance when the anchor was moved away from the instance\'s group', () => {
+        const PAD = GROUP_PADDING;
+        // The anchor was dragged far below the group its first apply made.
+        const anchor = seedAnchor('p-moved', 's-moved', { x: 1000, y: 3000 });
+        const up = seed('p-moved', 's-moved', 'image', { x: PAD, y: PAD }, { name: 'Sketch', templateNode: { template: 'fx', key: 'up' } });
+        const frame = { x: 1000 - LAYER_STEP_PX - PAD, y: 500 - PAD, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-moved', 's-moved', frame, [{ id: up, position: { x: PAD, y: PAD } }]);
+        canvasSpace.addEdge('p-moved', 's-moved', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-moved', 's-moved');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'Sketch'), instance: true }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-moved', 's-moved'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-moved', 's-moved', before);
+        expect(fresh!.parentId).toBe(groupId);
+        // Lined up on the reused node it feeds, one layer to its left, so the group stays as tall as it was.
+        expect(absolute('p-moved', 's-moved').get(fresh!.id)).toEqual({ x: 1000 - 2 * LAYER_STEP_PX, y: 500 });
+        const [grown] = canvasSpace.readNodePlacements('p-moved', 's-moved').filter((pl) => pl.id === groupId);
+        expect(grown!.height).toBe(frame.height);
+      });
+
+      it('leaves another template\'s group around a wired reference alone, and groups the new nodes under the template\'s name', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-ref', 's-ref', { x: 1000, y: 500 });
+        // Placed by another template, in that template's group, far from the anchor.
+        const input = seed('p-ref', 's-ref', 'image', { x: PAD, y: PAD }, { name: 'Hero photo', templateNode: { template: 'other', key: 'up' } });
+        const theirs = { x: -2000, y: -2000, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        const groupId = seedGroup('p-ref', 's-ref', theirs, [{ id: input, position: { x: PAD, y: PAD } }]);
+        canvasSpace.addEdge('p-ref', 's-ref', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const before = idsNow('p-ref', 's-ref');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [3, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
+
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, { role: 'source', type: 'image', name: 'Hero photo' }],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }, { fromIndex: 3, toIndex: 1, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ref', 's-ref', before);
+        const group = added.find((n) => n.type === 'group');
+        expect(group).toBeDefined();
+        if (group?.type !== 'group') throw new Error('no group was placed');
+        expect(group.data.name).toBe('Fixture template');
+        expect(added.filter((n) => n.type !== 'group').every((n) => n.parentId === group.id)).toBe(true);
+        const [frame] = canvasSpace.readNodePlacements('p-ref', 's-ref').filter((p) => p.id === groupId);
+        expect({ x: frame!.x, y: frame!.y, width: frame!.width, height: frame!.height }).toEqual(theirs);
+      });
+
+      it('takes the new nodes and their group back with one undo, leaving the anchor', () => {
+        const undo = canvasSpace.createCanvasUndoManager(getDoc(docName.canvasSpace('p-exundo', 's-exundo')));
+        const anchor = seedAnchor('p-exundo', 's-exundo', { x: 1000, y: 500 });
+        const before = idsNow('p-exundo', 's-exundo');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-exundo', 's-exundo'));
+        const stacked = undo.undoStack.length;
+
+        result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        expect(addedSince('p-exundo', 's-exundo', before).some((n) => n.type === 'group')).toBe(true);
+        expect(undo.undoStack).toHaveLength(stacked + 1);
+        undo.undo();
+        expect(idsNow('p-exundo', 's-exundo')).toEqual(before);
+      });
+
+      it('puts the guide one guide step left of a 9:16 anchor that already has its reference, clear of the anchor', () => {
+        const anchor = seed('p-ex7', 's-ex7', 'image', { x: 1000, y: 500 }, {
+          name: 'My shot',
+          content: 'https://ours.example/image/tall.png',
+          mediaWidth: 1080,
+          mediaHeight: 1920,
+        });
+        const input = seed('p-ex7', 's-ex7', 'image', { x: 1000 - LAYER_STEP_PX, y: -400 }, { name: 'Hero photo' });
+        canvasSpace.addEdge('p-ex7', 's-ex7', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const before = idsNow('p-ex7', 's-ex7');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex7', 's-ex7'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE]),
+          { x: 0, y: 0 },
+          [{ x: 1000 - LAYER_STEP_PX, y: -400, ...EMPTY_NODE_SIZE }],
+          existing,
+        );
+
+        const added = addedSince('p-ex7', 's-ex7', before);
+        expect(added).toHaveLength(1);
+        const at = absolute('p-ex7', 's-ex7').get(added[0]!.id)!;
+        expect(at.x).toBe(1000 - GUIDE_STEP_PX);
+        const anchorRect = { x: 1000, y: 500, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1080, 1920) };
+        expect(overlaps({ ...at, width: EMPTY_NODE_SIZE.width, height: textFootprintHeight(GUIDE_TEXT) }, anchorRect)).toBe(false);
+      });
+
+      it('tags each template node it places and points the guide at the anchor node', () => {
+        const anchor = seedAnchor('p-ex8', 's-ex8', { x: 1000, y: 500 });
+        const before = idsNow('p-ex8', 's-ex8');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex8', 's-ex8'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex8', 's-ex8', before);
+        const byName = new Map(
+          added.flatMap((n) => (n.type === 'group' || n.type === 'annotation' ? [] : [[n.data.name, n.id] as const])),
+        );
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Sketch'))).toEqual({ template: 'fx', key: 'up' });
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Style'))).toEqual({ template: 'fx', key: 'style' });
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Fixture template'))).toEqual({ template: 'fx', key: 'guide', anchor });
+        expect(tagOf('p-ex8', 's-ex8', anchor)).toBeUndefined();
+        expect(bodyToPlainText(canvasSpace.getTextBody('p-ex8', 's-ex8', byName.get('Fixture template')!)!)).toBe(GUIDE_TEXT);
+      });
+
+      it('tags an input node the template places with its input key and its anchor', () => {
+        const anchor = seedAnchor('p-in8', 's-in8', { x: 1000, y: 500 });
+        const before = idsNow('p-in8', 's-in8');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-in8', 's-in8'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Hero', templateNode: { template: 'fx', key: 'hero', input: true, anchor: 0 } }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const [hero] = addedSince('p-in8', 's-in8', before);
+        expect(tagOf('p-in8', 's-in8', hero!.id)).toEqual({ template: 'fx', key: 'hero', input: true, anchor });
+      });
+
+      it('points the guide of an agent proposal at the anchor node it placed', () => {
+        const { result } = renderHook(() => useNodeCreation('p-ag1', 's-ag1'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[3])).toEqual({ template: 'fx', key: 'guide', anchor: nodeIds[0] });
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[1])).toEqual({ template: 'fx', key: 'up' });
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[0])).toBeUndefined();
+      });
+
+      it('stamps the edges it adds with strictly increasing createdAt, in the proposal\'s edge order', () => {
+        const now = vi.spyOn(Date, 'now').mockReturnValue(7000);
+        const { result } = renderHook(() => useNodeCreation('p-ord', 's-ord'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [
+                { role: 'source', type: 'image', name: 'Second' },
+                { role: 'source', type: 'image', name: 'First' },
+                anchorSlot([{ ref: 1 }, { text: ' and ' }, { ref: 0 }]),
+              ],
+              [{ fromIndex: 1, toIndex: 2, into: 'pool' }, { fromIndex: 0, toIndex: 2, into: 'pool' }],
+            ),
+            groupName: 'Two references',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+        now.mockRestore();
+
+        const edges = canvasSpace.readCanvasGraph('p-ord', 's-ord').edges;
+        const stampOf = (source: string | undefined): number | undefined =>
+          edges.find((e) => e.source === source && e.target === nodeIds[2])?.createdAt;
+        const first = stampOf(nodeIds[1]);
+        const second = stampOf(nodeIds[0]);
+        expect(typeof first).toBe('number');
+        expect(second).toBeGreaterThan(first!);
+      });
+
+      it('fetches a template resource into storage once the batch is written, and not before', () => {
+        const name = docName.canvasSpace('p-res1', 's-res1');
+        const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
+        const seen: Array<{ present: boolean; steps: number }> = [];
+        ingestUrl.mockImplementation((body) => {
+          seen.push({
+            present: canvasSpace.readCanvasGraph('p-res1', 's-res1').nodes.some((n) => n.id === body.node_id),
+            steps: undo.undoStack.length,
+          });
+          return Promise.resolve({ task_id: 't-1' });
+        });
+        const { result } = renderHook(() => useNodeCreation('p-res1', 's-res1'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        expect(ingestUrl).toHaveBeenCalledTimes(1);
+        expect(ingestUrl).toHaveBeenCalledWith({
+          template_resource: STYLE_PATH,
+          project_id: 'p-res1',
+          space_id: 's-res1',
+          node_id: nodeIds[2],
+        });
+        expect(seen).toEqual([{ present: true, steps: 1 }]);
+      });
+
+      it('says the upload failed when the resource fetch is refused', async () => {
+        ingestUrl.mockRejectedValue(new ApiException({ status: 429, message: 'slow down' }));
+        const { result } = renderHook(() => useNodeCreation('p-res2', 's-res2'));
+
+        result.current.placeProposalAt(
+          { ...proposalOf([anchorSlot([{ ref: 1 }]), STYLE], [{ fromIndex: 1, toIndex: 0, into: 'pool' }]), groupName: 'Fixture' },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith(en.canvas.upload.failed));
+      });
+
+      it('fetches nothing when the batch fails part way', () => {
+        const stale = {
+          ...proposalOf(
+            [
+              anchorSlot([{ text: 'from ' }, { slot: { kind: 'ref', label: 'x', note: 'y' } }] as unknown as Parameters<typeof anchorSlot>[0]),
+              STYLE,
+            ],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          groupName: 'Fixture',
+        } as unknown as CanvasProposal;
+        const { result } = renderHook(() => useNodeCreation('p-res3', 's-res3'));
+
+        expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('fetches again into a reused resource node that is still empty', () => {
+        const anchor = seedAnchor('p-res4', 's-res4', { x: 1000, y: 500 });
+        const style = seed('p-res4', 's-res4', 'image', { x: 640, y: 500 }, { name: 'Style', templateNode: { template: 'fx', key: 'style' } });
+        canvasSpace.addEdge('p-res4', 's-res4', { id: `${style}->${anchor}`, source: style, target: anchor });
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: style, mention: mentionOf(style, 'Style') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-res4', 's-res4'));
+
+        result.current.placeProposalAt(proposalOf([anchorSlot([{ ref: 1 }]), STYLE]), { x: 0, y: 0 }, [], existing);
+
+        expect(canvasSpace.readCanvasGraph('p-res4', 's-res4').nodes).toHaveLength(2);
+        expect(ingestUrl).toHaveBeenCalledTimes(1);
+        expect(ingestUrl).toHaveBeenCalledWith({
+          template_resource: STYLE_PATH,
+          project_id: 'p-res4',
+          space_id: 's-res4',
+          node_id: style,
+        });
+      });
+
+      it('leaves a reused resource node alone when it holds its file or a fetch into it is running', () => {
+        const anchor = seedAnchor('p-res5', 's-res5', { x: 1000, y: 500 });
+        const held = seed('p-res5', 's-res5', 'image', { x: 640, y: 300 }, {
+          name: 'Style',
+          content: 'https://ours.example/image/style.png',
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        const running = seed('p-res5', 's-res5', 'image', { x: 640, y: 700 }, {
+          name: 'Style two',
+          taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: held, mention: mentionOf(held, 'Style') }],
+          [2, { nodeId: running, mention: mentionOf(running, 'Style two') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-res5', 's-res5'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ ref: 1 }, { ref: 2 }]), STYLE, { ...STYLE, name: 'Style two' }]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        expect(canvasSpace.readCanvasGraph('p-res5', 's-res5').nodes).toHaveLength(3);
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('brings a reused upstream node back to the template and @s the resource wired only into it', () => {
+        const STYLE_URL = 'https://ours.example/image/style.png';
+        const anchor = seedAnchor('p-up', 's-up', { x: 1000, y: 500 });
+        const up = seedAnchor('p-up', 's-up', { x: 640, y: 500 }, 'My sketch');
+        const style = seed('p-up', 's-up', 'image', { x: 280, y: 500 }, {
+          name: 'Style ref',
+          content: STYLE_URL,
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        canvasSpace.addEdge('p-up', 's-up', { id: `${style}->${up}`, source: style, target: up });
+        canvasSpace.addEdge('p-up', 's-up', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const upParams = { 'old-model': { ratio: '4:3' }, 'tpl-model': {} };
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'My sketch'), paramsByModel: upParams }],
+          [2, { nodeId: style, mention: mentionOf(style, 'Style ref', STYLE_URL) }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-up', 's-up'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-up', 's-up');
+        expect(nodes).toHaveLength(3);
+        expect(edges).toHaveLength(2);
+        const upstream = contentAt(nodes, up);
+        expect(upstream.name).toBe('My sketch');
+        expect(upstream.mode).toBe('t2i');
+        expect(upstream.model).toBe('tpl-model');
+        expect(upstream.paramsByModel).toEqual(upParams);
+        const written = canvasSpace.getPromptFragment('p-up', 's-up', up, 't2i')!.toJSON();
+        expect(written).toContain('a sketch in ');
+        expect(written).toContain(`sourceNodeId="${style}"`);
+        expect(written).toContain('label="Style ref"');
+        expect(contentAt(nodes, style)).toMatchObject({ name: 'Style ref', content: STYLE_URL });
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('puts the new nodes into the anchor\'s unlocked group and grows its frame to keep the padding', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-grow', 's-grow', { x: PAD, y: PAD });
+        const groupId = seedGroup(
+          'p-grow',
+          's-grow',
+          { x: 0, y: 0, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: anchor, position: { x: PAD, y: PAD } }],
+        );
+        const before = idsNow('p-grow', 's-grow');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-grow', 's-grow'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-grow', 's-grow', before);
+        expect(added).toHaveLength(2);
+        expect(added.map((n) => n.parentId)).toEqual([groupId, groupId]);
+        const abs = absolute('p-grow', 's-grow');
+        expect(abs.get(anchor)).toEqual({ x: PAD, y: PAD });
+        const [group] = canvasSpace.readNodePlacements('p-grow', 's-grow').filter((p) => p.type === 'group');
+        const frame = { x: group!.x, y: group!.y, width: group!.width ?? 0, height: group!.height ?? 0 };
+        const rects = added.map((n) => ({
+          ...abs.get(n.id)!,
+          width: EMPTY_NODE_SIZE.width,
+          height: n.type === 'text' ? textFootprintHeight(GUIDE_TEXT) : EMPTY_NODE_SIZE.height,
+        }));
+        expect(frame.x).toBe(Math.min(...rects.map((r) => r.x)) - PAD);
+        for (const r of rects) {
+          expect(r.x).toBeGreaterThanOrEqual(frame.x + PAD);
+          expect(r.y).toBeGreaterThanOrEqual(frame.y + PAD);
+          expect(r.x + r.width).toBeLessThanOrEqual(frame.x + frame.width - PAD);
+          expect(r.y + r.height).toBeLessThanOrEqual(frame.y + frame.height - PAD);
+        }
+      });
+
+      it('applies a template that places no new node into a locked group, leaving the group as it was', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-lock', 's-lock', { x: PAD + LAYER_STEP_PX, y: PAD });
+        const input = seed('p-lock', 's-lock', 'image', { x: PAD, y: PAD }, { name: 'Hero photo' });
+        const rect = { x: 0, y: 0, width: LAYER_STEP_PX + EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        seedGroup('p-lock', 's-lock', rect, [
+          { id: input, position: { x: PAD, y: PAD } },
+          { id: anchor, position: { x: PAD + LAYER_STEP_PX, y: PAD } },
+        ], true);
+        canvasSpace.addEdge('p-lock', 's-lock', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const placementsBefore = canvasSpace.readNodePlacements('p-lock', 's-lock');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-lock', 's-lock'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'pose of ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        expect(canvasSpace.readNodePlacements('p-lock', 's-lock')).toEqual(placementsBefore);
+        const view = contentAt(canvasSpace.readCanvasGraph('p-lock', 's-lock').nodes, anchor);
+        expect(view.model).toBe('tpl-model');
+        expect(canvasSpace.getPromptFragment('p-lock', 's-lock', anchor, 'i2i')!.toJSON()).toContain(`sourceNodeId="${input}"`);
+      });
+
+      it('lines a new node up left of the reused node it feeds, reading the edges already on the canvas', () => {
+        const anchor = seedAnchor('p-chain', 's-chain', { x: 1000, y: 500 });
+        const up = seedAnchor('p-chain', 's-chain', { x: 1000 - LAYER_STEP_PX, y: 500 }, 'My sketch');
+        canvasSpace.addEdge('p-chain', 's-chain', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-chain', 's-chain');
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'My sketch'), paramsByModel: { 'tpl-model': {} } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-chain', 's-chain'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE], [{ fromIndex: 2, toIndex: 1, into: 'pool' }]),
+          { x: 0, y: 0 },
+          [{ x: 1000 - LAYER_STEP_PX, y: 500, ...EMPTY_NODE_SIZE }],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-chain', 's-chain', before);
+        const at = absolute('p-chain', 's-chain').get(fresh!.id)!;
+        expect(at.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(1000 - LAYER_STEP_PX);
+      });
+
+      it('takes every write back through a temporary undo manager when one fails part way, leaving no undo step', () => {
+        const PAD = GROUP_PADDING;
+        const name = docName.canvasSpace('p-rb', 's-rb');
+        const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
+        const anchor = seed('p-rb', 's-rb', 'audio', { x: PAD, y: PAD }, { name: 'My song' });
+        canvasSpace.setNodeMode('p-rb', 's-rb', anchor, 't2m', 'old-model', { 'old-model': { length: 30 } });
+        canvasSpace.setNodeModel('p-rb', 's-rb', anchor, 't2m', 'old-model', { 'old-model': { length: 30 } });
+        writeProposalPrompt(canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!, [{ text: 'old prompt' }]);
+        writeProposalPrompt(canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!, [{ text: 'old lyrics' }]);
+        const cover = seed('p-rb', 's-rb', 'image', { x: -600, y: PAD }, { name: 'Cover art' });
+        canvasSpace.addEdge('p-rb', 's-rb', { id: `${cover}->${anchor}`, source: cover, target: anchor });
+        seedGroup(
+          'p-rb',
+          's-rb',
+          { x: 0, y: 0, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: anchor, position: { x: PAD, y: PAD } }],
+        );
+        const graphBefore = canvasSpace.readCanvasGraph('p-rb', 's-rb');
+        const placementsBefore = canvasSpace.readNodePlacements('p-rb', 's-rb');
+        const promptBefore = canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON();
+        const lyricsBefore = canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON();
+        const stacks = { undo: undo.undoStack.length, redo: undo.redoStack.length };
+        const existing = new Map<number, ExistingNode>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My song'), paramsByModel: { 'old-model': { length: 30 }, 'tpl-model': {} } }],
+        ]);
+        // Growing the group is the last write of the batch, after the prompt
+        // and the lyrics of the anchor have been rewritten.
+        const grow = vi.spyOn(canvasSpace, 'expandGroup').mockImplementationOnce(() => {
+          throw new Error('no room');
+        });
+        const { result } = renderHook(() => useNodeCreation('p-rb', 's-rb'));
+
+        expect(() =>
+          result.current.placeProposalAt(
+            proposalOf(
+              [
+                { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ text: 'new prompt' }] },
+                { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
+              ],
+              [{ fromIndex: 1, toIndex: 0, into: 'lyrics' }],
+            ),
+            { x: 0, y: 0 },
+            [],
+            existing,
+          ),
+        ).toThrow('no room');
+        grow.mockRestore();
+
+        const graphAfter = canvasSpace.readCanvasGraph('p-rb', 's-rb');
+        expect(graphAfter.nodes.map((n) => n.id).sort()).toEqual(graphBefore.nodes.map((n) => n.id).sort());
+        expect(graphAfter.edges.map((e) => e.id)).toEqual(graphBefore.edges.map((e) => e.id));
+        const view = contentAt(graphAfter.nodes, anchor);
+        expect(view.mode).toBe('t2m');
+        expect(view.model).toBe('old-model');
+        expect(view.paramsByModel).toEqual({ 'old-model': { length: 30 } });
+        expect(canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON()).toBe(promptBefore);
+        expect(canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON()).toBe(lyricsBefore);
+        expect(canvasSpace.readNodePlacements('p-rb', 's-rb')).toEqual(placementsBefore);
+        expect({ undo: undo.undoStack.length, redo: undo.redoStack.length }).toEqual(stacks);
+      });
     });
   });
 });

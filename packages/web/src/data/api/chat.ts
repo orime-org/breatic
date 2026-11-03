@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
 import type { UIMessage } from 'ai';
@@ -91,6 +91,8 @@ export interface StreamConfig {
   currentSpaceMaxChars: number;
   /** How many of the project's Spaces one message may list. */
   spaceListMaxItems: number;
+  /** How long one requested Space may take to sync before it is given up on, in milliseconds. */
+  spaceReadTimeoutMs: number;
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Coming back from the back-forward cache has to leave collaboration working.
@@ -53,6 +53,7 @@ vi.mock('@hocuspocus/provider', () => ({
     destroy = vi.fn();
     attach = vi.fn();
     on = vi.fn();
+    off = vi.fn();
     // A REAL awareness on the provider's real document, so the removal and the
     // restoration both run the library's own code rather than a stand-in.
     awareness: Awareness;
@@ -70,7 +71,7 @@ const { acquireDocProvider, _resetCollabSocketForTests } = await import(
 /** Fire the event a browser fires when it restores a page it had put aside. */
 function firePageshow(persisted: boolean): void {
   window.dispatchEvent(
-    Object.assign(new Event('pageshow'), { persisted }) as Event,
+    Object.assign(new Event('pageshow'), { persisted }),
   );
 }
 

@@ -58,6 +58,8 @@
     "../../shared/src/audio-denoise.ts",
     "../../shared/src/audio-dynamics.ts",
     "../../shared/src/audio-peaks.ts",
+    "../../shared/src/upload/agent-picture-types.ts",
+    "../../shared/src/media/long-media-job-types.ts",
     "../../shared/src/mini-tools/types.ts",
     "../../shared/src/upload/video-presentation-types.ts",
     "../../shared/src/upload/video-source-ledger-types.ts",

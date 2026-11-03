@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Space — Yjs-resident sub-region of a project (v10 §5.3.1).
@@ -19,10 +19,8 @@
 /**
  * Space kinds.
  *
- * Canvas is the only kind implemented in V1. Document and Timeline
- * are reserved (spec §1.2) — server-side schemas accept them so the
- * route surface is forward-compatible, but the route layer rejects
- * non-canvas creation in V1.
+ * Canvas, Document and 3D Space carry their own collaborative content
+ * documents. Timeline remains reserved.
  */
 import { z } from "zod";
 
@@ -30,7 +28,7 @@ import { z } from "zod";
  * Zod schema mirror of {@link SpaceType}. Used by cross-process RPC
  * payloads (e.g. `space-rpc.ts`) for runtime validation.
  */
-export const SpaceTypeSchema = z.enum(["canvas", "document", "timeline"]);
+export const SpaceTypeSchema = z.enum(["canvas", "document", "timeline", "3d"]);
 
 export type SpaceType = z.infer<typeof SpaceTypeSchema>;
 

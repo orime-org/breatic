@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one place an agent's three things get decided.
@@ -15,6 +15,12 @@ import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { instructionsText } from "@domain/agent/instructions.js";
+
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -39,7 +45,7 @@ beforeAll(() => {
 
 
 describe("buildAgentConfig", () => {
-  it("hands a caller the baseline and the canvas tools", () => {
+  it("hands a caller the baseline and the canvas tools", async () => {
     // The defect this fixes: bare chat used to pass an empty array and get
     // no tools at all, so the model could not search and invented answers.
     //
@@ -47,10 +53,11 @@ describe("buildAgentConfig", () => {
     // which would be self-referential — adding a tool nobody vetted to that
     // constant would change both sides and stay green. This is the list, and
     // adding to it is supposed to require editing this line.
-    const config = buildAgentConfig({ basePrompt: "base" });
+    const config = await buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "judge_likelihood",
       "list_generation_models",
@@ -59,6 +66,7 @@ describe("buildAgentConfig", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",
@@ -67,7 +75,7 @@ describe("buildAgentConfig", () => {
     ]);
   });
 
-  it("takes the model from config rather than a literal", () => {
+  it("takes the model from config rather than a literal", async () => {
     // Worker used to call getModel() with no argument, landing on a literal
     // in llm.ts that happened to equal agent.yaml's default_model but was
     // not read from it. Editing the yaml moved one and not the other.
@@ -83,11 +91,11 @@ describe("buildAgentConfig", () => {
       ...getAgentConfig(),
       default_model: sentinel,
     });
-    expect(buildAgentConfig({ basePrompt: "base" }).modelId).toBe(sentinel);
+    expect((await buildAgentConfig({ basePrompt: "base" })).modelId).toBe(sentinel);
   });
 
-  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", () => {
-    const config = buildAgentConfig({
+  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", async () => {
+    const config = await buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });
@@ -98,17 +106,30 @@ describe("buildAgentConfig", () => {
     });
   });
 
-  it("is the base prompt alone when there is no memory", () => {
-    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toEqual({ base: "base" });
+  it("is the base prompt alone when there is no memory", async () => {
+    expect((await buildAgentConfig({ basePrompt: "base" })).instructions).toEqual({ base: "base" });
   });
 
-  it("reads as the same text as one prompt joined in order", () => {
-    const config = buildAgentConfig({
+  it("reads as the same text as one prompt joined in order", async () => {
+    const config = await buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });
     expect(instructionsText(config.instructions)).toBe(
       "base\n\n## Project Context\np\n\n## Conversation Memory\nc",
     );
+  });
+
+  it("carries the main model's window, and the configured fallback when the directory cannot say (inner#1567)", async () => {
+    const { resolveModelContextWindow } = await import("@domain/agent/model-context-window.js");
+    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(200_000);
+    const known = await buildAgentConfig({ basePrompt: "base" });
+    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(undefined);
+    const unknown = await buildAgentConfig({ basePrompt: "base" });
+
+    expect(known.contextWindow).toBe(200_000);
+    expect(known.contextWindowFallback).toBeUndefined();
+    expect(unknown.contextWindow).toBe(getAgentConfig().context_window_fallback_tokens);
+    expect(unknown.contextWindowFallback).toBe(true);
   });
 });

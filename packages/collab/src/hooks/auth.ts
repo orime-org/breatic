@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Hocuspocus authentication hook (v10 multi-doc).
@@ -43,6 +43,7 @@
  */
 
 import type { Redis } from "@breatic/core";
+import { readCookie } from "@collab/infra/cookie.js";
 import {
   readListedContentDocNames,
   type DocumentRegistry,
@@ -55,8 +56,8 @@ import {
   sessionCookieName,
   sessionId,
 } from "@breatic/core";
-import type { SeatClaim } from "@collab/services/connection-registry.js";
-import { parseDocName } from "@breatic/shared";
+import type { OwnSeat } from "@collab/services/connection-registry.js";
+import { parseDocName, READ_ONLY_COLLAB_TOKEN } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
 
 /**
@@ -70,30 +71,6 @@ import type { ProjectRole } from "@breatic/shared";
  * inference.
  */
 const logger = createLogger("auth");
-
-/**
- * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
- * `Cookie:` header string, so we hand-roll instead of pulling a
- * Hono-coupled cookie helper.
- *
- * Returns the value of the named cookie or null if absent.
- * @param header - Raw `Cookie:` header string from the WebSocket upgrade request, or undefined when no cookies were sent.
- * @param name - Name of the cookie to extract.
- * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
- */
-export function readCookie(header: string | undefined, name: string): string | null {
-  if (!header) return null;
-  // Cookie header is `name1=val1; name2=val2`. Trim each pair so
-  // leading spaces after `; ` do not break matching.
-  for (const pair of header.split(";")) {
-    const eq = pair.indexOf("=");
-    if (eq < 0) continue;
-    const k = pair.slice(0, eq).trim();
-    if (k !== name) continue;
-    return decodeURIComponent(pair.slice(eq + 1).trim());
-  }
-  return null;
-}
 
 /**
  * Resolved user context returned to Hocuspocus. The return value is
@@ -111,13 +88,18 @@ export interface AuthContext {
     role: ProjectRole;
   };
   /**
-   * The seat this handshake took from one of the same person's other
-   * connections, or null when it took none. The `connected` hook acts on it:
-   * the framework can still abandon this connection between the document
-   * load and `connected`, and demoting the other tab before this one exists
-   * would leave that person with a read-only tab and nothing in its place.
+   * The ceiling this handshake judged the connection by, or null when it
+   * takes no seat (meta doc, viewer, full document where the person holds no
+   * seat, unresolvable ceiling). The `connected` hook takes the seat
+   * atomically under this cap; nothing is taken here, because the framework
+   * can still abandon the connection before `connected`.
    */
-  handedOverFrom: string | null;
+  seatCap: number | null;
+  /**
+   * Epoch ms this handshake began. It orders one person's connections when a
+   * full document's seat is replaced: only an earlier arrival can be.
+   */
+  arrivedAtMs: number;
   /**
    * The session this connection was opened with: the token, to read it again,
    * and its id (core `sessionId`), to match announcements of ended sessions
@@ -151,21 +133,18 @@ export interface CreateAuthHookOptions {
   redis: Redis;
   /**
    * How many writable connections one of this project's documents may hold
-   * at once, read from the membership tier of the studio that owns the
-   * project (#88). It is a per-project lookup rather than a constant
-   * because the answer belongs to that studio's current admin, and
-   * adminship transfers.
+   * at once, resolved from its Studio's current admin membership reading.
+   * Configured or negotiated concurrent_editors and expiry are resolved
+   * together for this handshake; an admin transfer changes the source.
    *
    * ZERO IS A REAL ZERO — not one writable connection. Every ceiling in
    * `config/membership.yaml` reads that way (`base.team_studios: 0` is a
    * genuine zero), and there is no sentinel for "unlimited": a deployment
    * that does not want to cap this writes a number nobody reaches.
    *
-   * THROWING IS EXPECTED and does not refuse the connection: the lookup
-   * raises when our own data is wrong (a tier value outside the enum after
-   * a hand-written UPDATE, a missing account, a studio with no live admin).
-   * What it answers is how many may WRITE, and reading does not depend on
-   * it, so the caller degrades the connection to read-only and logs.
+   * An unresolved limit grants read-only access and logs the cause. Reasons
+   * include an unknown tier, an absent live account or admin, invalid saved
+   * information, and legacy enterprise information awaiting completion.
    */
   resolveConnectionLimit: (projectId: string) => Promise<number>;
   /**
@@ -183,19 +162,21 @@ export interface CreateAuthHookOptions {
    */
   countConnections: (documentName: string) => Promise<number>;
   /**
-   * Take one of an arriving person's OWN seats on a document that is full,
-   * so their newest connection gets it and one of their other tabs goes
-   * read-only instead. Resolves to what was found: a seat taken, none held
-   * here, or nothing known because Redis could not answer.
+   * Whether an arriving person already holds a seat on a document that is
+   * full. `yes` lets them in writable: the `connected` hook then replaces one
+   * of their earlier seats atomically, and that tab goes read-only instead.
+   * `unknown` (Redis could not answer) lets them in too; `no` settles for
+   * read-only.
    */
-  claimSeatFrom: (documentName: string, userId: string) => Promise<SeatClaim>;
+  hasOwnSeat: (documentName: string, userId: string) => Promise<OwnSeat>;
 }
 
 /**
  * Create the onAuthenticate hook for Hocuspocus.
  *
- * Returns a function that Hocuspocus calls on every WS handshake.
- * Throwing rejects the connection (4401 / 4403). Returning sets
+ * Hocuspocus calls this for each document's authentication on the shared socket.
+ * Throwing sends a document permission-denied response and clears its pending
+ * authentication state. Returning sets
  * `c.context.user` for the handlers that read it downstream —
  * `onStateless` (the caller's id and role on every `space:*` RPC),
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
@@ -203,16 +184,17 @@ export interface CreateAuthHookOptions {
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
- * @param root0.claimSeatFrom - Takes one of the arriving person's own seats when the document is full, so nobody is kept out by themselves.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
+ * @param root0.hasOwnSeat - Asks whether the arriving person already holds a seat when the document is full, so nobody is kept out by themselves.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, connections presenting `READ_ONLY_COLLAB_TOKEN`, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
   resolveConnectionLimit,
   countConnections,
-  claimSeatFrom,
+  hasOwnSeat,
 }: CreateAuthHookOptions) {
   return async ({
+    token: presentedToken,
     documentName,
     requestHeaders,
     connectionConfig,
@@ -231,6 +213,9 @@ export function createAuthHook({
     /** This connection's socket id, passed through on the same path. */
     socketId: string;
   }): Promise<AuthContext> => {
+    // Taken first: every retry of this connection's seat orders by when the
+    // handshake began, not by how long the lookups below took.
+    const arrivedAtMs = Date.now();
     // Every decision below - accept or reject - logs structured
     // context (no PII beyond userId + documentName). The previous
     // bare-throw style let onAuthenticate fail silently from the
@@ -255,10 +240,12 @@ export function createAuthHook({
       // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
       // `token` field - sent by the client in the application-level
-      // auth frame - is treated as opaque and ignored; the client
-      // sends a placeholder like `"__cookie_auth__"` purely to trip
-      // Hocuspocus into invoking this hook (an empty token short-
-      // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
+      // auth frame - never identifies anyone; the client sends a
+      // placeholder like `"__cookie_auth__"` purely to trip Hocuspocus
+      // into invoking this hook (an empty token short-circuits
+      // `onAuthenticate` in v3, see ueberdosis/hocuspocus#596). The one
+      // value it acts on is `READ_ONLY_COLLAB_TOKEN`, which can only lower
+      // this connection's own rights (see `readsOnly` below).
       const token = readCookie(
         requestHeaders.get("cookie") ?? undefined,
         sessionCookieName(),
@@ -394,9 +381,14 @@ export function createAuthHook({
       //     to sit here meant "unlimited" and failed in the permissive
       //     direction: lowering a tier to 0 to stop concurrent editing
       //     would silently have allowed unlimited concurrent editing.
+      // A connection that asked to only read (the browser reading a Space
+      // the agent asked for, inner#1552) is treated like a viewer: read-only
+      // and judged against no seat, so it neither takes one nor makes the
+      // seat script demote the same person's editing tab.
+      const readsOnly = presentedToken === READ_ONLY_COLLAB_TOKEN;
       let atCapacity = false;
-      let handedOverFrom: string | null = null;
-      if (role !== "viewer" && parsed.kind !== "meta") {
+      let seatCap: number | null = null;
+      if (role !== "viewer" && !readsOnly && parsed.kind !== "meta") {
         // Resolving the ceiling is the one step here that can fail on OUR
         // data rather than on anything the user did: a tier value outside
         // the enum after a hand-written UPDATE, a missing account, a
@@ -411,40 +403,12 @@ export function createAuthHook({
           cap = await resolveConnectionLimit(parsed.projectId);
         } catch (err) {
           atCapacity = true;
-          // Carry `err` through verbatim: the structured fields beside it
-          // narrow the search but never name the row, and without the message
-          // the trail says merely "some studio has bad data".
-          //
-          // How much the message narrows it varies, and it is worth knowing
-          // which case you are in before going to look:
-          //
-          //   `Unknown membership tier "X" on account <uid>, the admin of
-          //     studio <sid>`  — the one that names its row outright: that
-          //     `users` row, and the offending value with it.
-          //   `No live admin for studio <sid>`  — narrows to a studio, NOT to
-          //     a table. `readStudioAdmin` joins three of them and any of four
-          //     liveness conditions failing yields this same string, so the bad
-          //     row may be in `studios`, in `studio_members`, or in the admin's
-          //     `users` row. Its own docstring lists all three.
-          //   `No live project <pid>`  — a `projects` row.
-          //   `Cannot resolve ceilings for account <uid>, the admin of studio
-          //     <sid>: it is on the enterprise tier…`  — also names its row,
-          //     and nothing about it is corrupt. Enterprise is a legal tier
-          //     whose ceilings are negotiated per customer and are not in any
-          //     config file, so there is no number to answer with until they
-          //     are stored. Editing `config/membership.yaml` is the one thing
-          //     NOT to do here.
-          //   anything naming no row at all  — the config file.
-          //     `getLimitsForStudio` ends at `getMembershipLimits`, which
-          //     lazily reads and validates `config/membership.yaml` on first
-          //     use. Three different failures surface here and only one of
-          //     them is a ZodError: the file can be unreadable (an fs error),
-          //     unparseable (a YAMLParseError), or valid YAML that the schema
-          //     rejects. Naming no row is what they have in common, and it is
-          //     the useful test — all three are NOT per-studio: they degrade
-          //     every writable connection in the deployment until the file is
-          //     fixed.
-          //   anything else  — unclassified; read the message.
+          // Preserve the error with its Project and Studio context. Membership
+          // reads can identify an unknown stored tier, an absent live admin or
+          // Project, or legacy enterprise information awaiting completion.
+          // Configured tiers also validate membership.yaml lazily. Saved
+          // enterprise records are validated when the snapshot is read, so a
+          // malformed record can also reach this fail-closed path.
           logger.error(
             {
               err,
@@ -462,23 +426,21 @@ export function createAuthHook({
           atCapacity = liveCount >= cap;
           if (atCapacity) {
             // Before settling for read-only, ask whether this person already
-            // holds a seat here. If they do, one of those goes and this
-            // connection takes it — their other tab is degraded rather than
-            // this one, so nobody is ever kept out by themselves. Whether
-            // that older connection is alive never enters into it: a
+            // holds a seat here. If they do, this connection is let in
+            // writable and the `connected` hook's seat script replaces one of
+            // their earlier seats atomically — their other tab is degraded
+            // rather than this one, so nobody is ever kept out by themselves.
+            // Whether that older connection is alive never enters into it: a
             // reconnect after a blip and a second tab are the same case.
-            const claim = await claimSeatFrom(documentName, userId);
-            if (claim.outcome === "took") {
-              handedOverFrom = claim.member;
-              atCapacity = false;
-            } else if (claim.outcome === "unknown") {
-              // The count said full and then Redis stopped answering. Holding
-              // this connection read-only on the strength of a query that
-              // failed would keep somebody out of their own second tab, which
-              // is the one thing this whole path exists to prevent — and it is
-              // the opposite of how the count itself treats a Redis problem.
-              atCapacity = false;
-            }
+            //
+            // `unknown`: the count said full and then Redis stopped
+            // answering. Holding this connection read-only on the strength of
+            // a query that failed would keep somebody out of their own second
+            // tab, which is the one thing this path exists to prevent — and
+            // it is the opposite of how the count itself treats a Redis
+            // problem. The seat script in `connected` still judges by the cap.
+            const own = await hasOwnSeat(documentName, userId);
+            if (own !== "no") atCapacity = false;
           }
           if (atCapacity) {
             // Permanent structured log. The cap degrade was previously
@@ -496,6 +458,8 @@ export function createAuthHook({
               },
               "connection_cap_degraded",
             );
+          } else {
+            seatCap = cap;
           }
         }
       }
@@ -516,10 +480,11 @@ export function createAuthHook({
       // Content docs are unaffected: a canvas or a document body is the
       // user's own work, it has no rules to enforce, and role decides.
       connectionConfig.readOnly =
-        parsed.kind === "meta" || role === "viewer" || atCapacity;
+        parsed.kind === "meta" || role === "viewer" || readsOnly || atCapacity;
 
-      // NOTE: this connection is registered in the cross-instance registry
-      // by the `connected` lifecycle hook (see hocuspocus.ts), NOT here.
+      // NOTE: this connection takes its seat in the cross-instance registry
+      // in the `connected` lifecycle hook (see hocuspocus.ts), NOT here; the
+      // ceiling and arrival moment travel there in the returned context.
       // Registration is deliberately bound to the Connection object's
       // existence so it is symmetric with the onDisconnect unregister:
       // Hocuspocus fires `connected` only after it creates the Connection
@@ -531,7 +496,8 @@ export function createAuthHook({
       // connection never reached (#1421).
       return {
         user: { id: userId, role },
-        handedOverFrom,
+        seatCap,
+        arrivedAtMs,
         session: { token, id: sessionId(token) },
       };
     } catch (err) {
@@ -542,9 +508,8 @@ export function createAuthHook({
       // infrastructure failure - Redis ping fail, postgres-js
       // connection drop, Yjs lib error. We log with `unexpected`
       // tag so dashboards can split "policy reject" vs "infra
-      // fail" trends and re-throw so Hocuspocus still closes the
-      // socket with 4401 (the client sees the same banner state
-      // either way; only the server-side trail differs).
+      // fail" trends. Re-throwing lets Hocuspocus send the document's
+      // permission-denied response and clear its pending authentication state.
       const e = err as Error;
       const isKnownReject =
         e.message === "Origin not allowed" ||

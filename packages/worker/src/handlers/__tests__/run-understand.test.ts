@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the canvas's understand task runs (#2175).
@@ -21,7 +21,20 @@ import type * as CoreModule from "@breatic/core";
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
-  return { ...actual, understandMediaAt: vi.fn() };
+  return {
+    ...actual,
+    understandMediaAt: vi.fn(),
+    understandMediaInBatches: vi.fn(),
+    openLongMediaBatchOperation: vi.fn(async () => ({
+      operationId: "operation-1",
+      checkpoint: { load: async () => null, save: async () => undefined },
+      complete: async () => undefined,
+      release: async () => undefined,
+    })),
+    advanceLongMediaSegmentation: vi.fn(),
+    assetRepo: { ...actual.assetRepo, findLiveByKeyInStudio: vi.fn() },
+    assetService: { ...actual.assetService, resolveOwnerStudioId: vi.fn() },
+  };
 });
 /**
  * What the deployment's multiplier is worth in these cases.
@@ -40,6 +53,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return {
     ...actual,
     getRawEnvVar: vi.fn(() => "test-key"),
+    getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "audio/source.wav" })),
     env: { CREDIT_MULTIPLIER: MULTIPLIER },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
@@ -50,6 +64,10 @@ import {
   MediaUnavailable,
   UnderstandRefused,
   understandMediaAt,
+  understandMediaInBatches,
+  advanceLongMediaSegmentation,
+  assetRepo,
+  assetService,
 } from "@breatic/domain";
 import type { UsageRecorder, UsageRow } from "@breatic/domain";
 
@@ -119,6 +137,7 @@ describe("running one understand task", () => {
       text: "A red bicycle against a brick wall.",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
   });
 
@@ -130,7 +149,7 @@ describe("running one understand task", () => {
     await runUnderstand({ ...PARAMS, source_mime_type: "image/png" }, recorder(), DEADLINE_AT);
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
-      expect.objectContaining({ ledgerType: "image/png" }),
+      expect.objectContaining({ items: [{ url: PARAMS.source_url, ledgerType: "image/png" }] }),
     );
   });
 
@@ -140,7 +159,7 @@ describe("running one understand task", () => {
     await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
 
     const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
-    expect(args).not.toHaveProperty("ledgerType");
+    expect(args?.items).toEqual([{ url: PARAMS.source_url }]);
   });
 
   it("hands the address and the ceilings to the shared capability", async () => {
@@ -155,7 +174,7 @@ describe("running one understand task", () => {
     expect(args?.signal).toBeInstanceOf(AbortSignal);
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: PARAMS.source_url,
+        items: [{ url: PARAMS.source_url }],
         maxBytes: expect.any(Number),
         maxOutputTokens: expect.any(Number),
         question: expect.any(String),
@@ -164,6 +183,63 @@ describe("running one understand task", () => {
         baseUrl: expect.any(String),
       }),
     );
+  });
+
+  it("routes one oversized canonical audio file through registered segments and one shared batch path", async () => {
+    vi.mocked(assetService.resolveOwnerStudioId).mockResolvedValue("studio-1");
+    vi.mocked(assetRepo.findLiveByKeyInStudio).mockResolvedValue({
+      storageKey: "audio/source.wav",
+      contentHash: "a".repeat(64),
+      sizeBytes: 30_000_000,
+      mimeType: "audio/wav",
+    } as Awaited<ReturnType<typeof assetRepo.findLiveByKeyInStudio>>);
+    vi.mocked(advanceLongMediaSegmentation).mockResolvedValue({
+      kind: "ready",
+      segments: [
+        {
+          url: "https://assets.invalid/audio/part-1.mp3",
+          ledgerType: "audio/mpeg",
+          sizeBytes: 900,
+          startUs: "0",
+          endUs: "300000000",
+        },
+        {
+          url: "https://assets.invalid/audio/part-2.mp3",
+          ledgerType: "audio/mpeg",
+          sizeBytes: 850,
+          startUs: "300000000",
+          endUs: "600000000",
+        },
+      ],
+    });
+    vi.mocked(understandMediaInBatches).mockResolvedValue({
+      text: "The ordered recording describes the meeting.",
+      finishReason: "stop",
+      kind: "audio",
+      kinds: ["audio", "audio"],
+    });
+
+    await runUnderstand(
+      { ...PARAMS, source_type: "audio", source_mime_type: "audio/wav" },
+      recorder(),
+      DEADLINE_AT,
+      { taskId: "task-1", projectId: "project-1", actorUserId: "user-1" },
+    );
+
+    expect(advanceLongMediaSegmentation).toHaveBeenCalledWith(expect.objectContaining({
+      source: expect.objectContaining({ key: "audio/source.wav", sizeBytes: 30_000_000 }),
+      operationId: "task-1",
+      projectId: "project-1",
+      actorUserId: "user-1",
+    }));
+    expect(understandMediaInBatches).toHaveBeenCalledWith(
+      expect.objectContaining({ maxBytes: expect.any(Number), maxItems: expect.any(Number) }),
+      expect.arrayContaining([
+        expect.objectContaining({ url: "https://assets.invalid/audio/part-1.mp3" }),
+        expect.objectContaining({ url: "https://assets.invalid/audio/part-2.mp3" }),
+      ]),
+    );
+    expect(understandMediaAt).not.toHaveBeenCalled();
   });
 
   it("carries the text back as the content one node gets", async () => {
@@ -182,6 +258,7 @@ describe("running one understand task", () => {
       text: "",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
 
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow();
@@ -332,7 +409,7 @@ describe("running one transcription", () => {
    * @param finishReason - Why it stopped.
    */
   function answers(text: string, finishReason: string): void {
-    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio" });
+    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio", kinds: ["audio"] });
   }
 
   beforeEach(() => {

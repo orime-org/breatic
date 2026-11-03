@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Seeding a node, opening a mini-tool on it and zooming the canvas, for the
@@ -66,6 +66,29 @@ export async function seedNode(
     ],
   );
   await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${id}"]`)).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Wire one node into another straight in the live canvas document.
+ * @param page - The page.
+ * @param where - The project and Space.
+ * @param from - The source node.
+ * @param to - The target node.
+ * @returns Nothing; resolves once the document holds the edge.
+ */
+export async function wire(page: Page, where: SeedTarget, from: string, to: string): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addEdge: (p: string, s: string, e: unknown) => boolean;
+      };
+      if (!canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() })) {
+        throw new Error(`edge ${source}->${target} was refused`);
+      }
+    },
+    [where.projectId, where.spaceId, from, to, canvasAt] as [string, string, string, string, string],
+  );
 }
 
 /**

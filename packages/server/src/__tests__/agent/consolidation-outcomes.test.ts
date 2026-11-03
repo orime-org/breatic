@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * How one consolidation ends (#148, N4 N6 N7 N9 N10 T3).
@@ -22,7 +22,7 @@ import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 // The one door into the memory module: what a turn is injected with is what
@@ -91,10 +91,10 @@ const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The window as the caller hands it over, converted.
- * @returns The window, in the shape `foldIfOverBudget` builds it.
+ * The window as the caller hands it over, converted, turn by turn.
+ * @returns The window, in the shape `foldIfTooLong` builds it.
  */
-async function handedWindow(): Promise<ModelMessage[]> {
+async function handedWindow(): Promise<Array<{ turnIndex: number; messages: ModelMessage[] }>> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");
   const history = [1, 2, 3, 4].flatMap((n) => [
     {
@@ -122,10 +122,10 @@ async function handedWindow(): Promise<ModelMessage[]> {
       turnIndex: n,
     },
   ]);
-  return toModelMessages(history);
+  return [1, 2, 3, 4].map((n) => ({ turnIndex: n, messages: toModelMessages(history.filter((row) => row.turnIndex === n)) }));
 }
 
-const TRANSCRIPT: ModelMessage[] = await handedWindow();
+const TURNS = await handedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -137,7 +137,7 @@ async function consolidate(over: Record<string, unknown> = {}) {
     userId: USER,
     conversationId: CONVERSATION,
     projectId: PROJECT,
-    transcript: TRANSCRIPT,
+    turns: TURNS,
     watermarkBefore: 7,
     newWatermark: 19,
     ...over,
@@ -304,7 +304,7 @@ describe("a consolidation that works", () => {
       { role: "user" as const, content: "my regex is $`abc$& and $' too" },
     ];
 
-    await consolidate({ transcript: withDollars });
+    await consolidate({ turns: [{ turnIndex: 19, messages: withDollars }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
@@ -342,7 +342,7 @@ describe("a consolidation that works", () => {
       },
     ];
 
-    await consolidate({ transcript: window });
+    await consolidate({ turns: [{ turnIndex: 19, messages: window }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
@@ -384,8 +384,8 @@ describe("a consolidation that works", () => {
 
   it("logs a charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
-      billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
-    } as never);
+      billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+    });
     await consolidate();
 
     expect(logger.error).toHaveBeenCalledWith(
@@ -641,5 +641,28 @@ describe("two tabs that consolidated the same conversation", () => {
     expect(chargeOnceForGeneration.mock.calls[0]?.[0]).toBe(
       `consolidate:${CONVERSATION}:7`,
     );
+  });
+});
+
+
+describe("decimal shortfall consumption", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await consolidate();
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
+  });
+
+  it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await consolidate();
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
+      [expect.objectContaining({ userId: USER, conversationId: CONVERSATION, studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
+    ]);
   });
 });

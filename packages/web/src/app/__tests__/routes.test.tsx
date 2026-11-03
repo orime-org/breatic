@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { configure, getConfig, render, screen } from '@testing-library/react';
@@ -148,7 +148,11 @@ describe('routes', () => {
   });
 
   it('/register renders the auth page', async () => {
-    render(<AppRouter router={makeRouter('/register')} />);
+    render(
+      <QueryClientProvider>
+        <AppRouter router={makeRouter('/register')} />
+      </QueryClientProvider>,
+    );
     expect(
       await screen.findByRole('heading', { name: 'Create an account' }),
     ).toBeInTheDocument();

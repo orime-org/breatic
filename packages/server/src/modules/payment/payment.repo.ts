@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Payment repository — data access for the payments table.
@@ -16,7 +16,7 @@ import {
   purchaseMailOutbox,
   studios,
 } from "@breatic/core";
-import { HELD_LIFECYCLES } from "@breatic/shared";
+import { parseCreditDecimal, serializeCreditMicro, quantizeQuotedCredits, type CreditDecimal, HELD_LIFECYCLES } from "@breatic/shared";
 import type { PaymentEntity } from "@breatic/shared";
 
 /**
@@ -90,10 +90,11 @@ export async function createPayment(
 /**
  * Get a payment by ID.
  * @param id - Payment UUID
+ * @param tx - The caller's transaction, if present.
  * @returns The payment entity, or null if not found
  */
-export async function getPaymentById(id: string): Promise<PaymentEntity | null> {
-  const rows = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+export async function getPaymentById(id: string, tx?: DbTx): Promise<PaymentEntity | null> {
+  const rows = await (tx ?? db).select().from(payments).where(eq(payments.id, id)).limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
@@ -310,12 +311,13 @@ export async function touchReconciled(ids: readonly string[]): Promise<void> {
 export interface AcquisitionHistoryRow {
   rowId: string;
   sourceKind: string;
+  sourceId: string | null;
   paymentId: string | null;
   amountCents: number | null;
   taxCents: number | null;
   totalCents: number | null;
   currency: string;
-  creditsGranted: number;
+  creditsGranted: string;
   status: string | null;
   createdAt: Date;
   cursorAt: string;
@@ -389,6 +391,7 @@ export async function listAcquisitionHistory(
     .select({
       rowId: sql<string>`${rowId}`,
       sourceKind: sql<string>`COALESCE(${myLots.sourceKind}, ${myPayments.sourceKind})`,
+      sourceId: myLots.sourceId,
       paymentId: myPayments.id,
       amountCents: myPayments.amountCents,
       taxCents: myPayments.taxCents,
@@ -397,7 +400,7 @@ export async function listAcquisitionHistory(
       // What the row brought in: the lot's own figure where one opened, and
       // otherwise the pack size the checkout was opened for. A row with no
       // lot carries no balance either, so the screen prints neither.
-      creditsGranted: sql<number>`COALESCE(${myLots.purchasedCredits}, ${myPayments.creditsGranted})::double precision`,
+      creditsGranted: sql<string>`COALESCE(${myLots.purchasedCredits}, ${myPayments.creditsGranted})::text`,
       status: myPayments.status,
       // `mapWith` so the expression goes through the column's own driver
       // mapping: a bare `sql` fragment hands back whatever text the driver
@@ -443,7 +446,7 @@ export interface ConfirmationView {
   taxCents: number | null;
   totalCents: number | null;
   currency: string;
-  creditsGranted: number;
+  creditsGranted: CreditDecimal;
   /**
    * When the lot was opened. The refund window counts from here, and the
    * letter prints this same instant as the purchase time so the two dates a
@@ -461,7 +464,7 @@ export interface ConfirmationView {
    * What the account holds right now. A resend says today's figure, which is
    * the one question in this letter whose answer moves.
    */
-  balanceCredits: number;
+  balanceCredits: CreditDecimal;
 }
 
 /**
@@ -504,7 +507,7 @@ export async function getConfirmationView(
   // "now".
   const [held] = await db
     .select({
-      total: sql<number>`coalesce(sum(${creditLots.remainingCredits}), 0)`,
+      total: sql<string>`coalesce(sum(${creditLots.remainingCredits}), 0)::text`,
     })
     .from(creditLots)
     .where(
@@ -531,10 +534,10 @@ export async function getConfirmationView(
     taxCents: row.taxCents,
     totalCents: row.totalCents,
     currency: row.currency,
-    creditsGranted: row.creditsGranted,
+    creditsGranted: serializeCreditMicro(quantizeQuotedCredits(row.creditsGranted)),
     grantedAt: row.grantedAt,
     consentTextVersion: row.consentTextVersion,
     refundTextVersion: row.refundTextVersion,
-    balanceCredits: Number(held?.total ?? 0),
+    balanceCredits: serializeCreditMicro(parseCreditDecimal(held?.total ?? "0")),
   };
 }

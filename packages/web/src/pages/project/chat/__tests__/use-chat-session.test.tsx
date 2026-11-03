@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 面板从这一个地方读它要画的东西。
@@ -22,11 +22,12 @@ const toastSpy = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: toastSpy.error, success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type * as ChatApiModule from '@web/data/api/chat';
+import type * as AssetsApiModule from '@web/data/api/assets';
 
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
@@ -36,6 +37,29 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     deleteConversation: vi.fn(),
   },
 }));
+
+// Chat sends every body through bodyOrTransfer, which first asks for the
+// upload config. Answer it here with the shipped request-body limit, so the
+// real threshold runs (these bodies are small and go as they are) and no
+// request reaches the network, where fake timers would never settle it.
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsApiModule>();
+  return {
+    ...actual,
+    assetsApi: {
+      ...actual.assetsApi,
+      fetchUploadConfig: async () => ({
+        maxUploadBytes: 2 * 1024 * 1024 * 1024,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 30_000,
+        assetUrlPrefix: 'https://assets.test.invalid/',
+        uploadStatusPollSeconds: 5,
+        maxRequestBodyBytes: 1048576,
+      }),
+    },
+  };
+});
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
@@ -533,6 +557,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       attachmentMaxItems: 10,
       currentSpaceMaxChars: 16,
       spaceListMaxItems: 2,
+      spaceReadTimeoutMs: 20_000,
     });
     const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
@@ -599,6 +624,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         attachmentMaxItems: 10,
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
+        spaceReadTimeoutMs: 20_000,
       });
     });
     await waitFor(() => {
@@ -629,6 +655,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         attachmentMaxItems: 10,
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
+        spaceReadTimeoutMs: 20_000,
       });
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -659,6 +686,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
           attachmentMaxItems: 10,
           currentSpaceMaxChars: 100_000,
           spaceListMaxItems: 200,
+          spaceReadTimeoutMs: 20_000,
         });
         await new Promise((resolve) => setTimeout(resolve, 50));
       });

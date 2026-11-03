@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Stored history, in the form the model is given.
@@ -10,9 +10,9 @@
  * wants the same history split differently: a tool call belongs to the
  * assistant, its result arrives as a message of its own.
  *
- * A row kept as it was sent (`for_model`) goes back as kept; this renders
- * the rows stored before that copy was kept, and is the replay's only way to
- * send them (`history-replay.ts`).
+ * Replay reads logical messages from `for_model` and projects them for the
+ * current request. This renders rows stored before that copy was kept, and
+ * is the replay's only way to send those older rows (`history-replay.ts`).
  */
 
 import type { ModelMessage } from "ai";
@@ -21,7 +21,7 @@ import type { JSONValue, ToolResultPart } from "ai";
 import { NOTHING_SAID_WHY, stripDsml } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
-import { ASK_USER } from "@breatic/domain";
+import { AWAITS_READER } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
@@ -38,13 +38,14 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * @returns True when it reaches the model.
  */
 function reachesTheModel(part: ToolPart): boolean {
-  // A questionnaire goes back as the call and the reader's answer once it has
-  // one (inner#1542), and not while it still waits: a call without its result
-  // makes the SDK refuse the request. A question turned away goes back as its
-  // refusal, which is how the model learns it was not asked. A question from
-  // before the card is in the reply as words, written there by the turn, so
-  // sending the call too would put it in the context twice.
-  if (part.toolName === ASK_USER) return part.failure?.kind === "turned_away" || isAnswer(part);
+  // A card -- a questionnaire (inner#1542) or a request to read Spaces
+  // (inner#1552) -- goes back as the call and the reader's answer once it has
+  // one, and not while it still waits: a call without its result makes the
+  // SDK refuse the request. A card turned away goes back as its refusal,
+  // which is how the model learns it was not shown. A question from before
+  // the card is in the reply as words, written there by the turn, so sending
+  // the call too would put it in the context twice.
+  if (AWAITS_READER.includes(part.toolName)) return part.failure?.kind === "turned_away" || isAnswer(part);
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 
@@ -72,7 +73,10 @@ function reachesTheModel(part: ToolPart): boolean {
  * @returns The output in its typed form, saying plainly when the tool failed
  */
 function toolOutput(part: ToolPart): ToolResultPart["output"] {
-  if (part.toolName === ASK_USER && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
+  // A card's answer is what the card holds: a questionnaire's answers, or a
+  // Space request's summary (its content lives only in the row's kept copy,
+  // which a row on this path does not have).
+  if (AWAITS_READER.includes(part.toolName) && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
   if (part.status === "error") {
     // The field is newer than some of the rows it is read off, and a row
     // written before it existed has none. An empty string reads as a call
@@ -101,8 +105,9 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  *
  * Says the connection ended rather than that the user pressed stop, because
  * pressing stop is not what this side is told. The route has one signal for
- * it (`s.onAbort`, raised when the client goes away) and it covers the stop
- * button, a closed tab, a dropped network and a sleeping laptop alike. Told
+ * it (the one `streamUntilClientLeaves` raises when the client goes away) and
+ * it covers the stop button, a closed tab, a dropped network and a sleeping
+ * laptop alike. Told
  * the first when it was the third, the model opens the next turn apologising
  * for something the user never did. Telling the two apart needs the browser
  * to say which it was, which is task #149.
@@ -118,6 +123,15 @@ const STOP_NOTE = "[This turn did not finish: the connection to the user closed.
  * something it should offer to finish.
  */
 const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
+
+/**
+ * The note for a turn that ended because there was too much to process: what
+ * it was asked, with its own attachments and tool results, did not fit the
+ * model's context window, and folding earlier history into memory could not
+ * make it fit (or the turn's folds reached `overflow_folds_per_turn`).
+ * Nothing broke, so the model is not told to look for a fault.
+ */
+const TOO_LONG_NOTE = "[This turn could not be finished: there was too much to process at once, so its request was too long for the model.]";
 
 /**
  * The note that says a turn ran out of room rather than out of things to say.
@@ -140,6 +154,7 @@ const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence
  */
 export function endingNote(parts: readonly MessagePart[]): string | undefined {
   if (parts.some((p) => p.type === "interrupted")) return STOP_NOTE;
+  if (parts.some((p) => p.type === "failed" && p.reason === "too_long")) return TOO_LONG_NOTE;
   if (parts.some((p) => p.type === "failed")) return FAILED_NOTE;
   if (parts.some((p) => p.type === "truncated")) return TRUNCATED_NOTE;
   return undefined;
@@ -219,13 +234,17 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 }
 
 /**
- * Whether a questionnaire call ended with the reader's answer, from the card
- * or as word that they wrote a message instead.
- * @param part - The `ask_user` part.
+ * Whether a card's call ended with the reader's answer: a questionnaire's
+ * answers, the Spaces shared or declined, or word that they wrote a message
+ * instead.
+ * @param part - The card's part.
  * @returns True when it holds such an answer.
  */
 function isAnswer(part: ToolPart): boolean {
   if (part.status !== "success") return false;
-  const output = part.output as { answers?: unknown; repliedInChat?: unknown } | null | undefined;
-  return Array.isArray(output?.answers) || output?.repliedInChat === true;
+  const output = part.output as
+    | { answers?: unknown; spaces?: unknown; declined?: unknown; repliedInChat?: unknown }
+    | null
+    | undefined;
+  return Array.isArray(output?.answers) || Array.isArray(output?.spaces) || output?.declined === true || output?.repliedInChat === true;
 }

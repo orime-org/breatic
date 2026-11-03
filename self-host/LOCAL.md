@@ -81,6 +81,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 **Do not replace these hosts with `localhost`**: inside an application container, localhost means that container itself. Keep the template's internal application ports. The web entry point defaults to loopback, as do the database, Redis and API host ports. LAN clients should reach the application through nginx only.
 
+The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` in `docker/breatic-locations.conf`), the same limit as `request_body_max_bytes` in `config/limits.yaml`. Change both together.
+
 Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. For image, video and other providers, use the `api_key_env` named in `config/models/<type>/providers.yaml`; WaveSpeed models, for example, need `WAVESPEED_API_KEY`.
 
 <a id="cloudflare"></a>
@@ -95,6 +97,8 @@ For local evaluation, enable the bucket's Public Development URL and copy its `h
 The canvas node menu's **Download** opens the file's own address with `download=1` appended. On a custom asset domain, add a Cloudflare response header transform rule: when the query string contains `download`, set `Content-Disposition` to `attachment`; the browser then saves the file under the last segment of its address. An `r2.dev` address cannot carry this rule, so there Download opens the file in a new tab.
 
 Assets are currently read through public URLs. A private Breatic instance does not automatically make R2 files private. Do not put files requiring authenticated access into this public-read setup.
+
+Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
 Save the following bucket CORS configuration:
 

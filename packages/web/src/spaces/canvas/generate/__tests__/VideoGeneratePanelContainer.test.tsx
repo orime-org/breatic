@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -329,6 +329,7 @@ function panelTree(
               ...(board.nodes ?? []),
             ]}
             getLastWriteWasLocal={author}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -549,6 +550,7 @@ describe('VideoGeneratePanelContainer', () => {
               nodes={[]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>

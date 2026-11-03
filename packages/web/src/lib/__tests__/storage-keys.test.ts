@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
@@ -18,6 +18,7 @@ describe('storage-keys registry', () => {
       locale: 'breatic.locale',
       theme: 'breatic.theme',
       projectTabs: 'breatic.projectTabs',
+      sceneViews: 'breatic.sceneViews',
       userPreferences: 'breatic.userPreferences',
       sessionSeen: 'breatic.sessionSeen',
       deferredAppVersions: 'breatic.deferredAppVersions',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What each card offers, driven through the component rather than the rule.
@@ -211,7 +211,7 @@ describe('TierCards — four cards, two periods, seven situations', () => {
         // The fourth card never sells anything, so no situation changes it.
         expect(screen.getByTestId('membership-contact-sales')).toHaveAttribute(
           'href',
-          'mailto:breatic@orime.ai',
+          'mailto:contact@breatic.ai',
         );
       });
     }

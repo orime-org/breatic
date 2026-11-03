@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tests for the business limits config: the schema applies its defaults and
@@ -11,9 +11,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
+import { ZodError } from "zod";
 import { MONOREPO_ROOT } from "@breatic/core";
 import {
   limitsConfigSchema,
+  getRequestBodyMaxBytes,
+  getRequestBodyLingerSeconds,
   getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -148,5 +151,79 @@ describe("decision window", () => {
     // Written out rather than derived: deriving it from the same call the
     // implementation makes would pass no matter what that call returned.
     expect(MS_PER_DAY).toBe(86_400_000);
+  });
+});
+
+/**
+ * T14 (inner#1006 §3.1): the largest request body any public route reads.
+ */
+describe("request body limit", () => {
+  it("(a) defaults to 1 MiB when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).request_body_max_bytes).toBe(1_048_576);
+  });
+
+  it("(b) the shipped yaml sets 1 MiB and the getter returns it", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config", "limits.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(shipped.request_body_max_bytes).toBe(1_048_576);
+    expect(getRequestBodyMaxBytes()).toBe(1_048_576);
+  });
+
+  it.each([0, 1.5])("(c) refuses %s like every other key here", (value) => {
+    expect(() => limitsConfigSchema.parse({ request_body_max_bytes: value })).toThrow(ZodError);
+  });
+});
+
+/**
+ * inner#1782 test spec C1–C4: how long a refused connection keeps reading.
+ */
+describe("request body linger", () => {
+  it("C1: defaults to 30 seconds when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).request_body_linger_seconds).toBe(30);
+  });
+
+  it("C2: the shipped yaml sets 30 seconds and the getter returns it", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config", "limits.yaml"), "utf-8")) as Record<string, unknown>;
+    expect(shipped.request_body_linger_seconds).toBe(30);
+    expect(getRequestBodyLingerSeconds()).toBe(30);
+  });
+
+  it.each([0, 1.5])("C3: refuses %s", (value) => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: value }).success).toBe(false);
+  });
+
+  it("C4: refuses more than 300 seconds, so the deadline always fits a timer", () => {
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 300 }).success).toBe(true);
+    expect(limitsConfigSchema.safeParse({ request_body_linger_seconds: 301 }).success).toBe(false);
+  });
+});
+
+/**
+ * T16 (inner#1006 §3.3): the repo's nginx must refuse what the server refuses,
+ * at the same size, or the two answer the same request differently.
+ */
+describe("docker/breatic-locations.conf matches request_body_max_bytes", () => {
+  /**
+   * The body of the `location /api/ { ... }` block.
+   * @returns Its lines, braces excluded.
+   */
+  function apiLocationBlock(): string[] {
+    const lines = readFileSync(resolve(MONOREPO_ROOT, "docker", "breatic-locations.conf"), "utf-8").split("\n");
+    const start = lines.findIndex((line) => /^\s*location\s+\/api\/\s*\{\s*$/.test(line));
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = lines.findIndex((line, i) => i > start && /^\s*\}\s*$/.test(line));
+    expect(end).toBeGreaterThan(start);
+    return lines.slice(start + 1, end);
+  }
+
+  it("the /api/ block has exactly one client_max_body_size, set to 1m", () => {
+    const directives = apiLocationBlock().filter((line) => /^\s*client_max_body_size\b/.test(line));
+    expect(directives.map((line) => line.trim())).toEqual(["client_max_body_size 1m;"]);
+  });
+
+  it("1m is request_body_max_bytes", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config", "limits.yaml"), "utf-8")) as Record<string, unknown>;
+    const nginxBytes = 1 * 1024 * 1024;
+    expect(nginxBytes).toBe(1_048_576);
+    expect(shipped.request_body_max_bytes).toBe(nginxBytes);
   });
 });

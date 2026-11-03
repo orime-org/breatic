@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the canvas does once a proposed flow is on it (#263).
@@ -40,7 +40,7 @@ export interface Focus {
  * @returns What to select and what to open.
  * @throws {never} Never.
  */
-export function whatToFocus(proposal: CanvasProposal, placed: PlacedProposal): Focus {
+export function whatToFocus(proposal: CanvasProposal, placed: Pick<PlacedProposal, 'nodeIds' | 'groupId'>): Focus {
   const generates = proposal.nodes
     .map((node, index) => ({ node, index }))
     .filter(({ node }) => node.role === 'generate');

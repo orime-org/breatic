@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What each tool of a turn is handed (inner#1315): every tool keeps the
@@ -14,6 +14,7 @@ const usage = { recordServiceCall: () => undefined, recordModelCall: () => undef
 const saveToStorage = async () => ({ url: "u", mimeType: "image/png", width: 1, height: 1 });
 const tools = {
   web_search: {},
+  understand_media: {},
   save_image: {},
   propose_canvas_action: {},
   propose_document_edit: {},
@@ -34,6 +35,11 @@ describe("turnToolsContext", () => {
 
   it("hands the save its storing", () => {
     expect(context.save_image).toMatchObject({ usage, saveToStorage });
+  });
+
+  it("hands media understanding the same canonical storage capability", () => {
+    expect(context.understand_media).toMatchObject({ usage, saveToStorage, studioId: "s1" });
+    expect(context.understand_media?.resolveCanonicalMediaSource).toEqual(expect.any(Function));
   });
 
   it("hands the proposal check the studio", () => {

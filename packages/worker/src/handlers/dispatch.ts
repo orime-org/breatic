@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * BullMQ job handlers for task execution.
@@ -13,6 +13,8 @@
  *
  * Anything else throws.
  */
+
+import { parseCreditDecimal } from "@breatic/shared";
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
@@ -28,16 +30,20 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
-import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
+import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService } from "@breatic/domain";
 import {
+  assetRepo,
   assetService,
   createUsageRecorder,
   settleTaskForNode,
   readingLimitsUntil,
   understandMediaAt,
+  understandMediaInBatches,
+  openLongMediaBatchOperation,
+  advanceLongMediaSegmentation,
   UnderstandRefused,
   UNDERSTAND_PINS,
 } from "@breatic/domain";
@@ -51,6 +57,7 @@ import {
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
+import { resolveRegisteredProjectMedia } from "@worker/services/project-media.service.js";
 import {
   generationMetadata,
   nodeResultsFrom,
@@ -607,6 +614,7 @@ async function runTaskBody(
         params,
         recorderFor(isTranscription(params) ? "canvas_transcribe" : "canvas_understand"),
         deadlineAt,
+        { taskId, projectId: projectId ?? undefined, actorUserId: userId },
       );
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
@@ -1214,7 +1222,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
       provider: run.provider,
       releaseHold: taskId,
     });
-    if (outcome.shortfall > 0) {
+    if (parseCreditDecimal(outcome.shortfall) > 0n) {
       // The studio's pool ran out mid-flight, or its credits were reassigned
       // while the task ran. The result is already delivered, so what is left
       // uncharged goes to reconciliation.
@@ -1573,35 +1581,42 @@ export async function persistOutputs(
         delete extra.buffer;
         delete extra.contentType;
       }
-    }
-
-    // Lane ③: a provider's temporary link. Anything already in our own bucket
-    // skips it — a local mini-tool's output is ours already, and pulling it
-    // would store a second copy (todo #1615 covers registering those).
-    if (
+    } else if (
       typeof next.url === "string" &&
-      next.url.startsWith("http") &&
-      adapter.keyFromUrl(next.url) === null
+      next.url.startsWith("http")
     ) {
-      const stored = await storeFromUrl(next.url, uploadContext());
-      if (!next.extra) next.extra = {};
-      (next.extra).url_original = next.url;
-      // The registered row's URL, its cover cut in the media container while
-      // this transfer's own finish waited on it, and what that run measured.
-      Object.assign(next, storedAsOutput(stored));
+      if (adapter.keyFromUrl(next.url) === null) {
+        // Lane ③: the ingest Worker pulls a provider's temporary link.
+        const stored = await storeFromUrl(next.url, uploadContext());
+        if (!next.extra) next.extra = {};
+        next.extra.url_original = next.url;
+        Object.assign(next, storedAsOutput(stored));
+      } else if (projectId !== undefined) {
+        // Existing objects are accepted without moving their bytes. The
+        // ledger owns both metadata and the optional eligible video cover.
+        const stored = await resolveRegisteredProjectMedia(projectId, next.url);
+        delete next.cover_url;
+        Object.assign(next, storedAsOutput(stored));
+      }
     }
 
     persisted.push(next);
   }
 
-  // Provider-level extras (non-output fields) may also carry URLs consumers
-  // read. They take lane ③ too, and stay best-effort: none of them is what the
-  // node shows, so a failure keeps the provider's own link rather than failing
-  // a generation that produced its deliverable.
+  // Provider-level extras can also carry media consumers read. Existing owned
+  // objects must be accepted through the Project directory. External links
+  // take lane ③ best-effort, retaining the provider's URL if transfer fails.
   for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.keyFromUrl(value) !== null) continue;
+    if (adapter.keyFromUrl(value) !== null) {
+      if (projectId !== undefined) {
+        const stored = await resolveRegisteredProjectMedia(projectId, value);
+        extras[field] = stored.fileUrl;
+        extras[`${field}_original`] = value;
+      }
+      continue;
+    }
     try {
       const stored = await storeFromUrl(value, uploadContext());
       // The canonical, not the key just written: on a dedup hit that key lost
@@ -1706,8 +1721,7 @@ export async function runMiniTool(
  * from `config/understand.yaml`, sized for one press producing one task —
  * and hands over.
  *
- * Nothing about this run produces an asset, so nothing here reaches for a
- * URL: what comes back is text, and text is what the node gets.
+ * The task reads the node's source URL and returns text to that node.
  *
  * Exported for the same reason {@link runAigcDirect} is: a test that pins
  * what this path sends has to be able to call it.
@@ -1715,10 +1729,15 @@ export async function runMiniTool(
  * @param usage - The task's recorder; the call is recorded on it.
  * @param deadlineAt - When the task runs out; every part of the reading gets
  *   what is left of it (inner#1367).
+ * @param execution - Stable task identity and ownership for long-media processing.
+ * @param execution.taskId - The durable task identifier.
+ * @param execution.projectId - The owning project, when the task has one.
+ * @param execution.actorUserId - The user who initiated the task.
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
- * @throws {StillRunning} when every reading place in this process is taken.
+ * @throws {StillRunning} when the Container is still producing registered segments or every reading place is taken.
+ * @throws {Error} when canonical asset or long-media processing fails.
  * @throws {AnsweredNothing} when an understanding returns empty text.
  * @throws {TranscriptionBlocked} when a content filter blocks a transcription.
  * @throws {CutShort} when a transcription reaches the output ceiling.
@@ -1728,6 +1747,7 @@ export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
   deadlineAt: number,
+  execution?: { taskId: string; projectId?: string; actorUserId: string },
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
@@ -1755,24 +1775,92 @@ export async function runUnderstand(
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
-    answer = await withUnderstandSlot(() => understandMediaAt({
-      url: params.source_url as string,
-      // The ledger's judgement outranks what storage declares: the browser's
-      // gate let this run start on it, and storage answers with a type guessed
-      // from a file name.
-      ...(typeof params.source_mime_type === "string"
-        ? { ledgerType: params.source_mime_type }
-        : {}),
-      question,
-      model: UNDERSTAND_PINS.model,
-      backend: UNDERSTAND_PINS.backend,
-      apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
-      baseUrl: UNDERSTAND_PINS.baseUrl,
-      maxBytes: cfg.max_media_bytes,
-      ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
-      maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
-      onBilled: record,
-    }));
+    const sourceUrl = params.source_url as string;
+    const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
+    const canCheckLongMedia = (sourceType === "audio" || sourceType === "video") &&
+      execution?.projectId !== undefined && execution.taskId !== undefined;
+    const storage = canCheckLongMedia ? await getStorageAdapter() : null;
+    const sourceKey = storage?.keyFromUrl(sourceUrl) ?? null;
+    const studioId = canCheckLongMedia && execution?.projectId
+      ? await assetService.resolveOwnerStudioId(execution.projectId)
+      : null;
+    const sourceAsset = sourceKey && studioId ? await assetRepo.findLiveByKeyInStudio(studioId, sourceKey) : null;
+    const shouldSegment = sourceAsset !== null && sourceAsset.sizeBytes > cfg.max_media_bytes &&
+      (sourceAsset.mimeType.startsWith("audio/") || sourceAsset.mimeType.startsWith("video/"));
+
+    if (shouldSegment && sourceAsset !== null && execution?.projectId && execution.taskId) {
+      const progress = await advanceLongMediaSegmentation({
+        source: {
+          key: sourceAsset.storageKey,
+          sha256: sourceAsset.contentHash,
+          sizeBytes: sourceAsset.sizeBytes,
+          mimeType: sourceAsset.mimeType,
+        },
+        sourceUrl,
+        actorUserId: execution.actorUserId,
+        projectId: execution.projectId,
+        operationId: execution.taskId,
+        deadlineAt,
+        maxSourceBytes: cfg.max_media_bytes,
+      });
+      if (progress.kind === "pending") {
+        throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
+      }
+      const durableOperation = await openLongMediaBatchOperation({
+        actorUserId: execution.actorUserId,
+        projectId: execution.projectId,
+        originKind: "canvas_task",
+        originKey: execution.taskId,
+        userActionKey: execution.taskId,
+        source: {
+          key: sourceAsset.storageKey,
+          sha256: sourceAsset.contentHash,
+          sizeBytes: sourceAsset.sizeBytes,
+          mimeType: sourceAsset.mimeType,
+        },
+        question,
+        model: UNDERSTAND_PINS.model,
+        deadlineAt: new Date(deadlineAt),
+      }, cfg.long_media.operation_lease_ms);
+      try {
+        answer = await withUnderstandSlot(() => understandMediaInBatches({
+          question,
+          maxBytes: cfg.max_media_bytes,
+          maxItems: getAgentConfig().understand_media_max_items,
+          ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
+          model: UNDERSTAND_PINS.model,
+          backend: UNDERSTAND_PINS.backend,
+          apiKey,
+          baseUrl: UNDERSTAND_PINS.baseUrl,
+          maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
+          checkpoint: durableOperation.checkpoint,
+          signal: durableOperation.signal,
+          onBilled: record,
+        }, progress.segments));
+        await durableOperation.complete();
+      } finally {
+        await durableOperation.release();
+      }
+    } else {
+      answer = await withUnderstandSlot(() => understandMediaAt({
+        items: [{
+          url: sourceUrl,
+          // The ledger's judgement outranks storage's filename-based type.
+          ...(typeof params.source_mime_type === "string"
+            ? { ledgerType: params.source_mime_type }
+            : {}),
+        }],
+        question,
+        model: UNDERSTAND_PINS.model,
+        backend: UNDERSTAND_PINS.backend,
+        apiKey,
+        baseUrl: UNDERSTAND_PINS.baseUrl,
+        maxBytes: cfg.max_media_bytes,
+        ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
+        maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
+        onBilled: record,
+      }));
+    }
   } catch (err) {
     // A call the service billed before failing was recorded; its row lands
     // before the failure goes on, and a row that cannot be written is logged

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { VideoToolAnalysisRef, VideoToolDraftFields } from '@shared/mini-tools/video-draft.js';
 
@@ -310,6 +310,14 @@ export interface CanvasNodeFields {
     taskResultEventId?: string;
     /** First handled planned output, retained across history restores and excluded from copies. */
     miniToolResultOrigin?: MiniToolResultOrigin;
+    /**
+     * The generation template node this node was placed as (inner#1345):
+     * the template, its key, and on the guide text node the id of the anchor
+     * it explains. An input node the template placed carries its input's key
+     * with `input`, and the id of the anchor of the instance it was placed for. Content: a copy carries it, with the anchor id rewritten
+     * when the anchor is copied along.
+     */
+    templateNode?: { template: string; key: string; anchor?: string; input?: true };
 
     // ─── Data node fields ───────────────────────────────────
     /**

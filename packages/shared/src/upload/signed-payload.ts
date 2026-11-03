@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The credential format the upload pipeline uses twice: a JSON payload and an
@@ -102,4 +102,13 @@ export async function readSignedPayload<T>(
   );
   if (!valid) return { ok: false, reason: "bad_signature" };
   return { ok: true, payload };
+}
+
+/**
+ * Whether a field read off a signed payload is a non-empty string.
+ * @param value - The field.
+ * @returns True for a string with at least one character.
+ */
+export function isFilled(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }

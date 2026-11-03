@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A turn's obligations survive its consumer walking away mid-stream.
@@ -34,11 +34,11 @@ import { mocks } from "@server/__tests__/helpers/mock-core.js";
 const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
-  charged: 5,
-  shortfall: 0,
+  charged: "5.000000",
+  shortfall: "0.000000",
   studioId: 's1',
   lotIds: ['l1'],
 }));
@@ -84,6 +84,7 @@ vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  const { MockLanguageModelV4 } = await import("ai/test");
   return {
     ...base,
     // The finalizer itself is the real one — mocking it would test the mock.
@@ -97,7 +98,7 @@ vi.mock("@breatic/domain", async () => {
     }),
     creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
-    getModel: () => "model",
+    getModel: () => new MockLanguageModelV4({}),
   };
 });
 
@@ -119,10 +120,11 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  setUserForModel: vi.fn(async () => undefined),
   addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget,
+vi.mock("@server/agent/turn-fold.js", () => ({
+  foldIfTooLong,
 }));
 
 // What the prompt says is not what this test is about.
@@ -131,7 +133,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
@@ -249,8 +251,8 @@ describe("一个回合扣不满时", () => {
     // 事后发现。
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true,
-      charged: 30,
-      shortfall: 70,
+      charged: "30.000000",
+      shortfall: "70.000000",
       studioId: "s1",
       lotIds: ["l1"],
     });
@@ -275,14 +277,14 @@ describe("一个回合扣不满时", () => {
         typeof call[1] === "string" && call[1].includes("CREDIT_SHORTFALL"),
     );
     expect(line, "短扣没有留下任何对账记录").toBeDefined();
-    expect(line?.[0]).toMatchObject({ shortfall: 70, charged: 30 });
+    expect(line?.[0]).toMatchObject({ shortfall: "70.000000", charged: "30.000000" });
   });
 
   it("logs a turn charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true,
-      charged: 30,
-      shortfall: 0,
+      charged: "30.000000",
+      shortfall: "0.000000",
       studioId: "s1",
       lotIds: ["l1"],
       signalFailure: new Error("redis down"),

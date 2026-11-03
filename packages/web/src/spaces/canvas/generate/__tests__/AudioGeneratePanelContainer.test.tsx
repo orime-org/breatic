@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -387,6 +387,7 @@ function panelTree(
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={lastWriteWasLocal}
+            placeTemplate={() => undefined}
             edges={board.edges ?? []}
             nodes={[
               {

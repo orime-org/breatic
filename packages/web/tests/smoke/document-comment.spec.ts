@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Commenting, end to end (task #18).
@@ -1501,6 +1501,34 @@ test.describe('what a settled thread offers', () => {
         .toBeLessThan(16);
     }
     expect(Math.abs(settled.left.x - unsettled.left.x)).toBeLessThan(1);
+  });
+});
+
+test.describe('the filter counts (inner#1199)', () => {
+  test('says how many comments each filter holds, and nothing at none', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha bravo');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('charlie delta');
+    await commentOnParagraph(page, 0, 'first');
+    await commentOnParagraph(page, 1, 'second');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+
+    const open = page.getByTestId('doc-comment-rail-filter-open-count');
+    const all = page.getByTestId('doc-comment-rail-filter-all-count');
+    await expect(open).toHaveText('2');
+    await expect(all).toHaveText('2');
+
+    for (const left of ['1', null]) {
+      await page.getByTestId('doc-comment-card').first().click();
+      await page.getByTestId('doc-comment-resolve').click();
+      if (left === null) await expect(open).toHaveCount(0);
+      else await expect(open).toHaveText(left);
+      await expect(all).toHaveText('2');
+    }
   });
 });
 

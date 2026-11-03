@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { Link } from 'react-router-dom';
@@ -9,7 +9,7 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
-import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
+import { PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL, TUTORIALS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';
 
@@ -33,6 +33,8 @@ interface AuthCardShellProps {
   /** Show the release identity on login and registration cards. */
   showVersion?: boolean;
   subtitle?: React.ReactNode;
+  /** Context shown above the card title, such as an invitation preview. */
+  intro?: React.ReactNode;
   footer?: React.ReactNode;
   /** A line under the footer — the terms line on the sign-in and sign-up cards. */
   notice?: React.ReactNode;
@@ -46,6 +48,7 @@ interface AuthCardShellProps {
  * @param root0.title - heading shown at the top of the card
  * @param root0.showVersion - whether the card shows the product build identity
  * @param root0.subtitle - optional supporting line beneath the title
+ * @param root0.intro - contextual content shown above the title
  * @param root0.footer - optional footer slot for cross-page links
  * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
@@ -56,6 +59,7 @@ export function AuthCardShell({
   title,
   showVersion = false,
   subtitle,
+  intro,
   footer,
   notice,
   children,
@@ -70,6 +74,7 @@ export function AuthCardShell({
       <AuthPageHeader />
       <main className='flex flex-1 items-center justify-center p-6'>
         <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
+          {intro}
           <header className='mb-4 flex flex-col gap-1'>
             <div className='flex items-baseline justify-between gap-3'>
               <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
@@ -111,8 +116,9 @@ function AuthPageHeader(): React.JSX.Element {
 }
 
 /**
- * The page footer below the card: the terms and the privacy policy on the
- * official website, each in a new tab so the form keeps what was typed.
+ * The page footer below the card: the terms, the privacy policy and the user
+ * manual on the official website, each in a new tab so the form keeps what
+ * was typed, and a link to write to the support mailbox.
  * @returns the page footer.
  */
 function AuthPageFooter(): React.JSX.Element {
@@ -127,6 +133,12 @@ function AuthPageFooter(): React.JSX.Element {
       </a>
       <a href={PRIVACY_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('auth.terms.privacyLink')}
+      </a>
+      <a href={TUTORIALS_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
+        {t('chrome.help.manual')}
+      </a>
+      <a href={`mailto:${SUPPORT_EMAIL}`} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
+        {t('chrome.help.contact')}
       </a>
       {COOKIE_SETTINGS_AVAILABLE ? (
         <Button type='button' variant={null} size={null} onClick={openCookieSettings} className={FOOTER_LINK_CLASS}>

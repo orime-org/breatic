@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The audio container's props for its memoized children keep their identity
@@ -184,6 +184,7 @@ function tree(stability = 1): React.ReactElement {
             edges={[{ id: 'e1', source: 'src', target: 'target' }]}
             nodes={nodes(stability)}
             getLastWriteWasLocal={returnsTrue}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>

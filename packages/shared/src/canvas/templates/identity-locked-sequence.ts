@@ -1,0 +1,30 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
+
+/** Three continuous shots of one character from a single reference, the identity held in every shot. */
+export const IDENTITY_LOCKED_SEQUENCE: GenerationTemplate = {
+  id: "identity-locked-sequence",
+  anchor: "result",
+  nodes: [
+    {
+      key: "result",
+      role: "generate",
+      type: "video",
+      mode: "ref",
+      model: "minimax-h3-reference-to-video",
+      params: { aspect_ratio: "16:9", duration: 8 },
+    },
+  ],
+  edges: [],
+  inputs: [{ key: "reference", type: "image" }],
+  steps: [],
+  agentNote:
+    "an 8-second video of three continuous shots of the reference character, written with timecodes, the same identifying features repeated in each shot so the face and outfit do not drift; if the reader says the face drifted, shorten it to 5 to 6 seconds, re-split the three timecodes to fit, and tighten the sentence that says it is the same person in all three shots",
+  goal: "character",
+  triggers: {
+    asks: ["several shots of the same character", "a short sequence with my character"],
+    offerWhen: ["the reader wants several shots in a row of one character and has only one picture of their face"],
+  },
+};

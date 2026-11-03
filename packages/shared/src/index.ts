@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+
+export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
   Environment,
@@ -35,6 +38,9 @@ export type {
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,
+  ProjectAssetReferenceEntity,
+  ProjectRegisteredAsset,
+  ProjectAssetPage,
   ConversationAttachmentEntity,
   AssetKind,
   PaymentEntity,
@@ -111,6 +117,7 @@ export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
+  SignupInvitationPreview,
   SpaceType,
   Space,
   ActivityNewControlEvent,
@@ -236,6 +243,8 @@ export {
   occurrences,
   feedsOf,
   layersOf,
+  layoutFeedsOf,
+  TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
   markReadsBack,
   markText,
@@ -292,6 +301,9 @@ export {
   STUDIO_SLUG_BOUNDS,
   loginSchema,
   chatMessageSchema,
+  spaceRequestInputSchema,
+  sharedSpaceSchema,
+  spaceRequestAnswerSchema,
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
@@ -328,6 +340,9 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatSpaceContext,
+  SpaceRequestInput,
+  SharedSpace,
+  SpaceRequestAnswer,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
@@ -369,6 +384,7 @@ export {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  threeDSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
@@ -377,6 +393,14 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
+export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
+
+export {
+  SyncConfirmRequestSchema,
+  SyncConfirmedResponseSchema,
+} from "@shared/sync-receipt.js";
+export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
 
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 
@@ -396,6 +420,32 @@ export {
   documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
+
+export {
+  TimelineRateSchema,
+  TimelineSettingsSchema,
+  TimelineTrackSchema,
+  TimelineVideoSourceSchema,
+  TimelineVideoClipSchema,
+  TimelineEditCommandSchema,
+  TimelineDocumentV1Schema,
+} from "@shared/timeline/schema.js";
+export type {
+  TimelineRate,
+  TimelineSettings,
+  TimelineTrack,
+  TimelineVideoSource,
+  TimelineVideoClip,
+  TimelineEditCommand,
+  TimelineDocumentV1,
+} from "@shared/timeline/schema.js";
+export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
+export type { TimelineRangeValidation } from "@shared/timeline/time.js";
+
+export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
+export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
+export type { TimelineClientLimits } from "@shared/timeline/api.js";
 
 export {
   DOCUMENT_SCHEMA,
@@ -727,6 +777,41 @@ export {
 // What a stored asset is called, which is the last segment of the address it
 // is stored at — read by both ends that name a file while refusing it.
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
+export {
+  bisectMediaCore,
+  expandMediaDecodeWindow,
+  planLongMediaSegments,
+  type MediaCoreInterval,
+  type MediaDecodeWindow,
+  type LongMediaInputRange,
+  type LongMediaPlanLimits,
+  type LongMediaPlannedSegment,
+} from "@shared/media/long-media-interval.js";
+export {
+  MediaInputDescriptorSchema,
+  type MediaInputDescriptor,
+} from "@shared/media/long-media-schema.js";
+export {
+  LongMediaProbeReportSchema,
+  LongMediaInputSchema,
+  readLongMediaProbeReport,
+  type LongMediaProbeReport,
+} from "@shared/media/long-media-probe.js";
+export {
+  computeLongMediaInputsDigest,
+  LongMediaPlanRequestSchema,
+  readLongMediaPlanRequest,
+  type LongMediaPlanRequest,
+} from "@shared/media/long-media-plan.js";
+export {
+  computeLongMediaJobRequestDigest,
+  LongMediaJobRequestSchema,
+  readLongMediaJobRequest,
+  verifyLongMediaJobRequest,
+  type LongMediaJobPayload,
+  type LongMediaJobRequest,
+  type LongMediaSourceReference,
+} from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
 export {
@@ -736,19 +821,51 @@ export {
 } from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
-  findTemplate,
-  templatePrompt,
+  TEMPLATE_GOALS,
+  templateAnchor,
+  templateGoalsFor,
   templatesFor,
   type GenerationTemplate,
+  type TemplateEdge,
+  type TemplateGenerateNode,
+  type TemplateGoal,
+  type TemplateInput,
+  type TemplateNodeKey,
+  type TemplateResourceNode,
+  type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export {
+  expandTemplate,
+  matchTemplateInstance,
+  templateGuideNode,
+  templateMarkTargets,
+  templateNodeDefaults,
+  templateSkeleton,
+  type TemplateExpansionInput,
+  type TemplateExpansionResult,
+  type TemplateGraph,
+  type TemplateGraphNode,
+  type TemplateInstanceMatch,
+  type TemplateKeyMatch,
+  type TemplateMarkTarget,
+  type TemplateSkeleton,
+} from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
+
+export {
+  agentPictureKeyFor,
+  agentPictureSpecSchema,
+  type AgentPictureSpec,
+  type AgentPictureRead,
+} from "@shared/upload/agent-picture.js";
 
 // Sending bytes to the ingest Worker. Whoever holds them sends them: the
 // browser for a file a person picked, our own backend for what it produced
 // itself -- one implementation, so "every asset reaches R2 through the ingest
 // Worker" is not a rule each caller is trusted to follow.
 export {
+  openUploadAtIngest,
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
@@ -757,6 +874,7 @@ export {
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
+  type OpenedIngestTarget,
   type MediaLimits,
   type HeldUpload,
   type PartReceipt,
@@ -849,6 +967,17 @@ export {
   sniffMimeTypeOfStream,
   SNIFF_WINDOW,
 } from "@shared/upload/sniff-mime.js";
+// A request body too large for the API, carried through storage instead
+// (inner#1006): web writes it, the ingest Worker names it, the server reads it.
+export {
+  TRANSFER_KEY_DIR,
+  TRANSFER_MEDIA_TYPE,
+  TRANSFER_SIGNATURE,
+  TransferDecodeError,
+  decodeTransferBody,
+  encodeTransferBody,
+  type TransferDecodeReason,
+} from "@shared/upload/transfer-format.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.
@@ -1044,3 +1173,9 @@ export {
   type VideoPresentationPricing,
   type VideoPresentationUsageFact,
 } from "@shared/upload/video-presentation-ingest.js";
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
+
+export * from "@shared/credit-amount.js";
+export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedgerViewSchema, studioLedgerViewSchema, projectCreditsViewSchema, studioCreditsViewSchema, studioCreditSummarySchema, creditOverviewSchema, creditLotPageSchema, creditLedgerPageSchema, purchasePageSchema } from "@shared/types/credit.js";

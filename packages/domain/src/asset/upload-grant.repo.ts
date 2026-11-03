@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
@@ -19,9 +19,16 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { db, uploadGrants } from "@breatic/core";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { db, uploadGrants, type DbTx } from "@breatic/core";
 import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
+
+/**
+ * What a grant says its upload is: an asset source, or `"transfer"` for a
+ * request body moved through storage (inner#1006), which never becomes an
+ * asset row.
+ */
+export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
 
 /**
  * A row of the upload-grant ledger.
@@ -62,14 +69,29 @@ export interface UploadGrant {
   filename: string | null;
   /**
    * What the asset this grant produces is, in the ledger's own values (see
-   * `StudioAssetEntity["source"]`). Null means an ordinary upload.
+   * `StudioAssetEntity["source"]`), or `"transfer"`. Null means an ordinary
+   * upload.
    */
-  assetSource: StudioAssetEntity["source"] | null;
+  assetSource: GrantAssetSource | null;
   /** The generation whose output these bytes are, when they are one. */
   generationTaskId: string | null;
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
+}
+
+/**
+ * Read consumed grants in immutable-id order for explicit media backfill.
+ * @param cursor - The last emitted grant identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Consumed grant provenance after the cursor.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanConsumedMediaGrants(cursor: string | null, limit: number): Promise<UploadGrant[]> {
+  const rows = await db.select().from(uploadGrants).where(and(
+    isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
+  )).orderBy(uploadGrants.id).limit(limit);
+  return rows.map(toEntity);
 }
 
 /**
@@ -98,7 +120,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     filename: row.filename,
     // Read back as the ledger's own values. Only our own code writes
     // this column, and it writes what `register` accepts.
-    assetSource: row.assetSource as StudioAssetEntity["source"] | null,
+    assetSource: row.assetSource as GrantAssetSource | null,
     generationTaskId: row.generationTaskId,
     analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
@@ -146,7 +168,7 @@ export async function issueGrant(input: {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
-    assetSource?: StudioAssetEntity["source"] | null;
+    assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
   };
   analyticsConsent?: ConsentSnapshot;
@@ -184,7 +206,7 @@ export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
  * finish that follows decides off it whether to read the media now (#299).
  */
 export type FinalizeClaim =
-  | { granted: true; assetSource: StudioAssetEntity["source"] | null }
+  | { granted: true; assetSource: GrantAssetSource | null }
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -239,7 +261,7 @@ export async function claimFinalize(params: {
   if (won.length === 1) {
     return {
       granted: true,
-      assetSource: (won[0]!.assetSource ?? null) as StudioAssetEntity["source"] | null,
+      assetSource: (won[0]!.assetSource ?? null) as GrantAssetSource | null,
     };
   }
 
@@ -266,14 +288,16 @@ export async function claimFinalize(params: {
  * @param params.storageKey - The key being registered.
  * @param params.userId - The authenticated caller.
  * @param params.assetId - The ledger row the bytes registered as.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call consumed the grant; false otherwise.
+ * @throws {Error} When the database write fails.
  */
 export async function consumeGrant(params: {
   storageKey: string;
   userId: string;
   assetId: string;
-}): Promise<boolean> {
-  const rows = await db
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ consumedAt: sql`now()`, assetId: params.assetId })
     .where(
@@ -281,6 +305,32 @@ export async function consumeGrant(params: {
         eq(uploadGrants.storageKey, params.storageKey),
         eq(uploadGrants.userId, params.userId),
         isNull(uploadGrants.consumedAt),
+        isNull(uploadGrants.voidedAt),
+      ),
+    )
+    .returning({ id: uploadGrants.id });
+  return rows.length > 0;
+}
+
+/**
+ * Mark a transfer grant complete (inner#1006): its bytes are stored and may
+ * be referenced, and no asset row stands behind it, so `asset_id` stays null.
+ *
+ * Safe to run again: a grant already complete keeps its first `consumed_at`
+ * and still answers true, so a rerun of the finish job changes nothing. A
+ * voided grant, or one that is not a transfer, is left alone.
+ * @param storageKey - The transfer's key.
+ * @returns True when the grant is complete after this call; false when it is
+ *   voided, not a transfer, or not there.
+ */
+export async function completeTransferGrant(storageKey: string): Promise<boolean> {
+  const rows = await db
+    .update(uploadGrants)
+    .set({ consumedAt: sql`coalesce(${uploadGrants.consumedAt}, now())` })
+    .where(
+      and(
+        eq(uploadGrants.storageKey, storageKey),
+        eq(uploadGrants.assetSource, "transfer"),
         isNull(uploadGrants.voidedAt),
       ),
     )
@@ -300,17 +350,35 @@ export async function consumeGrant(params: {
  * which proves nothing but that it holds the shared secret — every fact about
  * who this upload belongs to comes off the row itself.
  * @param storageKey - The key the report names.
+ * @param tx - An enclosing business transaction.
  * @returns The grant, or null when no such key was ever issued.
+ * @throws {Error} When the database read fails.
  */
 export async function findGrantByKey(
   storageKey: string,
+  tx?: DbTx,
 ): Promise<UploadGrant | null> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select()
     .from(uploadGrants)
     .where(eq(uploadGrants.storageKey, storageKey))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Lock the immutable grant identity before choosing or replaying its terminal.
+ * @param storageKey - The unique key issued with the grant.
+ * @param tx - The transaction that will commit the terminal decision.
+ * @returns The current grant after any earlier writer commits.
+ * @throws {Error} When the row lock or database read fails.
+ */
+export async function lockGrantByKey(storageKey: string, tx: DbTx): Promise<UploadGrant | null> {
+  const [row] = await tx.select().from(uploadGrants)
+    .where(eq(uploadGrants.storageKey, storageKey))
+    .for("update")
+    .limit(1);
+  return row === undefined ? null : toEntity(row);
 }
 
 /**
@@ -346,11 +414,13 @@ export async function findOwnGrants(
  * this row is what tells the operations-side cleanup that it has no owner.
  * @param storageKey - The key being written off.
  * @param reason - Why, as the upload status query will answer it.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call voided the grant; false when it was already
  *   consumed or already voided.
+ * @throws {Error} When the database write fails.
  */
-export async function voidGrant(storageKey: string, reason: string): Promise<boolean> {
-  const rows = await db
+export async function voidGrant(storageKey: string, reason: string, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ voidedAt: sql`now()`, failureReason: reason })
     .where(

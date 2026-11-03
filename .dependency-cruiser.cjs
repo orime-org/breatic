@@ -170,6 +170,42 @@ module.exports = {
       from: { path: "^packages/.*\\.service\\.ts$" },
       to: { path: "node_modules/(hono|@hono)/|^hono($|/)|^@hono/" },
     },
+    {
+      name: "provider-no-internal-import",
+      comment:
+        "@breatic/provider is a routing layer meant to leave this repository " +
+        "(inner#1743): it imports no @breatic/* package and no other " +
+        "package's source. Key reading, configuration, deadlines and text " +
+        "cleaning are handed to it by the caller.",
+      severity: "error",
+      from: { path: "^packages/provider/" },
+      to: {
+        path:
+          "@breatic/|^@(shared|core|domain|server|worker|collab|web|ingest|integration-tests)/" +
+          "|^packages/(shared|core|domain|server|worker|collab|web|ingest|integration-tests)/",
+      },
+    },
+    {
+      name: "provider-pricing-browser-safe",
+      comment:
+        "@breatic/provider/pricing runs in the browser to estimate what web shows " +
+        "before a run: src/pricing/ imports only itself, " +
+        "jsonata and zod, so nothing Node-only or heavy reaches the web bundle.",
+      severity: "error",
+      from: { path: "^packages/provider/src/pricing/" },
+      to: { pathNot: "^@provider/pricing/|^packages/provider/src/pricing/|node_modules/jsonata/|^jsonata$|node_modules/zod/|^zod$" },
+    },
+    {
+      name: "provider-media-worker-only",
+      comment:
+        "Media runs happen only in the worker " +
+        "(AGENTS.md#aigc-generation-runs-in-the-worker): only packages/worker may " +
+        "import @breatic/provider/media, so domain and server hold a provider " +
+        "without media execution.",
+      severity: "error",
+      from: { pathNot: "^packages/(worker|provider)/" },
+      to: { path: "@breatic/provider/media|^packages/provider/(src|dist)/media/" },
+    },
     ...webLayerRules(),
   ],
   options: {

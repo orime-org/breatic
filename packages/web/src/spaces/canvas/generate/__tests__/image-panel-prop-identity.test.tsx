@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 图片面板的可用档列表在内容不变时保持同一个引用（#1951）。
@@ -143,6 +143,7 @@ function mount(): ReturnType<typeof render> {
             edges={[]}
             nodes={nodes()}
             getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -210,6 +211,7 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
               edges={[]}
               nodes={nodes()}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>

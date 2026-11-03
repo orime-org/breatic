@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -18,6 +18,7 @@ import {
   doublePrecision,
   numeric,
   integer,
+  smallint,
   bigint,
   timestamp,
   json,
@@ -40,7 +41,11 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
-import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
+import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
+import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
+import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
+import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
+import type { StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -89,10 +94,8 @@ export const users = pgTable(
     // integration case that stores every tier in `MEMBERSHIP_TIERS` and fails
     // on one the migration does not allow.
     //
-    // Four of the five carry ceilings, and they live in
-    // `config/membership.yaml`, never here. `enterprise` is the fifth: legal
-    // to store, and impossible to price until its negotiated numbers are read
-    // from the database. Asking for its ceilings throws, naming the account.
+    // Configured ceilings live in `config/membership.yaml`. Enterprise
+    // ceilings, validity and agreement identity live in enterprise_memberships.
     // A tier added to the enum without a migration widening the constraint
     // would be storable in TypeScript and rejected by the database.
     //
@@ -101,15 +104,10 @@ export const users = pgTable(
     // answer — the tier of that studio's current admin — so transferring a
     // studio moves it onto the new admin's tier without touching this column.
     //
-    // The old `membership_type` / `membership_expires_at` pair, dropped in
-    // 0010 back when the product carried no tiers at all, is NOT what this
-    // is. There is no expiry column here: an expiry is a billing fact, and
-    // billing is a separate leg — this column is a value that can be read and
-    // enforced, and what makes it change is the Stripe work that comes later.
+    // Enterprise validity is read alongside this raw tier. Ordinary paid
+    // validity is interpreted from subscription facts.
     //
-    // Credits are yet another leg and live in `credit_lots`, one row per
-    // purchase, never on the
-    // account row.
+    // Credits live in `credit_lots`, one row per funding source.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
@@ -194,8 +192,8 @@ export const membershipTierChanges = pgTable(
     fromTier: varchar("from_tier", { length: 16 }).notNull(),
     toTier: varchar("to_tier", { length: 16 }).notNull(),
     // What caused the move: `subscription_activated`, `subscription_ended`,
-    // `registration`, or `manual`. The last two have no writer yet — see the
-    // block seven design for why registration does not append a row.
+    // `registration`, or `manual`. Registration is represented by the first
+    // row's from_tier; manual membership changes append through the same writer.
     reason: varchar("reason", { length: 32 }).notNull(),
     referenceId: varchar("reference_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -282,11 +280,8 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // Initial Space type seeded on first open (B.2). varchar with NO check
-    // constraint — same pattern as studio_members.role, so adding 3d/plan
-    // later is a zero-migration change. Canvas is the only editable type
-    // today; document/timeline are stored + seeded but disabled in the
-    // create picker until their editors ship.
+    // Initial Space type seeded on first open. Stored as a varchar;
+    // accepted Space types are validated by the shared schema.
     initialSpaceType: varchar("initial_space_type", { length: 16 })
       .default("canvas")
       .notNull(),
@@ -521,6 +516,7 @@ export const conversationMessages = pgTable(
      * the server validates what it reads back.
      */
     forModel: json("for_model"),
+    closedProducerOriginKey: varchar("closed_producer_origin_key", { length: 255 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -530,6 +526,194 @@ export const conversationMessages = pgTable(
       table.turnIndex,
       table.seq,
     ),
+  ],
+);
+
+// ── Long media operations ────────────────────────────────────────────
+
+export const mediaUnderstandingOperations = pgTable(
+  "media_understanding_operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    originKind: varchar("origin_kind", { length: 24 }).notNull(),
+    originKey: varchar("origin_key", { length: 255 }).notNull(),
+    requestDigest: varchar("request_digest", { length: 128 }).notNull(),
+    sources: jsonb("sources").$type<Record<string, unknown>[]>().notNull(),
+    question: text("question").notNull(),
+    mode: varchar("mode", { length: 32 }).notNull(),
+    locale: varchar("locale", { length: 16 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    promptVersion: varchar("prompt_version", { length: 64 }).notNull(),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    status: varchar("status", { length: 16 }).default("queued").notNull(),
+    recoveryGroupId: uuid("recovery_group_id").notNull(),
+    logicalRequestId: uuid("logical_request_id").notNull(),
+    logicalRootOperationId: uuid("logical_root_operation_id").references((): AnyPgColumn => mediaUnderstandingOperations.id, { onDelete: "restrict" }),
+    userActionId: uuid("user_action_id").notNull(),
+    requestInputRevision: integer("request_input_revision").default(1).notNull(),
+    revision: integer("revision").default(1).notNull(),
+    rootDeadlineAt: timestamp("root_deadline_at", { withTimezone: true }).notNull(),
+    newIntentReceipt: jsonb("new_intent_receipt").$type<Record<string, unknown>>(),
+    deliveryBindings: jsonb("delivery_bindings").$type<Record<string, unknown>[]>().default([]).notNull(),
+    leaseEpoch: bigint("lease_epoch", { mode: "number" }).default(0).notNull(),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    cancelAppliedAt: timestamp("cancel_applied_at", { withTimezone: true }),
+    dispatchSequence: integer("dispatch_sequence").default(1).notNull(),
+    dispatchState: varchar("dispatch_state", { length: 16 }).default("pending").notNull(),
+    dispatchDueAt: timestamp("dispatch_due_at", { withTimezone: true }).defaultNow().notNull(),
+    localAbortSequence: integer("local_abort_sequence").default(0).notNull(),
+    deliveryRevisionCursor: integer("delivery_revision_cursor").default(0).notNull(),
+    deliveryPublications: jsonb("delivery_publications").$type<Record<string, unknown>[]>().default([]).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("media_understanding_operations_actor_action_key").on(table.actorUserId, table.userActionId, table.logicalRequestId),
+    index("media_understanding_operations_recovery_group_idx").on(table.recoveryGroupId, table.createdAt),
+    index("media_understanding_operations_dispatch_idx").on(table.dispatchDueAt, table.createdAt),
+  ],
+);
+
+export const mediaUnderstandingSteps = pgTable(
+  "media_understanding_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id").notNull().references(() => mediaUnderstandingOperations.id, { onDelete: "restrict" }),
+    stepKey: varchar("step_key", { length: 255 }).notNull(),
+    kind: varchar("kind", { length: 24 }).notNull(),
+    subtype: varchar("subtype", { length: 32 }),
+    sourceIndex: integer("source_index"),
+    mediaInputId: varchar("media_input_id", { length: 255 }),
+    mediaInputDescriptor: jsonb("media_input_descriptor").$type<Record<string, unknown>>(),
+    segmentIndex: integer("segment_index"),
+    planVersion: integer("plan_version"),
+    inputDigest: varchar("input_digest", { length: 128 }).notNull(),
+    contextDependencies: jsonb("context_dependencies").$type<Record<string, unknown>[]>().default([]).notNull(),
+    status: varchar("status", { length: 24 }).default("pending").notNull(),
+    activeAttemptId: uuid("active_attempt_id"),
+    acceptedAttemptId: uuid("accepted_attempt_id"),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    jobId: varchar("job_id", { length: 255 }),
+    manifestRevision: integer("manifest_revision"),
+    parentManifestRevision: integer("parent_manifest_revision"),
+    manifestDigest: varchar("manifest_digest", { length: 128 }),
+    parentManifestDigest: varchar("parent_manifest_digest", { length: 128 }),
+    requiredMediaInputs: jsonb("required_media_inputs").$type<Record<string, unknown>[]>(),
+    requiredMediaInputsDigest: varchar("required_media_inputs_digest", { length: 128 }),
+    selectedLeaves: jsonb("selected_leaves").$type<Record<string, unknown>[]>(),
+    sealedSnapshot: jsonb("sealed_snapshot").$type<Record<string, unknown>>(),
+    candidateId: varchar("candidate_id", { length: 255 }),
+    targetSegmentId: varchar("target_segment_id", { length: 255 }),
+    canonicalCheckpoint: jsonb("canonical_checkpoint").$type<Record<string, unknown>>(),
+    controlMutationId: uuid("control_mutation_id"),
+    controlMutationDigest: varchar("control_mutation_digest", { length: 128 }),
+    controlExpectedVersion: integer("control_expected_version"),
+    controlReceipt: jsonb("control_receipt").$type<Record<string, unknown>>(),
+    controlEffectState: varchar("control_effect_state", { length: 16 }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("media_understanding_steps_operation_step_key").on(table.operationId, table.stepKey),
+    uniqueIndex("media_understanding_steps_candidate_key").on(table.operationId, table.sourceIndex, table.candidateId),
+    index("media_understanding_steps_operation_status_idx").on(table.operationId, table.status, table.sourceIndex, table.segmentIndex),
+  ],
+);
+
+export const mediaUnderstandingAttempts = pgTable(
+  "media_understanding_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id").notNull().references(() => mediaUnderstandingOperations.id, { onDelete: "restrict" }),
+    stepId: uuid("step_id").notNull().references(() => mediaUnderstandingSteps.id, { onDelete: "restrict" }),
+    attemptNo: integer("attempt_no").notNull(),
+    inputDigest: varchar("input_digest", { length: 128 }).notNull(),
+    epoch: bigint("epoch", { mode: "number" }).notNull(),
+    requestState: varchar("request_state", { length: 24 }).notNull(),
+    provider: varchar("provider", { length: 50 }),
+    generationId: varchar("generation_id", { length: 255 }),
+    response: jsonb("response").$type<Record<string, unknown>>(),
+    finishReason: varchar("finish_reason", { length: 40 }),
+    costState: varchar("cost_state", { length: 24 }).default("unknown").notNull(),
+    priceSnapshot: jsonb("price_snapshot").$type<Record<string, unknown>>(),
+    costUsd: numeric("cost_usd", { precision: 28, scale: 12 }),
+    credits: numeric("credits", { precision: 20, scale: 6 }),
+    usageRecordId: uuid("usage_record_id"),
+    modelPermitState: varchar("model_permit_state", { length: 16 }).default("waiting").notNull(),
+    modelPermitExpiresAt: timestamp("model_permit_expires_at", { withTimezone: true }),
+    sendAuthorityEpoch: bigint("send_authority_epoch", { mode: "number" }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    supersededByAttemptId: uuid("superseded_by_attempt_id"),
+    localAbortRequested: boolean("local_abort_requested").default(false).notNull(),
+    approvalRequestId: uuid("approval_request_id"),
+    approvalActorUserId: uuid("approval_actor_user_id").references(() => users.id, { onDelete: "restrict" }),
+    approvalWarningVersion: varchar("approval_warning_version", { length: 64 }),
+    approvedUnknownDigest: varchar("approved_unknown_digest", { length: 128 }),
+    approvedInputRevision: integer("approved_input_revision"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("media_understanding_attempts_step_number_key").on(table.stepId, table.attemptNo),
+    uniqueIndex("media_understanding_attempts_usage_record_key").on(table.usageRecordId),
+    uniqueIndex("media_understanding_attempts_generation_key").on(table.provider, table.generationId),
+  ],
+);
+
+export const usageSettlementEnvelopes = pgTable(
+  "usage_settlement_envelopes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    originKind: varchar("origin_kind", { length: 24 }).notNull(),
+    originKey: varchar("origin_key", { length: 255 }).notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    producerClosedAt: timestamp("producer_closed_at", { withTimezone: true }),
+    settlementMode: varchar("settlement_mode", { length: 16 }).default("durable").notNull(),
+    canvasExecutionTerminalAt: timestamp("canvas_execution_terminal_at", { withTimezone: true }),
+    terminalOperationRevision: integer("terminal_operation_revision"),
+    holdReleaseReceiptId: uuid("hold_release_receipt_id"),
+    exactCumulativeUsd: numeric("exact_cumulative_usd", { precision: 28, scale: 12 }).default("0").notNull(),
+    roundedCumulativeCredits: numeric("rounded_cumulative_credits", { precision: 20, scale: 6 }).default("0").notNull(),
+    settledExactUsd: numeric("settled_exact_usd", { precision: 28, scale: 12 }).default("0").notNull(),
+    settledRoundedCredits: numeric("settled_rounded_credits", { precision: 20, scale: 6 }).default("0").notNull(),
+    revision: integer("revision").default(0).notNull(),
+    settlementPending: boolean("settlement_pending").default(false).notNull(),
+    settlementDueAt: timestamp("settlement_due_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("usage_settlement_envelopes_actor_origin_key").on(table.actorUserId, table.originKind, table.originKey),
+    index("usage_settlement_envelopes_pending_idx").on(table.settlementDueAt, table.createdAt),
+  ],
+);
+
+export const creditSettlementReceipts = pgTable(
+  "credit_settlement_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    envelopeId: uuid("envelope_id").notNull().references(() => usageSettlementEnvelopes.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    revision: integer("revision").notNull(),
+    refKey: varchar("ref_key", { length: 255 }).notNull(),
+    exactCumulativeUsd: numeric("exact_cumulative_usd", { precision: 28, scale: 12 }).notNull(),
+    roundedCumulativeCredits: numeric("rounded_cumulative_credits", { precision: 20, scale: 6 }).notNull(),
+    exactDeltaUsd: numeric("exact_delta_usd", { precision: 28, scale: 12 }).notNull(),
+    creditDelta: numeric("credit_delta", { precision: 20, scale: 6 }).notNull(),
+    outcome: jsonb("outcome").$type<Record<string, unknown>>().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("credit_settlement_receipts_envelope_revision_key").on(table.envelopeId, table.revision),
+    uniqueIndex("credit_settlement_receipts_actor_ref_key").on(table.actorUserId, table.refKey),
+    index("credit_settlement_receipts_envelope_created_idx").on(table.envelopeId, table.createdAt),
   ],
 );
 
@@ -964,6 +1148,47 @@ export const creditSources = pgTable(
   (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
 );
 
+/** Immutable original decisions retain absent logical accounts and their request keys. */
+export const creditGrantOperations = pgTable("credit_grant_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
+  result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
+export const creditCompensations = pgTable("credit_compensations", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("compensation").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_compensations_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
+/** Registration claims and operator gifts retain distinct, immutable provenance. */
+export const creditGifts = pgTable("credit_gifts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("gift").notNull(),
+  origin: varchar("origin", { length: 16 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  /** Explicit confirmation of a pre-existing manual gift, never a new funding instruction. */
+  legacyConfirmation: jsonb("legacy_confirmation").$type<Record<string, unknown>>(),
+  reason: text("reason"),
+  operationKey: text("operation_key").unique(),
+  requestedBy: uuid("requested_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
 export const payments = pgTable(
   "payments",
   {
@@ -1223,6 +1448,33 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .defaultNow()
     .notNull(),
 });
+
+/** Each verified HTTP request has an independent recording lifecycle. */
+export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
+  id: uuid("id").primaryKey(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  livemode: boolean("livemode").notNull(),
+  accountId: varchar("account_id", { length: 255 }),
+  endpointId: varchar("endpoint_id", { length: 255 }),
+  connectedAccountId: varchar("connected_account_id", { length: 255 }),
+  environment: text("environment").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  responseStatus: smallint("response_status"),
+  result: varchar("result", { length: 80 }).$type<StripeWebhookResult>(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  check("stripe_webhook_attempts_completion", sql`
+    (${table.finishedAt} is null and ${table.responseStatus} is null and ${table.result} is null)
+    or (${table.finishedAt} is not null and ${table.responseStatus} is not null and ${table.result} is not null
+      and ${table.responseStatus} between 100 and 599
+      and ${table.result} in (${sql.raw(STRIPE_WEBHOOK_RESULTS.map((result) => `'${result}'`).join(", "))}))
+  `),
+  index("stripe_webhook_attempts_received_idx").on(desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+  index("stripe_webhook_attempts_event_idx").on(table.eventId, desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+]);
 
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
@@ -1511,6 +1763,26 @@ export const creditRefundOperations = pgTable(
 );
 
 /**
+ * Final internal-API refusals retain their request key and literal response.
+ * Targets deliberately have no foreign key: a missing target is recordable.
+ * Contract CHECKs live in migration 0104_credit_refund_refusals.
+ */
+export const creditRefundRefusals = pgTable("credit_refund_refusals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestKind: varchar("request_kind", { length: 20 }).notNull(),
+  targetKind: varchar("target_kind", { length: 20 }).notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestReason: text("request_reason").notNull(),
+  responseStatus: smallint("response_status").notNull(),
+  responseBody: jsonb("response_body").$type<{ code: string; detail?: string; reason?: string }>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/**
  * Every step of every disposition, appended in the same transaction as the
  * step itself. `from_status` is NULL for the step that created the row.
  */
@@ -1668,12 +1940,17 @@ export const agentUsageRecords = pgTable(
     // `missing`.
     costSource: varchar("cost_source", { length: 20 }).notNull(),
     credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+    settlementEnvelopeId: uuid("settlement_envelope_id").references(() => usageSettlementEnvelopes.id, { onDelete: "restrict" }),
+    settlementReceiptId: uuid("settlement_receipt_id").references(() => creditSettlementReceipts.id, { onDelete: "restrict" }),
+    costIdentity: varchar("cost_identity", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => [
     index("agent_usage_records_operation_key_idx").on(table.operationKey),
+    uniqueIndex("agent_usage_records_cost_identity_key").on(table.costIdentity),
+    index("agent_usage_records_settlement_envelope_idx").on(table.settlementEnvelopeId),
     // Every attempt of a container run computes the same cost; one row per task.
     uniqueIndex("agent_usage_records_container_operation_key")
       .on(table.operationKey)
@@ -2011,8 +2288,11 @@ export const studioInvitations = pgTable(
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted studio role — 'maintainer' | 'guest' (admin is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2050,6 +2330,7 @@ export const studioInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("studio_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("studio_invitations_share_token_key").on(table.shareToken),
     index("studio_invitations_studio_id_idx").on(
       table.studioId,
@@ -2093,8 +2374,11 @@ export const projectInvitations = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted project role — 'editor' | 'viewer' (owner is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2132,6 +2416,7 @@ export const projectInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("project_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("project_invitations_share_token_key").on(table.shareToken),
     index("project_invitations_project_id_idx").on(
       table.projectId,
@@ -2635,6 +2920,23 @@ export const studioAssets = pgTable(
   ],
 );
 
+/** Long-lived Project media membership, separate from upload credentials. */
+export const projectAssetRefs = pgTable(
+  "project_asset_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    assetId: uuid("asset_id").notNull().references(() => studioAssets.id, { onDelete: "restrict" }),
+    displayName: text("display_name"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("project_asset_refs_live_key").on(table.projectId, table.assetId).where(sql`${table.deletedAt} IS NULL`),
+    index("project_asset_refs_page_idx").on(table.projectId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 // The anti-spoof authority (#1826, design §2.2 / §3.2) that REPLACES the
 // prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
 // prefix. /upload-ticket writes one grant row per issued storage key K (user +
@@ -2674,9 +2976,10 @@ export const uploadGrants = pgTable(
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by registration AFTER its
-     * studio_assets INSERT. Null while unconsumed. A consumed grant no longer
-     * resolves as live.
+     * Completed — set exactly once. An ordinary upload sets it with its
+     * studio_assets row (registration, AFTER the INSERT); a transfer
+     * (inner#1006) sets it with none. Null while unconsumed. A consumed grant
+     * no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**
@@ -2831,6 +3134,8 @@ export const storageReclaimQueue = pgTable(
      * — the project never destroys records).
      */
     reclaimedAt: timestamp("reclaimed_at", { withTimezone: true }),
+    /** Exact original issued grant key; absent legacy associations remain explicit. */
+    originStorageKey: text("origin_storage_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -2886,4 +3191,95 @@ export const adsConversionUploads = pgTable(
 export const analyticsMilestones = pgTable("analytics_milestones", {
   key: varchar("key", { length: 255 }).primaryKey(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Negotiated membership facts, keyed by the account that owns the agreement. */
+export const enterpriseMemberships = pgTable("enterprise_memberships", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "restrict" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  entryTimezone: varchar("entry_timezone", { length: 64 }).notNull(),
+  contractNumber: varchar("contract_number", { length: 128 }).notNull(),
+  teamStudios: integer("team_studios").notNull(),
+  projectsPerStudio: integer("projects_per_studio").notNull(),
+  concurrentEditors: integer("concurrent_editors").notNull(),
+  studioMembers: integer("studio_members").notNull(),
+  projectMembers: integer("project_members").notNull(),
+  storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
+  fallbackTier: varchar("fallback_tier", { length: 16 }).notNull(),
+  revision: integer("revision").notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/** Durable results retain their logical target even when that account is absent. */
+export const enterpriseMembershipOperations = pgTable("enterprise_membership_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 255 }).notNull(),
+  requestBody: jsonb("request_body").$type<EnterpriseMembershipWrite>().notNull(),
+  result: jsonb("result").$type<EnterpriseMembershipResult>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+// ── Explicit offline maintenance (inner#1791) ───────────────────────
+/** Server-bound preview of exact immutable candidate identities. */
+export const storageReclaimPreviews = pgTable("storage_reclaim_previews", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestedBy: text("requested_by").notNull(),
+  items: jsonb("items").$type<ReclaimScope[]>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+/** Immutable W plus independently versioned owner switch. */
+export const storageReclaimOperations = pgTable("storage_reclaim_operations", {
+  id: uuid("id").defaultRandom().primaryKey(), key: text("key").notNull().unique(),
+  fingerprint: text("fingerprint").notNull(),
+  decision: jsonb("decision").$type<ReclaimDecision>().notNull(),
+  scope: jsonb("scope").$type<ReclaimScope[]>().notNull(),
+  state: text("state").notNull(), version: integer("version").notNull().default(1),
+  changedBy: text("changed_by").notNull(), changedAt: timestamp("changed_at", { withTimezone: true }).notNull(),
+  nextCheckAt: timestamp("next_check_at", { withTimezone: true }).notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [index("storage_reclaim_operations_due_idx").on(t.nextCheckAt)]);
+/** Independent control keys, including first-run resume receipts. */
+export const storageReclaimControls = pgTable("storage_reclaim_controls", {
+  id: uuid("id").defaultRandom().primaryKey(), key: text("key").notNull().unique(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  fingerprint: text("fingerprint").notNull(), kind: text("kind").notNull(),
+  decision: jsonb("decision").$type<ReclaimControlDecision>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+/** Durable per-key registration stop, approval association and lease. */
+export const storageReclaimObjects = pgTable("storage_reclaim_objects", {
+  id: uuid("id").defaultRandom().primaryKey(), storageKey: text("storage_key").notNull().unique(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  scope: jsonb("scope").$type<ReclaimScope>().notNull(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+  leaseVersion: integer("lease_version").notNull().default(0),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  inFlight: boolean("in_flight").notNull().default(false),
+  latest: jsonb("latest").$type<ReclaimItemResult>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [index("storage_reclaim_objects_operation_key_idx").on(t.operationId,t.storageKey)]);
+/** Full traversal snapshots; first run is never overwritten by later rounds. */
+export const storageReclaimRuns = pgTable("storage_reclaim_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  number: integer("number").notNull(),
+  snapshot: jsonb("snapshot").$type<ReclaimRun>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("storage_reclaim_runs_operation_number_unique").on(t.operationId, t.number)]);
+
+/** Immutable physical attempt replies, including stale lease replies. */
+export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
+ id: uuid("id").defaultRandom().primaryKey(),
+ operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+ objectId: uuid("object_id").notNull().references(() => storageReclaimObjects.id, { onDelete: "restrict" }),
+ runId: uuid("run_id").notNull().references(() => storageReclaimRuns.id, { onDelete: "restrict" }),
+ leaseVersion: integer("lease_version").notNull(),
+ result: jsonb("result").$type<ReclaimItemResult>().notNull(),
+ ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });

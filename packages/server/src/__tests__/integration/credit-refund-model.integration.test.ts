@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Random sequences of dispositions, Stripe answers and Stripe-side changes
@@ -512,7 +512,7 @@ class Harness {
       .reduce((n, r) => n + r.amountCents, 0);
     return assessOneShot({
       kind,
-      lot: { lifecycle: f.lot.lifecycle, remainingCredits: Number(f.lot.remainingCredits) },
+      lot: { lifecycle: f.lot.lifecycle, remainingCredits: f.lot.remainingCredits },
       paidCents: PAID_CENTS,
       ops: f.ops,
       refunds: f.refunds,
@@ -531,12 +531,12 @@ class Harness {
    */
   verdicts(f: Facts): Verdicts {
     const lifecycle = f.lot.lifecycle;
-    const remainingCredits = Number(f.lot.remainingCredits);
+    const remainingCredits = f.lot.remainingCredits;
     const succeeded = f.refunds.filter((r) => r.status === "succeeded");
     const create = (kind: "approve" | "retry") =>
       assessRefundCreate({
         kind,
-        lot: { lifecycle, remainingCredits, ledgerSum: f.ledgerSum },
+        lot: { lifecycle, remainingCredits, ledgerSum: String(f.ledgerSum) },
         payment: { status: "completed", stripePaymentIntentId: this.lot.paymentIntentId, paidCents: PAID_CENTS },
         ops: f.ops,
         refunds: f.refunds,

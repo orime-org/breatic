@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 一条消息在面板眼里长什么样。
@@ -341,5 +341,16 @@ describe('a stored reply with DSML markup in its text', () => {
     } as unknown as UIMessage;
 
     expect(toChatMessage(stored, { streaming: false }).content).toBe('Here is the plan.\n\nAdd the ` line.');
+  });
+});
+
+describe('a turn that ended too long to finish (inner#1567)', () => {
+  it('reads the reason off the failed mark, and leaves an ordinary failure without one', () => {
+    const tooLong = toChatMessage({ id: 'm', role: 'assistant', parts: [{ type: 'data-failed', data: { reason: 'too_long' } }] });
+    const failed = toChatMessage({ id: 'n', role: 'assistant', parts: [{ type: 'data-failed', data: {} }] });
+
+    expect(tooLong).toMatchObject({ failed: true, failedReason: 'too_long' });
+    expect(failed.failed).toBe(true);
+    expect(failed.failedReason).toBeUndefined();
   });
 });

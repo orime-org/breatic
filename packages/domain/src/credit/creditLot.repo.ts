@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Data access for `credit_lots` and `credit_ledger` (task #11).
@@ -19,8 +19,8 @@
  *      gone. Spelling this out per query is how the two halves drift apart and
  *      an account starts showing a number it cannot spend.
  *
- *   2. A lot is locked by `id` alone, and everything that decides whether it
- *      may be charged is re-read after the lock is held. Postgres re-evaluates
+ *   2. The general-purpose `lockLot` locks by `id` alone. Everything deciding
+ *      whether it may be charged is re-read after the lock is held. Postgres re-evaluates
  *      a `FOR UPDATE` predicate against the row as it stands once the lock is
  *      granted and skips the row if it no longer matches — so putting
  *      `lifecycle` or `designated_studio_id` in the locking predicate makes the
@@ -264,6 +264,28 @@ export async function lockLot(
     .select()
     .from(creditLots)
     .where(eq(creditLots.id, lotId))
+    .for("update");
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * Lock a live lot for a new request's target decision.
+ *
+ * Unlike the historical-row lock used for financial completion, a deleted
+ * row is unavailable here. PostgreSQL re-checking this deletion predicate
+ * after waiting must return null when the target was deleted meanwhile.
+ * @param lotId - The live target to lock.
+ * @param tx - The transaction holding the request key's lock.
+ * @returns The locked live lot, or null if absent or soft-deleted.
+ */
+export async function lockLiveLot(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .select()
+    .from(creditLots)
+    .where(and(eq(creditLots.id, lotId), isNull(creditLots.deletedAt)))
     .for("update");
   return rows[0] ? toLotEntity(rows[0]) : null;
 }
@@ -1057,15 +1079,16 @@ export interface LotContext {
 }
 
 /**
- * One account's purchases, newest first, one keyset page at a time.
+ * One account's credit lots, newest first, one keyset page at a time.
  *
- * Keyset rather than offset: a purchase landing while someone pages would
+ * A lot arriving while someone pages would
  * shift every later row down by one under an offset, which shows a row twice
  * and hides another.
- * @param userId - Whose purchases to list.
+ * @param userId - Whose credit lots to list.
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
- * @param lifecycle - Narrow to one state; omit for every purchase.
+ * @param lifecycle - Narrow to one state; omit for every lot.
+ * @param lotId - Narrow to this one lot when projecting a designation reply.
  * @returns The page, newest first.
  */
 export async function listLotsByUser(
@@ -1073,6 +1096,7 @@ export async function listLotsByUser(
   limit: number,
   cursor: ActivityCursor | null,
   lifecycle?: CreditLotLifecycle,
+  lotId?: string,
 ): Promise<(CreditLotEntity & LotContext & { cursorAt: string })[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const rows = await db
@@ -1136,6 +1160,7 @@ export async function listLotsByUser(
     .where(
       and(
         eq(creditLots.userId, userId),
+        lotId === undefined ? undefined : eq(creditLots.id, lotId),
         isNull(creditLots.deletedAt),
         // Three sections read this list and each wants its own subset: assign
         // takes the active ones, refunds sorts by refund state, purchases take

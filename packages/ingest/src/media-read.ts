@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The edge side of reading an object's media numbers (#209 + #210, design §3.3).
@@ -19,6 +19,7 @@
  */
 
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
+import type { AgentPictureSpec } from "@breatic/shared";
 import {
   PROBE_PATH,
   readProbeAnswer,
@@ -101,6 +102,7 @@ export async function readMediaAtEdge(
     wantCover: boolean;
     wantPreview?: boolean;
     wantPeaks?: boolean;
+    agentPicture?: AgentPictureSpec;
     deadlineAt: number;
     upright?: { order: UprightOrder; grant: UprightWriteGrant };
   },
@@ -116,6 +118,7 @@ export async function readMediaAtEdge(
     wantPreview: about.wantPreview === true,
     wantPeaks: about.wantPeaks === true,
     deadlineAt: about.deadlineAt,
+    ...(about.agentPicture !== undefined && { agentPicture: about.agentPicture }),
     ...(about.upright !== undefined && { upright: about.upright.order }),
   };
 

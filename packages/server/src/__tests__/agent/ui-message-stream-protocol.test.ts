@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 线上流说的是 AI SDK 的话，不是我们自己发明的那 8 个事件。
@@ -25,7 +25,7 @@ import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 
 /** 这一轮模型吐什么，逐个用例改写。 */
 const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
@@ -86,7 +86,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 
 // How the system prompt is assembled is not what this file pins. A ready
 // sentence keeps the subject on the protocol.

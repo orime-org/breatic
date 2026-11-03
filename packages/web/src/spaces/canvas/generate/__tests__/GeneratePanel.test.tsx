@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -88,9 +88,8 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     // At 560px the fixed-size footer icons were squeezed by long picker
     // labels (no flex-wrap by design); 600px + shrink-0 keeps them intact.
     const { container } = setup();
-    expect(
-      (container.firstChild as HTMLElement).className,
-    ).toContain('w-[min(600px,92vw)]');
+    const shell = (container.firstChild as HTMLElement).style;
+    expect([shell.width, shell.maxWidth]).toEqual(['600px', '92vw']);
     expect(screen.getByTestId('generate-execute').className).toContain(
       'shrink-0',
     );

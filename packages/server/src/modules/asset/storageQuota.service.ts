@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The storage gate (#89, membership block five). Whoever calls it is asking
@@ -95,10 +95,9 @@ export async function assertStudioStorageAllowance(
 ): Promise<void> {
   const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
 
-  // No ceiling to be over: the enterprise tier's capacity is agreed in a
-  // contract rather than configured, so the product does not enforce it.
-  // Returning here also spares the account-wide sum below, which nothing on
-  // this path would then look at.
+  // Effective enterprise membership retains its storage exemption. Its
+  // negotiated storage value is recorded, while the storage gate uses null.
+  // This also preserves the exemption for legacy enterprise information.
   if (storageBytes === null) return;
 
   const usedBytes = await accountStorageUsage(adminUserId);

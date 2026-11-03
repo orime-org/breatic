@@ -81,6 +81,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 **不能把这些地址改成 `localhost`**：在应用容器里，localhost 是容器自身。保留模板里的应用内部端口。主站默认只监听本机；数据库、Redis 和 API 的主机端口也只绑定回环地址，不向局域网开放。局域网用户只通过 Nginx 访问。
 
+自带的 Nginx 拒收超过 1 MiB 的请求体（`docker/breatic-locations.conf` 的 `client_max_body_size 1m`），与 `config/limits.yaml` 的 `request_body_max_bytes` 是同一个上限，两处要一起改。
+
 供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。图像、视频等按 `config/models/<类型>/providers.yaml` 的 `api_key_env` 配置；例如 WaveSpeed 对应模型需要 `WAVESPEED_API_KEY`。
 
 <a id="cloudflare"></a>
@@ -95,6 +97,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 画布节点菜单的「下载」打开的是文件自己的地址加上 `download=1`。使用自己的资产域名时，在 Cloudflare 给这个域名加一条响应头转换规则：查询参数里有 `download` 时，把 `Content-Disposition` 设为 `attachment`，浏览器就会把文件存下来，文件名取地址的最后一段。`r2.dev` 地址配不了这条规则，在那里点「下载」会在新标签页直接打开文件。
 
 当前资产通过公开 URL 读取；Breatic 实例私有并不自动使 R2 文件私有。不要把需要私密访问控制的素材放入这套公开读取配置。
+
+一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
 
 在 bucket 的 CORS 设置中保存：
 

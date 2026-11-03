@@ -1,0 +1,103 @@
+name: Issue Check
+
+# Maintainer task issues carry exactly one owner: label, at least one area:
+# label and the five task sections. A missing owner becomes owner:triage.
+# An issue closed as completed without a linked PR gets missing-pr-link;
+# a later comment with a link removes it. Issues opened by people outside
+# the organisation are left alone. Runs once a day over issues changed in
+# the last 48 hours.
+
+on:
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+env:
+  WINDOW_HOURS: '48'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const MARKER = '<!-- issue-check -->';
+            const SECTIONS = ['## Current state', '## User impact', '## Level and class', '## Origin', '## Linked PR'];
+            const MAINTAINERS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            const PR_LINK = /github\.com\/orime-org\/[\w.-]+\/pull\/\d+\b|\b(?:breatic|inner)#\d+\b/;
+            const linkCases = [
+              ['https://github.com/orime-org/breatic/pull/665', true],
+              ['breatic#665', true], ['inner#1525', true],
+              ['https://github.com/elsewhere/breatic/pull/47', false],
+              ['https://github.com/orime-org/breatic/issues/47', false],
+              ['None', false],
+            ];
+            for (const [text, expected] of linkCases) {
+              if (PR_LINK.test(text) !== expected) throw new Error(`PR link matcher regression: ${text}`);
+            }
+            const { owner, repo } = context.repo;
+            const since = new Date(Date.now() - Number(process.env.WINDOW_HOURS) * 3600 * 1000).toISOString();
+
+            const checkOne = async (issue) => {
+              if (!MAINTAINERS.includes(issue.author_association)) return;
+              const labels = issue.labels.map((l) => l.name);
+              const number = issue.number;
+
+              const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
+              const linked = async () => {
+                if (PR_LINK.test(issue.body ?? '')) return true;
+                if (comments.some((c) => !c.body.includes(MARKER) && PR_LINK.test(c.body))) return true;
+                const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, { owner, repo, issue_number: number });
+                return timeline.some((e) => (e.event === 'cross-referenced' && e.source?.issue?.pull_request) || (e.event === 'closed' && e.commit_id));
+              };
+
+              if (issue.state === 'closed') {
+                if (issue.state_reason === 'not_planned' || await linked()) {
+                  if (labels.includes('missing-pr-link')) await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: 'missing-pr-link' });
+                } else if (!labels.includes('missing-pr-link')) {
+                  await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: ['missing-pr-link'] });
+                }
+                return;
+              }
+
+              const owners = labels.filter((l) => l.startsWith('owner:'));
+              const problems = [];
+              if (owners.length === 0) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: ['owner:triage'] });
+                problems.push('No owner: label; added owner:triage for the maintainer to assign.');
+              } else if (owners.length > 1) {
+                problems.push(`${owners.length} owner: labels (${owners.join(', ')}); keep exactly one.`);
+              }
+              if (!labels.some((l) => l.startsWith('area:'))) problems.push('No area: label.');
+              const body = issue.body ?? '';
+              const missing = SECTIONS.filter((s) => !body.includes(s));
+              if (missing.length) problems.push(`Missing sections: ${missing.join(', ')}.`);
+
+              const mine = comments.find((c) => c.body.includes(MARKER));
+              const text = problems.length
+                ? `${MARKER}\nThis issue does not follow the task format:\n\n${problems.map((p) => `- ${p}`).join('\n')}`
+                : `${MARKER}\nFormat check passed.`;
+              if (mine) {
+                if (mine.body !== text) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: text });
+              } else if (problems.length) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: number, body: text });
+              }
+            };
+
+            const issues = (await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'all', since, per_page: 100 }))
+              .filter((i) => !i.pull_request);
+            const failed = [];
+            for (const issue of issues) {
+              try {
+                await checkOne(issue);
+              } catch (err) {
+                failed.push(issue.number);
+                core.error(`#${issue.number}: ${err.message}`);
+              }
+            }
+            core.info(`checked ${issues.length} issues changed since ${since}`);
+            if (failed.length) core.setFailed(`check failed on ${failed.map((n) => `#${n}`).join(', ')}`);

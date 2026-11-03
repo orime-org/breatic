@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Two collab instances, one Redis, one Postgres — the topology production
@@ -84,6 +84,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   const wsServer = new Server({
     port: 0,
     quiet: true,
+    stopOnSignals: false,
     debounce: 50,
     unloadImmediately: true,
     extensions: [

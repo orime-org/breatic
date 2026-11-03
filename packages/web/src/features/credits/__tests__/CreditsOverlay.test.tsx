@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -63,9 +65,9 @@ const ALEX = {
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 0,
-    unassignedCredits: 0,
-    underRefundCredits: 0,
+    assignedCredits: '0.000000' as CreditDecimal,
+    unassignedCredits: '0.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [],
     ...over,

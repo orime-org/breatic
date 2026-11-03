@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Turning an upload's parts into the object R2 holds (#186, design §6.2).
@@ -236,14 +236,45 @@ export async function writeStreamedObject(
     );
   } catch (err) {
     if (err instanceof SourceReadError && err.cause instanceof OverCeiling) parts = "over_cap";
-    else throw err;
+    else {
+      try {
+        await created.abort();
+      } catch (abortError) {
+        throw new AggregateError([err, abortError], "The stream failed and its R2 multipart upload could not be aborted.");
+      }
+      throw err;
+    }
   }
   if (parts === "over_cap") {
     await created.abort();
     return "over_cap";
   }
-  const stored = await created.complete(parts);
-  return { sizeBytes: stored.size };
+  try {
+    const stored = await created.complete(parts);
+    return { sizeBytes: stored.size };
+  } catch (completeError) {
+    let stored: R2Object | null;
+    try {
+      stored = await bucket.head(key);
+    } catch (headError) {
+      try {
+        await created.abort();
+      } catch (abortError) {
+        throw new AggregateError(
+          [completeError, headError, abortError],
+          "Multipart completion, object inspection, and upload cleanup all failed.",
+        );
+      }
+      throw new AggregateError([completeError, headError], "Multipart completion failed and its object could not be inspected.");
+    }
+    if (stored !== null) return { sizeBytes: stored.size };
+    try {
+      await created.abort();
+    } catch (abortError) {
+      throw new AggregateError([completeError, abortError], "Multipart completion failed and its upload could not be aborted.");
+    }
+    throw completeError;
+  }
 }
 
 /**

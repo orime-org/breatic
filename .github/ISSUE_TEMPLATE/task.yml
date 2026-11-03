@@ -1,0 +1,48 @@
+name: Task
+description: A maintainer task, tracked with an owner and area label and the five task sections.
+title: "[area] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Title: `[area] One-line statement of the problem or goal`. Add exactly one `owner:` label and at least one `area:` label. Write in English, and keep security detail, money, production, user data, credentials, legal matters and internal process out of this issue; point at private work as `inner#N`.
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current state
+      description: What is wrong or missing, with reproduction, code locations and evidence. Mark unconfirmed judgments "unconfirmed".
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User impact
+      description: Who is affected and in what situation; for development or operations work, the scenario.
+    validations:
+      required: true
+
+  - type: textarea
+    id: level-and-class
+    attributes:
+      label: Level and class
+      description: User-level (in-commitment / out-of-commitment / improper use), development-level or operations-level; defect, feature, test or infrastructure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: origin
+    attributes:
+      label: Origin
+      description: The source or parent task, such as `#123` or `inner#123`. Write None when there is none.
+    validations:
+      required: true
+
+  - type: textarea
+    id: linked-pr
+    attributes:
+      label: Linked PR
+      description: The PR that implements or fixes this task. Write None until there is one.
+    validations:
+      required: true

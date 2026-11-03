@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ArrowUp, Star, X } from 'lucide-react';
 import * as React from 'react';
@@ -22,6 +22,7 @@ import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
+import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -171,7 +172,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // swallow the click (#1986, user 2026-08-19). The model's pool says which
   // kinds it uses (#2156).
   return (
-    <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div data-canvas-panel='' style={GENERATE_PANEL_WIDTH_STYLE} className='flex flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
         <GenerateToolbar
           onReference={onAddReference}

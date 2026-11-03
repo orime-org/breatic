@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The media container's whole service (#209 + #210, design §4.2).
@@ -35,6 +35,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
+  LONG_MEDIA_PROBE_PATH,
+  LONG_MEDIA_SEGMENT_PATH,
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
@@ -45,6 +47,7 @@ import {
   probeArgs,
   coverArgs,
   previewArgs,
+  agentPictureArgs,
   readProbeOutput,
 } from "@ingest/probe-command.js";
 import { peaksSampleCount } from "@ingest/peaks-step.js";
@@ -60,6 +63,8 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { ALPHA_RUN_PATH, handleAlphaPresentation } from "@ingest/container/alpha-presentation.js";
+import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
+import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
 
 /**
  * The most a cover frame may weigh.
@@ -181,6 +186,37 @@ function uprightOrderOf(sent: unknown): UprightOrder | null {
   };
 }
 
+/**
+ * Read the supported JPEG specification at the container boundary.
+ * @param sent - Untrusted decoded request field.
+ * @returns The complete version-one specification, when valid.
+ * @throws {never} Never.
+ */
+function pictureSpecOf(sent: unknown): ProbeRequest["agentPicture"] {
+  if (typeof sent !== "object" || sent === null) return undefined;
+  const spec = sent as Record<string, unknown>;
+  if (spec.version !== 1 || typeof spec.longEdge !== "number" || !Number.isInteger(spec.longEdge) || spec.longEdge < 1 ||
+    typeof spec.quality !== "number" || !Number.isInteger(spec.quality) || spec.quality < 1 || spec.quality > 100) return undefined;
+  return { version: 1, longEdge: spec.longEdge, quality: spec.quality };
+}
+
+/**
+ * Produce the separate static JPEG directly from the authorized object stream.
+ * @param request - The authorized source and specification.
+ * @param signal - Original media-task deadline.
+ * @returns JPEG bytes or none when generation failed or was not requested.
+ * @throws {never} Tool and source failures are recorded by their boundaries.
+ */
+async function cutAgentPicture(request: ProbeRequest, signal: AbortSignal): Promise<Uint8Array | null> {
+  if (request.agentPicture === undefined || signal.aborted) return null;
+  const input = await openObject(request.objectUrl, signal);
+  if (input === null) return null;
+  const cut = await runTool("vips", agentPictureArgs(request.agentPicture), {
+    input, signal, maxBytes: PREVIEW_MAX_BYTES,
+  });
+  return cut === null ? null : new Uint8Array(cut);
+}
+
 /** What an upright run reaches out to, in this container. */
 const UPRIGHT_DEPS: UprightDeps = {
   openObject,
@@ -222,6 +258,52 @@ function send(res: ServerResponse, answer: Response): void {
 createServer((req, res) => {
   if (req.method === "POST" && req.url === ALPHA_RUN_PATH) {
     void handleAlphaPresentation(req, res);
+    return;
+  }
+  if (req.method === "POST" && req.url === LONG_MEDIA_SEGMENT_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let segment: unknown;
+      try {
+        segment = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const parsed = readLongMediaSegmentRunRequest(segment);
+      if (parsed === null) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaSegment(parsed).catch((err: unknown) => {
+        console.error("long_media_segment_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
+    return;
+  }
+  if (req.method === "POST" && req.url === LONG_MEDIA_PROBE_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let probe: LongMediaProbeRunRequest;
+      try {
+        probe = JSON.parse(Buffer.concat(chunks).toString("utf8")) as LongMediaProbeRunRequest;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      if (typeof probe.objectUrl !== "string" || typeof probe.reportUrl !== "string" ||
+          typeof probe.deadlineAt !== "number" || !Number.isSafeInteger(probe.deadlineAt)) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaProbe(probe).catch((err: unknown) => {
+        console.error("long_media_probe_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
     return;
   }
   if (req.method === "POST" && req.url === RUN_PATH) {
@@ -274,6 +356,7 @@ createServer((req, res) => {
       wantPreview: asked.wantPreview === true,
       wantPeaks: asked.wantPeaks === true,
       deadlineAt: asked.deadlineAt,
+      ...(pictureSpecOf(asked.agentPicture) !== undefined && { agentPicture: pictureSpecOf(asked.agentPicture) }),
     };
     // Every tool in this run is held to the task's deadline and nothing else
     // (inner#1367). A timer cannot be set to a negative span, so a run that
@@ -294,6 +377,7 @@ createServer((req, res) => {
     const samples = peaksSampleCount({ wantPeaks: request.wantPeaks === true, report: found.report });
     const peaks =
       samples === null ? null : await streamPeaks("ffmpeg", peaksArgs(request.objectUrl), samples, signal);
-    send(res, buildProbeAnswer(found.report, found.cover, preview, null, peaks));
+    const agentPicture = await cutAgentPicture(request, signal);
+    send(res, buildProbeAnswer(found.report, found.cover, preview, null, peaks, agentPicture));
   })();
 }).listen(PROBE_PORT);

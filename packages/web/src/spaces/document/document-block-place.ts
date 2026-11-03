@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where the selection goes when the reader enters one of a block's own
@@ -79,8 +79,7 @@ export function placeOnBlock(state: EditorState, blockId: string): Selection {
   const content = row?.node.firstChild;
   if (row === undefined || content === null || content === undefined) return state.selection;
   if (isWordless(content)) return NodeSelection.create(doc, row.from + 1);
-  const range = contentRangeOf(row)!;
-  if (content.isTextblock) return TextSelection.create(doc, range.from);
+  if (content.isTextblock) return TextSelection.create(doc, contentRangeOf(row)!.from);
   // A table, or any block whose words sit deeper: the first place for text inside it.
-  return Selection.findFrom(doc.resolve(range.from), 1, true) ?? state.selection;
+  return Selection.findFrom(doc.resolve(row.from + 1), 1, true) ?? state.selection;
 }

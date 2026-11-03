@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Business limits configuration loader.
@@ -14,6 +14,8 @@
  *   - the storage-full notice window — how long one account's "out of
  *     storage" notice silences the next.
  *   - how long a vendor's voice list is reused before asking again.
+ *   - the largest request body a public API route reads, and how long a
+ *     connection keeps reading after a body over a limit is refused.
  *
  * Mirrors the `pricing.ts` / `text-tools.ts` business-config loaders:
  * a yaml file under `config/` validated by a Zod schema and memoized.
@@ -37,6 +39,9 @@ export const limitsConfigSchema = z.object({
   credit_page_max: z.number().int().positive().default(100),
   decision_window_days: z.number().int().positive().default(7),
   storage_notice_window_seconds: z.number().int().positive().default(86400),
+  request_body_max_bytes: z.number().int().positive().default(1048576),
+  // At most Node's own requestTimeout default; a timer cannot hold more than 2^31-1 ms.
+  request_body_linger_seconds: z.number().int().positive().max(300).default(30),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -169,4 +174,25 @@ export function getDecisionWindowSeconds(): number {
  */
 export function getStorageNoticeWindowSeconds(): number {
   return loadConfig().storage_notice_window_seconds;
+}
+
+/**
+ * The largest request body any public API route reads, in bytes
+ * (inner#1006). Larger bodies are refused with 413 before a route runs; the
+ * browser learns it from `GET /assets/upload-config` and moves a larger body
+ * through a transfer upload on the routes that take one.
+ * @returns The limit in bytes.
+ */
+export function getRequestBodyMaxBytes(): number {
+  return loadConfig().request_body_max_bytes;
+}
+
+/**
+ * How long a connection whose body was refused for being over a limit keeps
+ * reading and discarding the rest before it is closed (inner#1782). Shared
+ * by the public app and the internal API.
+ * @returns The deadline in seconds.
+ */
+export function getRequestBodyLingerSeconds(): number {
+  return loadConfig().request_body_linger_seconds;
 }

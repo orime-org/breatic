@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Each document proposal card's state (inner#1509, design §5.7): a press
@@ -186,6 +186,81 @@ describe('how a press that did not land is told (inner#1509, design §5.7)', () 
 
     expect(store().cards.p1).toBeUndefined();
     expect(toast.warning).toHaveBeenCalledWith('1 image, video or audio is an outside link and will not be added.');
+  });
+});
+
+describe('locating a card\'s passage (inner#1646)', () => {
+  it('waits as a locate and leaves the card as it was', () => {
+    store().locate(proposal('p1'));
+
+    expect(store().cards.p1).toBeUndefined();
+    expect(pendingFor('d1')[0]).toMatchObject({ action: 'locate' });
+  });
+
+  it('ignores a second press of the same card while one waits', () => {
+    store().locate(proposal('p1'));
+    store().start(proposal('p1'), 'write');
+    store().locate(proposal('p1'));
+
+    expect(pendingFor('d1')).toEqual([expect.objectContaining({ action: 'locate', order: 0 })]);
+    expect(store().cards.p1).toBeUndefined();
+  });
+
+  it.each(['located', 'left'] as const)('ends without a toast when it is %s', (outcome) => {
+    store().locate(proposal('p1'));
+    store().report('p1', outcome);
+
+    expect(pendingFor('d1')).toEqual([]);
+    expect(store().cards.p1).toBeUndefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['changed', 'This passage has changed since the proposal.'],
+    ['blockGone', 'This passage has been deleted.'],
+    ['spaceGone', 'This Document has been deleted.'],
+  ] as const)('warns when it is %s, with the card left to be pressed', (outcome, line) => {
+    store().locate(proposal('p1'));
+    store().report('p1', outcome);
+
+    expect(pendingFor('d1')).toEqual([]);
+    expect(toast.warning).toHaveBeenCalledWith(line);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('raises its own error toast when it failed', () => {
+    store().locate(proposal('p1'));
+    store().report('p1', 'failed');
+
+    expect(toast.error).toHaveBeenCalledWith('Could not locate. Try again.');
+  });
+
+  it.each(['located', 'changed', 'left', 'failed'] as const)(
+    'keeps a card the store still holds as landed when it is %s (landing undone in the open Document)',
+    (outcome) => {
+      store().start(proposal('p1'), 'write');
+      store().report('p1', 'applied');
+      store().locate(proposal('p1'));
+      toast.warning.mockReset();
+
+      store().report('p1', outcome);
+
+      expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
+      expect(pendingFor('d1')).toEqual([]);
+    },
+  );
+});
+
+describe('a View press whose document the reader left (inner#1646)', () => {
+  it('ends, keeps the card landed and says nothing', () => {
+    store().view(proposal('p1'), 'write');
+    store().report('p1', 'left');
+
+    expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
+    expect(pendingFor('d1')).toEqual([]);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });
 

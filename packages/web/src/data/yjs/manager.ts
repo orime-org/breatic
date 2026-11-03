@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
 import {
   projectMetaDocName,
   canvasSpaceDocName,
   documentSpaceDocName,
+  timelineSpaceDocName,
+  threeDSpaceDocName,
 } from '@breatic/shared';
 
 /**
@@ -15,6 +17,7 @@ import {
  *   - `project-{projectId}/meta`         — project metadata + spaces list
  *   - `project-{projectId}/canvas-{spaceId}` — one doc per canvas space
  *   - `project-{projectId}/document-{spaceId}` — one doc per document space
+ *   - `project-{projectId}/timeline-{spaceId}` — one doc per timeline space
  *
  * Yjs requires the SAME Y.Doc instance for a given name across all
  * consumers in a tab — otherwise edits go to parallel docs and never
@@ -73,10 +76,11 @@ export function hasDoc(name: string): boolean {
  *
  * Safe to call with an unknown name — no-op.
  * @param name - Canonical document name to destroy and evict from the cache.
+ * @param expectedDoc - Exact document instance owned by the retiring provider.
  */
-export function destroyDoc(name: string): void {
+export function destroyDoc(name: string, expectedDoc?: Y.Doc): void {
   const doc = docs.get(name);
-  if (!doc) return;
+  if (!doc || (expectedDoc && expectedDoc !== doc)) return;
   doc.destroy();
   docs.delete(name);
   // Let sibling caches keyed by this name drop their reference too (#1786) —
@@ -96,6 +100,8 @@ export const docName = {
   projectMeta: projectMetaDocName,
   canvasSpace: canvasSpaceDocName,
   documentSpace: documentSpaceDocName,
+  timelineSpace: timelineSpaceDocName,
+  threeDSpace: threeDSpaceDocName,
 };
 
 /**

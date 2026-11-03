@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The "buy credits" screen, and the confirmation step in front of it
@@ -13,6 +13,8 @@
  * the screen: it belongs to this one purchase rather than standing as a notice
  * on the page. Until it is ticked, the pay button stays disabled.
  */
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -73,9 +75,9 @@ beforeEach(() => {
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 0,
-    unassignedCredits: 0,
-    underRefundCredits: 0,
+    assignedCredits: '0.000000' as CreditDecimal,
+    unassignedCredits: '0.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [],
     ...over,
@@ -109,9 +111,9 @@ describe('the buy screen', () => {
   it('gives each pack its price and what it grants', async () => {
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
-    expect(packs[0]!.textContent).toContain('830');
-    expect(packs[0]!.textContent).toContain('10');
-    expect(packs[4]!.textContent).toContain('43,660');
+    expect(packs[0].textContent).toContain('830');
+    expect(packs[0].textContent).toContain('10');
+    expect(packs[4].textContent).toContain('43,660');
   });
 
   it('says the price excludes tax and that credits need assigning', async () => {
@@ -173,7 +175,7 @@ describe('the confirmation before paying', () => {
     const user = userEvent.setup();
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
-    await user.click(within(packs[1]!).getByRole('button'));
+    await user.click(within(packs[1]).getByRole('button'));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toContain('1,700');
@@ -185,7 +187,7 @@ describe('the confirmation before paying', () => {
     const user = userEvent.setup();
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
-    await user.click(within(packs[0]!).getByRole('button'));
+    await user.click(within(packs[0]).getByRole('button'));
 
     // The tick says the buyer has read this, and a modal dialog covers what is
     // behind it — the copy on the screen goes under an 80%-black scrim and out
@@ -204,7 +206,7 @@ describe('the confirmation before paying', () => {
     const user = userEvent.setup();
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
-    await user.click(within(packs[0]!).getByRole('button'));
+    await user.click(within(packs[0]).getByRole('button'));
 
     const tick = await screen.findByTestId('confirm-consent');
     const label = tick.closest('label');
@@ -233,14 +235,14 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       await user.click(screen.getByTestId('confirm-pay'));
 
       await waitFor(() => {
         expect(startCheckout).toHaveBeenCalled();
       });
-      expect(startCheckout.mock.calls[0]![0]).toMatchObject({
+      expect(startCheckout.mock.calls[0][0]).toMatchObject({
         consented: true,
       });
     } finally {
@@ -252,7 +254,7 @@ describe('the confirmation before paying', () => {
     const user = userEvent.setup();
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
-    await user.click(within(packs[0]!).getByRole('button'));
+    await user.click(within(packs[0]).getByRole('button'));
 
     const pay = await screen.findByTestId('confirm-pay');
     expect(pay).toBeDisabled();
@@ -268,14 +270,14 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[2]!).getByRole('button'));
+      await user.click(within(packs[2]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       await user.click(screen.getByTestId('confirm-pay'));
 
       await waitFor(() => {
         expect(startCheckout).toHaveBeenCalledTimes(1);
       });
-      expect(startCheckout.mock.calls[0]![0]).toMatchObject({
+      expect(startCheckout.mock.calls[0][0]).toMatchObject({
         price_cents: 5000,
       });
       await waitFor(() => {
@@ -293,7 +295,7 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       const pay = screen.getByTestId('confirm-pay');
       await user.click(pay);
@@ -328,7 +330,7 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       const pay = screen.getByTestId('confirm-pay');
       const label = pay.textContent;
@@ -360,14 +362,14 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       await user.click(screen.getByTestId('confirm-pay'));
       await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
-      expect(startCheckout.mock.calls[0]![1]).toEqual(expect.any(String));
+      expect(startCheckout.mock.calls[0][1]).toEqual(expect.any(String));
 
       await user.click(screen.getByRole('button', { name: /cancel/i }));
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       const pay = await screen.findByTestId('confirm-pay');
       expect(pay).toHaveAttribute('aria-busy', 'true');
       await user.click(pay);
@@ -384,13 +386,13 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       await user.click(screen.getByTestId('confirm-pay'));
       await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
 
       await user.click(screen.getByRole('button', { name: /cancel/i }));
-      await user.click(within(packs[1]!).getByRole('button'));
+      await user.click(within(packs[1]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       const pay = screen.getByTestId('confirm-pay');
       expect(pay).toBeDisabled();
@@ -407,7 +409,7 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       const pay = screen.getByTestId('confirm-pay');
       await user.click(pay);
@@ -428,14 +430,14 @@ describe('the confirmation before paying', () => {
     try {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
-      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(within(packs[0]).getByRole('button'));
       await user.click(await screen.findByTestId('confirm-consent'));
       await user.click(screen.getByTestId('confirm-pay'));
 
       await waitFor(() => {
         expect(startCheckout).toHaveBeenCalled();
       });
-      const body = startCheckout.mock.calls[0]![0] as { time_zone: string };
+      const body = startCheckout.mock.calls[0][0] as { time_zone: string };
       expect(body.time_zone).toBe(
         Intl.DateTimeFormat().resolvedOptions().timeZone,
       );
@@ -449,11 +451,11 @@ describe('the confirmation before paying', () => {
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
 
-    await user.click(within(packs[0]!).getByRole('button'));
+    await user.click(within(packs[0]).getByRole('button'));
     await user.click(await screen.findByTestId('confirm-consent'));
     await user.keyboard('{Escape}');
 
-    await user.click(within(packs[1]!).getByRole('button'));
+    await user.click(within(packs[1]).getByRole('button'));
     // The tick belongs to one purchase. Carried over to the next, it would
     // stand for a rule the buyer read about a different pack, and the pay
     // button would already be live on a dialog they have not looked at.

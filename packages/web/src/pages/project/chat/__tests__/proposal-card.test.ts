@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a card says about a flow, before the reader presses it (#263).
@@ -119,6 +119,35 @@ describe('the little diagram of what gets built', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.[0]?.[0]).toEqual({ label: 'Your portrait', empty: false });
     expect(groups[0]?.[1]?.[0]?.label).toBe('Talking head');
+  });
+
+  it('draws a template resource node as filled: we supply it, the reader does not (inner#1345 6.7)', () => {
+    // The node lands empty and is fetched into storage right after; nothing is
+    // left for the reader to drop in, so the chip is not an outline.
+    const resource = {
+      ...empty('Style'),
+      resource: 'templates/fixture-flow/style.png',
+      templateNode: { template: 'fixture-flow', key: 'style' },
+    } as ProposalNode;
+    const proposal = flow([resource, generates('Sheet')], [[0, 1]]);
+
+    const groups = shapeOf(proposal);
+
+    expect(groups[0]?.[0]?.[0]).toEqual({ label: 'Style', empty: false });
+  });
+
+  it('stacks a template guide under what feeds its anchor, as the canvas places it (inner#1345)', () => {
+    const guide = {
+      ...written('Guide'),
+      templateNode: { template: 'storyboard-grid-25', key: 'guide', anchor: 0 },
+    } as ProposalNode;
+    const proposal = flow([generates('Storyboard'), empty('Character'), guide], [[1, 0]]);
+
+    const groups = shapeOf(proposal);
+
+    expect(groups.map((group) => group.map((layer) => layer.map((c) => c.label)))).toEqual([
+      [['Character', 'Guide'], ['Storyboard']],
+    ]);
   });
 
   it('marks the node the reader fills in, wherever it sits', () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A project cover or a studio avatar, read after its upload returns (#299).
@@ -38,6 +38,12 @@ vi.mock("ai", () => ({
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
 }));
+
+// The server opens every upload at the ingest Worker itself before it
+// answers a ticket (inner#1595); that one call is answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
 
 // The real scheduling, unless a case asks for it to fail: A6 is about what the
 // finish answers when the queue cannot take the job.

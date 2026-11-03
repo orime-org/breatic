@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import type { VideoPresentationSourceBinding } from '@breatic/shared';
@@ -22,6 +22,7 @@ import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
+import { MediaControlsPortal, useSeekPointer, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 
 /** Actual resource notice plus an independently React-owned overlay host. */
 export interface MediaPlayerVideoSnapshot extends MediaSurfaceSnapshot { overlayTarget: HTMLElement | null; sourceBinding?: VideoPresentationSourceBinding }
@@ -86,6 +87,8 @@ export interface MediaPlayerProps {
    * all lose it.
    */
   controlsHidden?: boolean;
+  /** Optional document-owned physical control surface. */
+  videoControls?: VideoControlsTarget;
 }
 
 /**
@@ -148,6 +151,7 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
+ * @param root0.videoControls - The document-owned control destination and interaction callbacks.
  * @returns The media player element.
  */
 export function MediaPlayer({
@@ -165,6 +169,7 @@ export function MediaPlayer({
   onDimensions,
   variant = 'full',
   controlsHidden = false,
+  videoControls,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
   const isVideo = modality === 'video';
@@ -226,6 +231,12 @@ export function MediaPlayer({
   const p = useMediaPlayer(ref, duration, ownsVideo ? binding : undefined);
   const unavailable = ownsVideo && binding === null;
   const t = useTranslation();
+  const pointer = useSeekPointer(p.seekFraction, videoControls);
+  React.useLayoutEffect(() => {
+    if (controlsHidden) pointer.capture.current?.release();
+  }, [controlsHidden, pointer.capture]);
+  const [inlineControls, setInlineControls] = React.useState<HTMLDivElement | null>(null);
+  const themedControls = videoControls?.surface === 'popover';
   // Zoomed past the cover preview, the original cover is loaded off-screen (a
   // poster has no load or error event of its own). Until it arrives the
   // stretched preview is hidden under the skeleton; a cover that fails gives
@@ -259,9 +270,10 @@ export function MediaPlayer({
       ? 'shrink-0 text-2xs tabular-nums'
       : 'hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline';
 
-  // Video controls sit on a dark scrim (light-on-video); audio controls sit on
-  // the themed node surface.
-  // The glyphs are white because the control bar itself carries `text-white`
+  // Video controls on the video sit on a dark scrim (light-on-video); audio
+  // controls, and video controls moved into a document popover
+  // (`videoControls.surface === 'popover'`), sit on a themed surface and take
+  // the themed hover and ring. On the scrim the glyphs are white because the control bar itself carries `text-white`
   // and these buttons ship `variant={null}`, so no variant colour is layered
   // over it.
   // The focus ring is the one thing the video branch has to restate. `Button`
@@ -270,7 +282,7 @@ export function MediaPlayer({
   // theme the ring is dark on dark and a keyboard reader cannot see where they
   // are.
   const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
-    isVideo
+    isVideo && !themedControls
       ? 'hover:bg-white/20 focus-visible:ring-white'
       : 'hover:bg-accent hover:text-accent-foreground'
   }`;
@@ -335,13 +347,17 @@ export function MediaPlayer({
     </Popover>
   );
 
-  const videoControls = (
+  const videoControlsRow = (
     <div
       data-testid='controls'
+      data-media-playback=''
       inert={controlsHidden}
-      className={`nodrag absolute z-10 inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${
-            controlsHidden ? 'translate-y-full' : ''
-          }`}
+      data-controls-surface={themedControls ? 'popover' : 'video'}
+      onFocusCapture={() => { if (!pointer.migrating.current) videoControls?.onFocusChange?.(true, null); }}
+      onBlurCapture={(event) => {
+        if (!pointer.migrating.current && !event.currentTarget.contains(event.relatedTarget)) videoControls?.onFocusChange?.(false, event.relatedTarget);
+      }}
+      className={themedControls ? 'nodrag flex w-full items-center gap-2 px-2 py-1 text-popover-foreground' : `nodrag absolute z-10 inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${controlsHidden ? 'translate-y-full' : ''}`}
     >
       {playButton}
       <span
@@ -353,13 +369,18 @@ export function MediaPlayer({
       <Slider
         data-testid='seek'
         disabled={unavailable}
+        onPointerDown={pointer.onPointerDown}
+        onPointerMove={pointer.onPointerMove}
+        onPointerUp={pointer.onPointerUp}
+        onPointerCancel={pointer.onPointerCancel}
+        onLostPointerCapture={pointer.onLostPointerCapture}
         aria-label='Seek'
         min={0}
         max={100}
         step={0.1}
         value={[p.progress * 100]}
         onValueChange={([v]) => p.seekFraction(v / 100)}
-        className='nokey min-w-0 flex-1'
+        className={videoControls === undefined ? 'nokey min-w-0 flex-1' : 'nokey min-w-10 flex-1'}
       />
       <span
         data-testid='time-total'
@@ -385,6 +406,18 @@ export function MediaPlayer({
     </div>
   );
 
+  const placedControls = videoControls === undefined ? videoControlsRow : (
+    <>
+      <div ref={setInlineControls} className='absolute inset-x-0 bottom-0' />
+      <MediaControlsPortal
+        destination={controlsHidden ? null : videoControls.destination === 'inline' ? inlineControls : videoControls.destination}
+        capture={pointer.capture}
+        migrating={pointer.migrating}
+        preserveFocus={videoControls.preserveFocus}
+      >{videoControlsRow}</MediaControlsPortal>
+    </>
+  );
+
   if (ownsVideo) {
     const original = videoSource?.presentation.original ?? size;
     const loadingOwner = snapshot?.status !== 'ready';
@@ -392,7 +425,7 @@ export function MediaPlayer({
       <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame}>
         {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
         {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
-        {videoControls}
+        {placedControls}
         <div ref={overlayHost} data-testid='video-tool-overlay-host' className='pointer-events-none absolute inset-0'>{children}</div>
         {snapshot?.status === 'failed' ? <p className='pointer-events-none absolute inset-0 grid place-content-center bg-card p-3 text-center text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
       </VideoPresentationSurface>
@@ -435,7 +468,7 @@ export function MediaPlayer({
             className='pointer-events-none absolute inset-0 rounded-none'
           />
         ) : null}
-        {videoControls}
+        {placedControls}
       </div>
     );
   }

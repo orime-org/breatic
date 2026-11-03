@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The worker's way into a backend upload (#181 lanes ② and ③, #206 §3.4.1).
@@ -19,6 +19,7 @@
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import {
   backendUploadService,
+  UploadOpenFailed,
   type BackendUploadContext,
   type StoredAsset,
 } from "@breatic/domain";
@@ -29,6 +30,8 @@ import {
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
+ * @throws {UploadOpenFailed} When the upload could not be opened, after what
+ *   settling it raised is written down.
  * @throws {UploadHttpError} When the Worker refused the bytes.
  * @throws {Error} When nothing was registered.
  */
@@ -36,7 +39,17 @@ export async function storeBytes(
   bytes: Blob,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const stored = await backendUploadService.uploadBytesToStorage(bytes, ctx);
+  let stored: StoredAsset;
+  try {
+    stored = await backendUploadService.uploadBytesToStorage(bytes, ctx);
+  } catch (err) {
+    // The open failure is the job's to log; what settling the grant raised
+    // has no other place to be written down.
+    if (err instanceof UploadOpenFailed && err.settled !== undefined) {
+      noteSideEffects(err.settled, { key: err.storageKey });
+    }
+    throw err;
+  }
   noteSideEffects(stored, { assetId: stored.assetId, url: stored.fileUrl });
   return stored;
 }

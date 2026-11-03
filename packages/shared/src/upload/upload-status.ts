@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The upload status query (inner#1367 §4.2a): finishing an upload answers 202
@@ -31,5 +31,7 @@ export interface UploadStatusResult {
 export type UploadStatus =
   | { key: string; state: "finishing" }
   | { key: string; state: "completed"; result: UploadStatusResult }
+  /** A transfer upload (inner#1006) finished: it registers no asset. */
+  | { key: string; state: "transferred" }
   | { key: string; state: "failed"; reason: string }
   | { key: string; state: "unknown" };

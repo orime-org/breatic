@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 // A node's upload hears its ending from the page's status list; these tests stop at the send.
 vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: () => new Promise(() => undefined) }));
 
-import { isUploadableMediaType } from '@breatic/shared';
+import { isUploadableMediaType, uploadableSpellings } from '@breatic/shared';
 
 import {
   isReportableAssetUrl,
@@ -24,6 +24,17 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 
 describe('uploadAcceptFor — what the picker offers', () => {
+  it('offers every supported media type and alias when selecting all media', () => {
+    const offered = uploadAcceptFor('all').split(',');
+    expect([...offered].sort()).toEqual([...uploadableSpellings()].sort());
+    expect(offered).not.toContain('image/*');
+    expect(offered).not.toContain('video/*');
+    expect(offered).not.toContain('audio/*');
+    for (const type of offered) {
+      expect(checkFileAdmission({ type, size: 10 }, 100)).toBeNull();
+    }
+  });
+
   // The picker and the admission gate answer the same question, so a type the
   // picker shows and the gate refuses is an offer we withdraw the moment it is
   // taken. Derived from the one list rather than typed out beside it.
@@ -189,7 +200,8 @@ const HASH = 'a'.repeat(64);
 
 /** A ticket for a one-part upload. */
 const TICKET = {
-  ticket: 'signed',
+  uploadId: 'upload-1',
+  token: 'token-1',
   storageKey: 'image/2026-08-31/p.png',
   uploadUrl: 'https://ingest.example.com',
   kind: 'image',
@@ -299,6 +311,35 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     const deps = makeDeps();
     await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'text', 'p1', deps);
     expect(mark()).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.typeMismatch' } });
+  });
+
+  // inner#1595 §3.5: the server could not open the upload at the ingest
+  // Worker. Its answer ends the wait on the node, and the failure goes to the
+  // caller, which reports the row and keeps the File for a Retry.
+  it('W06 openFailed with a row: clears the mark and hands the failure to the caller', async () => {
+    const deps = makeDeps({
+      requestTicket: vi.fn().mockResolvedValue({ openFailed: { reason: 'ingest_no_answer' }, taskId: 't1' }),
+    });
+    const file = new File(['x'], 'p.png', { type: 'image/png' });
+    await fillNodeFromFile('n1', file, 'image', 'p1', deps);
+    expect(mark()).toBeUndefined();
+    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', taskId: 't1' }, file);
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.setContent).not.toHaveBeenCalled();
+  });
+
+  // The answer came first, so the failure is not drawn as a failed mark on the
+  // node even though no row stands behind it.
+  it('W13 openFailed with no row: clears the mark rather than failing it, and hands the failure on', async () => {
+    const deps = makeDeps({
+      requestTicket: vi.fn().mockResolvedValue({ openFailed: { reason: 'ingest_refused' } }),
+    });
+    const file = new File(['x'], 'p.png', { type: 'image/png' });
+    await fillNodeFromFile('n1', file, 'image', 'p1', deps);
+    expect(mark()).toBeUndefined();
+    expect(deps.onUploadFailure).toHaveBeenCalledOnce();
+    expect(vi.mocked(deps.onUploadFailure).mock.calls[0]![0]).toStrictEqual({ reason: 'transfer' });
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
   });
 });
 

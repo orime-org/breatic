@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * One press of Understand or Transcribe, from the menu item to the request
@@ -19,13 +19,18 @@
 
 import { getLocale, t } from '@breatic/shared';
 
-import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import {
+  canvasApi,
+  getCachedUnderstandLongMediaMaxBytes,
+  getCachedUnderstandMaxBytes,
+} from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
-import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
+import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
+import { tooLargeMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
   understandNodePosition,
@@ -111,7 +116,7 @@ const READINGS: Readonly<Record<Reading, { prefix: string; sourceGone: string; c
  * @returns The intent id.
  */
 export function readingIntent(reading: Reading, spaceId: string, nodeId: string): string {
-  return `${reading}:${spaceId}:${nodeId}`;
+  return spaceTaskIntent(reading, spaceId, nodeId);
 }
 
 /**
@@ -230,6 +235,7 @@ function buildReadingRun(
       url: source.url,
     },
     getCachedUnderstandMaxBytes(),
+    getCachedUnderstandLongMediaMaxBytes(),
   );
   if (refusal !== null) {
     // Each refusal is the sentence its own row holds, filled from the same
@@ -318,10 +324,23 @@ function buildReadingRun(
  * @param reading - Which reading it was.
  * @param err - The final failure.
  */
-function reportReadingFailure(reading: Reading, err: unknown): void {
-  const said =
-    err instanceof ApiException && err.fromServer && err.message
-      ? err.message
-      : t(READINGS[reading].couldNotStart);
-  toast.error(said);
+async function reportReadingFailure(reading: Reading, err: unknown): Promise<void> {
+  toast.error(await readingFailureSentence(reading, err));
+}
+
+/**
+ * The sentence for {@link reportReadingFailure}: the server's own when it
+ * wrote one; why, when a proxy refused the request as too large without one
+ * (inner#1006); otherwise the reading's short line.
+ * @param reading - Which reading it was.
+ * @param err - The final failure.
+ * @returns The sentence, in the reader's language.
+ */
+async function readingFailureSentence(reading: Reading, err: unknown): Promise<string> {
+  if (err instanceof ApiException && err.fromServer && err.message) return err.message;
+  if (err instanceof ApiException && err.status === 413) {
+    const { key, params } = await tooLargeMessage();
+    return t(key, params);
+  }
+  return t(READINGS[reading].couldNotStart);
 }

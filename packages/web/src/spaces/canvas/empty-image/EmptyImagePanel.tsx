@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
@@ -8,7 +8,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
 import { CROP_RATIOS } from '@web/lib/crop-math';
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
 import {

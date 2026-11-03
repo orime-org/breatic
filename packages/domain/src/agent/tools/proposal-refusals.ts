@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Every way the proposal check can refuse, by name, and whether its reason
@@ -29,8 +29,14 @@ export const REFUSALS = {
   "edge-ring": false,
   "group-unnamed": "group",
   "template-unknown": false,
-  "template-role": false,
-  "template-type": false,
+  "template-key-unknown": false,
+  "template-key-kind": false,
+  "template-resource-material": false,
+  "template-key-missing": false,
+  "template-key-repeated": false,
+  "template-edge-missing": "node",
+  "template-edge-into": "node",
+  "template-input-missing": false,
   "template-no-prompt": "node",
   "sources-no-taker": false,
   "sources-over-room": false,

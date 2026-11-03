@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * auth.service invariant tests — lock current behavior (PR-a task 1).
@@ -64,6 +64,10 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 // Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
 // pulls the real agent llm and the `ai` SDK behind it.
 vi.mock("@breatic/domain", () => ({
+}));
+
+vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
+  claimEmailInvitations: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);
@@ -386,6 +390,7 @@ describe('Google identity session success boundaries', () => {
     expect(repo.createUser).toHaveBeenCalledWith({
       email: 'new@example.com',
       googleId: 'subject',
+      emailVerified: false,
       locale: 'en',
       attribution: null,
     });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 存储配额闸门接在哪两个路口上（#89）—— real-PG 集成，走真实的 Hono app。
@@ -28,6 +28,12 @@ vi.mock("ai", () => ({
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
 }));
+
+// The server opens every upload at the ingest Worker itself before it
+// answers a ticket (inner#1595); that one call is answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
 
 // 邮件那条腿不在本文件的主题内，顶掉它免得真去连 SMTP。
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({

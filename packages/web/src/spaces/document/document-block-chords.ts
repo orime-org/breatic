@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The nine chords, bound to what the nine rows do.
@@ -98,8 +98,8 @@ export const documentChordsExtension = createExtension(() => ({
       const info = getBlockInfoFromSelection(
         (editor as unknown as { prosemirrorState: unknown }).prosemirrorState as never,
       );
-      if (!info.isBlockContainer) return undefined;
-      const update = updateFor(info.blockContent.node, row, false);
+      if (!info.hasContent) return undefined;
+      const update = updateFor(info.content.node, row, false);
       // What the writer typed between the ticks, for the one row that takes
       // a value from the pattern.
       const typed =

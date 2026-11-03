@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Project-lifecycle commands, from the cross-service stream (inner#1497 §6.2).
@@ -39,6 +39,7 @@ import {
   type GroupConsumerSettings,
 } from "@collab/services/stream-group-consumer.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
+import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 
 const logger = createLogger("lifecycle-listener");
 
@@ -65,7 +66,9 @@ export async function handleLifecycleEvent(
   publish: PublishConnectionsClose,
 ): Promise<void> {
   if (event.type === "project:duplicated") {
-    await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId);
+    await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId, async (rows) => {
+      for (const row of rows) await acceptSpaceMediaReferences(row.name, row.data);
+    });
     await publish(event.newId, "content-updated");
     logger.info({ sourceId: event.sourceId, newId: event.newId }, "project_duplicated_copy_handled");
     return;

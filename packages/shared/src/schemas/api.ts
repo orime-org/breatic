@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Shared API request schemas.
@@ -10,6 +10,8 @@
  * Convention: schema name = `{resource}{Action}Schema`
  * Inferred type: `{Resource}{Action}Input`
  */
+
+import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
 import {
@@ -35,8 +37,11 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** An email address field, returned in its normalized form. */
-export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
+/**
+ * An email address field, returned in its normalized form; at most 254
+ * characters (RFC 3696 erratum 1690).
+ */
+export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().max(254));
 
 /**
  * Campaign source a browser recorded before sign-up (inner#1442 §4.5). Left
@@ -192,8 +197,8 @@ export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
   id: z.string().max(ATTACHED_CHIP_ID_MAX),
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
-  /** Display name for the chip; LLM context renders this as the section title. */
-  name: z.string(),
+  /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
+  name: z.string().max(255),
   /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
@@ -284,6 +289,99 @@ const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
   chatSpaceSchema.extend({ state: z.literal("unreadable") }),
 ]);
 
+/** A range of a document's blocks, counted by the `<!-- b:N -->` markers it is read with. */
+const blockRangeSchema = z
+  .object({ from: z.number().int().min(1), to: z.number().int().min(1).optional() })
+  .strict()
+  .refine((range) => range.to === undefined || range.to >= range.from, {
+    message: "a block range ends at or after its start",
+    path: ["to"],
+  });
+
+/**
+ * The agent's request to read Spaces (inner#1552): which, and of each the
+ * whole or a part, with why. How many Spaces and node ids it may name, and
+ * whether each id is in this turn's list, are checked by the tool, which holds
+ * the config and the list.
+ */
+export const spaceRequestInputSchema = z
+  .object({
+    reason: z.string().trim().min(1).max(200),
+    spaces: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            blocks: blockRangeSchema.optional(),
+            node_ids: z.array(z.string().min(1)).min(1).optional(),
+          })
+          .strict()
+          .refine((space) => space.blocks === undefined || space.node_ids === undefined, {
+            message: "a Space is asked for by blocks or by nodes, not both",
+          }),
+      )
+      .min(1),
+  })
+  .strict();
+
+/** The part of a Space a read answers: the range or the nodes asked for, repeated. */
+const sharedPartSchema = z.union([
+  z.object({ blocks: blockRangeSchema }).strict(),
+  z.object({ node_ids: z.array(z.string().min(1)).min(1) }).strict(),
+]);
+
+const sharedReadSpaceSchema = chatSpaceSchema
+  .extend({
+    state: z.literal("read"),
+    part: sharedPartSchema.optional(),
+    content: z.string(),
+    total_chars: count,
+    detail: chatCanvasDetailSchema.optional(),
+    /** How many readable blocks the document has, the last marker's N; only for a range asked for. */
+    blocks_total: count.optional(),
+    /** How many of the nodes asked for are no longer there; only for nodes asked for. */
+    nodes_missing: count.optional(),
+  })
+  .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
+    message: "a read canvas carries detail and nothing else does",
+    path: ["detail"],
+    params: REQUEST_SHAPE_PARAMS,
+  })
+  .refine((s) => (s.part !== undefined && "blocks" in s.part) === (s.blocks_total !== undefined), {
+    message: "a block count comes with a range of blocks and nothing else",
+    path: ["blocks_total"],
+    params: REQUEST_SHAPE_PARAMS,
+  })
+  .refine((s) => (s.part !== undefined && "node_ids" in s.part) === (s.nodes_missing !== undefined), {
+    message: "a missing-node count comes with nodes asked for and nothing else",
+    path: ["nodes_missing"],
+    params: REQUEST_SHAPE_PARAMS,
+  });
+
+/**
+ * One requested Space as the browser read it. Only a read Space carries
+ * content; a Space gone from the project list has no name or kind to give.
+ */
+export const sharedSpaceSchema = z.discriminatedUnion("state", [
+  sharedReadSpaceSchema,
+  chatSpaceSchema.extend({ state: z.literal("unreadable"), part: sharedPartSchema.optional() }),
+  chatSpaceSchema.extend({ state: z.literal("timed_out"), part: sharedPartSchema.optional() }),
+  chatSpaceSchema.extend({ state: z.literal("failed"), part: sharedPartSchema.optional() }),
+  z.object({
+    id: z.string().min(1),
+    state: z.literal("gone"),
+    part: sharedPartSchema.optional(),
+    name: z.string().max(SPACE_NAME_MAX_LEN).optional(),
+    kind: SpaceTypeSchema.optional(),
+  }),
+]);
+
+/** The reader's answer to a request to read Spaces: what they shared, or that they declined. */
+export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
+  z.object({ toolCallId: z.string().min(1), decision: z.literal("shared"), spaces: z.array(sharedSpaceSchema) }),
+  z.object({ toolCallId: z.string().min(1), decision: z.literal("declined") }),
+]);
+
 export const chatMessageSchema = z.object({
   /** What the reader wrote; empty when the request carries `answer` instead. */
   message: z.string(),
@@ -331,12 +429,33 @@ export const chatMessageSchema = z.object({
    * message of the reader's, and has an empty `message`.
    */
   answer: askUserAnswerSchema.optional(),
+  /**
+   * The reader's answer to the agent's request to read Spaces (inner#1552),
+   * resuming the turn that asked the way `answer` does.
+   */
+  shared_spaces: spaceRequestAnswerSchema.optional(),
 }).superRefine((value, ctx) => {
-  if (value.answer === undefined && value.message.length === 0) {
+  if (value.answer === undefined && value.shared_spaces === undefined && value.message.length === 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
   }
   if (value.answer !== undefined && value.message.length > 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
+  }
+  if (value.shared_spaces !== undefined && value.message.length > 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["shared_spaces"],
+      message: "An answer to a request to read Spaces carries no message.",
+      params: REQUEST_SHAPE_PARAMS,
+    });
+  }
+  if (value.shared_spaces !== undefined && value.answer !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["shared_spaces"],
+      message: "A request answers one card at a time.",
+      params: REQUEST_SHAPE_PARAMS,
+    });
   }
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
@@ -350,13 +469,18 @@ export type ChatDocumentBlock = z.infer<typeof chatDocumentBlockSchema>;
  * send and never stored, so each message says what is there now.
  */
 export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
+export type SpaceRequestInput = z.infer<typeof spaceRequestInputSchema>;
+export type SharedSpace = z.infer<typeof sharedSpaceSchema>;
+export type SpaceRequestAnswer = z.infer<typeof spaceRequestAnswerSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
 export const taskCreateSchema = z
   .object({
-    task_type: z.string(),
-    model: z.string().optional(),
+    /** `tasks.task_type` is varchar(50). */
+    task_type: z.string().max(50),
+    /** `tasks.model` is varchar(100). */
+    model: z.string().max(100).optional(),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
@@ -561,7 +685,8 @@ export const projectCreateSchema = z.object({
    * change.
    */
   spaceType: SpaceTypeSchema.default("canvas"),
-  description: z.string().optional(),
+  /** Same cap as editing the project's description. */
+  description: z.string().max(2000).optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 
@@ -621,7 +746,7 @@ export type PaymentCancelInput = z.infer<typeof paymentCancelSchema>;
  * because a purchase landing between two reads would otherwise shift every
  * row after it.
  */
-export const paymentHistoryQuerySchema = z.object({
+export const paymentHistoryQuerySchema = creditAmountFormatQuerySchema.extend({
   limit: z.string().optional(),
   cursor: z.string().optional(),
 });

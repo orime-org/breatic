@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 A4 · A4b · A6 · C2: what pressing a row does to the blocks under
@@ -360,7 +360,7 @@ describe('a selection covering several blocks', () => {
 describe('which rows the menu offers', () => {
   it('offers every row over a selection holding a block', () => {
     const editor = open(STARTS.paragraph);
-    expect(canRunBlockType(editor)).toBe(true);
+    expect(CONTENT_ROWS.concat('quote').every((id) => canRunBlockType(editor, id))).toBe(true);
   });
 
   it('offers none over a block this build cannot represent', () => {
@@ -389,7 +389,7 @@ describe('which rows the menu offers', () => {
     );
     tr.setSelection(NodeSelection.create(tr.doc, first.before));
 
-    expect(canRunBlockType({ transact: (run) => run(tr) })).toBe(false);
+    expect(CONTENT_ROWS.concat('quote').some((id) => canRunBlockType({ transact: (run) => run(tr) }, id))).toBe(false);
   });
 });
 
@@ -606,7 +606,7 @@ describe('a selection no row reaches', () => {
         .setSelection(NodeSelection.create(opening.doc, first.before)),
     );
 
-    expect(canRunBlockType(editor)).toBe(false);
+    expect(CONTENT_ROWS.concat('quote').some((id) => canRunBlockType(editor, id))).toBe(false);
 
     const before = editor.prosemirrorState.doc.toString();
     CONTENT_ROWS.concat('quote').forEach((id) => {

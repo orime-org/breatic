@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The deadline a container run is waited under (#209 + #210, design §3.3).
@@ -87,6 +87,7 @@ describe("a container run that outlasts the deadline", () => {
       cover: null,
       preview: null,
       peaks: null,
+      agentPicture: null,
       answered: false,
       upright: null,
       missed: "unfinished",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas clipboard pure functions (slice 2b).
@@ -354,7 +354,7 @@ export function cloneForPaste(
       position = { x: absShifted.x - parentAbs.x, y: absShifted.y - parentAbs.y };
     }
     const data = rebindVideoToolDrafts(
-      rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>,
+      withCopiedAnchor(rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>, idMap),
       idMap,
       options.targetProjectId !== undefined && options.targetProjectId === payload.source?.projectId,
     );
@@ -435,6 +435,19 @@ function cloneEdges(
     });
   }
   return out;
+}
+
+/**
+ * A guide or input node's anchor, pointed at the anchor's copy when the anchor
+ * is copied along (inner#1345); copied without it, the node keeps the original.
+ * @param data - The copied node data.
+ * @param idMap - Original node id to its copy's id.
+ * @returns The data, its template tag's anchor rewritten where it was copied.
+ */
+function withCopiedAnchor(data: Record<string, unknown>, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  const tag = data.templateNode as { anchor?: unknown } | undefined;
+  const copy = typeof tag?.anchor === 'string' ? idMap.get(tag.anchor) : undefined;
+  return copy === undefined ? data : { ...data, templateNode: { ...tag, anchor: copy } };
 }
 
 /**

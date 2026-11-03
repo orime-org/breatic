@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Two projects, split by which runtime a test needs.
@@ -78,6 +78,7 @@ const workers = defineWorkersProject({
             MINI_TOOL_STD4: { className: "MiniToolContainerStd4", useSQLite: true },
             PRESENTATION_STATE_TEST: { className: "PresentationStateTestObject", useSQLite: true },
             PLAN_WRITE_TEST: { className: "PlanWriteTestObject", useSQLite: true },
+            LONG_MEDIA: { className: "LongMediaJobTestObject", useSQLite: true },
           },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every

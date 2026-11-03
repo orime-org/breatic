@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 // The reference chip plugins in an editor with no collaboration behind it:
 // its undo is the plain history plugin and there is no Yjs document to

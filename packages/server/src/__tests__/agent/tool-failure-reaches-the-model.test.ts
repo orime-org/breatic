@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A tool that failed is in front of the model on its very next step.
@@ -108,8 +108,8 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget: vi.fn(async () => false),
+vi.mock("@server/agent/turn-fold.js", () => ({
+  foldIfTooLong: vi.fn(async () => "none"),
 }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 

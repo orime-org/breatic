@@ -7,7 +7,9 @@ finish request our services send.
 It holds no database and asks us nothing. Everything it is allowed to do comes
 from a ticket our server signed: the storage key, the studio, the part layout
 and the size ceiling all travel inside one HMAC, so every check it performs is
-against values the browser cannot alter.
+against values the browser cannot alter. The ticket never reaches the browser:
+our server opens the upload with it and the shared secret, and the browser
+sends its parts with the session token each answer hands back.
 
 For installation and a deployed Worker, start with [personal/LAN deployment](../../self-host/LOCAL.md).
 For source debugging, use [development setup](../../self-host/DEVELOPMENT.md).
@@ -40,13 +42,10 @@ media numbers and no cover.
 
 **The image builds from the repository root**, which is what puts
 `THIRD-PARTY.md` inside the context. The template carries
-`image_build_context = "../.."` in all six `[[containers]]` blocks — the three
-top-level ones `wrangler dev` uses (`MediaContainer`, `MiniToolContainerStd1`,
-`MiniToolContainerStd4`), and the three `[[env.production.containers]]` blocks
-that `deploy:worker` uses. A `wrangler.toml` copied before 2026-09-13 lacks the
-line: add it to every block. `containers` does not inherit into an environment,
-so each production block needs its own; with only the top-level ones,
-`wrangler dev` works and the deploy fails on the first `COPY`.
+`image_build_context = "../.."` in every `[[containers]]` and
+`[[env.production.containers]]` block. The configured classes are `MediaContainer`,
+`MiniToolContainerStd1`, `MiniToolContainerStd4` and `LongMediaContainer`. Each
+block needs its own context because `containers` does not inherit into an environment.
 
 **A `wrangler.toml` copied before error reporting was added needs
 `compatibility_flags = ["nodejs_compat"]`** at the top level, next to
@@ -55,8 +54,8 @@ imported whether or not a DSN is set, and without the flag bundling only warns
 while the runtime refuses to load the Worker: `wrangler dev` stops with
 `No such module "node:async_hooks"`.
 
-**Each of the three top-level `[[containers]]` blocks needs
-`image_vars = { DEV_COPY = "<name>" }`**, with the same name in all three and a
+**Each top-level `[[containers]]` block needs
+`image_vars = { DEV_COPY = "<name>" }`**, with the same name in every block and a
 name no other copy of the repository on this machine uses. It goes into a label
 on the image, so each copy builds an image of its own. Copies that build
 identical images share one image ID, and after every build wrangler removes each
@@ -123,8 +122,8 @@ we do not take. Those are only logged.
 
 One value: `INGEST_SHARED_SECRET`. It must be the same string as
 `INGEST_SHARED_SECRET` in the repo-root `.env` — the server signs upload tickets
-with it and this Worker verifies them, so a mismatch rejects every upload with
-401. Generate one with `openssl rand -hex 32`.
+with it and sends it to open each upload, and this Worker checks both, so a
+mismatch rejects every upload with 401. Generate one with `openssl rand -hex 32`.
 
 The deployed Worker gets the same value through
 `wrangler secret put INGEST_SHARED_SECRET --env production`, which stores it on
@@ -163,17 +162,18 @@ stores resolves to a 404 at its public URL — which fails anything that reads a
 asset back — a node's image or video, and the focus crop that reads one.
 
 The Worker itself still runs on this machine, because that is the address it
-has to answer on: the browser sends its parts there, and our own server
-finishes the upload there. It reaches nobody in return — what it measured over
+has to answer on: our own server opens and finishes the upload there, and the
+browser sends its parts there. It reaches nobody in return — what it measured over
 the stored object is the answer to the finish, not a call it places — so it
 holds no address of ours at all.
 
-This Worker binds three Durable Object classes, and all three are containers,
-because a container is reached only through one: the media container
-(`MEDIA`, one instance per storage key) and the two mini-tool containers
-(`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job, one class per
-instance size). The upload path itself keeps nothing between requests: an upload's id and its part receipts travel with the
-browser and come back to finish it.
+This Worker binds container Durable Object classes: the media container
+(`MEDIA`, one instance per storage key), the two mini-tool containers
+(`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job and instance size),
+and `LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs. Keep these
+bindings and their `exports` aligned with the template in each environment.
+The upload path itself keeps nothing between requests: an upload's id and its
+part receipts travel with the browser and come back to finish it.
 
 ## Tests
 

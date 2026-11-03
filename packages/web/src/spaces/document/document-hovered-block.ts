@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which range a command off the block handle acts on.
@@ -28,7 +28,7 @@ import {
  * selection, their caret and the undo stack untouched.
  *
  * The range covers the `blockContent` node alone. A `blockContainer` holds
- * `blockContent blockGroup?` (`BlockContainer.ts:27`), so a range over the
+ * `blockContent blockGroup?` (`BlockContainer.ts:71`), so a range over the
  * container would take every nested block with it.
  * @param doc - The document to look in.
  * @param blockId - Which block the pointer is over.
@@ -37,6 +37,11 @@ import {
  */
 export function selectionOverBlockContent(doc: PMNode, blockId: string): Selection {
   const row = rowById(doc, blockId);
+  // A table is a block whose own node holds its rows: the node stands for the
+  // block, the same node selection a click on its handle makes.
+  if (row !== undefined && row.node.type.name !== 'blockContainer') {
+    return NodeSelection.create(doc, row.from);
+  }
   const content = row === undefined ? undefined : contentRangeOf(row);
   if (row === undefined || content === undefined) {
     throw new Error(`no block carries the id ${blockId}`);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 import { posix } from "node:path";
 import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
@@ -27,6 +27,7 @@ export const PACKAGE_ROOTS: ReadonlyArray<readonly [string, string]> = [
   ["packages/worker/src/", "@worker"],
   ["packages/collab/src/", "@collab"],
   ["packages/integration-tests/src/", "@integration-tests"],
+  ["packages/provider/src/", "@provider"],
   ["packages/web/src/", "@web"],
   ["eslint-rules/src/", "#rules"],
   ["repo-lint/src/", "#repo-lint"],

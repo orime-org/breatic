@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The document body's rules sit in `@layer components` (inner#1127).
@@ -60,6 +60,7 @@ describe('the document body stylesheet', () => {
       '.doc-body[data-selection-drawn] ::selection',
       '.doc-body .ProseMirror-gapcursor::after',
       '.doc-body .doc-empty-line-in-selection ::selection',
+      '.doc-body .doc-table-in-selection ::selection',
     ]);
   });
 });

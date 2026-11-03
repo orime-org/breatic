@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which catalog buckets each generate panel reads.
@@ -30,4 +30,14 @@ export function modelsForModality(
 ): ModelEntry[] {
   if (!catalog) return [];
   return GENERATION_NODE_BUCKETS[modality].flatMap((bucket) => catalog[bucket] ?? []);
+}
+
+/**
+ * Every model the catalog serves for any generating node type: a template's
+ * nodes can run in several (inner#1345).
+ * @param catalog - The model catalog, or undefined before it loads.
+ * @returns The models.
+ */
+export function allGenerationModels(catalog: ModelCatalog | undefined): ModelEntry[] {
+  return (['image', 'video', 'audio'] as const).flatMap((modality) => modelsForModality(catalog, modality));
 }

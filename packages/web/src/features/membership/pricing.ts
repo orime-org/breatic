@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Where an account goes to negotiate terms we do not put on a price list.
@@ -11,4 +11,4 @@
  * through `TierOffer`. A second copy here could only ever disagree with what
  * a card is actually charged.
  */
-export const SALES_EMAIL = 'breatic@orime.ai';
+export const SALES_EMAIL = 'contact@breatic.ai';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 import type { SpaceType } from '@breatic/shared';
@@ -19,7 +19,11 @@ describe('SPACE_TYPES registry', () => {
     Object.values(SPACE_TYPES).forEach((def) => {
       expect(def.label.length).toBeGreaterThan(0);
       expect(def.icon.length).toBeGreaterThan(0);
-      expect(typeof def.bodyComponent).toBe('function');
+      // Like the Canvas node registry, Space bodies may be memo components.
+      const component: unknown = def.bodyComponent;
+      expect(typeof component === 'function' ||
+        (typeof component === 'object' && component !== null &&
+          '$$typeof' in component && component.$$typeof === Symbol.for('react.memo'))).toBe(true);
     });
   });
 });

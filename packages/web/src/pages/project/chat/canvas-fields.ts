@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which of a canvas node's fields an over-limit canvas keeps (inner#1413).
@@ -99,6 +99,8 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   taskCounts: 'other',
   taskResultEventId: 'other',
   miniToolResultOrigin: 'other',
+  // Which template node it was placed as: part of who the node is.
+  templateNode: 'identity',
   width: 'other',
   height: 'other',
   mediaWidth: 'other',

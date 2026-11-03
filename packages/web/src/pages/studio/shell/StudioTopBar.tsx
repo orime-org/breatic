@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as React from 'react';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
+import { HelpMenu } from '@web/features/help/HelpMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
@@ -40,6 +41,7 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
       <div className='flex items-center gap-1'>
         <LangSwitcher />
         <ThemeToggle />
+        <HelpMenu />
         <BellMenu />
         <StudioAccountMenu />
       </div>

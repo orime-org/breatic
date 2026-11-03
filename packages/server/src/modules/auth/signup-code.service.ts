@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Email sign-up with a code (#287), used while an email backend is enabled.
@@ -53,14 +53,7 @@ export interface SignupCodeSent {
   resendAfterSeconds: number;
 }
 
-/**
- * Whether an email sign-up must prove the address with a code. True for the
- * backends that deliver (smtp) or show (console) the mail.
- * @returns `true` unless `EMAIL_BACKEND` is `disabled`.
- */
-export function emailVerificationEnabled(): boolean {
-  return env.EMAIL_BACKEND !== "disabled";
-}
+export { emailVerificationEnabled } from "@server/config/auth.js";
 
 /**
  * A uniformly random six-digit code, zero-padded.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The document body's undo manager, and the plugin that uses it.
@@ -27,7 +27,7 @@
  * registered ahead of `CollaborationExtension`, so registering this one
  * replaces the built-in. Keeping the key is also what leaves `editor.undo()`
  * working: it looks the extension up by that exact string
- * (`StateManager.ts:216-231`).
+ * (`StateManager.ts:226-240`).
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';

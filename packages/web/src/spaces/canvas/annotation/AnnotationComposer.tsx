@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The box that opens where somebody put a new note, before the note exists.
@@ -19,7 +19,7 @@ import * as React from 'react';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import {
   pressLandedOnTheBox,
   usePressKeepsFocus,

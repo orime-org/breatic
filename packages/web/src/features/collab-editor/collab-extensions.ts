@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The one way to bind a TipTap editor to a Yjs document.
@@ -171,7 +171,10 @@ export function buildCollabExtensions(
         // down. This comment is the guard.
         // `clientId` stays optional so this still matches upstream's
         // single-argument `render` type. It arrives at runtime — the caret's
-        // data-client-id, which the DOM patches key off, comes from it.
+        // data-client-id, which the DOM patches key off, comes from it. From
+        // 3.31 upstream wraps `render` and drops every argument after the
+        // user; `patches/@tiptap__extension-collaboration-caret@3.31.4.patch`
+        // passes them on.
         render: (user: CaretUser, clientId?: number) =>
           renderCollabCaret(user, clientId, resolveCollaboratorName),
         selectionRender: renderCollabSelection,

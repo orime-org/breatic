@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -403,5 +403,29 @@ describe('deriveHandling — is a task writing to this node (inner#888 §7.8)', 
 
   it('is false for a node that has never carried a task', () => {
     expect(deriveHandling({})).toBe(false);
+  });
+});
+
+describe('toNodeView — the template node a node stands for (inner#1345)', () => {
+  it('carries a template node tag onto a content view', () => {
+    const v = toNodeView(fields('image', { templateNode: { template: 'fx', key: 'up' } }));
+
+    expect(v?.type === 'image' ? v.data.templateNode : 'not an image view').toEqual({ template: 'fx', key: 'up' });
+  });
+
+  it('carries a guide text node tag with the anchor node id', () => {
+    const v = toNodeView(fields('text', { templateNode: { template: 'fx', key: 'guide', anchor: 'anchor-1' } }));
+
+    expect(v?.type === 'text' ? v.data.templateNode : 'not a text view').toEqual({
+      template: 'fx',
+      key: 'guide',
+      anchor: 'anchor-1',
+    });
+  });
+
+  it('leaves the tag out of a node that stands for no template node', () => {
+    const v = toNodeView(fields('image'));
+
+    expect(v?.type === 'image' ? v.data.templateNode : 'not an image view').toBeUndefined();
   });
 });

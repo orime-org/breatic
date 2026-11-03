@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
+import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 
 export interface CanvasTask {
   id: string;
@@ -37,6 +38,8 @@ export interface CanvasLimits {
    * judged there instead of here.
    */
   understandMaxBytes: number;
+  /** Largest audio or video source the long-media path will segment, in bytes. */
+  understandLongMediaMaxBytes: number;
   /**
    * The longest audio the cut band decodes in the browser to draw a waveform
    * while its peaks file is missing, in seconds (inner#1305 §4.4).
@@ -112,6 +115,15 @@ export function getCachedReferencePoolCap(): number | null {
  */
 export function getCachedUnderstandMaxBytes(): number | null {
   return limitsCache ? limitsCache.understandMaxBytes : null;
+}
+
+/**
+ * Sync accessor for the long audio/video source ceiling, or `null` before the
+ * canvas knobs load.
+ * @returns The cached long-media ceiling in bytes, or null before the first fetch.
+ */
+export function getCachedUnderstandLongMediaMaxBytes(): number | null {
+  return limitsCache?.understandLongMediaMaxBytes ?? null;
 }
 
 /**
@@ -241,19 +253,21 @@ export const canvasApi = {
    * The answer only says the fetch is queued. The node's task row carries how
    * it ends, and on success the server writes the stored address onto the node.
    * @param body - Where the address is and where it lands.
-   * @param body.url - The address, https only.
+   * @param body.url - The address, https only; or, instead,
+   * @param body.template_resource - the path of a file a generation template brings (inner#1345).
    * @param body.project_id - The project the node lives in.
    * @param body.space_id - The space the node lives on.
    * @param body.node_id - The node the result goes to, which already exists.
    * @returns The queued task's id.
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
-  ingestUrl(body: {
-    url: string;
-    project_id: string;
-    space_id: string;
-    node_id: string;
-  }): Promise<{ task_id: string }> {
+  ingestUrl(
+    body: ({ url: string } | { template_resource: string }) & {
+      project_id: string;
+      space_id: string;
+      node_id: string;
+    },
+  ): Promise<{ task_id: string }> {
     return apiPost<{ task_id: string }>('/canvas/ingest-url', body);
   },
   /**
@@ -267,23 +281,34 @@ export const canvasApi = {
    * @param body.node_id - The node whose words these are.
    * @param body.text - What it says at this moment.
    * @returns The id of the row that now holds them.
-   * @throws {import('@web/data/api/types').ApiException} On 403 / 404 / 429.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 404 / 413 / 429 / 502, or when the transfer ticket is refused.
+   * @throws {Error} When a text over the request limit could not be moved through storage.
    */
-  snapshotNodeText(body: {
+  async snapshotNodeText(body: {
     project_id: string;
     node_id: string;
     text: string;
   }): Promise<{ id: string }> {
-    return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+    // A long text goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ id: string }>(
+      '/canvas/node-history/snapshot',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
   /**
    * Register what a paste or duplicate brings into this project's Studio and
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
    * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 404 / 413 / 429 / 502 / 507), or when the transfer ticket is refused.
+   * @throws {Error} When a body over the request limit could not be moved through storage.
    */
-  paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
-    return apiPost<{ map: Record<string, string | null> }>('/canvas/paste', body);
+  async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+    // Long text history goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ map: Record<string, string | null> }>(
+      '/canvas/paste',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
 
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {

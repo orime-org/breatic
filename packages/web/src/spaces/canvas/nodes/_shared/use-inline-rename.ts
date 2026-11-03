@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { useHeldName } from '@web/lib/use-held-name';
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { flowNodeWrapper } from '@web/spaces/canvas/flow-node-wrapper';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';

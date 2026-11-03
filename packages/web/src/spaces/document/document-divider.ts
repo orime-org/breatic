@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The divider's name, and the `---` rule that places one.
@@ -54,8 +54,8 @@ const dividerRule = new InputRule(DASHES, (state, _match, start, end) => {
   // The regex matches from the head of the line, so `start` is the line's own
   // first position. The line's block sits in a blockContainer; the divider goes
   // in a container of its own right before it. A line that is not a block's own
-  // content — a line in a table cell — has no container of its own, and the
-  // dashes stay text there.
+  // content — a line in a stored table's cell — has no container of its own,
+  // and the dashes stay text there.
   const containerDepth = $start.depth - 1;
   if ($start.node(containerDepth).type.name !== 'blockContainer') return null;
   const quoted = line.attrs[QUOTED] === true;

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Payment webhook idempotency regression test (BUG-009).
+ * Payment webhook idempotency regression test.
  *
  * Tests the CAS pattern — verifies that a status transition from
  * "pending" to "completed" only succeeds once. No cross-package
@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 
-describe("Payment webhook CAS idempotency (BUG-009)", () => {
+describe("Payment webhook CAS idempotency", () => {
   it("first CAS transition succeeds", () => {
     let dbStatus = "pending";
 

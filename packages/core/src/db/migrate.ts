@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Programmatic database migration using Drizzle ORM.
@@ -15,7 +15,8 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
 import { db, yjsDb } from "@core/db/client.js";
-import { MONOREPO_ROOT } from "@core/config/env.js";
+import { migrateConfirmedGiftDatabase } from "@core/db/legacy-gift-migration.js";
+import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
  * Run all pending database migrations.
@@ -24,14 +25,20 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * function does NOT log progress/completion. The application
  * caller (`scripts/db-migrate.ts` CLI) wraps the call and emits
  * its own console output around it.
+ * @param options - Optional operator-verified confirmation for a single pre-existing manual gift.
+ * @param options.legacyGiftConfirmation - The private receipt-derived confirmation, never a new grant.
  * @returns The resolved migrations folder path, so the CLI caller
  *   can include it in human-readable output without re-deriving
  *   the same `resolve(MONOREPO_ROOT, ...)` expression.
  * @throws {Error} if any migration fails (prevents service from starting)
  */
-export async function runMigrations(): Promise<{ migrationsFolder: string }> {
+export async function runMigrations(options: { legacyGiftConfirmation?: unknown } = {}): Promise<{ migrationsFolder: string }> {
   const migrationsFolder = resolve(MONOREPO_ROOT, "packages/core/src/db/migrations");
-  await migrate(db, { migrationsFolder });
+  if (options.legacyGiftConfirmation !== undefined) {
+    await migrateConfirmedGiftDatabase(env.DATABASE_URL, migrationsFolder, options.legacyGiftConfirmation);
+  } else {
+    await migrate(db, { migrationsFolder });
+  }
   return { migrationsFolder };
 }
 

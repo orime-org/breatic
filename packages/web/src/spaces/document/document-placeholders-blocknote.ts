@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The document's one hint: "start writing", shown while the document LOOKS
@@ -19,7 +19,7 @@
  * visible to a check that reads only the node's name, so both are read here.
  *
  * The zero-block half of the previous placeholder is gone with the state it
- * drew for: `BlockGroup.ts:11` is `blockGroupChild+`, so a document with no
+ * drew for: `BlockGroup.ts:12` is `blockGroupChild+`, so a document with no
  * blocks is not a state this editor can rest in, and a fresh Space arrives
  * from the backend holding one paragraph.
  *

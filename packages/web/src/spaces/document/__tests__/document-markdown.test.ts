@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Markdown read with the document's own schema and no document open
@@ -18,7 +18,7 @@ describe('markdownBlocks', () => {
     expect(got.map((b) => [(b.block as { type?: unknown }).type, b.text])).toEqual([
       ['paragraph', 'A bold link'],
       ['heading', 'Scene 3'],
-      ['table', 'Shot\nSize\n1\nWide'],
+      ['docTable', 'Shot\nSize\n1\nWide'],
     ]);
   });
 

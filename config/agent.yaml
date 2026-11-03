@@ -1,6 +1,6 @@
 # Agent Configuration
 # Controls MainAgent behavior, memory system, tools, and worker limits.
-# These values can be overridden by environment variables (uppercase, e.g. MAX_TOOL_ITERATIONS=50).
+# Values are read from this YAML file and cached for the process lifetime.
 
 # ── Agent Loop ────────────────────────────────────────────
 # Maximum number of tool-call round-trips the agent loop will execute.
@@ -9,6 +9,25 @@ max_tool_iterations: 40
 # ── Models ────────────────────────────────────────────────
 # Default model for MainAgent chat.
 default_model: deepseek/deepseek-v4.1-flash-1017
+
+# Native picture support: auto reads the public model catalog; yes/no override it.
+main_model_sees_pictures: auto
+model_catalog_timeout_ms: 1000
+model_catalog_ttl_ms: 300000
+model_catalog_retry_ms: 30000
+
+# Native pictures are independent from the display preview. Budgets count each
+# occurrence in the request, including repeated pictures.
+chat_pictures_max: 50
+chat_pictures_max_bytes: 20971520
+picture_tokens_estimate: 4784
+agent_picture_long_edge: 1024
+agent_picture_quality: 85
+agent_picture_concurrency: 4
+
+# Ordered media in one understanding request. The existing byte limit also
+# bounds the combined audio/video download before the single model call.
+understand_media_max_items: 10
 
 # Model used for memory consolidation (summarizing old turns). The same model
 # that writes a conversation reads it back: two would put the summary in one
@@ -89,19 +108,42 @@ current_space_max_chars: 100000
 # newest this many and tells the model how many it left off.
 space_list_max_items: 200
 
-# How long an assembled request may be before a consolidation runs, in
-# tokens: 85% of the smallest context window among the providers that serve
-# the model. Measured against everything about to go to the model: system
-# prompt, memory, tool definitions, history and this turn's question. The
-# size comes from the provider's own count on the last turn; where there is
-# none, a character is counted as a token, which can only fire early.
-memory_budget_tokens: 850000
+# How many Spaces one request to read Spaces may name, and how many canvas
+# nodes one requested Space may be asked for by id (inner#1552).
+space_request_max_spaces: 3
+space_request_max_node_ids: 100
 
-# What one consolidation leaves behind, in tokens. A pass takes whole turns
-# from the oldest end until what remains is under this, less the room the
-# fold may add to memory -- the two memory ceilings, doubled, counted as
-# tokens at a character each.
-memory_keep_tokens: 500000
+# How long the browser waits for a requested Space it has not opened to sync,
+# in milliseconds, before telling the model it timed out (inner#1552).
+space_read_timeout_ms: 20000
+
+# What one consolidation leaves behind, in tokens. A fold runs only when the
+# provider's last reported count (input + output) reaches the lower of
+# fold_trigger_tokens and the main model's window less max_output_tokens, or
+# when the provider turns a request away as over its context window. It takes
+# whole turns from the oldest end, at least one, until what remains is under
+# the lower of this line and the window less max_output_tokens, less the room
+# the fold may add to memory -- the two memory ceilings, doubled, counted as
+# tokens at a character each. Must be below fold_trigger_tokens.
+memory_keep_tokens: 300000
+
+# The provider's last reported count (input + output), in tokens, at which the
+# next call folds first. The window less max_output_tokens still applies when
+# it is lower.
+fold_trigger_tokens: 750000
+
+# The main model's context window when the model directory cannot say: the
+# smallest window among the providers that serve the default model.
+context_window_fallback_tokens: 1000000
+
+# How many folds a provider's "context too long" may set off in one turn.
+# Past it the turn ends as too long instead of paying for another fold.
+overflow_folds_per_turn: 2
+
+# How many times one fold halves what it hands the consolidation model after
+# that call is turned away as too long (six halvings leave 1/64). Past it the
+# window is discarded the way a failed fold is.
+consolidation_shrink_attempts: 6
 
 # ── Tools ─────────────────────────────────────────────────
 # How much page text one web_search asks for, in tokens. The service refuses
@@ -128,14 +170,10 @@ web_search_timeout_ms: 10000
 # and the schema is built before any configuration is loaded.
 image_search_timeout_ms: 10000
 
-# The largest file understand_media will take, in bytes, for images, video and
-# audio alike. What this server will carry, not what the endpoint would accept:
-# video and audio are downloaded here, base64'd and held inside a JSON body, so
-# one call at this ceiling occupies several times it in memory and the upload
-# runs about 60 seconds on a home connection.
-# The endpoint's own ceilings are higher and both measured — 31,457,280 bytes
-# for an image it fetches itself, 100,000,000 bytes of request body for inline
-# media, which a file of N bytes reaches as ceil(N/3)*4.
+# Maximum bytes for each image and for all downloaded audio/video in one batch.
+# Audio/video share the download budget before base64 encoding; images retain
+# individual size checks and are passed to the model as URLs. Base64 encoding
+# and the JSON request body require additional memory.
 understand_media_max_bytes: 20000000
 
 # How long ONE DELIVERY of the media fetch may take, in milliseconds.
@@ -173,7 +211,8 @@ usage_lookup_delay_ms: 30000
 # 30, 60, 120, 240 and 480 s).
 usage_lookup_attempts: 6
 
-# How much the model may write about one piece of media, in tokens.
+# How much the model may write about one ordered media batch, in tokens.
+# All items share this output allowance.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.
 # A description that reaches this ceiling is passed on with the length finish

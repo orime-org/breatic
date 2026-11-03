@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import {
@@ -134,6 +134,8 @@ export function ViewportToolbar({
   return (
     <div
       data-testid='viewport-toolbar'
+      // Read by the canvas to keep what it brings into view clear of it.
+      data-canvas-chrome=''
       role='toolbar'
       aria-label={t('viewportToolbar.aria')}
       // Concealment slides, never unmounts (state survives the pick).

@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export type {
   UserEntity,
@@ -11,6 +13,9 @@ export type {
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,
+  ProjectAssetReferenceEntity,
+  ProjectRegisteredAsset,
+  ProjectAssetPage,
   ConversationAttachmentEntity,
   AssetKind,
   PaymentEntity,
@@ -126,6 +131,8 @@ export {
   canvasProposalSchema,
   feedsOf,
   layersOf,
+  layoutFeedsOf,
+  TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
   writtenMark,
@@ -211,6 +218,7 @@ export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
+  SignupInvitationPreview,
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";

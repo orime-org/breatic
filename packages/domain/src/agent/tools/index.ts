@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
@@ -8,11 +8,15 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
+import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
-import { recordTools } from "@domain/agent/tools/record-tools.js";
+import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
+  GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
@@ -23,15 +27,17 @@ import {
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
-import { imageSearch } from "@domain/agent/tools/image-search.js";
+import { imageSearch, makeImageSearchTool } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
+import { getGenerationTemplate } from "@domain/agent/tools/get-generation-template.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
-import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
@@ -44,7 +50,7 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
@@ -61,26 +67,29 @@ export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
 export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
-  // -- gets a fresh one per turn from here, and a tool that carries none
-  // hands back the same object every time.
+  // -- gets a fresh one per turn from here. Tools may also bind per-turn
+  // capabilities; context-independent tools can reuse one object.
   web_search: () => makeSearchTools().web_search,
-  understand_media: () => makeUnderstandMediaTool(),
+  [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
   [ASK_USER]: (context = NO_TOOL_CONTEXT) => makeAskUserTool(context),
+  [REQUEST_SPACE_CONTENT]: (context = NO_TOOL_CONTEXT) => makeRequestSpaceContentTool(context),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
-  search_images: () => imageSearch,
+  search_images: (context = NO_TOOL_CONTEXT) => makeImageSearchTool(context),
   // Read the catalog and hand back a value, so one object serves every turn.
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
   [GET_PRODUCT_GUIDE]: () => productGuide,
-  // Built per turn: its description quotes the template prompts in the
-  // reader's language.
-  [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
+  // Renders a template in the turn's language when called, so one object
+  // serves every turn.
+  [GET_GENERATION_TEMPLATE]: () => getGenerationTemplate,
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
   // Built per turn: it holds whether a save is running, so one turn saves one
@@ -88,11 +97,11 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
-  // Read the user's records through what the turn hands them in its context,
-  // and hold nothing between calls, so one object each serves every turn.
+  // Record reads use the turn's execution context. Three reuse stateless
+  // objects; node history binds this turn's picture capability and preparer.
   [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
-  [READ_NODE_HISTORY]: () => recordTools[READ_NODE_HISTORY],
+  [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
 } as const;
 
@@ -105,8 +114,9 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "search_images",
-  "understand_media",
+  UNDERSTAND_MEDIA,
   ASK_USER,
+  REQUEST_SPACE_CONTENT,
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
@@ -124,14 +134,20 @@ export const CANVAS_TOOLS: readonly string[] = [
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
   GET_PRODUCT_GUIDE,
+  GET_GENERATION_TEMPLATE,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
 ];
 
+export { makeRequestSpaceContentTool };
+
 export {
   ASK_USER,
+  AWAITS_READER,
+  REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
+  GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
@@ -139,6 +155,7 @@ export {
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";
 
 /**
@@ -163,7 +180,7 @@ const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   // The same key, which the service accepts on the image endpoint too
   // (measured 2026-09-11).
   search_images: "BRAVE_SEARCH_API_KEY",
-  understand_media: "OPENROUTER_API_KEY",
+  [UNDERSTAND_MEDIA]: "OPENROUTER_API_KEY",
   // The same key: the decisions endpoint sits on the same host and accepts it
   // (measured 2026-09-23).
   [JUDGE_LIKELIHOOD]: "OPENROUTER_API_KEY",
@@ -213,7 +230,6 @@ export {
   makeSearchTools,
   canvasCapabilities,
   generationModels,
-  makeProposeCanvasAction,
   makeProposeDocumentEdit,
 };
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The BlockNote schema this Space runs on.
@@ -109,11 +109,13 @@ describe('the document schema', () => {
     // selection, and Enter over one goes to `handleWholeBlockEnter` first
     // (`document-enter.ts`). That was checked for the divider (#124) and for
     // the media blocks (inner#1127). Another such block has to be checked the
-    // same way before it joins this list.
+    // same way before it joins this list. A layout block (the table) holds no
+    // caret of its own: Enter lands in a block inside it.
     const schema = buildDocumentSchema();
     const noContentCarriers = Object.entries(schema.blockSchema)
       .filter(([, config]) => 'quoted' in config.propSchema)
       .filter(([, config]) => config.content === 'none')
+      .filter(([, config]) => (config as { layoutOnly?: boolean }).layoutOnly !== true)
       .map(([type]) => type);
     expect(noContentCarriers.sort()).toEqual(['audio', 'divider', 'image', 'video']);
   });

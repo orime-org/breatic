@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -25,6 +25,7 @@ export { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, miniToolDeliv
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
 export * as schema from "@core/db/schema.js";
@@ -63,9 +64,23 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
+export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
+export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
+export type {
+  ProjectMediaBackfillCandidate,
+  ProjectMediaBackfillPosition,
+  ProjectMediaBackfillReason,
+  ProjectMediaBackfillRecord,
+  ProjectMediaBackfillRow,
+  ProjectMediaBackfillSource,
+  ProjectMediaBackfillSummary,
+  RunProjectMediaBackfillInput,
+} from "@core/asset/project-media-backfill.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
+export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -93,7 +108,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -133,6 +148,7 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
+export { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
@@ -173,6 +189,7 @@ export {
   sessionCookieName,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
+export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────
@@ -190,6 +207,9 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
+export * as assetRepo from "@core/asset/asset.repo.js";
+export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export {
   projectActivitiesRepo,
@@ -215,6 +235,10 @@ export {
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
+export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
+export type { MembershipReading } from "@core/auth/membership.repo.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
+export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
 // ceilings above are read here too, and a subscription whose paid period ran
@@ -309,3 +333,10 @@ export {
   getAccountAttribution,
   recordReportedConsent,
 } from "@core/analytics/account.repo.js";
+
+export * from "@core/maintenance/types.js";
+export * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
+export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceStorage } from "@core/maintenance/storage.js";
+export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
+
+export * from "@core/credit/credit-grant-contract.js";

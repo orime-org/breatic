@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Send one Generate press, once (inner#1490).
@@ -16,7 +16,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { canvasSessions, type CanvasSessionState } from '@web/stores/canvas-session';
-import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { getRunning, runOnce, spaceTaskIntent, useRunning } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
@@ -33,7 +33,7 @@ type GeneratePanelKind = Extract<
  * @returns The intent id.
  */
 function generateIntent(spaceId: string, nodeId: string): string {
-  return `generate:${spaceId}:${nodeId}`;
+  return spaceTaskIntent('generate', spaceId, nodeId);
 }
 
 /**
@@ -88,8 +88,8 @@ export function submitGeneration(opts: {
     },
     // Unconditional: a press that failed after the reader closed the panel
     // still explains itself.
-    onFailure: (err) => {
-      toast.error(executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
+    onFailure: async (err) => {
+      toast.error(await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
     },
   });
 }

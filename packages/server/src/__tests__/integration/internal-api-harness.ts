@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The back office's side of the internal API, for the suites that drive it
@@ -14,6 +14,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
@@ -51,13 +52,15 @@ export function initInternalCore(): void {
 export interface RunningApp {
   baseUrl: string;
   close: () => Promise<void>;
+  /** The listening server, for cases that watch its sockets. */
+  server: Server;
 }
 
 /**
  * Serve an app on a loopback port.
  * @param app - The app.
  * @param listenPort - The port; 0 (the default) takes a free one.
- * @returns Its base URL and a closer.
+ * @returns Its base URL, a closer and the server.
  */
 export async function serveOnLoopback(app: Hono, listenPort = 0): Promise<RunningApp> {
   const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
@@ -70,6 +73,7 @@ export async function serveOnLoopback(app: Hono, listenPort = 0): Promise<Runnin
       new Promise<void>((resolve) => {
         server.close(() => resolve());
       }),
+    server: server as Server,
   };
 }
 
@@ -197,6 +201,8 @@ export async function resetInternalRateLimit(): Promise<void> {
 export interface InternalSuite {
   sql: ReturnType<typeof postgres>;
   baseUrl: string;
+  /** The internal app's listening server. */
+  server: Server;
 }
 
 /**
@@ -220,6 +226,7 @@ export function useInternalApp(appName: string): InternalSuite {
     const { createInternalApp } = await import("@server/internal-app.js");
     running = await serveOnLoopback(createInternalApp());
     holder.baseUrl = running.baseUrl;
+    holder.server = running.server;
   });
   afterAll(async () => {
     await running?.close();

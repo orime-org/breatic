@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -2889,7 +2889,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     vi.mocked(hashFile).mockResolvedValueOnce('a'.repeat(64));
     vi.spyOn(assetsApi, 'requestUploadTicket').mockResolvedValue({
-      ticket: 'signed',
+      uploadId: 'upload-9',
+      token: 'token-9',
       storageKey,
       uploadUrl: 'https://ingest.example.com',
       kind: 'image',
@@ -3249,6 +3250,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const generate = screen.getByTestId('node-menu-generate');
     expect(generate).not.toHaveAttribute('data-disabled');
     expect(generate.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('offers extractable document types when opening a text node upload picker', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({
+      nodes: [{ id: 'text-upload', type: 'text', position: { x: 0, y: 0 }, data: { handling: false } }],
+    }));
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      renderSpace();
+      const node = document.querySelector('.react-flow__node');
+      if (node === null) throw new Error('Text node was not rendered');
+      fireEvent.contextMenu(node);
+      fireEvent.click(screen.getByTestId('node-menu-upload'));
+      expect(click).toHaveBeenCalledTimes(1);
+      const input = screen.getByTestId('canvas-upload-input') as HTMLInputElement;
+      const offered = input.accept.split(',');
+      expect(offered).not.toContain('.doc');
+      expect(offered).toEqual(expect.arrayContaining(['.txt', '.md', '.pdf', '.docx', '.xls', '.xlsx', 'text/*']));
+    } finally {
+      click.mockRestore();
+    }
   });
 
   // ---- Node-state gate: upload refused on a LOCKED node (bug 4) ----
@@ -4712,13 +4734,19 @@ describe('how the camera follows a landed proposal', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const follow = src.slice(
     src.indexOf('const placed = placeProposalAt'),
-    src.indexOf('const focus = whatToFocus'),
+    src.indexOf('reportProposalOutcome(\'placed\')'),
   );
 
   it('slides in a straight line over the proposal framing time', () => {
     expect(follow).toContain('frameProposal(placed.bounds');
     expect(follow).toContain('duration: PROPOSAL_FRAME_MS');
     expect(follow).toContain('interpolate: \'linear\'');
+  });
+
+  // With a panel opening on it, the landing is framed once with the panel
+  // (inner#1345); `viewportToShowPlaced` has its own tests.
+  it('frames a landing whose panel opens together with that panel, in one move', () => {
+    expect(follow).toContain('showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS)');
   });
 });
 
@@ -5409,5 +5437,30 @@ describe('the camera this Space is left on (#2165)', () => {
       '.react-flow__viewport',
     ) as HTMLElement;
     expect(viewport.style.transform).toBe('translate(-300px,-200px) scale(2)');
+  });
+});
+
+// The panels apply a template through the same placing the agent's proposals
+// use (inner#1345 6.5). The callback reads ReactFlow's measurements, which
+// jsdom cannot supply, so its wiring is pinned the way the proposal camera
+// above is; what it places is `placeProposalAt`'s and `useApplyTemplate`'s,
+// each with its own tests.
+describe('the placing callback the generate panels receive', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const start = src.indexOf('const placeTemplate');
+  const body = start < 0 ? '' : src.slice(start, src.indexOf('\n  );\n', start));
+
+  it('hands all three generate panel containers the same callback', () => {
+    for (const container of ['<GeneratePanelContainer', '<VideoGeneratePanelContainer', '<AudioGeneratePanelContainer']) {
+      const at = src.indexOf(container);
+      expect(src.slice(at, src.indexOf('/>', at))).toContain('placeTemplate={placeTemplate}');
+    }
+  });
+
+  it('places with the reused nodes and leaves the viewport and focus alone', () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toMatch(/placeProposalAt\([^,]+,[^,]+,[^,]+,[^)]+\)/);
+    expect(body).not.toContain('setViewport');
+    expect(body).not.toContain('whatToFocus');
   });
 });

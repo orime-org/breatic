@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What one consolidation leaves in the database (#148, N2 N6 N8).
@@ -120,7 +120,7 @@ describe("a consolidation that lands", () => {
     // two into the instructions a turn is sent with. Stopping at the context
     // object leaves that hop unguarded, and it is a hop this task edited.
     const { buildAgentConfig } = await import("@breatic/domain");
-    const { instructions } = buildAgentConfig({
+    const { instructions } = await buildAgentConfig({
       basePrompt: "system",
       memoryContext: context,
     });

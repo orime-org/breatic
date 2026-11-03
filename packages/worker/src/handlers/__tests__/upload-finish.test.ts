@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The upload-finish job runs the domain's finish and writes down how it ended
@@ -81,6 +81,21 @@ describe("the upload-finish job", () => {
       { key: DATA.storageKey, contentType: "video/mp4", source: null },
       "upload_purpose_type_refused",
     );
+  });
+
+  it("writes an info when the Worker refused the stored bytes' type", async () => {
+    h.finishUpload.mockResolvedValue({
+      outcome: { status: "voided" },
+      refused: { reason: "unsupported_type", cause: new Error("Asset upload failed (HTTP 415)") },
+    });
+
+    await runUploadFinish(job() as never);
+
+    expect(h.info).toHaveBeenCalledWith(
+      { key: DATA.storageKey, source: null },
+      "upload_stored_type_refused",
+    );
+    expect(h.error).not.toHaveBeenCalled();
   });
 
   it("writes an error when the row stands but its media read was not queued", async () => {

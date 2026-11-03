@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index cd526d281b64edf7c9196449c4d168bec9fce5ff..3d4d0fa8360d2611c276b9d8fbaf6bb5300ed7ab 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -94,7 +94,7 @@ const CollaborationCaret = _tiptap_core.Extension.create({
+ 				} };
+ 			}
+ 		}), (0, _tiptap_y_tiptap.yCursorPlugin)(provider.awareness, {
+-			cursorBuilder: (currentUser) => this.options.render(sanitizeUserColor(currentUser)),
++			cursorBuilder: (currentUser, ...rest) => this.options.render(sanitizeUserColor(currentUser), ...rest),
+ 			selectionBuilder: (currentUser) => this.options.selectionRender(sanitizeUserColor(currentUser))
+ 		})];
+ 	}
+diff --git a/dist/index.js b/dist/index.js
+index 10f3202faa91027dfc5a1d819ebe99b3dcddde20..a8d1955b07d9b8c99d33d9ec4bc7a55b525d9254 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -90,7 +90,7 @@ const CollaborationCaret = Extension.create({
+ 				} };
+ 			}
+ 		}), yCursorPlugin(provider.awareness, {
+-			cursorBuilder: (currentUser) => this.options.render(sanitizeUserColor(currentUser)),
++			cursorBuilder: (currentUser, ...rest) => this.options.render(sanitizeUserColor(currentUser), ...rest),
+ 			selectionBuilder: (currentUser) => this.options.selectionRender(sanitizeUserColor(currentUser))
+ 		})];
+ 	}

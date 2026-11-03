@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Canvas node **view** layer — the component-facing projection of the
@@ -88,6 +88,11 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * never opened a task for.
    */
   taskCounts?: NodeTaskCounts;
+  /**
+   * The generation template node this node was placed as (inner#1345); the
+   * generate panel recognises an applied template's nodes by it.
+   */
+  templateNode?: CanvasNodeFields['data']['templateNode'];
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -384,6 +389,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     soundVideo: data.soundVideo,
     moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
+    templateNode: data.templateNode,
   };
   switch (type) {
     case 'text':

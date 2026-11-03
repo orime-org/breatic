@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Product guide tool — how the reader operates our product (#260).
@@ -26,6 +26,8 @@ import {
   canConnect,
   canGenerate,
   t,
+  templateGoalsFor,
+  type GenerationNodeType,
   type NodeType,
 } from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
@@ -119,6 +121,31 @@ function miniToolLines(): string[] {
   ]);
 }
 
+/** Joins a list the way an English sentence does: "a, b, and c". */
+const ALL_OF = new Intl.ListFormat("en", { type: "conjunction" });
+
+/**
+ * One node type's template menu, read off the registry: each goal the menu
+ * lists and the templates it holds, by the names and lines the rows show.
+ * The registry's own copy check holds every one of these ids against every
+ * locale, as it does a mini-tool's name.
+ * @param type - The generate node type.
+ * @param node - How the guide names that node.
+ * @returns One sentence.
+ * @throws {never} Never.
+ */
+function templateMenuLine(type: GenerationNodeType, node: string): string {
+  const goals = templateGoalsFor(type);
+  if (goals.length === 0) return `${node} shows ${quoted(t("canvas.template.empty"))}.`;
+  const rows = goals.map(({ goal, templates }) => {
+    const named = templates.map(
+      (template) => `${quoted(t(`canvas.template.${template.id}.name`))} (${quoted(t(`canvas.template.${template.id}.description`))})`,
+    );
+    return `${quoted(t(`canvas.template.goal.${goal}`))}, holding ${ALL_OF.format(named)}`;
+  });
+  return `${node} lists ${rows.join("; then ")}.`;
+}
+
 /**
  * The guide, in the locale the current request pinned.
  *
@@ -170,11 +197,27 @@ export function renderProductGuide(): string {
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
       `${quoted(t("share.role.view"))} or ${quoted(t("share.role.edit"))} and press ` +
       `${quoted(t("share.inviteButton"))}; an address that is not one shows ${quoted(t("share.invalidEmail"))} ` +
-      "Only someone who already has an account can be invited, and they join only once they accept, from " +
-      "their bell or the email. Otherwise the invitation is refused with a message such as " +
-      `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
+      "Someone who already has an account receives an invitation in their bell and, when email is enabled, " +
+      "by email. An unregistered address receives an email linking to registration; after that same address " +
+      "is verified, its invitations appear in the new account's bell. Registration from the email pre-fills " +
+      "the address and leads to the invitation's decision page. Neither path adds a member until they accept. " +
+      "Below the form, " +
+      `${quoted(t("share.pendingTitle"))} lists outstanding invitations: a registered person's name and email ` +
+      "with a role and an awaiting-response badge, or an unregistered address with its role and " +
+      `${quoted(t("share.awaitingSignup"))}. Each row has ${quoted(t("share.revoke"))}, which withdraws ` +
+      "that invitation. Hover the recipient identity or focus it with Tab to read the full email address; " +
+      "Tab then reaches that row's withdraw button. The list disappears when no invitations remain. Email invitations expire after " +
+      "seven days; verification starts a fresh seven-day period for acceptance. Revocation or project " +
+      "archival prevents an outstanding email invitation from becoming an account invitation. " +
+      "With email disabled an unregistered address is refused with " +
+      `${quoted(t("server.project.email_not_registered_no_mail"))} A delivery failure says ` +
+      `${quoted(t("server.project.invite_mail_failed"))} Other refusals include ` +
+      `${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
-      "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
+      "allows: the plan of the studio's admin, so only their upgrade raises it). Next is a question-mark icon " +
+      `with two entries: ${quoted(t("chrome.help.manual"))}, which opens the user manual on the official website ` +
+      `in a new tab, and ${quoted(t("chrome.help.contact"))}, which shows the support email address and starts an ` +
+      "email to it; the Studio page has the same icon beside its bell. Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -198,8 +241,12 @@ export function renderProductGuide(): string {
       "open, even none. A space someone else makes, or one brought back, does not become a tab by itself: open " +
       `it from ${quoted(t("spaces.drawer.title"))} (below), which lists every space. Each tab shows a ` +
       "type icon and the " +
-      "space's name, and hovering a tab shows its full name. Click a tab to switch to it; switching back finds " +
-      "the space as it was left: the same view, selection, open panels, unfinished text and caret. A canvas " +
+      "space's name, and hovering a tab shows its full name. A small spinning mark at the far left means this " +
+      "browser currently knows of ongoing work in that space, including collaborator tasks reflected in its " +
+      `current state; its tooltip also shows ${quoted(t("canvas.task.status.running"))}. ` +
+      "The mark keeps updating while another space is shown. Click a tab to switch to it; switching back finds " +
+      "a Canvas or Document as it was left: the same view, selection, open panels, unfinished text and caret. A 3D Space " +
+      "retains its view, selection and personal editing history across switches; switching away closes its floating panels. A canvas " +
       "tab closed and opened again starts at the view it was closed on. Double-click the name " +
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
       `small padlock after its name, and trying to rename it shows ${quoted(t("spaces.rename.locked"))} ` +
@@ -210,9 +257,12 @@ export function renderProductGuide(): string {
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
-      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))} or ` +
-      `${quoted(t("spaces.kind.document"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens; ` +
-      `a third, greyed card is marked ${quoted(t("spaces.create.notAvailable"))}), type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
+      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
+      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
+      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
+      `The ${quoted(t("spaces.kind.threeD"))} and ${quoted(t("spaces.kind.timeline"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
+      `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
       `${quoted(t("spaces.create.cancel"))}. While it is made the page shows ` +
@@ -324,7 +374,7 @@ export function renderProductGuide(): string {
       "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
       "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
-      "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
+      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
@@ -336,6 +386,7 @@ export function renderProductGuide(): string {
       `when it used sources, a button such as ${quoted(t("chat.sources.count", { count: 3 }))}, which lists ` +
       "them. A reply that did not end normally says so on its last line, with one of these:",
     `  - ${quoted(t("chat.error.turnFailed"))}`,
+    `  - ${quoted(t("chat.error.turnTooLong"))} (what the turn had to handle at once, such as its attachments or what its steps read, was too much; sending it again changes nothing, a narrower request in the same conversation can work)`,
     `  - ${quoted(t("chat.message.truncated"))}`,
     `  - ${quoted(t("chat.message.interrupted"))}`,
     `  - ${quoted(t("chat.message.empty"))}`,
@@ -357,6 +408,22 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
       `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
       `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
+    "A reply can also end with a card asking to look at Spaces other than the open one, headed " +
+      `${quoted(t("chat.spaceRequest.title"))}, with why the assistant asks and one line per Space: its icon and ` +
+      "name, and the part asked for when it asks for only part: a range of a Document's blocks, such as " +
+      `${quoted(t("chat.spaceRequest.partBlocks", { from: 3, to: 7 }))} or one running from a block to the end, ` +
+      `or some of a Canvas's nodes, such as ${quoted(t("chat.spaceRequest.partNodes", { count: 3 }))}; a Space ` +
+      "no longer in the Project reads " +
+      `${quoted(t("chat.spaceRequest.state.gone"))}. Two buttons sit under it: ` +
+      `${quoted(t("chat.spaceRequest.decline"))} on the left and ${quoted(t("chat.spaceRequest.allow"))} on the ` +
+      "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
+      "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
+      `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
+      `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
+      `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
+      `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
@@ -384,8 +451,8 @@ export function renderProductGuide(): string {
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
     "- Drop files onto the canvas, or paste one. Pictures, videos and sounds become nodes of their kind; one in " +
-      "a format that is not supported, or over the size limit, makes no node, and a message names it. A file " +
-      "whose contents turn out to be another format than its name says is refused after its node appears, and " +
+      "a format that is not supported, or over the size limit, makes no node, and a message names it. A media file " +
+      "whose stored bytes turn out to be an unsupported format is refused after its node appears, and " +
       "the node shows the failure. Any other file becomes a text node holding its text: plain text, PDF, Word " +
       "(.docx) and Excel (.xlsx, .xls) files work; other kinds, older .doc files included, show an error in the " +
       "node. An empty file makes no node, and a message names it. Several files at once arrive four to a row " +
@@ -393,7 +460,7 @@ export function renderProductGuide(): string {
       "alone. Files dropped on top of a node, or pasted while a node is selected, still make new nodes: to fill " +
       "a node that exists, use double-click or its right-click menu (next section).",
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
-      "that lists pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
+      "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
@@ -562,9 +629,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.annotation.edited"))}. A locked note shows no three dots. ` +
       "Deleting someone else's note from the canvas, unless you own the project, shows " +
       `${quoted(t("canvas.gate.notYours"))}`,
-    "Below a thin line the left menu has three more icons, " +
-      `${quoted(t("menu.item.collection"))}, ${quoted(t("menu.item.help"))} and ` +
-      `${quoted(t("menu.item.feedback"))}, which do nothing yet.`,
+    `Below a thin line the left menu has a keyboard icon, ${quoted(t("menu.item.shortcuts"))}, which opens a ` +
+      "list of the canvas's keyboard shortcuts and pointer gestures in groups: editing, grouping, selecting and " +
+      "moving, the view, drawing tools, and leaving a mode. Each entry names an action and its keys, two entries " +
+      "to a line, with the ⌘ and ⇧ symbols on a Mac and Ctrl+ and Shift+ elsewhere. A viewer can open it too and " +
+      "sees only the entries that work for them.",
     "",
     "## Moving around the canvas",
     "At the bottom right of a canvas is a bar, left to right: " +
@@ -610,16 +679,31 @@ export function renderProductGuide(): string {
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
     `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
-      `opens a list under that heading of the templates for this kind of node, each a name with a line under ` +
-      `it. A picture node lists ${quoted(t("canvas.template.storyboard-grid-25.name"))} ` +
-      `(${quoted(t("canvas.template.storyboard-grid-25.description"))}) and ` +
-      `${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}); ` +
-      `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
+      `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
+      `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first, and " +
-      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its 📎 marks ask the reader to @ ` +
-      "the pictures it needs by hand (see below), and they can change anything after.",
+      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it. A template may also place " +
+      "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
+      "says to generate them first. When a template feeds what it needs into those nodes too, a picture already " +
+      "connected to the node is connected to them as well. A template that brings " +
+      "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
+      "after it generates also places a text node listing them. Picking it " +
+      "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
+      "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
+      "sight, zooming out only as far as that takes. The new nodes go beside the node even where other nodes " +
+      "already are, so they may cover them. Inside a group, the new nodes join the group; outside one, they join " +
+      "the unlocked group the template's nodes from an earlier pick are in, or else two or more " +
+      "new nodes are put in a new group named after the template, so they can be dragged aside together. When the " +
+      "group they join holds nodes from an earlier pick, they line up on those nodes, so a node put back returns to " +
+      "its place. On a " +
+      `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
+      `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
+      `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
+      `${quoted(t("canvas.generatePanel.editProposalMarks"))} appears. They can change anything after.`,
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -1100,9 +1184,11 @@ export function renderProductGuide(): string {
     "## Proposal cards",
     "A proposal you make appears in this chat as a card: a summary of a sentence or two; the nodes as chips, one " +
       "column per step with arrows between steps in the order they run (nodes of the same step stacked, empty " +
-      "nodes drawn dashed), with a | between runs that do not feed each other; any finished text in full under " +
-      "its node's name; when every generating node uses the same model and you gave a model note, a line with " +
-      "that model's name and the note; the list of what is left for the reader; and a " +
+      "nodes drawn dashed), with a | between runs that do not feed each other (a template's text node listing " +
+      "its steps is stacked in the step before the node it explains); any finished text in full under its " +
+      "node's name; when every generating node uses the same model and you gave a model note, a line with " +
+      "that model's name and the note; the list of what is left for the reader; a template's steps in full " +
+      "under that text node's name; and a " +
       `${quoted(t("chat.proposal.use"))} button. The card shows no credits and no run time; the credit ` +
       "estimate is in each node's generation panel.",
     "The list of what is left is headed by node names when the proposal places more than one node; nodes with " +
@@ -1117,7 +1203,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.proposal.failed"))} if it fails, with nothing placed. A proposal kept from before its shape changed shows ` +
       `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
-      "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
+      "With one generating node its panel opens by itself, and the view instead moves once to show the nodes, " +
+      "their names and the panel clear of the left menu, the toolbar at the bottom right and the minimap, " +
+      "zooming out only as far as that takes; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
       "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
@@ -1136,9 +1224,9 @@ export function renderProductGuide(): string {
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
-      "only when one does. A template's prompt carries 📎 and ✏️ marks; a proposal's prompt or shot carries ✏️ " +
-      "marks and notes, never a 📎 mark. A 📎 mark in square brackets " +
-      "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
+      "only when one does. A template applied from the panel and a proposal both arrive this way: their prompt " +
+      "or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d. A 📎 mark in " +
+      "square brackets, where a prompt carries one, asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
       `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
@@ -1150,7 +1238,8 @@ export function renderProductGuide(): string {
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
-      "or by the reader where a template's 📎 mark asks. A node wired in that is not @'d is not used.",
+      "by a template applied from the panel likewise, or by the reader for a node they wire in themselves. A node " +
+      "wired in that is not @'d is not used.",
     "- Into one of the mode's source slots: it is not @'d. A slot a proposal filled from a node holding material " +
       "arrives holding it. For an empty node an orange note says which slot to pick it into, and a required slot " +
       "left empty stops the run. Once that node holds its file or its generated result, the reader opens the panel " +
@@ -1162,19 +1251,33 @@ export function renderProductGuide(): string {
     "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
       "followed after a · by the nearest heading at or above the passage, or " +
-      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. Its row of buttons ` +
+      `starts with ${quoted(t("chat.documentProposal.locate"))}, followed by the landing buttons; a button that ` +
+      "does not fit moves whole onto a second line when a language's words do not fit side by side. A comment card " +
       "quotes the words the comment hangs on and shows the comment, with one " +
-      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
-      "taken out struck through in red and the new words in green, and two buttons: " +
+      `landing button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two landing buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
-      `Markdown cannot write, such as colours, an alignment, underlining, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `Markdown cannot write, such as colours, an alignment, underlining, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
       `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+    `Pressing ${quoted(t("chat.documentProposal.locate"))} opens the document, or switches to its tab, and ` +
+      "scrolls to and outlines for a moment what the proposal points at, writing nothing: a comment's quoted " +
+      "words, with a wide table scrolled sideways to them; the passage a rewrite replaces; the passage an insert " +
+      "goes after, or the last passage for an insert at the end. It works on a document the reader can only view " +
+      "too. The card keeps its buttons, so the reader can locate again or press a landing button next; the " +
+      "landing buttons wait while it spins. A proposal that already landed, as one may after a reload, is shown " +
+      `where it landed instead, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the card then ` +
+      "shows it landed. A passage that changed since the proposal is still shown, with the " +
+      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +
+      `when locating fails the toast says ${quoted(t("chat.documentProposal.failedLocate"))} Switching to another ` +
+      "Space, or closing the document's tab, while it still waits for the document ends the wait without a word; " +
+      `the same holds for ${quoted(t("chat.documentProposal.view"))}.`,
+    "Pressing a landing button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
       "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
       "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
       "meanwhile. A rewrite or an insert is one step " +
@@ -1183,7 +1286,11 @@ export function renderProductGuide(): string {
       "like any other comment. The card then shows " +
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
-      `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again. Viewing an Agent comment selects ` +
+      `${quoted(t("spaces.document.comment.filterAll"))} so its card is visible even after it has been resolved; ` +
+      "a resolved comment's words remain ordinary text. Viewing it again brings the card and its table cell into view. " +
+      "The reader's later choice of comment, filter or closing the panel stays in force when switching Spaces. " +
+      "A card reads whether it landed " +
       "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
       "to its buttons once the reader undoes it. With the document closed, a card pressed in this visit keeps " +
       "showing how its press ended; after a reload it shows its buttons, and pressing one opens the document and " +
@@ -1200,6 +1307,93 @@ export function renderProductGuide(): string {
       "rewrite or an insert lands only when its address is in our storage; outside links are left out, and " +
       "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
+    "",
+    "## Timeline spaces",
+    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
+      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+      `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
+      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
+      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
+      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+    `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
+      `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
+      `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
+      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A permission change requires another confirmation after editing is available. ` +
+      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
+      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
+    `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
+      `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
+    "## 3D spaces",
+    `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
+      "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
+      "This interface arranges built-in objects and existing scene content.",
+    `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
+      `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
+      `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
+      `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
+      `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
+      `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
+      `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
+      `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
+      `The keyboard icon at the bottom of the left rail opens ${quoted(t("spaces.threeD.controls"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+    `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
+      "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
+      `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
+      "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
+      `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
+      "clicking that map navigates your personal viewing camera.",
+    `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
+      "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
+      "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",
+    `Selecting an object shows a floating menu at the bottom centre with ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} and ` +
+      `${quoted(t("spaces.threeD.scale"))}: select a mode and drag its scene handles. A multi-selection transforms around its centre. ` +
+      `${quoted(t("spaces.threeD.focus"))} frames the selection, ${quoted(t("spaces.threeD.duplicate"))} makes independent selected copies, ` +
+      `and ${quoted(t("spaces.threeD.delete"))} removes the selection. The viewport's mouse controls orbit, pan and zoom your own view; ` +
+      "they do not move another reader's camera. Your last view is kept for this account and scene on this browser. " +
+      `If it cannot be stored, ${quoted(t("spaces.threeD.viewFailed"))} appears.`,
+    `Selecting objects automatically opens the right ${quoted(t("spaces.threeD.properties"))} panel; changing the selection updates it. ` +
+      "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
+      `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
+      `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
+      "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
+      "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
+      "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
+      "Names follow Canvas renaming: trim surrounding whitespace, leave the existing name for a blank draft, and keep composition-confirming or repeated keys in the input. " +
+      `Escape cancels its draft. A rejected value stays in the box, which shows ${quoted(t("spaces.threeD.valueFailed"))} Correct it or cancel. ` +
+      `For several objects the panel shows a selection count, ${quoted(t("spaces.threeD.mixed"))} where their values differ, and ` +
+      `${quoted(t("spaces.threeD.multiTransform"))} Use the viewport handles to change them together.`,
+    `The padlock button in the properties header, just left of its X, shows an open or closed lock using the ordinary button colours. ` +
+      `Its tooltip is ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}. ` +
+      `${quoted(t("spaces.threeD.lock"))} protects selected objects from movement, renaming and deletion; ` +
+      `${quoted(t("spaces.threeD.unlock"))} is available to a reader with editing access, even if another reader set the lock and left. ` +
+      "For a multi-selection, it unlocks all selected objects if all are locked, and otherwise locks the selection. " +
+      "If any selected object is locked, changes to the whole selection are disabled. Copies start unlocked. " +
+      "Readers can edit the same unlocked object concurrently; selecting or dragging it does not reserve it. " +
+      `The toolbar's ${quoted(t("spaces.threeD.undo"))} and ${quoted(t("spaces.threeD.redo"))} act on your own editing history, including through a lock. ` +
+      "Other readers' selected objects have coloured outlines, with each reader's name and selected-object count in the properties panel. " +
+      `If an action cannot apply, an error toast says ${quoted(t("spaces.threeD.commandFailed"))}`,
+    "With the Space holding keyboard focus and no text box being edited, Cmd/Ctrl+D duplicates, Delete or Backspace deletes, " +
+      "Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z redoes, and Ctrl+Y also redoes on Windows. F focuses the selection. " +
+      "Escape in a property box cancels its draft; outside a box it cancels an active handle gesture first, then closes an open panel, " +
+      "and clears the selection when neither owns the key. Losing focus, hiding the scene " +
+      "or losing editing access cancels an unfinished handle gesture. A Viewer can browse and select, but cannot change shared objects.",
+    `A refused scene connection says ${quoted(t("spaces.threeD.refused"))} ` +
+      "The scene uses the same live collaborative document while its tab stays open, including across Space switches and reconnects. " +
+      "Switching away stops its rendering and cancels unfinished gestures; closing its tab discards personal selection and undo history.",
+    `During loading the viewport says ${quoted(t("spaces.threeD.loading"))}. A scene load failure says ` +
+      `${quoted(t("spaces.threeD.loadFailed"))} and offers ${quoted(t("spaces.threeD.retry"))}; ${quoted(t("spaces.threeD.reload"))} reloads the page when offered. ` +
+      `${quoted(t("spaces.threeD.modelFailed"))} has its own retry button for model loading. Unreadable objects appear as rows naming their object id, ` +
+      "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
+      `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
+      `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
@@ -1230,9 +1424,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
-      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
-      "the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
+      "keeping their headings, lists and other blocks, with pictures from other sites left out; pasted with the " +
+      "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
@@ -1290,7 +1484,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      "in its first cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
@@ -1321,9 +1516,17 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
-      "dots. Videos and audio play in place. Someone who can only view the document " +
-      "sees and plays them without the icons.",
-    "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
+      "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
+      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
+      "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
+      "an editable changed caption; Escape cancels it to the latest shared caption.",
+    "- A table shows a table icon left of its first row instead of the six dots, whenever the pointer is " +
+      "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
+      "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
+      "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
@@ -1350,19 +1553,32 @@ export function renderProductGuide(): string {
       "a row. While one of these " +
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
-      "grows. A table wider than the page scrolls sideways inside its own frame.",
-    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+      "grows. A table wider than the page scrolls sideways inside its own frame. When two people add a row and a " +
+      "column to the same table at the same moment, a row can come out a cell short: the gap shows as an empty " +
+      "cell that takes no typing, and Tab or any command from the table's menus fills it in first. A selection " +
+      "that runs from a " +
+      "cell out of the table, by Shift and an arrow or by dragging past the table's edge, takes the whole " +
+      "table: every cell shows as selected, and typing or deleting takes the table away with the rest of the " +
+      "selection.",
+    "- Hovering a cell also shows a small box with a down arrow at that cell's top right corner; the handles " +
+      "and this box go when the pointer leaves the table. The box opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
-      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
-      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
-      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
-      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
-      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
+      "that cell is tinted the way selected cells are. A cell holds blocks " +
+      "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
+      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
+      "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
+      "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
+      "Shift+Tab moves back. Backspace at the start of a cell and Delete at its end stay in the cell. Dragging " +
+      "across cells selects them. With words selected inside a cell, or with cells selected, the text bar's block " +
+      "type button changes the blocks in that cell or in every selected cell, and its colour menu has the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
       `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble with a plus that merges them into one. With every cell of an empty table selected, Backspace or " +
-      "Delete removes the table.",
+      "speech bubble with a plus that merges them into one, the blocks of every cell that held something one after " +
+      "another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
+      "removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
@@ -1384,8 +1600,9 @@ export function renderProductGuide(): string {
       "characters. If the words are deleted before it is posted, the box turns " +
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
-      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
-      `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
+      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen when opening from the document menu), ` +
+      `${quoted(t("spaces.document.comment.filterAll"))}, each followed by a small grey count of the cards ` +
+      "it holds when it holds any, and an X that closes it; closing it drops anything not " +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
@@ -1427,10 +1644,16 @@ export function renderProductGuide(): string {
       "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
       "space open counts, the reader's own included. Closing other tabs on it and reconnecting, which reloads " +
       "the page, can free one.",
-    "- Going elsewhere in the site while an upload, or a file being read into a text node, is unfinished asks " +
-      `${quoted(t("project.leaveGuard.title"))} (${quoted(t("project.leaveGuard.description"))}) with ` +
-      `${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. Closing or ` +
-      "reloading the browser tab, including by the reload buttons above, shows the browser's own prompt instead.",
+    "- Going elsewhere in the site while local Canvas or Document edits have not synced, or an upload or file read is unfinished, asks " +
+      `${quoted(t("project.leaveGuard.title"))} with ${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. ` +
+      "This covers content in background Space tabs of the current Project too. " +
+      `The notice says ${quoted(t("project.leaveGuard.unsyncedDescription"))} for unsynced edits, ` +
+      `${quoted(t("project.leaveGuard.description"))} for ongoing operations, or ${quoted(t("project.leaveGuard.combinedDescription"))} for both. ` +
+      `The connection banner's refresh button asks ${quoted(t("project.refreshGuard.title"))} with ${quoted(t("common.cancel"))} and ` +
+      `${quoted(t("project.refreshGuard.refresh"))}. Cancelling keeps the current edits. When work finishes while the choice is open, ` +
+      `it says ${quoted(t("project.leaveGuard.completeTitle"))}: ${quoted(t("project.leaveGuard.completeDescription"))} and waits for a choice. ` +
+      `A failed refresh reports ${quoted(t("project.refreshGuard.failed"))} The browser's own refresh or tab close uses its native confirmation ` +
+      "when local work remains; a connection drop by itself needs no confirmation.",
     `- A document shows ${quoted(t("spaces.document.loading"))} until it arrives; one that cannot be opened ` +
       `shows ${quoted(t("spaces.document.unavailable.text"))} with ` +
       `${quoted(t("spaces.document.unavailable.action"))}; a page older than the document editor shows ` +
@@ -1456,7 +1679,8 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "How the reader operates our product: the top bar, the space tabs and the spaces list, this chat panel, and " +
     "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
-    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; writing in a " +
+    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; 3D Space " +
+    "objects, transforms, locks, personal view and collaboration; writing in a " +
     "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here: you cannot see " +
     "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the reader's screen shows; describe an icon-only control the way it describes it.",

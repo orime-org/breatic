@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tab and Shift-Tab, for every selection rather than for a caret alone.
@@ -116,14 +116,9 @@ function topmostBlockPos(view: EditorView): number | null {
   );
   if (range !== null) return range.start;
 
-  let first: number | null = null;
-  view.state.doc.descendants((node: PMNode, pos: number) => {
-    if (first !== null) return false;
-    if (node.type.name !== 'blockContainer') return true;
-    first = pos;
-    return false;
-  });
-  return first;
+  // The body's first block, a table too (inner#1619), stands right inside
+  // its block group.
+  return (view.state.doc.firstChild?.childCount ?? 0) > 0 ? 1 : null;
 }
 
 /**

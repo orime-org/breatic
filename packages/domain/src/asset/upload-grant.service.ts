@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Minting the key an upload lands on, and the ledger row it is checked against
@@ -24,9 +24,8 @@
  */
 
 import { currentConsent, storageKey } from "@breatic/core";
-import type { StudioAssetEntity } from "@breatic/shared";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { issueGrant } from "@domain/asset/upload-grant.repo.js";
+import { issueGrant, type GrantAssetSource } from "@domain/asset/upload-grant.repo.js";
 
 /** Where an upload lands: a project, or a studio that has no project in it. */
 export type UploadTarget =
@@ -79,7 +78,7 @@ export async function issueUploadGrant(params: UploadTarget & {
     toolName?: string | null;
     derived?: boolean | null;
     filename?: string | null;
-    assetSource?: StudioAssetEntity["source"] | null;
+    assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
   };
 }): Promise<{ key: string; studioId: string }> {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A committed charge tells the project's readers, and failing to tell them
@@ -73,7 +73,7 @@ describe("chargeForGeneration and the credits signal", () => {
 
     expect(h.publish).toHaveBeenCalledWith(PROJECT);
     expect(h.order).toEqual(["commit", "publish"]);
-    expect(outcome).toMatchObject({ billed: true, charged: 10 });
+    expect(outcome).toMatchObject({ billed: true, charged: "10.000000" });
     expect(outcome.signalFailure).toBeUndefined();
   });
 
@@ -81,13 +81,13 @@ describe("chargeForGeneration and the credits signal", () => {
     const down = new Error("redis down");
     h.publish.mockRejectedValueOnce(down);
 
-    await expect(chargeForGeneration(INPUT)).resolves.toMatchObject({ billed: true, charged: 10, signalFailure: down });
+    await expect(chargeForGeneration(INPUT)).resolves.toMatchObject({ billed: true, charged: "10.000000", signalFailure: down });
   });
 
   it("keeps the bill lock when only the publish failed, so a retry under the key charges nothing", async () => {
     h.publish.mockRejectedValueOnce(new Error("redis down"));
 
-    await expect(chargeOnceForGeneration("turn:c1:1", INPUT)).resolves.toMatchObject({ charged: 10 });
+    await expect(chargeOnceForGeneration("turn:c1:1", INPUT)).resolves.toMatchObject({ charged: "10.000000" });
     expect(h.del).not.toHaveBeenCalled();
   });
 });

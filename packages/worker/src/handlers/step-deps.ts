@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The storage and helpers a task's upstream steps run against in production
@@ -57,7 +57,7 @@ export function stepDepsFor(studioId: string | null, deadlineAt: number): StepDe
       const cfg = getUnderstandConfig();
       let costUsd = 0;
       const answer = await withUnderstandSlot(() => understandMediaAt({
-        url,
+        items: [{ url }],
         question: DESCRIBE_QUESTION,
         model: UNDERSTAND_PINS.model,
         backend: UNDERSTAND_PINS.backend,

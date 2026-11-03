@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "voice-samples": "tsx src/voice-samples.ts"
+    "voice-samples": "tsx src/voice-samples.ts",
+    "template-resources": "tsx src/template-resources.ts"
   },
   "dependencies": {
     "@breatic/core": "workspace:*",

@@ -72,8 +72,8 @@ receive security fixes.
   integrated with Breatic — please report to the respective provider
 - **User-deployed self-hosted instances** — report to the operator of
   that instance
-- **User-generated content** produced through Breatic — governed by
-  [LICENSE Clause 5](./LICENSE)
+- **User-generated content** produced through Breatic — see
+  [Generated content](./README.md#generated-content)
 - **Social engineering** of Breatic contributors, maintainers, or
   team members
 - **Physical attacks** on Orime, Inc. or any infrastructure
@@ -140,22 +140,6 @@ previously-unknown vulnerabilities are:
 We **do not currently run a paid bug bounty program**. This may change
 as Breatic grows; until then, recognition is our primary way of saying
 thank you.
-
----
-
-## Our Security Track Record
-
-Breatic has undergone multiple rounds of **independent security audits**
-as part of our pre-launch engineering discipline. Identified issues
-are tracked in our **private security backlog** —
-**150+ findings as of April 2026**, with the count growing as new
-reviews and reports come in. We believe maintaining a private backlog
-for unfixed vulnerabilities is responsible disclosure practice; once
-issues are remediated, they appear in the public release notes.
-
-To request access to the private backlog (vetted security researchers
-or downstream integrators), email security@breatic.ai with your
-GitHub handle and the context of your interest.
 
 ---
 

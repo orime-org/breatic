@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * inner#1350 A8 (design §5.7): what a pulled selection shows is what it
@@ -18,6 +18,7 @@ import { CellSelection, tableEditingKey } from '@tiptap/pm/tables';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -44,7 +45,7 @@ function open(): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'above' },
-    { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] } },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     { type: 'paragraph', content: 'below' },
   ] as never);
   return editor;
@@ -77,12 +78,28 @@ function select(editor: Editor, anchor: number, head: number): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
 }
 
+/**
+ * The words of the table's last cell.
+ * @param editor - The editor.
+ * @returns The words.
+ */
+function lastCellWords(editor: Editor): string {
+  let words = '';
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') words = node.textContent;
+    return true;
+  });
+  return words;
+}
+
 describe('prosemirror-tables narrowing a text selection (patched)', () => {
-  it('leaves a selection from above the table to the start of a cell as it is', () => {
+  it('leaves a selection from above the table to the start of a cell unnarrowed: it takes the whole table (inner#1619 T14)', () => {
     const editor = open();
     select(editor, textPos(editor, 'above') + 2, textPos(editor, 'b1'));
     const { selection } = editor.prosemirrorState;
-    expect([selection.from, selection.to]).toEqual([textPos(editor, 'above') + 2, textPos(editor, 'b1')]);
+    expect(selection.from).toBe(textPos(editor, 'above') + 2);
+    expect(selection.$head.parent.textContent).toBe(lastCellWords(editor));
+    expect(selection.$head.parentOffset).toBe(selection.$head.parent.content.size);
   });
 
   it('still narrows one from a cell to the start of another cell of the same table', () => {

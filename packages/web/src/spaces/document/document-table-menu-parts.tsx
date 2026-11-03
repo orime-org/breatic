@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a table's row handle, column handle and cell button share: the gate
- * that steps them aside for a selection, the two submenus that write a cell
- * attribute, and the rule that a menu whose cell is gone closes.
+ * that steps them aside for a selection, the two submenus that align the
+ * blocks in the cells and fill the cells, and the rule that a menu whose cell is gone closes.
  */
 
 import { Palette, TextAlignStart } from 'lucide-react';
@@ -30,6 +30,8 @@ import {
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
+  alignCellsAt,
+  cellsAlignFace,
   setCellsAttr,
   sharedCellAttr,
   type CellScope,
@@ -133,7 +135,7 @@ export function CellAttributeMenus({
         if (pos === null) return { align: undefined, fill: undefined };
         const fill = sharedCellAttr(state.doc, pos, scope, 'backgroundColor');
         return {
-          align: sharedCellAttr(state.doc, pos, scope, 'textAlignment'),
+          align: cellsAlignFace(state.doc, pos, scope),
           fill: fill === DEFAULT_FILL ? NO_COLOUR : (fill as string | undefined),
         };
       },
@@ -177,7 +179,7 @@ export function CellAttributeMenus({
                 data-ticked={ticks ? 'true' : undefined}
                 onSelect={() => {
                   onTargetCell(editor, (pos) => {
-                    setCellsAttr(editor, pos, scope, 'textAlignment', item.id);
+                    alignCellsAt(editor, pos, scope, item.id);
                   });
                 }}
               >

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The body scrolls while something is dragged near or past its edge, and the
@@ -299,7 +299,13 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   // A column is shorter than 512 on both sides: it is shown at its own size.
   expect(ours.scale).toBe('scale(1)');
   expect(Math.max(ours.width, ours.height)).toBeLessThan(512);
-  expect(ours.lift).toBeCloseTo(0, 0);
+  // Its first block stands where it stands in the cell: under the cell's own
+  // top line and padding, with no space of its own above it.
+  const inset = await cell.evaluate((td) => {
+    const style = getComputedStyle(td);
+    return parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth);
+  });
+  expect(ours.lift).toBeCloseTo(inset, 0);
 });
 
 test('A4 and A7: a column released in the gutter past the table frame lands at the nearest end', async () => {

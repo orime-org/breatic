@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A document proposal landing (inner#1509): checked against the document as
@@ -23,7 +23,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal, sourceAt, sourceSpot } from '@web/spaces/document/document-proposal-landing';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -141,7 +141,7 @@ describe('a comment', () => {
     const handle = await open('The hero arrives at the gate.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
 
-    const result = await landProposal(handle, proposal, 'comment', true);
+    const result = await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     const [thread] = threads(handle);
     expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
@@ -154,7 +154,7 @@ describe('a comment', () => {
     const handle = await open('| Shot | Action |\n| --- | --- |\n| Close | She turns |');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'Close\nShe turns', body: 'Why close?' });
 
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(marked(handle).map((m) => m.text)).toEqual(['Close', 'She turns']);
   });
@@ -163,7 +163,7 @@ describe('a comment', () => {
     const handle = await open('Morning light falls on the table.');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Morning **light**.\n\n## Then' });
 
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     const body = JSON.stringify(threads(handle)[0]?.comments[0]?.body);
     expect(body).toContain('"Morning light."');
@@ -177,7 +177,7 @@ describe('a rewrite put on as a comment (review round 4)', () => {
   it('carries only the parts of the rewrite that hold words', async () => {
     const handle = await open('Morning light falls on the table.');
 
-    await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Light on the table.\n\n---' }), 'comment', true);
+    await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Light on the table.\n\n---' }), 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     const body = threads(handle)[0]?.comments[0]?.body as Array<{ content: Array<{ text: string }> }>;
     expect(body.map((p) => p.content.map((c) => c.text).join(''))).toEqual(['Light on the table.']);
@@ -189,7 +189,7 @@ describe('a rewrite', () => {
     const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Light on the table.\n\nThe coffee is cold.' });
 
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
     expect(blocks(handle).map((b) => b.text)).toEqual(['Before.', 'Light on the table.', 'The coffee is cold.', 'After.']);
 
     handle.undoManager.undo();
@@ -204,7 +204,7 @@ describe('one undo step', () => {
     const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText(' More', 3 + 'Typed here.'.length));
 
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
     handle.undoManager.undo();
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['Typed here. More', 'Target.']);
@@ -216,9 +216,9 @@ describe('an insert', () => {
     const handle = await open('Scene 3.\n\nAfter.');
     const proposal = proposalOn(handle, 0, { body: '| Shot | Size |\n|---|---|\n| 1 | Wide |' });
 
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'Shot\nSize\n1\nWide', 'After.']);
-    expect((handle.editor.document[1] as { type?: string } | undefined)?.type).toBe('table');
+    expect((handle.editor.document[1] as { type?: string } | undefined)?.type).toBe('docTable');
 
     handle.undoManager.undo();
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'After.']);
@@ -227,7 +227,7 @@ describe('an insert', () => {
   it('goes at the end when it names no block', async () => {
     const handle = await open('One.\n\nTwo.');
 
-    await landProposal(handle, proposalOn(handle, null, { body: '## Scene 4' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, null, { body: '## Scene 4' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.', 'Scene 4']);
   });
@@ -237,7 +237,7 @@ describe('what is checked before anything is written', () => {
   it('writes nothing on a connection that is read only', async () => {
     const handle = await open('One.');
 
-    expect(await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' }), 'write', false)).toEqual({ outcome: 'readOnly' });
+    expect(await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' }), 'write', () => ({ available: true, writeAccess: 'denied' }))).toEqual({ outcome: 'readOnly' });
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
   });
 
@@ -246,14 +246,14 @@ describe('what is checked before anything is written', () => {
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Three.' });
     handle.editor.removeBlocks([proposal.blockId!]);
 
-    expect(await landProposal(handle, proposal, 'write', true)).toEqual({ outcome: 'blockGone' });
+    expect(await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'blockGone' });
   });
 
   it('says the block changed when its words are not the ones proposed on', async () => {
     const handle = await open('One.');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.', original: 'Something else.' });
 
-    expect(await landProposal(handle, proposal, 'write', true)).toEqual({ outcome: 'changed' });
+    expect(await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'changed' });
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
   });
 
@@ -262,7 +262,7 @@ describe('what is checked before anything is written', () => {
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Something.' });
     expect(proposal.original).toBe('');
 
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'changed' });
+    expect(await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'changed' });
     expect(threads(handle)).toHaveLength(0);
   });
 
@@ -272,7 +272,7 @@ describe('what is checked before anything is written', () => {
     handle.editor.insertInlineContent(' She turns again.');
     const now = blocks(handle)[0]!.text;
 
-    expect(await landProposal(handle, { ...proposal, original: now }, 'comment', true)).toEqual({ outcome: 'changed' });
+    expect(await landProposal(handle, { ...proposal, original: now }, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'changed' });
     expect(threads(handle)).toHaveLength(0);
   });
 });
@@ -281,9 +281,9 @@ describe('knowing a proposal has landed', () => {
   it('lands once: pressed again, it is already there and nothing more is written', async () => {
     const handle = await open('One.\n\nTwo.');
     const insert = proposalOn(handle, 0, { body: 'New.' });
-    await landProposal(handle, insert, 'write', true);
+    await landProposal(handle, insert, 'write', () => ({ available: true, writeAccess: 'granted' }));
 
-    expect(await landProposal(handle, insert, 'write', true)).toEqual({
+    expect(await landProposal(handle, insert, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({
       outcome: 'applied',
       how: 'write',
       blockId: deriveId(`document-proposal:${insert.proposalId}:0`),
@@ -296,7 +296,7 @@ describe('knowing a proposal has landed', () => {
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: '## Scene 1' });
 
     expect(landedAt(handle, proposal)).toBeNull();
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
     expect(landedAt(handle, proposal)).toEqual({ how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
     expect((handle.editor.document[0] as { type?: string } | undefined)?.type).toBe('heading');
   });
@@ -305,7 +305,7 @@ describe('knowing a proposal has landed', () => {
     const handle = await open('One long paragraph.');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'One.\n\nLong paragraph.' });
 
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(landedAt(handle, proposal)).toEqual({ how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
   });
@@ -314,7 +314,7 @@ describe('knowing a proposal has landed', () => {
     const handle = await open('One.');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' });
 
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
   });
@@ -323,7 +323,7 @@ describe('knowing a proposal has landed', () => {
     const handle = await open('The hero arrives.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
 
-    const result = await landProposal(handle, proposal, 'comment', true);
+    const result = await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
   });
@@ -331,7 +331,7 @@ describe('knowing a proposal has landed', () => {
   it('does not count a comment whose words have gone', async () => {
     const handle = await open('The hero arrives.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
     handle.editor.removeBlocks([blocks(handle)[0]!.id]);
 
     expect(threads(handle)).toHaveLength(1);
@@ -343,9 +343,9 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
   it('is the first block a rewrite wrote, when pressed again after it landed', async () => {
     const handle = await open('One.');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' });
-    await landProposal(handle, proposal, 'write', true);
+    await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
 
-    const again = await landProposal(handle, proposal, 'write', true);
+    const again = await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(again).toEqual({ outcome: 'applied', how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
     expect(blocks(handle).map((b) => b.id)).toContain(again.outcome === 'applied' ? again.blockId : '');
@@ -354,9 +354,9 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
   it('is the commented block, when a comment is pressed again after it landed', async () => {
     const handle = await open('The hero arrives.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({
+    expect(await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({
       outcome: 'applied',
       how: 'comment',
       blockId: proposal.blockId,
@@ -368,14 +368,14 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
     const handle = await open('Scene two opens.\n\nThe hero arrives.');
     const [above] = blocks(handle);
     const proposal = proposalOn(handle, 1, { kind: 'comment', quote: 'hero', body: 'Who?' });
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     mergeIntoAbove(handle, 1);
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene two opens.The hero arrives.']);
     const threadId = threads(handle)[0]!.id;
     expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above!.id, threadId });
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', how: 'comment', blockId: above!.id, threadId });
+    expect(await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'applied', how: 'comment', blockId: above!.id, threadId });
   });
 });
 
@@ -384,7 +384,7 @@ describe('a comment that lands', () => {
     const handle = await open('Alpha bravo.');
     const before = handle.undoManager.undoStack.length;
 
-    await landProposal(handle, proposalOn(handle, 0, { kind: 'comment', quote: 'Alpha', body: 'A?' }), 'comment', true);
+    await landProposal(handle, proposalOn(handle, 0, { kind: 'comment', quote: 'Alpha', body: 'A?' }), 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(handle.undoManager.undoStack.length).toBe(before);
     expect(marked(handle).map((m) => m.text)).toEqual(['Alpha']);
@@ -397,7 +397,7 @@ describe('media in a proposal (review round 3)', () => {
 
     const proposal = proposalOn(handle, 0, { body: 'Two.\n\n![shot](https://elsewhere.example/a.png)' });
 
-    expect(await landProposal(handle, proposal, 'write', true)).toEqual({
+    expect(await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({
       outcome: 'applied',
       how: 'write',
       blockId: deriveId(`document-proposal:${proposal.proposalId}:0`),
@@ -412,7 +412,7 @@ describe('a proposal of nothing but outside media (inner#1509, design §5.7)', (
   it('writes nothing and says how many were left out', async () => {
     const handle = await open('One.');
 
-    expect(await landProposal(handle, proposalOn(handle, 0, { body: '![x](https://elsewhere.example/a.png)' }), 'write', true)).toEqual({
+    expect(await landProposal(handle, proposalOn(handle, 0, { body: '![x](https://elsewhere.example/a.png)' }), 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({
       outcome: 'mediaOnly',
       leftOut: 1,
     });
@@ -431,7 +431,7 @@ describe('our own media in a proposal (review round 4)', () => {
         handle,
         proposalOn(handle, 0, { body: `![own](${ours}a.png)\n\n![x](https://elsewhere.example/b.png)` }),
         'write',
-        true,
+        () => ({ available: true, writeAccess: 'granted' }),
       );
 
       const images = (handle.editor.document as Array<{ type: string; props: { url?: string } }>).filter((b) => b.type === 'image');
@@ -446,7 +446,7 @@ describe('headings deeper than the body has (review round 4)', () => {
   it('land at the deepest level the body shows, keeping the levels above them', async () => {
     const handle = await open('One.');
 
-    await landProposal(handle, proposalOn(handle, 0, { body: '# Act\n\n## Scene\n\n#### Shot 1\n\n###### Note' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, 0, { body: '# Act\n\n## Scene\n\n#### Shot 1\n\n###### Note' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     const headings = (handle.editor.document as Array<{ type: string; props: { level?: number } }>).filter((b) => b.type === 'heading');
     expect(headings.map((b) => b.props.level)).toEqual([1, 2, 3, 3]);
@@ -455,7 +455,7 @@ describe('headings deeper than the body has (review round 4)', () => {
   it('are held to the levels of the body inside nested blocks too', async () => {
     const handle = await open('One.');
 
-    await landProposal(handle, proposalOn(handle, 0, { body: '- Item\n\n  #### Under it' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, 0, { body: '- Item\n\n  #### Under it' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     const levels: number[] = [];
     handle.editor.prosemirrorState.doc.descendants((node) => {
@@ -469,7 +469,7 @@ describe('an insert at the end', () => {
   it('takes the place of an empty last paragraph, so no blank line is left above it', async () => {
     const handle = await open('');
 
-    await landProposal(handle, proposalOn(handle, null, { body: '## Outline' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, null, { body: '## Outline' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['Outline']);
   });
@@ -477,8 +477,122 @@ describe('an insert at the end', () => {
   it('goes after a last paragraph that holds words', async () => {
     const handle = await open('One.');
 
-    await landProposal(handle, proposalOn(handle, null, { body: 'Two.' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, null, { body: 'Two.' }), 'write', () => ({ available: true, writeAccess: 'granted' }));
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
+  });
+});
+
+describe('where a proposal points in the document, before anything lands (inner#1646)', () => {
+  /**
+   * The words each range of a located spot covers.
+   * @param handle - The document.
+   * @param ranges - The spot's ranges.
+   * @returns The covered words.
+   */
+  function wordsOf(handle: DocumentEditorHandle, ranges: ReadonlyArray<{ from: number; to: number }>): string[] {
+    return ranges.map((r) => handle.editor.prosemirrorState.doc.textBetween(r.from, r.to));
+  }
+
+  it('is a comment\'s quoted words', async () => {
+    const handle = await open('The hero arrives at the gate.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId, quote: 'the gate' } });
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(spot?.blockId).toBe(proposal.blockId);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['the gate']);
+  });
+
+  it('is a comment\'s quoted words running across table cells, one range per cell', async () => {
+    const handle = await open('| Shot | Action |\n| --- | --- |\n| Close | She turns |');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'Close\nShe turns', body: 'Why close?' });
+
+    const found = sourceAt(handle, proposal);
+
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['Close', 'She turns']);
+  });
+
+  it('is the whole block of a rewrite', async () => {
+    const handle = await open('Before.\n\nMorning light.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Light.' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId } });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: proposal.blockId })).toEqual({ blockId: proposal.blockId, ranges: null });
+  });
+
+  it('is the block an insert goes after', async () => {
+    const handle = await open('Scene 3.\n\nAfter.');
+    const proposal = proposalOn(handle, 0, { body: 'Scene 4.' });
+
+    expect(sourceAt(handle, proposal)).toEqual({ outcome: 'located', target: { how: 'source', blockId: proposal.blockId } });
+  });
+
+  it('is the last block for an insert at the end, read from the document as it is when drawn', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const proposal = proposalOn(handle, null, { body: 'Three.' });
+
+    const found = sourceAt(handle, proposal);
+    expect(found).toEqual({ outcome: 'located', target: { how: 'source', blockId: null } });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })).toEqual({ blockId: blocks(handle)[1]!.id, ranges: null });
+
+    handle.editor.insertBlocks([{ type: 'paragraph', content: 'Later.' }] as never, blocks(handle)[1]!.id, 'after');
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })?.blockId).toBe(blocks(handle)[2]!.id);
+  });
+
+  it('is the empty paragraph of an empty document for an insert at the end', async () => {
+    const handle = await open('');
+
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: null })?.blockId).toBe(blocks(handle)[0]!.id);
+  });
+
+  it('is still found, and said to have changed, when the block\'s words are not the ones proposed on', async () => {
+    const handle = await open('The hero arrives at the gate.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?', original: 'Something else.' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found).toEqual({ outcome: 'changed', target: { how: 'source', blockId: proposal.blockId, quote: 'the gate' } });
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(wordsOf(handle, spot?.ranges ?? [])).toEqual(['the gate']);
+  });
+
+  it('is the whole block, said to have changed, when the quoted words no longer appear once', async () => {
+    const handle = await open('She turns.');
+    handle.editor.insertInlineContent(' She turns again.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'turns', body: 'Why?' });
+
+    const found = sourceAt(handle, proposal);
+
+    expect(found.outcome).toBe('changed');
+    const spot = found.outcome === 'blockGone' ? null : sourceSpot(handle.editor.prosemirrorState.doc, found.target);
+    expect(spot).toEqual({ blockId: proposal.blockId, ranges: null });
+  });
+
+  it('is nowhere when the block was deleted', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Three.' });
+    handle.editor.removeBlocks([proposal.blockId!]);
+
+    expect(sourceAt(handle, proposal)).toEqual({ outcome: 'blockGone' });
+    expect(sourceSpot(handle.editor.prosemirrorState.doc, { how: 'source', blockId: proposal.blockId })).toBeNull();
+  });
+
+  it('is found without writing anything', async () => {
+    const handle = await open('The hero arrives at the gate.\n\nNext.');
+    const before = handle.editor.prosemirrorState.doc.toJSON() as unknown;
+
+    sourceAt(handle, proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' }));
+    sourceAt(handle, proposalOn(handle, 1, { kind: 'rewrite', body: 'Later.' }));
+    sourceAt(handle, proposalOn(handle, null, { body: 'End.' }));
+
+    expect(handle.editor.prosemirrorState.doc.toJSON()).toEqual(before);
+    expect(threads(handle)).toHaveLength(0);
+    expect(handle.undoManager.undoStack).toHaveLength(0);
   });
 });

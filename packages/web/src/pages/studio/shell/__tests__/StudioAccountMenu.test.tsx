@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -56,9 +58,9 @@ vi.mock('@web/data/api/credits', () => ({
  */
 function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
-    assignedCredits: 3640,
-    unassignedCredits: 1790,
-    underRefundCredits: 0,
+    assignedCredits: '3640.000000' as CreditDecimal,
+    unassignedCredits: '1790.000000' as CreditDecimal,
+    underRefundCredits: '0.000000' as CreditDecimal,
     billing: true,
     studios: [],
     ...over,
@@ -518,7 +520,7 @@ describe('StudioAccountMenu', () => {
       // refund is asked about, with nothing on screen saying where they went.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
-      overviewMock.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      overviewMock.mockResolvedValue(overview({ underRefundCredits: '500.000000' as CreditDecimal }));
       setup();
       await openMenu(user);
 
@@ -599,7 +601,7 @@ describe('StudioAccountMenu', () => {
       await openMenu(user);
       expect(creditsTrailing()).toBe('');
 
-      answer(overview({ assignedCredits: 12, unassignedCredits: 0 }));
+      answer(overview({ assignedCredits: '12.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal }));
       await waitFor(() => {
         expect(creditsTrailing()).toBe('12');
       });
@@ -620,7 +622,7 @@ describe('StudioAccountMenu', () => {
       });
       await user.keyboard('{Escape}');
 
-      overviewMock.mockResolvedValue(overview({ assignedCredits: 40, unassignedCredits: 0 }));
+      overviewMock.mockResolvedValue(overview({ assignedCredits: '40.000000' as CreditDecimal, unassignedCredits: '0.000000' as CreditDecimal }));
       await openMenu(user);
       await waitFor(() => {
         expect(creditsTrailing()).toBe('40');
@@ -669,9 +671,9 @@ describe('StudioAccountMenu', () => {
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockResolvedValue(
         overview({
-          assignedCredits: 0,
-          unassignedCredits: 0,
-          underRefundCredits: 0,
+          assignedCredits: '0.000000' as CreditDecimal,
+          unassignedCredits: '0.000000' as CreditDecimal,
+          underRefundCredits: '0.000000' as CreditDecimal,
           billing: false,
         }),
       );

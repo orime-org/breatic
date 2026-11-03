@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Studio entity. A studio is either a `personal` studio (one per user,
@@ -182,7 +182,9 @@ export type StudioInvitationStatus =
  */
 export interface PendingInvitationSummary {
   invitationId: string;
-  invitedUserId: string;
+  invitedUserId: string | null;
+  /** Whether this recipient still needs to register and verify their email. */
+  awaitingSignup: boolean;
   name: string;
   email: string;
   avatarUrl: string | null;

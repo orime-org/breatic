@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Chat panel message model — mirrored from the Agent message contract.
@@ -7,7 +7,17 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { AskUserAnswer, AskUserQuestion, CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
+import type {
+  AskUserAnswer,
+  AskUserQuestion,
+  CanvasProposal,
+  ChatAttachedChip,
+  DocumentProposal,
+  SharedSpace,
+  SpaceRequestInput,
+  SpaceType,
+  ToolFailureKind,
+} from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -115,6 +125,37 @@ export interface ChatQuestionnaire {
   answers?: AskUserAnswer['answers'];
 }
 
+/**
+ * One requested Space as a settled card lists it: what the server stored of
+ * the read, without its content. A Space gone from the project may carry no
+ * name or kind.
+ */
+export interface ChatSharedSpaceSummary {
+  id: string;
+  name?: string;
+  kind?: SpaceType;
+  part?: SharedSpace['part'];
+  state: SharedSpace['state'];
+}
+
+/**
+ * The Agent's request to look at Spaces (inner#1552), with where it stands:
+ * waiting for the reader, shared, declined, or replied to by a message the
+ * reader wrote instead.
+ */
+export interface ChatSpaceRequest {
+  /** The `request_space_content` call that made it. */
+  toolCallId: string;
+  /** Why the Agent asks. */
+  reason: string;
+  /** The Spaces asked for, each whole or a part, in the order asked. */
+  spaces: SpaceRequestInput['spaces'];
+  /** Where it stands. */
+  state: 'awaiting' | 'shared' | 'declined' | 'replied';
+  /** How each Space was read, once shared. */
+  results?: ChatSharedSpaceSummary[];
+}
+
 /** One tool step that did not finish, as its line says it (inner#1620). */
 export interface ChatFailureLine {
   /** Which step, as a translation key and what it fills in. */
@@ -195,6 +236,12 @@ export interface ChatMessage {
    */
   failed?: true;
   /**
+   * Why the turn failed, when the server said: `too_long` is a turn whose
+   * request could not be made to fit the model's context window, which
+   * sending it again would not change (inner#1567).
+   */
+  failedReason?: 'too_long';
+  /**
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *
    * Stored like {@link ChatMessage.interrupted}, and kept apart from it: what
@@ -271,6 +318,11 @@ export interface ChatMessage {
    * existed is in the reply's words instead.
    */
   questionnaires?: ChatQuestionnaire[];
+  /**
+   * The requests to look at Spaces this turn made (inner#1552), each drawn as
+   * a card. Absent on a turn that asked for none.
+   */
+  spaceRequests?: ChatSpaceRequest[];
   /**
    * The document edits this turn proposed (inner#1509), each drawn as a card
    * the reader presses to land it. Rebuilt from the stored tool calls; whether

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What a turn hands the model, and what it leaves behind however it ends.
@@ -25,8 +25,8 @@ import { FINISHED, finishedSpending, finishing } from "../helpers/model-double.j
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const foldIfTooLong = vi.fn(async () => "none");
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
 /**
@@ -119,7 +119,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 /**
@@ -204,7 +204,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfTooLong, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -222,6 +222,7 @@ describe("what a plain chat turn hands the model", () => {
     expect(names).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_generation_template",
       "get_product_guide",
       "list_generation_models",
       "list_project_activity",
@@ -229,6 +230,7 @@ describe("what a plain chat turn hands the model", () => {
       "propose_document_edit",
       "read_conversation",
       "read_node_history",
+      "request_space_content",
       "save_image",
       "search_conversations",
       "search_images",
@@ -284,11 +286,11 @@ describe("a turn that failed", () => {
     // already finished streaming, and shorten nothing until the turn after.
     await runTurn(saidAndSpent("hi", 100));
 
-    expect(foldIfOverBudget).toHaveBeenCalledTimes(1);
+    expect(foldIfTooLong).toHaveBeenCalledTimes(1);
     // The user's message is stored before the assembly, the reply after the
     // stream ends. The check sits between them.
     const [asked, replied] = addMessage.mock.invocationCallOrder;
-    const looked = foldIfOverBudget.mock.invocationCallOrder[0]!;
+    const looked = foldIfTooLong.mock.invocationCallOrder[0]!;
     expect(looked).toBeGreaterThan(asked!);
     expect(looked).toBeLessThan(replied!);
   });
@@ -390,5 +392,28 @@ describe("a turn the user stopped", () => {
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+});
+
+
+describe("decimal shortfall consumption", () => {
+  it("M20 keeps a zero decimal shortfall silent", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
+  });
+
+  it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    await runTurn(saidAndSpent("settled", 100));
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
+      [expect.objectContaining({ userId: "u1", conversationId: "c1", studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
+    ]);
   });
 });

@@ -29,6 +29,8 @@ concurrency:
     audio-peaks: 2
     # Expense recovery only reads original identities, independently of media jobs.
     mini-tool-settlement: 2
+    # One durable SQL outbox scan runs at a time; its jobs only enqueue stable operation wakes.
+    long-media-dispatch: 1
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential

@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
+import { CountChip } from '@web/components/CountChip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
@@ -115,11 +116,7 @@ export function StudioTabBar({
             )}
           >
             {t(tab.labelKey)}
-            {count !== undefined ? (
-              <span className='rounded-full bg-muted px-1.5 text-xs font-medium leading-[18px] text-muted-foreground'>
-                {count}
-              </span>
-            ) : null}
+            {count !== undefined ? <CountChip count={count} /> : null}
           </Link>
         );
       })}

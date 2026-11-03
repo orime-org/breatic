@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 清单是手写在 `@breatic/shared` 的 `DOCUMENT_SCHEMA` 常量里的，因为 collab
@@ -29,6 +29,7 @@ import { documentFallbackExtension } from '@web/spaces/document/document-unsuppo
 function realSchemaShape(): {
   nodes: Record<string, string[]>;
   marks: Record<string, string[]>;
+  content: Record<string, string>;
   } {
   const doc = new Y.Doc();
   try {
@@ -51,7 +52,10 @@ function realSchemaShape(): {
           Object.keys(type.spec.attrs ?? {}).sort(),
         ]),
       );
-    return { nodes: flatten(pmSchema.nodes), marks: flatten(pmSchema.marks) };
+    const content = Object.fromEntries(
+      Object.entries(pmSchema.nodes).map(([name, type]) => [name, String(type.spec.content ?? '')]),
+    );
+    return { nodes: flatten(pmSchema.nodes), marks: flatten(pmSchema.marks), content };
   } finally {
     doc.destroy();
   }
@@ -75,4 +79,10 @@ describe('手写的那份清单跟真实 schema', () => {
       ),
     );
   });
+
+  it('content rules: what each node holds matches node by node (inner#1619), so a rule change changes the version', () => {
+    const real = realSchemaShape();
+    expect(real.content).toEqual({ ...DOCUMENT_SCHEMA.content });
+  });
 });
+

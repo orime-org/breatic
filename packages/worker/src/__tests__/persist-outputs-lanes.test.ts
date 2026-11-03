@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Which lane a generation's output takes into R2 (#181, design §2 and §4.5).
@@ -26,6 +26,12 @@ const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockTransferUrl = vi.hoisted(() => vi.fn());
 const mockAdapterUpload = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
+
+// Owned-object acceptance is covered against PostgreSQL in the cross-service
+// suite; this suite isolates transfer lanes from the Project directory.
+vi.mock("@worker/services/project-media.service.js", () => ({
+  resolveRegisteredProjectMedia: vi.fn(async (_projectId: string, url: string) => ({ assetId: "a1", fileUrl: url, coverUrl: null })),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof coreModule>()),

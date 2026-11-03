@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
@@ -56,7 +56,7 @@ function EndingLine({
       className={cn('mt-[0.85em] flex items-start gap-1.5 text-xs', colour)}
     >
       <Icon className='mt-px size-3.5 shrink-0' aria-hidden='true' />
-      <span className='min-w-0 break-words'>{text}</span>
+      <span className='min-w-0 break-words text-pretty'>{text}</span>
     </div>
   );
 }
@@ -89,11 +89,14 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   if (message.streaming === true) return null;
 
   if (message.failed === true) {
+    // A turn too long to fit hit a ceiling, like a reply cut off at the
+    // length limit; sending it again would not change it.
+    const tooLong = message.failedReason === 'too_long';
     return (
       <EndingLine
         testId='message-bubble-error'
-        text={t('chat.error.turnFailed')}
-        tone='error'
+        text={t(tooLong ? 'chat.error.turnTooLong' : 'chat.error.turnFailed')}
+        tone={tooLong ? 'warning' : 'error'}
         {...(message.failedJustNow === true ? { alert: true } : {})}
       />
     );
@@ -141,7 +144,8 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     message.sources !== undefined ||
     message.proposals !== undefined ||
     message.documentProposals !== undefined ||
-    message.questionnaires !== undefined;
+    message.questionnaires !== undefined ||
+    message.spaceRequests !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {
     return (
       <EndingLine testId='message-bubble-empty' text={t('chat.message.empty')} tone='neutral' />

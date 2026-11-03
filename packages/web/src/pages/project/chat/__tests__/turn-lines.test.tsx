@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The two lines a turn puts under itself: what it is doing, and how it ended.
@@ -295,7 +295,24 @@ describe('how a stored turn reads when the conversation is reopened', () => {
       />,
     );
 
-    expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveClass('text-status-error-foreground');
+    // Wrapped so its last line is never a single word.
+    expect(screen.getByText('This reply could not be finished. Try sending it again.')).toHaveClass('text-pretty');
+  });
+
+  it('says a turn that ended too long to finish so, and not that it should be sent again (inner#1567)', () => {
+    render(
+      <MessageBubble
+        message={toChatMessage({ id: 'm', role: 'assistant', parts: [{ type: 'data-failed', data: { reason: 'too_long' } }] })}
+      />,
+    );
+
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveTextContent('This turn had too much to process and could not finish. Try a narrower request.');
+    expect(line).not.toHaveTextContent('Try sending it again');
+    // A ceiling the request hit, drawn like the length-limit ending.
+    expect(line).toHaveClass('text-status-warning-foreground');
   });
 
   it('says a turn that produced nothing produced nothing', () => {

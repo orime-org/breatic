@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Bookmark,
@@ -37,14 +37,8 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
-
-/**
- * The tools submenu stands 4px off the menu's edge. `sideOffset` measures
- * from the trigger row, which sits inside the menu's 4px padding and 1px
- * border, so those 5px are added back.
- */
-const SUBMENU_SIDE_OFFSET = 4 + 5;
 
 /** One row of the tools submenu. */
 export interface NodeMenuTool {
@@ -392,7 +386,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
                   {t('canvas.nodeMenu.tools')}
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent sideOffset={SUBMENU_SIDE_OFFSET}>
+                <DropdownMenuSubContent>
                   {tools?.map((tool, index) => {
                     const Icon = MINI_TOOL_ICONS[tool.icon];
                     return (
@@ -421,7 +415,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 <Copy className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.contextMenu.copy')}
                 <DropdownMenuShortcut>
-                  {formatShortcut({ mod: true, key: 'C' })}
+                  {formatShortcut(CANVAS_KEY_SHORTCUTS.copy)}
                 </DropdownMenuShortcut>
               </DropdownMenuItem>
             ) : null}
@@ -433,7 +427,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 <CopyPlus className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.contextMenu.duplicate')}
                 <DropdownMenuShortcut>
-                  {formatShortcut({ mod: true, key: 'D' })}
+                  {formatShortcut(CANVAS_KEY_SHORTCUTS.duplicate)}
                 </DropdownMenuShortcut>
               </DropdownMenuItem>
             ) : null}
@@ -449,7 +443,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               <Ungroup className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.group.ungroup')}
               <DropdownMenuShortcut>
-                {formatShortcut({ mod: true, shift: true, key: 'G' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.ungroup)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -506,7 +500,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   : 'canvas.contextMenu.deleteNode',
               )}
               <DropdownMenuShortcut>
-                {formatShortcut({ key: 'Delete' })}
+                {formatShortcut(CANVAS_KEY_SHORTCUTS.delete)}
               </DropdownMenuShortcut>
             </DropdownMenuItem>
           </>

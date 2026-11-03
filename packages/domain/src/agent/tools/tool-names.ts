@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Tool names that more than one list has to agree on.
@@ -27,6 +27,15 @@
  */
 export const ASK_USER = "ask_user";
 
+/** The tool that asks the reader to let the agent read other Spaces (inner#1552). */
+export const REQUEST_SPACE_CONTENT = "request_space_content";
+
+/**
+ * The tools a turn stops at to wait for the reader: a call with no `execute`
+ * whose result comes back in the request that resumes the turn.
+ */
+export const AWAITS_READER: readonly string[] = [ASK_USER, REQUEST_SPACE_CONTENT];
+
 /**
  * Ask which modes each generation node can be set to.
  *
@@ -46,6 +55,13 @@ export const LIST_GENERATION_MODELS = "list_generation_models";
  */
 export const GET_PRODUCT_GUIDE = "get_product_guide";
 
+/**
+ * Read one generation template in full (inner#1807).
+ *
+ * Named here because the proposal tool's description points the model at it.
+ */
+export const GET_GENERATION_TEMPLATE = "get_generation_template";
+
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
@@ -63,6 +79,9 @@ export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
  * address is not ours yet.
  */
 export const SAVE_IMAGE = "save_image";
+
+/** Understands one ordered batch of images, video or audio. */
+export const UNDERSTAND_MEDIA = "understand_media";
 
 /**
  * Ask for a judgement over what the model is holding, with the odds (#282).

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Project repository — data access with soft delete support.
@@ -127,6 +127,19 @@ export async function lockLiveProject(
     .where(and(eq(projects.id, id), isNull(projects.deletedAt), isNull(projects.archivedAt)))
     .for("update")
     .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Serialize a decision settlement with project lifecycle changes.
+ * @param id - The immutable project id.
+ * @param tx - The enclosing settlement transaction.
+ * @returns Whether the project row exists and is now locked, including archived rows.
+ * @throws {Error} When persistence fails.
+ */
+export async function lockProject(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.select({ id: projects.id }).from(projects)
+    .where(eq(projects.id, id)).for("update").limit(1);
   return rows.length > 0;
 }
 
@@ -711,6 +724,9 @@ export async function duplicateProject(
       slug: `${source.slug}-copy`.slice(0, 120),
       description: source.description,
       thumbnailUrl: source.thumbnailUrl,
+      // A source with no meta document is seeded only after its first open.
+      // Keep its chosen kind so that copying before that open cannot reset it.
+      initialSpaceType: sql`(SELECT ${projects.initialSpaceType} FROM ${projects} WHERE ${projects.id} = ${source.id})`,
     })
     .returning();
   const newProject = inserted[0]!;
