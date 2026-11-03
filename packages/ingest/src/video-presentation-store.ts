@@ -479,7 +479,7 @@ export class VideoPresentationStore {
       if (state === undefined || found?.kind !== 'current' || identity.deadlineAt <= Date.now()) return null;
       const job = found.job;
       if (key !== copyCarrierKey(job.admission, attempt)) return 'forbidden';
-      if (job.prepared?.route !== 'copy' || job.candidate.state !== 'building' || job.candidate.stage !== 'copy' || job.carrierWrites?.[key] !== undefined) return null;
+      if (job.candidate.state !== 'building' || job.candidate.stage !== 'copy' || job.carrierWrites?.[key] !== undefined) return null;
       const owner = crypto.randomUUID();
       job.carrierWrites = { ...job.carrierWrites, [key]: { owner, byteLength: declaration.byteLength, contentType: declaration.contentType, measured: null } };
       await this.save(state);
