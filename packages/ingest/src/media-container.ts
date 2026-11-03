@@ -26,8 +26,9 @@
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { askedKey } from "@ingest/object-url.js";
-import { videoSourceLedgerKeyFor } from '@breatic/shared';
-import { VideoPresentationStore, type VideoPresentationAdmission, type PresentationCapability, type PresentationJobIdentity, type PresentationView,
+import { videoSourceLedgerKeyFor, type VideoPresentationPrepareAnswer } from '@breatic/shared';
+import { preparePresentation, VideoPresentationStore, type VideoPresentationAdmission, type PresentationCapability, type PresentationChunkReport,
+  type PresentationChunkUnit, type PresentationContainerPort, type PresentationJobIdentity, type PresentationJobRef, type PresentationReport, type PresentationView,
   type SourceLedgerDeclaration, type SourceLedgerMeasurement, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
 import { writeVideoSourceLedger } from '@ingest/video-source-ledger-write.js';
 import { SOURCE_LEDGER_HANDLER } from '@ingest/alpha-run-contract.js';
@@ -156,12 +157,55 @@ export class MediaContainer extends Container<MediaEnv> {
   }
 
   /**
-   * Stop an expired job without extending its budget.
-   * @param identity - Originally accepted work.
-   * @returns The store view.
-   * @throws {Error} When persistence fails.
+   * Run one basic execution of a presentation job, or re-read a started one (design §5.1 steps 1–2).
+   * @param identity - The job identity; its deadline is the DO's.
+   * @returns The worker-only prepare answer.
+   * @throws {Error} When storage, R2 or the container fails.
    */
-  expirePresentation(identity: PresentationJobIdentity): Promise<PresentationView> { return this.presentationStore().fail(identity, 'expired'); }
+  preparePresentation(identity: PresentationJobRef): Promise<VideoPresentationPrepareAnswer> {
+    return preparePresentation(this.presentationStore(), identity, this.presentationPort(), Date.now());
+  }
+
+  /**
+   * Move a job to the next stage of its route, or publish its carrier at `publish`.
+   * @param capability - The job's capability.
+   * @param stage - The stage.
+   * @returns Whether it was accepted.
+   * @throws {Error} When storage or R2 fails.
+   */
+  advancePresentationStage(capability: PresentationCapability, stage: string): Promise<boolean> { return this.presentationStore().advanceStage(capability, stage); }
+
+  /**
+   * Apply one unit attempt report.
+   * @param capability - The job's capability.
+   * @param unit - The unit.
+   * @param report - The report.
+   * @returns Whether it was accepted.
+   * @throws {Error} When storage fails.
+   */
+  reportPresentationChunk(capability: PresentationCapability, unit: PresentationChunkUnit, report: PresentationChunkReport): Promise<boolean> {
+    return this.presentationStore().reportChunk(capability, unit, report);
+  }
+
+  /**
+   * Record a job's measured usage.
+   * @param capability - The job's capability.
+   * @param fact - The finished usage.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  reportPresentationFact(capability: PresentationCapability, fact: Extract<PresentationReport, { kind: 'finished' }>): Promise<PresentationView> {
+    return this.presentationStore().report(capability, fact);
+  }
+
+  /**
+   * Fail a job's candidate; expiry is `expired`.
+   * @param identity - The job identity and deadline.
+   * @param code - The failure code.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  failPresentation(identity: PresentationJobIdentity, code: string): Promise<PresentationView> { return this.presentationStore().fail(identity, code); }
 
   /**
    * Acknowledge one already-recorded platform usage fact.
@@ -170,6 +214,17 @@ export class MediaContainer extends Container<MediaEnv> {
    * @throws {Error} When persistence fails.
    */
   acknowledgePresentationUsage(identity: PresentationJobIdentity): Promise<PresentationView> { return this.presentationStore().acknowledgeUsage(identity); }
+
+  /**
+   * The basic container's presentation work.
+   * @returns The port.
+   * @throws {never} Constructing it starts no IO.
+   */
+  private presentationPort(): PresentationContainerPort {
+    // ponytail: the probe, ledger and carrier recipes run in this container with S6d; until then a prepare fails without recording anything.
+    const pending = (): never => { throw new Error('The presentation container recipes arrive with S6d'); };
+    return { probe: async () => pending(), writeLedger: async () => pending(), carrier: async () => pending(), usage: async () => null };
+  }
 
   /**
    * Construct the sole storage owner with this object's actual durable serialization gate.
