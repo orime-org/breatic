@@ -2,20 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
+import { hashCanonicalJson, serializeCanonicalJson } from "@shared/mini-tools/canonical-json.js";
 
 const jsonSchema = z.json();
-type JsonValue = z.infer<typeof jsonSchema>;
-
-/**
- * Serializes finite JSON with recursively ordered object keys.
- * @param value - Validated contract data.
- * @returns Canonical JSON text.
- */
-function serialize(value: JsonValue): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${serialize(value[key]!)}`).join(",")}}`;
-}
 
 /**
  * Serializes a mini-tool contract value without depending on insertion order.
@@ -24,7 +13,7 @@ function serialize(value: JsonValue): string {
  * @throws {z.ZodError} When the value is not finite JSON.
  */
 export function canonicalMiniToolValue(value: unknown): string {
-  return serialize(jsonSchema.parse(value));
+  return serializeCanonicalJson(jsonSchema.parse(value));
 }
 
 /**
@@ -35,7 +24,5 @@ export function canonicalMiniToolValue(value: unknown): string {
  * @throws {DOMException} When the platform cannot compute SHA-256.
  */
 export async function hashMiniToolValue(value: unknown): Promise<string> {
-  const bytes = new TextEncoder().encode(canonicalMiniToolValue(value));
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return hashCanonicalJson(jsonSchema.parse(value));
 }

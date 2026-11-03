@@ -164,7 +164,8 @@ function planValid(value: VideoPresentationPlan): boolean {
 }
 
 // A transform runs only after every field parsed, so the invariant checks see valid integers.
-const plan = planShape.transform((value, ctx) => {
+/** The strict plan with its §7.16 invariants. */
+export const videoPresentationPlanSchema = planShape.transform((value, ctx) => {
   if (!planValid(value)) { ctx.addIssue({ code: 'custom', message: 'The plan breaks a §7.16 presentation invariant' }); return z.NEVER; }
   return value;
 });
@@ -173,13 +174,13 @@ const plan = planShape.transform((value, ctx) => {
  * The physical encode facts beside the plan (§3.2 item 7): each presented frame's source keyframe ordinal and the coded
  * size. They do not change the presentation, so they stay outside planSha256 and toolInputId; the receipt digest binds them.
  */
-const encoding = z.strictObject({
+export const videoPresentationLedgerEncodingSchema = z.strictObject({
   keyframeOrdinals: z.array(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)), codedWidth: pixel, codedHeight: pixel,
 });
 
 /** The full ledger: the complete plan with its origin mapping and the encode facts, bound to toolInputId and planSha256. */
 export const videoPresentationLedgerSchema = z.strictObject({
-  schemaVersion: z.literal(2), sourceFingerprint: hash, toolInputId: hash, planSha256: hash, attempt, plan, encoding,
+  schemaVersion: z.literal(2), sourceFingerprint: hash, toolInputId: hash, planSha256: hash, attempt, plan: videoPresentationPlanSchema, encoding: videoPresentationLedgerEncodingSchema,
 }).superRefine((value, ctx) => {
   const frames = presentationFrameCount(value.plan.presentation);
   const ordinals = value.encoding.keyframeOrdinals;
@@ -245,7 +246,7 @@ const versionInput = z.strictObject({
  * @throws {z.ZodError} When the plan is not a valid plan.
  */
 export async function videoPresentationPlanSha256(value: unknown): Promise<string> {
-  return hashMiniToolValue(plan.parse(value));
+  return hashMiniToolValue(videoPresentationPlanSchema.parse(value));
 }
 
 /**

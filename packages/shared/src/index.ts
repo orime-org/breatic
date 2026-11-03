@@ -1090,6 +1090,8 @@ export {
   alphaPackedManifestSchema,
   alphaPackedManifestMatchesVersion,
   videoPresentationLedgerSchema,
+  videoPresentationPlanSchema,
+  videoPresentationLedgerEncodingSchema,
   videoPresentationLedgerReceiptSchema,
   videoPresentationCompactSchema,
   projectVideoPresentationCompact,
