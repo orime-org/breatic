@@ -84,7 +84,8 @@ function doneOutput(steps: readonly UpstreamStep[], matches: (jobId: string) => 
  * @throws {Error} When persistence or the job boundary fails.
  */
 async function advanceUnit(execution: Removal, unit: Unit, deadlineAt: number): Promise<string> {
-  const retries = getMiniToolsConfig().encoding.chunk_retries;
+  // The retry cap frozen at admission (§3.2 item 1), never today's configuration.
+  const retries = execution.preparation.chunkRetries;
   for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
     const jobId = videoContainerJobId(unit.spec(attempt));
     const steps = await upstreamStepRepo.listSteps(execution.taskId);
