@@ -999,7 +999,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 ```
 
 `AGPL-3.0-only` = GNU Affero General Public License v3.0,仅限这一版本(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。

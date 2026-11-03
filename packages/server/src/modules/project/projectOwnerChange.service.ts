@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { DbTx } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";

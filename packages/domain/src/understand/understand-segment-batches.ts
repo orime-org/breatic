@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { groupLongMediaSegments } from "@domain/understand/segment-batches.js";
 import { understandMediaAt } from "@domain/understand/understand-at.js";

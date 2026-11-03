@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { PROBE_MAX_BYTES, probeArgs } from "@ingest/probe-command.js";
 import { runTool } from "./run-tool.js";

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Elastic-2.0
 set -euo pipefail
 : "${TAG:?}" "${REVISION:?}" "${REPOSITORY:?}"
 for name in backend-amd64 backend-arm64 web-amd64 web-arm64 ingestMedia-amd64; do

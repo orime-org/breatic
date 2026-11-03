@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Timeline gap, conflict-boundary and native media recovery (inner#1707). */
 import { writeFileSync } from 'node:fs';

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
 import { mediaContainerOwnCodeOnly } from "#rules/rules/media-container-own-code-only";

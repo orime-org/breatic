@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import type { TSESTree } from "@typescript-eslint/utils";
 import { stringLiteralVisitors } from "#rules/source-visitors";
 import { createRule } from "#rules/create-rule";

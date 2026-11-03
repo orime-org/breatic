@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { afterEach, expect, it, vi } from 'vitest';
 const transports = vi.hoisted(() => ({ socket: vi.fn(), stream: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProviderWebsocket: class {

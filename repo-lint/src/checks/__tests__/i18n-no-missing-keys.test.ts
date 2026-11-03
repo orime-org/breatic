@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { describe, expect, it } from "vitest";
 import { i18nNoMissingKeys } from "#repo-lint/checks/i18n-no-missing-keys";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";

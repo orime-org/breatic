@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { posix } from "node:path";
 import GithubSlugger from "github-slugger";
 import { fromMarkdown } from "mdast-util-from-markdown";

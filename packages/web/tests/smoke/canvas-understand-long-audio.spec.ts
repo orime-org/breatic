@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Understanding an uploaded long audio file through the real canvas path. */
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';

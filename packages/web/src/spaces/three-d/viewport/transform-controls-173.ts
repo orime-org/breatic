@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { Camera, Vector3 } from 'three';
 import { TransformControls, TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';

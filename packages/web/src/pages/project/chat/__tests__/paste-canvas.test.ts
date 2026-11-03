@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 // Canvas text pasted into the chat box becomes an attachment (inner#1349,
 // design 5.7): the card a paste makes is the card "Add to Agent" makes on the

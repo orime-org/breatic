@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect } from 'vitest';
 import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';

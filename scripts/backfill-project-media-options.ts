@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { ProjectMediaBackfillPosition } from "../packages/core/src/asset/project-media-backfill.js";
 import { parseArgs } from "node:util";

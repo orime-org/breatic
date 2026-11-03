@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 // A tab's own name is the only thing in the Space tab strip that answers a
 // hover. It opens upward, which is the Radix default it has always taken.

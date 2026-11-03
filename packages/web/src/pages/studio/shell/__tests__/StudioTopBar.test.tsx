@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

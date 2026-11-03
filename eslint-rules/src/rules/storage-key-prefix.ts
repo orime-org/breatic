@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
