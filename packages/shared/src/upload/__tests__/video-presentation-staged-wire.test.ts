@@ -135,14 +135,14 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
   it.each([
     ['advance_stage', { stage: 'encode' }],
     ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 0 }, report: { kind: 'Sub' } }],
-    ['report_chunk', { unit: { kind: 'presentation-stitch' }, report: { kind: 'Done', attempt: 1, usage: 1200 } }],
+    ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 1 }, report: { kind: 'Done', attempt: 1, usage: 1200 } }],
     ['report_chunk', { unit: { kind: 'presentation-copy' }, report: { kind: 'Fail', attempt: 2, code: 'container_failed', usage: null } }],
     ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 3 }, report: { kind: 'Exp' } }],
     ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 3 }, report: { kind: 'Rec', attempt: 1 } }],
     ['report', { fact: { kind: 'finished', usage: { wallMs: 1000, cpuUsec: null } } }],
-    // inner 54ce9ea3 §5.1 step 4: the worker forwards the job DO's measured receipt of the carrier it wrote.
-    ['report_chunk', { unit: { kind: 'presentation-stitch' }, report: { kind: 'Done', attempt: 1, usage: 1200, receipt: { storageKey: `${KEY}.stitch`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' } } }],
-    ['report_chunk', { unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 2, usage: 900, receipt: { storageKey: `${KEY}.copy`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' } } }],
+    // inner 54ce9ea3 §5.1 step 4, §90 E4-15: the worker forwards the job DO's measured receipts of every output it wrote, role-tagged.
+    ['report_chunk', { unit: { kind: 'presentation-stitch' }, report: { kind: 'Done', attempt: 1, usage: 1200, receipts: [{ role: 'carrier', packing: 'native', storageKey: `${KEY}.stitch`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' }] } }],
+    ['report_chunk', { unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 2, usage: 900, receipts: [{ role: 'carrier', packing: 'native', storageKey: `${KEY}.copy`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' }] } }],
     ['advance_stage', { stage: 'publish' }],
   ])('AC02 %s carries the capability and its own fields', (action, fields) => {
     const request = { action, ...capability, ...fields };
@@ -166,11 +166,80 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
     ['fail without a code', { action: 'fail', ...identity, deadlineAt: D }],
     // inner 54ce9ea3 §5.1 step 4: the worker never sends a bundle; `verified` stays inside ingest.
     ['report with a verified bundle', { action: 'report', ...capability, fact: { kind: 'verified', bundle: { versionId: 'e'.repeat(64), toolInputId: T, descriptor: {} } } }],
-    ['a Done receipt without its hash', { action: 'report_chunk', ...capability, unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 1, usage: 1, receipt: { storageKey: KEY, sizeBytes: 1, contentType: 'video/mp4' } } }],
+    ['a Done receipt without its hash', { action: 'report_chunk', ...capability, unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 1, usage: 1, receipts: [{ role: 'carrier', packing: 'native', storageKey: KEY, sizeBytes: 1, contentType: 'video/mp4' }] } }],
     ['fail with a malformed code', { action: 'fail', ...identity, deadlineAt: D, code: 'Too Long' }],
   ])('AC04 rejects %s', (_name, request) => {
     expect(admits({ action: 'prepare', ...identity })).toBe(true);
     expect(admits(request)).toBe(false);
+  });
+});
+
+// S6e E4-15 (inner#1306 §90): a stitch or copy Done carries the measured receipts of every output its job wrote, each
+// tagged with its role: exactly one carrier, and a manifest exactly when the carrier is alpha-packed. A chunk Done
+// carries none. The DO stores them per attempt and the worker-only prepare answer exposes each unit's done receipts;
+// the pin sync and the release points take object keys from them (no key rule for the manifest).
+describe('E4-15 role-tagged output receipts of a stitch or copy (§5.1 step 4; §7.15 candidate 行)', () => {
+  const object = (name: string, contentType: string): { storageKey: string; sha256: string; sizeBytes: number; contentType: string } => ({ storageKey: `${KEY}.${name}`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType });
+  const native = { role: 'carrier', packing: 'native', ...object('copy', 'video/mp4') };
+  const packedCarrier = { role: 'carrier', packing: 'alpha-packed', ...object('stitch', 'video/mp4') };
+  const manifest = { role: 'manifest', ...object('stitch.manifest', 'application/json') };
+  const done = (unit: Record<string, unknown>, receipts?: unknown): Record<string, unknown> => ({ action: 'report_chunk', ...capability, unit,
+    report: { kind: 'Done', attempt: 1, usage: 1, ...(receipts === undefined ? {} : { receipts }) } });
+
+  it.each([
+    ['a copy with its native carrier', done({ kind: 'presentation-copy' }, [native])],
+    ['a stitch with its alpha-packed carrier and manifest', done({ kind: 'presentation-stitch' }, [packedCarrier, manifest])],
+    ['the same two in the other order', done({ kind: 'presentation-stitch' }, [manifest, packedCarrier])],
+    ['a chunk with no receipts', done({ kind: 'presentation-chunk', chunk: 0 })],
+  ])('RR01 accepts %s', (_name, request) => {
+    expect(videoPresentationIngestRequestSchema.parse(request)).toEqual(request);
+  });
+
+  it.each([
+    ['a stitch Done without receipts', done({ kind: 'presentation-stitch' })],
+    ['a copy Done with an empty list', done({ kind: 'presentation-copy' }, [])],
+    ['no carrier, only a manifest', done({ kind: 'presentation-stitch' }, [manifest])],
+    ['two carriers', done({ kind: 'presentation-copy' }, [native, { ...native, storageKey: `${KEY}.copy-2` }])],
+    ['a manifest beside a native carrier', done({ kind: 'presentation-copy' }, [native, manifest])],
+    ['an alpha-packed carrier without its manifest', done({ kind: 'presentation-stitch' }, [packedCarrier])],
+    ['two manifests', done({ kind: 'presentation-stitch' }, [packedCarrier, manifest, { ...manifest, storageKey: `${KEY}.m2` }])],
+    ['a manifest stored at the carrier key', done({ kind: 'presentation-stitch' }, [packedCarrier, { ...manifest, storageKey: packedCarrier.storageKey }])],
+    ['an unknown role', done({ kind: 'presentation-copy' }, [native, { role: 'thumbnail', ...object('thumb', 'image/png') }])],
+    ['a carrier without its packing', done({ kind: 'presentation-copy' }, [{ role: 'carrier', ...object('copy', 'video/mp4') }])],
+    ['receipts on a chunk Done', done({ kind: 'presentation-chunk', chunk: 0 }, [native])],
+    ['the single receipt field it replaces', { ...done({ kind: 'presentation-copy' }), report: { kind: 'Done', attempt: 1, usage: 1, receipt: object('copy', 'video/mp4') } }],
+  ])('RR02 rejects %s', (_name, request) => {
+    expect(admits(done({ kind: 'presentation-copy' }, [native]))).toBe(true);
+    expect(admits(request)).toBe(false);
+  });
+
+  const answer = {
+    sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, ledger: null,
+    preparation: { targetPolicyVersion: 1, jobId: identity.jobId, stage: 'publish', failure: null },
+    capability: { token: 'token-a', deadlineAt: D },
+    plan: { route: 'encode', stages: ['plan', 'encode', 'stitch', 'publish'], toolInputId: T, planSha256: PLAN },
+    work: { kind: 'encode', chunks: [{ start: 0, end: 96 }] },
+    candidateLedger: { state: 'pending', receipt: null, failure: null },
+    units: {},
+    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null },
+  };
+  const stitchJob = videoContainerJobId({ kind: 'presentation-stitch', jobId: identity.jobId, attempt: 1 });
+  const stitchUnit = (receipts: unknown): Record<string, unknown> => ({ [`video-presentation:${identity.jobId}:stitch`]: {
+    state: 'done', attempt: 1, attempts: [{ attempt: 1, jobId: stitchJob, state: 'done', usageRecorded: true }], receipts } });
+  const parse = (value: unknown): boolean => exported<{ safeParse: (v: unknown) => { success: boolean } }>('videoPresentationPrepareAnswerSchema').safeParse(value).success;
+
+  it('RR03 the prepare answer exposes a done unit\'s receipts', () => {
+    expect(parse({ ...answer, units: stitchUnit([packedCarrier, manifest]) })).toBe(true);
+    expect(parse({ ...answer, units: stitchUnit([native]) })).toBe(true);
+  });
+
+  it.each([
+    ['a manifest beside a native carrier', [native, manifest]],
+    ['no carrier', [manifest]],
+    ['an alpha-packed carrier without its manifest', [packedCarrier]],
+  ])('RR04 the prepare answer rejects unit receipts with %s', (_name, receipts) => {
+    expect(parse({ ...answer, units: stitchUnit([native]) })).toBe(true);
+    expect(parse({ ...answer, units: stitchUnit(receipts) })).toBe(false);
   });
 });
 

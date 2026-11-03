@@ -56,7 +56,7 @@ interface Answer {
   plan: { route: string; stages: string[]; toolInputId: string; planSha256: string } | null;
   work: { kind: 'none' } | { kind: 'dispatch_copy' } | { kind: 'encode'; chunks: { start: number; end: number }[] };
   candidateLedger: { state: string; receipt: unknown; failure: string | null } | null;
-  units: Record<string, { state: string; attempt: number; attempts: { attempt: number; jobId: string; state: string; usageRecorded: boolean }[] }>;
+  units: Record<string, { state: string; attempt: number; attempts: { attempt: number; jobId: string; state: string; usageRecorded: boolean }[]; receipts?: Record<string, unknown>[] }>;
   frozen: { pricing: unknown; actorUserId: string; projectId: string | null };
 }
 type Prepare = (store: MachineStore, identity: { storageKey: string; sourceFingerprint: string; jobId: string }, port: Port, now: number) => Promise<Answer>;
@@ -310,7 +310,7 @@ describe('every pickup reads the started job without probing again (inner#1306 �
   });
 });
 
-type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipt?: Record<string, unknown> } | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
+type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipts?: Record<string, unknown>[] } | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
 
 /**
  * The shared output key of one sub-job.
@@ -349,6 +349,15 @@ async function writeCarrier(key: string, bytes: Uint8Array): Promise<{ receipt: 
 }
 
 /**
+ * The role-tagged receipt list of a job that wrote one native carrier (§90 E4-15).
+ * @param receipt - The carrier's measured receipt.
+ * @returns The list a stitch or copy Done carries.
+ */
+function native(receipt: Record<string, unknown>): Record<string, unknown>[] {
+  return [{ role: 'carrier', packing: 'native', ...receipt }];
+}
+
+/**
  * The versionId the DO must compute for a carrier (§3.2).
  * @param policyVersion - The admission's target policy.
  * @param measured - The carrier's measured bytes.
@@ -381,7 +390,7 @@ describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 s
     const key = await source();
     await withStore(key, async (store) => {
       const { capability, carrier } = await copied(store, key);
-      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipt: carrier.receipt })).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipts: native(carrier.receipt) })).toBe(true);
       expect(await store.advanceStage(capability, 'publish')).toBe(true);
       const view = await store.read(key, H) as unknown as { selected: { kind: string }; presentation: Record<string, unknown> | null };
       expect(view.selected.kind).toBe('ready');
@@ -402,7 +411,7 @@ describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 s
     const key = await source();
     await withStore(key, async (store) => {
       const { capability, carrier } = await copied(store, key);
-      await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipt: { ...carrier.receipt, ...change } });
+      await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipts: native({ ...carrier.receipt, ...change }) });
       await store.advanceStage(capability, 'publish');
       const view = await store.read(key, H);
       expect(view.candidate.state).not.toBe('verified');
@@ -424,7 +433,7 @@ describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 s
       expect(await store.advanceStage(capability, 'stitch')).toBe(true);
       expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Sub' })).toBe(true);
       const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([1, 1, 2, 3, 5, 8]));
-      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipt: carrier.receipt })).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts: native(carrier.receipt) })).toBe(true);
       expect(await store.advanceStage(capability, 'publish')).toBe(true);
       const view = await store.read(key, H) as unknown as { presentation: Record<string, unknown> | null };
       expect(view.presentation).toMatchObject({ versionId: await expectedVersionId(1, carrier.receipt), playback: { carrier: { storageKey: carrier.receipt.storageKey, sha256: carrier.receipt.sha256 } } });
@@ -503,12 +512,53 @@ describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1
       const { capability, carrier } = await copied(store, key);
       // Attempt 1 wrote its carrier, then failed; the DO opens attempt 2.
       expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Fail', attempt: 1, code: 'tool_failed', usage: 10 })).toBe(true);
-      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipt: carrier.receipt })).toBe(false);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipts: native(carrier.receipt) })).toBe(false);
       const unitKey = 'video-presentation:job-a:copy';
       expect((await store.read(key, H)).chunks[unitKey]!.state).not.toBe('done');
       const second = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-copy', jobId: 'job-a', attempt: 2 })), new Uint8Array([4, 4, 4]));
-      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipt: second.receipt })).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipts: native(second.receipt) })).toBe(true);
       expect((await store.read(key, H)).chunks[unitKey]!.state).toBe('done');
+    });
+  });
+});
+
+// S6e E4-15 (inner#1306 §90): the DO stores the role-tagged receipts of the attempt that completed a stitch or copy
+// unit and the worker-only prepare answer exposes them per unit; the pin sync takes the candidate's carrier and manifest
+// keys from there. Producing the manifest in the stitch or copy recipe stays S6d.
+describe('E4-15 done receipts stored and answered per unit (§5.1 step 4; §7.15 candidate 行)', () => {
+  it('RD01 an alpha-packed stitch Done stores its carrier and manifest receipts, and prepare answers them on the unit', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(ENCODE_ROUTE)));
+      const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
+      const chunks = (answer.work as { chunks: { start: number; end: number }[] }).chunks;
+      expect(await store.advanceStage(capability, 'encode')).toBe(true);
+      for (const [index] of chunks.entries()) {
+        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Sub' })).toBe(true);
+        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Done', attempt: 1, usage: 1000 })).toBe(true);
+      }
+      expect(await store.advanceStage(capability, 'stitch')).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Sub' })).toBe(true);
+      const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([2, 7, 1, 8]));
+      const manifestBytes = new TextEncoder().encode('{"manifest":true}');
+      const manifestKey = `${carrier.receipt.storageKey}.manifest.json`;
+      await env.BUCKET.put(manifestKey, manifestBytes, { httpMetadata: { contentType: 'application/json' } });
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt },
+        { role: 'manifest', storageKey: manifestKey, sha256: await digest(manifestBytes), sizeBytes: manifestBytes.byteLength, contentType: 'application/json' }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(store, key, planned(ENCODE_ROUTE)), Date.now()));
+      expect(again.units['video-presentation:job-a:stitch']!.receipts).toEqual(receipts);
+      expect(again.units['video-presentation:job-a:chunk:0']!.receipts).toBeUndefined();
+    });
+  });
+
+  it('RD02 a copy Done is answered with its one native carrier receipt', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await copied(store, key);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipts: native(carrier.receipt) })).toBe(true);
+      const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(store, key, planned(DISPATCH_ROUTE)), Date.now()));
+      expect(again.units['video-presentation:job-a:copy']!.receipts).toEqual(native(carrier.receipt));
     });
   });
 });

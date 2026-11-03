@@ -362,7 +362,7 @@ describe('publish is the DO\'s: the worker forwards receipts and advances (inner
   it.each([
     ['copy', 'dispatch_copy', 'presentation-copy'],
     ['stitch', 'encode', 'presentation-stitch'],
-  ] as const)('PU02 a done %s attempt is reported Done with the job DO\'s measured receipt of its carrier', async (kind, route, unitKind) => {
+  ] as const)('PU02 a done %s attempt is reported Done with the job DO\'s measured receipts, its carrier tagged', async (kind, route, unitKind) => {
     const id = subJob(kind, 1);
     const units: Record<string, Unit> = { [`video-presentation:${JOB}:${kind}`]: unit(id, 'open', 'pending') };
     if (route === 'encode') {
@@ -374,7 +374,8 @@ describe('publish is the DO\'s: the worker forwards receipts and advances (inner
     await advance()(data).catch(() => undefined);
     const done = actions('report_chunk').find((body) => (body.report as { kind: string }).kind === 'Done');
     expect(done).toMatchObject({ unit: { kind: unitKind }, report: { kind: 'Done', attempt: 1,
-      receipt: { storageKey: workKey(id), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4' } } });
+      // §90 E4-15: the role-tagged list of the job's outputs; a one-output job wrote a native carrier.
+      receipts: [{ role: 'carrier', packing: 'native', storageKey: workKey(id), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4' }] } });
     expect(sentBundle()).toBe(false);
   });
 });

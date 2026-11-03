@@ -217,19 +217,27 @@ describe("release points of the candidate's own objects and of old versions (des
     return answer(w, { presentation, ledger: { state: "ready", receipt: w.source.receipt, failure: null }, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null, units: {} });
   }
 
-  it("SY07 a never-selected candidate that is archived, failed or expired registers its own carrier (stitch output) and chunk outputs, but not an L the selected version still pins", async () => {
+  it("SY07 a never-selected alpha candidate that is archived, failed or expired registers its own carrier and manifest (from the stitch's done receipts) and chunk outputs, but not an L the selected version still pins", async () => {
     const w = await world(); const l = ledgerKeys(w.key, w.source.presentationRef.source.toolInputId);
     const carrier = shared.videoPresentationWorkKeyFor(w.key, w.stitch); const chunk = shared.videoPresentationWorkKeyFor(w.key, w.chunk);
+    const manifest = `${w.key}.alpha-manifest-${randomUUID()}.json`;
     // Another version of the same toolInputId is selected, so L stays pinned by the selected row.
     await sync()(`pres-${randomUUID()}`, selectedOnly(w, w.source.bundle));
     await sync()(w.job, answer(w, { units: {
       [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [attemptOf(w.chunk, 1, "done")] },
-      [`video-presentation:${w.job}:stitch`]: { state: "done", attempt: 1, attempts: [attemptOf(w.stitch, 1, "done")] },
+      // §90 E4-15: the keys come from the role-tagged receipts the DO stored for the done stitch, not from a key rule.
+      [`video-presentation:${w.job}:stitch`]: { state: "done", attempt: 1, attempts: [attemptOf(w.stitch, 1, "done")], receipts: [
+        { role: "carrier", packing: "alpha-packed", storageKey: carrier, sha256: "d".repeat(64), sizeBytes: 100, contentType: "video/mp4" },
+        { role: "manifest", storageKey: manifest, sha256: "e".repeat(64), sizeBytes: 50, contentType: "application/json" },
+      ] },
     } }));
     expect(await queued(w.key)).not.toContain(carrier);
+    expect(await queued(w.key)).not.toContain(manifest);
+    const [candidate] = await live(w.job);
+    expect(candidate!.keys).toEqual(expect.arrayContaining([carrier, manifest]));
     await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
     const rows = await queued(w.key);
-    expect(rows).toEqual(expect.arrayContaining([carrier, chunk]));
+    expect(rows).toEqual(expect.arrayContaining([carrier, manifest, chunk]));
     expect(rows).not.toContain(l.full);
     expect(rows).not.toContain(l.table);
   });
