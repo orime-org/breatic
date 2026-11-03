@@ -8,6 +8,7 @@ import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js"
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { executePlanRecipe, inspectPlanInput, type PlanLimits, type PlanSource } from "@ingest/container/plan-recipes.js";
+import { executePresentationRecipe, isPresentationRecipe } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
 import { coverArgs } from "@ingest/probe-command.js";
@@ -23,9 +24,6 @@ export interface PlanRunBody {
   outputs: { outputIndex: number; key: string; url: string; contentType: string; coverUrl?: string; recipe: MiniToolPlanRecipe }[];
   reportUrl: string;
 }
-/** A downloaded source and its complete raw facts, scoped to one invocation. */
-interface LocalPlanInput { file: string; facts: PlanSource }
-
 /**
  * Attempt the independently optional cover without invalidating an already stored main object.
  * @param output - Its explicit cover capability and completed main file.
@@ -62,7 +60,8 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   const remaining = job.deadlineAt - Date.now();
   const signal = remaining <= 0 ? AbortSignal.abort(new DOMException("Planned job deadline passed", "AbortError")) : AbortSignal.timeout(remaining);
   const completed: PlanContainerOutput[] = [];
-  const cache = new Map<string, LocalPlanInput>();
+  const files = new Map<string, string>();
+  const facts = new Map<string, PlanSource>();
   let directory: string | undefined;
   let outputIndex: number | undefined;
   let ok = false;
@@ -70,22 +69,52 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   try {
     signal.throwIfAborted();
     const bindings = new Map(job.inputs.map((input) => [input.inputId, input.url]));
-    if (bindings.size !== job.inputs.length || job.outputs.some((output) => !bindings.has(output.recipe.inputId))) throw new Error("Planned recipe has an ambiguous or unbound input");
-    directory = await mkdtemp(join(tmpdir(), "mini-tool-plan-"));
+    /**
+     * The bound inputs a recipe reads: a stitch names each chunk besides its source (§91 D3-2).
+     * @param recipe - The recipe.
+     * @returns Its input ids.
+     * @throws {never} Never.
+     */
+    const named = (recipe: MiniToolPlanRecipe): string[] => recipe.kind === "stitch" ? [recipe.inputId, ...recipe.chunks.map((chunk) => chunk.inputId)] : [recipe.inputId];
+    if (bindings.size !== job.inputs.length || job.outputs.some((output) => named(output.recipe).some((id) => !bindings.has(id)))) throw new Error("Planned recipe has an ambiguous or unbound input");
+    const workDirectory = await mkdtemp(join(tmpdir(), "mini-tool-plan-"));
+    directory = workDirectory;
+    /**
+     * Download a bound input once per invocation.
+     * @param inputId - The bound input.
+     * @returns Its local file.
+     * @throws {Error} When the download fails, reported as internal.
+     */
+    const fetchInput = async (inputId: string): Promise<string> => {
+      const url = bindings.get(inputId)!;
+      let file = files.get(url);
+      if (file === undefined) {
+        file = join(workDirectory, `source-${files.size}`);
+        try { await download(url, file, signal); }
+        catch (error) { reason = "internal"; throw error; }
+        files.set(url, file);
+      }
+      return file;
+    };
     for (const output of job.outputs) {
       outputIndex = output.outputIndex;
       signal.throwIfAborted();
-      const url = bindings.get(output.recipe.inputId)!;
-      let input = cache.get(url);
-      if (input === undefined) {
-        const file = join(directory, `source-${cache.size}`);
-        try { await download(url, file, signal); }
-        catch (error) { reason = "internal"; throw error; }
-        input = { file, facts: await inspectPlanInput(file, signal, job.limits) };
-        cache.set(url, input);
-      }
+      const recipe = output.recipe;
       const file = join(directory, `output-${output.outputIndex}`);
-      const metadata = await executePlanRecipe({ recipe: output.recipe, input: input.file, output: file, directory, facts: input.facts, signal, limits: job.limits });
+      let metadata: MediaOfOutput & Pick<PlanContainerOutput, "packing">;
+      if (isPresentationRecipe(recipe)) {
+        const inputs = new Map<string, string>();
+        for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
+        metadata = await executePresentationRecipe({ recipe, inputs, output: file, directory, signal, limits: job.limits });
+      } else {
+        const input = await fetchInput(recipe.inputId);
+        let source = facts.get(input);
+        if (source === undefined) {
+          source = await inspectPlanInput(input, signal, job.limits);
+          facts.set(input, source);
+        }
+        metadata = await executePlanRecipe({ recipe, input, output: file, directory, facts: source, signal, limits: job.limits });
+      }
       try { await put(output.url, file, signal); }
       catch (error) { reason = "internal"; throw error; }
       const cover = output.coverUrl !== undefined && metadata.width !== null

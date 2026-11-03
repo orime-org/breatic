@@ -450,6 +450,31 @@ function matrixTag(codec: string, matrix: string): string | null {
 }
 
 /**
+ * Stream-copy the first video and audio into MP4 with `+faststart`, every packet time kept, writing only the plan's matrix
+ * tag (§4.1, §91 D2-5); the basic copy and the standard-4 `copy_carrier` recipe both write the copy this way.
+ * @param input - The downloaded source.
+ * @param output - The local MP4 to write.
+ * @param matrix - The plan's colour matrix.
+ * @param run - The lifetime and frozen process IO bounds.
+ * @param run.signal - The lifetime.
+ * @param run.limits - The bounds.
+ * @returns Nothing once the file is written.
+ * @throws {ProbeFailure} When the source has no video or the matrix has no tag value.
+ * @throws {Error} When a process fails.
+ */
+export async function copyWithMatrixTag(input: string, output: string, matrix: string,
+  run: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } }): Promise<void> {
+  const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', input],
+    { signal: run.signal, stdoutBytes: run.limits.probeStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes }));
+  const video = (Array.isArray(raw.streams) ? raw.streams.map(record) : []).find((stream) => stream.codec_type === 'video');
+  if (video === undefined) throw new ProbeFailure('classification_unknown');
+  const tag = matrixTag(String(video.codec_name), matrix);
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`, '-map', '0:a:0?',
+    '-c', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), '-movflags', '+faststart', '-f', 'mp4', output],
+  { signal: run.signal, stdoutBytes: run.limits.analysisStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes });
+}
+
+/**
  * Run the carrier action (§5.1 steps 3–4, §4.1): identity writes nothing and the source itself is the carrier; the basic
  * copy stream-copies into MP4 with `+faststart`, writes the plan's matrix tag and PUTs the object to its copy key through
  * the edge, forwarding the Worker's measured receipt.
@@ -466,15 +491,8 @@ export function runPresentationCarrier(body: PresentationCarrierRequest, signal?
         sizeBytes: (await stat(input)).size, contentType: body.contentType }] };
     }
     const answer = await planned(body, input, directory, lifetime);
-    const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', input],
-      { signal: lifetime, stdoutBytes: body.limits.probeStdoutBytes, stderrTailBytes: body.limits.stderrTailBytes }));
-    const video = (Array.isArray(raw.streams) ? raw.streams.map(record) : []).find((stream) => stream.codec_type === 'video');
-    if (video === undefined) throw new ProbeFailure('classification_unknown');
-    const tag = matrixTag(String(video.codec_name), (answer.plan as { colorMatrix: string }).colorMatrix);
     const output = join(directory, 'carrier.mp4');
-    await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`, '-map', '0:a:0?',
-      '-c', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), '-movflags', '+faststart', '-f', 'mp4', output],
-    { signal: lifetime, stdoutBytes: body.limits.analysisStdoutBytes, stderrTailBytes: body.limits.stderrTailBytes });
+    await copyWithMatrixTag(input, output, (answer.plan as { colorMatrix: string }).colorMatrix, { signal: lifetime, limits: body.limits });
     const key = videoPresentationWorkKeyFor(body.storageKey, videoContainerJobId({ kind: 'presentation-copy', jobId: body.jobId, attempt: COPY_ATTEMPT }));
     const destination = new URL(objectUrlOn(PRESENTATION_CARRIER_HOST, key));
     const size = (await stat(output)).size;

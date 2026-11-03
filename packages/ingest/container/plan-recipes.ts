@@ -262,7 +262,7 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
     case "chunk_encode":
     case "stitch":
     case "prepare_model_input":
-      // The presentation carrier and model-input recipes are frozen in shape only; their FFmpeg commands arrive with S6d.
-      throw new Error(`The ${recipe.kind} recipe is not executable yet`);
+      // runPlanJob runs these through executePresentationRecipe; they read no source facts.
+      throw new TypeError(`The ${recipe.kind} recipe runs as a presentation recipe`);
   }
 }

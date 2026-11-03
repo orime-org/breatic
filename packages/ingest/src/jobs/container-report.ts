@@ -25,8 +25,15 @@ export interface ContainerReportBody {
   reason?: ContainerFailure;
 }
 
+/** A rectangle in an alpha-packed carrier's coded frame. */
+interface PackedRect { x: number; y: number; width: number; height: number }
 /** One explicitly indexed output's metadata, independent of Worker byte measurements. */
-export interface PlanContainerOutput extends MediaOfOutput { outputIndex: number; storageKey: string }
+export interface PlanContainerOutput extends MediaOfOutput {
+  outputIndex: number;
+  storageKey: string;
+  /** An alpha-packed stitch's plane geometry (§91 D3-3), in the alpha manifest's field names. */
+  packing?: { packedWidth: number; packedHeight: number; colorRect: PackedRect; alphaRect: PackedRect };
+}
 /** The versioned report from one immutable container attempt. */
 export interface PlanContainerReportBody {
   schemaVersion: 2;
