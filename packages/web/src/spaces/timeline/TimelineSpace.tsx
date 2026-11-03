@@ -29,7 +29,7 @@ import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import { TimelineMaterialDialog } from '@web/spaces/timeline/TimelineMaterialDialog';
 import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
-import { getTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
+import { getTimelineEditSession, type TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { timelineKeyAction } from '@web/spaces/timeline/timeline-keyboard';
 import { getTimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
@@ -128,7 +128,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const labels = useTimelineTrackLabels(document);
   const queryClient = useQueryClient();
   // Every edit, including one placed from the Add media dialog, says when linkage moved clips to a track above.
-  const editWithNotice = React.useCallback((command: TimelineEditCommand, options?: { joinPrevious?: boolean }): TimelineEditPlan => {
+  const editWithNotice = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan => {
     const plan = session.edit(command, options);
     if (plan.ok && plan.bumped.length > 0) toast.info(t('timeline.edit.bumped', { count: plan.bumped.length }));
     return plan;
@@ -168,7 +168,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const seekTo = React.useCallback((target: number): void => seek(Math.max(0, Math.min(target, Math.max(0, duration - 1)))), [seek, duration]);
   const selectClip = React.useCallback((clipId: string | null): void => session.select(clipId), [session]);
 
-  const commit = React.useCallback((command: TimelineEditCommand, options?: { joinPrevious?: boolean }): TimelineEditPlan | null => {
+  const commit = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan | null => {
     if (readOnly) return null;
     const plan = editWithNotice(command, options);
     if (!plan.ok) toast.warning(t(`timeline.errors.${plan.reason}`));
@@ -215,19 +215,20 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const index = sequence.findIndex((clip) => clip.id === selected.id);
       const neighbour = sequence[index + (frames > 0 ? 1 : -1)];
       if (neighbour === undefined) return;
-      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement }, { joinPrevious: repeat });
+      commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: frames > 0 ? neighbour.startFrame + neighbour.durationFrames : neighbour.startFrame }, placement }, { hold: repeat ? 'continue' : 'start' });
       return;
     }
-    commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { joinPrevious: repeat });
+    commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: Math.max(0, selected.startFrame + frames) }, placement }, { hold: repeat ? 'continue' : 'start' });
   }, [readOnly, selected, seekTo, frame, placement, clips, commit]);
   const changeTrack = React.useCallback((direction: 1 | -1, repeat: boolean): void => {
     if (readOnly || selected === undefined) return;
     const index = labels.visual.findIndex((track) => track.id === selected.trackId);
+    if (index < 0) { toast.warning(t('timeline.errors.track_missing')); return; }
     const target = labels.visual[index + direction];
-    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }, { joinPrevious: repeat }); return; }
+    if (target !== undefined) { commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, trackId: target.id }, placement }, { hold: repeat ? 'continue' : 'start' }); return; }
     // A held key stops at the top track; only a fresh press creates a track above it.
     if (repeat) return;
-    if (direction === 1 && index >= 0) commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, newTrackId: newId() }, placement });
+    if (direction === 1) commit({ operation: 'move', parameters: { clipId: selected.id, startFrame: selected.startFrame, newTrackId: newId() }, placement });
     else toast.warning(t('timeline.edit.lowestTrack'));
   }, [readOnly, selected, labels.visual, commit, placement, t]);
 

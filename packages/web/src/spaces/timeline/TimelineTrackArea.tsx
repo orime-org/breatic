@@ -6,7 +6,7 @@ import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSe
 import { Film, Trash2 } from 'lucide-react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
-import { orderedTimelineTracks } from '@web/data/yjs/timeline-order';
+import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -241,7 +241,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
           <div className='flex flex-1 items-center px-2 text-2xs text-muted-foreground'>{gesture?.mode === 'move' ? t('timeline.edit.newTrackZone') : null}</div>
         </DropRow>}
         {rows.map((track) => {
-          const clips = Object.values(document.clips).filter((clip) => clip.trackId === track.id);
+          const clips = orderedTimelineClips(document.clips, track.id);
           const isMain = track.id === TIMELINE_MAIN_TRACK_ID;
           const showGhost = preview !== null && (preview.trackId ?? '') === track.id;
           return <DropRow key={track.id} id={track.id} testId={`timeline-track-${track.id}`} className={isMain ? 'h-16' : 'h-12'}>

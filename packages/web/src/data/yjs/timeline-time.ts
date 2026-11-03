@@ -170,3 +170,15 @@ export function validateTimelineRange(clip: TimelineVideoClip, source: TimelineV
     throw err;
   }
 }
+
+/**
+ * Count of clip frames whose source sample falls outside the source.
+ * @param clip - The clip.
+ * @param source - Its source.
+ * @param fps - The Timeline frame rate.
+ * @returns The out-of-source frames.
+ * @throws {RangeError} When a rate or the source duration is invalid.
+ */
+export function timelineSourceOverflow(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate): number {
+  return clip.durationFrames - Math.min(clip.durationFrames, timelineSourceRoom(clip, source, fps));
+}

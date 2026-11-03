@@ -96,8 +96,13 @@ export function previewTimelineGesture(
 
   if (mode === 'trim-start') {
     // On the magnetic main track the planner keeps the clip packed, so only the source in-point bounds the head.
-    if (source === undefined) return base;
     const keepsStart = packed && clip.trackId === TIMELINE_MAIN_TRACK_ID;
+    if (source === undefined) {
+      // Without its source the in-point moves frame for frame; the planner refuses the edit and says why.
+      const shift = clamp(deltaFrames, -(keepsStart ? clip.sourceInFrame : Math.min(clip.sourceInFrame, clip.startFrame)), clip.durationFrames - 1);
+      if (shift === 0) return base;
+      return { ...base, startFrame: clip.startFrame + shift < 0 ? clip.startFrame : clip.startFrame + shift, sourceInFrame: clip.sourceInFrame + shift, durationFrames: clip.durationFrames - shift };
+    }
     const headRoom = timelineHeadRoom(clip, source, fps);
     const lowest = -(keepsStart ? headRoom : Math.min(headRoom, clip.startFrame));
     const highest = clip.durationFrames - 1;
@@ -120,7 +125,7 @@ export function previewTimelineGesture(
     return { ...base, startFrame: clip.startFrame + shift < 0 ? clip.startFrame : clip.startFrame + shift, sourceInFrame, durationFrames: clip.durationFrames - shift, snapFrame: shift === target ? snapFrame : null };
   }
 
-  const longest = Math.max(1, source === undefined ? clip.durationFrames : timelineSourceRoom(clip, source, fps));
+  const longest = source === undefined ? Number.MAX_SAFE_INTEGER - clip.startFrame : Math.max(1, timelineSourceRoom(clip, source, fps));
   let durationFrames = clamp(clip.durationFrames + deltaFrames, 1, longest);
   let snapFrame: number | null = null;
   const snapped = snapTo([clip.startFrame + durationFrames]);

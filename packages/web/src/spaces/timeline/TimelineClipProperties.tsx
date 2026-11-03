@@ -3,8 +3,8 @@
 
 import * as React from 'react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
-import { timelineSourceOverflow, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
-import { parseTimelineFrame, timelineClipIntervalValid } from '@web/data/yjs/timeline-time';
+import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';

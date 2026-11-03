@@ -14,12 +14,15 @@ import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 /** What the Timeline toolbar and properties read from the personal session. */
 export interface TimelineEditSessionSnapshot { canUndo: boolean; canRedo: boolean; selectedClipId: string | null }
 
+/** How an edit relates to a held key: its first press, or a repeat that joins the step that press made. */
+export interface TimelineEditOptions { hold?: 'start' | 'continue' }
+
 /** One user's history and selection for one open Timeline document. */
 export interface TimelineEditSession {
   readonly origin: symbol;
   getSnapshot: () => TimelineEditSessionSnapshot;
   subscribe: (listener: () => void) => () => void;
-  edit: (command: TimelineEditCommand, options?: { joinPrevious?: boolean }) => TimelineEditPlan;
+  edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
   undo: () => void;
   redo: () => void;
   select: (clipId: string | null) => void;
@@ -158,6 +161,8 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     if (added !== null && added !== stackItem) for (const [key, value] of stackItem.meta) added.meta.set(key, value);
   });
   doc.on('update', refresh);
+  // The step the current key hold made; a repeat joins it only while it is still the top step.
+  let holdStep: unknown = null;
 
   return {
     origin,
@@ -167,13 +172,15 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       return () => { listeners.delete(listener); };
     },
     edit(command, options = {}) {
-      const join = options.joinPrevious === true && history.undoStack.length > 0;
+      const top = history.undoStack.at(-1);
+      const join = options.hold === 'continue' && holdStep !== null && top === holdStep;
       const timeout = history.captureTimeout;
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
         const before = snapshotRecords(doc);
         const plan = applyTimelineEdit(doc, command, origin);
-        const item = history.undoStack[history.undoStack.length - 1];
+        const item = history.undoStack.at(-1);
+        if (!join) holdStep = options.hold !== undefined && item !== top ? item : null;
         if (plan.ok && item !== undefined) {
           const after = snapshotRecords(doc);
           // The top item is this edit's own step, a step it joined, or, for an edit that changed nothing, the
@@ -190,12 +197,14 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     },
     undo() {
       added = null;
+      holdStep = null;
       clipsBeforePop = new Set(doc.getMap('clips').keys());
       history.undo();
       refresh();
     },
     redo() {
       added = null;
+      holdStep = null;
       clipsBeforePop = new Set(doc.getMap('clips').keys());
       history.redo();
       refresh();

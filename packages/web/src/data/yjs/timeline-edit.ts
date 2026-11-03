@@ -4,11 +4,11 @@
 import { z } from 'zod';
 import {
   TIMELINE_MAIN_TRACK_ID, TimelineVideoClipSchema, TimelineVideoSourceSchema,
-  type TimelineDocumentV1, type TimelineRate, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource,
+  type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
 
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
-import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceRoom } from '@web/data/yjs/timeline-time';
+import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
 /** The editing user's local placement switches, carried with each command. */
 export interface TimelineEditPlacement { magnet: boolean; linkage: boolean }
@@ -25,8 +25,7 @@ export type TimelineEditCommand = (
 ) & { placement: TimelineEditPlacement };
 
 // The command bounds are the persisted clip format's own field schemas.
-const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity } = TimelineVideoClipSchema.shape;
-const trackIdentity = z.string().min(1).max(64);
+const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity, trackId: trackIdentity } = TimelineVideoClipSchema.shape;
 const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
 
 /** A normalized user-confirmed native edit. */
@@ -83,18 +82,6 @@ const RANGE_FIELDS = ['trackId', 'startFrame', 'sourceInFrame', 'durationFrames'
  */
 function endOf(clip: TimelineVideoClip): number {
   return clip.startFrame + clip.durationFrames;
-}
-
-/**
- * Count of clip frames whose source sample falls outside the source.
- * @param clip - The clip.
- * @param source - Its source.
- * @param fps - The Timeline frame rate.
- * @returns The out-of-source frames.
- * @throws {RangeError} When a rate or the source duration is invalid.
- */
-export function timelineSourceOverflow(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate): number {
-  return clip.durationFrames - Math.min(clip.durationFrames, timelineSourceRoom(clip, source, fps));
 }
 
 /**
