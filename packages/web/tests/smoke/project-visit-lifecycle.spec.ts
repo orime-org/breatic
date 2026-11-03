@@ -53,18 +53,23 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
     await expect(editor).toBeVisible();
     const marker = `visit-${crypto.randomUUID()}`;
     await selectInBody(page, () => editor.evaluate((element) => {
-      const range = document.createRange(); range.selectNodeContents(element); range.collapse(false);
+      const paragraphs = element.querySelectorAll('p');
+      const paragraph = paragraphs.item(paragraphs.length - 1);
+      if (!paragraph) throw new Error('The actual document paragraph is missing');
+      const range = document.createRange(); range.selectNodeContents(paragraph); range.collapse(false);
       const selection = window.getSelection(); if (!selection) throw new Error('No editor selection');
       selection.removeAllRanges(); selection.addRange(range);
     }));
     await page.keyboard.type(marker);
     await expect(editor).toContainText(marker);
     const userUrl = await liveModuleUrl(page, 'stores/current-user.ts');
+    const refreshedAccount = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/auth/me' && response.request().method() === 'GET');
     await page.evaluate(async (url) => {
       const current = await import(/* @vite-ignore */ url) as { refreshCurrentUser: () => Promise<void>; useCurrentUserStore: { getState: () => { user: { id: string } | null } } };
       if (!current.useCurrentUserStore.getState().user) throw new Error('The live auth singleton is empty');
       await current.refreshCurrentUser();
     }, userUrl);
+    expect((await refreshedAccount).ok()).toBe(true);
     const archiveRefresh = page.waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname === `/api/v1/projects/${projectId}`);
     await dataOf(await page.request.post(`/api/v1/projects/${projectId}/archive`), 'external archive HTTP action'); archived = true;
     await archiveRefresh; await expect(page.getByTestId('archived-banner')).toBeVisible();
@@ -85,6 +90,7 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
       await expect(editor).toContainText(marker);
       await test.info().attach(`actual-project-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
     }
+    expect(traffic.posts).toHaveLength(1);
     await test.info().attach('passive-entry-evidence', { body: JSON.stringify({ original, queried, persisted, posts: traffic.posts, crossDayFixture: false }, null, 2), contentType: 'application/json' });
   } finally {
     if (archived) await dataOf(await page.request.post(`/api/v1/projects/${projectId}/restore`), 'restore for cleanup');
