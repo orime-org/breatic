@@ -280,6 +280,21 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect((jobs[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toMatchObject({ kind: 'stitch', chunks: [workKey(subJob('chunk', 1, 0)), workKey(subJob('chunk', 2, 1))] });
   });
 
+  it('DS06 every chunk dispatched, one finishing on this pickup and one still running: no advance to stitch and no stitch job', async () => {
+    const units = {
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'open', 'pending'),
+      [`video-presentation:${JOB}:chunk:2`]: unit(subJob('chunk', 1, 2), 'open', 'pending'),
+    };
+    answer = prepareAnswer({ units, work: { kind: 'encode', chunks: [{ start: 0, end: 32 }, { start: 32, end: 64 }, { start: 64, end: 96 }] },
+      preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    reports.set(subJob('chunk', 1, 1), finished(subJob('chunk', 1, 1), 'done', { wallMs: 1000, cpuUsec: 2000 }));
+    reports.set(subJob('chunk', 1, 2), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage')).toEqual([]);
+    expect(submitted().some((job) => String(job.jobId).includes(':stitch:'))).toBe(false);
+  });
+
   it('DS05 one chunk still open: no stitch yet', async () => {
     const units = {
       [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),

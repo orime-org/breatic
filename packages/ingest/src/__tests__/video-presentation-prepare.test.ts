@@ -305,7 +305,7 @@ describe('every pickup reads the started job without probing again (inner#1306 �
   });
 });
 
-type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipt?: Record<string, unknown> };
+type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipt?: Record<string, unknown> } | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
 
 /**
  * The shared output key of one sub-job.
@@ -456,6 +456,54 @@ describe('the reuse route from the selected bundle\'s identity (inner 54ce9ea3 �
       const port = fakePort(store, key, planned({ ...IDENTITY_ROUTE, plan }));
       const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, port, Date.now()));
       expect(answer.plan?.route).not.toBe('reuse');
+    });
+  });
+});
+
+describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1 「候选或产物按全部块推进」, §5.1 step 2a 「全部块记录后再派stitch」)', () => {
+  // 960 frames of 4K 10-bit HDR against a minute of budget: more than one chunk, within the cap of 8.
+  const heavy = { ...WORK, sourceWidth: 3840, sourceHeight: 2160, outputWidth: 1920, outputHeight: 1080, bitDepth: 10 as const, hdr: true };
+
+  it('OR01 advance to stitch is refused while any chunk\'s latest attempt is not done, and accepted once all are', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const now = Date.now();
+      const deadlineAt = now + 60_000;
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(ENCODE_ROUTE, keyframes(960, 24), heavy)), deadlineAt, now);
+      const chunks = (answer.work as { chunks: { start: number; end: number }[] }).chunks;
+      expect(chunks.length).toBeGreaterThan(1);
+      const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt, token: answer.capability!.token };
+      expect(await store.advanceStage(capability, 'encode')).toBe(true);
+      const last = chunks.length - 1;
+      for (const [index] of chunks.entries()) {
+        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Sub' })).toBe(true);
+        if (index !== last) expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Done', attempt: 1, usage: 1000 })).toBe(true);
+      }
+      // The last chunk is open with its first attempt pending.
+      expect(await store.advanceStage(capability, 'stitch')).toBe(false);
+      expect((await store.read(key, H)).candidate.stage).toBe('encode');
+      // Its first attempt fails with retries left: the chunk is open on attempt 2, not done.
+      expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: last }, { kind: 'Fail', attempt: 1, code: 'tool_failed', usage: 10 })).toBe(true);
+      expect(await store.advanceStage(capability, 'stitch')).toBe(false);
+      expect((await store.read(key, H)).candidate.stage).toBe('encode');
+      expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: last }, { kind: 'Done', attempt: 2, usage: 1000 })).toBe(true);
+      expect(await store.advanceStage(capability, 'stitch')).toBe(true);
+      expect((await store.read(key, H)).candidate.stage).toBe('stitch');
+    });
+  });
+
+  it('OR02 a copy Done whose receipt names another attempt\'s work key is refused and the unit stays open', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await copied(store, key);
+      // Attempt 1 wrote its carrier, then failed; the DO opens attempt 2.
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Fail', attempt: 1, code: 'tool_failed', usage: 10 })).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipt: carrier.receipt })).toBe(false);
+      const unitKey = 'video-presentation:job-a:copy';
+      expect((await store.read(key, H)).chunks[unitKey]!.state).not.toBe('done');
+      const second = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-copy', jobId: 'job-a', attempt: 2 })), new Uint8Array([4, 4, 4]));
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 2, usage: 1200, receipt: second.receipt })).toBe(true);
+      expect((await store.read(key, H)).chunks[unitKey]!.state).toBe('done');
     });
   });
 });
