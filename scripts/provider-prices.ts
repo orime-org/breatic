@@ -11,10 +11,12 @@
  * writes the input schema snapshot to
  * `packages/provider/test/fixtures/upstream-schemas/<upstream>/<endpoint>.json`,
  * which `bindings-match-upstream-schema.test.ts` checks the bindings against.
- * fal: writes each binding's `base_price` from fal's `unit_price`. SandBase:
- * stores each model's `price_formula` under
- * `packages/provider/test/fixtures/upstream-prices/sandbase/` and lists the
- * bindings whose formula changed, to be rewritten in JSONata by hand.
+ * fal: writes each binding's and extra step's `base_price` from fal's
+ * `unit_price`. SandBase: stores each endpoint's `price_formula` under
+ * `packages/provider/test/fixtures/upstream-prices/sandbase/` and reports a
+ * formula that changed as a problem without overwriting the stored one, so it
+ * is reported until the binding is rewritten in JSONata by hand and the stored
+ * formula updated with it.
  * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
  * against WaveSpeed's own price for sample params; for every other model it
  * lists where the live price differs from the binding's. Last it regenerates
@@ -81,6 +83,12 @@ const THREE_D: Readonly<Record<string, { base_price: number; formula: string; sa
       samples: [{ image: SAMPLE_IMAGE }, ...tiers.flatMap((tier) => views.map((view) => ({ image: SAMPLE_IMAGE, ...tier, ...view })))],
     },
     "wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid": { base_price: 270_000, formula: "", samples: [{ image: SAMPLE_IMAGE }] },
+    // Meshy 6 charges 1.44 USD whatever the fields the binding sends; only mode, texture_resolution and rigging, which it never sends, change it.
+    "meshy/v6/text-to-3d": {
+      base_price: 1_440_000,
+      formula: "",
+      samples: [{ prompt: "x" }, { prompt: "" }, { prompt: "x", topology: "quad", target_polycount: 300_000, enable_pbr: true, symmetry_mode: "off", pose_mode: "t-pose" }],
+    },
   };
 })();
 
@@ -245,20 +253,26 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
       writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), outputs: snapshotOf(output, { root: doc, source }).fields });
       written += 1;
     }
-    const price = (at(await json(`${FAL_PRICING}?endpoint_id=${binding.model_id}`, { headers: { Authorization: `Key ${key}` } }), "prices") as { endpoint_id: string; unit_price: number; unit: string }[])
-      .find((p) => p.endpoint_id === binding.model_id);
-    if (price === undefined) {
-      problems.push(`${model}: fal has no price for ${binding.model_id}`);
-      continue;
+    const priced: [string, (string | number)[]][] = [
+      [binding.model_id, ["pricing"]],
+      ...(binding.extra_steps ?? []).flatMap((s, i): [string, (string | number)[]][] => (s.pricing === undefined ? [] : [[s.endpoint, ["extra_steps", i, "pricing"]]])),
+    ];
+    for (const [endpoint, path] of priced) {
+      const price = (at(await json(`${FAL_PRICING}?endpoint_id=${endpoint}`, { headers: { Authorization: `Key ${key}` } }), "prices") as { endpoint_id: string; unit_price: number; unit: string }[])
+        .find((p) => p.endpoint_id === endpoint);
+      if (price === undefined) {
+        problems.push(`${model}: fal has no price for ${endpoint}`);
+        continue;
+      }
+      docs.get(modality)!.setIn(["models", model, "upstreams", index, ...path, "base_price"], Math.round(price.unit_price * MICRO));
+      process.stdout.write(`${model} ${endpoint} on ${upstream}: ${price.unit_price} USD per ${price.unit}\n`);
     }
-    docs.get(modality)!.setIn(["models", model, "upstreams", index, "pricing", "base_price"], Math.round(price.unit_price * MICRO));
-    process.stdout.write(`${model} on ${upstream}: ${price.unit_price} USD per ${price.unit}\n`);
   }
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 }
 
 /**
- * Sync the SandBase bindings: snapshots with execution modes, and the stored price formulas.
+ * Sync the SandBase bindings: snapshots with execution modes of the model and its extra steps, and the stored price formulas.
  * @param upstream - The upstream's name.
  * @param list - Its bindings.
  */
@@ -267,22 +281,26 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
   if (key === undefined) return;
   let written = 0;
   for (const { model, binding } of list) {
-    const source = `${SANDBASE_MODELS}/${binding.model_id}`;
-    const answer = await json(source, { headers: { Authorization: `Bearer ${key}` } });
-    const doc = at(answer, "unified_schema");
-    const input = at(doc, "paths", "/v1/run", "post", "requestBody", "content", "application/json", "schema");
-    if (input === undefined) {
-      problems.push(`${model}: SandBase's schema for ${binding.model_id} has no input schema`);
-      continue;
+    for (const endpoint of [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)]) {
+      const source = `${SANDBASE_MODELS}/${endpoint}`;
+      const answer = await json(source, { headers: { Authorization: `Bearer ${key}` } });
+      const doc = at(answer, "unified_schema");
+      const input = at(doc, "paths", "/v1/run", "post", "requestBody", "content", "application/json", "schema");
+      if (input === undefined) {
+        problems.push(`${model}: SandBase's schema for ${endpoint} has no input schema`);
+        continue;
+      }
+      const modes = [at(answer, "execution_mode"), ...((at(answer, "supported_modes") as unknown[] | null) ?? [])].filter((m): m is string => typeof m === "string");
+      writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), modes: [...new Set(modes)] });
+      written += 1;
+      const formula = at(answer, "model_card", "price_formula") ?? null;
+      const file = resolve(PRICES, upstream, `${endpoint}.json`);
+      const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { price_formula: unknown }).price_formula : undefined;
+      if (before === undefined) writeJson(file, { source, price_formula: formula });
+      else if (JSON.stringify(before) !== JSON.stringify(formula)) {
+        problems.push(`${model} ${endpoint} on ${upstream}: price_formula changed, rewrite its pricing and the stored formula: ${JSON.stringify(before)} -> ${JSON.stringify(formula)}`);
+      }
     }
-    const modes = [at(answer, "execution_mode"), ...((at(answer, "supported_modes") as unknown[] | null) ?? [])].filter((m): m is string => typeof m === "string");
-    writeSnapshot(upstream, binding.model_id, { ...snapshotOf(input, { root: doc, source }), modes: [...new Set(modes)] });
-    written += 1;
-    const formula = at(answer, "model_card", "price_formula") ?? null;
-    const file = resolve(PRICES, upstream, `${binding.model_id}.json`);
-    const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { price_formula: unknown }).price_formula : undefined;
-    if (before !== undefined && before !== formula) process.stdout.write(`${model} on ${upstream}: price_formula changed, rewrite its pricing: ${JSON.stringify(before)} -> ${JSON.stringify(formula)}\n`);
-    writeJson(file, { source, price_formula: formula });
   }
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 }
