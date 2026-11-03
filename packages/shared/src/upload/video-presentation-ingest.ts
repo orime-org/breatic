@@ -126,32 +126,49 @@ export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIn
 });
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);
-const ledger = z.discriminatedUnion('state', [
+/** The selected version's ledger in the §10.1 wire states, shared by the ingest snapshot and the web response. */
+export const videoPresentationIngestLedgerSchema: z.ZodType<VideoPresentationIngestLedger> = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('pending'), receipt: z.null(), failure: z.null() }),
   z.strictObject({ state: z.literal('ready'), receipt: videoPresentationLedgerReceiptSchema, failure: z.null() }),
   z.strictObject({ state: z.literal('failed'), receipt: z.null(), failure: errorCode }),
 ]);
+/** The target policy's preparation, shared by the ingest snapshot and the web response. */
+export const videoPresentationIngestPreparationSchema: z.ZodType<VideoPresentationIngestPreparation> = z.strictObject({
+  targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), jobId: z.string().min(1),
+  stage: z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']).nullable(), failure: errorCode.nullable(),
+});
+
+/**
+ * Check that the selected bundle belongs to the source and that a reported ledger is the selected version's own.
+ * @param value - The selected bundle and its ledger.
+ * @param value.presentation - The selected bundle, or null.
+ * @param value.ledger - The ledger, or null.
+ * @param sourceFingerprint - The source's fingerprint.
+ * @param ctx - Where issues go.
+ * @throws {never} Never.
+ */
+export function checkSelectedVideoPresentation(
+  value: { presentation: VideoPresentationVersion | null; ledger: VideoPresentationIngestLedger | null }, sourceFingerprint: string, ctx: z.RefinementCtx,
+): void {
+  const { presentation, ledger } = value;
+  if (presentation !== null && presentation.sourceFingerprint !== sourceFingerprint) {
+    ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'The selected bundle belongs to another source' });
+  }
+  if (ledger === null) return;
+  if (presentation === null) ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'Only a selected version reports its ledger' });
+  else if (ledger.receipt !== null && (ledger.receipt.toolInputId !== presentation.toolInputId || ledger.receipt.sourceFingerprint !== presentation.sourceFingerprint)) {
+    ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'The ledger receipt belongs to another tool input' });
+  }
+}
+
 /** Internal response parser is shared by the backend client and ingest writer. */
 export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationIngestSnapshot> = z.strictObject({
   sourceBinding: z.strictObject({ storageKey: z.string().min(1).max(500), sourceFingerprint: hash }),
   presentation: videoPresentationVersionSchema.nullable(),
-  preparation: z.strictObject({
-    targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), jobId: z.string().min(1),
-    stage: z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']).nullable(), failure: errorCode.nullable(),
-  }).nullable(),
-  ledger: ledger.nullable(),
+  preparation: videoPresentationIngestPreparationSchema.nullable(),
+  ledger: videoPresentationIngestLedgerSchema.nullable(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
-}).superRefine((value, ctx) => {
-  const { presentation, ledger: state } = value;
-  if (presentation !== null && presentation.sourceFingerprint !== value.sourceBinding.sourceFingerprint) {
-    ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'The selected bundle belongs to another source' });
-  }
-  if (state === null) return;
-  if (presentation === null) ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'Only a selected version reports its ledger' });
-  else if (state.receipt !== null && (state.receipt.toolInputId !== presentation.toolInputId || state.receipt.sourceFingerprint !== presentation.sourceFingerprint)) {
-    ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'The ledger receipt belongs to another tool input' });
-  }
-});
+}).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
 
 /**
  * Call the authenticated presentation auxiliary-work boundary.

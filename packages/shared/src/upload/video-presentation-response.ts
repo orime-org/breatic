@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from 'zod';
-import { alphaManifestMatchesPresentation, alphaManifestSchema, videoPresentationSchema, type AlphaManifest, type VideoPresentation } from '@shared/upload/video-presentation.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 import { videoPresentationTableReadLimitsSchema, type VideoPresentationTableReadLimits } from '@shared/upload/read-video-presentation-table.js';
-import { videoSourceLedgerStateSchema } from '@shared/upload/video-source-ledger.js';
-import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
+import { videoPresentationVersionSchema, type VideoPresentationVersion } from '@shared/upload/video-presentation-version.js';
+import {
+  checkSelectedVideoPresentation, videoPresentationIngestLedgerSchema, videoPresentationIngestPreparationSchema,
+  type VideoPresentationIngestLedger, type VideoPresentationIngestPreparation,
+} from '@shared/upload/video-presentation-ingest.js';
 
 /** Registry identity remains available before trusted media measurement. */
 export interface VideoPresentationSourceBinding {
@@ -17,28 +19,35 @@ export interface VideoPresentationSourceBinding {
   mediaInfo: { width: number | null; height: number | null; duration: number | null; mimeType: string };
 }
 
-/** Authorized source lookup and its independently resolved presentation. */
+/**
+ * Authorized source lookup and its presentation (design §3.5 web→server row): the selected bundle, the target policy's
+ * preparation and the selected version's ledger; a repair answers the same response.
+ */
 export interface VideoPresentationResponse {
   sourceBinding: VideoPresentationSourceBinding;
-  presentation: VideoPresentation | null;
-  manifest?: AlphaManifest;
-  preparation: VideoPresentationPreparation | null;
+  presentation: VideoPresentationVersion | null;
+  preparation: VideoPresentationIngestPreparation | null;
+  ledger: VideoPresentationIngestLedger | null;
   pollAfterMs: number | null;
-  /** The source frame table's own capability state; absent from a server that predates it. */
-  sourceLedger?: VideoSourceLedgerState;
   /** The current policy a reader holds the stored table to; absent means the table is not read. */
   sourceLedgerReadLimits?: VideoPresentationTableReadLimits;
 }
 
-/** Accepted independently funded metadata work, unchanged on replay. */
-export interface VideoPresentationAttempt { jobId: string; deadlineAt: number }
-/** A repair returns the fixed work identity as well as the current source facts. */
-export interface VideoPresentationRepairResponse extends VideoPresentationResponse { attempt: VideoPresentationAttempt | null }
-/** Auxiliary admission can exist before a valid measured descriptor exists. */
-export interface VideoPresentationPreparation {
-  status: 'accepted' | 'running' | 'completed' | 'failed';
-  attempt: VideoPresentationAttempt;
-  error?: string;
+/**
+ * Whether the reader waits on server work (§7.12 steps 1–5): nothing selected while the target work has not failed, or
+ * a selected version whose ledger is absent or pending. The one rule behind `pollAfterMs` on both sides.
+ * @param value - The selected bundle, the preparation and the ledger.
+ * @param value.presentation - The selected bundle, or null.
+ * @param value.preparation - The target policy's preparation, or null.
+ * @param value.ledger - The selected version's ledger, or null.
+ * @returns True while a later read can change what the reader sees.
+ * @throws {never} Never.
+ */
+export function videoPresentationAwaitsServer(value: {
+  presentation: VideoPresentationVersion | null; preparation: VideoPresentationIngestPreparation | null; ledger: VideoPresentationIngestLedger | null;
+}): boolean {
+  if (value.presentation !== null) return value.ledger === null || value.ledger.state === 'pending';
+  return value.preparation !== null && value.preparation.failure === null;
 }
 
 /** Registry-backed nullable metadata wire contract. */
@@ -50,50 +59,25 @@ export const videoPresentationSourceBindingSchema: z.ZodType<VideoPresentationSo
     duration: z.number().finite().positive().nullable(), mimeType: z.string().min(1),
   }),
 });
-const attempt = z.strictObject({ jobId: z.string().min(1), deadlineAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
-const preparation: z.ZodType<VideoPresentationPreparation> = z.strictObject({
-  status: z.enum(['accepted', 'running', 'completed', 'failed']), attempt,
-  error: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
-}).superRefine((value, ctx) => {
-  if ((value.status === 'failed') !== (value.error !== undefined)) {
-    ctx.addIssue({ code: 'custom', path: ['error'], message: 'Only failed preparation carries its stable error code' });
-  }
-});
-/** Authorized presentation query wire contract. */
+/** Authorized presentation query and repair wire contract. */
 export const videoPresentationResponseSchema: z.ZodType<VideoPresentationResponse> = z.strictObject({
-  sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationSchema.nullable(),
-  manifest: alphaManifestSchema.optional(), preparation: preparation.nullable(),
+  sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationVersionSchema.nullable(),
+  preparation: videoPresentationIngestPreparationSchema.nullable(), ledger: videoPresentationIngestLedgerSchema.nullable(),
   pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
-  sourceLedger: videoSourceLedgerStateSchema.optional(), sourceLedgerReadLimits: videoPresentationTableReadLimitsSchema.optional(),
+  sourceLedgerReadLimits: videoPresentationTableReadLimitsSchema.optional(),
 }).superRefine((value, ctx) => {
-  const ledger = value.sourceLedger;
-  if (ledger !== undefined && ledger !== null &&
-    (ledger.state === 'ready' ? ledger.receipt.sourceFingerprint : ledger.sourceFingerprint) !== value.sourceBinding.contentHash) {
-    ctx.addIssue({ code: 'custom', path: ['sourceLedger'], message: 'Source ledger differs from registered source' });
-  }
+  checkSelectedVideoPresentation(value, value.sourceBinding.contentHash, ctx);
   const descriptor = value.presentation;
   if (descriptor !== null) {
-    if (descriptor.sourceFingerprint !== value.sourceBinding.contentHash) {
-      ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'Presentation differs from registered source' });
-    }
     for (const field of ['width', 'height', 'duration'] as const) {
       const known = value.sourceBinding.mediaInfo[field];
-      if (known !== null && (field === 'duration' ? !videoDurationsMatch(known, descriptor.original.duration) : known !== descriptor.original[field])) {
+      const measured = descriptor.original[field];
+      if (known !== null && (measured === null || (field === 'duration' ? !videoDurationsMatch(measured, known) : known !== measured))) {
         ctx.addIssue({ code: 'custom', path: ['presentation', 'original', field], message: 'Presentation differs from registered measurement' });
       }
     }
-    if (descriptor.state === 'alpha_ready' && (value.manifest === undefined || !alphaManifestMatchesPresentation(value.manifest, descriptor))) {
-      ctx.addIssue({ code: 'custom', path: ['manifest'], message: 'Ready alpha requires a matching verified manifest' });
-    }
   }
-  const pending = value.preparation?.status === 'accepted' || value.preparation?.status === 'running';
-  if (pending !== (value.pollAfterMs !== null)) {
-    ctx.addIssue({ code: 'custom', path: ['pollAfterMs'], message: 'Only accepted pending work carries a polling interval' });
+  if (videoPresentationAwaitsServer(value) !== (value.pollAfterMs !== null)) {
+    ctx.addIssue({ code: 'custom', path: ['pollAfterMs'], message: 'Only a reader waiting on server work carries a polling interval' });
   }
-});
-
-/** Repair uses the same validated source contract and one accepted work identity. */
-export const videoPresentationRepairResponseSchema: z.ZodType<VideoPresentationRepairResponse> = z.object({ attempt: attempt.nullable() }).passthrough().transform((value) => {
-  const { attempt: accepted, ...base } = value;
-  return { ...videoPresentationResponseSchema.parse(base), attempt: accepted };
 });

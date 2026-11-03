@@ -1005,17 +1005,16 @@ export type {
 export {
   videoPresentationSourceBindingSchema,
   videoPresentationResponseSchema,
-  videoPresentationRepairResponseSchema,
   type VideoPresentationSourceBinding,
   type VideoPresentationResponse,
-  type VideoPresentationRepairResponse,
-  type VideoPresentationAttempt,
-  type VideoPresentationPreparation,
+  videoPresentationAwaitsServer,
 } from "@shared/upload/video-presentation-response.js";
 export {
   videoPresentationAtIngest,
   videoPresentationIngestSnapshotSchema,
   videoPresentationIngestRequestSchema,
+  videoPresentationIngestLedgerSchema,
+  videoPresentationIngestPreparationSchema,
   videoPresentationPricingSchema,
   videoPresentationProcessLimitsSchema,
   type VideoPresentationIngestRequest,
