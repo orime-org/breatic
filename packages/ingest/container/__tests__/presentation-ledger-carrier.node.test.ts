@@ -164,9 +164,10 @@ async function packetTimes(path: string): Promise<string[]> {
  * @returns The facts.
  */
 async function streamOf(path: string): Promise<Record<string, string>> {
-  const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=codec_name,color_space,nb_read_packets,duration:format=format_name', '-of', 'json', path]);
+  const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=codec_name,color_space,nb_read_packets:format=format_name,duration', '-of', 'json', path]);
   const parsed = JSON.parse(stdout) as { streams: Record<string, string>[]; format: Record<string, string> };
-  return { ...parsed.streams[0]!, format_name: parsed.format.format_name! };
+  // A Matroska/WebM video stream has no `duration` (only a DURATION tag), so durations are compared on the format.
+  return { ...parsed.streams[0]!, format_name: parsed.format.format_name!, format_duration: parsed.format.duration! };
 }
 
 describe('the ledger action writes full and compact through the edge PUT of the toolInputId (§5.1 step 5, §3.2 item 7)', () => {
@@ -252,7 +253,8 @@ describe('the carrier action (§5.1 steps 3–4, §4.1, §7.1; §91 D2-1, D2-2)'
     expect(after.codec_name).toBe(codec);
     expect(matrices as readonly string[]).toContain(after.color_space);
     expect(after.nb_read_packets).toBe(before.nb_read_packets);
-    expect(Number(after.duration)).toBeCloseTo(Number(before.duration), 3);
+    expect(Number(after.format_duration)).toBeGreaterThan(0);
+    expect(Number(after.format_duration)).toBeCloseTo(Number(before.format_duration), 3);
     expect(await packetTimes(written)).toEqual(await packetTimes(source));
     // §91 D2-6: faststart, the movie box before the media data.
     const text = new TextDecoder('latin1').decode(put!.body);
