@@ -24,17 +24,26 @@ const layout = z.strictObject({
   batches: z.array(z.array(index).min(1)),
   encodes: z.array(z.strictObject({ outputIndex: index, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) })),
 });
+const container = {
+  containerClass: z.literal("MiniToolContainerStd4"), precheckSeconds: z.number().positive(),
+  size: z.strictObject({ instance_type: z.string().min(1), vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
+  prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }),
+  limits: miniToolPlanLimitsSchema,
+};
+const frozenToolInput = {
+  presentationRef: miniToolPresentationRefSchema,
+  ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }), versionIds: z.strictObject({ source: fingerprint }),
+  retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
+};
 const storedPlanSchema = z.union([
-  z.strictObject({ ...common, tool: z.literal("video.remove-bg"), presentationRef: miniToolPresentationRefSchema.optional(),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.remove-bg"),
     provider: z.strictObject({ provider: z.literal("wavespeed"), model_id: z.literal("bria/fibo/video-background-remover") }),
-    body: z.strictObject({ video: z.url(), background_color: z.literal("Transparent"), output_container_and_codec: z.literal("webm_vp9"), preserve_audio: z.literal(true) }),
+    body: z.strictObject({ video: z.strictObject({ kind: z.literal("prepared"), inputId: z.literal("source"), job: z.string().regex(/^[0-9a-f-]{36}:prep:0$/) }),
+      background_color: z.literal("Transparent"), output_container_and_codec: z.literal("webm_vp9"), preserve_audio: z.literal(true) }),
+    preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) }),
   }),
-  z.strictObject({ ...common, tool: z.enum(["video.extract-frames", "video.split"]), presentationRef: miniToolPresentationRefSchema,
-    ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }), versionIds: z.strictObject({ source: fingerprint }), layout,
-    container: z.strictObject({ containerClass: z.literal("MiniToolContainerStd4"), precheckSeconds: z.number().positive(),
-      size: z.strictObject({ instance_type: z.string().min(1), vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
-      prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }), limits: miniToolPlanLimitsSchema }),
-    retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
+    outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject(container),
   }),
 ]);
 
@@ -64,12 +73,12 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
   if (task.source !== "mini_tool" || task.mode !== "append") throw new Error("Planned video execution has no owning task");
   const stored = storedPlanSchema.parse(task.params.miniToolExecution);
   const draft = videoToolDraftSchema(stored.tool).parse(stored.draft);
-  if (stored.tool !== "video.remove-bg" && stored.retry !== undefined) {
+  if (stored.retry !== undefined) {
     const indexes = stored.outputs.map((output) => output.outputIndex);
     if (stored.retry.runId === stored.taskId || canonicalMiniToolValue([...indexes].sort((a, b) => a - b)) !== canonicalMiniToolValue([...stored.retry.outputIndexes].sort((a, b) => a - b))
       || new Set(indexes).size !== indexes.length || new Set(stored.outputs.map((output) => output.nodeId)).size !== stored.outputs.length
       || stored.outputs.some((output, i) => output.nodeId === draft.source.nodeId || (i > 0 && output.outputIndex <= stored.outputs[i - 1]!.outputIndex)
-        || output.recipe.kind !== (stored.tool === "video.split" ? "segment" : "frame"))) throw new Error("Retry differs from its frozen subset");
+        || output.recipe.kind !== (stored.tool === "video.split" ? "segment" : stored.tool === "video.remove-bg" ? "remove-bg" : "frame"))) throw new Error("Retry differs from its frozen subset");
   } else {
     miniToolPlannedRequestSchema.parse({ tool: stored.tool, project_id: stored.projectId, space_id: stored.spaceId, run_id: stored.taskId,
       draft, analysis_refs: stored.analysisRefs, outputs: stored.outputs, presentation_ref: stored.presentationRef });
@@ -78,8 +87,11 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
   const { requestFingerprint: _requestFingerprint, planFingerprint, ...projection } = execution;
   if (task.taskType !== (execution.tool === "video.extract-frames" ? "image" : "video")
     || execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId || execution.model !== task.model
-    || (execution.tool !== "video.remove-bg" && (execution.model !== execution.tool || execution.ledgerReceipts.source.sourceFingerprint !== execution.binding.contentHash
-      || execution.ledgerReceipts.source.toolInputId !== execution.presentationRef.source.toolInputId))
+    || execution.ledgerReceipts.source.sourceFingerprint !== execution.binding.contentHash
+    || execution.ledgerReceipts.source.toolInputId !== execution.presentationRef.source.toolInputId
+    || (execution.tool !== "video.remove-bg" && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
+    // A fresh removal prepares its own model input; a retry reuses the original run's.
+    || (execution.tool === "video.remove-bg" && (execution.body.video.job === `${execution.taskId}:prep:0`) !== (execution.retry === undefined))
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) throw new Error("Planned execution differs from its original parent or complete plan");
   return { task, execution };

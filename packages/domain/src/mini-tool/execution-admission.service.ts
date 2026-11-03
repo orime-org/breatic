@@ -10,7 +10,7 @@ import {
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   planVideoFrames, planVideoSplit, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolSourceBinding,
-  type VideoEncodeChunk, type VideoEncoderRates, type VideoPresentationTable,
+  type VideoEncodeChunk, type VideoEncoderRates, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
@@ -18,7 +18,7 @@ import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { estimateModelCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 
 /** Frozen common planning facts owned by the physical SQL task. */
@@ -28,21 +28,33 @@ interface ExecutionPlan {
   analysisRefs: MiniToolPlannedRequest["analysis_refs"]; outputs: MiniToolPlannedRequest["outputs"][number][];
   model: string; credits: number; requestFingerprint: string; planFingerprint: string;
 }
+/** A presentation-frame window; a JSON type alias so frozen plans stay assignable to stored JSON. */
+type FrameWindow = { start: number; end: number };
 /** The §5.4 job layout frozen at admission: batches of output indices, and the outputs encoded in chunks. */
-export interface MiniToolExecutionLayout { batches: number[][]; encodes: { outputIndex: number; chunks: VideoEncodeChunk[] }[] }
+export type MiniToolExecutionLayout = { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] };
+/** A frozen standard-4 container policy: class, precheck floor, size, prices and output limits. */
+export type MiniToolContainerPolicy = { containerClass: "MiniToolContainerStd4"; precheckSeconds: number; size: MiniToolsConfig["classes"][string]; prices: MiniToolsConfig["prices"]; limits: MiniToolsConfig["plan_limits"] };
+/** The model input a removal sends: prepared from the source by this run's (or the original run's) preparation `<taskId>:prep:0`. */
+export type PreparedModelInputRef = { kind: "prepared"; inputId: "source"; job: string };
+/** What every planned video execution freezes about its tool input (§7.11): the ref, both receipts and the selected version. */
+type FrozenToolInput = {
+  presentationRef: MiniToolPlannedRequest["presentation_ref"];
+  ledgerReceipts: Record<"source", VideoPresentationLedgerReceipt>;
+  versionIds: Record<"source", string>;
+  retry?: MiniToolExecutionRetryRequest["retry"];
+};
 /** The original server-owned execution stored under tasks.params.miniToolExecution. */
-export type AcceptedMiniToolExecution = ExecutionPlan & (
-  | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"]; body: PreparedVideoRemoveBackground["params"];
-    /** ponytail: optional until remove-bg admission reads the selected version (round E3b). */
-    presentationRef?: MiniToolPlannedRequest["presentation_ref"] }
-  | { tool: "video.extract-frames" | "video.split";
-    /** The tool input each request input was planned against (§7.11). */
-    presentationRef: MiniToolPlannedRequest["presentation_ref"];
-    /** Each input's full and compact receipt, and the version selected at admission (§7.11). */
-    ledgerReceipts: Record<"source", VideoPresentationLedgerReceipt>; versionIds: Record<"source", string>; layout: MiniToolExecutionLayout;
-    container: { containerClass: "MiniToolContainerStd4"; precheckSeconds: number; size: MiniToolsConfig["classes"][string]; prices: MiniToolsConfig["prices"]; limits: MiniToolsConfig["plan_limits"] };
-    retry?: MiniToolExecutionRetryRequest["retry"] }
+export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
+  | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"];
+    body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
+    /** The standard-4 model-input preparation (§5.3): its policy and presentation-frame chunk windows. */
+    preparation: MiniToolContainerPolicy & { chunks: FrameWindow[] } }
+  | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout; container: MiniToolContainerPolicy;
+    /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
+    outputSeconds: number[] }
 );
+/** The plan facts every tool shares, before its tool-specific fields. */
+type ExecutionCommon = Omit<ExecutionPlan, "binding" | "sourceKey" | "model" | "credits" | "requestFingerprint" | "planFingerprint">;
 /** The complete executable projection hashed before its two identity fields are attached. */
 type ExecutionProjection = Omit<Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>, "requestFingerprint" | "planFingerprint">
   | Omit<Exclude<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>, "requestFingerprint" | "planFingerprint">;
@@ -76,21 +88,91 @@ function replay(task: TaskEntity, request: MiniToolExecutionRequest, userId: str
 }
 
 /**
- * The one container quote rule (§5.4): frozen seconds are the larger of the tool's precheck floor and the planned work;
- * credits are those seconds at the frozen standard-4 price, ceiled to the credit cent, never under the task minimum.
- * @param tool - The planned container tool.
- * @param config - The acceptance snapshot of instance and prices.
- * @param plannedSeconds - The planned work's seconds over every standard-4 job.
- * @returns The estimate and the immutable operating policy.
- * @throws {Error} When configured pricing or instance facts are invalid.
+ * The frozen standard-4 policy of a container step.
+ * @param containerClass - The configured class.
+ * @param precheckSeconds - The step's precheck floor.
+ * @param config - The acceptance snapshot.
+ * @returns The policy.
+ * @throws {Error} When the class is not configured.
  */
-function containerEstimate(tool: "video.extract-frames" | "video.split", config: MiniToolsConfig = structuredClone(getMiniToolsConfig()), plannedSeconds = 0): Pick<Exclude<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>, "container" | "credits"> {
-  const operation = config.executions[tool];
-  const size = config.classes[operation.container_class]!;
-  const seconds = Math.max(operation.precheck_seconds, plannedSeconds);
-  const usd = containerCostUsd({ wallMs: seconds * 1000, cpuUsec: null }, size, config.prices);
-  return { credits: Math.max(ceilToCreditCent(creditsForUsd(usd, env.CREDIT_MULTIPLIER)), MIN_TASK_CREDIT_COST),
-    container: { containerClass: operation.container_class, precheckSeconds: operation.precheck_seconds, size, prices: config.prices, limits: config.plan_limits } };
+function containerPolicy(containerClass: string, precheckSeconds: number, config: MiniToolsConfig): MiniToolContainerPolicy {
+  const size = config.classes[containerClass];
+  if (size === undefined || containerClass !== "MiniToolContainerStd4") throw new Error(`Container class ${containerClass} is not a configured standard-4 class`);
+  return { containerClass, precheckSeconds, size, prices: config.prices, limits: config.plan_limits };
+}
+
+/**
+ * The one container quote rule (§5.4), for every container step, retries included: frozen seconds are the larger of the
+ * precheck floor and the planned work; credits are those seconds at the frozen price, ceiled to the credit cent, never
+ * under the task minimum.
+ * @param policy - The frozen container policy.
+ * @param plannedSeconds - The planned work's seconds over every job of the step.
+ * @returns The credits.
+ * @throws {Error} When pricing facts are invalid.
+ */
+function containerCredits(policy: MiniToolContainerPolicy, plannedSeconds: number): number {
+  const usd = containerCostUsd({ wallMs: Math.max(policy.precheckSeconds, plannedSeconds) * 1000, cpuUsec: null }, policy.size, policy.prices);
+  return Math.max(ceilToCreditCent(creditsForUsd(usd, env.CREDIT_MULTIPLIER)), MIN_TASK_CREDIT_COST);
+}
+
+/**
+ * The planned seconds of a layout: every batch job's start plus its outputs' work, every encoded output's work plus one
+ * start per chunk job and one for its stitch.
+ * @param layout - The layout.
+ * @param seconds - Each output's frozen work, by output index.
+ * @param startSeconds - The encoder's start seconds.
+ * @returns The seconds.
+ * @throws {never} Never.
+ */
+function layoutSeconds(layout: MiniToolExecutionLayout, seconds: ReadonlyMap<number, number>, startSeconds: number): number {
+  /**
+   * One output's frozen work.
+   * @param index - The output index.
+   * @returns Its seconds, 0 when not frozen.
+   * @throws {never} Never.
+   */
+  const work = (index: number): number => seconds.get(index) ?? 0;
+  return layout.batches.reduce((total, batch) => total + startSeconds + batch.reduce((sum, index) => sum + work(index), 0), 0)
+    + layout.encodes.reduce((total, encode) => total + work(encode.outputIndex) + startSeconds * (encode.chunks.length + 1), 0);
+}
+
+/**
+ * The encoder rates of the acceptance snapshot.
+ * @param config - The snapshot.
+ * @returns The rates.
+ * @throws {never} Never.
+ */
+function encoderRates(config: MiniToolsConfig): VideoEncoderRates {
+  const encoder = config.encoding.encoder;
+  return { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second };
+}
+
+/**
+ * The seconds one container job may take: the configured share of the task budget.
+ * @param config - The snapshot.
+ * @returns The seconds.
+ * @throws {Error} When the task configuration cannot be read.
+ */
+function shareSeconds(config: MiniToolsConfig): number {
+  return config.encoding.chunk_share * (getNodeTaskConfig().default_budget_ms / 1000);
+}
+
+/**
+ * The encode work of one frame span from the full ledger's encode facts: coded source size, display output, the plan's
+ * bit depth and range, decoding from the span's previous keyframe.
+ * @param ledger - The validated full ledger.
+ * @param flags - Its keyframe flags.
+ * @param first - The span's first presentation frame.
+ * @param count - Its frame count.
+ * @returns The job work.
+ * @throws {never} Never.
+ */
+function spanWork(ledger: VideoPresentationLedger, flags: readonly boolean[], first: number, count: number): VideoJobWork {
+  let keyframe = first;
+  while (keyframe > 0 && flags[keyframe] !== true) keyframe -= 1;
+  const { plan, encoding } = ledger;
+  return { encodedFrames: Math.max(count, 1), prerollFrames: first - keyframe, sourceWidth: encoding.codedWidth, sourceHeight: encoding.codedHeight,
+    outputWidth: plan.display.width, outputHeight: plan.display.height, bitDepth: plan.source.bitDepth > 8 ? 10 : 8, hdr: isHdrTransfer(plan.source.transfer) };
 }
 
 /**
@@ -116,48 +198,116 @@ function framesIn(table: VideoPresentationTable, range: { start: number; end: nu
 }
 
 /**
- * The exact §5.4 job layout of a run and its planned standard-4 seconds: each output's work from the full ledger's encode
- * facts (decoding from the previous keyframe), stable batches within the per-job cap and the chunk share, chunk windows
- * for an output that alone exceeds the share, then one stitch for it.
+ * The exact §5.4 job layout of a run: each output's work from the full ledger's encode facts, stable batches within the
+ * per-job cap and the chunk share, chunk windows for an output that alone exceeds the share, then one stitch for it.
  * @param outputs - The verified outputs.
  * @param table - The compact table.
  * @param ledger - The validated full ledger.
  * @param config - The acceptance snapshot.
  * @param tool - The tool.
- * @returns The layout, its job count and its planned seconds.
+ * @returns The layout, its job count and each output's work seconds.
  * @throws {RangeError} When the work or the configuration is out of range.
  */
 function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: VideoPresentationTable, ledger: VideoPresentationLedger,
-  config: MiniToolsConfig, tool: "video.extract-frames" | "video.split"): { layout: MiniToolExecutionLayout; jobs: number; seconds: number } {
-  const encoder = config.encoding.encoder;
-  const rates: VideoEncoderRates = { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second };
+  config: MiniToolsConfig, tool: "video.extract-frames" | "video.split"): { layout: MiniToolExecutionLayout; jobs: number; works: number[] } {
+  const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
-  const { plan, encoding } = ledger;
-  const base = { sourceWidth: encoding.codedWidth, sourceHeight: encoding.codedHeight, outputWidth: plan.display.width, outputHeight: plan.display.height,
-    bitDepth: plan.source.bitDepth > 8 ? 10 as const : 8 as const, hdr: isHdrTransfer(plan.source.transfer) };
-  /**
-   * The keyframe a frame decodes from.
-   * @param frame - A presented frame.
-   * @returns The nearest keyframe at or before it, or 0.
-   * @throws {never} Never.
-   */
-  const previousKeyframe = (frame: number): number => { let at = frame; while (at > 0 && flags[at] !== true) at -= 1; return at; };
   const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? framesIn(table, recipe.range) : { first: 0, count: 1 }));
-  const works = spans.map(({ first, count }) => estimateVideoJobSeconds({ ...base, encodedFrames: Math.max(count, 1), prerollFrames: first - previousKeyframe(first) }, rates) - rates.startSeconds);
-  const shareSeconds = config.encoding.chunk_share * (getNodeTaskConfig().default_budget_ms / 1000);
-  const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: config.executions[tool].max_outputs_per_job, shareSeconds, fixedSeconds: rates.startSeconds });
-  let seconds = batches.reduce((total, batch) => total + rates.startSeconds + batch.reduce((sum, index) => sum + works[index]!, 0), 0);
+  const works = spans.map(({ first, count }) => estimateVideoJobSeconds(spanWork(ledger, flags, first, count), rates) - rates.startSeconds);
+  const share = shareSeconds(config);
+  const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: config.executions[tool].max_outputs_per_job, shareSeconds: share, fixedSeconds: rates.startSeconds });
   const encodes = oversized.map((index) => {
     const { first, count } = spans[index]!;
-    const frameSeconds = works[index]! / Math.max(count, 1);
-    const chunks = planVideoEncodeChunks({ keyframes: flags.slice(first, first + count), frameSeconds, targetSeconds: shareSeconds - rates.startSeconds })
+    const chunks = planVideoEncodeChunks({ keyframes: flags.slice(first, first + count), frameSeconds: works[index]! / Math.max(count, 1), targetSeconds: share - rates.startSeconds })
       .map((chunk) => ({ start: chunk.start + first, end: chunk.end + first }));
-    // Every chunk job and the one stitch job start a container.
-    seconds += works[index]! + rates.startSeconds * (chunks.length + 1);
     return { outputIndex: outputs[index]!.outputIndex, chunks };
   });
   return { layout: { batches: batches.map((batch) => batch.map((index) => outputs[index]!.outputIndex)), encodes },
-    jobs: batches.length + encodes.reduce((total, encode) => total + encode.chunks.length + 1, 0), seconds };
+    jobs: batches.length + encodes.reduce((total, encode) => total + encode.chunks.length + 1, 0), works };
+}
+
+/**
+ * The model-input preparation of a removal (§5.3, §5.4): the whole presentation in one standard-4 job, or chunk windows
+ * plus a stitch when it exceeds the chunk share.
+ * @param ledger - The validated full ledger.
+ * @param config - The acceptance snapshot.
+ * @returns The chunk windows, the job count and the planned seconds.
+ * @throws {RangeError} When the work is out of range.
+ */
+function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsConfig): { chunks: VideoEncodeChunk[]; jobs: number; seconds: number } {
+  const rates = encoderRates(config);
+  const flags = videoPresentationKeyframeFlags(ledger);
+  const work = estimateVideoJobSeconds(spanWork(ledger, flags, 0, flags.length), rates) - rates.startSeconds;
+  const share = shareSeconds(config);
+  if (rates.startSeconds + work <= share) return { chunks: [{ start: 0, end: flags.length }], jobs: 1, seconds: rates.startSeconds + work };
+  const chunks = planVideoEncodeChunks({ keyframes: flags, frameSeconds: work / flags.length, targetSeconds: share - rates.startSeconds });
+  return { chunks, jobs: chunks.length + 1, seconds: work + rates.startSeconds * (chunks.length + 1) };
+}
+
+/**
+ * Require the request's tool input to be the selected version's, with its ledger ready (§7.11); a target-policy
+ * preparation in progress does not matter.
+ * @param request - The fresh request.
+ * @param binding - The registered source.
+ * @param sourceKey - Its storage key.
+ * @param config - The acceptance snapshot.
+ * @returns The selected version and its receipt.
+ * @throws {ValidationError} When the tool input is not the selected, ready one.
+ * @throws {Error} When ingest fails.
+ */
+async function selectedToolInput(request: MiniToolPlannedRequest, binding: MiniToolSourceBinding, sourceKey: string, config: MiniToolsConfig): Promise<{ versionId: string; receipt: VideoPresentationLedgerReceipt }> {
+  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+    action: "read", storageKey: sourceKey, sourceFingerprint: binding.contentHash, targetPolicyVersion: config.presentation.policy_version,
+  });
+  const ref = request.presentation_ref.source;
+  const selected = snapshot.presentation;
+  const receipt = snapshot.ledger?.state === "ready" ? snapshot.ledger.receipt : null;
+  const storage = await getStorageAdapter();
+  if (selected === null || selected.sourceFingerprint !== binding.contentHash || selected.toolInputId !== ref.toolInputId || selected.planSha256 !== ref.planSha256
+    || receipt === null || receipt.sourceFingerprint !== binding.contentHash || receipt.toolInputId !== ref.toolInputId || receipt.planSha256 !== ref.planSha256
+    || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey))
+    || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey))) throw new ValidationError(t("server.mini_tool.foreignSource"));
+  return { versionId: selected.versionId, receipt };
+}
+
+/**
+ * Refuse a run whose standard-4 job count exceeds the parallel cap, with its reason.
+ * @param jobs - The planned job count.
+ * @param config - The acceptance snapshot.
+ * @throws {AppError} When the count exceeds the cap.
+ */
+function assertWithinParallelCap(jobs: number, config: MiniToolsConfig): void {
+  const max = config.encoding.max_parallel_chunks;
+  if (jobs > max) throw new AppError(400, t("server.mini_tool.runTooLong", { max }));
+}
+
+/**
+ * Admit a removal over its selected tool input (§5.3): the provider body takes the prepared model input of this run's
+ * preparation `<taskId>:prep:0`; the quote is the model's (duration from the display) plus the preparation's container quote.
+ * @param request - The fresh removal request.
+ * @param common - The plan facts every tool shares.
+ * @returns The plan projection.
+ * @throws {ValidationError} When the tool input is not the selected, ready one.
+ * @throws {AppError} When the model is unavailable, the source too long or the preparation over the parallel cap.
+ * @throws {Error} When ingest, the ledger read or pricing fails.
+ */
+async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
+  const deadlineAt = budgetDeadlineFrom(Date.now());
+  const config = structuredClone(getMiniToolsConfig());
+  const settings = config.executions["video.remove-bg"];
+  const prepared = await prepareVideoRemoveBackground(request.draft.source, settings.model);
+  const { versionId, receipt } = await selectedToolInput(request, prepared.binding, prepared.sourceKey, config);
+  const ledger = await readVideoPresentationLedger(receipt, { maxBytes: config.presentation.source_ledger.max_bytes }, { deadlineAt });
+  const { duration } = ledger.plan.display;
+  const model = await estimateModelCredits(prepared.model, { params: prepared.params, durations: { video: [Number(duration.numerator) / Number(duration.denominator)] }, sources: ["video"] });
+  if (model === undefined) throw new AppError(503, t("server.mini_tool.unavailable"));
+  const layout = preparationLayout(ledger, config);
+  assertWithinParallelCap(layout.jobs, config);
+  const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks };
+  return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
+    body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
+    presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt }, versionIds: { source: versionId }, preparation,
+    credits: model.credits + containerCredits(preparation, layout.seconds) };
 }
 
 /**
@@ -168,31 +318,15 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
  * @throws {Error} When current metadata or bounded compact delivery fails.
  */
 async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjection> {
-  const common = { schemaVersion: 1 as const, tool: request.tool, taskId: request.run_id, projectId: request.project_id, spaceId: request.space_id,
+  const common: ExecutionCommon = { schemaVersion: 1, taskId: request.run_id, projectId: request.project_id, spaceId: request.space_id,
     targetNodeIds: request.outputs.map((output) => output.nodeId), draft: request.draft, analysisRefs: request.analysis_refs, outputs: request.outputs };
-  if (request.tool === "video.remove-bg") {
-    const prepared = await prepareVideoRemoveBackground(request.draft.source, getMiniToolsConfig().executions[request.tool].model);
-    // ponytail: remove-bg freezes its ref only; reading the selected version and preparing its model input is round E3b.
-    return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model,
-      provider: prepared.provider, body: prepared.params, credits: prepared.credits, presentationRef: request.presentation_ref };
-  }
+  if (request.tool === "video.remove-bg") return prepareRemoval(request, common);
   const deadlineAt = budgetDeadlineFrom(Date.now());
   const config = structuredClone(getMiniToolsConfig());
   const maxOutputs = config.executions[request.tool].max_outputs;
   if (request.outputs.length > maxOutputs) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const { binding, sourceKey } = await resolveSource(request.draft.source);
-  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
-    action: "read", storageKey: sourceKey, sourceFingerprint: binding.contentHash, targetPolicyVersion: config.presentation.policy_version,
-  });
-  // The request's tool input must be the selected version's, with its ledger ready (§7.11); a target-policy preparation in progress does not matter.
-  const ref = request.presentation_ref.source;
-  const selected = snapshot.presentation;
-  const receipt = snapshot.ledger?.state === "ready" ? snapshot.ledger.receipt : null;
-  const storage = await getStorageAdapter();
-  if (selected === null || selected.sourceFingerprint !== binding.contentHash || selected.toolInputId !== ref.toolInputId || selected.planSha256 !== ref.planSha256
-    || receipt === null || receipt.sourceFingerprint !== binding.contentHash || receipt.toolInputId !== ref.toolInputId || receipt.planSha256 !== ref.planSha256
-    || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey))
-    || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey))) throw new ValidationError(t("server.mini_tool.foreignSource"));
+  const { versionId, receipt } = await selectedToolInput(request, binding, sourceKey, config);
   const limits = { maxBytes: config.presentation.source_ledger.max_bytes };
   const table = await readVideoPresentationCompact(receipt, limits, { deadlineAt });
   const ledger = await readVideoPresentationLedger(receipt, limits, { deadlineAt });
@@ -206,11 +340,12 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
     throw new ValidationError(t("server.mini_tool.foreignSource"));
   }
   if (outputs.length > maxOutputs || canonicalMiniToolValue(outputs) !== canonicalMiniToolValue(request.outputs)) throw new ValidationError(t("server.mini_tool.foreignSource"));
-  const { layout, jobs, seconds } = runLayout(outputs, table, ledger, config, request.tool);
-  const max = config.encoding.max_parallel_chunks;
-  if (jobs > max) throw new AppError(400, t("server.mini_tool.runTooLong", { max }));
+  const { layout, jobs, works } = runLayout(outputs, table, ledger, config, request.tool);
+  assertWithinParallelCap(jobs, config);
+  const container = containerPolicy(config.executions[request.tool].container_class, config.executions[request.tool].precheck_seconds, config);
+  const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), config.encoding.encoder.start_seconds);
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
-    versionIds: { source: selected.versionId }, layout, model: request.tool, ...containerEstimate(request.tool, config, seconds) };
+    versionIds: { source: versionId }, layout, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
 }
 
 /**
@@ -284,7 +419,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     || root.params.miniToolExecution === undefined) throw new NotFoundError(t("server.error.not_found"));
   for (;;) {
     const { execution } = await executionPlanFromTask(root);
-    if (execution.tool === "video.remove-bg" || execution.retry === undefined) break;
+    if (execution.retry === undefined) break;
     root = await taskRepo.getMiniToolExecutionTask(execution.retry.runId);
     if (root === null || root.projectId !== request.project_id || root.spaceId !== request.space_id) throw new NotFoundError(t("server.error.not_found"));
   }
@@ -297,7 +432,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     if (original === null || original.projectId !== request.project_id || original.spaceId !== request.space_id
       || original.source !== "mini_tool") throw new NotFoundError(t("server.error.not_found"));
     const plan = await executionPlanFromTask(original);
-    if (plan.execution.tool === "video.remove-bg" || plan.execution.tool !== request.tool) throw new NotFoundError(t("server.error.not_found"));
+    if (plan.execution.tool !== request.tool) throw new NotFoundError(t("server.error.not_found"));
     const sameRun = await taskRepo.getMiniToolExecutionTask(request.run_id, tx);
     if (sameRun !== null) {
       replay(sameRun, request, userId, fingerprint);
@@ -306,16 +441,21 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     const record = recordFromPlan(plan);
     const selected = record.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (record.status === "cancelled" || selected.length !== request.retry.outputIndexes.length
-      || selected.length > getMiniToolsConfig().executions[request.tool].max_outputs
+      || (request.tool !== "video.remove-bg" && selected.length > getMiniToolsConfig().executions[request.tool].max_outputs)
       || selected.some((output) => output.result?.status !== "failed" || output.late)) throw new ValidationError(t("server.mini_tool.foreignSource"));
     const outputs = plan.execution.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;
+    const retried = { taskId: request.run_id, outputs, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry };
+    // A removal retry reuses the original prepared model input and its frozen quote; it runs no new preparation.
+    if (frozen.tool === "video.remove-bg") return claimPrepared({ ...frozen, ...retried }, request, userId, fingerprint, tx);
     const chosen = new Set(request.retry.outputIndexes);
     const layout = { batches: frozen.layout.batches.map((batch) => batch.filter((index) => chosen.has(index))).filter((batch) => batch.length > 0),
       encodes: frozen.layout.encodes.filter((encode) => chosen.has(encode.outputIndex)) };
-    // ponytail: a retry quotes the precheck floor; per-output work is not frozen, so the retried subset's planned work is not re-estimated.
-    return claimPrepared({ ...frozen, taskId: request.run_id, outputs, layout, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry,
-      ...containerEstimate(request.tool) }, request, userId, fingerprint, tx);
+    const works = new Map(frozen.outputs.map((output, index) => [output.outputIndex, frozen.outputSeconds[index]!]));
+    const outputSeconds = outputs.map((output) => works.get(output.outputIndex)!);
+    // The same quote rule as a fresh run, over the retried outputs' frozen jobs at the frozen standard-4 price (§5.4).
+    const seconds = layoutSeconds(layout, works, getMiniToolsConfig().encoding.encoder.start_seconds);
+    return claimPrepared({ ...frozen, ...retried, layout, outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
   });
 }
