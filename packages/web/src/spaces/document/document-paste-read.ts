@@ -589,6 +589,17 @@ function withoutClosingBreak(blocks: readonly ReadBlock[]): ReadBlock[] {
 }
 
 /**
+ * HTML parsed in a document of its own, which has no browsing context: its
+ * images do not load and their handlers never run, as ProseMirror parses a
+ * paste (`detachedDoc`).
+ * @param html - The HTML.
+ * @returns Its body.
+ */
+function inertBody(html: string): HTMLElement {
+  return new DOMParser().parseFromString(html, 'text/html').body;
+}
+
+/**
  * Outside HTML read into blocks by markers (§5.4.2).
  * @param reader - The editor.
  * @param html - The HTML.
@@ -596,7 +607,7 @@ function withoutClosingBreak(blocks: readonly ReadBlock[]): ReadBlock[] {
  * @returns The blocks and how many media were left out.
  */
 function readByMarkers(reader: BlockReader, html: string, lands: (url: string) => boolean): { blocks: ReadBlock[]; lost: number } {
-  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  const body = inertBody(html);
   evenTables(body);
   fillAddresses(body, lands);
   const { media, lost } = markMedia(body, lands);
@@ -681,9 +692,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
  */
 export function readBodyContent(reader: BlockReader, html: string, schema: Schema): Read {
   const blocks = reader.tryParseHTMLToBlocks(html) as ReadBlock[];
-  const dom = document.createElement('div');
-  dom.innerHTML = html;
-  const group = SchemaParser.fromSchema(schema).parse(dom, { topNode: schema.nodes['blockGroup']!.create() });
+  const group = SchemaParser.fromSchema(schema).parse(inertBody(html), { topNode: schema.nodes['blockGroup']!.create() });
   /**
    * Keeps on each block the node it was read from, its nested ones too.
    * @param list - The blocks.
@@ -780,9 +789,7 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
  * @returns The count.
  */
 function openParents(html: string, most: number): number {
-  const root = document.createElement('div');
-  root.innerHTML = html;
-  let group = root.querySelector('[data-pm-slice]');
+  let group = inertBody(html).querySelector('[data-pm-slice]');
   let count = 0;
   while (count < most && group?.getAttribute('data-node-type') === 'blockGroup') {
     const first = group.firstElementChild?.querySelector(':scope > [data-node-type="blockContainer"]')?.firstElementChild;
