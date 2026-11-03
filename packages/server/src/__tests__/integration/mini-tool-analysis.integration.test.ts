@@ -33,7 +33,7 @@ interface AnalysisRequest {
     mediaInfo: { width: number; height: number; duration: number; mimeType: string };
   };
   params: Record<string, unknown>;
-  presentation_ref: { source: { toolInputId: string; planSha256: string } };
+  presentationRef: { source: { toolInputId: string; planSha256: string } };
 }
 
 interface AnalysisFixture extends StudioFixture {
@@ -63,7 +63,7 @@ interface FrozenAnalysisParams {
     binding: MiniToolAnalysisRecord["binding"];
     analysisInput: MiniToolAnalysisRecord["analysisInput"];
     inputFingerprint: string;
-    presentationRef: AnalysisRequest["presentation_ref"];
+    presentationRef: AnalysisRequest["presentationRef"];
     ledgerReceipts: { source: unknown };
     versionIds: { source: string };
   };
@@ -183,7 +183,7 @@ function requestFor(fixture: AnalysisFixture, kind: MiniToolAnalysisKind = "peop
     params: kind === "people" ? { anchor } : kind === "scene_cuts" ? { range } : {
       range, anchor, region: { box: { x: 0.1, y: 0.1, width: 0.4, height: 0.6 }, points: [] }, trackingPrompt: "the selected person",
     },
-    presentation_ref: fixture.presentation.presentationRef,
+    presentationRef: fixture.presentation.presentationRef,
   };
 }
 
@@ -291,7 +291,7 @@ async function seedAccepted(fixture: AnalysisFixture, acceptedAt: string): Promi
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId,
     hostNodeId: body.hostNodeId, draftId: body.draftId, revision: body.revision, kind: "people",
     source: body.source, binding, analysisInput, inputFingerprint: record.inputFingerprint,
-    presentationRef: body.presentation_ref, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
+    presentationRef: body.presentationRef, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
   } };
   // Keep the parameter's OID textual: the driver's timestamp serializer runs
   // strings through Date, which would discard the microseconds before insertion.
@@ -335,7 +335,7 @@ describe("mini-tool analysis admission and project reads", () => {
       draftId: body.draftId, revision: body.revision, kind, source: body.source,
       binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
       // S6e E4-2: the tool input and the selected version's receipts are frozen with the analysis (as §7.11 freezes an execution's).
-      presentationRef: body.presentation_ref, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
+      presentationRef: body.presentationRef, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
     });
     const rows = await sql<{ node_id: string; action: string; budget_ms: number; task_id: string }[]>`
       SELECT node_id, action, budget_ms, task_id FROM node_tasks WHERE task_id = ${body.analysisRunId}
@@ -458,7 +458,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const target = await seed();
     const body = requestFor(target);
     body.source.canonicalURL = sourceOwner.sourceURL;
-    body.presentation_ref = sourceOwner.presentation.presentationRef;
+    body.presentationRef = sourceOwner.presentation.presentationRef;
     const record = await accepted(await post(body, target.ownerCookie));
     expect(record.binding).toEqual({ assetId: sourceOwner.sourceAssetId, contentHash: sourceOwner.sourceHash, canonicalURL: sourceOwner.sourceURL, kind: "video", mediaInfo: body.source.mediaInfo });
     expect(await reading(await get(body.analysisRunId, target.viewerCookie))).toEqual(record);
@@ -651,13 +651,13 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     const fixture = await seed();
     const body = requestFor(fixture);
     await accepted(await post(body, fixture.ownerCookie));
-    const t = body.presentation_ref.source.toolInputId; const l = ledgerKeys(fixture.sourceKey, t);
+    const t = body.presentationRef.source.toolInputId; const l = ledgerKeys(fixture.sourceKey, t);
     expect(await livePins(body.analysisRunId)).toEqual([{ holder_kind: "analysis", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
   });
 
   it("AP02 a request without its tool input is refused as request shape with no effect", async () => {
     const fixture = await seed();
-    const { presentation_ref: _dropped, ...body } = requestFor(fixture);
+    const { presentationRef: _dropped, ...body } = requestFor(fixture);
     const response = await post(body, fixture.ownerCookie);
     // The route's validate() answers a structural refusal as 422 with reason request_shape (as for an unknown field).
     expect(response.status).toBe(422);
@@ -668,7 +668,7 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
   it("AP03 a tool input that is not the selected version's is refused with no effect and no pin", async () => {
     const fixture = await seed();
     const body = requestFor(fixture, "scene_cuts");
-    body.presentation_ref = { source: { ...body.presentation_ref.source, toolInputId: "f".repeat(64) } };
+    body.presentationRef = { source: { ...body.presentationRef.source, toolInputId: "f".repeat(64) } };
     expect((await post(body, fixture.ownerCookie)).ok).toBe(false);
     expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
     expect(await livePins(body.analysisRunId)).toEqual([]);
@@ -694,7 +694,7 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
       await miniToolAnalysisService.failMiniToolAnalysis(body.analysisRunId, { code: "analysis_failed" });
     }
     expect(await livePins(body.analysisRunId)).toEqual([]);
-    const l = ledgerKeys(fixture.sourceKey, body.presentation_ref.source.toolInputId);
+    const l = ledgerKeys(fixture.sourceKey, body.presentationRef.source.toolInputId);
     const queued = await sql<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${l.full},${l.table}) ORDER BY storage_key`;
     expect([...queued]).toEqual([l.full, l.table].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
   });

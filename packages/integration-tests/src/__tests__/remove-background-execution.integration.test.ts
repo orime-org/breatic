@@ -162,6 +162,18 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
     const rows = await pg<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${chunk(0)},${chunk(1)},${stitch}) ORDER BY storage_key`;
     expect([...rows]).toEqual([chunk(0), chunk(1)].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
   });
+
+  it("PP03 a failed preparation attempt's output is registered for reclaim; the attempt that succeeded is pinned, not registered (§90 E4-14 b)", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    jobs.scripted.set(`${f.plan.taskId}:prep:0:a1`, { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
+    for (let pickup = 0; pickup < 3 && runPrediction.mock.calls.length === 0; pickup += 1) {
+      await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    }
+    const failed = prepared(f, `${f.plan.taskId}:prep:0:a1`).key; const done = prepared(f, `${f.plan.taskId}:prep:0:a2`).key;
+    const rows = await pg<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${failed},${done})`;
+    expect([...rows]).toEqual([{ storage_key: failed, kind: "derived" }]);
+    expect((await preparedPins(f)).map((row) => row.prepared_key)).toEqual([done]);
+  });
 });
 
 async function seed(golden = false): Promise<Fixture> {

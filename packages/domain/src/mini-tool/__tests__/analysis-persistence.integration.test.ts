@@ -4,13 +4,27 @@
 import crypto from "node:crypto";
 import fc from "fast-check";
 import { z } from "zod";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { ConflictError, NotFoundError, createPgClient, db, getMiniToolsConfig, getNodeTaskConfig, getStorageAdapter, initCore } from "@breatic/core";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolAnalysisRequestSchema, miniToolAnalysisResultSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, selectMiniToolAnalyses, type MiniToolAnalysisArtifact, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
+import { presentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
+import type * as shared from "@breatic/shared";
+
+// S6e E4-2/E4-12 (inner#1306 §90): an analysis names its tool input and freezes the selected version's receipts; the
+// ingest snapshot is faked and the stored ledger objects are served by URL, as for a fresh execution admission.
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>() }));
+vi.mock("@breatic/shared", async (original) => ({
+  ...await original<typeof shared>(),
+  videoPresentationAtIngest: vi.fn(async (_url: string, _secret: string, input: { storageKey: string }): Promise<unknown> => {
+    const snapshot = outside.snapshots.get(input.storageKey);
+    if (!snapshot) throw new Error("Unseeded external presentation snapshot");
+    return structuredClone(snapshot);
+  }),
+}));
 
 type Status = "pending" | "running" | "completed" | "failed" | "cancelled";
 type PeopleResult = Extract<MiniToolAnalysisResult, { kind: "people" }>;
@@ -37,7 +51,13 @@ beforeAll(async () => {
   const storage = await getStorageAdapter();
   publicUrl = storage.publicUrl.bind(storage);
 });
-afterAll(async () => { await pg.end(); });
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const body = outside.bodies.get(input instanceof Request ? input.url : String(input));
+    return body === undefined ? new Response("missing", { status: 404 }) : new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
+});
+afterAll(async () => { vi.unstubAllGlobals(); await pg.end(); });
 
 /** Register independent fixture truth for one internal artifact. */
 async function artifact(studioId: string, userId: string, role: MiniToolAnalysisArtifact["role"]): Promise<MiniToolAnalysisArtifact> {
@@ -72,8 +92,13 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
   const result = miniToolAnalysisResultSchema.parse({ ...identity, ...payload });
   const normalized = status === "cancelled" ? "failed" : status;
   const initial = miniToolAnalysisRecordSchema.parse({ ...identity, status: normalized, result: status === "completed" ? result : null, error: normalized === "failed" ? ERROR : null, usage: [{ marker: "original-usage" }], artifactUnavailable: false });
+  const presentation = await presentedSource(sourceHash, sourceKey, publicUrl);
+  outside.snapshots.set(sourceKey, presentation.snapshot);
+  for (const [url, body] of presentation.bodies) outside.bodies.set(url, body);
   const frozen = { schemaVersion: 1, analysisRunId: taskId, projectId, spaceId, hostNodeId, draftId: identity.draftId, revision: identity.revision, kind,
-    source: { nodeId: hostNodeId, canonicalURL: sourceURL, mediaInfo: binding.mediaInfo }, binding, analysisInput, inputFingerprint: identity.inputFingerprint };
+    source: { nodeId: hostNodeId, canonicalURL: sourceURL, mediaInfo: binding.mediaInfo }, binding, analysisInput, inputFingerprint: identity.inputFingerprint,
+    // S6e E4-12: the tool input and the selected version's receipts frozen with the analysis, as for an execution.
+    presentationRef: presentation.presentationRef, ledgerReceipts: { source: presentation.receipt }, versionIds: { source: presentation.versionId } };
   const params = { analysis: frozen, requestFingerprint: "e".repeat(64), sourceKey, credits: kind === "people" ? 0 : 1 };
   const stepId = crypto.randomUUID(); const nodeTaskId = crypto.randomUUID();
   const expenseIdentity = { kind: "container", containerClass: "std1", jobId: taskId, chunkIndex: 0 } as const;
@@ -81,7 +106,7 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
   const fact = { schemaVersion: 1, consumptionKey: key, identity: expenseIdentity, state: "known", creditMultiplier: 1, chargeTo: kind === "people" ? "platform" : "user", costUsd: 0.0001, costSource: "computed", raw: { wallMs: 1000, cpuUsec: 1000 }, credits: null, containerPricing: { configVersion: "fixture", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } } };
   const settlement = { version: 7, state: "waiting", pendingConsumptionKeys: [key], nextAttemptAt: T0, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: false };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params,result,error_message,created_at,completed_at)
-    VALUES (${taskId},${userId},${projectId},${spaceId},'mini_tool_analysis','append','mini_tool',${status},${pg.json(params)},${pg.json({ analysis: initial, settlement, manifest: { outputs: [{ canonicalURL: "https://assets.test.invalid/preserved.mp4" }] }, preserved: { original: true } })},${normalized === "failed" ? ERROR.code : null},${at}::text::timestamptz,${status === "completed" || normalized === "failed" ? at : null}::text::timestamptz)`;
+    VALUES (${taskId},${userId},${projectId},${spaceId},'mini_tool_analysis','append','mini_tool',${status},${pg.json(z.json().parse(params))},${pg.json({ analysis: initial, settlement, manifest: { outputs: [{ canonicalURL: "https://assets.test.invalid/preserved.mp4" }] }, preserved: { original: true } })},${normalized === "failed" ? ERROR.code : null},${at}::text::timestamptz,${status === "completed" || normalized === "failed" ? at : null}::text::timestamptz)`;
   await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output) VALUES (${stepId},${taskId},0,'container_job','analysis-fixture','done',${pg.json({ miniToolConsumption: fact, preservedOutput: true })})`;
   await pg`INSERT INTO node_tasks (id,project_id,space_id,node_id,kind,action,status,started_by_user_id,budget_ms,label,task_id)
     VALUES (${nodeTaskId},${projectId},${spaceId},${hostNodeId},'generation','mini_tool','running',${userId},${getNodeTaskConfig().default_budget_ms},'analysis',${taskId})`;
@@ -533,6 +558,7 @@ describe("persistent analysis results", () => {
     const body = miniToolAnalysisRequestSchema.parse({
       analysisRunId: crypto.randomUUID(), projectId: frozen.projectId, spaceId: frozen.spaceId,
       hostNodeId: frozen.hostNodeId, draftId: frozen.draftId, revision: frozen.revision, kind, source: frozen.source,
+      presentationRef: (params.analysis as { presentationRef: unknown }).presentationRef,
       params: kind === "people" && frozen.analysisInput.kind === "people" ? { anchor: frozen.analysisInput.anchor }
         : { range: { start: 0, end: 5 } },
     });

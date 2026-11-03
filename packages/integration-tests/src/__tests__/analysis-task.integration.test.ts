@@ -35,6 +35,7 @@ import {
   type MiniToolAnalysisRecord, type MiniToolAnalysisRequest,
 } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
+import { presentedSource } from "@server/__tests__/integration/presentation-fixtures.js";
 import type { createApp } from "@server/app.js";
 import type { TasksJobData } from "@worker/handlers/dispatch.js";
 import type { lookupMiniToolConsumption } from "@worker/handlers/mini-tool/lookup-consumption.js";
@@ -80,6 +81,8 @@ const PREFIX = "analysis-it-" + randomUUID();
 const fixtureBySource = new Map<string, Fixture>();
 const fixtures: Fixture[] = [];
 const objects = new Map<string, ObjectBytes>();
+// S6e E4-12 (inner#1306 §90): the selected presentation of each source, answered by the loopback ingest route.
+const presentations = new Map<string, unknown>();
 const externalJobs = new Map<string, ExternalJob>();
 const submitted: MiniToolPlanJobRequest[] = [];
 const objectReads = new Map<string, number>();
@@ -248,6 +251,16 @@ async function respondHTTP(request: IncomingMessage, response: ServerResponse): 
     return;
   }
   expect(request.headers["x-ingest-secret"]).toBe(SECRET);
+  if (path === "/video-presentation" && request.method === "POST") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { action: string; storageKey: string };
+    const snapshot = presentations.get(body.storageKey);
+    if (body.action !== "read" || snapshot === undefined) throw new Error("Unexpected presentation request: " + body.action + " " + body.storageKey);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(snapshot));
+    return;
+  }
   let answer: MiniToolPlanJobReport;
   if (path === "/jobs" && request.method === "POST") {
     const chunks: Buffer[] = [];
@@ -333,6 +346,12 @@ async function seed(scenario: Scenario, delayed = false): Promise<Fixture> {
     source,produced_by_user_id,width,height,duration_seconds)
     VALUES(${sourceAssetId},${base.studioId},${sourceHash},${sourceKey},${sourceURL},4096,
       'video/mp4','video','upload',${base.userId},400,200,36)`;
+  // The analysis names the selected version's tool input; its ledger objects are served like any registered object.
+  const presentation = await presentedSource(sourceHash, sourceKey, (key) => storage.publicUrl(key));
+  presentations.set(sourceKey, presentation.snapshot);
+  for (const [url, body] of presentation.bodies) {
+    objects.set(url.slice(storage.publicUrl("").length), { bytes: Buffer.from(body), contentType: "application/json", width: null, height: null });
+  }
   const taskId = randomUUID();
   const spaceId = randomUUID();
   const hostNodeId = randomUUID();
@@ -363,6 +382,7 @@ async function seed(scenario: Scenario, delayed = false): Promise<Fixture> {
     draftId: randomUUID(), revision: randomUUID(),
     source: { nodeId: hostNodeId, canonicalURL: sourceURL,
       mediaInfo: { width: 400, height: 200, duration: 36, mimeType: "video/mp4" } },
+    presentationRef: presentation.presentationRef,
   };
   const body: MiniToolAnalysisRequest = scenario === "scene"
     ? { ...identity, kind: "scene_cuts", params: { range: { start: 1.1, end: 25 } } }

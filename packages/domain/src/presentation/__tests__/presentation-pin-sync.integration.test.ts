@@ -170,3 +170,106 @@ describe("selected pin (design §7.15 selected, Mv)", () => {
     expect(refs!.n).toBe(0);
   });
 });
+
+describe("release points of the candidate's own objects and of old versions (design §7.15 释放点; §90 E4-14)", () => {
+  /**
+   * One attempt record of a unit.
+   * @param jobId - The attempt's job id.
+   * @param attempt - Its number.
+   * @param state - Its state.
+   * @returns It.
+   */
+  function attemptOf(jobId: string, attempt: number, state: "pending" | "done" | "failed"): { attempt: number; jobId: string; state: string; usageRecorded: boolean } {
+    return { attempt, jobId, state, usageRecorded: state !== "pending" };
+  }
+
+  /**
+   * An object receipt under the source key.
+   * @param w - The world.
+   * @param name - The object's suffix.
+   * @param contentType - Its type.
+   * @returns The receipt.
+   */
+  function object(w: World, name: string, contentType: string): Record<string, unknown> {
+    const storageKey = `${w.key}.${name}`;
+    return { storageKey, url: publicUrl(storageKey), etag: `etag-${name}`, size: 100, sha256: "d".repeat(64), contentType };
+  }
+
+  /**
+   * The selected version as an alpha-packed bundle with its own carrier and manifest.
+   * @param w - The world.
+   * @param versionId - Its version.
+   * @param carrier - Its carrier receipt.
+   * @param manifest - Its manifest receipt.
+   * @returns The bundle.
+   */
+  function packed(w: World, versionId: string, carrier: Record<string, unknown>, manifest: Record<string, unknown>): Record<string, unknown> {
+    return { ...w.source.bundle, versionId, playback: { kind: "alpha-packed", carrier, manifest } };
+  }
+
+  /**
+   * An answer that only reports the selected version (no granted job).
+   * @param w - The world.
+   * @param presentation - The selected bundle.
+   * @returns The parsed answer.
+   */
+  function selectedOnly(w: World, presentation: Record<string, unknown>): shared.VideoPresentationPrepareAnswer {
+    return answer(w, { presentation, ledger: { state: "ready", receipt: w.source.receipt, failure: null }, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null, units: {} });
+  }
+
+  it("SY07 a never-selected candidate that is archived, failed or expired registers its own carrier (stitch output) and chunk outputs, but not an L the selected version still pins", async () => {
+    const w = await world(); const l = ledgerKeys(w.key, w.source.presentationRef.source.toolInputId);
+    const carrier = shared.videoPresentationWorkKeyFor(w.key, w.stitch); const chunk = shared.videoPresentationWorkKeyFor(w.key, w.chunk);
+    // Another version of the same toolInputId is selected, so L stays pinned by the selected row.
+    await sync()(`pres-${randomUUID()}`, selectedOnly(w, w.source.bundle));
+    await sync()(w.job, answer(w, { units: {
+      [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [attemptOf(w.chunk, 1, "done")] },
+      [`video-presentation:${w.job}:stitch`]: { state: "done", attempt: 1, attempts: [attemptOf(w.stitch, 1, "done")] },
+    } }));
+    expect(await queued(w.key)).not.toContain(carrier);
+    await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
+    const rows = await queued(w.key);
+    expect(rows).toEqual(expect.arrayContaining([carrier, chunk]));
+    expect(rows).not.toContain(l.full);
+    expect(rows).not.toContain(l.table);
+  });
+
+  it("SY08 a superseded attempt's output is registered at once; the chunk outputs are registered when the stitch is committed, the stitched carrier is not", async () => {
+    const w = await world();
+    const a1 = videoContainerJobId({ kind: "presentation-chunk", jobId: w.job, chunk: 0, attempt: 1 });
+    const a2 = videoContainerJobId({ kind: "presentation-chunk", jobId: w.job, chunk: 0, attempt: 2 });
+    const key = (job: string): string => shared.videoPresentationWorkKeyFor(w.key, job);
+    const chunkUnit = { state: "done", attempt: 2, attempts: [attemptOf(a1, 1, "failed"), attemptOf(a2, 2, "done")] };
+    await sync()(w.job, answer(w, { units: { [`video-presentation:${w.job}:chunk:0`]: chunkUnit,
+      [`video-presentation:${w.job}:stitch`]: { state: "open", attempt: 1, attempts: [attemptOf(w.stitch, 1, "pending")] } } }));
+    expect(await queued(w.key)).toEqual([key(a1)]);
+    await sync()(w.job, answer(w, { units: { [`video-presentation:${w.job}:chunk:0`]: chunkUnit,
+      [`video-presentation:${w.job}:stitch`]: { state: "done", attempt: 1, attempts: [attemptOf(w.stitch, 1, "done")] } } }));
+    expect(await queued(w.key)).toEqual([key(a1), key(a2)].sort());
+    expect(await queued(w.key)).not.toContain(key(w.stitch));
+  });
+
+  it("SY09 when P changes version, the old version's carrier and manifest are registered and the new version's are pinned", async () => {
+    const w = await world();
+    const oldCarrier = object(w, "carrier-v1.mp4", "video/mp4"); const oldManifest = object(w, "manifest-v1.json", "application/json");
+    const newCarrier = object(w, "carrier-v2.mp4", "video/mp4"); const newManifest = object(w, "manifest-v2.json", "application/json");
+    await sync()(`pres-${randomUUID()}`, selectedOnly(w, packed(w, "b".repeat(64), oldCarrier, oldManifest)));
+    expect(await queued(w.key)).toEqual([]);
+    await sync()(`pres-${randomUUID()}`, selectedOnly(w, packed(w, "c".repeat(64), newCarrier, newManifest)));
+    expect(await queued(w.key)).toEqual([oldCarrier.storageKey as string, oldManifest.storageKey as string].sort());
+    const [selected] = await live(w.key);
+    expect(selected!.keys).toEqual(expect.arrayContaining([newCarrier.storageKey as string, newManifest.storageKey as string]));
+  });
+
+  it("SY10 a new version that reuses the selected carrier and manifest (reuse route) registers neither", async () => {
+    const w = await world();
+    const carrier = object(w, "carrier-v1.mp4", "video/mp4"); const manifest = object(w, "manifest-v1.json", "application/json");
+    await sync()(`pres-${randomUUID()}`, selectedOnly(w, packed(w, "b".repeat(64), carrier, manifest)));
+    await sync()(`pres-${randomUUID()}`, selectedOnly(w, packed(w, "c".repeat(64), carrier, manifest)));
+    expect(await queued(w.key)).toEqual([]);
+    const rows = await live(w.key);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ version_id: "c".repeat(64) });
+  });
+});
+
