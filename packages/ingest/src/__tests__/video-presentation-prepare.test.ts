@@ -35,7 +35,8 @@ import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
   kind: 'planned'; toolInputId: string; planSha256: string;
-  routeInput: Record<string, unknown>; keyframes: boolean[];
+  // S6e E3 (design §3.2 item 7, inner 960d483f): the full ledger's encode facts replace the separate keyframe flags.
+  routeInput: Record<string, unknown>; encoding: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number };
   display: { width: number; height: number; duration: { numerator: string; denominator: string } };
   playbackClock: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
   work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean };
@@ -44,7 +45,7 @@ type ProbeOutcome = ProbeFacts | { kind: 'failed'; code: string };
 type CarrierOutcome = { kind: 'verified'; bundle: Bundle } | { kind: 'failed'; code: string };
 interface Port {
   probe: (capability: Identity) => Promise<ProbeOutcome>;
-  writeLedger: (capability: Identity, toolInputId: string) => Promise<void>;
+  writeLedger: (capability: Identity, toolInputId: string, encoding: ProbeFacts['encoding']) => Promise<void>;
   carrier: (capability: Identity, route: 'identity' | 'copy') => Promise<CarrierOutcome>;
   usage: () => Promise<{ wallMs: number; cpuUsec: number | null } | null>;
 }
@@ -132,7 +133,9 @@ function fakePort(store: MachineStore, key: string, outcome: ProbeOutcome): Port
  * @returns It.
  */
 function planned(routeInput: Record<string, unknown>, frames = keyframes(96, 24), work: ProbeFacts['work'] = WORK): ProbeFacts {
-  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, keyframes: frames, work: { ...work, encodedFrames: frames.length }, display: DISPLAY, playbackClock: CLOCK };
+  const keyframeOrdinals = frames.flatMap((flag, index) => (flag ? [index] : []));
+  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, encoding: { keyframeOrdinals, codedWidth: work.sourceWidth, codedHeight: work.sourceHeight },
+    work: { ...work, encodedFrames: frames.length }, display: DISPLAY, playbackClock: CLOCK };
 }
 
 /**
@@ -188,7 +191,9 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
       const port = fakePort(store, key, planned(IDENTITY_ROUTE));
       const answer = await admitAndPrepare(store, key, 'job-a', port);
       expect(port.spies.writeLedger).toHaveBeenCalledTimes(1);
-      expect(port.spies.writeLedger).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a', token: answer.capability!.token }), T);
+      // The writer writes the full ledger with the probe's encode facts beside the plan (E3, §3.2 item 7).
+      expect(port.spies.writeLedger).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a', token: answer.capability!.token }), T,
+        { keyframeOrdinals: [0, 24, 48, 72], codedWidth: WORK.sourceWidth, codedHeight: WORK.sourceHeight });
       expect(port.spies.carrier).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a' }), 'identity');
       expect(answer.plan).toEqual({ route: 'identity', stages: ['plan', 'publish'], toolInputId: T, planSha256: PLAN });
       expect(answer.work).toEqual({ kind: 'none' });

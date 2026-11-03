@@ -48,7 +48,9 @@ interface Plan {
   segmentDuration: Rational | null;
 }
 interface EditSpan { sourceStart: Rational; sourceEnd: Rational; presentationStart: Rational; rate: Rational }
-interface Ledger { schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: { jobId: string; deadlineAt: number }; plan: Plan }
+/** S6e E3 (design §3.2 item 7, inner 960d483f): physical encode facts beside the plan, outside its identity. */
+interface Encoding { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number }
+interface Ledger { schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: { jobId: string; deadlineAt: number }; plan: Plan; encoding: Encoding }
 interface Compact { sourceFingerprint: string; toolInputId: string; planSha256: string; presentation: VideoPresentationTable }
 interface VersionInput {
   sourceFingerprint: string; policyVersion: number; producerVersion: number; profileVersion: number; planSha256: string;
@@ -66,6 +68,7 @@ interface ContractApi {
   videoPresentationPlanSha256: (plan: unknown) => Promise<string>;
   videoPresentationToolInputId: (input: { sourceFingerprint: string; planSha256: string }) => Promise<string>;
   videoPresentationVersionId: (input: unknown) => Promise<string>;
+  videoPresentationKeyframeFlags: (ledger: Ledger) => boolean[];
 }
 
 const api = entry as unknown as Partial<ContractApi>;
@@ -222,7 +225,8 @@ function singlePlan(): Plan {
  * @returns A fresh valid ledger.
  */
 function ledger(plan: Plan = cfrPlan()): Ledger {
-  return { schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { ...ATTEMPT }, plan };
+  return { schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { ...ATTEMPT }, plan,
+    encoding: { keyframeOrdinals: [0], codedWidth: plan.display.width, codedHeight: plan.display.height } };
 }
 
 const PLANS = [['cfr', cfrPlan], ['lead, gap and hold', gapHoldPlan], ['rebased gap', gapPlan], ['matroska previous-max', matroskaPlan], ['single frame', singlePlan]] as const;
@@ -632,6 +636,51 @@ function reduce(numerator: number, denominator: number): Rational {
 }
 
 const generatedFrames = fc.array(fc.record({ gap: fc.integer({ min: 0, max: 5 }), length: fc.integer({ min: 1, max: 5 }) }), { minLength: 1, maxLength: 30 });
+
+describe('E §3.2 item 7 the full ledger\'s encode facts (inner 960d483f)', () => {
+  it('E01 the full ledger requires its encoding sibling', () => {
+    const schema = required('videoPresentationLedgerSchema');
+    const { encoding: _dropped, ...without } = ledger();
+    expect(schema.safeParse(ledger()).success).toBe(true);
+    expect(schema.safeParse(without).success).toBe(false);
+  });
+
+  it.each([
+    ['keyframes out of order', { keyframeOrdinals: [0, 8, 4], codedWidth: 64, codedHeight: 48 }],
+    ['a repeated keyframe', { keyframeOrdinals: [0, 4, 4], codedWidth: 64, codedHeight: 48 }],
+    ['a keyframe past the last presented frame', { keyframeOrdinals: [0, 17], codedWidth: 64, codedHeight: 48 }],
+    ['a negative keyframe', { keyframeOrdinals: [-1, 0], codedWidth: 64, codedHeight: 48 }],
+    ['a fractional keyframe', { keyframeOrdinals: [0, 1.5], codedWidth: 64, codedHeight: 48 }],
+    ['a zero coded width', { keyframeOrdinals: [0], codedWidth: 0, codedHeight: 48 }],
+    ['a fractional coded height', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48.5 }],
+    ['an unknown key', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48, gop: 12 }],
+  ])('E02 rejects encoding with %s', (_, encoding) => {
+    const schema = required('videoPresentationLedgerSchema');
+    expect(schema.safeParse({ ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 16], codedWidth: 64, codedHeight: 48 } }).success).toBe(true);
+    expect(schema.safeParse({ ...ledger(), encoding }).success).toBe(false);
+  });
+
+  it('E03 the encode facts stay outside the plan identity: planSha256 and toolInputId do not change with them', async () => {
+    const planSha = required('videoPresentationPlanSha256');
+    const toolInputId = required('videoPresentationToolInputId');
+    const a = { ...ledger(), encoding: { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48 } };
+    const b = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 12, 16], codedWidth: 1920, codedHeight: 1088 } };
+    expect(await planSha(a.plan)).toBe(await planSha(b.plan));
+    expect(await toolInputId({ sourceFingerprint: H, planSha256: await planSha(a.plan) })).toBe(await toolInputId({ sourceFingerprint: H, planSha256: await planSha(b.plan) }));
+  });
+
+  it('E04 the compact projection carries no encode facts', () => {
+    const compact = required('projectVideoPresentationCompact')({ ...ledger(), encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48 } });
+    expect(Object.keys(compact).sort()).toEqual(['planSha256', 'presentation', 'sourceFingerprint', 'toolInputId']);
+  });
+
+  it('E05 the keyframe flags expand the ordinals to one flag per presented frame, ready for planVideoEncodeChunks', () => {
+    const flags = required('videoPresentationKeyframeFlags');
+    const value = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 9], codedWidth: 64, codedHeight: 48 } };
+    const expected = Array.from({ length: 17 }, (_, index) => [0, 4, 9].includes(index));
+    expect(flags(value)).toEqual(expected);
+  });
+});
 
 describe('L/C ledger round trip and §7.16 compact projection (property)', () => {
   it('L06 any generated ledger round-trips through JSON unchanged', () => {

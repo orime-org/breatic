@@ -1,7 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/** S5: real admission/authorization/PG/Redis/holds/queue/settlement; only external presentation delivery is controlled. */
+/**
+ * S5: real admission/authorization/PG/Redis/holds/queue/settlement; only external presentation delivery is controlled.
+ *
+ * S6e E3 (inner#1306 test plan §90; design §7.11, §5.4 「用户运行的两层编码」, §5.3, §3.2 item 7): the request names its
+ * tool input per input id (`presentation_ref`); admission reads the S6c snapshot, the selected version's compact and its
+ * full ledger (bounded, with the encode facts), recomputes the recipes, computes the exact §5.4 job layout, refuses a run
+ * whose standard-4 job count exceeds `encoding.max_parallel_chunks`, and quotes max(precheck, planned work). The frozen
+ * plan carries presentationRef, the ledger receipts, the selected versionIds and the layout.
+ */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import type { Queue } from "bullmq";
@@ -17,21 +25,26 @@ import {
   creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, openMiniToolConsumption, readMiniToolExecutionPlan,
   recordMiniToolConsumption, settleMiniToolCharge, upstreamStepRepo,
 } from "@breatic/domain";
+import * as domain from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
 type Tool = "video.extract-frames" | "video.split";
 type Recipe = { kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } };
 interface Output { outputIndex: number; nodeId: string; recipe: Recipe }
+type Ref = { toolInputId: string; planSha256: string };
+type Receipt = Record<string, unknown> & { url: string; size: number; table: Record<string, unknown> & { url: string; size: number } };
 interface Body {
   tool: Tool; project_id: string; space_id: string; run_id: string;
   draft: { version: 1; draftId: string; revision: string; source: { nodeId: string; canonicalURL: string; mediaInfo: { width: number; height: number; duration: number; mimeType: string } }; inputs: []; params: Record<string, unknown> };
-  analysis_refs: []; source_ledger: shared.VideoSourceLedgerReceiptV2; outputs: Output[];
+  analysis_refs: []; presentation_ref: { source: Ref }; outputs: Output[];
 }
-interface Fixture extends StudioFixture { body: Body; sourceId: string; sourceKey: string; hash: string; viewerId: string; otherId: string }
+interface Fixture extends StudioFixture { body: Body; sourceId: string; sourceKey: string; hash: string; viewerId: string; otherId: string; receipt: Receipt; full: Record<string, unknown>; versionId: string }
 interface Plan extends Record<string, unknown> {
   taskId: string; binding: { assetId: string; contentHash: string; mediaInfo: { width: number; height: number; duration: number } };
-  sourceKey: string; sourceLedger: shared.VideoSourceLedgerReceiptV2; outputs: Output[]; credits: number;
+  sourceKey: string; presentationRef: { source: Ref }; ledgerReceipts: { source: Receipt }; versionIds: { source: string };
+  layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] };
+  outputs: Output[]; credits: number;
   targetNodeIds: string[]; requestFingerprint: string; planFingerprint: string;
   container: { containerClass: string; precheckSeconds: number; size: { vcpu: number; memory_gib: number; disk_gb: number }; prices: core.MiniToolsConfig["prices"]; limits: core.MiniToolsConfig["plan_limits"] };
 }
@@ -40,9 +53,18 @@ interface Parent { id: string; user_id: string; status: string; params: { miniTo
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn() }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [
-  { start: 20, count: 2, step: 2, duration: 2 }, { start: 40, count: 2, step: 2, duration: 2 },
-] };
+// 44 frames of 1/10 s over 4.4 s; the selected version's compact presentation and its full plan (S6a).
+const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 44, step: 1, duration: 1 }] };
+const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+const PLAN_BODY = {
+  display: { width: 960, height: 540, duration: rational(22, 5) }, colorMatrix: "bt601", source: { transfer: null, bitDepth: 8 },
+  output: { toneMap: "none", framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: "black" }, presentation: TABLE,
+  originMapping: { timeBase: rational(1, 1000), origin: rational(0), entries: [{ kind: "source", start: 0, count: 44, step: 100 }],
+    firstSource: { supportStart: rational(0), lead: null }, lastSource: { support: "declared", supportEnd: rational(22, 5), hold: null } },
+  videoSpans: null, audioSpans: null, segmentDuration: null,
+};
+// §3.2 item 7: the physical encode facts beside the plan; keyframes every 10 frames, coded at the display size.
+const ENCODE_FACTS = { keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 960, codedHeight: 540 };
 let pg: ReturnType<typeof core.createPgClient>;
 let queue: Queue;
 let app: Hono;
@@ -72,8 +94,8 @@ beforeAll(async () => {
 beforeEach(() => {
   configure();
   settings = Object.assign(structuredClone(base), { executions: { ...base.executions,
-    "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 12 },
-    "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 12 } } });
+    "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 12, max_outputs_per_job: 8 },
+    "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 12, max_outputs_per_job: 8 } } });
   outside.config.mockImplementation(() => settings);
   outside.snapshots.clear(); outside.bodies.clear(); outside.reads.length = 0;
   outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
@@ -103,17 +125,31 @@ async function member(projectId: string, role: "viewer" | "editor"): Promise<str
   return id;
 }
 
-/** Declare a source-scoped ready snapshot with only compact bytes available. @throws {never} Never. */
-function present(f: Fixture, table = TABLE): void {
-  const json = JSON.stringify(table);
-  const receipt: shared.VideoSourceLedgerReceiptV2 = { schemaVersion: 2, producerVersion: 2, sourceFingerprint: f.hash,
-    attempt: { jobId: `source-${f.sourceId}`, deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms },
-    url: publicUrl(shared.videoSourceLedgerKeyFor(f.sourceKey)), etag: "full-etag", size: 512, sha256: "b".repeat(64), contentType: "application/json",
-    table: { url: publicUrl(shared.videoSourceLedgerTableKeyFor(f.sourceKey)), sha256: digest(json), size: Buffer.byteLength(json), frameCount: table.runs.reduce((n, run) => n + run.count, 0) } };
-  f.body.source_ledger = receipt;
-  outside.bodies.set(receipt.table.url, json);
-  outside.snapshots.set(f.sourceKey, { presentation: { schemaVersion: 1, sourceFingerprint: f.hash,
-    original: { width: 960, height: 540, duration: 4.4 }, state: "native" }, attempt: null, sourceLedger: { state: "ready", receipt } });
+/**
+ * Declare the source's selected version as the S6c snapshot answers it, with its full ledger and compact stored at the
+ * receipt's URLs, and point the request at that tool input. @throws {Error} When the shared identity functions are missing.
+ */
+async function present(f: Fixture): Promise<void> {
+  const api = shared as unknown as Record<string, (value: unknown) => unknown>;
+  const planSha256 = await api.videoPresentationPlanSha256!(PLAN_BODY) as string;
+  const toolInputId = await api.videoPresentationToolInputId!({ sourceFingerprint: f.hash, planSha256 }) as string;
+  const attempt = { jobId: `video-presentation:${f.sourceId}`, deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms };
+  const full = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, attempt, plan: PLAN_BODY, encoding: ENCODE_FACTS };
+  const compact = { sourceFingerprint: f.hash, toolInputId, planSha256, presentation: TABLE };
+  const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
+  const receipt: Receipt = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, producerVersion: 2, attempt,
+    url: publicUrl(shared.videoSourceLedgerKeyFor(f.sourceKey)), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: digest(fullJSON), contentType: "application/json",
+    table: { url: publicUrl(shared.videoSourceLedgerTableKeyFor(f.sourceKey)), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 44 } };
+  const versionId = "e".repeat(64);
+  const bundle = { schemaVersion: 1, sourceFingerprint: f.hash, versionId, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
+    original: { width: 960, height: 540, duration: 4.4 }, display: PLAN_BODY.display,
+    playback: { kind: "native", carrier: { storageKey: f.sourceKey, url: publicUrl(f.sourceKey), etag: "source-etag", size: 4096, sha256: f.hash, contentType: "video/mp4" }, displayRect: null },
+    playbackClock: TABLE };
+  Object.assign(f, { receipt, full, versionId });
+  f.body.presentation_ref = { source: { toolInputId, planSha256 } };
+  outside.bodies.set(receipt.url, fullJSON); outside.bodies.set(receipt.table.url, compactJSON);
+  outside.snapshots.set(f.sourceKey, { sourceBinding: { storageKey: f.sourceKey, sourceFingerprint: f.hash }, presentation: bundle,
+    preparation: null, ledger: { state: "ready", receipt, failure: null } });
 }
 
 /** Register measured video facts and fund the real target Studio, not the source Studio. @throws {Error} On fixture SQL failure. */
@@ -127,15 +163,15 @@ async function seed(tool: Tool = "video.split"): Promise<Fixture> {
   const body: Body = { tool, project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
       mediaInfo: { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" } }, inputs: [],
-    params: tool === "video.split" ? { cuts: [4.19, 2.21, 4.19, 0, 2, 4.4] } : { mode: "interval", currentTime: 2.3, interval: 0.1 } },
-    analysis_refs: [], outputs: [], source_ledger: {} as shared.VideoSourceLedgerReceiptV2 };
-  const f: Fixture = { ...target, body, sourceId, sourceKey, hash, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor") };
-  present(f);
+    params: tool === "video.split" ? { cuts: [2, 4] } : { mode: "interval", currentTime: 2.3, interval: 1 } },
+    analysis_refs: [], outputs: [], presentation_ref: { source: { toolInputId: "", planSha256: "" } } };
+  const f = { ...target, body, sourceId, sourceKey, hash, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor") } as Fixture;
+  await present(f);
   body.outputs = tool === "video.split"
-    ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 2.2 } } },
-      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2.2, end: 4 } } },
+    ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 2 } } },
+      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 4 } } },
       { outputIndex: 2, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } }]
-    : [2, 2.2, 4, 4.2].map((pts, i) => ({ outputIndex: i, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: i, pts } }));
+    : [0, 1, 2, 3, 4].map((pts, i) => ({ outputIndex: i, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: i * 10, pts } }));
   return f;
 }
 
@@ -258,29 +294,32 @@ async function contending<T>(id: string, calls: (() => Promise<T>)[]): Promise<T
 }
 
 describe("S5 fresh frame and split execution admission", () => {
-  it("S5-A00 proves registered snapshot, compact receipt, reader and independent planner literals are valid", async () => {
+  it("S5-A00 proves the selected version's receipt, compact reader and independent planner literals are valid", async () => {
     const f = await seed();
-    expect(shared.videoSourceLedgerReceiptV2Schema.parse(f.body.source_ledger)).toEqual(f.body.source_ledger);
-    expect(await shared.readVideoPresentationTable(f.body.source_ledger.table, { maxBytes: base.presentation.source_ledger.max_bytes }, { deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms })).toEqual(TABLE);
+    expect(shared.videoPresentationLedgerReceiptSchema.parse(f.receipt)).toEqual(f.receipt);
+    expect(await shared.readVideoPresentationCompact(f.receipt, { maxBytes: base.presentation.source_ledger.max_bytes }, { deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms })).toEqual(TABLE);
     expect(planVideoSplit(TABLE, f.body.draft.params.cuts as number[])).toEqual([
-      { outputIndex: 0, start: 2, end: 2.2 }, { outputIndex: 1, start: 2.2, end: 4 }, { outputIndex: 2, start: 4, end: 4.4 },
+      { outputIndex: 0, start: 0, end: 2 }, { outputIndex: 1, start: 2, end: 4 }, { outputIndex: 2, start: 4, end: 4.4 },
     ]);
-    expect(planVideoFrames(TABLE, { mode: "interval", interval: 0.1 })).toEqual([2, 2.2, 4, 4.2].map((pts, i) => ({ outputIndex: i, frameIndex: i, pts })));
+    expect(planVideoFrames(TABLE, { mode: "interval", interval: 1 })).toEqual([0, 1, 2, 3, 4].map((pts, i) => ({ outputIndex: i, frameIndex: i * 10, pts })));
   });
   it.each(["video.extract-frames", "video.split"] as const)("S5-A01 freezes every %s output, measured source, receipt and Std4 policy before the real hold and queue", async (tool) => {
     const f = await seed(tool); const original = structuredClone(f.body);
-    const reader = vi.spyOn(shared, "readVideoPresentationTable");
+    const reader = vi.spyOn(shared, "readVideoPresentationCompact");
     try {
       await accept(f);
       expect(reader).toHaveBeenCalledTimes(1);
-      expect(reader.mock.calls[0]?.[0]).toEqual(original.source_ledger.table);
+      expect(reader.mock.calls[0]?.[0]).toEqual(f.receipt);
       expect(reader.mock.calls[0]?.[1]).toEqual({ maxBytes: settings.presentation.source_ledger.max_bytes });
       const deadline = reader.mock.calls[0]?.[2].deadlineAt;
       expect(deadline).toBeGreaterThan(Date.now());
       expect(deadline).toBeLessThanOrEqual(Date.now() + 7200000);
     } finally { reader.mockRestore(); }
     const stored = await parent(f.body.run_id); const plan = stored.params.miniToolExecution;
-    expect(plan).toMatchObject({ tool, taskId: f.body.run_id, sourceKey: f.sourceKey, sourceLedger: original.source_ledger,
+    // One batch holds every output under max_outputs_per_job; no output needs chunking (E3-6).
+    expect(plan.layout).toEqual({ batches: [original.outputs.map((o) => o.outputIndex)], encodes: [] });
+    expect(plan).toMatchObject({ tool, taskId: f.body.run_id, sourceKey: f.sourceKey,
+      presentationRef: original.presentation_ref, ledgerReceipts: { source: f.receipt }, versionIds: { source: f.versionId },
       binding: { assetId: f.sourceId, contentHash: f.hash, mediaInfo: { width: 960, height: 540, duration: 4.4 } },
       outputs: original.outputs, targetNodeIds: original.outputs.map((o) => o.nodeId), credits: estimate(tool),
       container: { containerClass: "MiniToolContainerStd4", precheckSeconds: tool === "video.split" ? 23 : 17,
@@ -293,11 +332,12 @@ describe("S5 fresh frame and split execution admission", () => {
     expect(hold).toEqual({ studio_id: f.studioId, amount: estimate(tool), status: "held" });
     expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: original.outputs.length, holds: 1, jobs: 1 });
     expect(await queue.getJob(f.body.run_id)).toMatchObject({ id: f.body.run_id, name: "execute-mini-tool", data: { taskId: f.body.run_id, executionKind: "planned" } });
-    expect(outside.reads).toEqual([original.source_ledger.table.url]);
+    // The full ledger is read once for the layout's encode facts (E3-3), the compact once for the recipes.
+    expect([...outside.reads].sort()).toEqual([f.receipt.url, f.receipt.table.url].sort());
   });
   it.each([
-    ["first", 0, 2], ["last", 3, 4.2], ["current", 1, 2.2],
-  ] as const)("S5-A01 resolves %s through the compact timeline rather than zero-based source time", async (mode, frameIndex, pts) => {
+    ["first", 0, 0], ["last", 43, 4.3], ["current", 30, 3],
+  ] as const)("S5-A01 resolves %s through the selected version's compact timeline", async (mode, frameIndex, pts) => {
     const f = await seed("video.extract-frames"); f.body.draft.params = { mode, currentTime: 3, interval: 1 };
     f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex, pts } }];
     await accept(f); expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
@@ -305,64 +345,49 @@ describe("S5 fresh frame and split execution admission", () => {
   it.each(["frameIndex", "pts", "omission", "addition", "order"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
     const f = await seed("video.extract-frames"); await control(f);
     if (bad === "frameIndex") Object.assign(f.body.outputs[0]!.recipe, { frameIndex: 1 });
-    else if (bad === "pts") Object.assign(f.body.outputs[0]!.recipe, { pts: 2.000001 });
+    else if (bad === "pts") Object.assign(f.body.outputs[0]!.recipe, { pts: 0.000001 });
     else if (bad === "omission") f.body.outputs.pop();
-    else if (bad === "addition") f.body.outputs.push({ outputIndex: 4, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 3, pts: 4.2 } });
+    else if (bad === "addition") f.body.outputs.push({ outputIndex: 5, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 41, pts: 4.1 } });
     else f.body.outputs.reverse();
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
-  it.each(["start", "end", "omission", "addition", "order"])("S5-A02 refuses a segment plan %s after a valid nonzero-origin gap/duplicate-cut control", async (bad) => {
+  it.each(["start", "end", "omission", "addition", "order"])("S5-A02 refuses a segment plan %s after a valid control", async (bad) => {
     const f = await seed(); await control(f);
-    if (bad === "start") Object.assign(f.body.outputs[0]!.recipe, { range: { start: 0, end: 2.2 } });
-    else if (bad === "end") Object.assign(f.body.outputs[1]!.recipe, { range: { start: 2.2, end: 4.1 } });
+    if (bad === "start") Object.assign(f.body.outputs[0]!.recipe, { range: { start: 0.1, end: 2 } });
+    else if (bad === "end") Object.assign(f.body.outputs[1]!.recipe, { range: { start: 2, end: 4.1 } });
     else if (bad === "omission") f.body.outputs.pop();
     else if (bad === "addition") f.body.outputs.push({ outputIndex: 3, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } });
     else f.body.outputs.reverse();
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
-  it.each(["source deleted", "source hash", "receipt fingerprint", "receipt digest", "receipt attempt", "table digest", "table URL", "table size", "table frameCount", "presentation pending", "presentation failed", "ledger pending", "ledger failed", "ledger absent"])("S5-A03 refuses current source/receipt mismatch: %s", async (bad) => {
+  it.each(["source deleted", "source hash", "ref toolInputId", "ref planSha256", "selected version moved", "nothing selected", "ledger pending", "ledger failed", "ledger absent"])("S5-A03 refuses a request whose tool input is not the selected, ready one: %s", async (bad) => {
     const f = await seed(); await control(f);
-    const snapshot = structuredClone(outside.snapshots.get(f.sourceKey)) as { presentation: Record<string, unknown>; sourceLedger?: Record<string, unknown> };
+    const snapshot = structuredClone(outside.snapshots.get(f.sourceKey)) as { presentation: Record<string, unknown> | null; ledger: Record<string, unknown> | null };
     if (bad === "source deleted") await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceId}`;
     else if (bad === "source hash") await pg`UPDATE studio_assets SET content_hash=${"e".repeat(64)} WHERE id=${f.sourceId}`;
-    else if (bad === "receipt fingerprint") f.body.source_ledger.sourceFingerprint = "e".repeat(64);
-    else if (bad === "receipt digest") f.body.source_ledger.sha256 = "e".repeat(64);
-    else if (bad === "receipt attempt") f.body.source_ledger.attempt.jobId = "another-attempt";
-    else if (bad === "table digest") f.body.source_ledger.table.sha256 = "e".repeat(64);
-    else if (bad === "table URL") f.body.source_ledger.table.url = "https://other.example.test/table.json";
-    else if (bad === "table size") f.body.source_ledger.table.size += 1;
-    else if (bad === "table frameCount") f.body.source_ledger.table.frameCount += 1;
-    else if (bad === "presentation pending") snapshot.presentation.state = "classifying";
-    else if (bad === "presentation failed") snapshot.presentation = { ...snapshot.presentation, state: "failed", error: "presentation_failed" };
-    else if (bad === "ledger pending") snapshot.sourceLedger = { state: "pending", schemaVersion: 2, producerVersion: 2, attempt: f.body.source_ledger.attempt };
-    else if (bad === "ledger failed") snapshot.sourceLedger = { state: "failed", schemaVersion: 2, producerVersion: 2, errorCode: "expired" };
-    else Reflect.deleteProperty(snapshot, "sourceLedger");
+    else if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
+    else if (bad === "ref planSha256") f.body.presentation_ref.source.planSha256 = "b".repeat(64);
+    else if (bad === "selected version moved") { snapshot.presentation = { ...snapshot.presentation, toolInputId: "b".repeat(64) }; snapshot.ledger = null; }
+    else if (bad === "nothing selected") { snapshot.presentation = null; snapshot.ledger = null; }
+    else if (bad === "ledger pending") snapshot.ledger = { state: "pending", receipt: null, failure: null };
+    else if (bad === "ledger failed") snapshot.ledger = { state: "failed", receipt: null, failure: "source_ledger_invalid" };
+    else snapshot.ledger = null;
     outside.snapshots.set(f.sourceKey, snapshot);
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
-  it.each(["digest", "size", "invalid table", "byte budget"])("S5-A04 validates the whole compact body and configured byte budget: %s", async (bad) => {
+  it.each(["compact digest", "compact size", "full digest", "full without encode facts", "byte budget"])("S5-A04 validates the whole compact and full objects against the receipt and the byte budget: %s", async (bad) => {
     const f = await seed(); await control(f);
-    if (bad === "digest") outside.bodies.set(f.body.source_ledger.table.url, JSON.stringify({ ...TABLE, timescale: 11 }));
-    else if (bad === "size") outside.bodies.set(f.body.source_ledger.table.url, `${JSON.stringify(TABLE)} `);
-    else if (bad === "invalid table") {
-      const body = JSON.stringify({ schemaVersion: 1, timescale: 10, runs: [] });
-      f.body.source_ledger.table = { ...f.body.source_ledger.table, size: Buffer.byteLength(body), sha256: digest(body) };
-      const snapshot = outside.snapshots.get(f.sourceKey) as { sourceLedger: { receipt: shared.VideoSourceLedgerReceiptV2 } };
-      snapshot.sourceLedger.receipt = structuredClone(f.body.source_ledger); outside.bodies.set(f.body.source_ledger.table.url, body);
-    } else settings.presentation.source_ledger.max_bytes = f.body.source_ledger.table.size - 1;
+    if (bad === "compact digest") outside.bodies.set(f.receipt.table.url, JSON.stringify({ sourceFingerprint: f.hash, toolInputId: f.body.presentation_ref.source.toolInputId, planSha256: f.body.presentation_ref.source.planSha256, presentation: { ...TABLE, timescale: 20 } }));
+    else if (bad === "compact size") outside.bodies.set(f.receipt.table.url, `${outside.bodies.get(f.receipt.table.url)} `);
+    else if (bad === "full digest") outside.bodies.set(f.receipt.url, JSON.stringify({ ...f.full, encoding: { ...ENCODE_FACTS, codedWidth: 961 } }));
+    else if (bad === "full without encode facts") {
+      const { encoding: _dropped, ...without } = f.full; const json = JSON.stringify(without);
+      const receipt = { ...f.receipt, size: Buffer.byteLength(json), sha256: digest(json) };
+      outside.bodies.set(f.receipt.url, json);
+      (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
+    } else settings.presentation.source_ledger.max_bytes = Math.min(f.receipt.size, f.receipt.table.size) - 1;
     // Stored-object corruption is not necessarily a client validation error; the contract fixes refusal and zero durable effects, not an HTTP error class.
     expect((await post(f)).ok).toBe(false); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-  });
-  it("S5-A04 accepts a byte-bounded billion-frame table for a single last-frame output without fetching a full ledger", async () => {
-    const f = await seed("video.extract-frames");
-    present(f, { schemaVersion: 1, timescale: 10, runs: [{ start: 20, count: 1000000000, step: 1, duration: 1 }] });
-    await pg`UPDATE studio_assets SET duration_seconds=100000002 WHERE id=${f.sourceId}`;
-    const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: { original: { duration: number } } };
-    snapshot.presentation.original.duration = 100000002;
-    f.body.draft.params = { mode: "last", currentTime: 0, interval: 1 };
-    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 999999999, pts: 100000001.9 } }];
-    await accept(f); expect(outside.reads).toEqual([f.body.source_ledger.table.url]);
-    expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
   });
   it.each([1, 2.5])("S5-A05 holds the configured Std4 estimate once with multiplier %s and leaves every deadline at two hours", async (multiplier) => {
     const f = await seed(); configure(multiplier);
@@ -435,14 +460,17 @@ describe("S5 fresh frame and split execution admission", () => {
 });
 
 describe("S5 independent failed-output retry admission", () => {
-  it("S5-R01 reuses only the selected failed original node/recipe/receipt, never today's draft or table", async () => {
+  it("S5-R01 reuses only the selected failed original node/recipe/frozen refs, never today's draft, version, compact or full", async () => {
     const f = await seed(); const before = await failedOriginal(f); const body = retry(f);
     f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
     await pg`UPDATE studio_assets SET duration_seconds=99 WHERE id=${f.sourceId}`;
     outside.ingest.mockClear(); outside.reads.length = 0; outside.snapshots.clear(); outside.bodies.clear();
     await accept(f, body); const plan = (await parent(body.run_id)).params.miniToolExecution;
     expect(plan.outputs).toEqual([before.params.miniToolExecution.outputs[2]]); expect(plan.targetNodeIds).toEqual([f.body.outputs[2]!.nodeId]);
-    expect(plan.binding).toEqual(before.params.miniToolExecution.binding); expect(plan.sourceLedger).toEqual(before.params.miniToolExecution.sourceLedger);
+    expect(plan.binding).toEqual(before.params.miniToolExecution.binding);
+    expect(plan.presentationRef).toEqual(before.params.miniToolExecution.presentationRef);
+    expect(plan.ledgerReceipts).toEqual(before.params.miniToolExecution.ledgerReceipts);
+    expect(plan.versionIds).toEqual(before.params.miniToolExecution.versionIds);
     expect(await parent(f.body.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
     expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
     const [hold] = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`;
@@ -620,3 +648,113 @@ describe("S5 independent failed-output retry admission", () => {
     expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${f.body.run_id}`)]).toEqual([]);
   });
 });
+
+/** Credits for some standard-4 seconds at the current settings: the one container quote rule (E3-5). @throws {Error} On invalid prices. */
+function std4Credits(seconds: number, multiplier = 1): number {
+  return Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: seconds * 1000, cpuUsec: null }, settings.classes.MiniToolContainerStd4!, settings.prices), multiplier)), MIN_TASK_CREDIT_COST);
+}
+
+describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3-3 to E3-6; design §5.4, §7.11)", () => {
+  it("E3-A01 a run whose standard-4 job count exceeds the parallel cap is refused with its reason and no durable effect", async () => {
+    const f = await seed(); await control(f);
+    settings.encoding.max_parallel_chunks = 1;
+    (Reflect.get(settings.executions, "video.split") as { max_outputs_per_job: number }).max_outputs_per_job = 1;
+    const response = await post(f);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.runTooLong", { max: 1 }));
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+
+  it("E3-A02 the same three outputs in one batch fit a cap of one job", async () => {
+    const f = await seed();
+    settings.encoding.max_parallel_chunks = 1;
+    await accept(f);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.layout).toEqual({ batches: [[0, 1, 2]], encodes: [] });
+  });
+
+  it("E3-A03 batches follow max_outputs_per_job in stable output order", async () => {
+    const f = await seed();
+    (Reflect.get(settings.executions, "video.split") as { max_outputs_per_job: number }).max_outputs_per_job = 2;
+    await accept(f);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.layout).toEqual({ batches: [[0, 1], [2]], encodes: [] });
+  });
+
+  it("E3-A04 the quote is the precheck floor when the planned work is smaller", async () => {
+    const f = await seed();
+    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 10000;
+    await accept(f);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.credits).toBe(std4Credits(10000));
+  });
+
+  it("E3-A05 the quote covers the planned work when it exceeds the precheck: at least every job's start seconds", async () => {
+    const f = await seed();
+    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
+    settings.prices.vcpu_second_usd = 1;
+    await accept(f);
+    const credits = (await parent(f.body.run_id)).params.miniToolExecution.credits;
+    expect(credits).toBeGreaterThan(std4Credits(1));
+    expect(credits).toBeGreaterThanOrEqual(std4Credits(settings.encoding.encoder.start_seconds));
+    const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${f.body.run_id}`;
+    expect(hold).toEqual({ amount: credits });
+  });
+
+  it("E3-A06 the layout uses the full ledger's keyframes: without encode facts nothing is admitted", async () => {
+    const f = await seed(); await control(f);
+    const { encoding: _dropped, ...without } = f.full; const json = JSON.stringify(without);
+    const receipt = { ...f.receipt, size: Buffer.byteLength(json), sha256: digest(json) };
+    outside.bodies.set(f.receipt.url, json);
+    (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
+    expect((await post(f)).ok).toBe(false);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+
+  it("E3-A07 a target-policy preparation in progress does not block admission", async () => {
+    const f = await seed();
+    const snapshot = outside.snapshots.get(f.sourceKey) as { preparation: unknown };
+    snapshot.preparation = { targetPolicyVersion: 2, jobId: "video-presentation:next", stage: "encode", failure: null };
+    await accept(f);
+  });
+});
+
+describe("E3 version-resolution exit (inner#1306 §90 E3-7; design §5.3)", () => {
+  type Exit = (plan: unknown, inputId: string, bound: { deadlineAt: number }) => Promise<{ originalBinding: unknown; selectedVersion: unknown; toolInputId: string; validatedFullLedger: unknown }>;
+
+  /**
+   * The exit under test, read at call time so a missing export fails each case on its own.
+   * @returns It.
+   */
+  function exit(): Exit {
+    const fn = (domain as Record<string, unknown>).resolveVideoToolInput;
+    expect(fn, "resolveVideoToolInput is exported from @breatic/domain").toBeTypeOf("function");
+    return fn as Exit;
+  }
+
+  it("E3-V01 resolves the frozen input: original binding, frozen version, toolInputId and the validated full ledger, without asking ingest", async () => {
+    const f = await seed(); await accept(f);
+    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
+    outside.ingest.mockClear(); outside.reads.length = 0;
+    // A newer version is selected after admission; the exit still answers the frozen one.
+    (outside.snapshots.get(f.sourceKey) as { presentation: Record<string, unknown> }).presentation.versionId = "b".repeat(64);
+    const resolved = await exit()(plan, "source", { deadlineAt: Date.now() + 60_000 });
+    expect(resolved).toEqual({
+      originalBinding: plan.binding, selectedVersion: { versionId: f.versionId, toolInputId: f.body.presentation_ref.source.toolInputId },
+      toolInputId: f.body.presentation_ref.source.toolInputId, validatedFullLedger: f.full,
+    });
+    expect(outside.ingest).not.toHaveBeenCalled();
+    expect(outside.reads).toEqual([f.receipt.url]);
+  });
+
+  it("E3-V02 refuses a full object that no longer matches the frozen receipt", async () => {
+    const f = await seed(); await accept(f);
+    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
+    outside.bodies.set(f.receipt.url, JSON.stringify({ ...f.full, encoding: { ...ENCODE_FACTS, codedHeight: 541 } }));
+    await expect(exit()(plan, "source", { deadlineAt: Date.now() + 60_000 })).rejects.toThrow();
+  });
+
+  it("E3-V03 refuses an input id the plan does not name", async () => {
+    const f = await seed(); await accept(f);
+    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
+    await expect(exit()(plan, "clip-b", { deadlineAt: Date.now() + 60_000 })).rejects.toThrow();
+  });
+});
+
