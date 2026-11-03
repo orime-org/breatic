@@ -150,6 +150,12 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
       copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
       carrier: { maxShortSide: settings.carrier.max_short_side, color: settings.carrier.color },
     },
+    // The probe's sample count, the single-frame duration and the identity table are frozen with the job (design §5.1 step 2, §4.1).
+    probe: {
+      sampleFrames: settings.probe_sample_frames, singleFrameDurationMs: settings.single_frame_duration_ms,
+      identityFormats: settings.identity_formats.map((entry) => ({ container: entry.container, videoCodec: entry.video_codec, profiles: entry.profiles,
+        pixFmt: entry.pix_fmt, bitDepth: entry.bit_depth, audioCodecs: entry.audio_codecs, rotation: entry.rotation, sar: entry.sar, matrixTagged: entry.matrix_tagged })),
+    },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
   await enqueue(row, snapshot);
