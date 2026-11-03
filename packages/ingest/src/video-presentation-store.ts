@@ -741,9 +741,22 @@ export class VideoPresentationStore {
    * @throws {Error} When publication fails.
    */
   private async candidateEvent(state: PresentationState, job: JobRecord, event: PresentationCandidateEvent): Promise<ReturnType<typeof advancePresentationCandidate>> {
+    // The candidate moves by the whole chunk set (§7.1.1, §5.1 step 2a): stitch only once every chunk of its work is done.
+    if (event.kind === 'Sg' && event.stage === 'stitch' && !this.chunksDone(job)) return { next: job.candidate, effects: [], rejected: true };
     const step = advancePresentationCandidate(job.candidate, event, this.policy(job.admission));
     await this.applyCandidateStep(state, job, step);
     return step;
+  }
+
+  /**
+   * Whether every chunk of the job's recorded encode work is done.
+   * @param job - The job.
+   * @returns False without recorded encode work or while any chunk's latest attempt is not done.
+   * @throws {never} Never.
+   */
+  private chunksDone(job: JobRecord): boolean {
+    const work = job.prepared?.work;
+    return work?.kind === 'encode' && work.chunks.every((_window, chunk) => job.chunks[unitKey(job.admission.jobId, { kind: 'presentation-chunk', chunk })]?.state === 'done');
   }
 
   /**
