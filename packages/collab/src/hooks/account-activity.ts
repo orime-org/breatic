@@ -7,6 +7,7 @@ import { decodeUpdate } from "yjs";
 import { accountActivityRepo, createLogger } from "@breatic/core";
 import { parseDocName } from "@breatic/shared";
 import type { AuthContext } from "@collab/hooks/auth.js";
+import { userIdOf } from "@collab/hooks/presence-wiring.js";
 
 const logger = createLogger("account-activity");
 
@@ -16,10 +17,11 @@ const logger = createLogger("account-activity");
  * @throws {Error} When decoding or persisting an admitted mutation fails.
  */
 export function createActivityHook(): (data: beforeSyncPayload<AuthContext>) => Promise<void> {
-  return async ({ documentName, context, connection, type, payload }): Promise<void> => {
+  return async (data): Promise<void> => {
+    const { documentName, connection, type, payload } = data;
     const parsed = parseDocName(documentName);
     if (!parsed || parsed.kind === "meta" || connection.readOnly || type !== messageYjsUpdate) return;
-    const userId = context.user?.id;
+    const userId = userIdOf(data);
     if (!userId) return;
     try {
       const update = decodeUpdate(payload);
