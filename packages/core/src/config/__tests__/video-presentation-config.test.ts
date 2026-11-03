@@ -13,7 +13,9 @@ describe('platform presentation container configuration (inner#1306)', () => {
   it('records the actual basic instance size used by the canonical metadata container', () => {
     const config = getMiniToolsConfig() as unknown as Record<string, unknown>;
     // Design §3.2 item 1 (S6e E1): the target policy version is presentation.policy_version, initial 1.
-    expect(config.presentation).toEqual({ container_class: 'MediaContainer', policy_version: 1, max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: {
+    expect(config.presentation).toEqual({ container_class: 'MediaContainer', policy_version: 1,
+      // S6d D1 (§91 D-6): one sampled frame classified every measured fixture; §4.2.1 single-frame default 5 s.
+      probe_sample_frames: 1, single_frame_duration_ms: 5000, max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: {
       max_bytes: 16777216, probe_stdout_bytes: 67108864, metadata_bytes: 16777216,
       iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000, max_auto_repairs: 3,
     },
@@ -21,6 +23,24 @@ describe('platform presentation container configuration (inner#1306)', () => {
     // encoding.encoder.container_class alone (S6e E1): one key per fact.
     carrier: { max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } });
     expect(getMiniToolsConfig().classes.MediaContainer).toEqual({ instance_type: 'basic', vcpu: 0.25, memory_gib: 1, disk_gb: 4 });
+  });
+
+  it.each([
+    ['a zero sample count', { probe_sample_frames: 0 }],
+    ['a fractional sample count', { probe_sample_frames: 1.5 }],
+    ['a zero single-frame duration', { single_frame_duration_ms: 0 }],
+  ])('S6d-C01 rejects %s', (_name, change) => {
+    const config = getMiniToolsConfig();
+    // The valid values parse, so the refusal below is about the value, not an unknown key.
+    expect(miniToolsConfigSchema.safeParse({ ...config, presentation: { ...config.presentation, probe_sample_frames: 1, single_frame_duration_ms: 5000 } }).success).toBe(true);
+    expect(miniToolsConfigSchema.safeParse({ ...config, presentation: { ...config.presentation, ...change } }).success).toBe(false);
+  });
+
+  it('S6d-C02 defaults the sample count to 1 and the single-frame duration to 5000 ms when the YAML omits them', () => {
+    const config = structuredClone(getMiniToolsConfig()) as unknown as { presentation: Record<string, unknown> };
+    delete config.presentation.probe_sample_frames;
+    delete config.presentation.single_frame_duration_ms;
+    expect(miniToolsConfigSchema.parse(config).presentation).toMatchObject({ probe_sample_frames: 1, single_frame_duration_ms: 5000 });
   });
 
   it('rejects a presentation class whose actual instance size is not configured', () => {

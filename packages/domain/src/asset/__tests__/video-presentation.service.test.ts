@@ -227,6 +227,17 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     });
   });
 
+  it('A07 freezes the probe sample count and the single-frame duration from configuration on the accept (S6d D1, §91 D-6)', async () => {
+    const core = await import('@breatic/core');
+    const settings = getMiniToolsConfig();
+    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings,
+      presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000 } } as unknown as ReturnType<typeof getMiniToolsConfig>);
+    try {
+      await ensureVideoPresentation({ assetId: asset.id });
+      expect((acceptSent() as unknown as Record<string, unknown>).probe).toEqual({ sampleFrames: 3, singleFrameDurationMs: 4000 });
+    } finally { spy.mockRestore(); }
+  });
+
   it('A06 sends the storage public base once and no per-object URL (inner 1c3a5892 §3.5 server/worker→ingest)', async () => {
     await ensureVideoPresentation({ assetId: asset.id });
     const accept = acceptSent() as unknown as Record<string, unknown>;

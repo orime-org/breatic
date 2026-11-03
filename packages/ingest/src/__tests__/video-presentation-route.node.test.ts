@@ -23,6 +23,8 @@ const accept = {
     standard4: { containerClass: 'MiniToolContainerStd4', size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
   },
   targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
+  // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
+  probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
   // S6e E2-1: the encoding parameters are frozen at admission.
   encoding: {
     chunkShare: 0.5, maxParallelChunks: 8,
@@ -64,6 +66,7 @@ describe('presentation admission at the ingest boundary (inner#1306 §77)', () =
     }), env);
     expect(acceptPresentation).toHaveBeenCalledWith(expect.objectContaining({
       pricing: accept.pricing, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
+      probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
     }));
   });
 });

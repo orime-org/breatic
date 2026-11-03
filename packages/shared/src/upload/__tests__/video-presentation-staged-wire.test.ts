@@ -45,6 +45,8 @@ const accept = {
   original: null, contentType: 'video/webm',
   limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
   pricing: PRICING, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 }, encoding: ENCODING,
+  // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
+  probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
   publicBaseURL: 'https://assets.example.test',
 };
@@ -91,6 +93,23 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
     expect(admits(accept)).toBe(true);
     const value: Record<string, unknown> = { ...accept, encoding };
     if (encoding === undefined) delete value.encoding;
+    expect(admits(value)).toBe(false);
+  });
+});
+
+describe('S6d D1 frozen probe facts on the accept (inner#1306 §91 D-6; design §5.1 step 2, §4.2.1)', () => {
+  it.each([
+    ['no probe facts', { probe: undefined }],
+    ['no sample count', { probe: { singleFrameDurationMs: 5000 } }],
+    ['a zero sample count', { probe: { sampleFrames: 0, singleFrameDurationMs: 5000 } }],
+    ['a fractional sample count', { probe: { sampleFrames: 1.5, singleFrameDurationMs: 5000 } }],
+    ['no single-frame duration', { probe: { sampleFrames: 1 } }],
+    ['a zero single-frame duration', { probe: { sampleFrames: 1, singleFrameDurationMs: 0 } }],
+    ['an unknown probe field', { probe: { sampleFrames: 1, singleFrameDurationMs: 5000, decodeAll: true } }],
+  ])('PF01 rejects an accept with %s', (_name, change) => {
+    expect(admits(accept)).toBe(true);
+    const value: Record<string, unknown> = { ...accept, ...change };
+    for (const [field, entry] of Object.entries(change)) if (entry === undefined) delete value[field];
     expect(admits(value)).toBe(false);
   });
 });
