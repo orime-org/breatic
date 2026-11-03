@@ -1,14 +1,34 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/**
+ * Remove-background durable admission (S6e E3b, inner#1306 test plan §90; design §5.3 remove-bg and model-input rows,
+ * §7.11, §5.4 作业身份). The request names its tool input; admission reads the selected version and its full ledger,
+ * freezes `params.video` as the prepared reference `<taskId>:prep:0`, the standard-4 preparation (price, limits and
+ * chunk windows) and quotes the model (duration from display.duration) plus max(preparation precheck, planned
+ * preparation work) at the frozen standard-4 price. The golden fingerprints were recomputed independently with Python's
+ * canonical JSON/SHA-256 (JS number formatting), which reproduces the previous goldens exactly.
+ */
 import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
+import * as core from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError, createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
-import type { MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
+import * as shared from "@breatic/shared";
+import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import { acceptMiniToolExecution, type AcceptedMiniToolExecution } from "@domain/index.js";
-import { resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
+import { containerCostUsd } from "@domain/credit/container-cost.js";
+import { creditsForUsd } from "@domain/credit/usage-cost.js";
+import { estimateModelCredits, MIN_TASK_CREDIT_COST, resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
+import { presentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
+
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn() }));
+vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
+vi.mock("@breatic/core", async (original) => {
+  const actual = await original<typeof core>();
+  return { ...actual, getMiniToolsConfig: (...args: unknown[]) => outside.config(...args) ?? actual.getMiniToolsConfig() };
+});
 
 interface Fixture {
   body: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>;
@@ -57,6 +77,14 @@ const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> 
   },
   analysis_refs: [],
   outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+  presentation_ref: { source: { toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec", planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1" } },
+};
+const GOLDEN_RECEIPT = {
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
+  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
 };
 // The complete server-plan projection was hashed independently with Python's JSON/SHA-256.
 const GOLDEN_PLAN: AcceptedMiniToolExecution = {
@@ -80,15 +108,25 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   model: "bria-fibo-video-background-remover",
   provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" },
   body: {
-    video: "https://assets.example.test/video/source.mp4",
+    // E3-8: the provider input is the prepared model input, resolved by the worker after its preparation steps.
+    video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" },
     background_color: "Transparent",
     output_container_and_codec: "webm_vp9",
     preserve_audio: true,
   },
-  credits: 30,
-  requestFingerprint: "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e",
-  planFingerprint: "e35fde7e372c275d23f9c739425de94e9df3fbca440d7576dc0476553aea2f3b",
-};
+  presentationRef: GOLDEN_BODY.presentation_ref,
+  ledgerReceipts: { source: GOLDEN_RECEIPT },
+  versionIds: { source: "e".repeat(64) },
+  preparation: {
+    containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
+    prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }],
+  },
+  // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
+  credits: 35,
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
+  planFingerprint: "45fface9c516b44cea4dab8ca7877c9d38766a5c53f91b3e091bec5f141db2e1",
+} as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;
@@ -106,8 +144,25 @@ beforeAll(async () => {
   const storage = await getStorageAdapter();
   publicUrl = storage.publicUrl.bind(storage);
 });
-beforeEach(() => { configure(); });
-afterAll(async () => { await pg.end(); initCore(process.env); resetModelCatalog(); });
+beforeEach(() => {
+  configure();
+  outside.config.mockReset().mockReturnValue(undefined);
+  outside.snapshots.clear(); outside.bodies.clear(); outside.reads.length = 0;
+  outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
+    if (input.action !== "read") throw new Error(`Unexpected presentation admission ${input.action}`);
+    const snapshot = outside.snapshots.get(input.storageKey);
+    if (!snapshot) throw new Error("Unseeded external presentation snapshot");
+    return structuredClone(snapshot);
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+    outside.reads.push(url);
+    const body = outside.bodies.get(url);
+    if (body === undefined) throw new Error(`Admission fetched an unstored URL: ${url}`);
+    return new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
+});
+afterAll(async () => { await pg.end(); initCore(process.env); resetModelCatalog(); vi.unstubAllGlobals(); });
 
 /** Insert a real project member without synthesizing authorization answers. @throws {Error} On fixture SQL failure. */
 async function member(projectId: string, role: "editor" | "viewer"): Promise<string> {
@@ -148,6 +203,10 @@ async function seed(golden = false): Promise<Fixture> {
     body.draft.source.canonicalURL = sourceURL;
     body.outputs[0]!.nodeId = crypto.randomUUID();
   }
+  const presented = await presentedSource(sourceHash, sourceKey, publicUrl);
+  outside.snapshots.set(sourceKey, presented.snapshot);
+  for (const [url, stored] of presented.bodies) outside.bodies.set(url, stored);
+  body.presentation_ref = presented.presentationRef;
   return { body, userId, otherEditorId, viewerId, sourceStudioId: source.studioId, targetStudioId: target.studioId, sourceAssetId, sourceKey, sourceHash };
 }
 
@@ -199,6 +258,7 @@ describe("planned execution durable admission", () => {
       outputs: structuredClone(f.body.outputs), analysis_refs: [],
       draft: { params: {}, inputs: [], source: structuredClone(f.body.draft.source), revision: f.body.draft.revision, draftId: f.body.draft.draftId, version: 1 },
       run_id: f.body.run_id, space_id: f.body.space_id, project_id: f.body.project_id, tool: "video.remove-bg",
+      presentation_ref: structuredClone(f.body.presentation_ref),
     };
     expect(await acceptMiniToolExecution(reordered, f.userId, start)).toEqual(initial);
     expect(start).toHaveBeenCalledTimes(1);
@@ -318,7 +378,71 @@ describe("planned execution durable admission", () => {
     const accepted = start.mock.calls[0]?.[0];
     expect(accepted?.binding).toEqual({ assetId: f.sourceAssetId, contentHash: f.sourceHash, canonicalURL: f.body.draft.source.canonicalURL,
       kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } });
-    expect(accepted?.credits).toBe(30);
+    expect(accepted?.credits).toBe(35);
     expect(accepted?.draft.source.mediaInfo).toEqual({ width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" });
   });
 });
+
+/** Credits for some standard-4 seconds under the shipped configuration: the one container quote rule (E3-5). @throws {Error} On invalid prices. */
+function std4Credits(seconds: number): number {
+  const config = core.getMiniToolsConfig();
+  return Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: seconds * 1000, cpuUsec: null }, config.classes.MiniToolContainerStd4!, config.prices), 1)), MIN_TASK_CREDIT_COST);
+}
+
+describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; design §5.3, §5.4, §7.11)", () => {
+  it("RB-A01 freezes params.video as the prepared reference of this run's first preparation", async () => {
+    const f = await seed(); const start = startRecorder();
+    await acceptMiniToolExecution(f.body, f.userId, start);
+    const accepted = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; presentationRef: unknown; preparation: { chunks: unknown } };
+    expect(accepted.body.video).toEqual({ kind: "prepared", inputId: "source", job: `${f.body.run_id}:prep:0` });
+    expect(accepted.presentationRef).toEqual(f.body.presentation_ref);
+    expect(accepted.preparation.chunks).toEqual([{ start: 0, end: 1011 }]);
+  });
+
+  it("RB-A02 quotes the model from the display duration plus the preparation at max(precheck, planned work)", async () => {
+    const f = await seed(); const start = startRecorder();
+    const actual = structuredClone(core.getMiniToolsConfig());
+    actual.executions["video.remove-bg"].preparation.precheck_seconds = 100000;
+    outside.config.mockReturnValue(actual);
+    await acceptMiniToolExecution(f.body, f.userId, start);
+    const model = await estimateModelCredits("bria-fibo-video-background-remover", { params: {}, durations: { video: [5.055] }, sources: ["video"] });
+    expect(start.mock.calls[0]![0].credits).toBe(model!.credits + std4Credits(100000));
+  });
+
+  it.each(["ref toolInputId", "nothing selected", "ledger pending", "full without encode facts"])("RB-A03 refuses when %s, before claiming the run", async (bad) => {
+    const f = await seed(); const start = startRecorder();
+    const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: unknown; ledger: { state: string; receipt: Record<string, unknown> | null; failure: null } | null };
+    if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
+    else if (bad === "nothing selected") { snapshot.presentation = null; snapshot.ledger = null; }
+    else if (bad === "ledger pending") snapshot.ledger = { state: "pending", receipt: null, failure: null };
+    else {
+      const url = snapshot.ledger!.receipt!.url as string;
+      const { encoding: _dropped, ...without } = JSON.parse(outside.bodies.get(url)!) as Record<string, unknown>;
+      const json = JSON.stringify(without);
+      snapshot.ledger!.receipt = { ...snapshot.ledger!.receipt!, size: Buffer.byteLength(json), sha256: crypto.createHash("sha256").update(json).digest("hex") };
+      outside.bodies.set(url, json);
+    }
+    await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toThrow();
+    expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
+  });
+
+  it("RB-R01 a failed-output retry reuses the frozen params.video reference and preparation without reading the current version or re-preparing", async () => {
+    const f = await seed(); const start = startRecorder();
+    await acceptMiniToolExecution(f.body, f.userId, start);
+    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; ledgerReceipts: unknown; planFingerprint: string; binding: unknown; outputs: unknown[] };
+    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
+      resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
+        result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });
+    await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+    outside.ingest.mockClear(); outside.reads.length = 0;
+    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
+    await acceptMiniToolExecution(retry as never, f.otherEditorId, start);
+    const accepted = start.mock.calls[1]![0] as unknown as typeof original;
+    expect(accepted.body.video).toEqual(original.body.video);
+    expect(accepted.preparation).toEqual(original.preparation);
+    expect(accepted.presentationRef).toEqual(original.presentationRef);
+    expect(accepted.ledgerReceipts).toEqual(original.ledgerReceipts);
+    expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
+  });
+});
+

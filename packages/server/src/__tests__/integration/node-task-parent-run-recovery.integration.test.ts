@@ -19,6 +19,13 @@ import type { NodeTaskEntry } from "@breatic/shared";
 import * as nodeTaskRepo from "../../../../domain/src/node-task/node-task.repo.js";
 import { executionSnapshot, seedExecution, type ExecutionFixture } from "../../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 import { seedDesignatedLot, seedStudioFixture } from "./studio-credit-fixtures.js";
+import type * as shared from "@breatic/shared";
+import { presentedSource } from "./presentation-fixtures.js";
+
+// S6e E3b (inner#1306 §90): a removal request names its tool input; the ingest presentation read and the stored
+// full/compact objects are controlled at the shared client and `fetch`.
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn() }));
+vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
 
 interface WireEntry extends NodeTaskEntry { taskId: string | null }
 let pg: ReturnType<typeof createPgClient>;
@@ -30,10 +37,15 @@ beforeAll(async () => {
   modelCatalog.resetModelCatalog(); loadLocales(); initLogger("node-parent-run-test");
   pg = createPgClient(inject("DATABASE_URL"), { name: "node-parent-run-fixture", max: 4 });
   const { createApp } = await import("@server/app.js"); app = createApp();
+  outside.ingest.mockImplementation(async (_url: string, _secret: string, input: { storageKey: string }): Promise<unknown> => structuredClone(outside.snapshots.get(input.storageKey)));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const body = outside.bodies.get(input instanceof Request ? input.url : String(input));
+    return body === undefined ? new Response("missing", { status: 404 }) : new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
 });
 afterAll(async () => {
   for (const token of tokens) await revokeSession(getRedis(), token);
-  await pg?.end(); initCore(process.env); modelCatalog.resetModelCatalog();
+  await pg?.end(); initCore(process.env); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals();
 });
 
 /** Authenticate against real Redis rather than bypassing route middleware.
@@ -87,9 +99,11 @@ async function admitted(): Promise<ExecutionFixture> {
   const sourceId = randomUUID(); const sourceKey = `video/parent-source/${sourceId}.mp4`; const sourceURL = (await getStorageAdapter()).publicUrl(sourceKey);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
     VALUES (${sourceId},${f.studioId},${"a".repeat(64)},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${f.userId},960,540,5.055)`;
-  const body: MiniToolPlannedRequest = { tool: "video.remove-bg", project_id: f.projectId, space_id: randomUUID(), run_id: randomUUID(),
+  const presented = await presentedSource("a".repeat(64), sourceKey, (key) => sourceURL.slice(0, sourceURL.length - sourceKey.length) + key);
+  outside.snapshots.set(sourceKey, presented.snapshot); for (const [url, stored] of presented.bodies) outside.bodies.set(url, stored);
+  const body = { presentation_ref: presented.presentationRef, tool: "video.remove-bg", project_id: f.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
-    analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "remove-bg" } }] };
+    analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "remove-bg" } }] } as MiniToolPlannedRequest;
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { Cookie: await cookie(f.userId), "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify(body) });
   expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: body.run_id, status: "pending" } });
   const context = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);

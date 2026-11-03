@@ -5,6 +5,12 @@
  * Real PostgreSQL task, intent, identity, consumption, result and canonical receipt boundaries.
  * WaveSpeed runPrediction and worker storeFromUrl are controlled external boundaries.
  * Their call counts are adapter calls, not measured HTTP requests or R2 transfers.
+ *
+ * S6e E3b (inner#1306 test plan §90; design §5.3 model-input row, §5.4 作业身份, §7.1.1, §7.11): the frozen body's
+ * video is the prepared reference `<taskId>:prep:0`; before `generate`, the runner registers and runs the
+ * `prepare_model_input` standard-4 job(s) through the ingest `/jobs` boundary (faked at `fetch`, done on submit unless a
+ * case says otherwise), then submits `generate` with the prepared object's public URL. A failed-output retry reuses the
+ * original preparation. The golden plan hash was recomputed independently with Python.
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
@@ -14,7 +20,8 @@ import {
   recordMiniToolStepIdentity, taskRepo, upstreamStepRepo,
   type AcceptedMiniToolExecution, type StoredAsset,
 } from "@breatic/domain";
-import { hashMiniToolValue } from "@breatic/shared/mini-tools";
+import { hashMiniToolValue, videoContainerJobId } from "@breatic/shared/mini-tools";
+import * as shared from "@breatic/shared";
 import type { StudioAssetEntity } from "@breatic/shared";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import type * as uploadModule from "@worker/handlers/backend-upload.js";
@@ -32,17 +39,30 @@ vi.mock("@worker/handlers/backend-upload.js", async (original) => ({ ...await or
 const PREDICTION = "fixture-prediction-original";
 const PROVIDER_URL = "https://provider.example.test/result.webm";
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
-const BODY = { video: "https://assets.example.test/video/source.mp4", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
-const GOLDEN: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }> = {
+const SOURCE_URL = "https://assets.example.test/video/source.mp4";
+const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
+const RECEIPT = {
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
+  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+};
+const GOLDEN = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
-  binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: BODY.video, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
+  binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: SOURCE_URL, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
   sourceKey: "video/source.mp4",
-  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: BODY.video, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
+  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
   analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
-  model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY, credits: 30,
-  requestFingerprint: "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e", planFingerprint: "8bc4ec38c3f353492d0f7feca81963d398171ae1f42e66e146723f82962cedf4",
-};
+  model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY,
+  presentationRef: { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } }, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) },
+  preparation: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
+    prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }] },
+  credits: 35,
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "f8b3e974d351574f4de430c0b83f4e05f54c0d3bc2b8a2cd0db87cb5ffd04067",
+} as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
 let pg: ReturnType<typeof createPgClient>;
@@ -52,15 +72,40 @@ let publicUrl: (key: string) => string;
  * @throws {Error} When the injected fixture configuration is invalid.
  */
 function configure(multiplier = 1): void {
-  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: String(multiplier), WAVESPEED_API_KEY: "fixture-never-sent", UPLOAD_BASE_URL: "https://assets.example.test" });
+  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: String(multiplier), WAVESPEED_API_KEY: "fixture-never-sent", UPLOAD_BASE_URL: "https://assets.example.test",
+    INGEST_BASE_URL: "https://ingest.example.test", INGEST_SHARED_SECRET: "fixture-ingest-secret" });
 }
 
 beforeAll(async () => {
   configure(); loadLocales(); pg = createPgClient(inject("DATABASE_URL"), { name: "remove-bg-leaf", max: 6 });
   const storage = await getStorageAdapter(); publicUrl = storage.publicUrl.bind(storage);
 });
-beforeEach(() => { vi.resetAllMocks(); configure(); });
-afterAll(async () => { await pg.end(); initCore(process.env); });
+// The ingest /jobs boundary: every submitted container job is recorded and, unless a case scripts it, done at once.
+const jobs = { submitted: [] as Record<string, unknown>[], scripted: new Map<string, Record<string, unknown>>() };
+/** A finished job report echoing the request's declared output. @throws {never} Never. */
+function doneReport(request: Record<string, unknown>): Record<string, unknown> {
+  const output = (request.outputs as { outputIndex: number; storageKey: string; contentType: string }[])[0]!;
+  return { schemaVersion: 2, state: "done", outputs: [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+}
+beforeEach(() => {
+  vi.resetAllMocks(); configure();
+  jobs.submitted.length = 0; jobs.scripted.clear();
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/jobs" && init?.method === "POST") {
+      const request = JSON.parse(String(init.body)) as Record<string, unknown>; jobs.submitted.push(request);
+      return Response.json(jobs.scripted.get(String(request.jobId)) ?? doneReport(request));
+    }
+    if (url.pathname.startsWith("/jobs/")) {
+      const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
+      const request = jobs.submitted.find((candidate) => candidate.jobId === id);
+      if (request === undefined) return new Response("missing", { status: 404 });
+      return Response.json(jobs.scripted.get(id) ?? doneReport(request));
+    }
+    return new Response("unexpected", { status: 500 });
+  }));
+});
+afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
 /** Hash exactly the approved plan projection, retaining the independent complete golden separately.
  * @throws {TypeError} When a plan is not a finite canonical JSON value.
@@ -74,7 +119,7 @@ async function planHash(plan: AcceptedMiniToolExecution): Promise<string> {
  * @throws {Error} When fixture SQL or the original deadline owner fails.
  */
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("8bc4ec38c3f353492d0f7feca81963d398171ae1f42e66e146723f82962cedf4");
+  expect(await planHash(GOLDEN)).toBe("f8b3e974d351574f4de430c0b83f4e05f54c0d3bc2b8a2cd0db87cb5ffd04067");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
@@ -82,10 +127,12 @@ async function seed(golden = false): Promise<Fixture> {
   } else {
     plan.taskId = randomUUID(); plan.projectId = target.projectId; plan.spaceId = randomUUID(); plan.binding.assetId = randomUUID();
     plan.draft.draftId = randomUUID(); plan.draft.revision = randomUUID(); plan.draft.source.nodeId = randomUUID();
-    plan.targetNodeIds = [randomUUID()]; plan.outputs[0]!.nodeId = plan.targetNodeIds[0]!; plan.planFingerprint = await planHash(plan);
+    plan.targetNodeIds = [randomUUID()]; plan.outputs[0]!.nodeId = plan.targetNodeIds[0]!;
+    (plan.body as unknown as { video: { job: string } }).video.job = `${plan.taskId}:prep:0`;
+    plan.planFingerprint = await planHash(plan);
   }
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
-    VALUES (${plan.binding.assetId},${source.studioId},${plan.binding.contentHash},${plan.sourceKey},${BODY.video},4096,'video/mp4','video','upload',${source.userId},960,540,5.055)`;
+    VALUES (${plan.binding.assetId},${source.studioId},${plan.binding.contentHash},${plan.sourceKey},${SOURCE_URL},4096,'video/mp4','video','upload',${source.userId},960,540,5.055)`;
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
     VALUES (${plan.taskId},${target.userId},${plan.projectId},${plan.spaceId},'video','append','mini_tool','running',${plan.model},${pg.json({ miniToolExecution: { ...plan } })},${pg.json({ kept: { original: true } })})`;
   const assetId = randomUUID(); const coverId = randomUUID(); const canonicalURL = publicUrl(`video/winner/${assetId}.webm`); const coverURL = publicUrl(`image/cover/${coverId}.png`);
@@ -111,8 +158,22 @@ async function parent(f: Fixture): Promise<TaskRow> {
  * @throws {Error} When the existing step contract is violated.
  */
 async function step(f: Fixture): Promise<Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number]> {
-  const rows = await upstreamStepRepo.listSteps(f.plan.taskId); expect(rows).toHaveLength(1);
-  const row = rows[0]!; expect(row).toMatchObject({ position: 0, kind: "generate", endpoint: GOLDEN.provider.model_id, itemIndex: 0 }); return row;
+  // Preparation steps come first; the one generate descriptor follows them (E3b).
+  const rows = (await upstreamStepRepo.listSteps(f.plan.taskId)).filter((row) => row.kind === "generate"); expect(rows).toHaveLength(1);
+  const row = rows[0]!; expect(row).toMatchObject({ kind: "generate", endpoint: GOLDEN.provider.model_id, itemIndex: 0 }); return row;
+}
+
+/** The output key and public URL of one preparation job, from the shared key function (§5.4). @throws {Error} When it is missing. */
+function prepared(f: Fixture, jobId: string): { key: string; url: string } {
+  const keyFor = (shared as Record<string, unknown>).videoPresentationWorkKeyFor as ((storageKey: string, id: string) => string) | undefined;
+  expect(keyFor, "videoPresentationWorkKeyFor is exported from @breatic/shared").toBeTypeOf("function");
+  const key = keyFor!(f.plan.sourceKey, jobId);
+  return { key, url: publicUrl(key) };
+}
+
+/** The provider body once the single first-attempt preparation is done: the prepared object's URL in place of the reference. @throws {Error} When the key function is missing. */
+function resolvedBody(f: Fixture, jobId = `${f.plan.taskId}:prep:0:a1`): { video: string; background_color: string; output_container_and_codec: string; preserve_audio: boolean } {
+  return { ...BODY, video: prepared(f, jobId).url };
 }
 
 /** Reproduce a completed external answer while letting the real callback save its identity.
@@ -152,7 +213,7 @@ async function winner(f: Fixture, result: { asset: StudioAssetEntity; cover: Stu
 async function identify(f: Fixture, prediction = true): Promise<{ stepId: string; attemptId: string }> {
   const [owned] = await upstreamStepRepo.ensureSteps(f.plan.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]);
   if (!owned) throw new Error("Fixture step disappeared"); const attemptId = randomUUID();
-  expect((await beginMiniToolStepAttempt({ taskId: f.plan.taskId, stepId: owned.id, attemptId, requestBody: { ...f.plan.body }, deadlineAt: f.deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(true);
+  expect((await beginMiniToolStepAttempt({ taskId: f.plan.taskId, stepId: owned.id, attemptId, requestBody: resolvedBody(f), deadlineAt: f.deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(true);
   if (prediction) await recordMiniToolStepIdentity({ taskId: f.plan.taskId, stepId: owned.id, attemptId, predictionId: PREDICTION });
   return { stepId: owned.id, attemptId };
 }
@@ -161,10 +222,10 @@ describe("SQL frozen removal execution and provider persistence", () => {
   it("S04-S05 saves intent before the adapter and identity plus pending consumption before its controlled question", async () => {
     const f = await seed(true); const waiting = new StillRunning(Date.now() + 1000); let observedQuestion = false;
     runPrediction.mockImplementation(async (_connection, model, body, resume) => {
-      expect(model).toBe("bria/fibo/video-background-remover"); expect(body).toEqual(BODY);
+      expect(model).toBe("bria/fibo/video-background-remover"); expect(body).toEqual(resolvedBody(f));
       expect(resume).toMatchObject({ storedTaskId: null, deadlineAt: f.deadlineAt, retryStarting: false });
       const before = await step(f); const intent = miniToolStepStateSchema.parse(before.output.miniToolStep);
-      expect(intent).toMatchObject({ requestBody: BODY, deadlineAt: f.deadlineAt, chargeTo: "user", creditMultiplier: 1 });
+      expect(intent).toMatchObject({ requestBody: resolvedBody(f), deadlineAt: f.deadlineAt, chargeTo: "user", creditMultiplier: 1 });
       expect(intent.attempts).toHaveLength(1); expect(intent.attempts[0]!.resolution).toEqual({ kind: "unresolved" });
       expect(before.output.miniToolConsumption).toBeUndefined();
       await resume.persistTaskId(PREDICTION);
@@ -180,7 +241,7 @@ describe("SQL frozen removal execution and provider persistence", () => {
   it("S06 queries only the stored prediction with the original body, policy and step deadline", async () => {
     const f = await seed(); const owned = await identify(f); const waiting = new StillRunning(Date.now() + 1000); const before = await step(f); configure(2);
     runPrediction.mockImplementation(async (_connection, model, body, resume) => {
-      expect(model).toBe(GOLDEN.provider.model_id); expect(body).toEqual(BODY); expect(resume.storedTaskId).toBe(PREDICTION); expect(resume.deadlineAt).toBe(f.deadlineAt); throw waiting;
+      expect(model).toBe(GOLDEN.provider.model_id); expect(body).toEqual(resolvedBody(f)); expect(resume.storedTaskId).toBe(PREDICTION); expect(resume.deadlineAt).toBe(f.deadlineAt); throw waiting;
     });
     await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt + 90000, true)).rejects.toBe(waiting);
     expect(runPrediction).toHaveBeenCalledTimes(1); expect(storeFromUrl).not.toHaveBeenCalled();
@@ -199,7 +260,7 @@ describe("SQL frozen removal execution and provider persistence", () => {
   });
   it("S09 does not bypass the same persisted unresolved intent's replay gate", async () => {
     const f = await seed(); const held = await identify(f, false);
-    expect((await beginMiniToolStepAttempt({ taskId: f.plan.taskId, stepId: held.stepId, attemptId: held.attemptId, requestBody: { ...f.plan.body }, deadlineAt: f.deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(false);
+    expect((await beginMiniToolStepAttempt({ taskId: f.plan.taskId, stepId: held.stepId, attemptId: held.attemptId, requestBody: resolvedBody(f), deadlineAt: f.deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(false);
     const before = await step(f);
     await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toThrow();
     expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled(); expect(await step(f)).toEqual(before);
@@ -280,3 +341,84 @@ describe("persisted lane and complete plan are checked before paid boundaries", 
     await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toThrow(); expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled();
   });
 });
+
+describe("model-input preparation before generate (inner#1306 §90 E3b; design §5.3, §5.4 作业身份, §7.1.1, §7.11)", () => {
+  /**
+   * The prepare_model_input requests submitted for this run.
+   * @param f - The fixture.
+   * @returns Their requests.
+   */
+  function preparations(f: Fixture): Record<string, unknown>[] {
+    return jobs.submitted.filter((request) => String(request.jobId).startsWith(`${f.plan.taskId}:prep:`));
+  }
+
+  it("WP01 the single preparation runs first on standard-4 under its §5.4 id, then generate receives the prepared object's URL", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false);
+    const id = `${f.plan.taskId}:prep:0:a1`;
+    const [request] = preparations(f);
+    expect(preparations(f)).toHaveLength(1);
+    expect(request).toMatchObject({ jobId: id, containerClass: "MiniToolContainerStd4", inputs: [{ storageKey: f.plan.sourceKey }] });
+    const output = (request!.outputs as { storageKey: string; recipe: Record<string, unknown> }[])[0]!;
+    expect(output.storageKey).toBe(prepared(f, id).key);
+    expect(output.recipe).toMatchObject({ kind: "prepare_model_input", window: { start: 0, end: 1011 } });
+    expect(runPrediction).toHaveBeenCalledTimes(1);
+    expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, id));
+    const rows = await upstreamStepRepo.listSteps(f.plan.taskId);
+    const generate = rows.find((row) => row.kind === "generate")!;
+    expect(rows.filter((row) => row.kind === "container_job").every((row) => row.position < generate.position)).toBe(true);
+    expect(rows.some((row) => row.kind === "container_job" && row.endpoint === "MiniToolContainerStd4")).toBe(true);
+  });
+
+  it("WP02 a preparation still running keeps the run waiting and nothing reaches the provider", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    jobs.scripted.set(`${f.plan.taskId}:prep:0:a1`, { schemaVersion: 2, state: "running" });
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBeInstanceOf(StillRunning);
+    expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled();
+  });
+
+  it("WP03 a failed preparation attempt is retried under the next attempt's id and key, and generate uses that attempt's output", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    jobs.scripted.set(`${f.plan.taskId}:prep:0:a1`, { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
+    for (let pickup = 0; pickup < 3 && runPrediction.mock.calls.length === 0; pickup += 1) {
+      await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    }
+    expect(preparations(f).map((request) => request.jobId)).toEqual([`${f.plan.taskId}:prep:0:a1`, `${f.plan.taskId}:prep:0:a2`]);
+    expect(prepared(f, `${f.plan.taskId}:prep:0:a2`).key).not.toBe(prepared(f, `${f.plan.taskId}:prep:0:a1`).key);
+    expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, `${f.plan.taskId}:prep:0:a2`));
+  });
+
+  it("WP04 a preparation over one chunk share runs as chunk_encode jobs plus a stitch, and generate uses the stitched object", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const plan = structuredClone(f.plan) as unknown as { preparation: { chunks: { start: number; end: number }[] } } & typeof f.plan;
+    plan.preparation.chunks = [{ start: 0, end: 500 }, { start: 500, end: 1011 }];
+    plan.planFingerprint = await planHash(plan);
+    await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
+    for (let pickup = 0; pickup < 4 && runPrediction.mock.calls.length === 0; pickup += 1) {
+      await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    }
+    const chunk = (k: number): string => videoContainerJobId({ kind: "prep-chunk", taskId: f.plan.taskId, input: 0, chunk: k, attempt: 1 });
+    const stitch = videoContainerJobId({ kind: "prep-stitch", taskId: f.plan.taskId, input: 0, attempt: 1 });
+    expect(preparations(f).map((request) => request.jobId)).toEqual([chunk(0), chunk(1), stitch]);
+    const recipes = preparations(f).map((request) => (request.outputs as { recipe: Record<string, unknown> }[])[0]!.recipe);
+    expect(recipes[0]).toMatchObject({ kind: "chunk_encode", window: { start: 0, end: 500 } });
+    expect(recipes[1]).toMatchObject({ kind: "chunk_encode", window: { start: 500, end: 1011 } });
+    expect(recipes[2]).toMatchObject({ kind: "stitch", chunks: [prepared(f, chunk(0)).key, prepared(f, chunk(1)).key] });
+    expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, stitch));
+  });
+
+  it("WP05 a failed-output retry reuses the original preparation: no new preparation job, the original prepared URL", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false);
+    const retry = structuredClone(f.plan) as typeof f.plan & { retry: { runId: string; outputIndexes: number[] } };
+    retry.taskId = randomUUID(); retry.retry = { runId: f.plan.taskId, outputIndexes: [0] };
+    retry.planFingerprint = await planHash(retry);
+    await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
+      VALUES (${retry.taskId},${f.userId},${retry.projectId},${retry.spaceId},'video','append','mini_tool','running',${retry.model},${pg.json({ miniToolExecution: { ...retry } })},${pg.json({})})`;
+    jobs.submitted.length = 0; runPrediction.mockClear();
+    await runMiniToolRemoveBackground(retry.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    expect(jobs.submitted).toEqual([]);
+    expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, `${f.plan.taskId}:prep:0:a1`));
+  });
+});
+

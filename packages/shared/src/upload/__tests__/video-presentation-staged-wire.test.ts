@@ -238,6 +238,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['copy_carrier', { kind: 'copy_carrier', inputId: INPUT }],
     ['chunk_encode', { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 96 } }],
     ['stitch', { kind: 'stitch', inputId: INPUT, chunks: ['video/canonical.webm.c0', 'video/canonical.webm.c1'] }],
+    // S6e E3b (§7.17, §5.3): the model input over its presentation window, written as an intermediate object.
+    ['prepare_model_input', { kind: 'prepare_model_input', inputId: INPUT, window: { start: 0, end: 1011 } }],
   ])('RC01 admits the %s recipe on a standard-4 job request', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
     const request = {
@@ -253,6 +255,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['a chunk window ending at its start', { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 48 } }],
     ['a negative chunk window', { kind: 'chunk_encode', inputId: INPUT, window: { start: -1, end: 4 } }],
     ['a stitch of no chunks', { kind: 'stitch', inputId: INPUT, chunks: [] }],
+    ['a model input over an empty window', { kind: 'prepare_model_input', inputId: INPUT, window: { start: 4, end: 4 } }],
+    ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT }],
     ['clip entries, which are S6d\'s', { kind: 'chunk_encode', inputId: INPUT, window: { start: 0, end: 4 }, entries: [] }],
   ])('RC02 rejects %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.safeParse({ kind: 'copy_carrier', inputId: INPUT }).success).toBe(true);

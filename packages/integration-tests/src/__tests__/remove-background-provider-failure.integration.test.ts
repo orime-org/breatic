@@ -15,6 +15,7 @@ import {
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import type * as uploadModule from "@worker/handlers/backend-upload.js";
 import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
+import * as shared from "@breatic/shared";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -33,11 +34,26 @@ let pg: ReturnType<typeof createPgClient>;
 interface Submitted { fixture: ExecutionFixture; deadlineAt: number; stepId: string }
 
 beforeAll(async () => {
-  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-provider-failure-fixture", UPLOAD_BASE_URL: "https://assets.example.test" });
+  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-provider-failure-fixture", UPLOAD_BASE_URL: "https://assets.example.test",
+    INGEST_BASE_URL: "https://ingest.example.test", INGEST_SHARED_SECRET: "fixture-ingest-secret" });
   loadLocales(); pg = createPgClient(inject("DATABASE_URL"), { name: "provider-failure-fixture", max: 4 });
 });
-beforeEach(() => { vi.resetAllMocks(); });
-afterAll(async () => { await pg.end(); initCore(process.env); });
+beforeEach(() => {
+  vi.resetAllMocks();
+  // S6e E3b: the removal's model input is prepared on standard-4 before generate; the ingest /jobs boundary answers done at once.
+  const submitted: Record<string, unknown>[] = [];
+  const done = (request: Record<string, unknown>): Record<string, unknown> => {
+    const output = (request.outputs as { outputIndex: number; storageKey: string; contentType: string }[])[0]!;
+    return { schemaVersion: 2, state: "done", outputs: [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/jobs" && init?.method === "POST") { const request = JSON.parse(String(init.body)) as Record<string, unknown>; submitted.push(request); return Response.json(done(request)); }
+    const request = submitted.find((candidate) => candidate.jobId === decodeURIComponent(url.pathname.split("/").at(-1)!));
+    return request === undefined ? new Response("missing", { status: 404 }) : Response.json(done(request));
+  }));
+});
+afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
 /** Save the original submit intent, canonical identity and pending consumption through real owners.
  * @throws {Error} When a legitimate fixture cannot be persisted or read.
@@ -50,7 +66,7 @@ async function submitted(): Promise<Submitted> {
   const [step] = await upstreamStepRepo.ensureSteps(task.id, [{ kind: "generate", endpoint: fixture.plan.provider.model_id, itemIndex: 0 }]);
   if (step === undefined) throw new Error("Original provider step disappeared");
   const attemptId = randomUUID();
-  expect((await beginMiniToolStepAttempt({ taskId: task.id, stepId: step.id, attemptId, requestBody: { ...fixture.plan.body }, deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(true);
+  expect((await beginMiniToolStepAttempt({ taskId: task.id, stepId: step.id, attemptId, requestBody: { ...fixture.plan.body, video: `https://assets.example.test/${(shared as unknown as { videoPresentationWorkKeyFor: (key: string, id: string) => string }).videoPresentationWorkKeyFor(fixture.plan.sourceKey, `${task.id}:prep:0:a1`)}` }, deadlineAt, chargeTo: "user" })).shouldSubmit).toBe(true);
   expect((await recordMiniToolStepIdentity({ taskId: task.id, stepId: step.id, attemptId, predictionId: P })).conflict).toBe(false);
   const result = { fixture, deadlineAt, stepId: step.id };
   expect(await originalStep(result)).toMatchObject({ id: step.id, status: "submitted", predictionId: P });

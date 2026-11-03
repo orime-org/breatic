@@ -35,8 +35,10 @@ const BODY: MiniToolPlannedRequest = {
   },
   analysis_refs: [],
   outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+  // S6e E3-1 (inner#1306 §90): every video tool request names its tool input; the digest was recomputed with Python.
+  presentation_ref: { source: { toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec", planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1" } },
 };
-const BODY_HASH = "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e";
+const BODY_HASH = "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725";
 
 const LEGACY_MODEL: MiniToolRequest = {
   tool: "image.remove-bg",
@@ -94,6 +96,7 @@ describe("planned video submission schema", () => {
   it("keeps the independently supplied canonical whole-body hash", async () => {
     expect(await hashMiniToolValue(BODY)).toBe(BODY_HASH);
     const reordered = {
+      presentation_ref: (BODY as { presentation_ref: unknown }).presentation_ref,
       outputs: BODY.outputs,
       analysis_refs: BODY.analysis_refs,
       draft: { params: {}, inputs: [], source: BODY.draft.source, revision: BODY.draft.revision, draftId: BODY.draft.draftId, version: 1 },

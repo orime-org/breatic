@@ -102,6 +102,10 @@ describe("S5 planned frame and segment request contracts", () => {
   it("S5-Q04 accepts a new execution selecting original failed output identities", () => {
     expect(miniToolSubmissionSchema.parse(retry())).toEqual(retry());
   });
+  it("S6e-Q05 accepts a remove-bg failed-output retry: it reuses the frozen prepared input (inner#1306 §90 E3b; design §5.3, §7.11)", () => {
+    const body = changed(changed(retry(), "tool", "video.remove-bg"), "retry.outputIndexes", [0]);
+    expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
+  });
   it.each([
     ["retry.outputIndexes", []], ["retry.outputIndexes", [1, 1]], ["retry.outputIndexes", [-1]], ["retry.outputIndexes", [0.5]],
     ["retry.outputIndexes", [Number.MAX_SAFE_INTEGER + 1]], ["retry.runId", "invalid"], ["retry.runId", undefined],

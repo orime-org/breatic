@@ -10,17 +10,35 @@ import { hashMiniToolValue } from "@breatic/shared/mini-tools";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
-const BODY = { video: "https://assets.example.test/video/source.mp4", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
-const GOLDEN: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }> = {
+const SOURCE_URL = "https://assets.example.test/video/source.mp4";
+const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
+// S6e E3b (inner#1306 §90): the frozen removal plan names its tool input, the selected version's receipts and the
+// prepared model input; the shapes match the domain admission golden (execution-admission.integration.test.ts).
+const RECEIPT = {
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
+  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+};
+const PRESENTATION_REF = { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } };
+const PREPARATION = {
+  containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
+  prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
+  limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }],
+};
+
+const GOLDEN = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
-  binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: BODY.video, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
+  binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: SOURCE_URL, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
   sourceKey: "video/source.mp4",
-  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: BODY.video, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
+  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
   analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
-  model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY, credits: 30,
-  requestFingerprint: "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e", planFingerprint: "8bc4ec38c3f353492d0f7feca81963d398171ae1f42e66e146723f82962cedf4",
-};
+  model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY,
+  presentationRef: PRESENTATION_REF, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) }, preparation: PREPARATION, credits: 35,
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "f8b3e974d351574f4de430c0b83f4e05f54c0d3bc2b8a2cd0db87cb5ffd04067",
+} as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 
 export type FixturePg = ReturnType<typeof createPgClient>;
 export interface ExecutionFixture {
@@ -35,6 +53,7 @@ export async function seedExecution(pg: FixturePg, status: MiniToolExecutionReco
   const plan = structuredClone(GOLDEN); plan.taskId = randomUUID(); plan.projectId = target.projectId; plan.spaceId = randomUUID();
   plan.targetNodeIds = [randomUUID()]; plan.outputs[0]!.nodeId = plan.targetNodeIds[0]!; plan.binding.assetId = randomUUID();
   plan.draft.draftId = randomUUID(); plan.draft.revision = randomUUID(); plan.draft.source.nodeId = randomUUID();
+  (plan.body as unknown as { video: { job: string } }).video.job = `${plan.taskId}:prep:0`;
   const { requestFingerprint: _request, planFingerprint: _hash, ...projection } = plan; plan.planFingerprint = await hashMiniToolValue(projection);
   const viewerId = randomUUID();
   await pg`INSERT INTO users (id,email,email_verified) VALUES (${viewerId},${`life-${viewerId}@example.test`},true)`;

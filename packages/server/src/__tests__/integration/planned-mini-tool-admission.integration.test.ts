@@ -1,7 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-/** Real HTTP middleware, PG roles/assets/tasks/rows/credit holds and BullMQ. No supplier or media is invoked. */
+/**
+ * Real HTTP middleware, PG roles/assets/tasks/rows/credit holds and BullMQ. No supplier or media is invoked.
+ *
+ * S6e E3b (inner#1306 test plan §90): the removal request names its tool input; the ingest presentation read and the
+ * full/compact objects are controlled at the shared client and `fetch`. The frozen body's video is the prepared reference
+ * and the quote is the model's (30 for 5.055 s) plus the standard-4 preparation at its 300 s floor (the 5-credit
+ * minimum at multiplier 1; 6.69 at multiplier 2).
+ */
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { Queue, type Job, type JobsOptions } from "bullmq";
@@ -11,6 +18,7 @@ import {
   createPgClient, createQueue, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, initLogger,
   loadLocales, logger, revokeSession, sessionCookieName, setSession,
 } from "@breatic/core";
+import type * as shared from "@breatic/shared";
 import { NO_CONSENT } from "@breatic/shared";
 import { miniToolConsumptionKey, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
@@ -21,6 +29,10 @@ import {
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { executionSnapshot, seedExecution, type ExecutionFixture } from "../../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
+import { presentedSource } from "./presentation-fixtures.js";
+
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn() }));
+vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
 
 const BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> = {
   tool: "video.remove-bg",
@@ -41,6 +53,8 @@ const BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> = {
   },
   analysis_refs: [],
   outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+  // Each seed replaces this with its source's selected tool input (E3b).
+  presentation_ref: { source: { toolInputId: "0".repeat(64), planSha256: "0".repeat(64) } },
 };
 
 interface Fixture extends StudioFixture { body: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>; viewerId: string; otherId: string; sourceId: string; sourceStudioId: string; sourceKey: string; sourceHash: string }
@@ -67,8 +81,22 @@ beforeAll(async () => {
   const storage = await getStorageAdapter(); publicUrl = storage.publicUrl.bind(storage); queue = createQueue("tasks");
   const { createApp } = await import("@server/app.js"); app = createApp();
 });
-beforeEach(() => { configure(); });
-afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); modelCatalog.resetModelCatalog(); });
+beforeEach(() => {
+  configure();
+  outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
+    if (input.action !== "read") throw new Error(`Unexpected presentation admission ${input.action}`);
+    const snapshot = outside.snapshots.get(input.storageKey);
+    if (!snapshot) throw new Error("Unseeded external presentation snapshot");
+    return structuredClone(snapshot);
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+    const body = outside.bodies.get(url);
+    if (body === undefined) throw new Error(`Admission fetched an unstored URL: ${url}`);
+    return new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
+});
+afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals(); });
 
 /** A real, currently authorized member; UUIDs do not stand in for role decisions.
  * @throws {Error} On a fixture SQL failure.
@@ -89,6 +117,10 @@ async function seed(credits = 1000): Promise<Fixture> {
     VALUES (${sourceId},${source.studioId},${sourceHash},${sourceKey},${url},4096,'video/mp4','video','upload',${source.userId},960,540,5.055)`;
   const body = structuredClone(BODY); body.project_id = target.projectId; body.space_id = randomUUID(); body.run_id = randomUUID();
   body.draft.draftId = randomUUID(); body.draft.revision = randomUUID(); body.draft.source.nodeId = randomUUID(); body.draft.source.canonicalURL = url; body.outputs[0]!.nodeId = randomUUID();
+  const presented = await presentedSource(sourceHash, sourceKey, publicUrl);
+  outside.snapshots.set(sourceKey, presented.snapshot);
+  for (const [stored, value] of presented.bodies) outside.bodies.set(stored, value);
+  body.presentation_ref = presented.presentationRef;
   return { ...target, body, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor"), sourceId, sourceStudioId: source.studioId, sourceKey, sourceHash };
 }
 /** Create an isolated real Redis session; optional browser consent retains its existing cookie contract.
@@ -155,24 +187,24 @@ describe("planned POST real admission, strict body and original row/hold/queue o
     const f = await seed(); await accepted(f, await post(f, f.body, randomUUID(), f.userId, undefined, consent));
     expect(f.sourceStudioId).not.toBe(f.studioId); expect(await counts(f)).toEqual({ tasks: 1, rows: 1, holds: 1, queue: 1 });
     const task = await parent(f); expect(task).toMatchObject({ status: "pending", params: { miniToolExecution: { binding: { assetId: f.sourceId, contentHash: f.sourceHash, canonicalURL: f.body.draft.source.canonicalURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, sourceKey: f.sourceKey,
-      body: { video: f.body.draft.source.canonicalURL, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true }, credits: 30, model: "bria-fibo-video-background-remover", targetNodeIds: [f.body.outputs[0]!.nodeId], outputs: f.body.outputs } } });
+      body: { video: { kind: "prepared", inputId: "source", job: `${f.body.run_id}:prep:0` }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true }, credits: 35, model: "bria-fibo-video-background-remover", targetNodeIds: [f.body.outputs[0]!.nodeId], outputs: f.body.outputs } } });
     const rows = await pg`SELECT node_id,budget_ms,action FROM node_tasks WHERE task_id=${f.body.run_id}`; expect([...rows]).toEqual([{ node_id: f.body.outputs[0]!.nodeId, budget_ms: getNodeTaskConfig().default_budget_ms, action: "mini_tool" }]);
-    const held = await pg`SELECT studio_id,actor_user_id,reference_id,amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`; expect([...held]).toEqual([{ studio_id: f.studioId, actor_user_id: f.userId, reference_id: f.body.run_id, amount: 30, status: "held" }]);
+    const held = await pg`SELECT studio_id,actor_user_id,reference_id,amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`; expect([...held]).toEqual([{ studio_id: f.studioId, actor_user_id: f.userId, reference_id: f.body.run_id, amount: 35, status: "held" }]);
     const job = await queue.getJob(f.body.run_id); expect(job?.name).toBe("execute-mini-tool"); expect(job?.id).toBe(f.body.run_id);
     expect(job?.data).toEqual({ taskId: f.body.run_id, source: "mini_tool", executionKind: "planned", analyticsConsent: consent ? { analytics: true, ads: false } : NO_CONSENT });
     const sourceRows = await pg`SELECT node_id FROM node_tasks WHERE node_id=${f.body.draft.source.nodeId}`; expect([...sourceRows]).toEqual([]);
   });
   it("H08/P2 quotes actual registered 5.055 rather than client media claims", async () => {
     const f = await seed(); f.body.draft.source.mediaInfo = { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" };
-    await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution).toMatchObject({ credits: 30, binding: { mediaInfo: { width: 960, height: 540, duration: 5.055 } }, draft: f.body.draft });
+    await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution).toMatchObject({ credits: 35, binding: { mediaInfo: { width: 960, height: 540, duration: 5.055 } }, draft: f.body.draft });
   });
-  it.each(["video/webm", "video/quicktime"])("P14 admits live registered %s metadata without an ISO/frame-table prerequisite", async (mimeType) => {
+  it.each(["video/webm", "video/quicktime"])("P14 admits live registered %s metadata once its selected version is ready", async (mimeType) => {
     const f = await seed(); await pg`UPDATE studio_assets SET mime_type=${mimeType} WHERE id=${f.sourceId}`; await accepted(f, await post(f));
     expect((await parent(f)).params.miniToolExecution.binding.mediaInfo).toEqual({ width: 960, height: 540, duration: 5.055, mimeType });
   });
   it("P11 holds the already multiplied quote once", async () => {
-    const f = await seed(); configure(true, 2); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(60);
-    const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${f.body.run_id}`; expect(hold).toEqual({ amount: 60 });
+    const f = await seed(); configure(true, 2); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(66.69);
+    const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${f.body.run_id}`; expect(hold).toEqual({ amount: 66.69 });
   });
   it("A01 unauthenticated requests have no admission side effects", async () => {
     const f = await seed(); expect((await post(f, f.body, randomUUID(), null)).status).toBe(401); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
@@ -238,13 +270,13 @@ describe("HTTP press and durable SQL identity remain distinct (A05-A13)", () => 
   });
   it("A07 rejects reordered raw bytes under the same press even when canonical values agree", async () => {
     const f = await seed(); const key = randomUUID(); await accepted(f, await post(f, f.body, key)); const original = await parent(f);
-    const reordered = { outputs: f.body.outputs, analysis_refs: f.body.analysis_refs, draft: f.body.draft, run_id: f.body.run_id, project_id: f.body.project_id, space_id: f.body.space_id, tool: f.body.tool };
+    const reordered = { presentation_ref: f.body.presentation_ref, outputs: f.body.outputs, analysis_refs: f.body.analysis_refs, draft: f.body.draft, run_id: f.body.run_id, project_id: f.body.project_id, space_id: f.body.space_id, tool: f.body.tool };
     const repeat = await post(f, reordered, key); expect(repeat.status).toBe(422); expect(await parent(f)).toEqual(original); expect(await counts(f)).toEqual({ tasks: 1, rows: 1, holds: 1, queue: 1 });
   });
   it("A08/A10 replays SQL identity under a new press without current source resolution or catalog pricing", async () => {
     const f = await seed(); await accepted(f, await post(f)); const original = await parent(f);
     await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceId}`; configure(true, 2, "");
-    const reordered = { outputs: f.body.outputs, analysis_refs: f.body.analysis_refs, draft: f.body.draft, run_id: f.body.run_id, project_id: f.body.project_id, space_id: f.body.space_id, tool: f.body.tool };
+    const reordered = { presentation_ref: f.body.presentation_ref, outputs: f.body.outputs, analysis_refs: f.body.analysis_refs, draft: f.body.draft, run_id: f.body.run_id, project_id: f.body.project_id, space_id: f.body.space_id, tool: f.body.tool };
     await accepted(f, await post(f, reordered)); expect(await parent(f)).toEqual(original); expect((await parent(f)).params.miniToolExecution.draft.revision).toBe(f.body.draft.revision);
     expect(await counts(f)).toEqual({ tasks: 1, rows: 1, holds: 1, queue: 1 });
   });
@@ -291,7 +323,7 @@ describe("existing credit and acknowledgement ownership (A14-A17 / preparation A
     const held = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.body.run_id} AND status='held'`; expect([...held]).toEqual([]);
   });
   it("A16 payment-disabled admission keeps the real quote and queue but opens no hold", async () => {
-    const f = await seed(); configure(false); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(30);
+    const f = await seed(); configure(false); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(35);
     expect(await counts(f)).toEqual({ tasks: 1, rows: 1, holds: 0, queue: 1 });
   });
   it("A17 records the actual claim persistence failure rather than treating it as replay", async () => {
