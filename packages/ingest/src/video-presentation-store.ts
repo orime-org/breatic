@@ -14,7 +14,7 @@ import {
   videoPresentationWorkKeyFor, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
   type VideoPresentationAdmissionPolicy, type VideoPresentationCarrierReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
   type VideoPresentationEncoding, type VideoPresentationIngestLedger, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
-  type VideoPresentationLedgerReceipt, type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact,
+  type VideoPresentationLedger, type VideoPresentationLedgerReceipt, type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact,
   type VideoPresentationVersion,
 } from '@breatic/shared';
 import type { VideoPresentation, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
@@ -1075,8 +1075,8 @@ export type PresentationProbe =
     planSha256: string;
     /** The route facts; `selected`, the copy margin and the basic disk are supplied from the DO's own state. */
     routeInput: Omit<VideoCarrierRouteInput, 'selected' | 'copyDiskMarginBytes' | 'basicDiskBytes'>;
-    /** Whether each presentation frame is a source keyframe. */
-    keyframes: boolean[];
+    /** The full ledger's encode facts (§3.2 item 7): source keyframe ordinals and the coded size. */
+    encoding: VideoPresentationLedger['encoding'];
     work: VideoJobWork;
     display: VideoPresentationVersion['display'];
     playbackClock: VideoPresentationVersion['playbackClock'];
@@ -1086,7 +1086,8 @@ export type PresentationCarrierOutcome = { kind: 'verified'; bundle: { versionId
 /** The basic container's work, injected so the orchestration is tested over the real store with a fake container. */
 export interface PresentationContainerPort {
   probe(capability: PresentationCapability): Promise<PresentationProbe>;
-  writeLedger(capability: PresentationCapability, toolInputId: string): Promise<void>;
+  /** Write full and compact; a ledger-only repair passes null and the container derives the encode facts again. */
+  writeLedger(capability: PresentationCapability, toolInputId: string, encoding: VideoPresentationLedger['encoding'] | null): Promise<void>;
   carrier(capability: PresentationCapability, route: 'identity' | 'copy'): Promise<PresentationCarrierOutcome>;
   usage(): Promise<{ wallMs: number; cpuUsec: number | null } | null>;
 }
@@ -1105,7 +1106,9 @@ const DISK_BYTES_PER_GB = 1_000_000_000;
 function encodeChunks(probe: Extract<PresentationProbe, { kind: 'planned' }>, encoding: VideoPresentationEncoding, remainingSeconds: number): VideoEncodeChunk[] {
   const { work } = probe;
   const frameSeconds = (estimateVideoJobSeconds(work, encoding.encoder) - encoding.encoder.startSeconds) / (work.encodedFrames + work.prerollFrames);
-  return planVideoEncodeChunks({ keyframes: probe.keyframes, frameSeconds, targetSeconds: encoding.chunkShare * remainingSeconds });
+  const keyframes = Array.from({ length: work.encodedFrames }, () => false);
+  for (const ordinal of probe.encoding.keyframeOrdinals) if (ordinal < keyframes.length) keyframes[ordinal] = true;
+  return planVideoEncodeChunks({ keyframes, frameSeconds, targetSeconds: encoding.chunkShare * remainingSeconds });
 }
 
 /**
@@ -1125,7 +1128,7 @@ export async function preparePresentation(store: VideoPresentationStore, identit
   const grant = await store.grantPresentation(identity, now);
   const { capability, admission } = grant;
   if (capability !== null && admission !== null && grant.ledgerOnly !== null) {
-    if ((await store.read(identity.storageKey, identity.sourceFingerprint)).ledgers[grant.ledgerOnly]?.kind === 'pending') await port.writeLedger(capability, grant.ledgerOnly);
+    if ((await store.read(identity.storageKey, identity.sourceFingerprint)).ledgers[grant.ledgerOnly]?.kind === 'pending') await port.writeLedger(capability, grant.ledgerOnly, null);
   } else if (capability !== null && admission !== null && !grant.planned) {
     await planAndProduce(store, capability, admission, grant.selected, port, now);
     const usage = await port.usage();
@@ -1161,7 +1164,7 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
   const facts: PresentationPlanFacts = { route, toolInputId: probe.toolInputId, planSha256, producerVersion, profileVersion,
     display: probe.display, playbackClock: probe.playbackClock, work };
   const { writer, view } = await store.planPresentation(capability, { route, toolInputId: probe.toolInputId, planSha256 }, facts);
-  if (writer) await port.writeLedger(capability, probe.toolInputId);
+  if (writer) await port.writeLedger(capability, probe.toolInputId, probe.encoding);
   if (view.candidate.state !== 'building') return;
   if (tooLong !== null) { await store.fail(capability, tooLong); return; }
   if (route === 'reuse') { await store.publishReuse(capability); return; }
