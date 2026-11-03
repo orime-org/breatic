@@ -243,7 +243,8 @@ function carrier(name: string, contentType = 'video/mp4'): ObjectReceipt {
  */
 function nativeVersion(): Record<string, unknown> {
   return {
-    schemaVersion: 1, sourceFingerprint: H, versionId: VERSION, toolInputId: TOOL, planSha256: PLAN, policyVersion: 1,
+    // S6e E2 (design §3.5 P descriptor, inner 54ce9ea3): the bundle carries the producer and profile versions behind its versionId.
+    schemaVersion: 1, sourceFingerprint: H, versionId: VERSION, toolInputId: TOOL, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
     original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: r(17, 8) },
     playback: { kind: 'native', carrier: carrier('original.mp4'), displayRect: null },
     playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
@@ -402,7 +403,8 @@ describe('P §3.5 selected presentation version descriptor', () => {
 
   it.each([
     ['missing versionId', ['versionId'], undefined], ['missing toolInputId', ['toolInputId'], undefined], ['missing planSha256', ['planSha256'], undefined],
-    ['missing policyVersion', ['policyVersion'], undefined], ['missing playback', ['playback'], undefined], ['missing playbackClock', ['playbackClock'], undefined],
+    ['missing policyVersion', ['policyVersion'], undefined], ['missing producerVersion', ['producerVersion'], undefined], ['missing profileVersion', ['profileVersion'], undefined],
+    ['zero producerVersion', ['producerVersion'], 0], ['fractional profileVersion', ['profileVersion'], 1.5], ['missing playback', ['playback'], undefined], ['missing playbackClock', ['playbackClock'], undefined],
     ['missing sourceFingerprint', ['sourceFingerprint'], undefined], ['missing display', ['display'], undefined], ['missing original', ['original'], undefined],
     ['uppercase versionId', ['versionId'], 'E'.repeat(64)], ['short toolInputId', ['toolInputId'], 'c'.repeat(63)],
     ['a pending state', ['state'], 'classifying'], ['an unknown field', ['config'], { info: { v: 2 } }],

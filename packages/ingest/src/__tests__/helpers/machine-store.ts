@@ -181,7 +181,7 @@ export async function produceLedger(store: MachineStore, identity: Identity, too
 export async function bundle(key: string, versionId: string, toolInputId = T): Promise<Bundle> {
   const head = await env.BUCKET.head(key);
   const descriptor = {
-    schemaVersion: 1, sourceFingerprint: H, versionId, toolInputId, planSha256: PLAN, policyVersion: 1,
+    schemaVersion: 1, sourceFingerprint: H, versionId, toolInputId, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
     original: ORIGINAL, display: { width: 95, height: 63, duration: { numerator: '12', denominator: '5' } },
     playback: { kind: 'native', carrier: { storageKey: key, url: `https://assets.example.test/${key}`, etag: head!.etag, size: head!.size, sha256: await digest(SOURCE_BYTES), contentType: 'video/mp4' }, displayRect: null },
     playbackClock: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 3, step: 1, duration: 1 }] },

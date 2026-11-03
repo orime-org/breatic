@@ -109,6 +109,10 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
     ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 3 }, report: { kind: 'Exp' } }],
     ['report_chunk', { unit: { kind: 'presentation-chunk', chunk: 3 }, report: { kind: 'Rec', attempt: 1 } }],
     ['report', { fact: { kind: 'finished', usage: { wallMs: 1000, cpuUsec: null } } }],
+    // inner 54ce9ea3 §5.1 step 4: the worker forwards the job DO's measured receipt of the carrier it wrote.
+    ['report_chunk', { unit: { kind: 'presentation-stitch' }, report: { kind: 'Done', attempt: 1, usage: 1200, receipt: { storageKey: `${KEY}.stitch`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' } } }],
+    ['report_chunk', { unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 2, usage: 900, receipt: { storageKey: `${KEY}.copy`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' } } }],
+    ['advance_stage', { stage: 'publish' }],
   ])('AC02 %s carries the capability and its own fields', (action, fields) => {
     const request = { action, ...capability, ...fields };
     expect(videoPresentationIngestRequestSchema.parse(request)).toEqual(request);
@@ -129,6 +133,9 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
     ['report_chunk with an unknown unit', { action: 'report_chunk', ...capability, unit: { kind: 'presentation-probe' }, report: { kind: 'Sub' } }],
     ['report_chunk Rec without its attempt', { action: 'report_chunk', ...capability, unit: { kind: 'presentation-copy' }, report: { kind: 'Rec' } }],
     ['fail without a code', { action: 'fail', ...identity, deadlineAt: D }],
+    // inner 54ce9ea3 §5.1 step 4: the worker never sends a bundle; `verified` stays inside ingest.
+    ['report with a verified bundle', { action: 'report', ...capability, fact: { kind: 'verified', bundle: { versionId: 'e'.repeat(64), toolInputId: T, descriptor: {} } } }],
+    ['a Done receipt without its hash', { action: 'report_chunk', ...capability, unit: { kind: 'presentation-copy' }, report: { kind: 'Done', attempt: 1, usage: 1, receipt: { storageKey: KEY, sizeBytes: 1, contentType: 'video/mp4' } } }],
     ['fail with a malformed code', { action: 'fail', ...identity, deadlineAt: D, code: 'Too Long' }],
   ])('AC04 rejects %s', (_name, request) => {
     expect(admits({ action: 'prepare', ...identity })).toBe(true);

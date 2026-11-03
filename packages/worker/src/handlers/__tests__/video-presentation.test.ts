@@ -293,6 +293,50 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
   });
 });
 
+describe('publish is the DO\'s: the worker forwards receipts and advances (inner 54ce9ea3 §5.1 step 4)', () => {
+  /**
+   * Whether any request sent a bundle to ingest.
+   * @returns True when one did.
+   */
+  function sentBundle(): boolean {
+    return actions('report').some((body) => (body.fact as { kind?: string } | undefined)?.kind === 'verified');
+  }
+
+  it.each([
+    ['dispatched copy', 'dispatch_copy', { [`video-presentation:${JOB}:copy`]: unit(subJob('copy', 1), 'done', 'done', 1, true) }],
+    ['stitch', 'encode', {
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:stitch`]: unit(subJob('stitch', 1), 'done', 'done', 1, true),
+    }],
+  ] as const)('PU01 after a done %s the worker advances to publish and never sends a bundle', async (_name, route, units) => {
+    answer = prepareAnswer({ route, units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: route === 'encode' ? 'stitch' : 'dispatch_copy', failure: null } });
+    await advance()(data).catch(() => undefined);
+    expect(actions('advance_stage').map((body) => body.stage)).toEqual(['publish']);
+    expect(submitted()).toEqual([]);
+    expect(sentBundle()).toBe(false);
+  });
+
+  it.each([
+    ['copy', 'dispatch_copy', 'presentation-copy'],
+    ['stitch', 'encode', 'presentation-stitch'],
+  ] as const)('PU02 a done %s attempt is reported Done with the job DO\'s measured receipt of its carrier', async (kind, route, unitKind) => {
+    const id = subJob(kind, 1);
+    const units: Record<string, Unit> = { [`video-presentation:${JOB}:${kind}`]: unit(id, 'open', 'pending') };
+    if (route === 'encode') {
+      units[`video-presentation:${JOB}:chunk:0`] = unit(subJob('chunk', 1, 0), 'done', 'done', 1, true);
+      units[`video-presentation:${JOB}:chunk:1`] = unit(subJob('chunk', 1, 1), 'done', 'done', 1, true);
+    }
+    answer = prepareAnswer({ route, units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: route === 'encode' ? 'stitch' : 'dispatch_copy', failure: null } });
+    reports.set(id, finished(id, 'done', { wallMs: 5000, cpuUsec: 20_000_000 }));
+    await advance()(data).catch(() => undefined);
+    const done = actions('report_chunk').find((body) => (body.report as { kind: string }).kind === 'Done');
+    expect(done).toMatchObject({ unit: { kind: unitKind }, report: { kind: 'Done', attempt: 1,
+      receipt: { storageKey: workKey(id), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4' } } });
+    expect(sentBundle()).toBe(false);
+  });
+});
+
 describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)', () => {
   const inFlight = (): Record<string, unknown> => prepareAnswer({
     units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'open', 'pending'), [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'open', 'pending') },

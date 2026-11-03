@@ -133,7 +133,7 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
   const T = 'c'.repeat(64);
   const PLAN = 'd'.repeat(64);
   const bundle = {
-    schemaVersion: 1, sourceFingerprint: fingerprint, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1,
+    schemaVersion: 1, sourceFingerprint: fingerprint, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
     original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: { numerator: '17', denominator: '8' } },
     playback: { kind: 'native', carrier: { storageKey: 'video/canonical.webm', url: 'https://assets.example.test/video/canonical.webm', etag: 'e1', size: 4096, sha256: 'f'.repeat(64), contentType: 'video/webm' }, displayRect: null },
     playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },

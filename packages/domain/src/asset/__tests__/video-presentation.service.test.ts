@@ -57,7 +57,7 @@ const asset: StudioAssetEntity = {
 const registered = { assetId: asset.id, contentHash: H, canonicalURL, kind: 'video', mediaInfo: { width: null, height: null, duration: null, mimeType: asset.mimeType } };
 const ingestBinding = { storageKey: asset.storageKey, sourceFingerprint: H };
 const bundle = {
-  schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1,
+  schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
   original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: { numerator: '17', denominator: '8' } },
   playback: { kind: 'native', carrier: { storageKey: asset.storageKey, url: canonicalURL, etag: 'e1', size: 4096, sha256: 'f'.repeat(64), contentType: 'video/webm' }, displayRect: null },
   playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },

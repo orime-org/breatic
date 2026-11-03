@@ -14,18 +14,30 @@
  * than the frozen cap fails the candidate `too_long` without touching L; the
  * basic execution's usage is reported. A replay of a started job answers the
  * same plan and work without probing again. Real FFmpeg is S6d's.
+ *
+ * inner 54ce9ea3 (§5.1 step 4, §3.5 P descriptor): the probe facts carry the
+ * plan-derived display and playback clock, stored in the candidate; after a
+ * stitch or dispatched copy the worker forwards the job DO's measured receipt
+ * in `report_chunk Done`, and on `advance_stage publish` the DO checks it
+ * against its own measurement of the R2 object, computes the versionId and
+ * commits. The selected bundle's plan, producer and profile versions decide the
+ * reuse route; a reuse publishes a new versionId over the selected carrier.
  */
 
+import { env } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
+import { videoPresentationVersionId } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
 import { admission, bundle, D, H, PLAN, produceLedger, source, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
-import { ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
+import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
   kind: 'planned'; toolInputId: string; planSha256: string;
   routeInput: Record<string, unknown>; keyframes: boolean[];
+  display: { width: number; height: number; duration: { numerator: string; denominator: string } };
+  playbackClock: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
   work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean };
 }
 type ProbeOutcome = ProbeFacts | { kind: 'failed'; code: string };
@@ -50,8 +62,12 @@ type Prepare = (store: MachineStore, identity: { storageKey: string; sourceFinge
 
 const USAGE = { wallMs: 4200, cpuUsec: 1_000_000 };
 const WORK = { encodedFrames: 96, prerollFrames: 0, sourceWidth: 1920, sourceHeight: 1080, outputWidth: 1920, outputHeight: 1080, bitDepth: 8 as const, hdr: false };
+// The selected identity is not a probe fact: preparePresentation supplies it from the selected bundle (inner 54ce9ea3).
+const PLAN_IDENTITY = { planSha256: PLAN, producerVersion: 2, profileVersion: 1 };
+const DISPLAY = { width: 95, height: 63, duration: { numerator: '12', denominator: '5' } };
+const CLOCK = { schemaVersion: 1 as const, timescale: 25, runs: [{ start: 0, count: 3, step: 1, duration: 1 }] };
 const ROUTE = {
-  plan: { planSha256: PLAN, producerVersion: 2, profileVersion: 1 }, selected: null, hdr: false, alpha: 'confirmed_opaque',
+  plan: PLAN_IDENTITY, hdr: false, alpha: 'confirmed_opaque',
   identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, sourceBytes: 4,
 };
 const IDENTITY_ROUTE = { ...ROUTE, identityQualified: true };
@@ -116,7 +132,7 @@ function fakePort(store: MachineStore, key: string, outcome: ProbeOutcome): Port
  * @returns It.
  */
 function planned(routeInput: Record<string, unknown>, frames = keyframes(96, 24), work: ProbeFacts['work'] = WORK): ProbeFacts {
-  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, keyframes: frames, work: { ...work, encodedFrames: frames.length } };
+  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, keyframes: frames, work: { ...work, encodedFrames: frames.length }, display: DISPLAY, playbackClock: CLOCK };
 }
 
 /**
@@ -288,3 +304,158 @@ describe('every pickup reads the started job without probing again (inner#1306 �
     });
   });
 });
+
+type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipt?: Record<string, unknown> };
+
+/**
+ * The shared output key of one sub-job.
+ * @param key - The source key.
+ * @param jobId - The sub-job id.
+ * @returns The key.
+ */
+function workKey(key: string, jobId: string): string {
+  const keyFor = (shared as Record<string, unknown>).videoPresentationWorkKeyFor as ((storageKey: string, id: string) => string) | undefined;
+  expect(keyFor, 'videoPresentationWorkKeyFor is exported from @breatic/shared').toBeTypeOf('function');
+  return keyFor!(key, jobId);
+}
+
+/**
+ * Report one unit the way the worker does.
+ * @param store - The store.
+ * @param capability - The job's capability.
+ * @param unit - The unit.
+ * @param report - The report.
+ * @returns Whether it was accepted.
+ */
+function reportUnit(store: MachineStore, capability: Identity, unit: Record<string, unknown>, report: Report): Promise<boolean> {
+  return (store.reportChunk as unknown as (c: Identity, u: Record<string, unknown>, r: Report) => Promise<boolean>)(capability, unit, report);
+}
+
+/**
+ * Write a carrier object as the ingest Worker does for a job, with its SHA-256 stored on the object.
+ * @param key - The object key.
+ * @param bytes - The carrier bytes.
+ * @returns Its measured receipt as the job DO forwards it, and the R2 etag.
+ */
+async function writeCarrier(key: string, bytes: Uint8Array): Promise<{ receipt: { storageKey: string; sha256: string; sizeBytes: number; contentType: string }; etag: string }> {
+  const sha256 = await digest(bytes);
+  const object = await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: 'video/mp4' }, sha256 });
+  return { receipt: { storageKey: key, sha256, sizeBytes: bytes.byteLength, contentType: 'video/mp4' }, etag: object.etag };
+}
+
+/**
+ * The versionId the DO must compute for a carrier (§3.2).
+ * @param policyVersion - The admission's target policy.
+ * @param measured - The carrier's measured bytes.
+ * @param measured.sha256 - Its SHA-256.
+ * @param measured.sizeBytes - Its size.
+ * @returns The versionId.
+ */
+function expectedVersionId(policyVersion: number, measured: { sha256: string; sizeBytes: number }): Promise<string> {
+  return videoPresentationVersionId({ sourceFingerprint: H, policyVersion, ...PLAN_IDENTITY, display: DISPLAY,
+    playback: { sha256: measured.sha256, size: measured.sizeBytes, contentType: 'video/mp4' } });
+}
+
+/**
+ * A granted dispatched-copy job whose copy attempt 1 wrote its carrier.
+ * @param store - The store.
+ * @param key - The source key.
+ * @returns The capability and the carrier.
+ */
+async function copied(store: MachineStore, key: string): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeCarrier>> }> {
+  const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(DISPATCH_ROUTE)));
+  const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
+  expect(await store.advanceStage(capability, 'dispatch_copy')).toBe(true);
+  expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Sub' })).toBe(true);
+  const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-copy', jobId: 'job-a', attempt: 1 })), new Uint8Array([9, 8, 7, 6, 5]));
+  return { capability, carrier };
+}
+
+describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 step 4)', () => {
+  it('PB01 on advance to publish the DO checks the forwarded receipt against R2, computes the versionId and commits the bundle', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await copied(store, key);
+      expect(await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipt: carrier.receipt })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      const view = await store.read(key, H) as unknown as { selected: { kind: string }; presentation: Record<string, unknown> | null };
+      expect(view.selected.kind).toBe('ready');
+      expect(view.presentation).toMatchObject({
+        versionId: await expectedVersionId(1, carrier.receipt), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
+        display: DISPLAY, playbackClock: CLOCK,
+        playback: { kind: 'native', carrier: { storageKey: carrier.receipt.storageKey, etag: carrier.etag, size: carrier.receipt.sizeBytes, sha256: carrier.receipt.sha256, contentType: 'video/mp4' } },
+      });
+    });
+  });
+
+  it.each([
+    ['size', { sizeBytes: 6 }],
+    ['type', { contentType: 'video/webm' }],
+    ['hash', { sha256: 'b'.repeat(64) }],
+  ])('PB02 a receipt whose %s disagrees with the R2 object is refused and the candidate does not become verified', async (_name, change) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await copied(store, key);
+      await reportUnit(store, capability, { kind: 'presentation-copy' }, { kind: 'Done', attempt: 1, usage: 1200, receipt: { ...carrier.receipt, ...change } });
+      await store.advanceStage(capability, 'publish');
+      const view = await store.read(key, H);
+      expect(view.candidate.state).not.toBe('verified');
+      expect(view.selected.kind).not.toBe('ready');
+    });
+  });
+
+  it('PB03 an encode publishes the stitch carrier once every chunk and the stitch are done', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(ENCODE_ROUTE)));
+      const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
+      const chunks = (answer.work as { chunks: { start: number; end: number }[] }).chunks;
+      expect(await store.advanceStage(capability, 'encode')).toBe(true);
+      for (const [index] of chunks.entries()) {
+        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Sub' })).toBe(true);
+        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Done', attempt: 1, usage: 1000 })).toBe(true);
+      }
+      expect(await store.advanceStage(capability, 'stitch')).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Sub' })).toBe(true);
+      const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([1, 1, 2, 3, 5, 8]));
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipt: carrier.receipt })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      const view = await store.read(key, H) as unknown as { presentation: Record<string, unknown> | null };
+      expect(view.presentation).toMatchObject({ versionId: await expectedVersionId(1, carrier.receipt), playback: { carrier: { storageKey: carrier.receipt.storageKey, sha256: carrier.receipt.sha256 } } });
+    });
+  });
+});
+
+describe('the reuse route from the selected bundle\'s identity (inner 54ce9ea3 §3.5 P descriptor, §7.1 复用载体)', () => {
+  it('RU01 same plan, producer and profile as the selected version: reuse, plan→publish, a new versionId over the selected carrier, no carrier work', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
+      const before = (await store.read(key, H) as unknown as { presentation: { playback: { carrier: Record<string, unknown> } } }).presentation;
+      await store.accept({ ...admission(key, 'job-b'), targetPolicyVersion: 2 });
+      const port = fakePort(store, key, planned(IDENTITY_ROUTE));
+      const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, port, Date.now()));
+      expect(answer.plan).toMatchObject({ route: 'reuse', stages: ['plan', 'publish'] });
+      expect(answer.work).toEqual({ kind: 'none' });
+      expect(port.spies.carrier).not.toHaveBeenCalled();
+      const carrier = before.playback.carrier as { sha256: string; size: number };
+      expect(answer.presentation).toMatchObject({ policyVersion: 2, producerVersion: 2, profileVersion: 1, playback: { carrier: before.playback.carrier },
+        versionId: await expectedVersionId(2, { sha256: carrier.sha256, sizeBytes: carrier.size }) });
+    });
+  });
+
+  it.each([
+    ['producer', { ...PLAN_IDENTITY, producerVersion: 3 }],
+    ['profile', { ...PLAN_IDENTITY, profileVersion: 2 }],
+  ])('RU02 a different %s version is not reused', async (_name, plan) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
+      await store.accept({ ...admission(key, 'job-b'), targetPolicyVersion: 2 });
+      const port = fakePort(store, key, planned({ ...IDENTITY_ROUTE, plan }));
+      const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, port, Date.now()));
+      expect(answer.plan?.route).not.toBe('reuse');
+    });
+  });
+});
+
