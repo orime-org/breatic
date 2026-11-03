@@ -116,6 +116,8 @@ models:
             field: resolution
         drops:
           shots: "*"
+        fixed:
+          enable_prompt_expansion: false
         rejects:
           - when: $length(prompt) > 20000
             reason: fal prompt maxLength 20000
@@ -244,6 +246,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 360000
@@ -264,6 +268,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: WaveSpeed prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 700000
@@ -432,10 +439,10 @@ models:
         rejects:
           - when: $length(prompt) > 2500
             reason: SandBase prompt maxLength 2500
-          - when: $exists(prompt) and $exists(multi_prompt)
-            reason: "SandBase prompt: Either prompt or multi_prompt must be provided, but not both"
           - when: $not($exists(prompt) or $exists(multi_prompt))
             reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
+          - when: $exists(multi_prompt)
+            reason: "SandBase prompt: required by its schema; a storyboard run sends multi_prompt and no prompt"
         pricing:
           kind: formula
           base_price: 420000
@@ -535,6 +542,9 @@ models:
             field: resolution
         drops:
           shots: "*"
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: WaveSpeed prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 700000
@@ -655,6 +665,8 @@ models:
             field: resolution
         drops:
           shots: "*"
+        fixed:
+          enable_prompt_expansion: false
         rejects:
           - when: $length(prompt) > 20000
             reason: fal prompt maxLength 20000
@@ -771,6 +783,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 360000
@@ -892,10 +906,10 @@ models:
         rejects:
           - when: $length(prompt) > 2500
             reason: SandBase prompt maxLength 2500
-          - when: $exists(prompt) and $exists(multi_prompt)
-            reason: "SandBase prompt: Either prompt or multi_prompt must be provided, but not both"
           - when: $not($exists(prompt) or $exists(multi_prompt))
             reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
+          - when: $exists(multi_prompt)
+            reason: "SandBase prompt: required by its schema; a storyboard run sends multi_prompt and no prompt"
         pricing:
           kind: formula
           base_price: 420000
@@ -994,6 +1008,9 @@ models:
           audios: <Audio {n}>
           images: <Picture {n}>
           videos: <Video {n}>
+        rejects:
+          - when: $length(prompt) > 7000
+            reason: WaveSpeed prompt maxLength 7000
         pricing:
           kind: formula
           base_price: 700000
@@ -1253,6 +1270,8 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
+        fixed:
+          enable_prompt_expansion: false
         rejects:
           - when: $length(prompt) > 20000
             reason: fal prompt maxLength 20000
@@ -1383,6 +1402,9 @@ models:
           mode: async
         mentions:
           images: character{n}
+        rejects:
+          - when: $length(prompt) > 2500
+            reason: "SandBase prompt: Max 2500 characters"
         pricing:
           kind: formula
           base_price: 140000
@@ -1514,6 +1536,8 @@ models:
             reason: SandBase prompt maxLength 50000
           - when: get_duration(videos) > 30
             reason: "SandBase videos: combined duration must not exceed 30 seconds"
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 110000
@@ -1646,9 +1670,11 @@ models:
             field: audio_url
           image:
             field: image_url
+        fixed:
+          resolution: 720p
         rejects:
-          - when: get_duration(audio_url) >= 30
-            reason: "fal audio_url: Audio must be under 30s long for 1080p generation (resolution defaults to 1080p)"
+          - when: get_duration(audio_url) >= 60
+            reason: "fal audio_url: Audio must be under 30s long for 1080p generation and under 60s long for 720p generation (resolution fixed at 720p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1665,9 +1691,10 @@ models:
         fixed:
           prompt: ""
           mode: async
+          resolution: 720p
         rejects:
           - when: get_duration(audio) >= 60
-            reason: "SandBase audio: Audio must be under 60s long for 720p generation (resolution defaults to 720p)"
+            reason: "SandBase audio: Audio must be under 60s long for 720p generation (resolution fixed at 720p)"
         pricing:
           kind: formula
           base_price: 160000
@@ -1774,7 +1801,7 @@ models:
         pricing:
           kind: formula
           base_price: 300000
-          formula: '{"total_price": ($seconds := $min([get_duration(audio_url), 241 / 25]); base_price * $seconds * ($seconds * 25 > 81 ? 1.25 : 1) * (resolution = "720p" ? 2 : 1))}'
+          formula: '{"total_price": base_price * $min([get_duration(audio_url), 241 / 25]) * 1.25 * (resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3

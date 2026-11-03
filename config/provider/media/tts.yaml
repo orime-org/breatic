@@ -101,8 +101,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: fal prompt maxLength 50000
-          - when: $exists(speakers[$contains(speaker, /[^\w\x80-\uffff]/)])
-            reason: fal speakers[].speaker_id pattern ^\w+$
+          - when: $exists(speakers[$not($exists(speaker)) or $type(speaker) != "string" or speaker = "" or $contains(speaker, /[^A-Za-z0-9_]/)])
+            reason: fal speakers[].speaker_id pattern ^\w+$, checked as ASCII letters, digits and underscores
         pricing:
           kind: formula
           base_price: 50000
@@ -163,8 +163,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
-          - when: $exists(speakers[$contains(speaker, /[^\w\x80-\uffff]/)])
-            reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace"
+          - when: $exists(speakers[$not($exists(speaker)) or $type(speaker) != "string" or speaker = "" or $contains(speaker, /[^A-Za-z0-9_]/)])
+            reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace, checked as ASCII letters, digits and underscores"
         pricing:
           kind: formula
           base_price: 50000
@@ -1221,29 +1221,29 @@ models:
             all_values: fal has no similarity field and sends none, so every value gives the same result there (fal OpenAPI 2026-11-01)
         voice_map:
           voice_id:
-            Adam: Adam
-            Alice: Alice
-            Aria: Aria
-            Bella: Bella
-            Bill: Bill
-            Brian: Brian
-            Callum: Callum
-            Charlie: Charlie
-            Charlotte: Charlotte
-            Chris: Chris
-            Daniel: Daniel
-            Eric: Eric
-            George: George
-            Harry: Harry
-            Jessica: Jessica
-            Laura: Laura
-            Liam: Liam
-            Lily: Lily
-            Matilda: Matilda
-            River: River
-            Roger: Roger
-            Sarah: Sarah
-            Will: Will
+            Adam: pNInz6obpgDQGcFmaJgB
+            Alice: Xb7hH8MSUJpSbSDYk0k2
+            Aria: 9BWtsMINqrJLrRacOk9x
+            Bella: hpp4J3VqNfWAUOO0d1Us
+            Bill: pqHfZKP75CvOlQylNhV4
+            Brian: nPczCjzI2devNBz1zQrb
+            Callum: N2lVS1w4EtoT3dr4eOWO
+            Charlie: IKne3meq5aSn9XLyUdCD
+            Charlotte: XB0fDUnXU5powFXDhCwa
+            Chris: iP95p4xoKVk53GoZ742B
+            Daniel: onwK4e9ZLuTAKqWW03F9
+            Eric: cjVigY5qzO86Huf0OWal
+            George: JBFqnCBsd6RMkjVDRZzb
+            Harry: SOYHLrjzK2X1ezoPC6cr
+            Jessica: cgSgspJ2msm6clMCkdW9
+            Laura: FGY2WhTYpPnrIDTdsKH5
+            Liam: TX3LPaxmHKxFdv7VOQHJ
+            Lily: pFZP5JQG7iQjIQuC4Bku
+            Matilda: XrExE9yKIg1WjnnlVkGX
+            River: SAz9YHcvj6GT2YYXdXww
+            Roger: CwhRBWXzGAHq8TQ4Fs17
+            Sarah: EXAVITQu4vr4xnSDxMaL
+            Will: bIHbv24MWmeRgasZH58o
         output_field: audio
         pricing:
           kind: formula
@@ -1264,29 +1264,29 @@ models:
             all_values: SandBase has no similarity field and sends none, so every value gives the same result there (unified_schema 2026-11-01)
         voice_map:
           voice_id:
-            Adam: Adam
-            Alice: Alice
-            Aria: Aria
-            Bella: Bella
-            Bill: Bill
-            Brian: Brian
-            Callum: Callum
-            Charlie: Charlie
-            Charlotte: Charlotte
-            Chris: Chris
-            Daniel: Daniel
-            Eric: Eric
-            George: George
-            Harry: Harry
-            Jessica: Jessica
-            Laura: Laura
-            Liam: Liam
-            Lily: Lily
-            Matilda: Matilda
-            River: River
-            Roger: Roger
-            Sarah: Sarah
-            Will: Will
+            Adam: pNInz6obpgDQGcFmaJgB
+            Alice: Xb7hH8MSUJpSbSDYk0k2
+            Aria: 9BWtsMINqrJLrRacOk9x
+            Bella: hpp4J3VqNfWAUOO0d1Us
+            Bill: pqHfZKP75CvOlQylNhV4
+            Brian: nPczCjzI2devNBz1zQrb
+            Callum: N2lVS1w4EtoT3dr4eOWO
+            Charlie: IKne3meq5aSn9XLyUdCD
+            Charlotte: XB0fDUnXU5powFXDhCwa
+            Chris: iP95p4xoKVk53GoZ742B
+            Daniel: onwK4e9ZLuTAKqWW03F9
+            Eric: cjVigY5qzO86Huf0OWal
+            George: JBFqnCBsd6RMkjVDRZzb
+            Harry: SOYHLrjzK2X1ezoPC6cr
+            Jessica: cgSgspJ2msm6clMCkdW9
+            Laura: FGY2WhTYpPnrIDTdsKH5
+            Liam: TX3LPaxmHKxFdv7VOQHJ
+            Lily: pFZP5JQG7iQjIQuC4Bku
+            Matilda: XrExE9yKIg1WjnnlVkGX
+            River: SAz9YHcvj6GT2YYXdXww
+            Roger: CwhRBWXzGAHq8TQ4Fs17
+            Sarah: EXAVITQu4vr4xnSDxMaL
+            Will: bIHbv24MWmeRgasZH58o
         fixed:
           mode: async
         pricing:
@@ -1349,6 +1349,8 @@ models:
               discount_rate: 100
         reused_by: audio
         output_field: audio
+        fixed:
+          accuracy: 0.7
         pricing:
           kind: formula
           base_price: 1500000
@@ -1380,6 +1382,7 @@ models:
         reused_by: audio
         fixed:
           mode: async
+          accuracy: 0.7
         pricing:
           kind: formula
           base_price: 1500000
@@ -1426,29 +1429,29 @@ models:
             field: voice
         voice_map:
           voice_id:
-            Adam: Adam
-            Alice: Alice
-            Aria: Aria
-            Bella: Bella
-            Bill: Bill
-            Brian: Brian
-            Callum: Callum
-            Charlie: Charlie
-            Charlotte: Charlotte
-            Chris: Chris
-            Daniel: Daniel
-            Eric: Eric
-            George: George
-            Harry: Harry
-            Jessica: Jessica
-            Laura: Laura
-            Liam: Liam
-            Lily: Lily
-            Matilda: Matilda
-            River: River
-            Roger: Roger
-            Sarah: Sarah
-            Will: Will
+            Adam: pNInz6obpgDQGcFmaJgB
+            Alice: Xb7hH8MSUJpSbSDYk0k2
+            Aria: 9BWtsMINqrJLrRacOk9x
+            Bella: hpp4J3VqNfWAUOO0d1Us
+            Bill: pqHfZKP75CvOlQylNhV4
+            Brian: nPczCjzI2devNBz1zQrb
+            Callum: N2lVS1w4EtoT3dr4eOWO
+            Charlie: IKne3meq5aSn9XLyUdCD
+            Charlotte: XB0fDUnXU5powFXDhCwa
+            Chris: iP95p4xoKVk53GoZ742B
+            Daniel: onwK4e9ZLuTAKqWW03F9
+            Eric: cjVigY5qzO86Huf0OWal
+            George: JBFqnCBsd6RMkjVDRZzb
+            Harry: SOYHLrjzK2X1ezoPC6cr
+            Jessica: cgSgspJ2msm6clMCkdW9
+            Laura: FGY2WhTYpPnrIDTdsKH5
+            Liam: TX3LPaxmHKxFdv7VOQHJ
+            Lily: pFZP5JQG7iQjIQuC4Bku
+            Matilda: XrExE9yKIg1WjnnlVkGX
+            River: SAz9YHcvj6GT2YYXdXww
+            Roger: CwhRBWXzGAHq8TQ4Fs17
+            Sarah: EXAVITQu4vr4xnSDxMaL
+            Will: bIHbv24MWmeRgasZH58o
         output_field: audio
         pricing:
           kind: formula

@@ -37,6 +37,9 @@ models:
         drops:
           art_style:
             all_values: WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)
+        rejects:
+          - when: $length(prompt) > 600
+            reason: WaveSpeed prompt maxLength 600
         pricing:
           kind: formula
           base_price: 1440000

@@ -116,6 +116,8 @@ models:
             reason: "fal prompt: With lyrics, it acts as a music-style control and supports up to 1,024 characters"
           - when: $length(lyrics) > 5000
             reason: fal lyrics maxLength 5000
+          - when: get_duration(vocal_id) > 30 or get_duration(vocal_id, min=15, max=1000000, total=1000000) > get_duration(vocal_id)
+            reason: "fal mureka/api/voice/clone audio_url: a vocal sample between 15 and 30 seconds"
         pricing:
           kind: formula
           base_price: 5000
@@ -219,6 +221,9 @@ models:
             - false
           double_output:
             - false
+        rejects:
+          - when: $length(text_prompt) < 4
+            reason: WaveSpeed text_prompt minLength 4
         pricing:
           kind: formula
           base_price: 10000
@@ -241,6 +246,8 @@ models:
         rejects:
           - when: ambience = true and duration < 1
             reason: "fal duration: The minimum is 0.1s for ordinary sound effects and 1s when ambience=true"
+          - when: $length(text_prompt) < 4
+            reason: fal text_prompt minLength 4
         pricing:
           kind: formula
           base_price: 10000

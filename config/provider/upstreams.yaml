@@ -20,6 +20,7 @@ upstreams:
     base_url: https://api.sandbase.ai/v1
     key_env: SANDBASE_API_KEY
     concurrency: 10
+    empty_output_wait_ms: 600000
   openrouter:
     kind: openrouter
     base_url: https://openrouter.ai/api/v1

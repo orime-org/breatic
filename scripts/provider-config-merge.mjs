@@ -36,13 +36,13 @@ export function mergeMediaModels(existing, generated, placeholders) {
   for (const [model, { upstreams }] of Object.entries(generated)) {
     const kept = out[model]?.upstreams ?? [];
     const at = kept.findIndex((b) => b.upstream === OWNED);
-    const merged = upstreams.map((binding) => {
-      if (binding.upstream !== OWNED || binding.pricing !== undefined) return binding;
+    // The generator writes only WaveSpeed bindings.
+    const own = upstreams.map((binding) => {
+      if (binding.pricing !== undefined) return binding;
       const pricing = kept[at]?.pricing ?? placeholders[model];
       if (pricing === undefined) throw new Error(`${model} has no price`);
       return { ...binding, pricing };
     });
-    const own = merged.filter((b) => b.upstream === OWNED);
     const others = kept.filter((b) => b.upstream !== OWNED);
     out[model] = { upstreams: at < 0 ? [...own, ...others] : [...kept.slice(0, at), ...own, ...kept.slice(at + 1)] };
   }

@@ -88,6 +88,8 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
  * binding (fal serves it). `modelId`: the id WaveSpeed lists the model under
  * when it is not the catalog's. `spellings`: a param's `values` and
  * `absent_value` where WaveSpeed's field takes other values than ours.
+ * `rejects`: the limits of WaveSpeed's schema our catalog lets a run break,
+ * written as the binding's `rejects`.
  */
 const WAVESPEED: Readonly<Record<string, {
   renames?: Readonly<Record<string, string>>;
@@ -97,6 +99,7 @@ const WAVESPEED: Readonly<Record<string, {
   delisted?: true;
   modelId?: string;
   spellings?: Readonly<Record<string, { values?: Readonly<Record<string, string>>; absent_value?: string | number | boolean }>>;
+  rejects?: readonly { when: string; reason: string }[];
 }>> = {
   "flux-3-start-end-to-video": { renames: { start_image: "image", end_image: "last_image" } },
   "muse-image-edit": { renames: { image_urls: "images" }, refuses: { aspect_ratio: ["9:21"] } },
@@ -109,13 +112,20 @@ const WAVESPEED: Readonly<Record<string, {
   "nano-banana-2-relight": { refuses: { output_format: ["webp"] } },
   "nano-banana-2-quick-edit": { refuses: { output_format: ["webp"] } },
   "elevenlabs-v3": { drops: { similarity: { all_values: IGNORED } } },
-  "sfx-1.6-text-to-audio": { drops: { loop: [false], double_output: [false] } },
+  "sfx-1.6-text-to-audio": {
+    drops: { loop: [false], double_output: [false] },
+    rejects: [{ when: "$length(text_prompt) < 4", reason: "WaveSpeed text_prompt minLength 4" }],
+  },
+  "minimax-h3-text-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
+  "minimax-h3-image-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
+  "minimax-h3-reference-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
   // Relisted as meshy/v6/text-to-3d (/api/v3/models, 2026-11-03); the old id stays delisted.
   "meshy6-t23d": {
     modelId: "meshy/v6/text-to-3d",
     renames: { ta_pose: "pose_mode" },
     spellings: { ta_pose: { values: { true: "t-pose" }, absent_value: false } },
     drops: { art_style: { all_values: "WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)" } },
+    rejects: [{ when: "$length(prompt) > 600", reason: "WaveSpeed prompt maxLength 600" }],
   },
   "veed-clean-audio": { delisted: true },
   "recraft-v4-style-text-to-image": { delisted: true },
@@ -267,6 +277,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
     ...(Object.keys(mentions).length === 0 ? {} : { mentions }),
+    ...(facts.rejects === undefined ? {} : { rejects: facts.rejects }),
     ...(provider.pricing === undefined ? {} : { pricing: pricingOf(provider.pricing) }),
   };
 }

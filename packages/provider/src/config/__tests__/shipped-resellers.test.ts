@@ -102,13 +102,14 @@ const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
   models[model]?.upstreams.find((b) => b.upstream === upstream);
 
 /**
- * ElevenLabs' premade voices among the catalog's elevenlabs-v3 voices, each with ElevenLabs' own id:
+ * ElevenLabs' premade voices among a catalog model's voices, each with ElevenLabs' own id:
  * their samples live under `premade/voices/<voice id>/`.
+ * @param model - The catalog model.
  * @returns Our voice name and ElevenLabs' id of each.
  */
-function premadeVoices(): { name: string; id: string }[] {
+function premadeVoices(model = "elevenlabs-v3"): { name: string; id: string }[] {
   const tts = yaml<{ models: { name: string; voices?: { id: string; sample_url?: string }[] }[] }>("models/tts/models.yaml");
-  const voices = tts.models.find((m) => m.name === "elevenlabs-v3")?.voices ?? [];
+  const voices = tts.models.find((m) => m.name === model)?.voices ?? [];
   return voices.flatMap((v) => {
     const id = /\/premade\/voices\/([^/]+)\//.exec(v.sample_url ?? "")?.[1];
     return id === undefined ? [] : [{ name: v.id, id }];
@@ -168,6 +169,12 @@ describe("the reseller bindings that serve only part of a model, or always send 
       expect(binding?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v.name, v.id])));
       expect(binding?.drops?.similarity).toHaveProperty("all_values");
     }
+  });
+
+  it("changes a voice on fal into ElevenLabs' premade voices only, by ElevenLabs' voice id", () => {
+    const premade = premadeVoices("elevenlabs-voice-changer");
+    expect(premade.length).toBeGreaterThan(0);
+    expect(bindingOf("elevenlabs-voice-changer", "fal")?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v.name, v.id])));
   });
 
   it("writes the multiple-angles distance as a zoom on SandBase, close-up the highest", () => {

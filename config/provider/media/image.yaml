@@ -49,8 +49,6 @@ models:
               - 1:1
               - 4:3
               - 3:4
-              - 16:9
-              - 9:16
           quality:
             field: quality
         drops:
@@ -80,6 +78,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 90000
@@ -200,6 +200,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: fal prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: fal prompt minLength 3
         pricing:
           kind: formula
           base_price: 80000
@@ -234,6 +236,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 67000
@@ -302,6 +306,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: fal prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: fal prompt minLength 3
         pricing:
           kind: formula
           base_price: 80000
@@ -342,6 +348,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 67000
@@ -388,6 +396,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: fal prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: fal prompt minLength 3
         pricing:
           kind: formula
           base_price: 80000
@@ -417,6 +427,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 67000
@@ -514,7 +526,7 @@ models:
         pricing:
           kind: formula
           base_price: 1000
-          formula: '{"total_price": base_price * (($type(image_style_references) = "array" and $count(image_style_references) > 0) ? 65 : 60)}'
+          formula: '{"total_price": base_price * ($count(image_style_references) > 0 ? 65 : 60)}'
           discount_rate: 100
   ideogram-v3-quality:
     upstreams:
@@ -655,8 +667,6 @@ models:
               - 1:1
               - 4:3
               - 3:4
-              - 16:9
-              - 9:16
           images:
             field: image_urls
           quality:
@@ -698,6 +708,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 105000
@@ -803,33 +815,6 @@ models:
         pricing:
           kind: formula
           base_price: 25000
-          formula: ""
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/qwen-image-edit-2511-multiple-angles
-        prompt_field: additional_prompt
-        output_field: images
-        params:
-          distance:
-            field: zoom
-            values:
-              "0": 10
-              "1": 5
-              "2": 0
-          horizontal_angle:
-            field: horizontal_angle
-          images:
-            field: image_urls
-          output_format:
-            field: output_format
-          vertical_angle:
-            field: vertical_angle
-        mentions:
-          images: image {n}
-        pricing:
-          kind: formula
-          base_price: 35000
           formula: ""
           discount_rate: 100
       - upstream: sandbase
@@ -991,6 +976,8 @@ models:
         rejects:
           - when: $length(prompt) > 50000
             reason: SandBase prompt maxLength 50000
+          - when: $length(prompt) < 3
+            reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 40000
