@@ -12,6 +12,45 @@
 # of the price charged (100 is full price).
 
 models:
+  sam3-video-rle:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/sam3-video-rle
+        prompt_field: prompt
+        params:
+          video:
+            field: video
+          apply_mask:
+            field: apply_mask
+          box_prompts:
+            field: box_prompts
+          point_prompts:
+            field: point_prompts
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": $max([3, $min([$ceil(get_duration(video)), 600])]) * base_price}'
+          discount_rate: 100
+  bria-fibo-video-background-remover:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bria/fibo/video-background-remover
+        params:
+          video:
+            field: video
+          background_color:
+            field: background_color
+          output_container_and_codec:
+            field: output_container_and_codec
+          preserve_audio:
+            field: preserve_audio
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
+          discount_rate: 100
   gemini-omni-1.1-flash-text-to-video:
     upstreams:
       - upstream: wavespeed
