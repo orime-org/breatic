@@ -138,17 +138,22 @@ async function packets(path: string): Promise<Packet[]> {
 }
 
 /**
- * The mean luma of every decoded frame inside a rectangle.
+ * The mean stored luma (the Y plane's own limited-range values) of every stored frame inside a rectangle.
  * @param path - The file.
  * @param crop - The rectangle, the whole picture when absent.
  * @returns One mean per frame.
  */
 async function lumaMeans(path: string, crop?: { x: number; y: number; width: number; height: number }): Promise<number[]> {
-  // Grey first: a crop on 4:2:0 rounds a 1-pixel width down to the chroma step (0).
-  const filter = `format=gray,${crop === undefined ? '' : `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},`}scale=32:16:flags=area`;
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-vf', filter, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  const video = (await probe(path)).streams.find(stream => stream.codec_type === 'video')!;
+  const area = crop ?? { x: 0, y: 0, width: video.width!, height: video.height! };
+  // The Y plane as it is stored: a grey conversion or scale may also convert its range, differently by picture size
+  // (FFmpeg 7.1), and the crop runs on the plane so a 1-pixel column is not rounded to the 4:2:0 chroma step.
+  // passthrough reads exactly the stored frames: the default constant rate (r_frame_rate) duplicates frames of a variable clock.
+  const filter = `extractplanes=y,crop=${area.width}:${area.height}:${area.x}:${area.y}`;
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-vf', filter, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
   const bytes = stdout as unknown as Buffer;
-  return Array.from({ length: bytes.length / 512 }, (_unused, frame) => bytes.subarray(frame * 512, frame * 512 + 512).reduce((sum, value) => sum + value, 0) / 512);
+  const size = area.width * area.height;
+  return Array.from({ length: bytes.length / size }, (_unused, frame) => bytes.subarray(frame * size, frame * size + size).reduce((sum, value) => sum + value, 0) / size);
 }
 
 /**
@@ -157,7 +162,7 @@ async function lumaMeans(path: string, crop?: { x: number; y: number; width: num
  * @returns One thumbnail per frame.
  */
 async function thumbs(path: string): Promise<Buffer[]> {
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-vf', 'scale=32:16:flags=area,format=gray', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-vf', 'scale=32:16:flags=area,format=gray', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
   const bytes = stdout as unknown as Buffer;
   return Array.from({ length: bytes.length / 512 }, (_unused, frame) => bytes.subarray(frame * 512, frame * 512 + 512));
 }
@@ -296,8 +301,8 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     const [file] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [recipe]);
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 128, 36]);
-    // The right plane is the alpha as grey: 64, read back through a full-range grey conversion.
-    for (const mean of await lumaMeans(file!, { x: 64, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 64)).toBeLessThan(6);
+    // The right plane is the alpha as grey: 64 stored as limited-range luma 16 + 64 * 219 / 255 ≈ 71.
+    for (const mean of await lumaMeans(file!, { x: 64, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 71)).toBeLessThan(6);
   });
 
   // An edit that starts inside a source frame keeps that frame, shown from clipStart (design §7.17 时间线「被剪辑起点截去一部分的帧保留」;
