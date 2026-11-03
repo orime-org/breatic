@@ -261,7 +261,8 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
     case "copy_carrier":
     case "chunk_encode":
     case "stitch":
-      // The presentation carrier recipes are frozen in shape only; their FFmpeg commands arrive with S6d.
+    case "prepare_model_input":
+      // The presentation carrier and model-input recipes are frozen in shape only; their FFmpeg commands arrive with S6d.
       throw new Error(`The ${recipe.kind} recipe is not executable yet`);
   }
 }

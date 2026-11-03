@@ -40,6 +40,8 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("copy_carrier"), inputId }),
   z.strictObject({ kind: z.literal("chunk_encode"), inputId, window: z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start) }),
   z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(storageKey).min(1) }),
+  // A model's input over its presentation window (§5.3), written as an intermediate object.
+  z.strictObject({ kind: z.literal("prepare_model_input"), inputId, window: z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start) }),
 ]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */

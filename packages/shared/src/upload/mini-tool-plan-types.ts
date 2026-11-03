@@ -26,4 +26,5 @@ export type MiniToolPlanRecipe =
   | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
   | { kind: "copy_carrier"; inputId: string }
   | { kind: "chunk_encode"; inputId: string; window: { start: number; end: number } }
-  | { kind: "stitch"; inputId: string; chunks: string[] };
+  | { kind: "stitch"; inputId: string; chunks: string[] }
+  | { kind: "prepare_model_input"; inputId: string; window: { start: number; end: number } };
