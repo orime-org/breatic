@@ -83,3 +83,49 @@ describe('probe through the run contract (§91 D-3)', () => {
     await expect(port(async () => answer).probe(CAPABILITY)).rejects.toThrow();
   });
 });
+
+// S6d D2 (inner#1306 test plan §91): the ledger and carrier actions over the same contract. Both restart from the source,
+// so they carry the probe's frozen facts again, plus the capability token the edge write handlers authorize with.
+type FullPort = Port & {
+  writeLedger: (capability: Record<string, unknown>, toolInputId: string, encodeFacts: unknown) => Promise<void>;
+  carrier: (capability: Record<string, unknown>, route: 'identity' | 'copy') => Promise<unknown>;
+};
+const FACTS = { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2 };
+const RECEIPTS = [{ role: 'carrier', packing: 'native', storageKey: ADMISSION.storageKey, sha256: 'a'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' }];
+const COMMON = {
+  jobId: ADMISSION.jobId, sourceFingerprint: ADMISSION.sourceFingerprint, deadlineAt: ADMISSION.deadlineAt, token: CAPABILITY.token, storageKey: ADMISSION.storageKey,
+  sourceURL: SOURCE_URL, limits: LIMITS, encoding: ENCODING, probe: ADMISSION.probe,
+};
+
+describe('writeLedger through the run contract (§91 D2; design §5.1 step 5)', () => {
+  it('PW01 sends one ledger request for the toolInputId with the probe encode facts and the capability token', async () => {
+    const send = vi.fn<Send>(async () => ({ kind: 'written' }));
+    await expect((port(send) as FullPort).writeLedger(CAPABILITY, 'b'.repeat(64), FACTS)).resolves.toBeUndefined();
+    expect(send.mock.calls).toEqual([[{ action: 'ledger', ...COMMON, toolInputId: 'b'.repeat(64), encodeFacts: FACTS }]]);
+  });
+
+  it('PW02 a ledger-only repair sends no encode facts, so the container derives them again', async () => {
+    const send = vi.fn<Send>(async () => ({ kind: 'written' }));
+    await (port(send) as FullPort).writeLedger(CAPABILITY, 'b'.repeat(64), null);
+    expect(send.mock.calls[0]![0]).toMatchObject({ action: 'ledger', encodeFacts: null });
+  });
+
+  it('PW03 a failed write rejects with the container code, and a malformed answer is a container fault', async () => {
+    await expect((port(async () => ({ kind: 'failed', code: 'source_ledger_invalid' })) as FullPort).writeLedger(CAPABILITY, 'b'.repeat(64), FACTS))
+      .rejects.toMatchObject({ code: 'source_ledger_invalid' });
+    await expect((port(async () => ({ kind: 'done' })) as FullPort).writeLedger(CAPABILITY, 'b'.repeat(64), FACTS)).rejects.toThrow();
+  });
+});
+
+describe('carrier through the run contract (§91 D2, D2-1; design §5.1 steps 3–4)', () => {
+  it.each(['identity', 'copy'] as const)('PC01 a %s carrier sends one carrier request and hands back the written receipts for the store to measure', async (route) => {
+    const send = vi.fn<Send>(async () => ({ kind: 'carrier', receipts: RECEIPTS }));
+    expect(await (port(send) as FullPort).carrier(CAPABILITY, route)).toEqual({ kind: 'written', receipts: RECEIPTS });
+    expect(send.mock.calls).toEqual([[{ action: 'carrier', ...COMMON, route }]]);
+  });
+
+  it('PC02 passes a failed carrier through with its code and rejects a malformed answer', async () => {
+    expect(await (port(async () => ({ kind: 'failed', code: 'source_missing' })) as FullPort).carrier(CAPABILITY, 'copy')).toEqual({ kind: 'failed', code: 'source_missing' });
+    await expect((port(async () => ({ kind: 'carrier', receipts: [] })) as FullPort).carrier(CAPABILITY, 'copy')).rejects.toThrow();
+  });
+});

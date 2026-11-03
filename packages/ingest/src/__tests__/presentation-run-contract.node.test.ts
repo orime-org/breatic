@@ -113,3 +113,64 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
     expect(parse({ kind: 'failed', code: 'Not Stable' })).toBe(false);
   });
 });
+
+// S6d D2 (inner#1306 test plan §91; design §5.1 steps 3–5, §3.2 item 7): the ledger and carrier actions. Each restarts
+// from the source (§91 D-3), so both carry the probe's frozen facts to plan again, plus the capability token the edge
+// handlers authorize writes with and the canonical storage key the written keys derive from.
+const capabilityFields = { jobId: PROBE.jobId, sourceFingerprint: PROBE.sourceFingerprint, deadlineAt: PROBE.deadlineAt, token: 'token-a', storageKey: 'video/canonical.mp4',
+  sourceURL: PROBE.sourceURL, limits: LIMITS, encoding: ENCODING, probe: PROBE.probe };
+const LEDGER = { action: 'ledger', ...capabilityFields, toolInputId: 'b'.repeat(64), encodeFacts: { keyframeOrdinals: [0, 10], codedWidth: 320, codedHeight: 180 } };
+const CARRIER = { action: 'carrier', ...capabilityFields, route: 'copy' };
+const RECEIPT = { role: 'carrier', packing: 'native', storageKey: 'video/canonical.mp4.video-presentation:video-presentation-a:copy:a1', sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' };
+
+describe('the ledger action (§91 D2; design §5.1 step 5, §3.2 item 7)', () => {
+  const parseRequest = (value: unknown): boolean => exported<Schema>('presentationRunRequestSchema').safeParse(value).success;
+  const parseAnswer = (value: unknown): boolean => exported<Schema>('presentationLedgerAnswerSchema').safeParse(value).success;
+
+  it('LR01 accepts a ledger write for one toolInputId with its encode facts, and a ledger-only repair without them', () => {
+    expect(parseRequest(LEDGER)).toBe(true);
+    expect(parseRequest({ ...LEDGER, encodeFacts: null })).toBe(true);
+  });
+
+  it.each([
+    ['no token', { token: undefined }], ['no storage key', { storageKey: undefined }], ['a malformed toolInputId', { toolInputId: 'x' }],
+    ['encode facts without keyframes', { encodeFacts: { codedWidth: 320, codedHeight: 180 } }], ['no probe facts', { probe: undefined }],
+    ['a field from an earlier call', { plan: {} }],
+  ])('LR02 refuses a ledger write with %s', (_name, change) => {
+    const value: Record<string, unknown> = { ...LEDGER, ...change };
+    for (const [field, entry] of Object.entries(change)) if (entry === undefined) delete value[field];
+    expect(parseRequest(LEDGER)).toBe(true);
+    expect(parseRequest(value)).toBe(false);
+  });
+
+  it('LR03 answers written or a failure with a stable code', () => {
+    expect(parseAnswer({ kind: 'written' })).toBe(true);
+    expect(parseAnswer({ kind: 'failed', code: 'source_ledger_invalid' })).toBe(true);
+    expect(parseAnswer({ kind: 'failed', code: 'Not Stable' })).toBe(false);
+    expect(parseAnswer({ kind: 'written', receipt: {} })).toBe(false);
+  });
+});
+
+describe('the carrier action (§91 D2; design §5.1 steps 3–4, §4.1)', () => {
+  const parseRequest = (value: unknown): boolean => exported<Schema>('presentationRunRequestSchema').safeParse(value).success;
+  const parseAnswer = (value: unknown): boolean => exported<Schema>('presentationCarrierAnswerSchema').safeParse(value).success;
+
+  it('CA01 accepts a carrier request for the identity and the basic copy routes only', () => {
+    expect(parseRequest(CARRIER)).toBe(true);
+    expect(parseRequest({ ...CARRIER, route: 'identity' })).toBe(true);
+    for (const route of ['dispatch_copy', 'encode', 'reuse']) expect(parseRequest({ ...CARRIER, route })).toBe(false);
+  });
+
+  it('CA02 refuses a carrier request without its token', () => {
+    const { token: _dropped, ...value } = CARRIER;
+    expect(parseRequest(value)).toBe(false);
+  });
+
+  it('CA03 answers the role-tagged receipts of the carrier, or a failure', () => {
+    expect(parseAnswer({ kind: 'carrier', receipts: [RECEIPT] })).toBe(true);
+    expect(parseAnswer({ kind: 'failed', code: 'source_missing' })).toBe(true);
+    expect(parseAnswer({ kind: 'carrier', receipts: [] })).toBe(false);
+    expect(parseAnswer({ kind: 'carrier', receipts: [{ ...RECEIPT, role: 'manifest' }] })).toBe(false);
+    expect(parseAnswer({ kind: 'carrier', bundle: {} })).toBe(false);
+  });
+});

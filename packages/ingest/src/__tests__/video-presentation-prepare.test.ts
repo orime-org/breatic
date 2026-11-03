@@ -30,7 +30,7 @@ import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { videoPresentationVersionId } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
-import { admission, bundle, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
@@ -42,7 +42,8 @@ interface ProbeFacts {
   work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean };
 }
 type ProbeOutcome = ProbeFacts | { kind: 'failed'; code: string };
-type CarrierOutcome = { kind: 'verified'; bundle: Bundle } | { kind: 'failed'; code: string };
+// S6d D2-1 (§91): the basic carrier answers the role-tagged receipts it wrote; the store measures them in R2 and assembles the bundle.
+type CarrierOutcome = { kind: 'written'; receipts: Record<string, unknown>[] } | { kind: 'failed'; code: string };
 interface Port {
   probe: (capability: Identity) => Promise<ProbeOutcome>;
   writeLedger: (capability: Identity, toolInputId: string, encoding: ProbeFacts['encoding']) => Promise<void>;
@@ -105,13 +106,24 @@ function checked(answer: Answer): Answer {
  * @param every - Keyframe interval.
  * @returns The flags.
  */
+/**
+ * Where the basic copy writes (§91 D2-2): the key of the first dispatched copy attempt.
+ * @param key - The source key.
+ * @param jobId - The job.
+ * @returns The copy key.
+ */
+function copyKeyOf(key: string, jobId: string): string {
+  return workKey(key, videoContainerJobId({ kind: 'presentation-copy', jobId, attempt: 1 }));
+}
+
 function keyframes(frames: number, every: number): boolean[] {
   return Array.from({ length: frames }, (_value, index) => index % every === 0);
 }
 
 /**
- * A fake port: the probe answers `outcome`; the writer commits the real ledger through the store; the carrier
- * answers a verified identity bundle; usage is measured.
+ * A fake port: the probe answers `outcome`; the writer commits the real ledger through the store; the identity carrier
+ * answers the source's receipt and the copy carrier writes its object at the copy key and answers that receipt; usage is
+ * measured.
  * @param store - The store the writer commits through.
  * @param key - The source key.
  * @param outcome - The probe outcome.
@@ -120,7 +132,14 @@ function keyframes(frames: number, every: number): boolean[] {
 function fakePort(store: MachineStore, key: string, outcome: ProbeOutcome): Port & { spies: Record<keyof Port, ReturnType<typeof vi.fn>> } {
   const probe = vi.fn(async () => outcome);
   const writeLedger = vi.fn(async (capability: Identity) => { await produceLedger(store, capability); });
-  const carrier = vi.fn(async (): Promise<CarrierOutcome> => ({ kind: 'verified', bundle: await bundle(key, 'e'.repeat(64)) }));
+  const carrier = vi.fn(async (capability: Identity, route: 'identity' | 'copy'): Promise<CarrierOutcome> => {
+    if (route === 'identity') {
+      const head = (await env.BUCKET.head(key))!;
+      return { kind: 'written', receipts: [{ role: 'carrier', packing: 'native', storageKey: key, sha256: H, sizeBytes: head.size, contentType: 'video/mp4' }] };
+    }
+    const written = await writeCarrier(copyKeyOf(key, capability.jobId), new Uint8Array([3, 1, 4, 1, 5]));
+    return { kind: 'written', receipts: [{ role: 'carrier', packing: 'native', ...written.receipt }] };
+  });
   const usage = vi.fn(async () => USAGE);
   return { probe, writeLedger, carrier, usage, spies: { probe, writeLedger, carrier, usage } };
 }
@@ -197,7 +216,10 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
       expect(port.spies.carrier).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a' }), 'identity');
       expect(answer.plan).toEqual({ route: 'identity', stages: ['plan', 'publish'], toolInputId: T, planSha256: PLAN });
       expect(answer.work).toEqual({ kind: 'none' });
-      expect(answer.presentation).toMatchObject({ versionId: 'e'.repeat(64), toolInputId: T });
+      // §91 D2-1: identity writes no object; the store measures the source in R2 and assembles the bundle.
+      const head = (await env.BUCKET.head(key))!;
+      expect(answer.presentation).toMatchObject({ toolInputId: T, versionId: await expectedVersionId(1, { sha256: H, sizeBytes: head.size }),
+        playback: { kind: 'native', carrier: { storageKey: key, url: `${PUBLIC_BASE}/${key}`, etag: head.etag, size: head.size, sha256: H, contentType: 'video/mp4' }, displayRect: null } });
       expect(answer.candidateLedger).toMatchObject({ state: 'ready' });
       expect((await store.read(key, H)).usage['job-a']).toMatchObject({ wallMs: USAGE.wallMs, cpuUsec: USAGE.cpuUsec });
     });
@@ -211,7 +233,35 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
       expect(port.spies.carrier).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a' }), 'copy');
       expect(answer.plan).toMatchObject({ route: 'copy', stages: ['plan', 'copy', 'publish'] });
       expect(answer.work).toEqual({ kind: 'none' });
-      expect(answer.presentation).not.toBe(null);
+      // §91 D2-1, D2-2: the copy object at the copy key, measured in R2, is the published carrier.
+      const copyKey = copyKeyOf(key, 'job-a');
+      const head = (await env.BUCKET.head(copyKey))!;
+      const sha256 = await digest(new Uint8Array([3, 1, 4, 1, 5]));
+      expect(answer.presentation).toMatchObject({ versionId: await expectedVersionId(1, { sha256, sizeBytes: 5 }),
+        playback: { kind: 'native', carrier: { storageKey: copyKey, url: `${PUBLIC_BASE}/${copyKey}`, etag: head.etag, size: 5, sha256, contentType: 'video/mp4' } } });
+    });
+  });
+
+  it.each([
+    ['a copy receipt whose size disagrees with R2', 'copy', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, sizeBytes: 6 })],
+    ['a copy receipt at another key than the copy key', 'copy', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, storageKey: `${String(receipt.storageKey)}.other` })],
+    ['an identity receipt naming another object than the source', 'identity', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, storageKey: `${String(receipt.storageKey)}.copy` })],
+    ['an identity receipt whose hash is not the source fingerprint', 'identity', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, sha256: 'b'.repeat(64) })],
+  ] as const)('PR12 %s publishes nothing (§91 D2-1)', async (_name, route, change) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const port = fakePort(store, key, planned(route === 'copy' ? COPY_ROUTE : IDENTITY_ROUTE));
+      const real = port.carrier;
+      port.carrier = vi.fn(async (capability: Identity, asked: 'identity' | 'copy'): Promise<CarrierOutcome> => {
+        const outcome = await real(capability, asked);
+        if (outcome.kind === 'written' && route === 'copy' && change(outcome.receipts[0]!).storageKey !== outcome.receipts[0]!.storageKey) {
+          await env.BUCKET.put(String(change(outcome.receipts[0]!).storageKey), new Uint8Array([3, 1, 4, 1, 5]), { httpMetadata: { contentType: 'video/mp4' }, sha256: String(outcome.receipts[0]!.sha256) });
+        }
+        return outcome.kind === 'written' ? { kind: 'written', receipts: [change(outcome.receipts[0]!)] } : outcome;
+      });
+      const answer = await admitAndPrepare(store, key, 'job-a', port);
+      expect(answer.presentation).toBe(null);
+      expect((await store.read(key, H)).candidate.state).not.toBe('verified');
     });
   });
 
