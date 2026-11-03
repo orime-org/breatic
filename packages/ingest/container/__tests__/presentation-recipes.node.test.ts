@@ -168,6 +168,47 @@ async function thumbs(path: string): Promise<Buffer[]> {
 }
 
 /**
+ * The mean stored Y, U and V of a file's first frame, optionally after a filter chain run on its decoded frames.
+ * @param path - The file.
+ * @param chain - A filter chain ending on 4:2:0 frames, none to read the stored planes.
+ * @returns The three plane means.
+ */
+async function planes(path: string, chain?: string): Promise<{ y: number; u: number; v: number }> {
+  const mean = async (plane: string): Promise<number> => {
+    const filter = `${chain === undefined ? '' : `${chain},`}extractplanes=${plane}`;
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-frames:v', '1', '-vf', filter, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+    const bytes = stdout as unknown as Buffer;
+    return bytes.reduce((sum, value) => sum + value, 0) / bytes.length;
+  };
+  return { y: await mean('y'), u: await mean('u'), v: await mean('v') };
+}
+
+/**
+ * The BT.709 limited-range Y, U and V of a file's first frame after a filter chain, from its mean RGB by the BT.709 formula
+ * (the chain's own RGB to 4:2:0 conversion is not used: FFmpeg 7.1 converts it with an ambiguous range).
+ * @param path - The file.
+ * @param chain - A filter chain whose output is RGB.
+ * @returns The three plane values.
+ */
+async function bt709Of(path: string, chain: string): Promise<{ y: number; u: number; v: number }> {
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-frames:v', '1', '-vf', `${chain},format=rgb24`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  const bytes = stdout as unknown as Buffer;
+  const [red, green, blue] = [0, 1, 2].map(channel => bytes.filter((_value, index) => index % 3 === channel).reduce((sum, value) => sum + value, 0) / (bytes.length / 3) / 255) as [number, number, number];
+  const luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return { y: 16 + 219 * luma, u: 128 + 224 * (blue - luma) / 1.8556, v: 128 + 224 * (red - luma) / 1.5748 };
+}
+
+/**
+ * The largest per-plane difference of two plane means.
+ * @param a - One.
+ * @param b - The other.
+ * @returns The difference.
+ */
+function planeGap(a: { y: number; u: number; v: number }, b: { y: number; u: number; v: number }): number {
+  return Math.max(Math.abs(a.y - b.y), Math.abs(a.u - b.u), Math.abs(a.v - b.v));
+}
+
+/**
  * Mean absolute difference of two thumbnails.
  * @param a - One.
  * @param b - The other.
@@ -201,6 +242,16 @@ beforeAll(async () => {
   // Ten frames at 25 fps, each a different grey (limited-range luma 16 + 20n), keyframes at frames 0 and 5.
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128",
     '-c:v', 'libx264', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25']);
+  // A flat grey patch in PQ BT.2020 10-bit: tone mapping gives RGB 152 (stored Y about 146), a plain matrix conversion Y about 123.
+  await make('pq-patch.mp4', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=64x36:r=25:d=0.4', '-vf', 'scale=out_color_matrix=bt2020:out_range=tv,format=yuv420p10le',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
+  // BT.601 (smpte170m) primaries, transfer and matrix: the carrier's tags must be rewritten, not inherited.
+  await make('tagged601.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx264', '-g', '10', '-pix_fmt', 'yuv420p',
+    '-x264-params', 'colorprim=smpte170m:transfer=smpte170m:colormatrix=smpte170m']);
+  // Pure red written with the BT.709 matrix and then stripped of every colour tag: only the plan's matrix decodes it right.
+  await make('red-untagged.mp4', ['-f', 'lavfi', '-i', 'color=c=red:s=64x36:r=25:d=0.4',
+    '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p']);
   await make('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
@@ -327,6 +378,34 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect(encoded).toHaveLength(6);
     [0, 1, 6, 7, 8, 9].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
   });
+
+  // §4.3 HDR row: the carrier is the D05 chain's picture with BT.709 tags; the reference is that chain run here on the same source.
+  it('CE11 the tone-mapped picture is the §4.3 chain\'s picture, not a plain matrix conversion', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' });
+    const [file] = await produce({ [SOURCE]: join(dir, 'pq-patch.mp4') }, [recipe]);
+    const source = join(dir, 'pq-patch.mp4');
+    const chained = await bt709Of(source, 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv');
+    const plain = await planes(source, 'scale=in_color_matrix=bt2020:out_color_matrix=bt709:out_range=tv,format=yuv420p');
+    expect(planeGap(chained, plain)).toBeGreaterThan(15);
+    expect(planeGap(await planes(file!), chained)).toBeLessThan(3);
+  });
+
+  it('CE12 rewrites a BT.601-tagged source\'s tags to BT.709 (§4.3 载体与输出一律显式写标签)', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix: 'bt601' });
+    const [file] = await produce({ [SOURCE]: join(dir, 'tagged601.mp4') }, [recipe]);
+    expectBt709((await probe(file!)).streams[0]!);
+  });
+
+  it('CE13 decodes an untagged source with the plan\'s matrix, not the decoder default (§4.3 工具解码显式传 in_color_matrix)', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt709' });
+    const [file] = await produce({ [SOURCE]: join(dir, 'red-untagged.mp4') }, [recipe]);
+    const source = join(dir, 'red-untagged.mp4');
+    const stored = await planes(source);
+    const byDefault = await planes(source, 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p');
+    expect(planeGap(stored, byDefault)).toBeGreaterThan(5);
+    // BT.709 in and BT.709 out keeps the stored planes.
+    expect(planeGap(await planes(file!), stored)).toBeLessThan(3);
+  });
 });
 
 describe('stitch (§5.4 块的时间、拼接)', () => {
@@ -376,6 +455,13 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
 
   // §91 D3-3: the stitch reports the packed carrier and its packed geometry; the presentation DO writes the manifest after
   // measuring the carrier (design §3.5 bundle assembly) and records it as `role: 'manifest'`, so the container writes no manifest.
+  it('ST05 places each chunk for its plan duration even when the chunk file\'s own duration differs (§5.4 concat duration)', async () => {
+    // The first chunk file lasts 0.8 s; its plan duration is 0.84 s, so the second chunk starts at 0.84.
+    const file = await chunkAndStitch(SECOND, { chunks: [{ inputId: CHUNKS[0], duration: r(21, 25) }, { inputId: CHUNKS[1], duration: r(6, 5) }], audio: null });
+    const list = await packets(file);
+    expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 50 }, (_unused, n) => (n < 20 ? n : n + 1) / 25));
+  });
+
   it('ST04 a packed chunk stitches into a packed carrier of the same geometry and reports that geometry', async () => {
     const packed = { ...TARGET, width: 128, height: 36, alpha: 'packed' };
     const [a] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], packed)]);
