@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Exact, owner-approved physical scope; never expanded by suffix or prefix.
+ * Exact, owner-approved physical scope; never expanded by suffix or prefix. A `derived` presentation object has no kept
+ * key (null).
  */
 export interface ReclaimScope {
   id: string;
   storageKey: string;
-  keptStorageKey: string;
+  keptStorageKey: string | null;
 }
 
 /**

@@ -338,3 +338,7 @@ export type { MiniToolDeliveryOutput, MiniToolDeliveryState, MiniToolDeliveryCon
 export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompletion } from "@domain/mini-tool/execution.service.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
+
+// ── Presentation pins (inner#1306 §7.15) ──
+export * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
+export { syncPresentationPins } from "@domain/presentation/presentation-pin.service.js";

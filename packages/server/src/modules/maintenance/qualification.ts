@@ -6,7 +6,7 @@
  */
 import { type DbTx } from "@breatic/core";
 import type { storageReclaimRepo } from "@breatic/domain";
-import { assetRepo, uploadGrantRepo } from "@breatic/domain";
+import { assetRepo, presentationPinService, uploadGrantRepo } from "@breatic/domain";
 import type { MaintenanceDependencies } from "@server/modules/maintenance/dependencies.js";
 
 /**
@@ -17,6 +17,19 @@ import type { MaintenanceDependencies } from "@server/modules/maintenance/depend
  * @returns Machine refusal reason, or null when product facts qualify.
  */
 export async function qualify(candidate: storageReclaimRepo.ReclaimCandidate, dependencies: Pick<MaintenanceDependencies, "config" | "now">, tx?: DbTx): Promise<string | null> {
+  // A derived presentation object (inner#1306 §7.15) has no grant, canonical or kept twin: it may go once no live
+  // asset uses its key, its protection period has passed and no live presentation pin references it.
+  if (candidate.kind === "derived") {
+    if (await assetRepo.hasLiveStorageKey(candidate.storageKey, tx))
+      return "live_reference";
+    if (dependencies.now().getTime() - candidate.createdAt.getTime() < dependencies.config.protectionSeconds * 1000)
+      return "protection_period";
+    if (await presentationPinService.isKeyPinned(candidate.storageKey, tx))
+      return "pinned";
+    return null;
+  }
+  if (candidate.keptStorageKey === null || candidate.studioId === null || candidate.contentHash === null || candidate.source === null)
+    return "canonical_missing";
   if (candidate.storageKey === candidate.keptStorageKey)
     return "candidate_is_kept";
   if (await assetRepo.hasLiveStorageKey(candidate.storageKey, tx))

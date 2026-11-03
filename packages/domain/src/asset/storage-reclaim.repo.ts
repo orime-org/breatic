@@ -94,9 +94,26 @@ export async function queueForReclaim(entry: ReclaimEntry): Promise<void> {
 }
 
 /**
- * Explicit candidate identity and its proven original upload association.
+ * Queue derived presentation objects that no live pin references any more (inner#1306 §7.15). Idempotent like
+ * `queueForReclaim`; the offline job checks the pins again before it deletes anything.
+ * @param keys - The released object keys.
+ * @param tx - The transaction that released them.
+ * @returns Nothing.
+ * @throws {Error} When the insert fails for any reason other than the conflict.
  */
-export interface ReclaimCandidate { id: string; storageKey: string; keptStorageKey: string; originStorageKey: string | null; studioId: string; contentHash: string; source: string; createdAt: Date; reclaimedAt: Date | null }
+export async function queueDerived(keys: readonly string[], tx: DbTx): Promise<void> {
+  if (keys.length === 0) return;
+  await tx.execute(sql`
+    INSERT INTO storage_reclaim_queue (storage_key, kind)
+    VALUES ${sql.join(keys.map((key) => sql`(${key}, 'derived')`), sql`, `)}
+    ON CONFLICT (storage_key) DO NOTHING
+  `);
+}
+
+/**
+ * Explicit candidate identity and its proven original upload association; a `derived` row has only its key.
+ */
+export interface ReclaimCandidate { id: string; kind: "dedup_loser" | "derived"; storageKey: string; keptStorageKey: string | null; originStorageKey: string | null; studioId: string | null; contentHash: string | null; source: string | null; createdAt: Date; reclaimedAt: Date | null }
 /**
  * Read bounded candidates by immutable cursor (includes previously reclaimed approvals).
  * @param limit - Page bound.

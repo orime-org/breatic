@@ -67,7 +67,7 @@ export async function candidates(pageSize: number, cursor?: string): Promise<Mai
     const obj = await repo.findObject(r.storageKey);
     const op = obj ? await repo.findOperationById(obj.operationId) : null;
     return {
-      id: r.id, storageKey: r.storageKey, keptStorageKey: r.keptStorageKey, createdAt: r.createdAt.toISOString(), source: r.source, operationKey: op?.key ?? null
+      id: r.id, kind: r.kind, storageKey: r.storageKey, keptStorageKey: r.keptStorageKey, createdAt: r.createdAt.toISOString(), source: r.source, operationKey: op?.key ?? null
     };
   }));
   return {
@@ -103,7 +103,7 @@ export async function preview(ids: string[], requestedBy: string): Promise<Maint
       });
       continue;
     }
-    const scope = {
+    const scope: ReclaimScope = {
       id, storageKey: row.storageKey, keptStorageKey: row.keptStorageKey
     };
     let reason = await qualify(row, {
@@ -114,7 +114,7 @@ export async function preview(ids: string[], requestedBy: string): Promise<Maint
     if (!reason) {
       if (!maintenanceAvailability().configured)
         reason = "executor_unavailable";
-      else {
+      else if (row.keptStorageKey !== null) {
         reason = await checkKeptHead(getMaintenanceDependencies().storage, {
           stage: "preview", requestedBy, operationKey: null, previewId: null,
           candidateIds: [row.id], storageKeys: [row.storageKey], keptStorageKey: row.keptStorageKey,
@@ -182,7 +182,8 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
       physicalReason = "executor_unavailable";
     else {
       const storage = getMaintenanceDependencies().storage;
-      const keptKeys = [...new Set(checkedPreview.items.map(item => item.keptStorageKey))];
+      // Derived rows have no kept object to check.
+      const keptKeys = [...new Set(checkedPreview.items.flatMap(item => item.keptStorageKey === null ? [] : [item.keptStorageKey]))];
       for (let offset = 0; offset < keptKeys.length; offset += 4) {
         const results = await Promise.all(keptKeys.slice(offset, offset + 4).map(async (key) => {
           const candidates = checkedPreview.items.filter(item => item.keptStorageKey === key);
