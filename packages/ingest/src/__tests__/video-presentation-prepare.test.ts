@@ -248,6 +248,7 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
     ['a copy receipt at another key than the copy key', 'copy', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, storageKey: `${String(receipt.storageKey)}.other` })],
     ['an identity receipt naming another object than the source', 'identity', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, storageKey: `${String(receipt.storageKey)}.copy` })],
     ['an identity receipt whose hash is not the source fingerprint', 'identity', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, sha256: 'b'.repeat(64) })],
+    ['a copy receipt whose content type disagrees with R2', 'copy', (receipt: Record<string, unknown>): Record<string, unknown> => ({ ...receipt, contentType: 'video/webm' })],
   ] as const)('PR12 %s publishes nothing (§91 D2-1)', async (_name, route, change) => {
     const key = await source();
     await withStore(key, async (store) => {
@@ -624,6 +625,27 @@ describe('the basic copy carrier write through the edge (§91 D2-2)', () => {
       expect((await put(store, source, capability)).status).toBe(409);
       expect((await env.BUCKET.head(copyKeyOf(source, 'job-a')))!.etag).toBe(etag);
       return { kind: 'written', receipts: [{ role: 'carrier', packing: 'native', ...await first.json() }] };
+    });
+  });
+
+  it('BC07 the DO grants one claim per copy key: a second claim of the same key is refused before any byte is written', async () => {
+    await copyWith(async (store, source, capability) => {
+      const owner = store as Claimable;
+      const declaration = { byteLength: BYTES.length, contentType: 'video/mp4' };
+      expect(await owner.claimPresentationCarrier(capability, copyKeyOf(source, 'job-a'), declaration)).toMatchObject({ owner: expect.any(String) });
+      expect(await owner.claimPresentationCarrier(capability, copyKeyOf(source, 'job-a'), declaration)).toBeNull();
+      return { kind: 'failed', code: 'presentation_failed' };
+    });
+  });
+
+  it('BC08 an object already at the copy key is never overwritten, even under a granted claim: 409 and the object unchanged', async () => {
+    await copyWith(async (store, source, capability) => {
+      const target = copyKeyOf(source, 'job-a');
+      const existing = await env.BUCKET.put(target, new Uint8Array([9, 9, 9]), { httpMetadata: { contentType: 'video/mp4' } });
+      expect((await put(store, source, capability)).status).toBe(409);
+      const head = (await env.BUCKET.head(target))!;
+      expect({ etag: head.etag, size: head.size }).toEqual({ etag: existing.etag, size: 3 });
+      return { kind: 'failed', code: 'presentation_failed' };
     });
   });
 

@@ -203,6 +203,16 @@ describe('the ledger action writes full and compact through the edge PUT of the 
     expect(full.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180 });
   });
 
+  it('LW05 given encode facts are written as given, even where a re-probe derives others: only null derives them again', async () => {
+    const planned = await probed('cfr.mp4');
+    const given = { keyframeOrdinals: [0, 25], codedWidth: 320, codedHeight: 180 };
+    expect(given).not.toEqual(planned.encoding);
+    expect(await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: planned.toolInputId, encodeFacts: given })).toEqual({ kind: 'written' });
+    const query = Object.fromEntries(puts[0]!.url.searchParams);
+    const full = JSON.parse(new TextDecoder().decode(puts[0]!.body.subarray(Number(query.tableByteLength)))) as VideoPresentationLedger;
+    expect(full.encoding).toEqual(given);
+  });
+
   it('LW03 a toolInputId the source does not plan to writes nothing and fails source_ledger_plan_mismatch, a content failure (§91 D2-3)', async () => {
     const answer = await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: 'f'.repeat(64), encodeFacts: null });
     expect(puts).toEqual([]);
