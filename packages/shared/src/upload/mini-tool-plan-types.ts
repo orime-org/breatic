@@ -23,4 +23,7 @@ export type MiniToolPlanRecipe =
   | { kind: "frame"; inputId: string; frameIndex: number; orientation?: "display"; crop?: MiniToolPlanFrameCrop }
   | { kind: "segment"; inputId: string; range: { start: number; end: number }; audioEnd?: number }
   | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile; orientation?: "display" }
-  | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile };
+  | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
+  | { kind: "copy_carrier"; inputId: string }
+  | { kind: "chunk_encode"; inputId: string; window: { start: number; end: number } }
+  | { kind: "stitch"; inputId: string; chunks: string[] };

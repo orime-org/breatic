@@ -36,6 +36,10 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
   z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile, orientation: z.literal("display").optional() }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),
+  // Presentation carrier jobs (§7.17): only the outer shape; the clip entries are S6d's.
+  z.strictObject({ kind: z.literal("copy_carrier"), inputId }),
+  z.strictObject({ kind: z.literal("chunk_encode"), inputId, window: z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start) }),
+  z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(storageKey).min(1) }),
 ]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */

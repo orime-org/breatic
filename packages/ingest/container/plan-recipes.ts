@@ -258,5 +258,10 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null) throw new Error("Segment recipe produced no complete video metadata");
       return { ...metadata, cover: null };
     }
+    case "copy_carrier":
+    case "chunk_encode":
+    case "stitch":
+      // The presentation carrier recipes are frozen in shape only; their FFmpeg commands arrive with S6d.
+      throw new Error(`The ${recipe.kind} recipe is not executable yet`);
   }
 }
