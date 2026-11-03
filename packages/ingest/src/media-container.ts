@@ -33,7 +33,9 @@ import { preparePresentation, VideoPresentationStore, type VideoPresentationAdmi
 import { writeVideoSourceLedger } from '@ingest/video-source-ledger-write.js';
 import { SOURCE_LEDGER_HANDLER } from '@ingest/alpha-run-contract.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
-import { serveOneObject } from "@ingest/media-object-route.js";
+import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
+import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
+import { PRESENTATION_RUN_PATH, type PresentationRunRequest } from '@ingest/presentation-run-contract.js';
 import { writeStreamedObject } from "@ingest/stored-object.js";
 import {
   UPRIGHT_HEIGHT_HEADER,
@@ -221,9 +223,32 @@ export class MediaContainer extends Container<MediaEnv> {
    * @throws {never} Constructing it starts no IO.
    */
   private presentationPort(): PresentationContainerPort {
-    // ponytail: the probe, ledger and carrier recipes run in this container with S6d; until then a prepare fails without recording anything.
-    const pending = (): never => { throw new Error('The presentation container recipes arrive with S6d'); };
-    return { probe: async () => pending(), writeLedger: async () => pending(), carrier: async () => pending(), usage: async () => null };
+    const store = this.presentationStore();
+    /**
+     * One run request to this instance's container, which reads the source only through the serve handler.
+     * @param storageKey - The canonical key the container may read.
+     * @param body - The request.
+     * @returns The answer's JSON.
+     * @throws {Error} When the container is unreachable or refuses.
+     */
+    const send = async (storageKey: string, body: PresentationRunRequest): Promise<unknown> => {
+      const authorised: ServeOneKey = { key: storageKey };
+      await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, authorised);
+      const answer = await this.containerFetch(new Request(`http://media${PRESENTATION_RUN_PATH}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+      if (!answer.ok) throw new Error(`The presentation container answered ${answer.status}`);
+      return answer.json();
+    };
+    // ponytail: the ledger and carrier actions run in this container with S6d D2; until then a planned prepare stops there.
+    const pending = (): never => { throw new Error('The presentation ledger and carrier actions arrive with S6d D2'); };
+    return {
+      probe: async (capability) => {
+        const storageKey = capability.storageKey;
+        const admission = storageKey === undefined ? null : await store.admissionOf({ storageKey, sourceFingerprint: capability.sourceFingerprint, jobId: capability.jobId });
+        if (storageKey === undefined || admission === null) throw new Error('The presentation job is no longer held');
+        return createPresentationContainerPort((body) => send(storageKey, body), admission, mediaObjectUrl(storageKey)).probe(capability);
+      },
+      writeLedger: async () => pending(), carrier: async () => pending(), usage: async () => null,
+    };
   }
 
   /**

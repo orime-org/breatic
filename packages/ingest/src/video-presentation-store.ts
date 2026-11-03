@@ -12,7 +12,7 @@
 import {
   videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationObjectURL, videoPresentationVersionId, videoPresentationVersionSchema,
   videoPresentationWorkKeyFor, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
-  type VideoPresentationAdmissionPolicy, type VideoPresentationOutputReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
+  type VideoPresentationAdmissionPolicy, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
   type VideoPresentationEncoding, type VideoPresentationIngestLedger, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt, type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact,
   type VideoPresentationVersion,
@@ -47,6 +47,8 @@ export interface VideoPresentationAdmission {
   targetPolicyVersion?: number;
   policy?: VideoPresentationAdmissionPolicy;
   encoding?: VideoPresentationEncoding;
+  /** The probe's sampled frames, the single-frame duration and the identity table (design §5.1 step 2, §4.1). */
+  probe?: VideoPresentationProbeFacts;
   actorUserId?: string;
   projectId?: string | null;
   /** Every derived object's public URL is this base joined to its key. */
@@ -320,6 +322,19 @@ export class VideoPresentationStore {
       const selected = state.selected.kind === 'ready' ? state.presentation : null;
       return { capability, planned: found.job.candidate.route !== null || found.job.candidate.state !== 'building', ledgerOnly: null, admission: found.job.admission,
         selected: selected === null ? null : { planSha256: selected.planSha256, producerVersion: selected.producerVersion, profileVersion: selected.profileVersion } };
+    });
+  }
+
+  /**
+   * The frozen admission of a job this DO still holds, without changing anything.
+   * @param identity - The job.
+   * @returns Its admission, or null.
+   * @throws {Error} When durable storage fails.
+   */
+  admissionOf(identity: PresentationJobRef): Promise<VideoPresentationAdmission | null> {
+    return this.gate(async () => {
+      const state = await this.load();
+      return (state === undefined ? undefined : this.findRef(state, identity))?.job.admission ?? null;
     });
   }
 

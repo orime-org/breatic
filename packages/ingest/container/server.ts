@@ -63,6 +63,7 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { ALPHA_RUN_PATH, handleAlphaPresentation } from "@ingest/container/alpha-presentation.js";
+import { handlePresentationRun, PRESENTATION_RUN_PATH } from "@ingest/container/presentation-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
 import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
 
@@ -258,6 +259,10 @@ function send(res: ServerResponse, answer: Response): void {
 createServer((req, res) => {
   if (req.method === "POST" && req.url === ALPHA_RUN_PATH) {
     void handleAlphaPresentation(req, res);
+    return;
+  }
+  if (req.method === "POST" && req.url === PRESENTATION_RUN_PATH) {
+    void handlePresentationRun(req, res);
     return;
   }
   if (req.method === "POST" && req.url === LONG_MEDIA_SEGMENT_PATH) {

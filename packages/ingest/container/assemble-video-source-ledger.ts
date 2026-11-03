@@ -78,6 +78,11 @@ export interface VideoPresentationPlanInput {
   videoSpans: readonly VideoEditSpan[] | null;
   /** The video track's media duration, which decides whether a single edit is no edit. */
   mediaDuration: PresentationRational;
+  /**
+   * Where the media starts in source time: its first composition time, 0 when omitted. An edit that only removes the
+   * composition delay of reordered frames starts there.
+   */
+  mediaStart?: PresentationRational;
   /** The selected audio's window and edits in original time, or null without audio. */
   audio: { start: PresentationRational; end: PresentationRational; spans: readonly VideoEditSpan[] | null } | null;
   display: { width: number; height: number };
@@ -160,7 +165,7 @@ export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput)
       firstSource: { supportStart: first.support.start, lead: first.derivedLead === null ? null : { kind: "derived-lead", start: first.derivedLead.start } },
       lastSource: { support: last.support.rule, supportEnd: last.support.end, hold: last.derivedHold === null ? null : { kind: "derived-hold", end: last.derivedHold.end } },
     },
-    videoSpans: input.videoSpans === null || coversWholeMedia(input.videoSpans, input.mediaDuration) ? null : rebase(input.videoSpans),
+    videoSpans: input.videoSpans === null || coversWholeMedia(input.videoSpans, input.mediaStart ?? { numerator: "0", denominator: "1" }, input.mediaDuration) ? null : rebase(input.videoSpans),
     audioSpans: input.audio === null || input.audio.spans === null ? null : rebase(input.audio.spans),
     segmentDuration: input.segmentDuration,
   };
@@ -169,15 +174,17 @@ export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput)
 /**
  * Whether the edits are one rate-1 span from the media start over the whole media, which presents the media unedited.
  * @param spans - The video edits.
+ * @param mediaStart - Where the media starts in source time.
  * @param mediaDuration - The video track's media duration.
  * @returns Whether the edits are no edit.
  * @throws {RangeError} When a time is not an exact rational.
  */
-function coversWholeMedia(spans: readonly VideoEditSpan[], mediaDuration: PresentationRational): boolean {
+function coversWholeMedia(spans: readonly VideoEditSpan[], mediaStart: PresentationRational, mediaDuration: PresentationRational): boolean {
   if (spans.length !== 1) return false;
   const [start, end, rate] = [rational(spans[0]!.sourceStart), rational(spans[0]!.sourceEnd), rational(spans[0]!.rate)];
-  const media = rational(mediaDuration);
-  return start[0] === 0n && end[0] * media[1] === media[0] * end[1] && rate[0] === rate[1];
+  const [from, media] = [rational(mediaStart), rational(mediaDuration)];
+  // start = from and end = from + media, compared as exact fractions.
+  return start[0] * from[1] === from[0] * start[1] && end[0] * from[1] * media[1] === (from[0] * media[1] + media[0] * from[1]) * end[1] && rate[0] === rate[1];
 }
 
 /**
@@ -201,7 +208,7 @@ function trackOf(metadata: IsoBmffMetadata, trackId: number): IsoBmffMetadata["t
  * @returns Spans in presentation order.
  * @throws {Error} With `code` `unsupported_rate` for a non-positive rate.
  */
-function editSpans(edits: readonly IsoBmffEdit[], movieTimescale: string, mediaTimescale: string): VideoEditSpan[] {
+export function editSpans(edits: readonly IsoBmffEdit[], movieTimescale: string, mediaTimescale: string): VideoEditSpan[] {
   const movie = BigInt(movieTimescale);
   const media = BigInt(mediaTimescale);
   const spans: VideoEditSpan[] = [];

@@ -32,6 +32,7 @@
     "./explicit-iso-video-presentation.ts",
     "./unedited-iso-video-presentation.ts",
     "./alpha-presentation.ts",
+    "./presentation-run.ts",
     "./plan-command.ts",
     "./plan-recipes.ts",
     "./plan-run.ts",
@@ -44,6 +45,7 @@
     "../../shared/src/upload/mini-tool-plan-types.ts",
     "../src/probe-answer.ts",
     "../src/alpha-run-contract.ts",
+    "../src/presentation-run-types.ts",
     "../src/video-alpha-classification.ts",
     "../src/probe-command.ts",
     "../src/media-metadata.ts",
@@ -66,6 +68,7 @@
     "../../shared/src/mini-tools/video-presentation-projection.ts",
     "../../shared/src/mini-tools/video-presentation-timeline.ts",
     "../../shared/src/mini-tools/video-encode-plan.ts",
+    "../../shared/src/mini-tools/canonical-json.ts",
     "__tests__/*.ts"
   ]
 }
