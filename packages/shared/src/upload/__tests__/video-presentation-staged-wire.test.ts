@@ -345,7 +345,7 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
   const CHUNK_B = '7d4c2e3f-1b5a-4e6f-8c9b-2d3e4f5a6b7c';
   const chunkEncode = { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET };
   const stitch = { kind: 'stitch', inputId: INPUT, chunks: [{ inputId: CHUNK_A, duration: r(48, 25) }, { inputId: CHUNK_B, duration: r(2, 25) }], audio: { start: r(0), end: r(2) }, target: TARGET };
-  const modelInput = { kind: 'prepare_model_input', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET };
+  const modelInput = { kind: 'prepare_model_input', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET, audio: { start: r(48, 25), end: r(2) } };
   const chunkInputs = [{ inputId: CHUNK_A, storageKey: `${KEY}.c0` }, { inputId: CHUNK_B, storageKey: `${KEY}.c1` }];
 
   /**
@@ -372,6 +372,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['chunk_encode tone mapping HDR', { ...chunkEncode, target: { ...TARGET, toneMap: 'sdr-bt709' } }, false],
     // S6e E3b (§7.17, §5.3): the model input over its presentation window, written as an intermediate object.
     ['prepare_model_input', modelInput, false],
+    // §91 D3-4: the model input pads odd sides with a displayRect like a chunk, and carries no audio when the source has none.
+    ['prepare_model_input for an odd, padded picture without audio', { ...modelInput, audio: null, target: { ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } } }, false],
   ] as const)('RC01 admits the %s recipe on a standard-4 job request', (_name, recipe, withChunks) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
     const request = jobOf(recipe, withChunks ? chunkInputs : []);
@@ -398,7 +400,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['a stitch of no chunks', { ...stitch, chunks: [] }],
     ['a stitch whose chunk is the source input', { ...stitch, chunks: [{ inputId: INPUT, duration: r(2) }] }],
     ['a copy without the plan matrix', { kind: 'copy_carrier', inputId: INPUT }],
-    ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT, timescale: 25, entries: ENTRIES, target: TARGET }],
+    ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT, timescale: 25, entries: ENTRIES, target: TARGET, audio: null }],
+    ['a model input without its audio field', { kind: 'prepare_model_input', inputId: INPUT, window: { start: 48, end: 50 }, timescale: 25, entries: ENTRIES, target: TARGET }],
   ])('RC02 rejects %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.safeParse(chunkEncode).success).toBe(true);
     expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);

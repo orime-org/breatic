@@ -24,7 +24,8 @@ import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 const run = promisify(execFile);
 type Exact = { numerator: string; denominator: string };
 type Recipe = Record<string, unknown>;
-interface Report { ok: boolean; outputs: { outputIndex: number }[] }
+type Rect = { x: number; y: number; width: number; height: number };
+interface Report { ok: boolean; outputs: { outputIndex: number; packing?: { packedWidth: number; packedHeight: number; colorRect: Rect; alphaRect: Rect } }[] }
 interface Stream { codec_type: string; codec_name: string; width?: number; height?: number; pix_fmt?: string; color_primaries?: string; color_transfer?: string; color_space?: string; color_range?: string; time_base: string; sample_rate?: string; duration?: string; side_data_list?: { side_data_type: string; rotation?: number }[] }
 interface Packet { pts_time: string; duration_time: string; flags: string }
 
@@ -341,7 +342,9 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
     expect(Number(list[49]!.pts_time) + Number(list[49]!.duration_time)).toBeCloseTo(3, 6);
   });
 
-  it('ST04 a packed chunk stitches into a packed carrier of the same geometry (§3.5 alpha-packed; manifest production is D3-3)', async () => {
+  // §91 D3-3: the stitch reports the packed carrier and its packed geometry; the presentation DO writes the manifest after
+  // measuring the carrier (design §3.5 bundle assembly) and records it as `role: 'manifest'`, so the container writes no manifest.
+  it('ST04 a packed chunk stitches into a packed carrier of the same geometry and reports that geometry', async () => {
     const packed = { ...TARGET, width: 128, height: 36, alpha: 'packed' };
     const [a] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], packed)]);
     const [file] = await produce({ [SOURCE]: join(dir, 'alpha.mov'), [CHUNKS[0]!]: a! },
@@ -349,6 +352,8 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.width, video.height]).toEqual(['h264', 128, 36]);
     expect(await packets(file!)).toHaveLength(10);
+    expect(reports[0]!.outputs).toHaveLength(1);
+    expect(reports[0]!.outputs[0]!.packing).toEqual({ packedWidth: 128, packedHeight: 36, colorRect: { x: 0, y: 0, width: 64, height: 36 }, alphaRect: { x: 64, y: 0, width: 64, height: 36 } });
   });
 });
 
@@ -360,13 +365,37 @@ describe('copy_carrier and prepare_model_input', () => {
     expect((await packets(file!)).map(packet => packet.pts_time)).toEqual((await packets(join(dir, 'untagged.mp4'))).map(packet => packet.pts_time));
   });
 
-  it('PM01 renders the selected interval upright in the display geometry with the plan matrix (§5.3 模型输入准备)', async () => {
-    const recipe = { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 20 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(4, 5))], target: { ...TARGET, width: 180, height: 320 } };
-    const [file] = await produce({ [SOURCE]: join(dir, 'rot90.mp4') }, [recipe]);
-    const video = (await probe(file!)).streams.find(stream => stream.codec_type === 'video')!;
+  /**
+   * A prepare_model_input recipe over the source's first 20 frames.
+   * @param target - Its target block.
+   * @param audio - Its audio interval.
+   * @returns The recipe.
+   */
+  function modelInput(target: Recipe, audio: { start: Exact; end: Exact } | null): Recipe {
+    return { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 20 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(4, 5))], target, audio };
+  }
+
+  it('PM01 renders the selected interval upright in the display geometry with the plan matrix and the interval audio (§5.3 模型输入准备)', async () => {
+    const [file] = await produce({ [SOURCE]: join(dir, 'rot90.mp4') }, [modelInput({ ...TARGET, width: 180, height: 320 }, { start: r(0), end: r(4, 5) })]);
+    const { streams } = await probe(file!);
+    const video = streams.find(stream => stream.codec_type === 'video')!;
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 180, 320]);
     expect((video.side_data_list ?? []).filter(side => side.side_data_type === 'Display Matrix' && (side.rotation ?? 0) !== 0)).toEqual([]);
     expectBt709(video);
     expect(await packets(file!)).toHaveLength(20);
+    // §91 D3-4: a source with audio carries the selected interval's audio, AAC at 48 kHz.
+    const audio = streams.filter(stream => stream.codec_type === 'audio');
+    expect(audio.map(stream => [stream.codec_name, stream.sample_rate])).toEqual([['aac', '48000']]);
+    expect(Math.abs(Number(audio[0]!.duration) - 0.8)).toBeLessThanOrEqual(1024 / 48000);
+  });
+
+  it('PM02 pads an odd display size to even with the picture at displayRect, never cropping it (§5.3 保留映射及所有真实内容; §91 D3-4)', async () => {
+    const recipe = modelInput({ ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } }, null);
+    const [file] = await produce({ [SOURCE]: join(dir, 'odd.mp4') }, [{ ...recipe, window: { start: 0, end: 10 }, entries: [span(r(0), r(0), r(0), r(2, 5))] }]);
+    const { streams } = await probe(file!);
+    expect(streams.map(stream => [stream.codec_type, stream.codec_name, stream.width, stream.height])).toEqual([['video', 'h264', 162, 98]]);
+    // The whole 161x97 picture is kept: its last column and row are still white.
+    expect(Math.min(...await lumaMeans(file!, { x: 0, y: 0, width: 161, height: 97 }))).toBeGreaterThan(200);
+    expect(Math.min(...await lumaMeans(file!, { x: 160, y: 0, width: 1, height: 96 }))).toBeGreaterThan(200);
   });
 });
