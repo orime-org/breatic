@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * 订阅早就过期了，档位却还停在付费档（#106 §10.1）—— 真 PG。

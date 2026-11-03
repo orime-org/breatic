@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A slider means the same on a picture and a video (inner#1303 §6.1): the

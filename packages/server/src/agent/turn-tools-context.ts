@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What each tool of one turn is handed through the SDK's tool context.

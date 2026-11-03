@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the R2 ingest pipeline needs the tables to hold (task #173).

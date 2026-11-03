@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 // The chat draft is kept as one string; the box shows it as paragraphs with
 // reference blocks. These two have to turn into each other without loss.

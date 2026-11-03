@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * #904 验收 C3–C9b · #978 验收 A1 · A2 · A3 · A4 · A5 · A12 · A14: the numbers

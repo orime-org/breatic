@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 // After an update reload, the box shows the sentence the user had typed,
 // reference blocks included: the draft and the tray come back from two

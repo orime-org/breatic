@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Real Timeline creation and common Space lifecycle entry points (inner#1707). */
 import { expect, type Page } from 'playwright/test';

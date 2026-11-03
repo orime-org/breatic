@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';

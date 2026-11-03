@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import { createInfraClientRule } from "#rules/infra-client-rule";
 
 /** Only `@breatic/core` may construct Redis clients. */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@breatic/core", () => ({env: {ALLOWED_ORIGINS: "https://app.example.com, https://preview.example.com"}}));

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { assetRepo, projectActivitiesRepo, type ProjectMediaBackfillCandidate, type ProjectMediaBackfillSource } from "@breatic/core";
 import type { NodeHistoryEntity, TaskEntity } from "@breatic/shared";

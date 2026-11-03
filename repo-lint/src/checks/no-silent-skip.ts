@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { isScannableText, isTextContent } from "#repo-lint/file-kinds";
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 import { getTimelineConfig } from "@core/config/timeline.js";
 import { inspectRegisteredProjectMedia, ProjectMediaScopeUnavailableError, referenceRegisteredProjectMediaDetailed } from "@core/asset/project-asset-reference.service.js";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;

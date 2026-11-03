@@ -999,10 +999,10 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Elastic-2.0
 ```
 
-`AGPL-3.0-only` = GNU Affero General Public License v3.0,仅限这一版本(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
+`Elastic-2.0` = Elastic License 2.0(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
 
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
 - **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。

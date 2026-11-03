@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: AGPL-3.0-only
+-- SPDX-License-Identifier: Elastic-2.0
 
 -- Funding receipts and original decisions never expire or soft-delete (inner#1411).
 CREATE TABLE credit_grant_operations (

@@ -9,7 +9,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
-- **breatic is open source under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`); the Breatic name and logo are covered by [TRADEMARKS.md](TRADEMARKS.md), not by the licence.** Check that a dependency's licence is compatible with AGPL-3.0 before adding the dependency.
+- **breatic is source-available under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`): anyone may read, modify and run it, and no one may provide it to third parties as a hosted service; the Breatic name and logo are covered by [TRADEMARKS.md](TRADEMARKS.md), not by the licence.** Describe it as source-available, never as open source. Check that a dependency's licence lets us ship it under ELv2 before adding it: no GPL or AGPL code inside our packages or bundles; a separate GPL program shipped beside ours (the ingest container's ffmpeg) is recorded in `THIRD-PARTY.md`.
 
 | Read | When |
 |---|---|
@@ -44,7 +44,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 ### TypeScript strictness
 **TypeScript is strict everywhere: no `any` (use `unknown`), no `var`, no `require()`.** The same lint level applies to every package, front end included.
 
-- **Every first-party TypeScript file, tests included, starts with the two-line SPDX header (`// Copyright (c) 2026 Orime, Inc.` and `// SPDX-License-Identifier: AGPL-3.0-only`); the shadcn vendor directory `packages/web/src/components/ui/` carries none.** `breatic/no-missing-license-header` checks both lines; `pnpm lint:fix` writes it.
+- **Every first-party TypeScript file, tests included, starts with the two-line SPDX header (`// Copyright (c) 2026 Orime, Inc.` and `// SPDX-License-Identifier: Elastic-2.0`); the shadcn vendor directory `packages/web/src/components/ui/` carries none.** `breatic/no-missing-license-header` checks both lines; `pnpm lint:fix` writes it.
 - **Non-test code imports through the package's own alias (`@shared`, `@core`, `@domain`, `@collab`, `@worker`, `@server`, `@web`, `@ingest`, `@integration-tests`, `@provider`), never `./` or `../`, and nothing uses `@/`.** A unique prefix per package keeps imports resolvable when one package's source is compiled inside another's; `breatic/no-relative-import` enforces it and `pnpm lint:fix` rewrites violations. Judging whether a tsconfig alias is dead: invoke `/build-tooling` ([skill](.claude/skills/build-tooling/SKILL.md)).
 - **There is no Prettier; formatting is ESLint's job.** Never run `prettier`: it reflows whole files against the ESLint `indent` rule. Fix format with `pnpm lint:fix` (`eslint --fix`), which touches only violating lines.
 - **Test files live in a `__tests__/` directory beside the code they test (`breatic/test-file-location`).** When moving a test there, deepen its relative imports and the path argument of every `vi.mock("./x")`; a missed `vi.mock` path fails silently as `.mockResolvedValueOnce is not a function`.
