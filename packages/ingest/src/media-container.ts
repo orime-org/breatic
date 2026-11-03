@@ -29,14 +29,15 @@ import { askedKey } from "@ingest/object-url.js";
 import { videoSourceLedgerKeyFor, type VideoPresentationPrepareAnswer } from '@breatic/shared';
 import { preparePresentation, VideoPresentationStore, type VideoPresentationAdmission, type PresentationCapability, type PresentationChunkReport,
   type PresentationChunkUnit, type PresentationContainerPort, type PresentationJobIdentity, type PresentationJobRef, type PresentationReport, type PresentationView,
-  type SourceLedgerDeclaration, type SourceLedgerMeasurement, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
+  type SourceLedgerDeclaration, type SourceLedgerMeasurement, type SourceLedgerWriteClaim, type PresentationCarrierMeasurement } from '@ingest/video-presentation-store.js';
 import { writeVideoSourceLedger } from '@ingest/video-source-ledger-write.js';
 import { SOURCE_LEDGER_HANDLER } from '@ingest/alpha-run-contract.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
 import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
 import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
 import { PRESENTATION_RUN_PATH, type PresentationRunRequest } from '@ingest/presentation-run-contract.js';
-import { writeStreamedObject } from "@ingest/stored-object.js";
+import { PRESENTATION_CARRIER_HANDLER, PRESENTATION_CARRIER_HOST, SOURCE_LEDGER_WRITE_HOST } from '@ingest/presentation-run-types.js';
+import { hashStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 import {
   UPRIGHT_HEIGHT_HEADER,
   UPRIGHT_WIDTH_HEADER,
@@ -147,6 +148,31 @@ export class MediaContainer extends Container<MediaEnv> {
   }
 
   /**
+   * Claim the basic copy's carrier key before the outbound handler can write R2 (§91 D2-2).
+   * @param identity - The writer's capability.
+   * @param key - The key the write names.
+   * @param declaration - The declared length and type.
+   * @param attempt - The copy attempt.
+   * @returns The claim owner, `forbidden` for another key, or null.
+   * @throws {Error} When durable state fails.
+   */
+  claimPresentationCarrier(identity: PresentationCapability, key: string, declaration: { byteLength: number; contentType: string }, attempt: number): Promise<{ owner: string } | 'forbidden' | null> {
+    return this.presentationStore().claimPresentationCarrier(identity, key, declaration, attempt);
+  }
+
+  /**
+   * Record the Worker's measurement of a claimed carrier write.
+   * @param identity - The writer's capability.
+   * @param owner - The claim owner.
+   * @param measured - What landed.
+   * @returns Whether the claim took it.
+   * @throws {Error} When durable state fails.
+   */
+  commitPresentationCarrier(identity: PresentationCapability, owner: string, measured: PresentationCarrierMeasurement): Promise<boolean> {
+    return this.presentationStore().commitPresentationCarrier(identity, owner, measured);
+  }
+
+  /**
    * Release only the failed ledger write's own claim.
    * @param identity - The writer's capability.
    * @param toolInputId - The instance.
@@ -234,20 +260,29 @@ export class MediaContainer extends Container<MediaEnv> {
     const send = async (storageKey: string, body: PresentationRunRequest): Promise<unknown> => {
       const authorised: ServeOneKey = { key: storageKey };
       await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, authorised);
+      await this.setOutboundByHost(SOURCE_LEDGER_WRITE_HOST, SOURCE_LEDGER_HANDLER, authorised);
+      await this.setOutboundByHost(PRESENTATION_CARRIER_HOST, PRESENTATION_CARRIER_HANDLER, authorised);
       const answer = await this.containerFetch(new Request(`http://media${PRESENTATION_RUN_PATH}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
       if (!answer.ok) throw new Error(`The presentation container answered ${answer.status}`);
       return answer.json();
     };
-    // ponytail: the ledger and carrier actions run in this container with S6d D2; until then a planned prepare stops there.
-    const pending = (): never => { throw new Error('The presentation ledger and carrier actions arrive with S6d D2'); };
+    /**
+     * The port of the job a capability names, over this instance's container.
+     * @param capability - The granted job.
+     * @returns The port.
+     * @throws {Error} When the job is no longer held.
+     */
+    const portFor = async (capability: PresentationCapability): Promise<PresentationContainerPort> => {
+      const storageKey = capability.storageKey;
+      const admission = storageKey === undefined ? null : await store.admissionOf({ storageKey, sourceFingerprint: capability.sourceFingerprint, jobId: capability.jobId });
+      if (storageKey === undefined || admission === null) throw new Error('The presentation job is no longer held');
+      return createPresentationContainerPort((body) => send(storageKey, body), admission, mediaObjectUrl(storageKey));
+    };
     return {
-      probe: async (capability) => {
-        const storageKey = capability.storageKey;
-        const admission = storageKey === undefined ? null : await store.admissionOf({ storageKey, sourceFingerprint: capability.sourceFingerprint, jobId: capability.jobId });
-        if (storageKey === undefined || admission === null) throw new Error('The presentation job is no longer held');
-        return createPresentationContainerPort((body) => send(storageKey, body), admission, mediaObjectUrl(storageKey)).probe(capability);
-      },
-      writeLedger: async () => pending(), carrier: async () => pending(), usage: async () => null,
+      probe: async (capability) => (await portFor(capability)).probe(capability),
+      writeLedger: async (capability, toolInputId, encoding) => (await portFor(capability)).writeLedger(capability, toolInputId, encoding),
+      carrier: async (capability, route) => (await portFor(capability)).carrier(capability, route),
+      usage: async () => null,
     };
   }
 
@@ -307,6 +342,54 @@ export async function writeSourceLedgerPresentation(request: Request, env: Media
   } catch (err) {
     noteFailure('ingest_video_source_ledger_write_failed', { err, storageKey: ctx.params.key, jobId, sourceFingerprint });
     return new Response('Ledger write failed', { status: 502 });
+  }
+}
+
+/**
+ * Accept the basic copy's one carrier write at the copy key the DO claims for it before any byte lands (§91 D2-2); the
+ * object is written once and the Worker answers its measurement of what landed.
+ * @param request - Container-local PUT whose query carries the capability, the copy attempt and the declared length.
+ * @param env - Actual canonical durable owner and R2 bindings.
+ * @param ctx - The exact canonical key authorized for this container.
+ * @returns 200 with the measured receipt; 400 malformed; 403 another key; 409 refused claim or an existing object; 502 storage failure.
+ * @throws {never} Infrastructure faults are logged and returned as failed writes.
+ */
+export async function writePresentationCarrier(request: Request, env: MediaEnv, ctx: OutboundHandlerContext<ServeOneKey>): Promise<Response> {
+  if (request.method !== 'PUT') return new Response('Not allowed', { status: 403 });
+  const query = new URL(request.url).searchParams;
+  const jobId = query.get('jobId');
+  const sourceFingerprint = query.get('sourceFingerprint');
+  const deadlineAt = positiveInteger(query.get('deadlineAt'));
+  const token = query.get('token');
+  const attempt = positiveInteger(query.get('attempt'));
+  const byteLength = positiveInteger(query.get('byteLength'));
+  const contentType = request.headers.get('content-type');
+  const contentLength = positiveInteger(request.headers.get('content-length'));
+  if (jobId === null || jobId.length === 0 || sourceFingerprint === null || !/^[a-f0-9]{64}$/.test(sourceFingerprint) || deadlineAt === null || token === null ||
+    token.length === 0 || attempt === null || byteLength === null || contentType === null || contentType.length === 0 || contentLength !== byteLength || request.body === null) {
+    return new Response('Invalid carrier write', { status: 400 });
+  }
+  const key = askedKey(request);
+  const identity = { storageKey: ctx.params.key, jobId, sourceFingerprint, deadlineAt, token };
+  try {
+    const owner = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
+    const claim = await owner.claimPresentationCarrier(identity, key, { byteLength, contentType }, attempt);
+    if (claim === null || claim === 'forbidden') {
+      await request.body.cancel();
+      return new Response(claim === null ? 'Refused' : 'Not allowed', { status: claim === null ? 409 : 403 });
+    }
+    const fixed = new FixedLengthStream(byteLength);
+    const [written] = await Promise.all([
+      env.BUCKET.put(key, fixed.readable, { onlyIf: { etagDoesNotMatch: '*' }, httpMetadata: { contentType } }),
+      request.body.pipeTo(fixed.writable),
+    ]);
+    if (written === null) return new Response('Refused', { status: 409 });
+    const measured = { storageKey: key, sha256: await hashStoredObject(env.BUCKET, key), sizeBytes: written.size, contentType };
+    if (!await owner.commitPresentationCarrier(identity, claim.owner, { ...measured, etag: written.etag })) return new Response('Refused', { status: 409 });
+    return Response.json(measured);
+  } catch (err) {
+    noteFailure('ingest_presentation_carrier_write_failed', { err, storageKey: ctx.params.key, jobId, sourceFingerprint });
+    return new Response('Carrier write failed', { status: 502 });
   }
 }
 
@@ -380,4 +463,5 @@ MediaContainer.outboundHandlers = {
   [SERVE_OBJECT]: serveObject,
   [WRITE_UPRIGHT]: writeUpright,
   [SOURCE_LEDGER_HANDLER]: writeSourceLedgerPresentation,
+  [PRESENTATION_CARRIER_HANDLER]: writePresentationCarrier,
 };

@@ -106,6 +106,7 @@ COPY packages/shared/src/audio-peaks.ts /shared/src/audio-peaks.ts
 COPY packages/shared/src/upload/agent-picture-types.ts /shared/src/upload/agent-picture-types.ts
 # The presentation probe plans from these (container/presentation-run.ts, container/assemble-video-source-ledger.ts).
 COPY packages/shared/src/mini-tools/canonical-json.ts /shared/src/mini-tools/canonical-json.ts
+COPY packages/shared/src/upload/video-presentation-keys.ts /shared/src/upload/video-presentation-keys.ts
 COPY packages/shared/src/mini-tools/types.ts /shared/src/mini-tools/types.ts
 COPY packages/shared/src/mini-tools/video-encode-plan.ts /shared/src/mini-tools/video-encode-plan.ts
 COPY packages/shared/src/mini-tools/video-presentation-projection.ts /shared/src/mini-tools/video-presentation-projection.ts

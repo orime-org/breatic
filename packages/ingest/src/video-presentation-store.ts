@@ -134,7 +134,13 @@ interface JobRecord {
   prepared?: PresentationPlanFacts;
   /** The role-tagged output receipts of the attempt that completed each stitch or copy unit (§90 E4-15). */
   receipts?: Record<string, VideoPresentationOutputReceipt[]>;
+  /** The basic copy's carrier writes by key: claimed before any byte, then the Worker's measurement (§91 D2-2). */
+  carrierWrites?: Record<string, CarrierWrite>;
 }
+/** One claimed carrier write; insert-only, so a key is written once. */
+interface CarrierWrite { owner: string; byteLength: number; contentType: string; measured: PresentationCarrierMeasurement | null }
+/** What the Worker measured of a carrier it wrote. */
+export interface PresentationCarrierMeasurement { storageKey: string; etag: string; sha256: string; sizeBytes: number; contentType: string }
 interface LedgerOnlyJob { admission: VideoPresentationAdmission; token: string; toolInputId: string }
 interface ClaimRecord { claim: SourceLedgerWriteClaim; declaration: SourceLedgerDeclaration; planSha256: string; status: 'active' | 'released' | 'refused' }
 /** A receipt and the physical proof it is checked against: the claim owner and the table's own ETag. */
@@ -452,6 +458,91 @@ export class VideoPresentationStore {
     if (step.next.state === 'verified') job.bundle = bundle;
     await this.applyCandidateStep(state, job, step);
     return job.candidate.state === 'verified';
+  }
+
+  /**
+   * Claim the basic copy's carrier key before the outbound handler writes R2 (§91 D2-2): only the current copy-route job,
+   * in its copy stage, for its own copy key; a key is claimed once.
+   * @param identity - The writer's capability.
+   * @param key - The key the write names.
+   * @param declaration - The declared length and type.
+   * @param declaration.byteLength - The declared length.
+   * @param declaration.contentType - The declared type.
+   * @param attempt - The copy attempt the write names.
+   * @returns The claim owner, `forbidden` when a granted job names another key, or null.
+   * @throws {Error} When durable storage fails.
+   */
+  claimPresentationCarrier(identity: PresentationCapability, key: string, declaration: { byteLength: number; contentType: string }, attempt = 1): Promise<{ owner: string } | 'forbidden' | null> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.find(state, identity, identity.token);
+      if (state === undefined || found?.kind !== 'current' || identity.deadlineAt <= Date.now()) return null;
+      const job = found.job;
+      if (key !== copyCarrierKey(job.admission, attempt)) return 'forbidden';
+      if (job.prepared?.route !== 'copy' || job.candidate.state !== 'building' || job.candidate.stage !== 'copy' || job.carrierWrites?.[key] !== undefined) return null;
+      const owner = crypto.randomUUID();
+      job.carrierWrites = { ...job.carrierWrites, [key]: { owner, byteLength: declaration.byteLength, contentType: declaration.contentType, measured: null } };
+      await this.save(state);
+      return { owner };
+    });
+  }
+
+  /**
+   * Record the Worker's measurement of a claimed carrier write.
+   * @param identity - The writer's capability.
+   * @param owner - The claim owner.
+   * @param measured - What landed.
+   * @returns Whether the claim took the measurement.
+   * @throws {Error} When durable storage fails.
+   */
+  commitPresentationCarrier(identity: PresentationCapability, owner: string, measured: PresentationCarrierMeasurement): Promise<boolean> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.find(state, identity, identity.token);
+      if (state === undefined || found?.kind !== 'current') return false;
+      const write = found.job.carrierWrites?.[measured.storageKey];
+      if (write === undefined || write.owner !== owner || write.measured !== null || write.byteLength !== measured.sizeBytes || write.contentType !== measured.contentType) return false;
+      write.measured = measured;
+      await this.save(state);
+      return true;
+    });
+  }
+
+  /**
+   * Publish an identity or basic copy carrier (§5.1 step 4, §91 D2-1): the one native carrier receipt must be the source
+   * itself (its hash the source fingerprint) or the job's copy key, and agree with the DO's measurement of R2; the DO then
+   * assembles the bundle and submits it as verified.
+   * @param identity - The current job's capability.
+   * @param route - The route the carrier was produced for.
+   * @param receipts - The receipts the container answered.
+   * @returns Whether the verified evidence was taken.
+   * @throws {Error} When durable storage or R2 fails.
+   */
+  publishCarrier(identity: PresentationCapability, route: 'identity' | 'copy', receipts: readonly VideoPresentationOutputReceipt[]): Promise<boolean> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.find(state, identity, identity.token);
+      if (state === undefined || found?.kind !== 'current') return false;
+      const job = found.job;
+      const { prepared: facts, admission, candidate } = job;
+      const receipt = receipts.length === 1 && receipts[0]!.role === 'carrier' && receipts[0]!.packing === 'native' ? receipts[0]! : undefined;
+      if (facts?.route !== route || candidate.state !== 'building' || receipt === undefined) return false;
+      if (receipt.storageKey !== (route === 'identity' ? admission.storageKey : copyCarrierKey(admission, 1))) return false;
+      const head = await this.bucket.head(receipt.storageKey);
+      if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType) return false;
+      const stored = head.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      const written = job.carrierWrites?.[receipt.storageKey]?.measured;
+      // The source's hash is its registered fingerprint; a copy's is R2's checksum or the Worker's measurement of this same object.
+      const sha256 = route === 'identity' ? admission.sourceFingerprint : stored ?? (written?.etag === head.etag ? written.sha256 : null);
+      if (sha256 !== receipt.sha256) return false;
+      const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), etag: head.etag, size: head.size, sha256, contentType: receipt.contentType };
+      const bundle = await this.assembleVersion(job, facts, carrier);
+      const step = advancePresentationCandidate(candidate, { kind: 'Ev', jobId: admission.jobId, fact: { kind: 'verified' } }, this.policy(admission));
+      if (step.next.state === 'verified') job.bundle = bundle;
+      await this.applyCandidateStep(state, job, step);
+      await this.save(state);
+      return !step.rejected;
+    });
   }
 
   /**
@@ -1100,8 +1191,8 @@ export type PresentationProbe =
     display: VideoPresentationVersion['display'];
     playbackClock: VideoPresentationVersion['playbackClock'];
   };
-/** A carrier the basic execution produced itself (identity, or a copy that fits its disk), verified. */
-export type PresentationCarrierOutcome = { kind: 'verified'; bundle: { versionId: string; toolInputId: string; descriptor: unknown } } | { kind: 'failed'; code: string };
+/** A carrier the basic execution produced itself (identity, or a copy that fits its disk): its receipts, measured by the store. */
+export type PresentationCarrierOutcome = { kind: 'written'; receipts: VideoPresentationOutputReceipt[] } | { kind: 'failed'; code: string };
 /** The basic container's work, injected so the orchestration is tested over the real store with a fake container. */
 export interface PresentationContainerPort {
   probe(capability: PresentationCapability): Promise<PresentationProbe>;
@@ -1109,6 +1200,17 @@ export interface PresentationContainerPort {
   writeLedger(capability: PresentationCapability, toolInputId: string, encoding: VideoPresentationLedger['encoding'] | null): Promise<void>;
   carrier(capability: PresentationCapability, route: 'identity' | 'copy'): Promise<PresentationCarrierOutcome>;
   usage(): Promise<{ wallMs: number; cpuUsec: number | null } | null>;
+}
+
+/**
+ * The basic copy's carrier key (§91 D2-2): where the first dispatched copy attempt writes.
+ * @param admission - The job's admission.
+ * @param attempt - The copy attempt.
+ * @returns The key.
+ * @throws {never} Never.
+ */
+function copyCarrierKey(admission: VideoPresentationAdmission, attempt: number): string {
+  return videoPresentationWorkKeyFor(admission.storageKey, videoContainerJobId({ kind: 'presentation-copy', jobId: admission.jobId, attempt }));
 }
 
 // Cloudflare sizes container disks in decimal gigabytes.
@@ -1147,7 +1249,7 @@ export async function preparePresentation(store: VideoPresentationStore, identit
   const grant = await store.grantPresentation(identity, now);
   const { capability, admission } = grant;
   if (capability !== null && admission !== null && grant.ledgerOnly !== null) {
-    if ((await store.read(identity.storageKey, identity.sourceFingerprint)).ledgers[grant.ledgerOnly]?.kind === 'pending') await port.writeLedger(capability, grant.ledgerOnly, null);
+    if ((await store.read(identity.storageKey, identity.sourceFingerprint)).ledgers[grant.ledgerOnly]?.kind === 'pending') await writeLedgerOrFail(store, port, capability, grant.ledgerOnly, null);
   } else if (capability !== null && admission !== null && !grant.planned) {
     await planAndProduce(store, capability, admission, grant.selected, port, now);
     const usage = await port.usage();
@@ -1183,7 +1285,7 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
   const facts: PresentationPlanFacts = { route, toolInputId: probe.toolInputId, planSha256, producerVersion, profileVersion,
     display: probe.display, playbackClock: probe.playbackClock, work };
   const { writer, view } = await store.planPresentation(capability, { route, toolInputId: probe.toolInputId, planSha256 }, facts);
-  if (writer) await port.writeLedger(capability, probe.toolInputId, probe.encoding);
+  if (writer) await writeLedgerOrFail(store, port, capability, probe.toolInputId, probe.encoding);
   if (view.candidate.state !== 'building') return;
   if (tooLong !== null) { await store.fail(capability, tooLong); return; }
   if (route === 'reuse') { await store.publishReuse(capability); return; }
@@ -1191,5 +1293,24 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
   if (route === 'copy' && !await store.advanceStage(capability, 'copy')) return;
   const carrier = await port.carrier(capability, route);
   if (carrier.kind === 'failed') await store.fail(capability, carrier.code);
-  else await store.report(capability, { kind: 'verified', bundle: carrier.bundle });
+  else if (!await store.publishCarrier(capability, route, carrier.receipts)) await store.fail(capability, 'presentation_failed');
+}
+
+/**
+ * Write the ledger; a write the container answers with a code ends the instance in that code's class (§91 D2-3).
+ * @param store - The store.
+ * @param port - The basic container.
+ * @param capability - The writer's capability.
+ * @param toolInputId - The instance.
+ * @param encoding - The probe's encode facts, or null for a ledger-only repair.
+ * @returns Nothing.
+ * @throws {Error} When the container fails without a code, or storage fails.
+ */
+async function writeLedgerOrFail(store: VideoPresentationStore, port: PresentationContainerPort, capability: PresentationCapability, toolInputId: string,
+  encoding: VideoPresentationLedger['encoding'] | null): Promise<void> {
+  try { await port.writeLedger(capability, toolInputId, encoding); } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (typeof code !== 'string' || !/^[a-z][a-z0-9_]*$/u.test(code)) throw error;
+    await store.failLedger(capability, toolInputId, code);
+  }
 }

@@ -9,13 +9,20 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { hashCanonicalJson, type CanonicalJson } from '@shared/mini-tools/canonical-json.js';
 import type { PresentationRational } from '@shared/mini-tools/video-presentation-projection.js';
-import { isHdrTransfer, videoCarrierGeometry, videoPlanIsUnaltered, type VideoJobWork } from '@shared/mini-tools/video-encode-plan.js';
-import { PRESENTATION_RUN_PATH, type PresentationIdentityFormat, type PresentationProbeAnswer, type PresentationProbeRequest } from '@ingest/presentation-run-types.js';
+import { isHdrTransfer, videoCarrierGeometry, videoCarrierTagFilter, videoContainerJobId, videoPlanIsUnaltered, type VideoJobWork } from '@shared/mini-tools/video-encode-plan.js';
+import {
+  PRESENTATION_CARRIER_HOST, PRESENTATION_RUN_PATH, SOURCE_LEDGER_WRITE_HOST, type PresentationCarrierAnswer, type PresentationCarrierRequest, type PresentationIdentityFormat,
+  type PresentationLedgerAnswer, type PresentationLedgerRequest, type PresentationProbeAnswer, type PresentationProbeRequest, type PresentationRunBody,
+} from '@ingest/presentation-run-types.js';
+import { objectUrlOn } from '@ingest/object-url.js';
+import { videoPresentationWorkKeyFor, videoSourceLedgerKeyFor } from '@shared/upload/video-presentation-keys.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { download } from '@ingest/container/mini-tool-run.js';
 import { runPlanCommand } from '@ingest/container/plan-command.js';
@@ -27,6 +34,8 @@ import { assembleVideoPresentationPlan, editSpans, type VideoPresentationPlanInp
 /** The producer and carrier profile a plan's carrier is reused by (§7.1). */
 const PRODUCER_VERSION = 2;
 const PROFILE_VERSION = 1;
+/** The basic copy writes where the first dispatched copy attempt would (§91 D2-2). */
+const COPY_ATTEMPT = 1;
 /** Codecs an MP4 carrier can hold, so a stream copy can keep them (§4.1 row 2). */
 const MP4_COPY_CODECS: ReadonlySet<string> = new Set(['h264', 'hevc', 'av1', 'vp9']);
 /** ISO BMFF demuxer names as ffprobe reports them. */
@@ -333,22 +342,24 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
 }
 
 /**
- * Run the probe action: one download, the plan and its facts, or a stable failure code.
- * @param body - The probe request.
+ * Run one action over a fresh download of the source, bounded by the job's deadline; a stable failure becomes its code.
+ * @param body - The request.
  * @param signal - The caller's lifetime, when it has one.
- * @returns The answer.
+ * @param work - The action over the downloaded source.
+ * @returns The action's answer, or the failure.
  * @throws {Error} When the container itself fails (a command or IO fault), which is not a property of the source.
  */
-export async function runPresentationProbe(body: PresentationProbeRequest, signal?: AbortSignal): Promise<PresentationProbeAnswer> {
+async function withSource<T>(body: PresentationProbeRequest | PresentationLedgerRequest | PresentationCarrierRequest, signal: AbortSignal | undefined,
+  work: (input: string, directory: string, lifetime: AbortSignal) => Promise<T>): Promise<T | { kind: 'failed'; code: string }> {
   if (body.deadlineAt <= Date.now()) return { kind: 'failed', code: 'expired' };
   const deadline = AbortSignal.timeout(Math.max(1, body.deadlineAt - Date.now()));
   const lifetime = signal === undefined ? deadline : AbortSignal.any([deadline, signal]);
-  const directory = await mkdtemp(join(tmpdir(), 'presentation-probe-'));
+  const directory = await mkdtemp(join(tmpdir(), 'presentation-run-'));
   try {
     const input = join(directory, 'source');
     await download(body.sourceURL, input, lifetime);
     if ((await stat(input)).size > body.limits.maxSourceBytes) return { kind: 'failed', code: 'source_over_cap' };
-    return await plan(body, input, directory, lifetime);
+    return await work(input, directory, lifetime);
   } catch (cause) {
     if (lifetime.aborted || body.deadlineAt <= Date.now()) return { kind: 'failed', code: 'expired' };
     if (cause instanceof ProbeFailure) return { kind: 'failed', code: cause.code };
@@ -362,6 +373,124 @@ export async function runPresentationProbe(body: PresentationProbeRequest, signa
 }
 
 /**
+ * Run the probe action: one download, the plan and its facts, or a stable failure code.
+ * @param body - The probe request.
+ * @param signal - The caller's lifetime, when it has one.
+ * @returns The answer.
+ * @throws {Error} When the container itself fails (a command or IO fault), which is not a property of the source.
+ */
+export function runPresentationProbe(body: PresentationProbeRequest, signal?: AbortSignal): Promise<PresentationProbeAnswer> {
+  return withSource(body, signal, (input, directory, lifetime) => plan(body, input, directory, lifetime));
+}
+
+/**
+ * Plan the source again and require the plan the DO recorded (§91 D-3, D2-3).
+ * @param body - The writing request.
+ * @param input - The local source.
+ * @param directory - The run's directory.
+ * @param lifetime - The run's lifetime.
+ * @returns The planned answer.
+ * @throws {ProbeFailure} When the source cannot be planned.
+ */
+async function planned(body: PresentationLedgerRequest | PresentationCarrierRequest, input: string, directory: string, lifetime: AbortSignal): Promise<Extract<PresentationProbeAnswer, { kind: 'planned' }>> {
+  const answer = await plan({ ...body, action: 'probe' }, input, directory, lifetime);
+  if (answer.kind === 'failed') throw new ProbeFailure(answer.code);
+  return answer;
+}
+
+/**
+ * Run the ledger action (§5.1 step 5, §3.2 item 7): plan again, require the requested toolInputId, and write the compact
+ * table then the full ledger in one PUT through the edge of that toolInputId's full key.
+ * @param body - The ledger request.
+ * @param signal - The caller's lifetime, when it has one.
+ * @returns Written, or the failure: `source_ledger_plan_mismatch` when the source plans another toolInputId (a content
+ *   failure), `source_ledger_failed` when the edge refuses the write.
+ * @throws {Error} When the container itself fails.
+ */
+export function runPresentationLedger(body: PresentationLedgerRequest, signal?: AbortSignal): Promise<PresentationLedgerAnswer> {
+  return withSource(body, signal, async (input, directory, lifetime): Promise<PresentationLedgerAnswer> => {
+    const answer = await planned(body, input, directory, lifetime);
+    if (answer.toolInputId !== body.toolInputId) return { kind: 'failed', code: 'source_ledger_plan_mismatch' };
+    const assembled = answer.plan as ReturnType<typeof assembleVideoPresentationPlan>;
+    const full = { schemaVersion: 2, sourceFingerprint: body.sourceFingerprint, toolInputId: answer.toolInputId, planSha256: answer.planSha256,
+      attempt: { jobId: body.jobId, deadlineAt: body.deadlineAt }, plan: assembled, encoding: body.encodeFacts ?? answer.encoding };
+    // §7.16: the compact object is the full ledger's projection.
+    const compact = { sourceFingerprint: full.sourceFingerprint, toolInputId: full.toolInputId, planSha256: full.planSha256, presentation: assembled.presentation };
+    const table = Buffer.from(JSON.stringify(compact), 'utf8');
+    const ledger = Buffer.from(JSON.stringify(full), 'utf8');
+    if (ledger.length > body.limits.sourceLedger.maxBytes || table.length > body.limits.sourceLedger.maxBytes) return { kind: 'failed', code: 'source_ledger_over_cap' };
+    const destination = new URL(objectUrlOn(SOURCE_LEDGER_WRITE_HOST, videoSourceLedgerKeyFor(body.storageKey, body.toolInputId)));
+    const frames = assembled.originMapping.entries.reduce((total, entry) => total + (entry.kind === 'source' ? entry.count : 1), 0);
+    for (const [name, value] of Object.entries({ jobId: body.jobId, sourceFingerprint: body.sourceFingerprint, deadlineAt: body.deadlineAt, token: body.token,
+      toolInputId: body.toolInputId, planSha256: answer.planSha256, producerVersion: PRODUCER_VERSION, byteLength: ledger.length, tableByteLength: table.length,
+      tableFrameCount: frames })) destination.searchParams.set(name, String(value));
+    const written = await fetch(destination, { method: 'PUT', signal: lifetime, headers: { 'content-type': 'application/json' }, body: Buffer.concat([table, ledger]) });
+    await written.body?.cancel();
+    return written.ok ? { kind: 'written' } : { kind: 'failed', code: 'source_ledger_failed' };
+  });
+}
+
+/** The matrix coefficients each tag filter writes for a plan matrix (H.273; vp9_metadata names its colour spaces). */
+const MATRIX_CODES: Readonly<Record<string, string>> = { bt709: '1', bt601: '6', bt2020nc: '9' };
+const VP9_COLOR_SPACES: Readonly<Record<string, string>> = { bt709: 'bt709', bt601: 'bt601', bt2020nc: 'bt2020' };
+
+/**
+ * The bitstream filter that writes only the plan's matrix tag (§4.1, §91 D2-5), or none when the codec has no tag filter.
+ * @param codec - The ffprobe codec name.
+ * @param matrix - The plan's colour matrix.
+ * @returns The `-bsf:v` value, or null.
+ * @throws {ProbeFailure} When the matrix has no tag value.
+ */
+function matrixTag(codec: string, matrix: string): string | null {
+  const filter = videoCarrierTagFilter(codec);
+  if (filter === null) return null;
+  const value = codec === 'vp9' ? VP9_COLOR_SPACES[matrix] : MATRIX_CODES[matrix];
+  if (value === undefined) throw new ProbeFailure('classification_unknown');
+  return codec === 'vp9' ? `${filter}=color_space=${value}` : `${filter}=matrix_coefficients=${value}`;
+}
+
+/**
+ * Run the carrier action (§5.1 steps 3–4, §4.1): identity writes nothing and the source itself is the carrier; the basic
+ * copy stream-copies into MP4 with `+faststart`, writes the plan's matrix tag and PUTs the object to its copy key through
+ * the edge, forwarding the Worker's measured receipt.
+ * @param body - The carrier request.
+ * @param signal - The caller's lifetime, when it has one.
+ * @returns The receipts, or the failure.
+ * @throws {Error} When the container itself fails.
+ */
+export function runPresentationCarrier(body: PresentationCarrierRequest, signal?: AbortSignal): Promise<PresentationCarrierAnswer> {
+  return withSource(body, signal, async (input, directory, lifetime): Promise<PresentationCarrierAnswer> => {
+    if (body.route === 'identity') {
+      // §91 D2-7: the receipt takes the registered type, which the Worker reported from the stored bytes.
+      return { kind: 'carrier', receipts: [{ role: 'carrier', packing: 'native', storageKey: body.storageKey, sha256: body.sourceFingerprint,
+        sizeBytes: (await stat(input)).size, contentType: body.contentType }] };
+    }
+    const answer = await planned(body, input, directory, lifetime);
+    const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', input],
+      { signal: lifetime, stdoutBytes: body.limits.probeStdoutBytes, stderrTailBytes: body.limits.stderrTailBytes }));
+    const video = (Array.isArray(raw.streams) ? raw.streams.map(record) : []).find((stream) => stream.codec_type === 'video');
+    if (video === undefined) throw new ProbeFailure('classification_unknown');
+    const tag = matrixTag(String(video.codec_name), (answer.plan as { colorMatrix: string }).colorMatrix);
+    const output = join(directory, 'carrier.mp4');
+    await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`, '-map', '0:a:0?',
+      '-c', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), '-movflags', '+faststart', '-f', 'mp4', output],
+    { signal: lifetime, stdoutBytes: body.limits.analysisStdoutBytes, stderrTailBytes: body.limits.stderrTailBytes });
+    const key = videoPresentationWorkKeyFor(body.storageKey, videoContainerJobId({ kind: 'presentation-copy', jobId: body.jobId, attempt: COPY_ATTEMPT }));
+    const destination = new URL(objectUrlOn(PRESENTATION_CARRIER_HOST, key));
+    const size = (await stat(output)).size;
+    for (const [name, value] of Object.entries({ jobId: body.jobId, sourceFingerprint: body.sourceFingerprint, deadlineAt: body.deadlineAt, token: body.token,
+      attempt: COPY_ATTEMPT, byteLength: size })) destination.searchParams.set(name, String(value));
+    const written = await fetch(destination, { method: 'PUT', signal: lifetime, duplex: 'half', headers: { 'content-type': 'video/mp4', 'content-length': String(size) },
+      body: Readable.toWeb(createReadStream(output)) as ReadableStream<Uint8Array> });
+    if (!written.ok) { await written.body?.cancel(); return { kind: 'failed', code: 'presentation_carrier_refused' }; }
+    // The Worker's measurement of what landed, forwarded unchanged (§91 D2-2).
+    const measured = record(await written.json());
+    return { kind: 'carrier', receipts: [{ role: 'carrier', packing: 'native', storageKey: String(measured.storageKey), sha256: String(measured.sha256),
+      sizeBytes: Number(measured.sizeBytes), contentType: String(measured.contentType) }] };
+  });
+}
+
+/**
  * Serve the run path: one JSON request, answered when the action ends.
  * @param request - Container-local HTTP request from the presentation DO.
  * @param response - Its response.
@@ -372,9 +501,11 @@ export async function handlePresentationRun(request: IncomingMessage, response: 
   try {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array));
-    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as PresentationProbeRequest;
-    if (body.action !== 'probe') { response.writeHead(400).end(); return; }
-    response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(await runPresentationProbe(body)));
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as PresentationRunBody;
+    const answer = body.action === 'probe' ? await runPresentationProbe(body) : body.action === 'ledger' ? await runPresentationLedger(body)
+      : body.action === 'carrier' ? await runPresentationCarrier(body) : null;
+    if (answer === null) { response.writeHead(400).end(); return; }
+    response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(answer));
   } catch (err) {
     console.error('presentation_run_failed', { err });
     response.writeHead(500).end();
