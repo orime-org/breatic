@@ -212,7 +212,8 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
     state: z.enum(['none', 'open', 'done', 'failed']), attempt: index,
     attempts: z.array(z.strictObject({ attempt: attemptNumber, jobId: z.string().min(1), state: z.enum(['pending', 'done', 'failed']), usageRecorded: z.boolean() })),
   })),
-  frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable() }),
+  // Null only for a job this DO never admitted.
+  frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable() }).nullable(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx);
   const { plan, work } = value;
