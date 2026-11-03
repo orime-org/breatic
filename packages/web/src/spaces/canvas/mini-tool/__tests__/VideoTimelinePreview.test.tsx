@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { VideoTimelinePreview } from '../video/VideoTimelinePreview';
 import type { VideoTimelinePresentedFrame } from '../video/video-timeline-decoder';
 
@@ -20,7 +20,7 @@ describe('synchronous canonical timeline frame consumption', () => {
     const surface = document.createElement('canvas'); surface.width = 2; surface.height = 2;
     const drawImage = vi.fn();
     const context = { clearRect: vi.fn(), drawImage } as unknown as CanvasRenderingContext2D;
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((kind: string) => kind === '2d' ? context : null);
+    (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockImplementation((kind: string) => kind === '2d' ? context : null);
     const frame = { sourceKey: 'registered-source', sourceEpoch: 3, seekEpoch: 7, mediaTime: 0.12, surface };
     const clip = { clipId: '10000000-0000-4000-8000-000000000001', inputId: '20000000-0000-4000-8000-000000000001', in: 0, out: 1, transition: { kind: 'cut' as const, duration: 0 }, start: 0, end: 1, overlap: 0 };
     render(<VideoTimelinePreview plan={{ duration: 1, clips: [clip] }} inputs={[{ inputId: clip.inputId, url: 'https://media.example.test/source.webm' }]} cursor={0} playing={false} onCursorChange={vi.fn()} onPlayingChange={vi.fn()} renderDecoder={(_input, _onBinding, onFrame) => <FirstFrame frame={frame} onFrame={onFrame} />} />);
@@ -41,7 +41,7 @@ describe('partial timeline presentation allocation', () => {
       createBuffer: vi.fn(() => ({})), bindBuffer: vi.fn(), bufferData: vi.fn(), viewport: vi.fn(), pixelStorei: vi.fn(),
       createTexture, bindTexture: vi.fn(), texParameteri: vi.fn(), deleteTexture, deleteBuffer,
     } as unknown as WebGLRenderingContext;
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((kind: string) => kind === 'webgl' ? gl : null);
+    (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockImplementation((kind: string) => kind === 'webgl' ? gl : null);
     let allocations = 0;
     vi.stubGlobal('AudioContext', class {
       state = 'running';

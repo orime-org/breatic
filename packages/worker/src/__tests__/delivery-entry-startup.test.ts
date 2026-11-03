@@ -73,10 +73,12 @@ describe("D19 actual worker composition root", () => {
     await import("../index.js");
     const workers = h.workers.filter((worker) => worker.name === "tasks"); expect(workers).toHaveLength(1);
     expect(h.recoveryWorkers).toEqual([workers[0]]);
-    expect(h.schedule).toHaveBeenCalledExactlyOnceWith("discover-mini-tool-deliveries", { every: 12345 }, expect.objectContaining({ name: "discover-mini-tool-deliveries", data: {} }));
+    // The same mocked queue also receives main's long-media-dispatch-sweep schedule; only the delivery discovery is this case's.
+    const discovery = h.schedule.mock.calls.map((call, index) => ({ call, index })).filter(({ call }) => call[0] === "discover-mini-tool-deliveries");
+    expect(discovery.map(({ call }) => call)).toEqual([["discover-mini-tool-deliveries", { every: 12345 }, expect.objectContaining({ name: "discover-mini-tool-deliveries", data: {} })]]);
     expect(h.add).toHaveBeenCalledWith("discover-mini-tool-deliveries", {}, expect.any(Object));
     expect(h.health).toHaveBeenCalledTimes(1);
-    expect(h.schedule.mock.invocationCallOrder[0]!).toBeLessThan(h.health.mock.invocationCallOrder[0]!);
+    expect(h.schedule.mock.invocationCallOrder[discovery[0]!.index]!).toBeLessThan(h.health.mock.invocationCallOrder[0]!);
     expect(h.exit).not.toHaveBeenCalled(); expect(h.removeSchedule).not.toHaveBeenCalled();
   });
 

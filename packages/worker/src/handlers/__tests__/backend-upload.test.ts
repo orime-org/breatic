@@ -160,8 +160,9 @@ describe("storing bytes whose upload could not be opened", () => {
   const flags = Object.keys(INGEST_SIDE_EFFECT_EVENTS) as (keyof typeof INGEST_SIDE_EFFECT_EVENTS)[];
 
   it("T48: records each side effect settling raised, then throws the same error", async () => {
-    expect(flags).toHaveLength(5);
-    // Two of the five raised, three not.
+    // Six since inner#1306 added presentationQueueFailed beside the five main ships.
+    expect(flags).toHaveLength(6);
+    // Two of the six raised, four not.
     const raised = flags.filter((_, i) => i === 0 || i === 3);
     const settled = {
       status: "voided" as const,

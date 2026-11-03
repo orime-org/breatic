@@ -276,7 +276,8 @@ describe("openSignedUpload — failing to open", () => {
 
   it("T42: hands back every side-effect flag settling raised", async () => {
     const flags = Object.fromEntries(Object.keys(INGEST_SIDE_EFFECT_EVENTS).map((flag) => [flag, true]));
-    expect(Object.keys(flags)).toHaveLength(5);
+    // Six since inner#1306 added presentationQueueFailed beside the five main ships.
+    expect(Object.keys(flags)).toHaveLength(6);
     const settled = { status: "voided" as const, ...flags };
     openUploadAtIngest.mockRejectedValue(new UploadHttpError(502, "store_failed"));
     applyIngestReport.mockResolvedValue(settled);

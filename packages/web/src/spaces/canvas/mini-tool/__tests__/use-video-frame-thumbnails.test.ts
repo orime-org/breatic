@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { VideoToolControls } from '../video/VideoToolControls';
 import { createVideoToolDraft } from '../video/video-tool-edit';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import * as thumbnails from '../video/use-video-frame-thumbnails';
 
@@ -47,7 +47,7 @@ beforeEach(() => {
     if (!functions.has(key)) functions.set(key, vi.fn(() => key === 'getShaderParameter' || key === 'getProgramParameter' ? true : key === 'getAttribLocation' ? 0 : {}));
     return functions.get(key);
   } });
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((kind: string) => (kind === '2d' ? { drawImage: (surface: CanvasImageSource) => drawn.push(surface), clearRect: vi.fn() } : gl) as unknown as CanvasRenderingContext2D);
+  (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockImplementation((kind: string) => (kind === '2d' ? { drawImage: (surface: CanvasImageSource) => drawn.push(surface), clearRect: vi.fn() } : gl));
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(() => `data:image/png;base64,capture-${drawn.length}`);
 });
 afterEach(() => {
