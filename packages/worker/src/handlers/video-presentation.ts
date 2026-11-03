@@ -9,12 +9,12 @@
  * next allowed stage or attempt, throwing StillRunning while work is in flight. Sub-jobs run on the frozen standard-4
  * class under §5.4 ids, their output key from the shared key function; each attempt's measured usage is recorded once
  * as a platform expense keyed by its full job id, then marked with `report_chunk Rec`. The DO assembles and publishes
- * the bundle; the worker only forwards the job DO's measured carrier receipt. At D the job fails `expired`.
+ * the bundle; the worker only forwards the job DO's measured output receipts and syncs the presentation pins from each answer. At D the job fails `expired`.
  */
 
 import { DelayedError, type Job } from 'bullmq';
 import { env, getMiniToolsConfig, logger } from '@breatic/core';
-import { assetRepo, containerCostUsd, createUsageRecorder, type VideoPresentationJob } from '@breatic/domain';
+import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadlineIfAhead, videoPresentationAtIngest,
   videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationChunkReport,
@@ -191,8 +191,9 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
       }
       if (report.state === 'done') {
         const output = report.outputs[0];
+        // A one-output job wrote a native carrier; the alpha roles come with S6d's manifest output (§90 E4-15).
         const receipt = unit.kind !== 'presentation-chunk' && output !== undefined
-          ? { receipt: { storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType } } : {};
+          ? { receipts: [{ role: 'carrier' as const, packing: 'native' as const, storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType }] } : {};
         await reportUnit(pickup, unit, { kind: 'Done', attempt: attempt.attempt, usage: report.usage.wallMs, ...receipt });
       } else {
         await reportUnit(pickup, unit, { kind: 'Fail', attempt: attempt.attempt, code: report.reason, usage: report.usage?.wallMs ?? null });
@@ -281,6 +282,8 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
   if (row === null || row.deletedAt !== null || row.kind !== 'video' || row.contentHash !== data.sourceFingerprint) return;
   const identity = { storageKey: row.storageKey, sourceFingerprint: row.contentHash, jobId: data.jobId };
   const answer = await prepareVideoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'prepare', ...identity });
+  // Candidate and selected pins follow what the DO answered, before anything this pickup sends (§7.15 single writer).
+  await syncPresentationPins(data.jobId, answer);
   if (answer.capability === null || answer.frozen === null) return;
   const capability = { ...identity, deadlineAt: answer.capability.deadlineAt, token: answer.capability.token };
   const pickup: Pickup = { identity, capability, answer, frozen: answer.frozen };

@@ -22,8 +22,11 @@ import { StillRunning } from "@worker/providers/still-running.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
-/** One preparation unit: its §5.4 id per attempt, its recipe and its consumption chunk index. */
-interface Unit { spec: (attempt: number) => VideoContainerJobSpec; recipe: () => MiniToolPlanRecipe | null; chunkIndex: number }
+/**
+ * One preparation unit: its §5.4 id per attempt, its recipe, its consumption chunk index, and whether its output is the
+ * prepared input the run keeps (with the chunk outputs that output consumed).
+ */
+interface Unit { spec: (attempt: number) => VideoContainerJobSpec; recipe: () => MiniToolPlanRecipe | null; chunkIndex: number; final: boolean; consumed?: string[] }
 
 /** The one input of every preparation job: the registered source. */
 const SOURCE_INPUT_ID = "00000000-0000-4000-8000-000000000001";
@@ -105,8 +108,12 @@ async function advanceUnit(execution: Removal, unit: Unit, deadlineAt: number): 
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: unit.chunkIndex, chargeTo: "user", request: candidate });
     const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
     if (report.state !== "done" && report.state !== "failed") throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+    const output = request.outputs[0]!.storageKey;
+    // The prepared input is pinned with its result; a failed attempt's output and consumed chunks are retired (§7.15).
+    const presentation = report.state === "failed" ? { retire: [output] }
+      : unit.final ? { prepared: { toolInputId: execution.presentationRef.source.toolInputId, preparedKey: output }, retire: unit.consumed ?? [] } : undefined;
     await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason } } : {}) },
+      ...(report.state === "failed" ? { error: { code: report.reason } } : {}), ...(presentation === undefined ? {} : { presentation }) },
     { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
     if (report.state === "done") return request.outputs[0]!.storageKey;
   }
@@ -135,14 +142,14 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
   }
   const taskId = execution.taskId;
   if (single) {
-    return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep", taskId, input: 0, attempt }), chunkIndex: 0,
+    return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep", taskId, input: 0, attempt }), chunkIndex: 0, final: true,
       recipe: () => ({ kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window: { start: chunks[0]!.start, end: chunks[0]!.end } }) }, deadlineAt);
   }
   const outputs: (string | null)[] = [];
   let waiting = false;
   for (const [chunk, window] of chunks.entries()) {
     try {
-      outputs.push(await advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunkIndex: chunk,
+      outputs.push(await advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunkIndex: chunk, final: false,
         recipe: () => ({ kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end } }) }, deadlineAt));
     } catch (error) {
       if (!(error instanceof StillRunning)) throw error;
@@ -151,6 +158,6 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
     }
   }
   if (waiting) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunkIndex: chunks.length,
+  return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunkIndex: chunks.length, final: true, consumed: outputs as string[],
     recipe: () => ({ kind: "stitch", inputId: SOURCE_INPUT_ID, chunks: outputs as string[] }) }, deadlineAt);
 }
