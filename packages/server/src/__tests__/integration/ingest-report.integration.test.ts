@@ -61,6 +61,7 @@ import {
   uploadGrantService,
   UPLOAD_FINISH_QUEUE,
   AUDIO_PEAKS_QUEUE,
+  uploadDeadlineByKey,
   type UploadFinishResult,
 } from "@breatic/domain";
 import { Queue } from "bullmq";
@@ -227,9 +228,10 @@ async function report(
       const pathname = new URL(String(url)).pathname;
       if (pathname === '/video-presentation') {
         presentationBodies.push(requestBody);
-        return Response.json({ presentation: null, attempt: {
-          jobId: requestBody.jobId, deadlineAt: requestBody.deadlineAt, status: 'accepted', usage: null,
-        } });
+        // The S6c ingest snapshot (inner#1306 §3.5): the accepted job, not started.
+        return Response.json({ sourceBinding: { storageKey: requestBody.storageKey, sourceFingerprint: requestBody.sourceFingerprint },
+          presentation: null, ledger: null,
+          preparation: { targetPolicyVersion: requestBody.targetPolicyVersion, jobId: requestBody.jobId, stage: null, failure: null } });
       }
       if (/^\/uploads\/[^/]+\/complete$/.test(pathname)) lastFinishBody = requestBody;
       if (body.unreachable === true) throw new TypeError("fetch failed");
@@ -1751,6 +1753,15 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(lastFinishBody.coverKey).toMatch(/^video\/\d{4}-\d{2}-\d{2}\/.+_cover\.png$/);
     expect(presentationBodies).toHaveLength(1);
     expect(presentationBodies[0]).toMatchObject({ action: 'accept' });
+  });
+
+  // inner#1306 §90 E1 D04 (design §5.1 step 1): the prep an upload triggers
+  // inherits that upload task's deadline as its own admission deadline.
+  it("admits the uploaded video's presentation under the upload task's own deadline", async () => {
+    const seed = await seedEditor();
+    const { key } = await uploadVideo(seed);
+    expect(presentationBodies).toHaveLength(1);
+    expect(presentationBodies[0]).toMatchObject({ action: 'accept', deadlineAt: await uploadDeadlineByKey(key) });
   });
 
   // Named on every upload, including the ones this side believes have no frame

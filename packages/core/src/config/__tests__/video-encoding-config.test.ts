@@ -25,7 +25,8 @@ import { MINI_TOOL_JOB_MAX_OUTPUTS } from '@breatic/shared';
 import { MONOREPO_ROOT } from '../env.js';
 import { getMiniToolsConfig, miniToolsConfigSchema } from '../mini-tools.js';
 
-const CARRIER = { container_class: 'MiniToolContainerStd4', max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } };
+// S6e E1 (§90): the carrier names no class; standard-4 is encoding.encoder.container_class alone.
+const CARRIER = { max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } };
 
 /**
  * The current configuration with explicit test values for every S6b key.
@@ -40,7 +41,7 @@ function configured(): Record<string, unknown> {
       chunk_share: 0.25, max_parallel_chunks: 3, chunk_retries: 2,
       encoder: { container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000, decode_convert_pixels_per_second: { sdr_8bit: 8000, sdr_10bit: 7000, hdr_8bit: 6000, hdr_10bit: 5000 } },
     },
-    presentation: { ...current.presentation, carrier: { container_class: 'MiniToolContainerStd4', max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
+    presentation: { ...current.presentation, policy_version: 1, carrier: { max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
     executions: {
       ...executions,
       'video.remove-bg': { ...executions['video.remove-bg'], preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 41 } },
@@ -131,7 +132,6 @@ describe('EC S6b encoding and carrier configuration', () => {
     ['a decode-convert rate for a 12-bit source', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_12bit'], 100],
     ['negative start seconds', ['encoding', 'encoder', 'start_seconds'], -1],
     ['a download rate', ['encoding', 'encoder', 'download_bytes_per_second'], 100],
-    ['a carrier on an undeclared class', ['presentation', 'carrier', 'container_class'], 'UndeclaredContainer'],
     ['a zero carrier short side', ['presentation', 'carrier', 'max_short_side'], 0], ['a fractional carrier short side', ['presentation', 'carrier', 'max_short_side'], 1080.5],
     ['an empty carrier transfer', ['presentation', 'carrier', 'color', 'transfer'], ''],
     ['zero outputs per job', ['executions', 'video.split', 'max_outputs_per_job'], 0],

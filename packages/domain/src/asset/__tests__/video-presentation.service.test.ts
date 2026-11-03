@@ -181,13 +181,14 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     await ensureVideoPresentation({ assetId: asset.id });
     const config = getMiniToolsConfig();
     const basicClass = config.presentation.container_class;
+    const standard4Class = config.encoding.encoder.container_class;
     const size = (name: string): Record<string, number> => {
       const spec = config.classes[name]!;
       return { vcpu: spec.vcpu, memory_gib: spec.memory_gib, disk_gb: spec.disk_gb };
     };
     expect(acceptSent().pricing).toEqual({
       basic: { containerClass: basicClass, size: size(basicClass), prices: { ...config.prices } },
-      standard4: { containerClass: 'MiniToolContainerStd4', size: size('MiniToolContainerStd4'), prices: { ...config.prices } },
+      standard4: { containerClass: standard4Class, size: size(standard4Class), prices: { ...config.prices } },
     });
   });
 
@@ -202,12 +203,17 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     expect(acceptSent().policy).toEqual({ chunkRetries: 5, maxAutoRepairs: 7 });
   });
 
-  it('A03 sends one target policy version, a positive integer, on the read and on the accept it leads to', async () => {
-    await resolveVideoPresentation(input);
+  it('A03 sends the configured presentation.policy_version as the target on the read and on the accept it leads to', async () => {
+    const core = await import('@breatic/core');
+    const settings = getMiniToolsConfig();
+    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings,
+      presentation: { ...settings.presentation, policy_version: 7 } } as unknown as ReturnType<typeof getMiniToolsConfig>);
+    try {
+      await resolveVideoPresentation(input);
+    } finally { spy.mockRestore(); }
     const [read, accept] = sent();
-    expect(read).toMatchObject({ action: 'read', storageKey: asset.storageKey, sourceFingerprint: H });
-    expect(Number.isSafeInteger(read!.targetPolicyVersion) && read!.targetPolicyVersion! > 0).toBe(true);
-    expect(accept).toMatchObject({ action: 'accept', targetPolicyVersion: read!.targetPolicyVersion });
+    expect(read).toMatchObject({ action: 'read', storageKey: asset.storageKey, sourceFingerprint: H, targetPolicyVersion: 7 });
+    expect(accept).toMatchObject({ action: 'accept', targetPolicyVersion: 7 });
   });
 
   it('A04 keeps the registered facts: unknown measurements stay null and a known width is retained', async () => {
