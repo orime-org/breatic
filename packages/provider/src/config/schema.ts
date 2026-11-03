@@ -20,13 +20,18 @@ const weighted = z.strictObject({ upstream: z.string(), weight: z.number().int()
  */
 const pricingRule = z.unknown().pipe(pricingRuleSchema).transform((rule): unknown => rule);
 
+/** How long a SandBase run answered completed without outputs is waited for by default, in ms. */
+const EMPTY_OUTPUT_WAIT_MS = 600_000;
+
 const upstreamSchema = z.strictObject({
   kind: z.string().min(1),
   base_url: z.string().min(1),
   key_env: z.string().min(1),
   concurrency: z.number().int().positive().optional(),
-  /** Where the upstream answers billing questions, when that is not `base_url` (fal's platform API). */
+  /** Where the upstream answers billing questions, when that is not `base_url`; a fal upstream needs its platform API here. */
   billing_url: z.string().min(1).optional(),
+  /** How long a run answered completed without outputs may still be storing them, in ms; SandBase reads it. */
+  empty_output_wait_ms: z.number().int().positive().default(EMPTY_OUTPUT_WAIT_MS),
 });
 
 /** How a written value is converted after its spelling: to a string, a number, or a one-item list. */
@@ -108,7 +113,8 @@ const bindingSchema = z.strictObject({
   output_field: z.string().min(1).optional(),
   /**
    * The upstream's own input limits our catalog lets a run exceed: a JSONata condition read as a pricing formula reads
-   * the run (upstream field names, the prompt under `prompt_field`, `get_duration`), and the limit as the upstream states it.
+   * the run (top-level fields under the upstream's names, the prompt under `prompt_field`, `get_duration`; values, and the
+   * sub-fields of list items, as our catalog spells them), and the limit as the upstream states it.
    */
   rejects: z.array(rejectSchema).optional(),
   pricing: pricingRule,
@@ -322,6 +328,9 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   if (!parsed.success) throw new ProviderConfigError(parsed.error.issues.map((issue) => issueLine(input, issue.path, issue.message)));
   const raw = parsed.data;
   const problems: string[] = [];
+  for (const [name, decl] of Object.entries(raw.upstreams)) {
+    if (decl.kind === "fal" && decl.billing_url === undefined) problems.push(`upstream "${name}": a fal upstream needs billing_url, the platform API its costs are read from`);
+  }
   const models: Record<string, MediaBinding[]> = {};
   for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);

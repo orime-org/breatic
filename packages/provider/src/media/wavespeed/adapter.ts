@@ -14,7 +14,22 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
-import { limits, outputField, outputUrls, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type StepCodec, type Submitted } from "@provider/media/adapter.js";
+import {
+  bearerHeaders as headers,
+  billingFailure,
+  limits,
+  minimaxVoiceGone,
+  outputField,
+  outputUrls,
+  unbilled,
+  type Asked,
+  type MediaAdapter,
+  type Reach,
+  type Refusal,
+  type RequestBounds,
+  type StepCodec,
+  type Submitted,
+} from "@provider/media/adapter.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 import { buildBody } from "@provider/media/body.js";
@@ -26,19 +41,9 @@ import { buildBody } from "@provider/media/body.js";
  * vocal has no rule.
  */
 const GONE: Readonly<Partial<Record<string, (message: string, id: string) => boolean>>> = {
-  voice: (message) => /Voice ID does not exist/.test(message),
+  voice: minimaxVoiceGone,
   element: (message, id) => /Element id not found: (\S+)/.exec(message)?.[1] === id,
 };
-
-
-/**
- * The headers of every request.
- * @param reach - The upstream.
- * @returns Bearer auth and a JSON body type.
- */
-function headers(reach: Reach): Record<string, string> {
-  return { authorization: `Bearer ${reach.key}`, "content-type": "application/json" };
-}
 
 /** A submit answer, as far as it is read. */
 const submittedSchema = z.looseObject({
@@ -126,8 +131,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
    * @param reason - Why.
    * @returns The cost.
    */
-  const unknown = (reason: string): Cost =>
-    lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
+  const unknown = (reason: string): Cost => unbilled(reach, predictionId, lastAttempt, reason);
   let body: unknown;
   try {
     body = await fetchJson(
@@ -135,7 +139,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
       { replaySafe: true, ...bounds, ...limits(bounds) },
     );
   } catch (error) {
-    const code = error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
+    const code = billingFailure(error);
     return { cost: unknown(code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };
   }
   const read = readBilling(body);
@@ -213,7 +217,7 @@ const STEPS: MediaAdapter["steps"] = {
 /** WaveSpeed, as the runner and cost lookups reach it. */
 export const wavespeedAdapter: MediaAdapter = {
   submit,
-  ask: (reach, predictionId, bounds) => ask(reach, predictionId, bounds),
+  ask,
   billed,
   refusal,
   gone,

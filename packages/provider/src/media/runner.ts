@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { unescape } from "node:querystring";
 import { candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
@@ -84,8 +83,12 @@ export interface PlanOptions {
   sourceKeys: Record<string, string>;
   /** Live clones of these sources on every upstream. */
   clones: MediaClone[];
-  /** Clip lengths in seconds of the sources whose lengths are known, by our param name; priced in cheapest mode. */
-  durations?: Record<string, number[]>;
+  /**
+   * Clip lengths in seconds of the sources whose lengths are known, by our param name. Every mode reads them: each
+   * upstream's input limits (`rejects`) and the cheapest mode's prices. Pass every source whose length is known; a
+   * source left out passes every length limit.
+   */
+  durations: Record<string, number[]>;
 }
 
 /** The bounds of one call. */
@@ -194,8 +197,9 @@ function mediaOutputOf(url: string): MediaOutput {
   if (!url.startsWith("data:") || comma < 0) return { kind: "url", url };
   const [type = "", ...flags] = url.slice("data:".length, comma).split(";");
   const data = url.slice(comma + 1);
-  // querystring's unescape, unlike decodeURIComponent, does not throw on a stray "%".
-  const bytes = flags.includes("base64") ? new Uint8Array(Buffer.from(data, "base64")) : new TextEncoder().encode(unescape(data));
+  // Each %XX is one byte, read as Latin-1 so no byte is turned into UTF-8; a stray "%" stays as it is.
+  const plain = data.replace(/%([0-9a-fA-F]{2})/g, (_escape, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  const bytes = new Uint8Array(flags.includes("base64") ? Buffer.from(data, "base64") : Buffer.from(plain, "latin1"));
   return { kind: "bytes", bytes, contentType: type === "" ? "text/plain" : type };
 }
 
@@ -206,6 +210,15 @@ function mediaOutputOf(url: string): MediaOutput {
  */
 function common(extra: Partial<AnswerCommon> = {}): AnswerCommon {
   return { clones: extra.clones ?? [], retiredClones: extra.retiredClones ?? [], warnings: extra.warnings ?? [] };
+}
+
+/**
+ * Whether an upstream's failure is a lasting answer: it lacks the model or the balance, so retrying the same ticket would get it again.
+ * @param failure - The failure's kind.
+ * @returns True for a lasting answer.
+ */
+function lasting(failure: string): boolean {
+  return failure === "model_not_found" || failure === "insufficient_balance";
 }
 
 /**
@@ -713,7 +726,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   ): Promise<Omit<Ticket, "steps"> | MediaAnswer> => {
     let plan: RoutePlan;
     try {
-      plan = await route(model, input, chosen, planOptions.durations ?? {});
+      plan = await route(model, input, chosen, planOptions.durations);
     } catch (error) {
       if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common() };
       throw error;
@@ -799,8 +812,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     } catch (error) {
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
-        const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.kind === "unsupported_input" || r.failure === "model_not_found");
-        if (lasting) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
+        if (error.reasons.every((r) => r.kind !== "failed" || lasting(r.failure))) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
         // The error stays as the cause: it carries what the answers it moved past cost.
         throw new SendNotAccepted(ticket.upstream, error);
       }
@@ -846,8 +858,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
         if (ticket.accepted || to === undefined) {
-          // The upstream lacking the model or the balance is a lasting answer: retrying the same ticket would get it again.
-          if (failure.kind === "model_not_found" || failure.kind === "insufficient_balance") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
+          if (lasting(failure.kind)) return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
           throw new SendNotAccepted(ticket.upstream, error);
         }
         const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
@@ -897,7 +908,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (!resendable) throw error;
         return waiting(ticket, { warnings: [{ code: "poll_request_failed", detail: { upstream: ticket.upstream, predictionId: at.step.predictionId, error: String(error) } }] });
       }
-      if (asked.state === "running") return waiting(ticket);
+      if (asked.state === "running") {
+        if (asked.handle === undefined) return waiting(ticket);
+        return waiting(next(ticket, { steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, handle: asked.handle } : s)) }));
+      }
       if (asked.state === "failed") return failed(ticket, new UpstreamTaskFailed(ticket.upstream, asked.error));
       let output: StepOutput;
       try {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import { holds, priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
+import { evaluationMessage, holds, priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 
 /** How the caller wants its upstream chosen. */
 export type Route =
@@ -60,8 +60,9 @@ export const pricingRuleSchema = z.strictObject({
 export type PricingRule = z.infer<typeof pricingRuleSchema>;
 
 /**
- * One input limit of an upstream's own: a JSONata condition over the run in the upstream's field names, read
- * exactly as a pricing formula reads it, and the upstream's own words for the limit. A run it holds for cannot go there.
+ * One input limit of an upstream's own: a JSONata condition over the run, read exactly as a pricing formula reads it
+ * (top-level fields under the upstream's names; values, and the sub-fields of list items, as our catalog spells them),
+ * and the upstream's own words for the limit. A run it holds for cannot go there.
  */
 export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1) });
 
@@ -160,8 +161,8 @@ function fieldNamer(rule: UpstreamPricing): (param: string) => string {
 }
 
 /**
- * A run in an upstream's field names, as its formulas and conditions read it: our params under its fields
- * and clip lengths under the same fields; the prompt is the caller's to place.
+ * A run in an upstream's field names, as its formulas and conditions read it: the params it is sent (a param
+ * left out or empty is not) under its fields and clip lengths under the same fields; the prompt is the caller's to place.
  * @param rule - The upstream's pricing entry.
  * @param input - The prepared run.
  * @returns The fields and the clip lengths.
@@ -169,7 +170,7 @@ function fieldNamer(rule: UpstreamPricing): (param: string) => string {
 function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Record<string, unknown>; durations: Record<string, readonly number[]> } {
   const fieldOf = fieldNamer(rule);
   const fields: Record<string, unknown> = {};
-  for (const [param, value] of Object.entries(input.params)) fields[fieldOf(param)] = value;
+  for (const [param, value] of Object.entries(input.params)) if (isPresent(value)) fields[fieldOf(param)] = value;
   const durations: Record<string, readonly number[]> = {};
   for (const [param, clips] of Object.entries(input.durations)) durations[fieldOf(param)] = clips;
   return { fields, durations };
@@ -248,12 +249,12 @@ export function parsePricingRules(raw: unknown): PricingRules {
 /**
  * Why an upstream cannot take a run: a value outside its limits, a voice it does not have, or the first of its
  * own conditions (`rejects`) that holds. A param the run leaves out or empty is always taken, and is not there
- * for a condition to read; neither is an empty prompt.
+ * for a condition to read; neither is an empty prompt. A condition that fails to evaluate on this run keeps
+ * this upstream out, its reason followed by the evaluation error, and leaves every other upstream to its own rules.
  * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
  * @param upstream - The upstream.
  * @param input - The prepared run.
  * @returns The param and value it cannot take, or the reason of its condition; undefined when it takes the run or has no entry.
- * @throws {Error} When a condition fails to evaluate.
  */
 export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
   const rule = ruleOf(rules, upstream);
@@ -265,11 +266,14 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
     if (!values.some((v) => String(v) === String(value))) return { param, value };
   }
   if (rule.rejects === undefined) return undefined;
-  const present = Object.fromEntries(Object.entries(input.params).filter(([, value]) => isPresent(value)));
-  const { fields, durations } = upstreamRun(rule, { ...input, params: present });
+  const { fields, durations } = upstreamRun(rule, input);
   if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = input.prompt;
   for (const { when, reason } of rule.rejects) {
-    if (await holds(when, fields, durations)) return { reason };
+    try {
+      if (await holds(when, fields, durations)) return { reason };
+    } catch (error) {
+      return { reason: `${reason} (the condition could not be evaluated: ${evaluationMessage(error)})` };
+    }
   }
   return undefined;
 }

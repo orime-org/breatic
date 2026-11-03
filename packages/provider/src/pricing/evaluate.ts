@@ -46,6 +46,16 @@ function compiled(formula: string, durations: Readonly<Record<string, readonly n
 }
 
 /**
+ * The words of what JSONata threw, which is a plain object rather than an Error.
+ * @param error - What it threw.
+ * @returns Its message, or the value as text.
+ */
+export function evaluationMessage(error: unknown): string {
+  const message = (error as { message?: unknown } | undefined)?.message;
+  return typeof message === "string" ? message : String(error);
+}
+
+/**
  * Why an expression in the formula dialect does not compile.
  * @param formula - The expression.
  * @returns The parser's message, or undefined when it compiles.
@@ -55,8 +65,7 @@ export function formulaProblem(formula: string): string | undefined {
     compiled(formula, {});
     return undefined;
   } catch (error) {
-    const message = (error as { message?: unknown } | undefined)?.message;
-    return typeof message === "string" ? message : String(error);
+    return evaluationMessage(error);
   }
 }
 

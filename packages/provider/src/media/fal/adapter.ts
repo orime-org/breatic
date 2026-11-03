@@ -16,8 +16,22 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
-import { buildBody } from "@provider/media/body.js";
-import { limits, outputField, type AskContext, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type StepCodec, type Submitted } from "@provider/media/adapter.js";
+import {
+  billingFailure,
+  limits,
+  minimaxVoiceGone,
+  outputField,
+  resellerVoiceClone,
+  unbilled,
+  type AskContext,
+  type Asked,
+  type MediaAdapter,
+  type Reach,
+  type Refusal,
+  type RequestBounds,
+  type StepCodec,
+  type Submitted,
+} from "@provider/media/adapter.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 
 /** How far back a billing lookup reaches; a task's lookups all fall within two hours and the cost wait after it. */
@@ -43,6 +57,19 @@ const statusSchema = z.looseObject({ status: z.string(), error: z.unknown().opti
 
 /** A billing events answer, as far as it is read. */
 const eventsSchema = z.looseObject({ billing_events: z.array(z.looseObject({ cost_total: z.number() })) });
+
+/** fal's error body, as far as it is read: its detail is a string or a validation list. */
+const errorSchema = z.looseObject({ detail: z.unknown() });
+
+/**
+ * The detail of a fal error body.
+ * @param body - The body as fal sent it.
+ * @returns The detail, or undefined when the body carries none.
+ */
+function detailOf(body: string): unknown {
+  const read = errorSchema.safeParse(parsed(body));
+  return read.success ? read.data.detail : undefined;
+}
 
 /**
  * Submit one step; resent only on a 408 or 429, which fal did not process.
@@ -113,6 +140,7 @@ function wordsOf(detail: unknown): string {
  * @param context - The binding, the handle and the step's kind.
  * @returns Whether it is running, done with its outputs, or failed with fal's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
+ * @throws {SyntaxError} When a 2xx status or result answer is not JSON.
  * @throws {Error} When the ticket carries no handle, which every fal submit hands back.
  */
 async function ask(reach: Reach, _predictionId: string, bounds: RequestBounds, context: AskContext): Promise<Asked> {
@@ -127,7 +155,7 @@ async function ask(reach: Reach, _predictionId: string, bounds: RequestBounds, c
     result = await fetchJson({ url: handle.response_url, method: "GET", headers: headers(reach) }, read);
   } catch (error) {
     if (error instanceof HttpStatus && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
-      return { state: "failed", error: wordsOf((parsed(error.body) as { detail?: unknown } | undefined)?.detail ?? error.bodySnippet) };
+      return { state: "failed", error: wordsOf(detailOf(error.body) ?? error.bodySnippet) };
     }
     throw error;
   }
@@ -146,19 +174,13 @@ async function ask(reach: Reach, _predictionId: string, bounds: RequestBounds, c
  * @returns The cost and anything to log.
  */
 async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
-  /**
-   * The answer when billing did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unknown = (reason: string): Cost =>
-    lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
   const start = new Date(Date.now() - BILLING_WINDOW_MS).toISOString();
   const query = new URLSearchParams({ request_id: predictionId, start });
   let body: unknown;
   try {
     body = await fetchJson(
-      { url: `${reach.decl.billing_url ?? reach.decl.base_url}/models/billing-events?${query.toString()}`, method: "GET", headers: headers(reach) },
+      // The configuration load refuses a fal upstream without billing_url.
+      { url: `${reach.decl.billing_url!}/models/billing-events?${query.toString()}`, method: "GET", headers: headers(reach) },
       { replaySafe: true, ...bounds, ...limits(bounds) },
     );
   } catch (error) {
@@ -166,12 +188,12 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
     if (error instanceof HttpStatus && (error.status === 401 || error.status === 403)) {
       return { cost: { state: "missing", reason: NO_BILLING_PERMISSION }, warnings: [{ code: "billing_query_rejected", detail }] };
     }
-    const code = error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
-    return { cost: unknown(code), warnings: [{ code, detail }] };
+    const code = billingFailure(error);
+    return { cost: unbilled(reach, predictionId, lastAttempt, code), warnings: [{ code, detail }] };
   }
   const read = eventsSchema.safeParse(body);
   if (!read.success || read.data.billing_events.length === 0) {
-    return { cost: unknown("billing_query_empty"), warnings: [{ code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
+    return { cost: unbilled(reach, predictionId, lastAttempt, "billing_query_empty"), warnings: [{ code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
   }
   return { cost: { state: "known", usd: read.data.billing_events.reduce((sum, e) => sum + e.cost_total, 0), source: "billing" }, warnings: [] };
 }
@@ -187,7 +209,7 @@ const NO_APPLICATION = /^Application ".*" not found$/;
  * @returns `insufficient_balance` for the account lock, `model_not_found` for an unknown application, otherwise nothing.
  */
 function refusal(error: HttpStatus): Refusal {
-  const detail = (parsed(error.body) as { detail?: unknown } | null | undefined)?.detail;
+  const detail = detailOf(error.body);
   if (typeof detail !== "string") return undefined;
   if (error.status === 403 && LOCKED.test(detail)) return "insufficient_balance";
   if (error.status === 404 && NO_APPLICATION.test(detail)) return "model_not_found";
@@ -212,7 +234,7 @@ export const falAdapter: MediaAdapter = {
   ask,
   billed,
   refusal,
-  gone: () => false,
+  gone: (kind, message) => kind === "voice" && minimaxVoiceGone(message),
   steps: {
     upload_reference: upload("reference"),
     upload_melody: upload("melody"),
@@ -220,16 +242,12 @@ export const falAdapter: MediaAdapter = {
       body: (context) => ({ audio_url: context.source() }),
       output: (outputs, context) => ({ param: context.param, id: outputField(outputs, "vocal_id") }),
     },
-    // MiniMax's clone: fal makes the voice id and answers it.
-    voice: {
-      // The clone's preview text is not sent: the speak step after it says the run's text.
-      body: (context) => buildBody(context.binding, { params: context.params, prompt: "" }),
-      output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
-    },
+    voice: resellerVoiceClone,
     speak: {
       body: (context) => {
         if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
-        return { prompt: context.prompt, voice_setting: { voice_id: context.voiceId } };
+        // fal leaves emotion to MiniMax; WaveSpeed's and SandBase's speech default it to happy.
+        return { prompt: context.prompt, voice_setting: { voice_id: context.voiceId, emotion: "happy" } };
       },
       output: (outputs) => ({ urls: [outputField(outputs.map((o) => at(o, "audio")), "url")] }),
     },

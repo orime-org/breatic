@@ -9,7 +9,8 @@
 
 import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import type { HttpStatus } from "@provider/http/errors.js";
+import { HttpStatus } from "@provider/http/errors.js";
+import { buildBody } from "@provider/media/body.js";
 import type { MediaWarning, StepKind } from "@provider/media/runner.js";
 
 /** One upstream as a call reaches it. */
@@ -40,7 +41,11 @@ export interface Submitted {
 }
 
 /** What one question about a prediction answered. */
-export type Asked = { state: "running" } | { state: "done"; outputs: unknown[] } | { state: "failed"; error: string };
+export type Asked =
+  /** `handle` replaces the step's handle for the next question; it survives a JSON round trip in the ticket. */
+  | { state: "running"; handle?: Record<string, string> }
+  | { state: "done"; outputs: unknown[] }
+  | { state: "failed"; error: string };
 
 /** What one step answered, for the steps after it and for billing. */
 export interface StepOutput {
@@ -173,3 +178,52 @@ export function outputUrls(outputs: readonly unknown[]): string[] {
   }
   return [...outputs];
 }
+
+/**
+ * What a billing lookup answers when the upstream did not say what a prediction cost.
+ * @param reach - The upstream.
+ * @param predictionId - The prediction.
+ * @param lastAttempt - Whether no later lookup follows.
+ * @param reason - Why the upstream did not say.
+ * @returns Missing on the last attempt, otherwise a lookup to ask again with.
+ */
+export function unbilled(reach: Reach, predictionId: string, lastAttempt: boolean, reason: string): Cost {
+  return lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
+}
+
+/**
+ * The warning code of a billing query that failed.
+ * @param error - What the query threw.
+ * @returns `billing_query_rejected` when the upstream answered a status, `billing_query_failed` otherwise.
+ */
+export function billingFailure(error: unknown): "billing_query_rejected" | "billing_query_failed" {
+  return error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
+}
+
+/**
+ * The headers of an upstream that takes its key as a bearer token.
+ * @param reach - The upstream.
+ * @returns Bearer auth and a JSON body type.
+ */
+export function bearerHeaders(reach: Reach): Record<string, string> {
+  return { authorization: `Bearer ${reach.key}`, "content-type": "application/json" };
+}
+
+/**
+ * Whether MiniMax's words say a voice id it once gave is gone (probed on WaveSpeed 2026-09-28); a
+ * reseller passes MiniMax's error through.
+ * @param message - The upstream's words.
+ * @returns True when the voice is gone.
+ */
+export function minimaxVoiceGone(message: string): boolean {
+  return /Voice ID does not exist/.test(message);
+}
+
+/**
+ * MiniMax's clone on a reseller that makes the voice id and answers it. The clone's preview text is
+ * not sent: the speak step after it says the run's text.
+ */
+export const resellerVoiceClone: StepCodec = {
+  body: (context) => buildBody(context.binding, { params: context.params, prompt: "" }),
+  output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
+};

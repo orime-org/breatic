@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
-
-/** How a written value is converted: to a string, a number, or a one-item list. */
-type Conversion = ParamBinding["as"];
 import type { MediaInput } from "@provider/media/runner.js";
 import { isPresent } from "@provider/pricing/estimate.js";
 
@@ -30,7 +27,7 @@ function pronunciationPair(entry: unknown): string | undefined {
  * @param as - The conversion, if any.
  * @returns The converted value.
  */
-function converted(value: unknown, as: Conversion): unknown {
+function converted(value: unknown, as: ParamBinding["as"]): unknown {
   if (as === "string") return String(value);
   if (as === "number") return Number(value);
   if (as === "list") return [value];
@@ -109,7 +106,8 @@ export function mentionsWritten(binding: MediaBinding, prompt: string): string {
  * (dots writing nested objects), its value spelled and converted the upstream's
  * way, an absent value and an unbound param left out, the prompt under
  * `prompt_field` when there is one (empty values and an empty prompt only when
- * the binding sets `send_empty`), and the binding's fixed fields.
+ * the binding sets `send_empty`), and the binding's fixed fields, written at their
+ * dotted paths as params are.
  * @param binding - The model's binding.
  * @param input - Our prepared params and prompt.
  * @returns The body.
@@ -124,5 +122,6 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     if (out !== undefined) writeAt(body, bound.field, out);
   }
   if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
-  return { ...body, ...binding.fixed };
+  for (const [path, value] of Object.entries(binding.fixed ?? {})) writeAt(body, path, value);
+  return body;
 }

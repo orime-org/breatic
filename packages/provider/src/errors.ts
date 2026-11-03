@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { Cost } from "@provider/cost.js";
+import type { RejectedInput } from "@provider/pricing/estimate.js";
 
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
   | { upstream: string; kind: "missing_key"; envVar: string }
-  /** The run sets a param to a value this upstream cannot take. */
-  | { upstream: string; kind: "unsupported_input"; param: string; value: unknown }
-  /** The run is outside one of this upstream's own input limits, in its words. */
-  | { upstream: string; kind: "unsupported_input"; reason: string }
+  /** The run sets a param to a value this upstream cannot take, or is outside one of its own input limits, in its words. */
+  | ({ upstream: string; kind: "unsupported_input" } & RejectedInput)
   | { upstream: string; kind: "failed"; failure: string; /** The status, for an `http_status` failure. */ status?: number };
 
 /** No upstream of a model could serve the call; each one says why. */

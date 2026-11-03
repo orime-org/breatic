@@ -174,7 +174,7 @@ describe("SandBase runs", () => {
       expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/r9.png" }]);
     });
 
-    it("fails the run with the cost still looked up once the wait has passed since it first answered so", async () => {
+    it("fails the run, leaving its cost to look up, once the wait has passed since it first answered so", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const { run } = runner();
       completedRun(() => false);
@@ -184,7 +184,7 @@ describe("SandBase runs", () => {
       const failed = expectState(await run.poll(stored(answer.ticket), live()), "failed");
       expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
       expect((failed.reason as UpstreamTaskFailed).upstreamError).toMatch(/no output/i);
-      expect(failed.costs).toEqual([{ state: "known", usd: 0.02, source: "billing" }]);
+      expect(failed.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
     });
   });
 

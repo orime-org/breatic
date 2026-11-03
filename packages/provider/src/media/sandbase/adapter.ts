@@ -6,7 +6,9 @@
  * fields, and may answer a completed run at once; a run is asked about at
  * `GET /run/{id}`; what it cost is `GET /tasks/{id}/cost` once settled. Its
  * outputs may carry the file inline as a data URI, so its run answers are
- * read up to the caller's media limit. SandBase has no client key, so a send
+ * read up to the caller's media limit. A run answered completed without outputs
+ * is waited for up to the upstream's `empty_output_wait_ms`, its first such
+ * answer kept in the step's handle. SandBase has no client key, so a send
  * whose answer was lost cannot be looked up (recovery `none`).
  */
 
@@ -15,18 +17,24 @@ import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { BodyTooLarge, HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
-import { buildBody } from "@provider/media/body.js";
-import { inlineLimits, limits, outputField, type AskContext, type Asked, type MediaAdapter, type Reach, type Refusal, type RequestBounds, type Submitted } from "@provider/media/adapter.js";
+import {
+  bearerHeaders as headers,
+  billingFailure,
+  inlineLimits,
+  limits,
+  minimaxVoiceGone,
+  outputField,
+  resellerVoiceClone,
+  unbilled,
+  type AskContext,
+  type Asked,
+  type MediaAdapter,
+  type Reach,
+  type Refusal,
+  type RequestBounds,
+  type Submitted,
+} from "@provider/media/adapter.js";
 import type { MediaWarning, StepKind } from "@provider/media/runner.js";
-
-/**
- * The headers of every request.
- * @param reach - The upstream.
- * @returns Bearer auth and a JSON body type.
- */
-function headers(reach: Reach): Record<string, string> {
-  return { authorization: `Bearer ${reach.key}`, "content-type": "application/json" };
-}
 
 /** A run answer, from a submit or a question, as far as it is read. */
 const runSchema = z.looseObject({
@@ -45,19 +53,25 @@ const errorSchema = z.looseObject({ error: z.string() });
 /** What a run answer over the read limit fails with. */
 const OVER_LIMIT = "the run's answer is larger than the media limit allows";
 
+/** The handle key holding when, in epoch ms, the run first answered completed without outputs. */
+const EMPTY_SINCE = "completed_empty_since";
+
 /**
  * What a run answer says. The model's own call reads its output urls; an extra step reads
  * the output items whole, for the fields it needs (a voice clone's `custom_voice_id`).
  * @param body - The parsed answer.
  * @param kind - The kind of step the run serves.
- * @returns The id, and the outputs when completed with some, or SandBase's words when it failed.
+ * @returns The id, and the outputs when completed with some, whether it completed without any, or SandBase's words when it failed.
  */
-function readRun(body: unknown, kind: StepKind): { id: string | undefined; outputs?: unknown[]; error?: string } {
+function readRun(body: unknown, kind: StepKind): { id: string | undefined; outputs?: unknown[]; empty?: true; error?: string } {
   const read = runSchema.safeParse(body);
   if (!read.success) return { id: undefined };
   const { id, status, outputs, error } = read.data;
   const named = id === "" ? undefined : id;
-  if (status === "completed" && (outputs ?? []).length > 0) return { id: named, outputs: kind === "generate" ? outputs!.map((o) => o.url) : outputs! };
+  if (status === "completed") {
+    if ((outputs ?? []).length === 0) return { id: named, empty: true };
+    return { id: named, outputs: kind === "generate" ? outputs!.map((o) => o.url) : outputs! };
+  }
   if (status === "failed" || status === "timeout") {
     const words = typeof error === "string" ? error : error === undefined || error === null ? `the run ended ${status}` : JSON.stringify(error);
     return { id: named, error: words };
@@ -82,7 +96,7 @@ function readRun(body: unknown, kind: StepKind): { id: string | undefined; outpu
 async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds, kind: StepKind): Promise<Submitted> {
   const url = `${reach.decl.base_url}/run`;
   const options = { replaySafe: false, ...bounds };
-  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify({ model: endpoint, ...body }) }, options);
+  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify({ ...body, model: endpoint }) }, options);
   const { maxBodyBytes, idleMs } = inlineLimits(bounds);
   const named = response.headers.get("x-task-id") ?? response.headers.get("x-request-id") ?? undefined;
   let text: string;
@@ -101,12 +115,14 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
 }
 
 /**
- * Ask once about a run. An answer over the read limit fails the run.
+ * Ask once about a run. An answer over the read limit fails the run. A run completed without outputs
+ * may still be storing them, so it is running until `empty_output_wait_ms` has passed since it first
+ * answered so, and then failed.
  * @param reach - The upstream.
  * @param predictionId - The run id.
  * @param bounds - The deadline, signal and media limit.
- * @param context - The kind of step asked about.
- * @returns Whether it is running, done with its outputs, or failed with SandBase's words.
+ * @param context - The kind of step asked about and the handle of an earlier answer.
+ * @returns Whether it is running (with the handle to keep), done with its outputs, or failed with SandBase's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
  */
@@ -123,8 +139,12 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds, co
   }
   const run = readRun(body, context.kind);
   if (run.error !== undefined) return { state: "failed", error: run.error };
-  // A completed run may still report no outputs while SandBase stores them.
-  return run.outputs === undefined ? { state: "running" } : { state: "done", outputs: run.outputs };
+  if (run.outputs !== undefined) return { state: "done", outputs: run.outputs };
+  if (run.empty !== true) return { state: "running" };
+  const since = Number(context.handle?.[EMPTY_SINCE] ?? Date.now());
+  const wait = reach.decl.empty_output_wait_ms;
+  if (Date.now() - since >= wait) return { state: "failed", error: `SandBase completed the run with no output, still none after ${wait} ms` };
+  return { state: "running", handle: { ...context.handle, [EMPTY_SINCE]: String(since) } };
 }
 
 /**
@@ -141,8 +161,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
    * @param reason - Why.
    * @returns The cost.
    */
-  const unknown = (reason: string): Cost =>
-    lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
+  const unknown = (reason: string): Cost => unbilled(reach, predictionId, lastAttempt, reason);
   let body: unknown;
   try {
     body = await fetchJson(
@@ -153,7 +172,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
     const detail = { upstream: reach.name, predictionId, error: String(error) };
     // The cost endpoint does not know a run until it is billed.
     if (error instanceof HttpStatus && error.status === 404) return { cost: unknown("billing_query_empty"), warnings: [{ code: "billing_query_empty", detail }] };
-    const code = error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
+    const code = billingFailure(error);
     return { cost: unknown(code), warnings: [{ code, detail }] };
   }
   const read = costSchema.safeParse(body);
@@ -183,14 +202,9 @@ export const sandbaseAdapter: MediaAdapter = {
   ask,
   billed,
   refusal,
-  gone: () => false,
+  gone: (kind, message) => kind === "voice" && minimaxVoiceGone(message),
   steps: {
-    // MiniMax's clone: SandBase makes the voice id and answers it on the output.
-    voice: {
-      // The clone's preview text is not sent: the speak step after it says the run's text.
-      body: (context) => buildBody(context.binding, { params: context.params, prompt: "" }),
-      output: (outputs) => ({ voiceId: outputField(outputs, "custom_voice_id") }),
-    },
+    voice: resellerVoiceClone,
     speak: {
       body: (context) => {
         if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
