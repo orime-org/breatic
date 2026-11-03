@@ -301,7 +301,7 @@ export async function startWorker(): Promise<void> {
       "audio_peaks_job_failed",
     );
   });
-  const videoPresentation = createWorker<VideoPresentationJob>(VIDEO_PRESENTATION_QUEUE, job => runVideoPresentation(job));
+  const videoPresentation = createWorker<VideoPresentationJob>(VIDEO_PRESENTATION_QUEUE, (job, token) => runVideoPresentation(job, token));
   videoPresentation.on('failed', (job, err) => {
     logger.error({ err, ctx: job?.data, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts }, 'video_presentation_job_failed');
   });
