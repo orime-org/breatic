@@ -243,7 +243,8 @@
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-      "sourceTooLarge": "This tool takes files up to {size}."
+      "sourceTooLarge": "This tool takes files up to {size}.",
+      "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",

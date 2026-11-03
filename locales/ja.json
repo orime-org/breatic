@@ -243,7 +243,8 @@
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
-      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
+      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
+      "runTooLong": "この動画は1回の実行で処理するには長すぎます（エンコードジョブが {max} 個を超えます）。出力を減らすか短くしてください。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
