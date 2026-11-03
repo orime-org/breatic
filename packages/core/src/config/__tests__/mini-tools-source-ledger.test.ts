@@ -32,14 +32,18 @@ describe('S4 source ledger byte and structure policy without frame caps', () => 
   });
   it('K02 defaults the whole old presentation without disturbing siblings', () => {
     const { presentation: _omitted, ...legacy } = structuredClone(getMiniToolsConfig());
-    expect(miniToolsConfigSchema.parse(legacy)).toEqual({ ...legacy, presentation: { container_class: 'MediaContainer', policy_version: 1, max_source_bytes: 2147483648, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: DEFAULTS, carrier: CARRIER } });
+    // S6d D1 (§91, S6d-C02): the probe sample count, single-frame duration and seeded identity table default too.
+    const { identity_formats: identityFormats } = getMiniToolsConfig().presentation;
+    expect(miniToolsConfigSchema.parse(legacy)).toEqual({ ...legacy, presentation: { container_class: 'MediaContainer', policy_version: 1, probe_sample_frames: 1, single_frame_duration_ms: 5000,
+      identity_formats: identityFormats, max_source_bytes: 2147483648, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: DEFAULTS, carrier: CARRIER } });
   });
   it('K03 adds policy defaults without replacing configured presentation or plan limits', () => {
     const configured = getMiniToolsConfig();
     // policy_version is required in a configured presentation block (S6e E1, design §3.2 item 1).
     const presentation = { container_class: 'MiniToolContainerStd1', policy_version: 2, max_source_bytes: 4096, max_packed_bytes: 8192, crf: 25, preset: 'fast' };
     const plan_limits = { probeStdoutBytes: 65536, analysisStdoutBytes: 32768, stderrTailBytes: 1024 };
-    expect(miniToolsConfigSchema.parse({ ...configured, presentation, plan_limits })).toEqual({ ...configured, presentation: { ...presentation, source_ledger: DEFAULTS, carrier: CARRIER }, plan_limits });
+    expect(miniToolsConfigSchema.parse({ ...configured, presentation, plan_limits })).toEqual({ ...configured, presentation: { ...presentation, probe_sample_frames: 1, single_frame_duration_ms: 5000,
+      identity_formats: configured.presentation.identity_formats, source_ledger: DEFAULTS, carrier: CARRIER }, plan_limits });
   });
   it('K04 defaults an empty policy, preserves explicit overrides and both safe integer boundaries', () => {
     expect(miniToolsConfigSchema.parse(withLedger({})).presentation.source_ledger).toEqual(DEFAULTS);

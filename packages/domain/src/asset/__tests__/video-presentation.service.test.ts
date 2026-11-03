@@ -231,7 +231,7 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     const core = await import('@breatic/core');
     const settings = getMiniToolsConfig();
     const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings,
-      presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000 } } as unknown as ReturnType<typeof getMiniToolsConfig>);
+      presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000 } });
     try {
       await ensureVideoPresentation({ assetId: asset.id });
       // §91 D1-1: the identity table travels with the frozen probe facts, its keys in the wire's camelCase.

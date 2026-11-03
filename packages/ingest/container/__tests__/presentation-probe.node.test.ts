@@ -106,6 +106,8 @@ beforeAll(async () => {
   await make('empty-edit.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy', '-use_editlist', '1']);
   files.set('hevc-alpha.mov', new URL('hevc-alpha.mov', COMMITTED).pathname);
   files.set('noelst-ctts.mp4', new URL('noelst-ctts.mp4', COMMITTED).pathname);
+  // A stream-copy cut at 0.5 s: packets start at the 0.4 s keyframe and one edit starts 0.1 s (1280 of 12800) later.
+  await make('cut.mp4', ['-ss', '0.5', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy']);
   // §91 D1-1 and D1-2: identity qualification and the copy criterion.
   const audio = ['-f', 'lavfi', '-i', 'sine=f=440:sample_rate=44100:d=2'];
   const video2s = ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged];
@@ -182,7 +184,7 @@ async function fingerprint(name: string): Promise<string> {
  * @returns The parsed answer.
  */
 async function probed(name: string, fields: Record<string, unknown> = {}): Promise<Answer> {
-  const schemas = contractOwner as Record<string, { parse: (value: unknown) => unknown } | undefined>;
+  const schemas = contractOwner as unknown as Record<string, { parse: (value: unknown) => unknown } | undefined>;
   expect(schemas.presentationRunRequestSchema, 'presentationRunRequestSchema is exported').toBeDefined();
   expect(schemas.presentationProbeAnswerSchema, 'presentationProbeAnswerSchema is exported').toBeDefined();
   const body = schemas.presentationRunRequestSchema!.parse({
@@ -356,8 +358,18 @@ describe('identity qualification from the versioned format table (design §4.1; 
 });
 
 describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §91 D1-2)', () => {
+  // hevc.mp4 has B frames (has_b_frames 2): its one edit starts at media time 1024 of 12800, the track's minimum CTS, so the
+  // edit is the media start and the plan is unaltered (design line 282, inner f446990c).
   it.each(['cfr.mp4', 'hevc.mp4'])('CT01 an unaltered plan with one video track whose codec the MP4 carrier can hold copies: %s', async (name) => {
     expect(planned(await probed(name)).routeInput.copyPreservesTimeline).toBe(true);
+  });
+
+  it('CT04 a single edit starting later than the track\'s first CTS is a cut, not the media start: the plan is altered and does not copy', async () => {
+    const answer = planned(await probed('cut.mp4'));
+    expect(answer.routeInput.copyPreservesTimeline).toBe(false);
+    // The edit presents media [0.1, 1.6) s: 1.5 s, frames 2 to 39 of the 40 copied (the first one partly, design §4.1 row 2).
+    expect(equals(answer.plan.display.duration, 3, 2)).toBe(true);
+    expect(presentationFrameCount(answer.plan.presentation as never)).toBe(38);
   });
 
   it('CT02 a codec the MP4 carrier cannot hold (ProRes) does not copy', async () => {

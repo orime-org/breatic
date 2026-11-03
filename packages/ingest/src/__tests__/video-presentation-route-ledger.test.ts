@@ -73,7 +73,7 @@ function acceptBody(key: string, jobId: string): Record<string, unknown> {
   return {
     action: 'accept', storageKey: key, sourceFingerprint: H, jobId, deadlineAt: value.deadlineAt, original: value.original, contentType: value.contentType,
     repair: true, limits: value.limits, pricing: value.pricing, targetPolicyVersion: value.targetPolicyVersion, actorUserId: value.actorUserId, projectId: value.projectId,
-    publicBaseURL: value.publicBaseURL, policy: POLICY, encoding: value.encoding,
+    publicBaseURL: value.publicBaseURL, policy: POLICY, encoding: value.encoding, probe: value.probe,
   };
 }
 
