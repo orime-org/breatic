@@ -36,7 +36,7 @@ const price = (containerClass: string, vcpu: number, memory: number, disk: numbe
 const PRICING = { basic: price('MediaContainer', 0.25, 1, 4), standard4: price('MiniToolContainerStd4', 4, 12, 20) };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, sdr_12bit: 1430000000, hdr_8bit: 152000000, hdr_10bit: 103000000, hdr_12bit: 116000000 } },
   copyDiskMarginBytes: 33554432,
   carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
@@ -46,7 +46,7 @@ const accept = {
   limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
   pricing: PRICING, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 }, encoding: ENCODING,
   // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
-  probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
+  probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
   publicBaseURL: 'https://assets.example.test',
 };
@@ -85,7 +85,10 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
     ['a zero parallel cap', { ...ENCODING, maxParallelChunks: 0 }],
     ['a fractional parallel cap', { ...ENCODING, maxParallelChunks: 1.5 }],
     ['a zero encode rate', { ...ENCODING, encoder: { ...ENCODING.encoder, encodePixelsPerSecond: 0 } }],
-    ['a missing HDR 10-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, hdr_8bit: 1 } } }],
+    ['a missing HDR 10-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_12bit: 1 } } }],
+    // S6d D1-3 (§91): the 12-bit rates are frozen with the others.
+    ['a missing SDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, hdr_8bit: 1, hdr_10bit: 1, hdr_12bit: 1 } } }],
+    ['a missing HDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_10bit: 1 } } }],
     ['a negative copy margin', { ...ENCODING, copyDiskMarginBytes: -1 }],
     ['a zero carrier short side', { ...ENCODING, carrier: { ...ENCODING.carrier, maxShortSide: 0 } }],
     ['an unknown key', { ...ENCODING, retries: 3 }],
@@ -100,12 +103,19 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
 describe('S6d D1 frozen probe facts on the accept (inner#1306 §91 D-6; design §5.1 step 2, §4.2.1)', () => {
   it.each([
     ['no probe facts', { probe: undefined }],
-    ['no sample count', { probe: { singleFrameDurationMs: 5000 } }],
-    ['a zero sample count', { probe: { sampleFrames: 0, singleFrameDurationMs: 5000 } }],
-    ['a fractional sample count', { probe: { sampleFrames: 1.5, singleFrameDurationMs: 5000 } }],
-    ['no single-frame duration', { probe: { sampleFrames: 1 } }],
-    ['a zero single-frame duration', { probe: { sampleFrames: 1, singleFrameDurationMs: 0 } }],
-    ['an unknown probe field', { probe: { sampleFrames: 1, singleFrameDurationMs: 5000, decodeAll: true } }],
+    ['no sample count', { probe: { singleFrameDurationMs: 5000, identityFormats: accept.probe.identityFormats } }],
+    ['a zero sample count', { probe: { ...accept.probe, sampleFrames: 0 } }],
+    ['a fractional sample count', { probe: { ...accept.probe, sampleFrames: 1.5 } }],
+    ['no single-frame duration', { probe: { sampleFrames: 1, identityFormats: accept.probe.identityFormats } }],
+    ['a zero single-frame duration', { probe: { ...accept.probe, singleFrameDurationMs: 0 } }],
+    ['an unknown probe field', { probe: { ...accept.probe, decodeAll: true } }],
+    // §91 D1-1: the identity table travels with the frozen probe facts.
+    ['no identity table', { probe: { sampleFrames: 1, singleFrameDurationMs: 5000 } }],
+    ['an identity entry with a rotation', { probe: { ...accept.probe, identityFormats: [{ ...accept.probe.identityFormats[0]!, rotation: 90 }] } }],
+    ['an identity entry with another SAR', { probe: { ...accept.probe, identityFormats: [{ ...accept.probe.identityFormats[0]!, sar: '2:1' }] } }],
+    ['an identity entry for an untagged matrix', { probe: { ...accept.probe, identityFormats: [{ ...accept.probe.identityFormats[0]!, matrixTagged: false }] } }],
+    ['an identity entry without audio codecs', { probe: { ...accept.probe, identityFormats: [{ ...accept.probe.identityFormats[0]!, audioCodecs: [] }] } }],
+    ['an identity entry without profiles', { probe: { ...accept.probe, identityFormats: [{ ...accept.probe.identityFormats[0]!, profiles: [] }] } }],
   ])('PF01 rejects an accept with %s', (_name, change) => {
     expect(admits(accept)).toBe(true);
     const value: Record<string, unknown> = { ...accept, ...change };

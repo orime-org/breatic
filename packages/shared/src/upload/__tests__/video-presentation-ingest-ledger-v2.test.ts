@@ -37,11 +37,11 @@ const accept = {
   },
   targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
   // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
-  probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
+  probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
   // S6e E2-1: the encoding parameters are frozen at admission.
   encoding: {
     chunkShare: 0.5, maxParallelChunks: 8,
-    encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+    encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, sdr_12bit: 1430000000, hdr_8bit: 152000000, hdr_10bit: 103000000, hdr_12bit: 116000000 } },
     copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
   },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,

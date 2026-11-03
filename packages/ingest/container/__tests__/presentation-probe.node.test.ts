@@ -17,7 +17,7 @@
  */
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -46,19 +46,19 @@ interface Plan {
   output: { toneMap: string; framePngBitDepth: number };
   policy: { singleFrameDurationMs: number; emptyFill: string };
   presentation: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-  originMapping: { origin: Rational; entries: { kind: string }[] };
+  originMapping: { origin: Rational; entries: { kind: string }[]; lastSource: { support: string; supportEnd: Rational; hold: { kind: string; end: Rational } | null } };
 }
 interface Planned {
   kind: 'planned'; toolInputId: string; planSha256: string; plan: Plan;
   encoding: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number };
-  routeInput: { plan: { planSha256: string }; hdr: boolean; alpha: string; colorMatrixTagged: boolean; codec: string; sourceBytes: number };
+  routeInput: { plan: { planSha256: string }; hdr: boolean; alpha: string; identityQualified: boolean; colorMatrixTagged: boolean; codec: string; copyPreservesTimeline: boolean; sourceBytes: number };
   work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: number; hdr: boolean };
 }
 type Answer = Planned | { kind: 'failed'; code: string };
 
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, sdr_12bit: 1430000000, hdr_8bit: 152000000, hdr_10bit: 103000000, hdr_12bit: 116000000 } },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const LIMITS = {
@@ -66,7 +66,9 @@ const LIMITS = {
   sourceLedger: { maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216, isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000 },
 };
 // §91 D-6: one sampled frame classifies every measured fixture; the default of presentation.probe_sample_frames.
-const PROBE = { sampleFrames: 1, singleFrameDurationMs: 5000 };
+// §91 D1-1: the identity table frozen at admission; the seed is MP4 + H.264 Baseline/Main/High 8-bit 4:2:0 with AAC or no audio.
+const IDENTITY_FORMATS = [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }];
+const PROBE = { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: IDENTITY_FORMATS };
 const SOURCE_BASE = 'http://source.test/';
 const COMMITTED = new URL('./fixtures/presentation/', import.meta.url);
 // Read at collection time: the HEVC alpha case needs FFmpeg 8 (the media image), §91 D-6.
@@ -103,7 +105,45 @@ beforeAll(async () => {
   // A 250 ms leading empty edit, as in the 2026-11-01 evidence clip (no audio).
   await make('empty-edit.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy', '-use_editlist', '1']);
   files.set('hevc-alpha.mov', new URL('hevc-alpha.mov', COMMITTED).pathname);
+  files.set('noelst-ctts.mp4', new URL('noelst-ctts.mp4', COMMITTED).pathname);
+  // §91 D1-1 and D1-2: identity qualification and the copy criterion.
+  const audio = ['-f', 'lavfi', '-i', 'sine=f=440:sample_rate=44100:d=2'];
+  const video2s = ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged];
+  await make('cfr-aac.mp4', [...video2s.slice(0, 4), ...audio, ...video2s.slice(4), '-c:a', 'aac', '-shortest']);
+  await make('alac.mp4', [...video2s.slice(0, 4), ...audio, ...video2s.slice(4), '-c:a', 'alac']);
+  await make('hevc.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx265', '-pix_fmt', 'yuv420p',
+    '-x265-params', 'log-level=error:colorprim=bt709:transfer=bt709:colormatrix=bt709', '-tag:v', 'hvc1']);
+  await make('rot90-tagged.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
+  await make('prores422.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le']);
+  await make('two-video.mp4', ['-i', join(dir, 'cfr.mp4'), '-i', join(dir, 'edit-base.mp4'), '-map', '0:v', '-map', '1:v', '-c', 'copy']);
+  // §91 D1-4: the selected audio window, the Matroska last frame and a ctts-only leading start.
+  // 110251 samples at 44.1 kHz end at 2.500023 s, between two 48 kHz samples: the end snaps to sample 120001.
+  await make('long-audio.mov', [...video2s.slice(0, 4), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=44100,atrim=end_sample=110251', ...video2s.slice(4), '-c:a', 'pcm_s16le']);
+  await make('two-audio.mov', ['-i', join(dir, 'long-audio.mov'), '-f', 'lavfi', '-i', 'sine=f=220:sample_rate=48000:d=3', '-map', '0:v', '-map', '0:a', '-map', '1:a', '-c:v', 'copy', '-c:a', 'pcm_s16le']);
+  // Frames at 0, 100, 400 and 500 ms; FFmpeg writes a DefaultDuration, which is replaced by an EBML Void of the same
+  // length, so no frame declares a duration (as MediaRecorder recordings in the 2026-10-31 evidence).
+  await make('vfr-default.webm', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=10:d=0.4,setpts='if(eq(N\\,2)\\,0.4/TB\\,if(eq(N\\,3)\\,0.5/TB\\,PTS))'", '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
+  const webm = new Uint8Array(await readFile(join(dir, 'vfr-default.webm')));
+  await writeFile(join(dir, 'vfr.webm'), withoutDefaultDuration(webm));
+  files.set('vfr.webm', join(dir, 'vfr.webm'));
 });
+
+/**
+ * Replace the one Matroska DefaultDuration element (ID 0x23E383) with an EBML Void element of the same length.
+ * @param bytes - The WebM bytes.
+ * @returns A copy without the element.
+ * @throws {Error} When the element is not there exactly once or its size is not a one-byte vint.
+ */
+function withoutDefaultDuration(bytes: Uint8Array): Uint8Array {
+  const copy = bytes.slice();
+  const ids: number[] = [];
+  for (let i = 0; i + 3 < copy.length; i += 1) if (copy[i] === 0x23 && copy[i + 1] === 0xe3 && copy[i + 2] === 0x83) ids.push(i);
+  if (ids.length !== 1 || (copy[ids[0]! + 3]! & 0x80) === 0) throw new Error('Expected one DefaultDuration with a one-byte size');
+  const at = ids[0]!;
+  const total = 4 + (copy[at + 3]! & 0x7f);
+  copy.set([0xec, 0x80 | (total - 2), ...new Uint8Array(total - 2)], at);
+  return copy;
+}
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 beforeEach(() => {
   calls.length = 0;
@@ -217,6 +257,8 @@ describe('packet-level demux and a bounded sample decode (design §5.1 step 2; �
     expect(calls.filter((call) => call.args.includes('-show_frames'))).toEqual([]);
   });
 
+  // §91 D-6: the sample is decoded by ffmpeg, not read with ffprobe -show_frames: FFmpeg 8.0.1's ffprobe reports HEVC with an
+  // alpha layer as yuv420p while ffmpeg decodes it as yuva420p; VP9 alpha decodes as yuva only with libvpx-vp9.
   it.each([1, 3])('PD02 decodes at most the frozen sample of %i frame(s) to read the decoder-reported pixel format', async (sampleFrames) => {
     planned(await probed('cfr.mp4', { probe: { ...PROBE, sampleFrames } }));
     const decodes = calls.filter((call) => call.program === 'ffmpeg');
@@ -268,6 +310,8 @@ describe('alpha classification from real stream properties (design §5.1 step 2,
   it.each(['vp9-alpha.webm', 'prores4444.mov'])('PA01 %s is confirmed transparent: empty fill is transparent', async (name) => {
     const answer = planned(await probed(name));
     expect(answer.routeInput.alpha).toBe('confirmed_alpha');
+    // §91 D1-3: ProRes 4444 decodes as 12-bit (yuva444p12le); the work carries its 12-bit SDR depth.
+    if (name === 'prores4444.mov') expect(answer.work).toMatchObject({ bitDepth: 12, hdr: false });
     expect(answer.plan.policy.emptyFill).toBe('transparent');
   });
 
@@ -292,7 +336,87 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
   });
 });
 
+describe('identity qualification from the versioned format table (design §4.1; §91 D1-1)', () => {
+  it.each(['cfr.mp4', 'cfr-aac.mp4'])('IQ01 a seeded combination qualifies: %s (MP4, H.264 High 8-bit 4:2:0, tagged, no rotation, SAR 1:1, AAC or no audio)', async (name) => {
+    const answer = planned(await probed(name));
+    expect(answer.routeInput.identityQualified).toBe(true);
+  });
+
+  it.each([
+    ['an unlisted video codec (HEVC)', 'hevc.mp4'],
+    ['a rotation of 90', 'rot90-tagged.mp4'],
+    ['SAR 2:1', 'sar.mp4'],
+    ['an unsupported audio codec (ALAC)', 'alac.mp4'],
+    ['an untagged matrix', 'untagged-720.mp4'],
+    ['4:4:4 chroma', 'odd.mp4'],
+    ['a codec outside the table (ProRes)', 'prores422.mov'],
+  ])('IQ02 %s does not qualify', async (_name, file) => {
+    expect(planned(await probed(file)).routeInput.identityQualified).toBe(false);
+  });
+});
+
+describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §91 D1-2)', () => {
+  it.each(['cfr.mp4', 'hevc.mp4'])('CT01 an unaltered plan with one video track whose codec the MP4 carrier can hold copies: %s', async (name) => {
+    expect(planned(await probed(name)).routeInput.copyPreservesTimeline).toBe(true);
+  });
+
+  it('CT02 a codec the MP4 carrier cannot hold (ProRes) does not copy', async () => {
+    expect(planned(await probed('prores422.mov')).routeInput.copyPreservesTimeline).toBe(false);
+  });
+
+  it.each([
+    ['a hold after the video (audio continues)', 'long-audio.mov'],
+    ['a derived last-frame support (Matroska previous-max)', 'vfr.webm'],
+  ])('CT03 an altered plan does not copy: %s', async (_name, file) => {
+    expect(planned(await probed(file)).routeInput.copyPreservesTimeline).toBe(false);
+  });
+});
+
+describe('audio window, Matroska last frame and leading start (design §4.2, §4.2.1; §91 D1-4)', () => {
+  it('AU01 audio past the video end extends the presentation to its end snapped to 48 kHz, with a derived hold on the last frame', async () => {
+    const answer = planned(await probed('long-audio.mov'));
+    // round-half-away(110251 × 48000 / 44100) = round(120001.088) = 120001.
+    expect(equals(answer.plan.display.duration, 120001, 48000)).toBe(true);
+    expect(answer.plan.originMapping.lastSource.hold?.kind).toBe('derived-hold');
+    expect(equals(answer.plan.originMapping.lastSource.hold!.end, 120001, 48000)).toBe(true);
+    expect(equals(answer.plan.originMapping.lastSource.supportEnd, 2)).toBe(true);
+    expect(presentationFrameCount(answer.plan.presentation as never)).toBe(50);
+  });
+
+  it('AU02 the selected audio is the first audio stream in ffprobe order, not the longest', async () => {
+    const answer = planned(await probed('two-audio.mov'));
+    expect(equals(answer.plan.display.duration, 120001, 48000)).toBe(true);
+  });
+
+  it('AU03 audio that ends with the video adds no hold', async () => {
+    const answer = planned(await probed('cfr-aac.mp4'));
+    expect(equals(answer.plan.display.duration, 2)).toBe(true);
+    expect(answer.plan.originMapping.lastSource.hold).toBeNull();
+  });
+
+  it('MK01 a Matroska last frame without BlockDuration or DefaultDuration takes the largest earlier frame duration (previous-max)', async () => {
+    const answer = planned(await probed('vfr.webm'));
+    // Frames at 0, 100, 400, 500 ms: earlier durations 100, 300, 100; the last ends at 500 + 300 ms. Info.Duration (0.6 s) is not used.
+    expect(presentationFrameCount(answer.plan.presentation as never)).toBe(4);
+    expect(answer.plan.originMapping.lastSource.support).toBe('previous-max');
+    expect(equals(answer.plan.display.duration, 4, 5)).toBe(true);
+  });
+
+  it('CL01 a first frame starting at 0.25 s through ctts alone, without an edit list or audio, rebases onto the first frame', async () => {
+    const answer = planned(await probed('noelst-ctts.mp4'));
+    // 17 frames of 2048 ticks on 1/16384 start at 4096: origin 1/4, duration 17 × 1/8 s.
+    expect(equals(answer.plan.originMapping.origin, 1, 4)).toBe(true);
+    expect(equals(answer.plan.display.duration, 17, 8)).toBe(true);
+    expect(presentationFrameCount(answer.plan.presentation as never)).toBe(17);
+    expect(answer.plan.colorMatrix).toBe('bt601');
+  });
+});
+
 describe('failures (design §10.6 失败分类)', () => {
+  it('PF02 two video tracks are not a single video track: classification_unknown', async () => {
+    expect(await probed('two-video.mp4')).toEqual({ kind: 'failed', code: 'classification_unknown' });
+  });
+
   it('PF01 a source over the frozen byte cap answers source_over_cap', async () => {
     expect(await probed('cfr.mp4', { limits: { ...LIMITS, maxSourceBytes: 1024 } })).toEqual({ kind: 'failed', code: 'source_over_cap' });
   });

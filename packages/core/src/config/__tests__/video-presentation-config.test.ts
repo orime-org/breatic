@@ -9,13 +9,19 @@ import { MONOREPO_ROOT } from '../env.js';
 import { getMiniToolsConfig, miniToolsConfigSchema } from '../mini-tools.js';
 import { getStorageConfig, storageConfigSchema } from '../storage.js';
 
+// §91 D1-1: MP4 + H.264 Baseline/Main/High 8-bit 4:2:0 with AAC or no audio, documented by MDN (Web video codec guide, Media container formats).
+const IDENTITY_SEED = { container: 'mp4', video_codec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pix_fmt: 'yuv420p', bit_depth: 8, audio_codecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrix_tagged: true };
+
 describe('platform presentation container configuration (inner#1306)', () => {
   it('records the actual basic instance size used by the canonical metadata container', () => {
     const config = getMiniToolsConfig() as unknown as Record<string, unknown>;
     // Design §3.2 item 1 (S6e E1): the target policy version is presentation.policy_version, initial 1.
     expect(config.presentation).toEqual({ container_class: 'MediaContainer', policy_version: 1,
       // S6d D1 (§91 D-6): one sampled frame classified every measured fixture; §4.2.1 single-frame default 5 s.
-      probe_sample_frames: 1, single_frame_duration_ms: 5000, max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: {
+      probe_sample_frames: 1, single_frame_duration_ms: 5000,
+      // §91 D1-1: the identity qualification table (design §4.1), versioned by policy_version; only officially documented combinations.
+      identity_formats: expect.arrayContaining([IDENTITY_SEED]) as unknown,
+      max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium', source_ledger: {
       max_bytes: 16777216, probe_stdout_bytes: 67108864, metadata_bytes: 16777216,
       iso_box_count: 100000, matroska_element_count: 1000000, matroska_max_blocks: 250000, max_auto_repairs: 3,
     },
@@ -41,6 +47,21 @@ describe('platform presentation container configuration (inner#1306)', () => {
     delete config.presentation.probe_sample_frames;
     delete config.presentation.single_frame_duration_ms;
     expect(miniToolsConfigSchema.parse(config).presentation).toMatchObject({ probe_sample_frames: 1, single_frame_duration_ms: 5000 });
+  });
+
+  it('S6d-C03 every identity entry is a no-rotation, SAR 1:1, tagged-matrix combination', () => {
+    for (const entry of (getMiniToolsConfig().presentation as unknown as { identity_formats: Record<string, unknown>[] }).identity_formats) {
+      expect(entry).toMatchObject({ rotation: 0, sar: '1:1', matrix_tagged: true });
+    }
+  });
+
+  it.each([
+    ['a rotation', { rotation: 90 }], ['another SAR', { sar: '2:1' }], ['an untagged matrix', { matrix_tagged: false }],
+    ['no audio codecs', { audio_codecs: [] }], ['no profiles', { profiles: [] }], ['a zero bit depth', { bit_depth: 0 }], ['an unknown key', { level: 41 }],
+  ])('S6d-C04 rejects an identity entry with %s', (_name, change) => {
+    const config = getMiniToolsConfig();
+    expect(miniToolsConfigSchema.safeParse({ ...config, presentation: { ...config.presentation, identity_formats: [IDENTITY_SEED] } }).success).toBe(true);
+    expect(miniToolsConfigSchema.safeParse({ ...config, presentation: { ...config.presentation, identity_formats: [{ ...IDENTITY_SEED, ...change }] } }).success).toBe(false);
   });
 
   it('rejects a presentation class whose actual instance size is not configured', () => {

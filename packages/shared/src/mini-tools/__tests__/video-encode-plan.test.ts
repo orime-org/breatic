@@ -45,8 +45,8 @@ interface RouteInput {
   basicDiskBytes: number;
 }
 interface Rect { x: number; y: number; width: number; height: number }
-interface JobWork { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean }
-interface ClassRates { startSeconds: number; encodePixelsPerSecond: number; decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; hdr_8bit: number; hdr_10bit: number } }
+interface JobWork { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10 | 12; hdr: boolean }
+interface ClassRates { startSeconds: number; encodePixelsPerSecond: number; decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; sdr_12bit: number; hdr_8bit: number; hdr_10bit: number; hdr_12bit: number } }
 interface Chunk { start: number; end: number }
 type JobSpec =
   | { kind: 'presentation-probe'; jobId: string }
@@ -291,7 +291,7 @@ describe('UA §5.3 unaltered origin mapping (direct original input and identity)
 
 // Test rates chosen so each term is whole seconds: one 1080p output frame encodes in 1 s; one 4K source frame
 // decodes and converts in 1 s (8-bit SDR), 2 s (10-bit SDR), 3 s (8-bit HDR) or 4 s (10-bit HDR).
-const RATES: ClassRates = { startSeconds: 3, encodePixelsPerSecond: 2_073_600, decodeConvertPixelsPerSecond: { sdr_8bit: 8_294_400, sdr_10bit: 4_147_200, hdr_8bit: 2_764_800, hdr_10bit: 2_073_600 } };
+const RATES: ClassRates = { startSeconds: 3, encodePixelsPerSecond: 2_073_600, decodeConvertPixelsPerSecond: { sdr_8bit: 8_294_400, sdr_10bit: 4_147_200, sdr_12bit: 1_658_880, hdr_8bit: 2_764_800, hdr_10bit: 2_073_600, hdr_12bit: 1_382_400 } };
 
 /**
  * A job's work with defaults: ten frames of an 8-bit SDR 4K source encoded at 1080p, no pre-roll.
@@ -308,7 +308,7 @@ function work(overrides: Partial<JobWork> = {}): JobWork {
  * @returns The rates with 7 s start.
  */
 function uniform(rate: number): ClassRates {
-  return { startSeconds: 7, encodePixelsPerSecond: rate, decodeConvertPixelsPerSecond: { sdr_8bit: rate, sdr_10bit: rate, hdr_8bit: rate, hdr_10bit: rate } };
+  return { startSeconds: 7, encodePixelsPerSecond: rate, decodeConvertPixelsPerSecond: { sdr_8bit: rate, sdr_10bit: rate, sdr_12bit: rate, hdr_8bit: rate, hdr_10bit: rate, hdr_12bit: rate } };
 }
 
 describe('ES §5.4 job estimate', () => {
@@ -319,6 +319,9 @@ describe('ES §5.4 job estimate', () => {
     expect(estimate(work({ bitDepth: 10 }), RATES)).toBe(33);
     expect(estimate(work({ hdr: true }), RATES)).toBe(43);
     expect(estimate(work({ bitDepth: 10, hdr: true }), RATES)).toBe(53);
+    // S6d D1-3 (§91): 12-bit sources (ProRes 4444 decodes as 12-bit) have their own measured rates.
+    expect(estimate(work({ bitDepth: 12 }), RATES)).toBe(63);
+    expect(estimate(work({ bitDepth: 12, hdr: true }), RATES)).toBe(73);
     // Decode counts source pixels and encode output pixels: a 1080p source encoded at 4K costs 1/4 s to decode and 4 s to encode per frame.
     expect(estimate(work({ sourceWidth: 1920, sourceHeight: 1080, outputWidth: 3840, outputHeight: 2160 }), RATES)).toBe(45.5);
   });
@@ -341,7 +344,7 @@ describe('ES §5.4 job estimate', () => {
   it.each([
     ['zero encoded frames', work({ encodedFrames: 0 }), RATES], ['negative pre-roll', work({ prerollFrames: -1 }), RATES],
     ['zero source width', work({ sourceWidth: 0 }), RATES], ['zero output width', work({ outputWidth: 0 }), RATES],
-    ['fractional frames', work({ encodedFrames: 1.5 }), RATES], ['a 12-bit source', work({ bitDepth: 12 as 8 }), RATES],
+    ['fractional frames', work({ encodedFrames: 1.5 }), RATES], ['a 16-bit source', work({ bitDepth: 16 as 8 }), RATES],
     ['zero encode rate', work(), { ...RATES, encodePixelsPerSecond: 0 }],
     ['zero decode-convert rate', work(), { ...RATES, decodeConvertPixelsPerSecond: { ...RATES.decodeConvertPixelsPerSecond, sdr_8bit: 0 } }],
     ['negative start seconds', work(), { ...RATES, startSeconds: -1 }],

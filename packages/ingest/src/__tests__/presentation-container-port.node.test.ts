@@ -21,12 +21,12 @@ const LIMITS = {
 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, sdr_12bit: 1430000000, hdr_8bit: 152000000, hdr_10bit: 103000000, hdr_12bit: 116000000 } },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const ADMISSION = {
   storageKey: 'video/canonical.mp4', sourceFingerprint: 'a'.repeat(64), jobId: 'video-presentation-a', deadlineAt: 1900000000000, contentType: 'video/mp4', original: null,
-  limits: LIMITS, encoding: ENCODING, probe: { sampleFrames: 1, singleFrameDurationMs: 5000 }, targetPolicyVersion: 1,
+  limits: LIMITS, encoding: ENCODING, probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] }, targetPolicyVersion: 1,
 };
 const CAPABILITY = { storageKey: ADMISSION.storageKey, sourceFingerprint: ADMISSION.sourceFingerprint, jobId: ADMISSION.jobId, deadlineAt: ADMISSION.deadlineAt, token: 'token-a' };
 const SOURCE_URL = 'http://source.local/video/canonical.mp4';

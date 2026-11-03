@@ -33,7 +33,7 @@ export interface Measured { etag: string; size: number; sha256: string; table: {
 /** S6c admission (design §3.5, §5.1): both frozen prices, the target policy version and the frozen retry caps. */
 export type Admission = Omit<VideoPresentationAdmission, 'pricing'> & {
   pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number }; encoding: typeof ENCODING; publicBaseURL: string;
-  probe: { sampleFrames: number; singleFrameDurationMs: number };
+  probe: { sampleFrames: number; singleFrameDurationMs: number; identityFormats: Record<string, unknown>[] };
 };
 export interface MachineStore {
   accept: (admission: Admission) => Promise<MachineView>;
@@ -111,7 +111,7 @@ export function admission(key: string, jobId: string, deadlineAt = D): Admission
     publicBaseURL: PUBLIC_BASE,
     targetPolicyVersion: 1, policy: POLICY, encoding: ENCODING,
     // S6d D1 (§91 D-6): frozen probe sample count and single-frame duration.
-    probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
+    probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
   };
 }
 

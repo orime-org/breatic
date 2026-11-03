@@ -33,12 +33,12 @@ const LIMITS = {
 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, sdr_12bit: 1430000000, hdr_8bit: 152000000, hdr_10bit: 103000000, hdr_12bit: 116000000 } },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const PROBE = {
   action: 'probe', jobId: 'video-presentation-a', sourceFingerprint: 'a'.repeat(64), deadlineAt: 1900000000000,
-  sourceURL: 'http://source.local/video/canonical.mp4', limits: LIMITS, encoding: ENCODING, probe: { sampleFrames: 1, singleFrameDurationMs: 5000 },
+  sourceURL: 'http://source.local/video/canonical.mp4', limits: LIMITS, encoding: ENCODING, probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
 };
 // A one-frame plan the shared plan schema accepts (checked against the §7.16 invariants).
 const PLAN = {
@@ -70,10 +70,11 @@ describe('the probe request (§91 D-3, D-6)', () => {
   });
 
   it.each([
-    ['no sample count', { probe: { singleFrameDurationMs: 5000 } }],
-    ['a zero sample count', { probe: { sampleFrames: 0, singleFrameDurationMs: 5000 } }],
-    ['a fractional sample count', { probe: { sampleFrames: 1.5, singleFrameDurationMs: 5000 } }],
-    ['no single-frame duration', { probe: { sampleFrames: 1 } }],
+    ['no sample count', { probe: { singleFrameDurationMs: 5000, identityFormats: PROBE.probe.identityFormats } }],
+    ['a zero sample count', { probe: { ...PROBE.probe, sampleFrames: 0 } }],
+    ['a fractional sample count', { probe: { ...PROBE.probe, sampleFrames: 1.5 } }],
+    ['no single-frame duration', { probe: { sampleFrames: 1, identityFormats: PROBE.probe.identityFormats } }],
+    ['no identity table', { probe: { sampleFrames: 1, singleFrameDurationMs: 5000 } }],
     ['no source URL', { sourceURL: undefined }],
     ['no source ledger budgets', { limits: { ...LIMITS, sourceLedger: undefined } }],
     ['no frozen encoding', { encoding: undefined }],
@@ -92,6 +93,8 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
   it('CR04 accepts a planned answer and a failed answer with a stable code', () => {
     expect(parse(PLANNED)).toBe(true);
     expect(parse({ kind: 'failed', code: 'classification_unknown' })).toBe(true);
+    // §91 D1-3: 12-bit sources (ProRes 4444) have measured rates, so their work carries depth 12.
+    expect(parse({ ...PLANNED, work: { ...PLANNED.work, bitDepth: 12 } })).toBe(true);
   });
 
   it.each([
@@ -99,6 +102,7 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
     ['a malformed toolInputId', { toolInputId: 'x' }],
     ['no encode facts', { encoding: undefined }],
     ['an unknown alpha class', { routeInput: { ...PLANNED.routeInput, alpha: 'unknown' } }],
+    ['a 16-bit work depth', { work: { ...PLANNED.work, bitDepth: 16 } }],
     ['a route plan of another plan', { routeInput: { ...PLANNED.routeInput, plan: { ...PLANNED.routeInput.plan, planSha256: 'd'.repeat(64) } } }],
   ])('CR05 refuses a planned answer with %s', (_name, change) => {
     expect(parse(PLANNED)).toBe(true);

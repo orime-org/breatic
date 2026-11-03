@@ -234,7 +234,10 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
       presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000 } } as unknown as ReturnType<typeof getMiniToolsConfig>);
     try {
       await ensureVideoPresentation({ assetId: asset.id });
-      expect((acceptSent() as unknown as Record<string, unknown>).probe).toEqual({ sampleFrames: 3, singleFrameDurationMs: 4000 });
+      // §91 D1-1: the identity table travels with the frozen probe facts, its keys in the wire's camelCase.
+      expect((acceptSent() as unknown as Record<string, unknown>).probe).toEqual({ sampleFrames: 3, singleFrameDurationMs: 4000,
+        identityFormats: (settings.presentation as unknown as { identity_formats: Record<string, unknown>[] }).identity_formats.map((entry) => ({ container: entry.container, videoCodec: entry.video_codec, profiles: entry.profiles,
+          pixFmt: entry.pix_fmt, bitDepth: entry.bit_depth, audioCodecs: entry.audio_codecs, rotation: entry.rotation, sar: entry.sar, matrixTagged: entry.matrix_tagged })) });
     } finally { spy.mockRestore(); }
   });
 
