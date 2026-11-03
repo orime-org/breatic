@@ -27,15 +27,27 @@ export const PRICING = {
 };
 
 /**
- * The registered key of the compact table; a missing export fails the case that reaches it.
+ * The compact table key of one toolInputId (S6e E4-7: full and compact are stored per toolInputId).
  * @param key - Registered storage key.
+ * @param toolInputId - The ledger instance.
  * @returns The table key.
  * @throws {Error} When shared does not export the derivation.
  */
-export function tableKeyFor(key: string): string {
+export function tableKeyFor(key: string, toolInputId: string): string {
   const derive = (sharedModule as Record<string, unknown>).videoSourceLedgerTableKeyFor;
   expect(typeof derive).toBe('function');
-  return (derive as (value: string) => string)(key);
+  return (derive as (value: string, input: string) => string)(key, toolInputId);
+}
+
+/**
+ * The full ledger key of one toolInputId (S6e E4-7).
+ * @param key - Registered storage key.
+ * @param toolInputId - The ledger instance.
+ * @returns The full ledger key.
+ * @throws {never} Never.
+ */
+export function fullKeyFor(key: string, toolInputId: string): string {
+  return (sharedModule.videoSourceLedgerKeyFor as unknown as (value: string, input: string) => string)(key, toolInputId);
 }
 
 /** Expose complete bytes, keeping cancellation-observed sources live until demand. @throws {never} Never. */

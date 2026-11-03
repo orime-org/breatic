@@ -28,6 +28,7 @@ import {
 import * as domain from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
+import { ledgerKeys } from "./presentation-fixtures.js";
 
 type Tool = "video.extract-frames" | "video.split";
 type Recipe = { kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } };
@@ -138,8 +139,8 @@ async function present(f: Fixture): Promise<void> {
   const compact = { sourceFingerprint: f.hash, toolInputId, planSha256, presentation: TABLE };
   const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
   const receipt: Receipt = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, producerVersion: 2, attempt,
-    url: publicUrl(shared.videoSourceLedgerKeyFor(f.sourceKey)), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: digest(fullJSON), contentType: "application/json",
-    table: { url: publicUrl(shared.videoSourceLedgerTableKeyFor(f.sourceKey)), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 44 } };
+    url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: digest(fullJSON), contentType: "application/json",
+    table: { url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).table), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 44 } };
   const versionId = "e".repeat(64);
   const bundle = { schemaVersion: 1, sourceFingerprint: f.hash, versionId, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
     original: { width: 960, height: 540, duration: 4.4 }, display: PLAN_BODY.display,
@@ -788,3 +789,124 @@ describe("E3 version-resolution exit (inner#1306 §90 E3-7; design §5.3)", () =
   });
 });
 
+
+describe("E4 ledger objects per toolInputId (inner#1306 §90 E4-7; design §5.1 step 5, §7.15)", () => {
+  type Exit = (plan: unknown, inputId: string, bound: { deadlineAt: number }) => Promise<{ validatedFullLedger: unknown }>;
+  const other = "f".repeat(64);
+
+  /**
+   * The resolve exit, read at call time.
+   * @returns It.
+   */
+  function exit(): Exit {
+    const fn = (domain as Record<string, unknown>).resolveVideoToolInput;
+    expect(fn, "resolveVideoToolInput is exported from @breatic/domain").toBeTypeOf("function");
+    return fn as Exit;
+  }
+
+  it("E4-K01 the frozen receipt names the full and compact objects of the plan's own toolInputId", async () => {
+    const f = await seed(); await accept(f);
+    const toolInputId = f.body.presentation_ref.source.toolInputId;
+    const receipt = (await readMiniToolExecutionPlan(f.body.run_id)).execution.ledgerReceipts.source;
+    expect(receipt.url).toBe(publicUrl(ledgerKeys(f.sourceKey, toolInputId).full));
+    expect(receipt.table.url).toBe(publicUrl(ledgerKeys(f.sourceKey, toolInputId).table));
+    expect(receipt.url).toContain(toolInputId);
+    expect(receipt.table.url).toContain(toolInputId);
+  });
+
+  it("E4-K02 a ready receipt at the toolInputId-less legacy keys is refused with no durable effect", async () => {
+    const f = await seed(); await control(f);
+    const legacy = { full: publicUrl(`${f.sourceKey}.video-source-ledger.v1.json`), table: publicUrl(`${f.sourceKey}.video-presentation-table.v1.json`) };
+    expect(f.receipt.url).not.toBe(legacy.full);
+    outside.bodies.set(legacy.full, outside.bodies.get(f.receipt.url)!); outside.bodies.set(legacy.table, outside.bodies.get(f.receipt.table.url)!);
+    const receipt = { ...f.receipt, url: legacy.full, table: { ...f.receipt.table, url: legacy.table } };
+    (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
+    expect((await post(f)).ok).toBe(false);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
+
+  it("E4-K03 the frozen execution still resolves after another plan of the same source writes its own ledger", async () => {
+    const f = await seed(); await accept(f);
+    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
+    const keys = ledgerKeys(f.sourceKey, other);
+    // Another plan's L(t'), different bytes, written where that plan's toolInputId puts them.
+    outside.bodies.set(publicUrl(keys.full), JSON.stringify({ ...f.full, toolInputId: other, planSha256: other }));
+    outside.bodies.set(publicUrl(keys.table), JSON.stringify({ toolInputId: other }));
+    outside.reads.length = 0;
+    const resolved = await exit()(plan, "source", { deadlineAt: Date.now() + 60_000 });
+    expect(resolved.validatedFullLedger).toEqual(f.full);
+    expect(outside.reads).toEqual([f.receipt.url]);
+  });
+});
+
+describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7.15 execution 行, 可重试结束)", () => {
+  /**
+   * The live pins of a holder, with their keys.
+   * @param holderId - The holder.
+   * @returns Rows.
+   */
+  async function livePins(holderId: string): Promise<{ holder_kind: string; tool_input_id: string; keys: string[] }[]> {
+    return pg`SELECT p.holder_kind,p.tool_input_id,
+        coalesce(array_agg(o.storage_key ORDER BY o.storage_key) FILTER (WHERE o.storage_key IS NOT NULL), '{}') AS keys
+      FROM presentation_pins p LEFT JOIN presentation_pin_objects o ON o.pin_id=p.id
+      WHERE p.holder_id=${holderId} AND p.deleted_at IS NULL GROUP BY p.id ORDER BY p.holder_kind`;
+  }
+
+  /**
+   * Derived queue rows under a source.
+   * @param key - The source key.
+   * @returns Keys.
+   */
+  async function queuedUnder(key: string): Promise<string[]> {
+    return (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE starts_with(storage_key, ${key})`).map((row) => row.storage_key);
+  }
+
+  it("E4-P01 a fresh admission pins L of its tool input for the run, in the admission", async () => {
+    const f = await seed(); await accept(f);
+    const t = f.body.presentation_ref.source.toolInputId; const l = ledgerKeys(f.sourceKey, t);
+    const rows = await livePins(f.body.run_id);
+    expect(rows).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+  });
+
+  it("E4-P02 a refused admission pins nothing", async () => {
+    const f = await seed(); await control(f);
+    settings.encoding.max_parallel_chunks = 1;
+    (Reflect.get(settings.executions, "video.split") as { max_outputs_per_job: number }).max_outputs_per_job = 1;
+    expect((await post(f)).ok).toBe(false);
+    expect(await livePins(f.body.run_id)).toEqual([]);
+  });
+
+  it("E4-P03 a retry of some failed outputs pins for itself and leaves the original's pins live", async () => {
+    const f = await seed(); await failedOriginal(f);
+    const t = f.body.presentation_ref.source.toolInputId; const l = ledgerKeys(f.sourceKey, t);
+    const body = retry(f, [2]); await accept(f, body);
+    expect(await livePins(body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+    expect((await livePins(f.body.run_id)).map((row) => row.holder_kind)).toEqual(["execution"]);
+  });
+
+  it("E4-P04 the retry that takes over the last failed output releases the original's pins in its admission, registering nothing still pinned", async () => {
+    const f = await seed(); await failedOriginal(f);
+    const body = retry(f, [1, 2]); await accept(f, body);
+    expect(await livePins(f.body.run_id)).toEqual([]);
+    expect((await livePins(body.run_id)).map((row) => row.holder_kind)).toEqual(["execution"]);
+    expect(await queuedUnder(f.sourceKey)).toEqual([]);
+  });
+
+  it("E4-P05 failed outputs taken over by two retries in turn release the original only at the second", async () => {
+    const f = await seed(); await failedOriginal(f);
+    const first = retry(f, [2]); await accept(f, first);
+    expect(await livePins(f.body.run_id)).toHaveLength(1);
+    const second = retry(f, [1]); await accept(f, second);
+    expect(await livePins(f.body.run_id)).toEqual([]);
+    expect(await livePins(first.run_id)).toHaveLength(1);
+    expect(await livePins(second.run_id)).toHaveLength(1);
+  });
+
+  it("E4-P06 a refused retry releases nothing of the original", async () => {
+    const f = await seed(); await failedOriginal(f);
+    const body = retry(f, [0]);
+    expect((await post(f, body)).ok).toBe(false);
+    expect(await livePins(f.body.run_id)).toHaveLength(1);
+    expect(await livePins(body.run_id)).toEqual([]);
+  });
+});

@@ -16,7 +16,7 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { videoSourceLedgerKeyFor } from '@breatic/shared';
+import { fullKeyFor } from './helpers/source-ledger-fixture.js';
 import { admission, D, DECLARATION, expectedReceipt, FULL, H, ledgerCase, NOW, PLAN, produceLedger, putLedger, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 /**
@@ -37,7 +37,7 @@ describe('ready ledger checks and L\' recovery (inner#1306 §7.4)', () => {
   it('a ready ledger whose identical bytes now carry a foreign claim owner reads as failed-transient invalid', async () => {
     const { key, identity } = await ledgerCase();
     await withStore(key, (store) => produceLedger(store, identity));
-    await env.BUCKET.put(videoSourceLedgerKeyFor(key), FULL, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: 'foreign' } });
+    await env.BUCKET.put(fullKeyFor(key, T), FULL, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: 'foreign' } });
     expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'failed-transient', code: 'source_ledger_invalid' });
   });
 
@@ -45,7 +45,7 @@ describe('ready ledger checks and L\' recovery (inner#1306 §7.4)', () => {
     const { key, identity } = await ledgerCase();
     await withStore(key, (store) => produceLedger(store, identity));
     const changed = new Uint8Array(FULL.length).fill(32);
-    await env.BUCKET.put(videoSourceLedgerKeyFor(key), changed, { httpMetadata: { contentType: 'application/json' } });
+    await env.BUCKET.put(fullKeyFor(key, T), changed, { httpMetadata: { contentType: 'application/json' } });
     expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]).toEqual({ kind: 'failed-transient', code: 'source_ledger_invalid' });
   });
 
@@ -57,7 +57,7 @@ describe('ready ledger checks and L\' recovery (inner#1306 §7.4)', () => {
       // Same length and metadata, one byte flipped: miniflare's R2 etag is the content MD5, so identical bytes would not differ (§7.3).
       const changed = FULL.slice();
       changed[changed.length - 1]! ^= 1;
-      const replaced = await env.BUCKET.put(videoSourceLedgerKeyFor(key), changed, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: claim.owner } });
+      const replaced = await env.BUCKET.put(fullKeyFor(key, T), changed, { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: claim.owner } });
       expect(replaced.etag).not.toBe(measured.etag);
       expect(await store.commitLedger(identity, T, claim.owner, measured)).toBe(false);
       expect((await store.read(key, H)).ledgers[T]!.kind).toBe('pending');

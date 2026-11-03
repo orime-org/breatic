@@ -17,9 +17,8 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { videoSourceLedgerKeyFor } from '@breatic/shared';
 import * as writeModule from '@ingest/video-source-ledger-write.js';
-import { digest, stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { digest, fullKeyFor, stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
 import { DECLARATION, expectedReceipt, FULL, H, LEDGER_BODY, ledgerCase, ledgerPort, T, TABLE, withStore, type Identity, type LedgerPort } from './helpers/machine-store.js';
 
 type Write = (input: { bucket: R2Bucket; owner: LedgerPort; identity: Identity; toolInputId: string; declaration: typeof DECLARATION; body: ReadableStream<Uint8Array> }) => Promise<{ ok: boolean; status: number }>;
@@ -51,8 +50,8 @@ async function passDeadline(deadlineAt: number): Promise<void> {
  * @returns The receipt.
  */
 async function writtenReceipt(key: string): Promise<Record<string, unknown>> {
-  const object = await env.BUCKET.head(videoSourceLedgerKeyFor(key));
-  const table = await env.BUCKET.head(tableKeyFor(key));
+  const object = await env.BUCKET.head(fullKeyFor(key, T));
+  const table = await env.BUCKET.head(tableKeyFor(key, T));
   return expectedReceipt(key, 'job-a', { etag: object!.etag, size: object!.size, sha256: await digest(FULL), table: { etag: table!.etag, size: table!.size, sha256: await digest(TABLE) } });
 }
 
@@ -60,8 +59,8 @@ describe('ledger R2 publication (inner#1306 §7.3, §7.4)', () => {
   it('W01 splits the one producer write into the compact and full objects, each with fixed MIME and the original owner metadata', async () => {
     const { key, identity } = await ledgerCase();
     expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) })).toEqual({ ok: true, status: 200 });
-    const full = await env.BUCKET.get(videoSourceLedgerKeyFor(key));
-    const table = await env.BUCKET.get(tableKeyFor(key));
+    const full = await env.BUCKET.get(fullKeyFor(key, T));
+    const table = await env.BUCKET.get(tableKeyFor(key, T));
     expect(new Uint8Array(await full!.arrayBuffer())).toEqual(FULL);
     expect(new Uint8Array(await table!.arrayBuffer())).toEqual(TABLE);
     expect(full!.httpMetadata?.contentType).toBe('application/json');
@@ -75,7 +74,7 @@ describe('ledger R2 publication (inner#1306 §7.3, §7.4)', () => {
     const canceled = vi.fn();
     expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity: { ...identity, jobId: 'job-x' }, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
-    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
+    expect(await env.BUCKET.head(fullKeyFor(key, T))).toBeNull();
   });
 
   it.each(['short', 'long'] as const)('rejects a %s stream and releases its claim without a commit', async (shape) => {
@@ -86,18 +85,18 @@ describe('ledger R2 publication (inner#1306 §7.3, §7.4)', () => {
     expect(port.calls.claim).toHaveBeenCalledOnce();
     expect(port.calls.commit).not.toHaveBeenCalled();
     expect(port.calls.release).toHaveBeenCalledOnce();
-    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
+    expect(await env.BUCKET.head(fullKeyFor(key, T))).toBeNull();
     expect((await withStore(key, (store) => store.read(key, H))).ledgers[T]!.kind).toBe('pending');
   });
 
   it('replays a completed receipt without a PUT or a version change', async () => {
     const { key, identity } = await ledgerCase();
     await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY) });
-    const etag = (await env.BUCKET.head(videoSourceLedgerKeyFor(key)))!.etag;
+    const etag = (await env.BUCKET.head(fullKeyFor(key, T)))!.etag;
     const canceled = vi.fn();
     expect(await write({ bucket: env.BUCKET, owner: ledgerPort(key), identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
-    expect((await env.BUCKET.head(videoSourceLedgerKeyFor(key)))!.etag).toBe(etag);
+    expect((await env.BUCKET.head(fullKeyFor(key, T)))!.etag).toBe(etag);
   });
 
   it('recovers the real complete objects on read after the commit call failed', async () => {
@@ -132,7 +131,7 @@ describe('ledger R2 publication (inner#1306 §7.3, §7.4)', () => {
     expect(await write({ bucket: env.BUCKET, owner: port, identity, toolInputId: T, declaration: DECLARATION, body: stream(LEDGER_BODY, canceled) })).toEqual({ ok: false, status: 409 });
     expect(canceled).toHaveBeenCalledOnce();
     expect(port.calls.commit).not.toHaveBeenCalled();
-    expect(await env.BUCKET.head(videoSourceLedgerKeyFor(key))).toBeNull();
+    expect(await env.BUCKET.head(fullKeyFor(key, T))).toBeNull();
   });
 
   it('completes a flow that started before the deadline even when the job expires meanwhile', async () => {

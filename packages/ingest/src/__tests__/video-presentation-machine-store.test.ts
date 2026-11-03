@@ -17,8 +17,8 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { videoPresentationKeyFor, videoSourceLedgerKeyFor } from '@breatic/shared';
-import { tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { videoPresentationKeyFor } from '@breatic/shared';
+import { fullKeyFor, tableKeyFor } from './helpers/source-ledger-fixture.js';
 import { admission, bundle, D, DECLARATION, H, NOW, PLAN, planned, produceLedger, putLedger, source, started, storedDescriptor, T, T2, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 /**
@@ -68,7 +68,7 @@ describe('W §7.1–§7.4 store persistence and write points', () => {
       const identity = await started(store, key, 'job-a');
       expect(await store.claimSourceLedger(identity, T, DECLARATION)).toBeNull();
       expect((await store.planPresentation(identity, { route: 'encode', toolInputId: T, planSha256: PLAN })).writer).toBe(true);
-      expect(await store.claimSourceLedger(identity, T, DECLARATION)).toMatchObject({ key: videoSourceLedgerKeyFor(key), table: { key: tableKeyFor(key) } });
+      expect(await store.claimSourceLedger(identity, T, DECLARATION)).toMatchObject({ key: fullKeyFor(key, T), table: { key: tableKeyFor(key, T) } });
     });
   });
 

@@ -13,9 +13,8 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { videoSourceLedgerKeyFor } from '@breatic/shared';
-import { tableKeyFor } from './helpers/source-ledger-fixture.js';
-import { admission, D, DECLARATION, expectedReceipt, H, ledgerCase, NOW, PLAN, produceLedger, putLedger, T, T2, TABLE, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { fullKeyFor, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { admission, D, DECLARATION, expectedReceipt, FULL, H, ledgerCase, NOW, PLAN, produceLedger, putLedger, T, T2, TABLE, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 /**
  * Admit, start and plan job b for T after job a.
@@ -47,17 +46,17 @@ describe('ledger instance per toolInputId (inner#1306 §7.4)', () => {
       const claim = (await store.claimSourceLedger(identity, T, DECLARATION))!;
       const measured = await putLedger(claim, 'job-a');
       const metadata = { httpMetadata: { contentType: 'application/json' }, customMetadata: { sourceLedgerJobId: 'job-a', sourceLedgerClaimOwner: claim.owner } };
-      if (defect === 'table-missing') await env.BUCKET.delete(tableKeyFor(key));
-      if (defect === 'table-size') await env.BUCKET.put(tableKeyFor(key), new Uint8Array([...TABLE, 32]), metadata);
-      if (defect === 'table-owner') await env.BUCKET.put(tableKeyFor(key), TABLE, { ...metadata, customMetadata: { ...metadata.customMetadata, sourceLedgerClaimOwner: 'someone-else' } });
-      if (defect === 'table-mime') await env.BUCKET.put(tableKeyFor(key), TABLE, { ...metadata, httpMetadata: { contentType: 'text/plain' } });
+      if (defect === 'table-missing') await env.BUCKET.delete(tableKeyFor(key, T));
+      if (defect === 'table-size') await env.BUCKET.put(tableKeyFor(key, T), new Uint8Array([...TABLE, 32]), metadata);
+      if (defect === 'table-owner') await env.BUCKET.put(tableKeyFor(key, T), TABLE, { ...metadata, customMetadata: { ...metadata.customMetadata, sourceLedgerClaimOwner: 'someone-else' } });
+      if (defect === 'table-mime') await env.BUCKET.put(tableKeyFor(key, T), TABLE, { ...metadata, httpMetadata: { contentType: 'text/plain' } });
       if (defect === 'table-etag') {
         // Same length and metadata, one byte flipped: miniflare's R2 etag is the content MD5, so identical bytes would not differ (§7.3).
         const changed = TABLE.slice();
         changed[changed.length - 1]! ^= 1;
-        expect((await env.BUCKET.put(tableKeyFor(key), changed, metadata)).etag).not.toBe(measured.table.etag);
+        expect((await env.BUCKET.put(tableKeyFor(key, T), changed, metadata)).etag).not.toBe(measured.table.etag);
       }
-      if (defect === 'ledger-missing') await env.BUCKET.delete(videoSourceLedgerKeyFor(key));
+      if (defect === 'ledger-missing') await env.BUCKET.delete(fullKeyFor(key, T));
       expect(await store.commitLedger(identity, T, claim.owner, measured)).toBe(false);
       expect((await store.read(key, H)).ledgers[T]).toEqual({ kind: 'pending', writer: 'job-a', writerArchived: false, waiters: [] });
     });
@@ -66,8 +65,8 @@ describe('ledger instance per toolInputId (inner#1306 §7.4)', () => {
   it.each([['missing', 'source_ledger_missing'], ['replaced', 'source_ledger_invalid']] as const)('T03 a ready instance whose table is %s reads as failed-transient %s, P unchanged', async (change, code) => {
     const { key, identity } = await ledgerCase();
     await withStore(key, (store) => produceLedger(store, identity));
-    if (change === 'missing') await env.BUCKET.delete(tableKeyFor(key));
-    else await env.BUCKET.put(tableKeyFor(key), TABLE, { httpMetadata: { contentType: 'application/json' } });
+    if (change === 'missing') await env.BUCKET.delete(tableKeyFor(key, T));
+    else await env.BUCKET.put(tableKeyFor(key, T), TABLE, { httpMetadata: { contentType: 'application/json' } });
     const view = await withStore(key, (store) => store.read(key, H));
     expect(view.ledgers[T]).toEqual({ kind: 'failed-transient', code });
     expect(view.selected).toEqual({ kind: 'unknown' });
@@ -155,5 +154,39 @@ describe('ledger instance per toolInputId (inner#1306 §7.4)', () => {
       expect(await store.failLedger(b, T2, 'invalid_edit')).toBe(false);
       expect((await store.read(key, H)).ledgers[T2]).toBeUndefined();
     });
+  });
+
+  // S6e E4-7 (design §5.1 step 5, §7.15 registry rows 14/15): full and compact are stored per toolInputId, so a frozen
+  // execution that pinned L(T) still reads the bytes it froze after another plan of the same source writes L(T2).
+  it('T14 the ledger of another toolInputId is written to its own objects and leaves the ready L(T) bytes and receipt as they were', async () => {
+    const { key, identity } = await ledgerCase();
+    await withStore(key, async (store) => {
+      const measuredT = await produceLedger(store, identity);
+      const receiptT = await expectedReceipt(key, 'job-a', measuredT);
+      await store.accept(admission(key, 'job-b'));
+      const { token } = await store.prepare({ storageKey: key, sourceFingerprint: H, jobId: 'job-b', deadlineAt: D }, NOW);
+      const b = { ...identity, jobId: 'job-b', token: token! };
+      expect((await store.planPresentation(b, { route: 'encode', toolInputId: T2, planSha256: 'e'.repeat(64) })).writer).toBe(true);
+      const claim = (await store.claimSourceLedger(b, T2, DECLARATION))!;
+      expect(claim).toMatchObject({ key: fullKeyFor(key, T2), priorETag: null, table: { key: tableKeyFor(key, T2), priorETag: null } });
+      // Same lengths, other bytes: identical bytes would keep miniflare's MD5 etag and hide an overwrite.
+      const encode = (bytes: Uint8Array): Uint8Array => new TextEncoder().encode(new TextDecoder().decode(bytes).replaceAll(T, T2));
+      const measuredT2 = await putLedger(claim, 'job-b', { table: encode(TABLE), full: encode(FULL) });
+      expect(await store.commitLedger(b, T2, claim.owner, measuredT2)).toBe(true);
+      expect((await env.BUCKET.head(fullKeyFor(key, T)))!.etag).toBe(measuredT.etag);
+      expect((await env.BUCKET.head(tableKeyFor(key, T)))!.etag).toBe(measuredT.table.etag);
+      const view = await store.read(key, H);
+      expect(view.ledgers[T]).toEqual({ kind: 'ready', receipt: receiptT });
+      expect(view.ledgers[T2]).toMatchObject({ kind: 'ready', receipt: { toolInputId: T2, url: `https://assets.example.test/${fullKeyFor(key, T2)}`, table: { url: `https://assets.example.test/${tableKeyFor(key, T2)}` } } });
+    });
+  });
+
+  it('T15 the ready check of L(T) reads its own objects: removing only the toolInputId-less legacy keys changes nothing', async () => {
+    const { key, identity } = await ledgerCase();
+    const measured = await withStore(key, (store) => produceLedger(store, identity));
+    expect(fullKeyFor(key, T)).not.toBe(`${key}.video-source-ledger.v1.json`);
+    await env.BUCKET.delete([`${key}.video-source-ledger.v1.json`, `${key}.video-presentation-table.v1.json`]);
+    const view = await withStore(key, (store) => store.read(key, H));
+    expect(view.ledgers[T]).toEqual({ kind: 'ready', receipt: await expectedReceipt(key, 'job-a', measured) });
   });
 });

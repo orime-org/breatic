@@ -231,7 +231,7 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     expect(key).toContain(chunkJob);
     const retry = videoContainerJobId({ kind: 'presentation-chunk', jobId: identity.jobId, chunk: 2, attempt: 2 });
     expect(keyFor(KEY, retry)).not.toBe(key);
-    expect(new Set([key, videoPresentationKeyFor(KEY), videoSourceLedgerKeyFor(KEY), KEY]).size).toBe(4);
+    expect(new Set([key, videoPresentationKeyFor(KEY), (videoSourceLedgerKeyFor as unknown as (k: string, t: string) => string)(KEY, 'e'.repeat(64)), KEY]).size).toBe(4);
   });
 
   it.each([

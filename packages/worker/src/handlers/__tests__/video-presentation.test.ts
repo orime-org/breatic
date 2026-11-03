@@ -26,8 +26,8 @@ import { containerCostUsd } from '@breatic/domain';
 import * as handler from '@worker/handlers/video-presentation.js';
 import { StillRunning } from '@worker/providers/still-running.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle } = vi.hoisted(() => ({
-  findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(),
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins } = vi.hoisted(() => ({
+  findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
 }));
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
@@ -41,6 +41,8 @@ vi.mock('@breatic/domain', async (original) => ({
   ...await original<Record<string, unknown>>(),
   assetRepo: { findById },
   createUsageRecorder,
+  // S6e E4-3: the domain function that writes candidate and selected pins from the prepare answer.
+  syncPresentationPins,
 }));
 
 const H = 'a'.repeat(64);
@@ -184,6 +186,7 @@ beforeEach(() => {
   findById.mockResolvedValue(asset);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
+  syncPresentationPins.mockImplementation(async () => { sent.push({ path: 'sync-pins', method: 'CALL', body: null }); });
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
     const method = init?.method ?? 'GET';
@@ -230,6 +233,30 @@ describe('each pickup reads the DO once through prepare (inner#1306 §5.1 step 1
     answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' }, candidateLedger: null });
     await expect(advance()(data)).resolves.not.toThrow();
     expect(submitted()).toEqual([]);
+  });
+});
+
+describe('each pickup syncs the candidate and selected pins from the prepare answer (inner#1306 §90 E4-3; design §7.15 唯一写点)', () => {
+  it('PS01 hands the job id and the parsed prepare answer to syncPresentationPins once, before any stage or attempt is sent', async () => {
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(syncPresentationPins).toHaveBeenCalledTimes(1);
+    expect(syncPresentationPins).toHaveBeenCalledWith(JOB, shared.videoPresentationPrepareAnswerSchema.parse(answer));
+    const synced = indexOf((call) => call.path === 'sync-pins');
+    expect(synced).toBeGreaterThan(indexOf((call) => call.body?.action === 'prepare'));
+    expect(synced).toBeLessThan(indexOf((call) => call.body?.action === 'advance_stage'));
+    expect(synced).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
+  });
+
+  it('PS02 a job the DO no longer grants still syncs, so its candidate pin is released', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' }, candidateLedger: null });
+    await advance()(data);
+    expect(syncPresentationPins).toHaveBeenCalledWith(JOB, expect.objectContaining({ capability: null, plan: null }));
+  });
+
+  it('PS03 a source row that is gone syncs nothing, as it asks ingest nothing', async () => {
+    findById.mockResolvedValue(null);
+    await advance()(data);
+    expect(syncPresentationPins).not.toHaveBeenCalled();
   });
 });
 

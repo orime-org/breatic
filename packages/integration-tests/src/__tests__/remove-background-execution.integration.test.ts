@@ -54,9 +54,9 @@ const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
   planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
   sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
 };
 const GOLDEN = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
@@ -71,7 +71,7 @@ const GOLDEN = {
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3 },
   credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -128,8 +128,44 @@ async function planHash(plan: AcceptedMiniToolExecution): Promise<string> {
 /** Seed SQL parent and registered rows; these are fixtures, not evidence of a transfer or media decode.
  * @throws {Error} When fixture SQL or the original deadline owner fails.
  */
+describe("prepared pins at preparation registration (inner#1306 §90 E4; design §7.15 prepared 行, 释放点)", () => {
+  /**
+   * The run's live prepared pins with their keys.
+   * @param f - The fixture.
+   * @returns Rows.
+   */
+  async function preparedPins(f: Fixture): Promise<{ prepared_key: string | null; tool_input_id: string; keys: string[] }[]> {
+    return pg`SELECT p.prepared_key,p.tool_input_id,coalesce(array_agg(o.storage_key ORDER BY o.storage_key) FILTER (WHERE o.storage_key IS NOT NULL),'{}') AS keys
+      FROM presentation_pins p LEFT JOIN presentation_pin_objects o ON o.pin_id=p.id
+      WHERE p.holder_id=${f.plan.taskId} AND p.holder_kind='prepared' AND p.deleted_at IS NULL GROUP BY p.id`;
+  }
+
+  it("PP01 registering the done preparation pins its output for the run", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false);
+    const key = prepared(f, `${f.plan.taskId}:prep:0:a1`).key;
+    expect(await preparedPins(f)).toEqual([{ prepared_key: key, tool_input_id: f.plan.presentationRef.source.toolInputId, keys: [key] }]);
+  });
+
+  it("PP02 a chunked preparation pins the stitched object; once the stitch is committed its chunk outputs are registered for reclaim", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const plan = structuredClone(f.plan);
+    plan.preparation.chunks = [{ start: 0, end: 500 }, { start: 500, end: 1011 }];
+    plan.planFingerprint = await planHash(plan);
+    await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
+    for (let pickup = 0; pickup < 4 && runPrediction.mock.calls.length === 0; pickup += 1) {
+      await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    }
+    const chunk = (k: number): string => prepared(f, videoContainerJobId({ kind: "prep-chunk", taskId: f.plan.taskId, input: 0, chunk: k, attempt: 1 })).key;
+    const stitch = prepared(f, videoContainerJobId({ kind: "prep-stitch", taskId: f.plan.taskId, input: 0, attempt: 1 })).key;
+    expect(await preparedPins(f)).toEqual([{ prepared_key: stitch, tool_input_id: f.plan.presentationRef.source.toolInputId, keys: [stitch] }]);
+    const rows = await pg<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${chunk(0)},${chunk(1)},${stitch}) ORDER BY storage_key`;
+    expect([...rows]).toEqual([chunk(0), chunk(1)].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
+  });
+});
+
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d");
+  expect(await planHash(GOLDEN)).toBe("8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {

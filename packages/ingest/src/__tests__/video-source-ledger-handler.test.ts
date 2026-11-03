@@ -16,9 +16,8 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { videoSourceLedgerKeyFor } from '@breatic/shared';
 import * as containerModule from '@ingest/media-container.js';
-import { stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
+import { fullKeyFor, stream, tableKeyFor } from './helpers/source-ledger-fixture.js';
 import { admission, D, DECLARATION, FULL, H, LEDGER_BODY, ledgerCase, ledgerPort, NOW, PLAN, T, TABLE, withStore, type LedgerCase } from './helpers/machine-store.js';
 
 type Handler = (request: Request, environment: unknown, ctx: unknown) => Promise<Response>;
@@ -43,7 +42,7 @@ function handler(): Handler {
  * @returns The response.
  */
 function send(value: LedgerCase, change: { query?: Record<string, string>; key?: string; contentLength?: number } = {}): Promise<Response> {
-  const url = new URL(`http://source-ledger.local/${change.key ?? videoSourceLedgerKeyFor(value.key)}`);
+  const url = new URL(`http://source-ledger.local/${change.key ?? fullKeyFor(value.key, T)}`);
   const query = {
     jobId: value.identity.jobId, sourceFingerprint: H, deadlineAt: String(value.identity.deadlineAt), token: value.identity.token,
     toolInputId: T, planSha256: PLAN, producerVersion: '2', byteLength: String(FULL.length), tableByteLength: String(TABLE.length),
@@ -60,16 +59,16 @@ function send(value: LedgerCase, change: { query?: Record<string, string>; key?:
  * @param value - The case.
  */
 async function nothingStored(value: LedgerCase): Promise<void> {
-  expect(await env.BUCKET.head(videoSourceLedgerKeyFor(value.key))).toBeNull();
-  expect(await env.BUCKET.head(tableKeyFor(value.key))).toBeNull();
+  expect(await env.BUCKET.head(fullKeyFor(value.key, T))).toBeNull();
+  expect(await env.BUCKET.head(tableKeyFor(value.key, T))).toBeNull();
 }
 
 describe('edge handler for the one ledger PUT (inner#1306 §77, §7.4)', () => {
   it('H01 stores both objects and commits the ready ledger of the named toolInputId', async () => {
     const value = await ledgerCase();
     expect((await send(value)).status).toBe(200);
-    expect(new Uint8Array(await (await env.BUCKET.get(videoSourceLedgerKeyFor(value.key)))!.arrayBuffer())).toEqual(FULL);
-    expect(new Uint8Array(await (await env.BUCKET.get(tableKeyFor(value.key)))!.arrayBuffer())).toEqual(TABLE);
+    expect(new Uint8Array(await (await env.BUCKET.get(fullKeyFor(value.key, T)))!.arrayBuffer())).toEqual(FULL);
+    expect(new Uint8Array(await (await env.BUCKET.get(tableKeyFor(value.key, T)))!.arrayBuffer())).toEqual(TABLE);
     expect((await withStore(value.key, (store) => store.read(value.key, H))).ledgers[T]!.kind).toBe('ready');
   });
 
@@ -97,9 +96,22 @@ describe('edge handler for the one ledger PUT (inner#1306 §77, §7.4)', () => {
     await nothingStored(value);
   });
 
+  // S6e E4-7 (design §5.1 step 5): the write path names the full ledger key of the query's toolInputId.
+  it.each([
+    ['the toolInputId-less legacy key', (key: string): string => `${key}.video-source-ledger.v1.json`],
+    ['the key of another toolInputId than the query names', (key: string): string => fullKeyFor(key, 'e'.repeat(64))],
+    ['the compact table key of the toolInputId', (key: string): string => tableKeyFor(key, T)],
+  ] as const)('H03 refuses %s with 403', async (_name, keyOf) => {
+    const value = await ledgerCase();
+    expect((await send(value, { key: keyOf(value.key) })).status).toBe(403);
+    await nothingStored(value);
+  });
+
   it.each([['a wrong token', 'token'], ['an unknown job', 'jobId'], ['another toolInputId', 'toolInputId']] as const)('H04 refuses %s with 409 and stores nothing', async (_name, field) => {
     const value = await ledgerCase();
-    expect((await send(value, { query: { [field]: field === 'toolInputId' ? 'e'.repeat(64) : 'not-the-accepted-one' } })).status).toBe(409);
+    // S6e E4-7: the path of another toolInputId's write is that toolInputId's own key, so the refusal is the claim's.
+    const change = field === 'toolInputId' ? { key: fullKeyFor(value.key, 'e'.repeat(64)), query: { toolInputId: 'e'.repeat(64) } } : { query: { [field]: 'not-the-accepted-one' } };
+    expect((await send(value, change)).status).toBe(409);
     await nothingStored(value);
   });
 

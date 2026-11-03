@@ -15,9 +15,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import * as shared from '../../index.js';
 import * as ledgerModule from '../video-source-ledger.js';
 import { videoPresentationIngestRequestSchema, videoPresentationIngestSnapshotSchema } from '../video-presentation-ingest.js';
+import { videoPresentationKeyFor } from '../video-presentation.js';
 
 const fingerprint = 'a'.repeat(64);
 const ledgerLimits = {
@@ -179,16 +181,41 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
   });
 });
 
-describe('compact table storage key (inner#1306 §77)', () => {
-  const tableKeyFor = (ledgerModule as Record<string, unknown>).videoSourceLedgerTableKeyFor as ((key: string) => string) | undefined;
+describe('ledger storage keys per toolInputId (inner#1306 §77; S6e E4-7, design §5.1 step 5, §7.15)', () => {
+  type KeyFor = (key: string, toolInputId: string) => string;
+  const fullKeyFor = ledgerModule.videoSourceLedgerKeyFor as unknown as KeyFor;
+  const tableKeyFor = (ledgerModule as Record<string, unknown>).videoSourceLedgerTableKeyFor as KeyFor | undefined;
+  const key = 'video/canonical.webm';
+  const t = 'e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec';
+  const hex64 = fc.stringMatching(/^[a-f0-9]{64}$/);
 
-  it('K01 derives a distinct table key from the registered key, beside the ledger key, and exports it from the main entry', () => {
+  it('K01 derives the full and compact keys of one toolInputId beside the registered key, and exports both from the main entry', () => {
     expect(typeof tableKeyFor).toBe('function');
     expect(typeof (shared as Record<string, unknown>).videoSourceLedgerTableKeyFor).toBe('function');
-    const key = 'video/canonical.webm';
-    expect(tableKeyFor!(key)).toBe(tableKeyFor!(key));
-    expect(tableKeyFor!(key).startsWith(`${key}.`)).toBe(true);
-    expect(tableKeyFor!(key)).not.toBe(ledgerModule.videoSourceLedgerKeyFor(key));
-    expect(tableKeyFor!('video/other.webm')).not.toBe(tableKeyFor!(key));
+    expect(typeof (shared as Record<string, unknown>).videoSourceLedgerKeyFor).toBe('function');
+    // E4-7 key format (test author's choice, recorded in §90 and open to veto): one object per toolInputId.
+    expect(fullKeyFor(key, t)).toBe(`${key}.video-source-ledger.${t}.json`);
+    expect(tableKeyFor!(key, t)).toBe(`${key}.video-presentation-table.${t}.json`);
+  });
+
+  it('K02 gives every toolInputId its own full and compact objects, distinct from each other, from the source and from the fixed descriptor pointer', () => {
+    fc.assert(fc.property(hex64, hex64, fc.constantFrom(key, 'video/2026-11-03/1_a.mp4', 'video/other.webm'), (left, right, source) => {
+      const full = fullKeyFor(source, left);
+      const table = tableKeyFor!(source, left);
+      expect(fullKeyFor(source, left)).toBe(full);
+      expect(full.startsWith(`${source}.`) && table.startsWith(`${source}.`)).toBe(true);
+      expect(full).toContain(left);
+      expect(table).toContain(left);
+      expect(new Set([full, table, source, videoPresentationKeyFor(source)]).size).toBe(4);
+      if (left !== right) {
+        expect(fullKeyFor(source, right)).not.toBe(full);
+        expect(tableKeyFor!(source, right)).not.toBe(table);
+      }
+    }));
+  });
+
+  it('K03 keeps keys of different sources apart for the same toolInputId', () => {
+    expect(fullKeyFor('video/other.webm', t)).not.toBe(fullKeyFor(key, t));
+    expect(tableKeyFor!('video/other.webm', t)).not.toBe(tableKeyFor!(key, t));
   });
 });

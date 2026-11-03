@@ -5,11 +5,19 @@ import crypto from "node:crypto";
 import { Queue } from "bullmq";
 import type { Hono } from "hono";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { z } from "zod";
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import type * as shared from "@breatic/shared";
 import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
+import { ledgerKeys, presentedSource, type PresentedSource } from "./presentation-fixtures.js";
+
+// S6e E4-2 (inner#1306 §90; design §7.11 分析受理): the request names its tool input; admission reads the selected
+// version from ingest (faked here) and the stored ledger objects (served by URL), as the fresh execution admission does.
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn() }));
+vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
 
 interface AnalysisRequest {
   analysisRunId: string;
@@ -25,6 +33,7 @@ interface AnalysisRequest {
     mediaInfo: { width: number; height: number; duration: number; mimeType: string };
   };
   params: Record<string, unknown>;
+  presentation_ref: { source: { toolInputId: string; planSha256: string } };
 }
 
 interface AnalysisFixture extends StudioFixture {
@@ -36,6 +45,8 @@ interface AnalysisFixture extends StudioFixture {
   sourceAssetId: string;
   sourceHash: string;
   sourceURL: string;
+  sourceKey: string;
+  presentation: PresentedSource;
 }
 
 interface FrozenAnalysisParams {
@@ -52,6 +63,9 @@ interface FrozenAnalysisParams {
     binding: MiniToolAnalysisRecord["binding"];
     analysisInput: MiniToolAnalysisRecord["analysisInput"];
     inputFingerprint: string;
+    presentationRef: AnalysisRequest["presentation_ref"];
+    ledgerReceipts: { source: unknown };
+    versionIds: { source: string };
   };
 }
 
@@ -75,7 +89,21 @@ beforeAll(async () => {
   app = createApp();
 });
 
+beforeEach(() => {
+  outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
+    if (input.action !== "read") throw new Error(`Unexpected presentation admission ${input.action}`);
+    const snapshot = outside.snapshots.get(input.storageKey);
+    if (!snapshot) throw new Error("Unseeded external presentation snapshot");
+    return structuredClone(snapshot);
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const body = outside.bodies.get(input instanceof Request ? input.url : String(input));
+    return body === undefined ? new Response("missing", { status: 404 }) : new Response(body, { headers: { "Content-Type": "application/json" } });
+  }));
+});
+
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await sql?.end({ timeout: 1 });
   initCore(process.env);
 });
@@ -125,12 +153,16 @@ async function seed(): Promise<AnalysisFixture> {
       (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind,
        source, produced_by_user_id, width, height, duration_seconds)
     VALUES (${fixture.studioId}, ${sourceHash}, ${key}, ${sourceURL}, 4096, 'video/mp4', 'video',
-      'upload', ${fixture.userId}, 320, 180, 5) RETURNING id
+      'upload', ${fixture.userId}, 960, 540, 5.055) RETURNING id
   `;
+  // The selected version of this source and its ready ledger, as ingest answers and storage serves them.
+  const presentation = await presentedSource(sourceHash, key, publicUrl);
+  outside.snapshots.set(key, presentation.snapshot);
+  for (const [url, body] of presentation.bodies) outside.bodies.set(url, body);
   return {
     ...fixture, ownerCookie: await cookieFor(fixture.userId),
     editorId: editor.id, editorCookie: editor.cookie, viewerId: viewer.id, viewerCookie: viewer.cookie,
-    sourceAssetId: asset!.id, sourceHash, sourceURL,
+    sourceAssetId: asset!.id, sourceHash, sourceURL, sourceKey: key, presentation,
   };
 }
 
@@ -147,10 +179,11 @@ function requestFor(fixture: AnalysisFixture, kind: MiniToolAnalysisKind = "peop
   return {
     analysisRunId: crypto.randomUUID(), projectId: fixture.projectId, spaceId: crypto.randomUUID(),
     hostNodeId, draftId: crypto.randomUUID(), revision: crypto.randomUUID(), kind,
-    source: { nodeId: hostNodeId, canonicalURL: fixture.sourceURL, mediaInfo: { width: 320, height: 180, duration: 5, mimeType: "video/mp4" } },
+    source: { nodeId: hostNodeId, canonicalURL: fixture.sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
     params: kind === "people" ? { anchor } : kind === "scene_cuts" ? { range } : {
       range, anchor, region: { box: { x: 0.1, y: 0.1, width: 0.4, height: 0.6 }, points: [] }, trackingPrompt: "the selected person",
     },
+    presentation_ref: fixture.presentation.presentationRef,
   };
 }
 
@@ -258,13 +291,14 @@ async function seedAccepted(fixture: AnalysisFixture, acceptedAt: string): Promi
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId,
     hostNodeId: body.hostNodeId, draftId: body.draftId, revision: body.revision, kind: "people",
     source: body.source, binding, analysisInput, inputFingerprint: record.inputFingerprint,
+    presentationRef: body.presentation_ref, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
   } };
   // Keep the parameter's OID textual: the driver's timestamp serializer runs
   // strings through Date, which would discard the microseconds before insertion.
   await sql`
     INSERT INTO tasks (id, user_id, project_id, space_id, task_type, mode, source, params, result, created_at)
     VALUES (${body.analysisRunId}, ${fixture.userId}, ${fixture.projectId}, ${body.spaceId}, 'mini_tool_analysis',
-      'append', 'mini_tool', ${sql.json({ ...params })}, ${sql.json({ analysis: record })}, ${acceptedAt}::text::timestamptz)
+      'append', 'mini_tool', ${sql.json(z.json().parse(params))}, ${sql.json({ analysis: record })}, ${acceptedAt}::text::timestamptz)
   `;
   const [stored] = await sql<{ accepted_at: string }[]>`
     SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS accepted_at
@@ -300,6 +334,8 @@ describe("mini-tool analysis admission and project reads", () => {
       schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId, hostNodeId: body.hostNodeId,
       draftId: body.draftId, revision: body.revision, kind, source: body.source,
       binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
+      // S6e E4-2: the tool input and the selected version's receipts are frozen with the analysis (as §7.11 freezes an execution's).
+      presentationRef: body.presentation_ref, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
     });
     const rows = await sql<{ node_id: string; action: string; budget_ms: number; task_id: string }[]>`
       SELECT node_id, action, budget_ms, task_id FROM node_tasks WHERE task_id = ${body.analysisRunId}
@@ -422,6 +458,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const target = await seed();
     const body = requestFor(target);
     body.source.canonicalURL = sourceOwner.sourceURL;
+    body.presentation_ref = sourceOwner.presentation.presentationRef;
     const record = await accepted(await post(body, target.ownerCookie));
     expect(record.binding).toEqual({ assetId: sourceOwner.sourceAssetId, contentHash: sourceOwner.sourceHash, canonicalURL: sourceOwner.sourceURL, kind: "video", mediaInfo: body.source.mediaInfo });
     expect(await reading(await get(body.analysisRunId, target.viewerCookie))).toEqual(record);
@@ -595,5 +632,70 @@ describe("mini-tool analysis admission and project reads", () => {
       expect(await accepted(await post(body, fixture.ownerCookie))).toEqual(record);
       expect(add).toHaveBeenCalledTimes(1);
     } finally { add.mockRestore(); }
+  });
+});
+
+describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分析受理, §7.15 analysis 行)", () => {
+  /**
+   * Live analysis pins of a run with their keys.
+   * @param runId - The analysis run.
+   * @returns Rows.
+   */
+  async function livePins(runId: string): Promise<{ holder_kind: string; tool_input_id: string; keys: string[] }[]> {
+    return sql`SELECT p.holder_kind,p.tool_input_id,coalesce(array_agg(o.storage_key ORDER BY o.storage_key) FILTER (WHERE o.storage_key IS NOT NULL),'{}') AS keys
+      FROM presentation_pins p LEFT JOIN presentation_pin_objects o ON o.pin_id=p.id
+      WHERE p.holder_id=${runId} AND p.deleted_at IS NULL GROUP BY p.id`;
+  }
+
+  it("AP01 an accepted analysis pins L of its tool input in the admission", async () => {
+    const fixture = await seed();
+    const body = requestFor(fixture);
+    await accepted(await post(body, fixture.ownerCookie));
+    const t = body.presentation_ref.source.toolInputId; const l = ledgerKeys(fixture.sourceKey, t);
+    expect(await livePins(body.analysisRunId)).toEqual([{ holder_kind: "analysis", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+  });
+
+  it("AP02 a request without its tool input is refused as request shape with no effect", async () => {
+    const fixture = await seed();
+    const { presentation_ref: _dropped, ...body } = requestFor(fixture);
+    const response = await post(body, fixture.ownerCookie);
+    // The route's validate() answers a structural refusal as 422 with reason request_shape (as for an unknown field).
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: { reason?: string } }).error.reason).toBe("request_shape");
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+  });
+
+  it("AP03 a tool input that is not the selected version's is refused with no effect and no pin", async () => {
+    const fixture = await seed();
+    const body = requestFor(fixture, "scene_cuts");
+    body.presentation_ref = { source: { ...body.presentation_ref.source, toolInputId: "f".repeat(64) } };
+    expect((await post(body, fixture.ownerCookie)).ok).toBe(false);
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+    expect(await livePins(body.analysisRunId)).toEqual([]);
+  });
+
+  it("AP04 a selected version whose ledger is not ready is refused with no effect and no pin", async () => {
+    const fixture = await seed();
+    (outside.snapshots.get(fixture.sourceKey) as { ledger: unknown }).ledger = { state: "pending", receipt: null, failure: null };
+    const body = requestFor(fixture, "scene_cuts");
+    expect((await post(body, fixture.ownerCookie)).ok).toBe(false);
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+    expect(await livePins(body.analysisRunId)).toEqual([]);
+  });
+
+  it.each(["completed", "failed"] as const)("AP05 an analysis that becomes %s releases its pin and registers the keys nothing else pins", async (end) => {
+    const fixture = await seed();
+    const body = requestFor(fixture);
+    const pending = await accepted(await post(body, fixture.ownerCookie));
+    if (end === "completed") {
+      const [row] = await sql<{ accepted_at: string }[]>`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS accepted_at FROM tasks WHERE id=${body.analysisRunId}`;
+      await miniToolAnalysisService.recordMiniToolAnalysis(body.analysisRunId, completedPeople(pending, row!.accepted_at).result);
+    } else {
+      await miniToolAnalysisService.failMiniToolAnalysis(body.analysisRunId, { code: "analysis_failed" });
+    }
+    expect(await livePins(body.analysisRunId)).toEqual([]);
+    const l = ledgerKeys(fixture.sourceKey, body.presentation_ref.source.toolInputId);
+    const queued = await sql<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${l.full},${l.table}) ORDER BY storage_key`;
+    expect([...queued]).toEqual([l.full, l.table].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
   });
 });

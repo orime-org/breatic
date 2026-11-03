@@ -13,9 +13,9 @@
 
 import { env, runInDurableObject } from 'cloudflare:test';
 import { expect } from 'vitest';
-import { videoPresentationKeyFor, videoSourceLedgerKeyFor } from '@breatic/shared';
+import { videoPresentationKeyFor } from '@breatic/shared';
 import { VideoPresentationStore, type VideoPresentationAdmission, type SourceLedgerDeclaration, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
-import { digest, ENCODING, LEDGER_LIMITS, ORIGINAL, PRICING, tableKeyFor } from './source-ledger-fixture.js';
+import { digest, ENCODING, fullKeyFor, LEDGER_LIMITS, ORIGINAL, PRICING, tableKeyFor } from './source-ledger-fixture.js';
 
 export type Route = 'identity' | 'copy' | 'dispatch_copy' | 'encode' | 'reuse';
 export interface Identity { storageKey: string; sourceFingerprint: string; jobId: string; deadlineAt: number; token: string }
@@ -225,8 +225,8 @@ export function ledgerPort(key: string): LedgerPort {
 export async function expectedReceipt(key: string, jobId: string, measured: Measured): Promise<Record<string, unknown>> {
   return {
     schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN, producerVersion: 2, attempt: { jobId, deadlineAt: D },
-    url: `https://assets.example.test/${videoSourceLedgerKeyFor(key)}`, etag: measured.etag, size: measured.size, sha256: measured.sha256, contentType: 'application/json',
-    table: { url: `https://assets.example.test/${tableKeyFor(key)}`, sha256: await digest(TABLE), size: TABLE.length, contentType: 'application/json', frameCount: 3 },
+    url: `https://assets.example.test/${fullKeyFor(key, T)}`, etag: measured.etag, size: measured.size, sha256: measured.sha256, contentType: 'application/json',
+    table: { url: `https://assets.example.test/${tableKeyFor(key, T)}`, sha256: await digest(TABLE), size: TABLE.length, contentType: 'application/json', frameCount: 3 },
   };
 }
 

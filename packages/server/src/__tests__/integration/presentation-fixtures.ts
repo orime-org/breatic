@@ -44,6 +44,18 @@ export const REMOVAL_VERSION_ID = "e".repeat(64);
 export const REMOVAL_ATTEMPT = { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 };
 
 /**
+ * The full and compact ledger keys of one toolInputId (S6e E4-7: stored per toolInputId, design §5.1 step 5).
+ * @param sourceKey - The registered storage key.
+ * @param toolInputId - The ledger instance.
+ * @returns Both keys.
+ * @throws {never} Never.
+ */
+export function ledgerKeys(sourceKey: string, toolInputId: string): { full: string; table: string } {
+  type KeyFor = (key: string, input: string) => string;
+  return { full: (shared.videoSourceLedgerKeyFor as unknown as KeyFor)(sourceKey, toolInputId), table: (shared.videoSourceLedgerTableKeyFor as unknown as KeyFor)(sourceKey, toolInputId) };
+}
+
+/**
  * Lowercase SHA-256 of a string's UTF-8 bytes.
  * @param text - The text.
  * @returns The digest.
@@ -68,8 +80,8 @@ export async function presentedSource(hash: string, sourceKey: string, publicUrl
   const compact = { sourceFingerprint: hash, toolInputId, planSha256, presentation: REMOVAL_TABLE };
   const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
   const receipt: PresentedSource["receipt"] = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, producerVersion: 2, attempt: REMOVAL_ATTEMPT,
-    url: publicUrl(shared.videoSourceLedgerKeyFor(sourceKey)), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: sha256(fullJSON), contentType: "application/json",
-    table: { url: publicUrl(shared.videoSourceLedgerTableKeyFor(sourceKey)), sha256: sha256(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 1011 } };
+    url: publicUrl(ledgerKeys(sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: sha256(fullJSON), contentType: "application/json",
+    table: { url: publicUrl(ledgerKeys(sourceKey, toolInputId).table), sha256: sha256(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 1011 } };
   const bundle = { schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
     original: { width: 960, height: 540, duration: 5.055 }, display: REMOVAL_PLAN.display,
     playback: { kind: "native", carrier: { storageKey: sourceKey, url: publicUrl(sourceKey), etag: "source-etag", size: 4096, sha256: hash, contentType: "video/mp4" }, displayRect: null },

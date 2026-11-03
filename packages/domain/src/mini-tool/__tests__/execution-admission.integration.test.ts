@@ -82,9 +82,9 @@ const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> 
 const GOLDEN_RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
   planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
   sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
 };
 // The complete server-plan projection was hashed independently with Python's JSON/SHA-256.
 const GOLDEN_PLAN: AcceptedMiniToolExecution = {
@@ -129,7 +129,7 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   // The frozen model part of the quote (display.duration), so a retry that reruns only generate can hold it alone.
   modelCredits: 30,
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
-  planFingerprint: "4106ebcab29f975c4291db01d4a16f757103109b4bd808e327ae98c04d9a4b74",
+  planFingerprint: "d3a9a6b8bdb9f3f88cc7bb194ae85a97cfb7ac98c73eb6c3db76ce173f89573d",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;

@@ -17,9 +17,9 @@ const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
   planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.v1.json", etag: "full-etag", size: 1229,
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
   sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.v1.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
 };
 const PRESENTATION_REF = { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } };
 const PREPARATION = {
@@ -37,7 +37,7 @@ const GOLDEN = {
   analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
   model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY,
   presentationRef: PRESENTATION_REF, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) }, preparation: PREPARATION, credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 
 export type FixturePg = ReturnType<typeof createPgClient>;
