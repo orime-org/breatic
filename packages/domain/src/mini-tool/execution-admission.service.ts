@@ -51,7 +51,9 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     modelCredits: number;
     /** The standard-4 model-input preparation (§5.3): its policy and presentation-frame chunk windows. */
     preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number } }
-  | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout; container: MiniToolContainerPolicy;
+  | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout;
+    /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
+    container: MiniToolContainerPolicy & { startSeconds: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
 );
@@ -345,8 +347,9 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   if (outputs.length > maxOutputs || canonicalMiniToolValue(outputs) !== canonicalMiniToolValue(request.outputs)) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const { layout, jobs, works } = runLayout(outputs, table, ledger, config, request.tool);
   assertWithinParallelCap(jobs, config);
-  const container = containerPolicy(config.executions[request.tool].container_class, config.executions[request.tool].precheck_seconds, config);
-  const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), config.encoding.encoder.start_seconds);
+  const container = { ...containerPolicy(config.executions[request.tool].container_class, config.executions[request.tool].precheck_seconds, config),
+    startSeconds: config.encoding.encoder.start_seconds };
+  const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), container.startSeconds);
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, layout, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
 }
@@ -444,7 +447,6 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     const record = recordFromPlan(plan);
     const selected = record.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (record.status === "cancelled" || selected.length !== request.retry.outputIndexes.length
-      || (request.tool !== "video.remove-bg" && selected.length > getMiniToolsConfig().executions[request.tool].max_outputs)
       || selected.some((output) => output.result?.status !== "failed" || output.late)) throw new ValidationError(t("server.mini_tool.foreignSource"));
     const outputs = plan.execution.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
@@ -457,8 +459,9 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
       encodes: frozen.layout.encodes.filter((encode) => chosen.has(encode.outputIndex)) };
     const works = new Map(frozen.outputs.map((output, index) => [output.outputIndex, frozen.outputSeconds[index]!]));
     const outputSeconds = outputs.map((output) => works.get(output.outputIndex)!);
-    // The same quote rule as a fresh run, over the retried outputs' frozen jobs at the frozen standard-4 price (§5.4).
-    const seconds = layoutSeconds(layout, works, getMiniToolsConfig().encoding.encoder.start_seconds);
+    // The same quote rule as a fresh run, over the retried outputs' frozen jobs, start seconds and standard-4 price (§5.4);
+    // the subset is drawn from the frozen plan, so nothing here reads today's configuration.
+    const seconds = layoutSeconds(layout, works, frozen.container.startSeconds);
     return claimPrepared({ ...frozen, ...retried, layout, outputSeconds, credits: containerCredits(frozen.container, seconds) }, request, userId, fingerprint, tx);
   });
 }

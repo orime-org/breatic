@@ -44,7 +44,7 @@ const storedPlanSchema = z.union([
     modelCredits: z.number().nonnegative(),
   }),
   z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
-    outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject(container),
+    outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite() }),
   }),
 ]);
 
