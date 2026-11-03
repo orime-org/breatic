@@ -36,7 +36,7 @@ export interface TemplateGraphNode {
   type: ProposalNodeType;
   /** Set on a non-anchor template node: which template and key it stands for. */
   tag?: { template: string; key: TemplateNodeKey };
-  /** Set on a node the agent sent for one of a template's inputs. */
+  /** Set on a node given for one of a template's inputs: tagged by the agent, or placed by the template on the canvas. */
   inputTag?: { template: string; input: string };
   /** Whether the node keeps the template's mode and model; the caller decides. */
   keeps: boolean;
@@ -466,7 +466,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
   for (const one of skeleton.inputs) {
     const given = input.inputs.get(one.key);
     const fallback = one.feeds.map((fed) => given?.get(fed)).find((index) => index !== undefined);
-    const index = fallback ?? append({ role: "source", type: one.type, name: text(`input.${one.key}.name`) });
+    const index = fallback
+      ?? append({ role: "source", type: one.type, name: text(`input.${one.key}.name`), templateNode: { template: template.id, key: one.key, input: true, anchor: input.anchorAt } });
     if (fallback === undefined) fresh.add(one.key);
     inputAt.set(one.key, new Map(one.feeds.map((fed) => [fed, given?.get(fed) ?? index])));
   }

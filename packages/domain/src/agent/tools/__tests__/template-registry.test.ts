@@ -16,7 +16,6 @@ import {
   expandTemplate,
   GENERATION_TEMPLATES,
   setLocale,
-  t,
   templateSkeleton,
   type CanvasProposal,
   type GenerationTemplate,
@@ -86,13 +85,9 @@ function panelShape(template: GenerationTemplate): { proposal: CanvasProposal; i
   const nodes = [anchor, ...expansion.appended];
   const identity = new Map<number, string>([[0, `node:${skeleton.anchor}`]]);
   for (const [index, node] of nodes.entries()) {
-    if (index === 0 || node.templateNode?.key === "guide") continue;
-    if (node.templateNode !== undefined) {
-      identity.set(index, `node:${node.templateNode.key}`);
-      continue;
-    }
-    const input = skeleton.inputs.find((candidate) => t(`canvas.template.${template.id}.input.${candidate.key}.name`) === node.name);
-    identity.set(index, input === undefined ? `?${node.name}` : `input:${input.key}`);
+    const tag = node.templateNode;
+    if (index === 0 || tag?.key === "guide") continue;
+    identity.set(index, tag === undefined ? `?${node.name}` : `${tag.input ? "input" : "node"}:${tag.key}`);
   }
   return { proposal: { nodes, edges: [...expansion.edges], rationale: "Start from the template.", groupName: "Template test" }, identity };
 }

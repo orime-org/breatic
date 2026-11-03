@@ -304,9 +304,10 @@ export function verdictFor(
 }
 
 /**
- * Each anchored template's own nodes marked with the key they stand for, so
- * the panel recognises them on the canvas later; the anchor and the inputs
- * carry no mark, as on the canvas.
+ * Each anchored template's own nodes marked with the key they stand for, and
+ * each input's node with its input key and its instance's anchor unless
+ * another instance already owns it, so the panel recognises the instance on the canvas later; the anchor
+ * carries no mark, as on the canvas.
  * @param nodes - The proposal's nodes.
  * @param instances - Each anchor and its match.
  * @returns The nodes, marked.
@@ -317,6 +318,17 @@ function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly A
   for (const { place, match } of instances) {
     for (const [key, found] of match.keys) {
       if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key });
+    }
+  }
+  // An input's node is marked only when no instance claims it as its anchor
+  // or its own node: a result fed on into another template stays its own.
+  const anchors = new Set(instances.map(({ anchor }) => anchor));
+  for (const { anchor, place, match } of instances) {
+    for (const [key, fed] of match.inputs) {
+      for (const node of fed.values()) {
+        const index = Number(node);
+        if (!anchors.has(index) && !marks.has(index)) marks.set(index, { template: place.template.id, key, input: true, anchor });
+      }
     }
   }
   return nodes.map((node, index) => {

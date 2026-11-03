@@ -153,11 +153,16 @@ export interface NodeCreation {
    * worse than no flow at all. The flow is aimed at `start` and moved right
    * past `occupied` until it covers none of it (inner#1443). With `existing`,
    * the proposal is a template landing around nodes already on the canvas
-   * (inner#1345): those indices are written over rather than placed, the new
-   * nodes line up left of the anchor (the lowest existing index) and move
-   * left past `occupied`, and they join the anchor's group when it is
-   * unlocked. If a write fails part way, everything this press wrote is taken
-   * back, out of undo history, and the error is rethrown.
+   * (inner#1345): those indices are written over rather than placed, and the
+   * new nodes line up on the anchor (the lowest existing index) where the
+   * flow puts them, or, when they join the group a reused instance node sits
+   * in, on that node, over whatever is there (inner#1846). They join the
+   * anchor's unlocked group, else the unlocked group a reused node of this template sits in,
+   * else two or more of them make a group of their own under
+   * `proposal.groupName`. `order` stacks each column in the template's own
+   * order, so a node put back takes the cell its template gives it. If a
+   * write fails part way, everything this press wrote is taken back, out of
+   * undo history, and the error is rethrown.
    * @throws {Error} When a write fails part way; nothing is left on the canvas
    *   or in undo history.
    */
@@ -166,6 +171,7 @@ export interface NodeCreation {
     start: Spot,
     occupied: readonly Rect[],
     existing?: ReadonlyMap<number, ExistingNode>,
+    order?: readonly number[],
   ) => PlacedProposal;
 }
 
@@ -176,31 +182,35 @@ export interface ExistingNode {
   mention: ProposalMention;
   /** Its params by model, written whole when the proposal sets its mode and model. */
   paramsByModel?: Record<string, Record<string, unknown>>;
+  /** True for a node of the template instance being applied, reused from an earlier apply. */
+  instance?: boolean;
 }
 
 /** Where a proposal's new nodes go, and the group they join or make. */
 interface Arrangement {
   /** Each index's top-left and size; meaningful for new nodes only. */
   spots: Rect[];
-  /** Where the batch landed, for a proposal placed on its own. */
+  /** Where a proposal placed on its own landed: its group's rect, or the one node's. */
   bounds?: Rect;
-  /** The rect of a new group, for two or more nodes placed on their own. */
+  /** Where a new group goes, for two or more new nodes that join no group already there. */
   aimedGroup: Rect | null;
-  /** The unlocked group around the anchor the new nodes join. */
+  /** The unlocked group already on the canvas the new nodes join. */
   joinGroup?: { id: string; rect: Rect };
 }
 
 /**
  * Where a proposal's new nodes go. On its own, the flow is aimed at `start`
  * and moved right past `occupied`. Around nodes already there, it is lined up
- * on the anchor's real position, so the new nodes stand left of it, and moved
- * left as one block past `occupied` -- the same walk, mirrored.
+ * on the anchor's real position, or on a reused instance node's when the new
+ * nodes join that node's group, even where that covers other nodes: they work
+ * on the same thing.
  * @param projectId - Owning project id.
  * @param spaceId - Canvas space id.
  * @param proposal - The proposal.
  * @param start - Where a proposal placed on its own is aimed.
- * @param occupied - What the new nodes must not cover.
+ * @param occupied - What a proposal placed on its own must not cover.
  * @param existing - The indices already on the canvas.
+ * @param order - Each index's rank within its column, as {@link planFlowLayout} takes it.
  * @returns The arrangement.
  * @throws {never} Never.
  */
@@ -211,9 +221,10 @@ function arrangeProposal(
   start: Spot,
   occupied: readonly Rect[],
   existing: ReadonlyMap<number, ExistingNode>,
+  order?: readonly number[],
 ): Arrangement {
   if (existing.size === 0) {
-    const aimed = planFlowLayout(proposal, start);
+    const aimed = planFlowLayout(proposal, start, order);
     // Two or more nodes land as one group, so the group's rect is what has
     // to be clear; a single node needs only its own.
     const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
@@ -226,7 +237,7 @@ function arrangeProposal(
     return {
       spots: aimed.map((spot) => ({ ...spot, x: spot.x + dx })),
       ...(footprint ? { bounds: { ...footprint, x: footprint.x + dx } } : {}),
-      aimedGroup,
+      aimedGroup: aimedGroup && { ...aimedGroup, x: aimedGroup.x + dx },
     };
   }
   const graph = readCanvasGraph(projectId, spaceId);
@@ -240,34 +251,43 @@ function arrangeProposal(
     const toIndex = indexOf.get(edge.target);
     return fromIndex === undefined || toIndex === undefined ? [] : [{ fromIndex, toIndex }];
   });
-  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 });
+  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 }, order);
   const anchorIndex = Math.min(...existing.keys());
   const anchorId = existing.get(anchorIndex)?.nodeId;
   const placements = readNodePlacements(projectId, spaceId);
-  const anchorAt = placements.find((p) => p.id === anchorId) ?? start;
-  const cell = aimed[anchorIndex] ?? { x: 0, y: 0 };
-  const lined = aimed.map((spot) => ({ ...spot, x: spot.x + anchorAt.x - cell.x, y: spot.y + anchorAt.y - cell.y }));
-  const added = lined.filter((_, i) => !existing.has(i));
-  const searched = groupRectForMembers(added.map(withTaskCounts), 0);
-  // Mirrored, a walk to the right is a walk to the left.
   /**
-   * A rect reflected across the vertical axis.
-   * @param r - The rect.
-   * @returns It, mirrored.
+   * The unlocked group a node sits in.
+   * @param nodeId - The node.
+   * @returns The group's id and rect, or undefined when it sits in none or in a locked one.
    */
-  const mirror = (r: Rect): Rect => ({ ...r, x: -(r.x + r.width) });
-  const back = searched ? shiftRightPastOccupied(mirror(searched), occupied.map(mirror), ROW_GAP_PX) : 0;
-  const spots = lined.map((spot) => ({ ...spot, x: spot.x - back }));
-  const anchorView = anchorId === undefined ? undefined : views.get(anchorId);
-  const group = anchorView?.parentId === undefined ? undefined : placements.find((p) => p.id === anchorView.parentId);
-  const groupView = group === undefined ? undefined : views.get(group.id);
-  const unlocked = groupView?.type === 'group' && groupView.data.locked !== true;
+  const unlockedGroupOf = (nodeId: string | undefined): { id: string; rect: Rect } | undefined => {
+    const parentId = nodeId === undefined ? undefined : views.get(nodeId)?.parentId;
+    const group = parentId === undefined ? undefined : placements.find((p) => p.id === parentId);
+    const groupView = group === undefined ? undefined : views.get(group.id);
+    if (!group || groupView?.type !== 'group' || groupView.data.locked === true) return undefined;
+    return { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } };
+  };
+  // The anchor's own group first. An anchor in no unlocked group lends the new
+  // nodes the group this template's reused nodes sit in, which a first apply
+  // made, so the instance stays one piece the reader drags as one. A
+  // reference the reader wired in keeps its own group to itself.
+  const joinGroup = unlockedGroupOf(anchorId)
+    ?? [...existing.values()].filter((node) => node.instance === true).map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
+  // When a reused node of this instance sits in the group the new nodes join,
+  // the flow lines up on it, so a node put back lands in its place in the
+  // instance wherever the reader has since moved the anchor.
+  const alignIndex = (joinGroup
+    && [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id)?.[0])
+    ?? anchorIndex;
+  const alignAt = placements.find((p) => p.id === existing.get(alignIndex)?.nodeId) ?? start;
+  const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
+  const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
+  const added = lined.filter((_, i) => !existing.has(i));
+  const aimedGroup = joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
   return {
-    spots,
-    aimedGroup: null,
-    ...(group && unlocked
-      ? { joinGroup: { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } } }
-      : {}),
+    spots: lined,
+    aimedGroup,
+    ...(joinGroup ? { joinGroup } : {}),
   };
 }
 
@@ -318,9 +338,9 @@ function fetchTemplateResources(
 export interface PlacedProposal {
   /** The new node ids, in the proposal's own order. */
   nodeIds: string[];
-  /** The group they landed in, when there were two or more of them. */
+  /** The group this press made for the new nodes, when it made one; unset when they joined a group already there. */
   groupId?: string;
-  /** Where the batch landed: the group's rect, or the one node's. */
+  /** Where a proposal placed on its own landed: its group's rect, or the one node's; unset for a template built on nodes already there. */
   bounds?: Rect;
   /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas is not moved, and its entry is where the layout would put it. */
   rects: Rect[];
@@ -453,9 +473,10 @@ export function useNodeCreation(
       start: Spot,
       occupied: readonly Rect[],
       existing: ReadonlyMap<number, ExistingNode> = new Map(),
+      order?: readonly number[],
     ): PlacedProposal => {
       const fresh = proposal.nodes.map((_, i) => !existing.has(i));
-      const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing);
+      const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
       const { spots, bounds, aimedGroup, joinGroup } = arrangement;
       const nodeIds: string[] = proposal.nodes.map((_, i) => existing.get(i)?.nodeId ?? '');
       let groupId: string | undefined;
@@ -504,21 +525,18 @@ export function useNodeCreation(
             // Two or more new nodes are one piece of work, and a group is how
             // the canvas says so. Built from the arrangement's own rects: the
             // nodes were written a moment ago and the render buffer has not
-            // seen them yet. A template landing around nodes already there
-            // makes no group of its own: its new nodes join the anchor's
-            // group when that one is unlocked, and land ungrouped otherwise.
-            const rect = aimedGroup && bounds;
-            if (rect) {
+            // seen them yet. Only the new nodes become members: an anchor or
+            // a reused node already on the canvas stays where it is.
+            if (aimedGroup) {
               const id = newId();
               groupId = id;
               createGroup(
                 projectId,
                 spaceId,
-                createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
-                nodeIds.map((member, i) => ({
-                  id: member,
-                  position: toRelativePosition(spots[i] ?? rect, rect),
-                })),
+                createGroupNode(id, { x: aimedGroup.x, y: aimedGroup.y }, aimedGroup.width, aimedGroup.height, userId),
+                nodeIds.flatMap((member, i) =>
+                  fresh[i] ? [{ id: member, position: toRelativePosition(spots[i] ?? aimedGroup, aimedGroup) }] : [],
+                ),
               );
               if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
               setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
@@ -547,6 +565,7 @@ export function useNodeCreation(
                 template: tag.template,
                 key: tag.key,
                 ...(anchor === undefined || anchor === '' ? {} : { anchor }),
+                ...(tag.input ? { input: true as const } : {}),
               });
             });
             // Words last, once every node and edge is in place: a ref lands as
@@ -598,7 +617,7 @@ export function useNodeCreation(
                 });
               }
             });
-            // The new nodes join the anchor's group last, and its frame grows
+            // The new nodes join that group last, and its frame grows
             // to keep its padding around them.
             if (joinGroup) {
               const added = proposal.nodes.flatMap((_, i) => (fresh[i] && spots[i] ? [{ id: nodeIds[i], rect: spots[i] }] : []));

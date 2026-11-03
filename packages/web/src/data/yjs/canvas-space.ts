@@ -836,7 +836,7 @@ export function setNodeName(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The node.
- * @param templateNode - The template, its key, and on a guide node the anchor's id.
+ * @param templateNode - The template, its key, and on a guide or input node the anchor's id; `input` on an input node.
  */
 export function setNodeTemplateNode(
   projectId: string,

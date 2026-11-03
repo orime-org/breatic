@@ -12,8 +12,9 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { switchLanguage } from '../helpers/language';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
 
@@ -26,18 +27,6 @@ registerCanvasStage();
  */
 async function fits(button: Locator): Promise<boolean> {
   return button.evaluate((el) => el.scrollWidth <= el.clientWidth);
-}
-
-/**
- * Switch the interface language through its menu.
- * @param p - The page.
- * @param code - The locale to switch to.
- */
-async function switchLanguage(p: Page, code: string): Promise<void> {
-  await p.getByTestId('lang-trigger').click();
-  await expect(p.getByTestId('lang-popover')).toBeVisible();
-  await p.getByTestId(`lang-option-${code}`).click();
-  await expect(p.getByTestId('lang-popover')).toHaveCount(0);
 }
 
 test('an image model shows every param it stands on, named from the locales', async ({ page }) => {
