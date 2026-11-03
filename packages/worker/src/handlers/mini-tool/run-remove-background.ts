@@ -3,13 +3,14 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { getRawEnvVar, logger } from "@breatic/core";
+import { getRawEnvVar, getStorageAdapter, logger } from "@breatic/core";
 import {
-  assetRepo, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema,
+  assetRepo, beginMiniToolStepAttempt, type MiniToolStepJson, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema,
   readMiniToolExecutionPlan, recordMiniToolStepIdentity, recordMiniToolStepResult, upstreamStepRepo,
 } from "@breatic/domain";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { storeFromUrl } from "@worker/handlers/backend-upload.js";
+import { appendStep, prepareModelInput } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -49,8 +50,15 @@ export async function runMiniToolRemoveBackground(
 ): Promise<{ asset: StudioAssetEntity; cover: StudioAssetEntity | null }> {
   const { task, execution } = await readMiniToolExecutionPlan(taskId);
   if (execution.tool !== "video.remove-bg") throw new Error("Planned container execution requires its container runner");
-  const [owned] = await upstreamStepRepo.ensureSteps(task.id, [{ kind: "generate", endpoint: execution.provider.model_id, itemIndex: 0 }]);
-  if (owned === undefined || owned.kind !== "generate" || owned.endpoint !== execution.provider.model_id || owned.itemIndex !== 0) {
+  // The provider body takes the prepared model input; once a submit intent exists its stored body is the one sent.
+  const found = (await upstreamStepRepo.listSteps(task.id)).find((candidate) => candidate.kind === "generate");
+  let body: Record<string, MiniToolStepJson> | null = null;
+  if (found?.output.miniToolStep === undefined) {
+    const prepared = await prepareModelInput(execution, deadlineAt);
+    body = { ...execution.body, video: (await getStorageAdapter()).publicUrl(prepared) };
+  }
+  const owned = found ?? await appendStep(task.id, { kind: "generate", endpoint: execution.provider.model_id, itemIndex: 0 });
+  if (owned.kind !== "generate" || owned.endpoint !== execution.provider.model_id || owned.itemIndex !== 0) {
     throw new Error("Video removal lost its original provider step");
   }
   let step = owned;
@@ -76,7 +84,7 @@ export async function runMiniToolRemoveBackground(
       const prepared = await beginMiniToolStepAttempt({
         taskId: task.id, stepId: step.id,
         attemptId: !retryStarting && held?.resolution.kind === "unresolved" ? held.attemptId : randomUUID(),
-        requestBody: { ...execution.body }, deadlineAt: originalDeadline, chargeTo: "user",
+        requestBody: { ...(state?.requestBody ?? body) }, deadlineAt: originalDeadline, chargeTo: "user",
       });
       if (!prepared.shouldSubmit || prepared.attempt === null) throw new Error("Provider submit intent requires reconciliation");
       attemptId = prepared.attempt.attemptId;
@@ -86,7 +94,9 @@ export async function runMiniToolRemoveBackground(
     }
     let prediction: Awaited<ReturnType<typeof runPrediction>>;
     try {
-      prediction = await runPrediction({ baseUrl: connection.base_url, apiKey }, execution.provider.model_id, execution.body, {
+      const sent = state?.requestBody ?? body;
+      if (sent === null) throw new Error("Video removal has no prepared provider body");
+      prediction = await runPrediction({ baseUrl: connection.base_url, apiKey }, execution.provider.model_id, sent, {
         storedTaskId: step.predictionId, externalTaskId: step.id, retryStarting, deadlineAt: originalDeadline,
         persistTaskId: async (predictionId): Promise<void> => {
           if (attemptId === null) throw new Error("Existing provider prediction cannot receive a replacement receipt");
