@@ -213,6 +213,8 @@ function filled(name: string, spec: RawParam): unknown {
     );
   }
   if (spec.type === "text") return `some ${name}`;
+  // An empty list default sends nothing, so the sample carries one entry.
+  if (Array.isArray(spec.default) && spec.default.length === 0 && spec.values === undefined) return [`some ${name}`];
   if (spec.default != null || spec.values !== undefined) return undefined;
   // A param whose declaration says it is an image URL gets one; anything else a word.
   return /image url/i.test(spec.description ?? "") ? `https://cdn.example/${name}-1.png` : `some ${name}`;
