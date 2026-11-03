@@ -1,12 +1,26 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/**
+ * Domain presentation admission and the web→server response (inner#1306 test
+ * plan §90 E1; frames-split design §5.1 steps 1 and 6, §3.5, §7.12, §7.6).
+ *
+ * The domain sends the S6c ingest request (both container prices frozen
+ * together, the target policy version on every read and accept, the retry caps
+ * from configuration), consumes the S6c snapshot and answers the response that
+ * mirrors it. A user-run prep inherits that run's deadline; a standalone read or
+ * repair fixes its own two hours. The probe job's own usage is recorded from the
+ * snapshot's usageFact as a platform expense (multiplier 0) and acknowledged
+ * after it settles; per-attempt sub-job usage belongs to E2.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as sharedModule from '@breatic/shared';
-import { DeadlinePassed, VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, type StudioAssetEntity, type VideoSourceLedgerCompanion } from '@breatic/shared';
-import { NotFoundError, ValidationError, getMiniToolsConfig } from '@breatic/core';
+import fc from 'fast-check';
+import { type StudioAssetEntity } from '@breatic/shared';
+import { budgetDeadlineFrom, getMiniToolsConfig } from '@breatic/core';
 import type * as coreModule from '@breatic/core';
-import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation, readSourceLedger } from '../video-presentation.service.js';
+import { containerCostUsd } from '../../credit/container-cost.js';
+import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation } from '../video-presentation.service.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
@@ -17,14 +31,14 @@ const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecord
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
   return {
-  ...actual,
-  projectAuthService: { loadProjectRole },
-  getStorageAdapter: async () => ({ keyFromUrl, publicUrl }),
-  createQueue: () => ({ add: queueAdd }),
-  defaultJobOpts: () => ({ attempts: 3 }),
-  getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
-  env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
-};
+    ...actual,
+    projectAuthService: { loadProjectRole },
+    getStorageAdapter: async () => ({ keyFromUrl, publicUrl }),
+    createQueue: () => ({ add: queueAdd }),
+    defaultJobOpts: () => ({ attempts: 3 }),
+    getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
+    env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
+  };
 });
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
 vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, fillMediaNumbers }));
@@ -32,104 +46,110 @@ vi.mock('@domain/credit/usage-recorder.js', async (original) => ({ ...await orig
 
 const canonicalURL = 'https://assets.example.test/video/canonical.webm';
 const input = { projectId: '49646d44-2e1a-4184-b8bd-57cef3b9b47c', userId: '6061c056-f758-47c1-9527-8495ecba60e3', canonicalURL };
+const H = 'a'.repeat(64);
+const T = 'c'.repeat(64);
+const PLAN = 'd'.repeat(64);
 const asset: StudioAssetEntity = {
   id: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', studioId: 'ed45d52f-1149-4058-8a94-c983a9ff32d9',
-  contentHash: 'a'.repeat(64), storageKey: 'video/canonical.webm', fileUrl: canonicalURL, sizeBytes: 1024,
+  contentHash: H, storageKey: 'video/canonical.webm', fileUrl: canonicalURL, sizeBytes: 1024,
   mimeType: 'video/webm', kind: 'video', source: 'upload', producedByUserId: input.userId,
   generationTaskId: null, width: null, height: null, durationSeconds: null, createdAt: new Date('2026-10-24T00:00:00Z'), deletedAt: null,
 };
+const registered = { assetId: asset.id, contentHash: H, canonicalURL, kind: 'video', mediaInfo: { width: null, height: null, duration: null, mimeType: asset.mimeType } };
+const ingestBinding = { storageKey: asset.storageKey, sourceFingerprint: H };
+const bundle = {
+  schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1,
+  original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: { numerator: '17', denominator: '8' } },
+  playback: { kind: 'native', carrier: { storageKey: asset.storageKey, url: canonicalURL, etag: 'e1', size: 4096, sha256: 'f'.repeat(64), contentType: 'video/webm' }, displayRect: null },
+  playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
+};
+const receipt = {
+  schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN, producerVersion: 2, attempt: { jobId: 'video-presentation-a', deadlineAt: 1900000000000 },
+  url: 'https://assets.example.test/video/canonical.webm.ledger.json', etag: '"e"', size: 912, sha256: 'b'.repeat(64), contentType: 'application/json',
+  table: { url: 'https://assets.example.test/video/canonical.webm.table.json', sha256: 'c'.repeat(64), size: 81, contentType: 'application/json', frameCount: 17 },
+};
+const limits = { maxBytes: 16777216 };
+
+interface Sent { action: string; jobId?: string; deadlineAt?: number; targetPolicyVersion?: number; repair?: boolean;
+  pricing?: { basic: Record<string, unknown>; standard4: Record<string, unknown> }; policy?: { chunkRetries: number; maxAutoRepairs: number } }
+
+/**
+ * Every request the domain sent to ingest.
+ * @returns The requests in order.
+ */
+function sent(): Sent[] {
+  return videoPresentationAtIngest.mock.calls.map((call) => call[2] as Sent);
+}
+
+/**
+ * The accept request the domain sent.
+ * @returns It.
+ */
+function acceptSent(): Sent {
+  const found = sent().find((request) => request.action === 'accept');
+  expect(found).toBeDefined();
+  return found!;
+}
+
+/**
+ * A preparation in the snapshot shape for the job ingest accepted.
+ * @param jobId - The accepted job.
+ * @param stage - Its real stage, null before it starts.
+ * @param failure - Its failure code.
+ * @returns The preparation.
+ */
+function prep(jobId: string, stage: string | null = null, failure: string | null = null): Record<string, unknown> {
+  return { targetPolicyVersion: 1, jobId, stage, failure };
+}
+
+/**
+ * An S6c ingest snapshot.
+ * @param fields - The fields that differ from nothing admitted.
+ * @returns The snapshot.
+ */
+function snapshot(fields: Record<string, unknown> = {}): Record<string, unknown> {
+  return { sourceBinding: ingestBinding, presentation: null, preparation: null, ledger: null, ...fields };
+}
+
+/**
+ * Answer a read with one snapshot and an accept with the job the domain proposed, unless given.
+ * @param read - The read answer.
+ * @param accepted - The accept answer; defaults to the proposed job, not started.
+ */
+function ingest(read: Record<string, unknown>, accepted?: Record<string, unknown>): void {
+  videoPresentationAtIngest.mockImplementation(async (_url: string, _secret: string, request: Sent) => request.action === 'accept'
+    ? accepted ?? snapshot({ preparation: prep(request.jobId!) }) : read);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  loadProjectRole.mockResolvedValue(null);
+  loadProjectRole.mockResolvedValue('viewer');
   keyFromUrl.mockReturnValue(asset.storageKey);
-  publicUrl.mockReturnValue(canonicalURL);
+  publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
   findLiveByStorageKey.mockResolvedValue(asset);
   findById.mockResolvedValue(asset);
-  videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: null });
+  ingest(snapshot());
   queueAdd.mockResolvedValue(undefined);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
 });
 
-describe('platform presentation queue consumption (inner#1306 §6.20)', () => {
-  const job = { assetId: asset.id, sourceFingerprint: asset.contentHash, jobId: 'accepted-native', deadlineAt: 1900000000000 };
-  const presentation = { schemaVersion: 1 as const, sourceFingerprint: asset.contentHash, original: { width: 48, height: 64, duration: 2 },
-    state: 'native' as const, attempt: { jobId: job.jobId, deadlineAt: job.deadlineAt } };
-  const attempt = { jobId: job.jobId, deadlineAt: job.deadlineAt, status: 'completed' as const, usage: { wallMs: 1000, cpuUsec: 10000 } };
-
-  it('runs only the fixed accepted identity and fills unknown registry measurements from trusted display geometry', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...attempt, usageRecorded: true } });
-    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: true, usagePending: false });
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
-      action: 'run', storageKey: asset.storageKey, sourceFingerprint: asset.contentHash, jobId: job.jobId, deadlineAt: job.deadlineAt,
-    });
-    expect(fillMediaNumbers).toHaveBeenCalledWith(asset.id, { width: 48, height: 64, durationSeconds: 2 });
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-  });
-
-  it('records measured container expense once under the original platform-funded actor before acknowledging it', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt, usageFact: { jobId: job.jobId, actorUserId: input.userId,
-      projectId: null, usage: attempt.usage, pricing: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 },
-        prices: { vcpu_second_usd: 0.00001, memory_gib_second_usd: 0.00001, disk_gb_second_usd: 0.00001 } } } });
-    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: true, usagePending: false });
-    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: `video-presentation:${job.jobId}`,
-      feature: 'mini_tool', actorUserId: input.userId, projectId: null, multiplier: 0 }));
-    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ source: 'container', service: 'video-presentation', provider: 'cloudflare', costUsd: expect.any(Number), costSource: 'computed' }));
-    expect(settle.mock.invocationCallOrder[0]).toBeLessThan(videoPresentationAtIngest.mock.invocationCallOrder[1]!);
-    expect(videoPresentationAtIngest).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'ack_usage', jobId: job.jobId, deadlineAt: job.deadlineAt }));
-  });
-
-  it('retains ready content while an unreceived expense fact requires queue recovery', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...attempt, usage: null } });
-    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: false, usagePending: true });
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-  });
-
-  it('expires an elapsed original deadline instead of starting fresh compute', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { ...attempt, deadlineAt: 1, status: 'failed', error: 'expired' } });
-    await runVideoPresentation({ ...job, deadlineAt: 1 });
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'expire', deadlineAt: 1 }));
-  });
-
-  it('does not execute a stale source hash', async () => {
-    expect(await runVideoPresentation({ ...job, sourceFingerprint: 'b'.repeat(64) })).toEqual({ status: 'stale', usageRecorded: false, usagePending: false });
-    expect(videoPresentationAtIngest).not.toHaveBeenCalled();
-  });
+afterEach(() => {
+  vi.useRealTimers();
 });
 
-describe('partial registered presentation measurements (inner#1306)', () => {
-  it('retains a known width in internal admission while missing measurements stay null', async () => {
-    findById.mockResolvedValue({ ...asset, width: 95 });
-    const accepted = { jobId: 'partial-registered', deadlineAt: 1900000000000, status: 'accepted', usage: null };
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: accepted });
-    await ensureVideoPresentation({ assetId: asset.id });
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({
-      action: 'accept', original: null, registeredMetadata: { width: 95, height: null, duration: null },
-    }));
-  });
-
-  it('resolves a previously unknown source after registry precision projects its trusted duration', async () => {
-    loadProjectRole.mockResolvedValue('viewer');
-    findLiveByStorageKey.mockResolvedValue({ ...asset, width: 95, height: 63, durationSeconds: 1.323 });
-    const presentation = { schemaVersion: 1, sourceFingerprint: asset.contentHash, original: { width: 95, height: 63, duration: 1.323333 },
-      state: 'native', attempt: { jobId: 'unknown-first-probe', deadlineAt: 1900000000000 } };
-    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...presentation.attempt, status: 'completed', usage: null, usageRecorded: true } });
-    expect(await resolveVideoPresentation(input)).toMatchObject({ presentation, sourceBinding: { mediaInfo: { width: 95, height: 63, duration: 1.323 } } });
-  });
-});
-
-describe('registered presentation source authorization (inner#1306 §6.20)', () => {
-  it('checks membership before consulting a source or presentation', async () => {
+describe('registered presentation source authorization (inner#1306 §3.5 web→server)', () => {
+  it('AU01 checks membership before consulting a source or presentation', async () => {
+    loadProjectRole.mockResolvedValue(null);
     await expect(resolveVideoPresentation(input)).rejects.toMatchObject({ statusCode: 404 });
     expect(loadProjectRole).toHaveBeenCalledWith(input.userId, input.projectId);
     expect(keyFromUrl).not.toHaveBeenCalled();
     expect(findLiveByStorageKey).not.toHaveBeenCalled();
   });
 
-  it('checks membership before consulting an explicit repair source', async () => {
-    await expect(repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'repair-press' })).rejects.toMatchObject({ statusCode: 404 });
-    expect(loadProjectRole).toHaveBeenCalledWith(input.userId, input.projectId);
+  it('AU02 checks membership before consulting an explicit repair source', async () => {
+    loadProjectRole.mockResolvedValue(null);
+    await expect(repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' })).rejects.toMatchObject({ statusCode: 404 });
     expect(findLiveByStorageKey).not.toHaveBeenCalled();
   });
 
@@ -137,335 +157,263 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
     ['an external URL', null, asset],
     ['an unregistered address', asset.storageKey, null],
     ['a registered image', asset.storageKey, { ...asset, kind: 'image' }],
-  ])('rejects %s instead of inferring a video from its extension', async (_name, key, row) => {
-    loadProjectRole.mockResolvedValue('viewer');
+  ])('AU03 rejects %s instead of inferring a video from its extension', async (_name, key, row) => {
     keyFromUrl.mockReturnValue(key);
     findLiveByStorageKey.mockResolvedValue(row);
     await expect(resolveVideoPresentation(input)).rejects.toMatchObject({ statusCode: 422 });
   });
 
-  it('reports the current registry identity when repair fingerprint is stale', async () => {
-    loadProjectRole.mockResolvedValue('viewer');
+  it('AU04 reports the current registry identity when the repair fingerprint is stale', async () => {
+    publicUrl.mockReturnValue(canonicalURL);
     await expect(repairVideoPresentation({ ...input, sourceFingerprint: 'b'.repeat(64), requestId: 'repair-press' }))
-      .rejects.toMatchObject({ statusCode: 409, currentSourceBinding: {
-        assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video',
-        mediaInfo: { width: null, height: null, duration: null, mimeType: 'video/webm' },
-      } });
+      .rejects.toMatchObject({ statusCode: 409, currentSourceBinding: registered });
   });
 
-  it.each([null, { ...asset, deletedAt: new Date() }, { ...asset, kind: 'image' }])('does not queue automatic work for a gone or non-video row', async (row) => {
+  it.each([null, { ...asset, deletedAt: new Date() }, { ...asset, kind: 'image' }])('AU05 does not admit automatic work for a gone or non-video row', async (row) => {
     findById.mockResolvedValue(row);
     expect(await ensureVideoPresentation({ assetId: asset.id })).toBe(null);
-  });
-
-  it('returns a viewer the registry SHA and canonical URL while measurements remain unknown', async () => {
-    loadProjectRole.mockResolvedValue('viewer');
-    const accepted = { jobId: 'accepted-first-read', deadlineAt: 1900000000000, status: 'accepted', usage: null };
-    videoPresentationAtIngest.mockImplementation(async (_url: string, _secret: string, request: { action: string }) => ({
-      presentation: null, attempt: request.action === 'read' ? null : accepted,
-    }));
-    expect(await resolveVideoPresentation(input)).toEqual({
-      sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
-        width: null, height: null, duration: null, mimeType: asset.mimeType,
-      } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: accepted.jobId, deadlineAt: accepted.deadlineAt } }, pollAfterMs: 5000,
-      sourceLedgerReadLimits: { maxBytes: 16777216 },
-    });
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({
-      assetId: asset.id, sourceFingerprint: asset.contentHash, jobId: accepted.jobId, deadlineAt: accepted.deadlineAt,
-    }), expect.objectContaining({ jobId: accepted.jobId }));
-  });
-
-  it('inherits a parent deadline for a registered alpha result without a second budget', async () => {
-    const deadlineAt = 1900000000000;
-    videoPresentationAtIngest.mockResolvedValue({
-      presentation: null, attempt: { jobId: 'parent-alpha', deadlineAt, status: 'accepted', usage: null },
-    });
-    expect(await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: deadlineAt, knownAlpha: true }))
-      .toEqual({ jobId: 'parent-alpha', deadlineAt });
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith('https://ingest.example.test', 'secret', expect.objectContaining({
-      action: 'accept', storageKey: asset.storageKey, sourceFingerprint: asset.contentHash, deadlineAt, original: null, knownAlpha: true,
-    }));
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ deadlineAt }), expect.objectContaining({ jobId: 'parent-alpha' }));
-  });
-
-  it('replays the accepted attempt deadline instead of assigning a later retry deadline', async () => {
-    const fixed = { jobId: 'fixed-accepted', deadlineAt: 1900000000000, status: 'running', usage: null };
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: fixed });
-    expect(await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: 1900000001000 }))
-      .toEqual({ jobId: fixed.jobId, deadlineAt: fixed.deadlineAt });
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({
-      jobId: fixed.jobId, deadlineAt: fixed.deadlineAt,
-    }), expect.objectContaining({ jobId: fixed.jobId }));
-  });
-
-  it('lets a viewer repair the same registered source and returns the persisted attempt', async () => {
-    loadProjectRole.mockResolvedValue('viewer');
-    const fixed = { jobId: 'repair-fixed', deadlineAt: 1900000000000, status: 'accepted', usage: null };
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: fixed });
-    expect(await repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'repair-press' })).toEqual({
-      sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
-        width: null, height: null, duration: null, mimeType: asset.mimeType,
-      } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt } }, pollAfterMs: 5000, attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt },
-      sourceLedgerReadLimits: { maxBytes: 16777216 },
-    });
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith('https://ingest.example.test', 'secret', expect.objectContaining({
-      action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,
-    }));
-  });
-});
-
-// inner#1306 consumer oracle N01–N04: the presentation owner reads the stored
-// source ledger for an authorized member, binding the receipt to the actual
-// registered row before any external GET. The companion delivery itself is a
-// controlled `fetch`; the shared reader, digest and strict parser are real.
-describe('validated source ledger read (inner#1306 N01–N04)', () => {
-  const companion: VideoSourceLedgerCompanion = JSON.parse('{"schemaVersion":1,"sourceFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","producerVersion":1,"attempt":{"jobId":"accepted-source-attempt","deadlineAt":7201000},"strategy":"iso_unedited_rate_one","physical":{"streamIndex":1,"trackId":7,"sourceTimeBase":{"numerator":"1","denominator":"1000"},"frames":[{"rawDecodeOrdinal":0,"ptsTicks":"0"},{"rawDecodeOrdinal":1,"ptsTicks":"40"},{"rawDecodeOrdinal":2,"ptsTicks":"80"}]},"container":{"kind":"iso_bmff","movieTimescale":"1000","movieDurationTicks":"4000","track":{"trackId":7,"trackFlags":1,"durationMovieTicks":"4000","mediaTimescale":"1000","mediaDurationTicks":"1000000000","edits":null,"sampleTiming":{"decodeRuns":[{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"}],"cttsVersion":null,"compositionRuns":null,"compositionShift":null}}},"presentation":{"edits":[],"frames":[{"presentationOrdinal":0,"editOccurrence":0,"rawDecodeOrdinal":0,"sourcePtsTicks":"0","mappedPts":{"numerator":"0","denominator":"1"},"displayStart":{"numerator":"0","denominator":"1"},"displayEnd":{"numerator":"1","denominator":"25"}},{"presentationOrdinal":1,"editOccurrence":0,"rawDecodeOrdinal":1,"sourcePtsTicks":"40","mappedPts":{"numerator":"1","denominator":"25"},"displayStart":{"numerator":"1","denominator":"25"},"displayEnd":{"numerator":"2","denominator":"25"}},{"presentationOrdinal":2,"editOccurrence":0,"rawDecodeOrdinal":2,"sourcePtsTicks":"80","mappedPts":{"numerator":"2","denominator":"25"},"displayStart":{"numerator":"2","denominator":"25"},"displayEnd":{"numerator":"3","denominator":"25"}}]}}') as VideoSourceLedgerCompanion;
-  const bytes = new TextEncoder().encode(JSON.stringify(companion));
-  const ledgerURL = `https://assets.example.test/${asset.storageKey}.video-source-ledger.v1.json`;
-  const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<Response>>();
-  let receipt: Record<string, unknown>;
-
-  /**
-   * The ingest read answering with this ledger state.
-   * @param sourceLedger - The state.
-   */
-  function stored(sourceLedger: unknown): void {
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: null, sourceLedger });
-  }
-
-  /** Serve the stored bytes once. */
-  function serve(body: Uint8Array = bytes): void {
-    fetchMock.mockResolvedValueOnce(new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }));
-  }
-
-  beforeEach(async () => {
-    publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
-    loadProjectRole.mockResolvedValue('viewer');
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    receipt = {
-      schemaVersion: 1, sourceFingerprint: asset.contentHash, producerVersion: 1, strategy: companion.strategy, attempt: companion.attempt,
-      url: ledgerURL, etag: '"opaque"', size: bytes.byteLength, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(''),
-      contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
-    };
-    fetchMock.mockReset();
-    vi.stubGlobal('fetch', fetchMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('refuses a non-member before reading any source or companion (N01)', async () => {
-    loadProjectRole.mockResolvedValue(null);
-    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(NotFoundError);
-    expect(findLiveByStorageKey).not.toHaveBeenCalled();
     expect(videoPresentationAtIngest).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('gives a viewer the registered binding and the whole validated ledger with unknown measurements (N02)', async () => {
-    stored({ state: 'ready', receipt });
-    serve();
-    const got = await readSourceLedger(input, Date.now() + 60_000);
-    expect(got.sourceBinding).toEqual(expect.objectContaining({ assetId: asset.id, contentHash: asset.contentHash, canonicalURL,
-      mediaInfo: { width: null, height: null, duration: null, mimeType: asset.mimeType } }));
-    expect(got.ledger).toEqual(companion);
-    expect(fetchMock.mock.calls[0]![0]).toBe(ledgerURL);
-    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
-      action: 'read', storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,
-    });
-  });
-
-  it.each([
-    ['a deleted row', { ...asset, deletedAt: new Date() }],
-    ['a non-video row', { ...asset, kind: 'image' }],
-  ])('refuses %s before any companion GET (N03)', async (_name, row) => {
-    findLiveByStorageKey.mockResolvedValue(row);
-    stored({ state: 'ready', receipt });
-    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(ValidationError);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['another source hash', { sourceFingerprint: 'c'.repeat(64) }],
-    ['a URL not derived from the registered key', { url: 'https://assets.example.test/other.video-source-ledger.v1.json' }],
-  ])('refuses a receipt carrying %s before any companion GET (N03)', async (_name, foreign) => {
-    stored({ state: 'ready', receipt: { ...receipt, ...foreign } });
-    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['no ledger state', undefined],
-    ['a null ledger', null],
-    ['a pending ledger', { state: 'pending', schemaVersion: 1, sourceFingerprint: asset.contentHash, producerVersion: 1, attempt: companion.attempt }],
-  ])('refuses %s without a GET or new work (N03, N04)', async (_name, sourceLedger) => {
-    stored(sourceLedger);
-    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(queueAdd).not.toHaveBeenCalled();
-  });
-
-  it('returns no ledger for a ready receipt whose body is malformed, and admits no work (N04)', async () => {
-    stored({ state: 'ready', receipt });
-    const damaged = bytes.slice();
-    damaged[damaged.length - 1] = 0x20;
-    serve(damaged);
-    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
-    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
-    expect(queueAdd).not.toHaveBeenCalled();
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-  });
-
-  it("reads under the caller's own deadline and does not GET once it has passed (C13)", async () => {
-    stored({ state: 'ready', receipt });
-    await expect(readSourceLedger(input, Date.now() - 1)).rejects.toBeInstanceOf(DeadlinePassed);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('projects the ledger state and the current read policy on the presentation response', async () => {
-    stored({ state: 'ready', receipt });
-    const got = await resolveVideoPresentation(input);
-    expect(got.sourceLedger).toEqual({ state: 'ready', receipt });
-    expect(got.sourceLedgerReadLimits).toEqual({ maxBytes: 16777216 });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('keeps an older ingest answer without ledger state unknown on the response', async () => {
-    stored(undefined);
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'a', deadlineAt: 1900000000000, status: 'running', usage: null } });
-    const got = await resolveVideoPresentation(input);
-    expect('sourceLedger' in got).toBe(false);
   });
 });
 
-// inner#1306 test plan §77 (D cases): every presentation admission requests the
-// source ledger v2 again, with its budgets from configuration and no frame
-// ceiling, and the public addresses of both stored objects derived from the
-// registered key. A finished source with no ledger is admitted once more; the
-// ingest store decides whether that is a ledger-only attempt.
-describe('presentation admission requesting the source ledger v2 (inner#1306 §77)', () => {
-  const presentation = { schemaVersion: 1 as const, sourceFingerprint: asset.contentHash, original: { width: 48, height: 64, duration: 2 },
-    state: 'native' as const, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
-  const completed = { jobId: 'old', deadlineAt: 1900000000000, status: 'completed' as const, usage: null, usageRecorded: true };
-  const identity = { schemaVersion: 2, sourceFingerprint: asset.contentHash, producerVersion: 2, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
-  const ledgerOnly = { presentation, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000, status: 'accepted', usage: null },
-    sourceLedger: { state: 'pending', ...identity, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000 } } };
-
-  /**
-   * The registered key of the compact presentation table, read at call time so a missing export fails one case.
-   * @param key - Registered storage key.
-   * @returns The table key.
-   */
-  function tableKeyFor(key: string): string {
-    const derive = (sharedModule as Record<string, unknown>).videoSourceLedgerTableKeyFor;
-    expect(typeof derive).toBe('function');
-    return (derive as (value: string) => string)(key);
-  }
-
-  /**
-   * Answer an ingest read with this finished source and an accept with a ledger-only attempt.
-   * @param read - The snapshot a read answers.
-   */
-  function ingestAnswers(read: Record<string, unknown>): void {
-    videoPresentationAtIngest.mockImplementation(async (_url: string, _secret: string, request: { action: string }) => request.action === 'read' ? read : ledgerOnly);
-  }
-
-  beforeEach(() => {
-    loadProjectRole.mockResolvedValue('viewer');
-    publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
+describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §5.1 step 1)', () => {
+  it('A01 freezes the basic and the standard-4 prices together', async () => {
+    await ensureVideoPresentation({ assetId: asset.id });
+    const config = getMiniToolsConfig();
+    const basicClass = config.presentation.container_class;
+    const size = (name: string): Record<string, number> => {
+      const spec = config.classes[name]!;
+      return { vcpu: spec.vcpu, memory_gib: spec.memory_gib, disk_gb: spec.disk_gb };
+    };
+    expect(acceptSent().pricing).toEqual({
+      basic: { containerClass: basicClass, size: size(basicClass), prices: { ...config.prices } },
+      standard4: { containerClass: 'MiniToolContainerStd4', size: size('MiniToolContainerStd4'), prices: { ...config.prices } },
+    });
   });
 
-  it('S4 D07 advertises the configured byte budget only, independently of retired frame ceilings', async () => {
+  it('A02 freezes the chunk retry and auto-repair caps from configuration', async () => {
+    const core = await import('@breatic/core');
+    const settings = getMiniToolsConfig();
+    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, encoding: { ...settings.encoding, chunk_retries: 5 },
+      presentation: { ...settings.presentation, source_ledger: { ...settings.presentation.source_ledger, max_auto_repairs: 7 } } });
+    try {
+      await ensureVideoPresentation({ assetId: asset.id });
+    } finally { spy.mockRestore(); }
+    expect(acceptSent().policy).toEqual({ chunkRetries: 5, maxAutoRepairs: 7 });
+  });
+
+  it('A03 sends one target policy version, a positive integer, on the read and on the accept it leads to', async () => {
+    await resolveVideoPresentation(input);
+    const [read, accept] = sent();
+    expect(read).toMatchObject({ action: 'read', storageKey: asset.storageKey, sourceFingerprint: H });
+    expect(Number.isSafeInteger(read!.targetPolicyVersion) && read!.targetPolicyVersion! > 0).toBe(true);
+    expect(accept).toMatchObject({ action: 'accept', targetPolicyVersion: read!.targetPolicyVersion });
+  });
+
+  it('A04 keeps the registered facts: unknown measurements stay null and a known width is retained', async () => {
+    findById.mockResolvedValue({ ...asset, width: 95 });
+    await ensureVideoPresentation({ assetId: asset.id });
+    expect(acceptSent()).toMatchObject({ original: null, registeredMetadata: { width: 95, height: null, duration: null } });
+  });
+});
+
+describe('deadlines fixed once at admission (inner#1306 §5.1 step 1)', () => {
+  it('D01 a prep triggered inside a user run inherits that run\'s deadline and queues that deadline', async () => {
+    const parent = 1900000000000;
+    await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: parent, knownAlpha: true });
+    const accept = acceptSent();
+    expect(accept).toMatchObject({ deadlineAt: parent, knownAlpha: true });
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ assetId: asset.id, sourceFingerprint: H, jobId: accept.jobId, deadlineAt: parent }),
+      expect.objectContaining({ jobId: accept.jobId }));
+  });
+
+  it('D02 a standalone read admission fixes its own two hours', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-03T08:00:00Z'));
+    await resolveVideoPresentation(input);
+    expect(acceptSent().deadlineAt).toBe(budgetDeadlineFrom(Date.now()));
+  });
+
+  it('D03 a repair fixes its own two hours', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-03T08:00:00Z'));
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
+    expect(acceptSent()).toMatchObject({ repair: true, deadlineAt: budgetDeadlineFrom(Date.now()) });
+  });
+});
+
+describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 §5.1 step 1, §7.1, §7.12)', () => {
+  it('R01 admits a source with nothing selected and no preparation, and answers the accepted work', async () => {
+    const got = await resolveVideoPresentation(input);
+    const accept = acceptSent();
+    expect(accept.repair).not.toBe(true);
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), ledger: null, pollAfterMs: 5000, sourceLedgerReadLimits: limits });
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: accept.jobId }), expect.objectContaining({ jobId: accept.jobId }));
+  });
+
+  it('R02 does not admit again while target work is in flight, and keeps it queued', async () => {
+    ingest(snapshot({ preparation: prep('in-flight', 'encode') }));
+    const got = await resolveVideoPresentation(input);
+    expect(sent().map((request) => request.action)).toEqual(['read']);
+    expect(got).toMatchObject({ preparation: prep('in-flight', 'encode'), pollAfterMs: 5000 });
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'in-flight' }), expect.objectContaining({ jobId: 'in-flight' }));
+  });
+
+  it('R03 a failed target preparation with nothing selected is answered as it is: no admission, no queue, no polling', async () => {
+    ingest(snapshot({ preparation: prep('failed-job', 'plan', 'too_long') }));
+    const got = await resolveVideoPresentation(input);
+    expect(sent().map((request) => request.action)).toEqual(['read']);
+    expect(queueAdd).not.toHaveBeenCalled();
+    expect(got).toMatchObject({ presentation: null, preparation: prep('failed-job', 'plan', 'too_long'), pollAfterMs: null });
+  });
+
+  it.each([
+    ['ready', { state: 'ready', receipt, failure: null }],
+    ['failed', { state: 'failed', receipt: null, failure: 'source_ledger_invalid' }],
+    ['pending', { state: 'pending', receipt: null, failure: null }],
+  ])('R04 a selected version with a %s ledger is answered as it is without admission', async (_name, ledger) => {
+    ingest(snapshot({ presentation: bundle, ledger }));
+    const got = await resolveVideoPresentation(input);
+    expect(sent().map((request) => request.action)).toEqual(['read']);
+    expect(got.presentation).toEqual(bundle);
+    expect(got).toMatchObject({ ledger });
+  });
+});
+
+describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.1 step 6, §7.12)', () => {
+  it('M01 maps every field with one name per concept and nothing else', async () => {
+    const ledger = { state: 'ready', receipt, failure: null };
+    ingest(snapshot({ presentation: bundle, ledger, preparation: prep('next-policy', 'encode') }));
+    expect(await resolveVideoPresentation(input)).toEqual({
+      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), ledger, pollAfterMs: null, sourceLedgerReadLimits: limits,
+    });
+  });
+
+  it('M02 never exposes the internal ingest binding, an attempt, a manifest or the earlier sourceLedger field', async () => {
+    ingest(snapshot({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null } }));
+    const got = await resolveVideoPresentation(input) as unknown as Record<string, unknown>;
+    expect(got.sourceBinding).toEqual(registered);
+    for (const key of ['attempt', 'manifest', 'sourceLedger', 'usageFact']) expect(key in got).toBe(false);
+  });
+
+  it.each([
+    ['a selected version whose ledger is pending', { presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null } }, 5000],
+    ['a selected version whose ledger is absent', { presentation: bundle, ledger: null }, 5000],
+    ['a selected version whose ledger is ready while new target work runs', { presentation: bundle, ledger: { state: 'ready', receipt, failure: null }, preparation: prep('next-policy', 'encode') }, null],
+    ['a selected version whose ledger failed', { presentation: bundle, ledger: { state: 'failed', receipt: null, failure: 'unsupported_rate' } }, null],
+    ['nothing selected and target work in flight', { preparation: prep('in-flight', 'plan') }, 5000],
+    ['nothing selected and the target work failed', { preparation: prep('failed-job', 'plan', 'classification_unknown') }, null],
+  ])('M03 polls with the configured interval exactly when waiting: %s', async (_name, fields, pollAfterMs) => {
+    ingest(snapshot(fields));
+    expect((await resolveVideoPresentation(input)).pollAfterMs).toBe(pollAfterMs);
+  });
+
+  it('M04 advertises the configured byte budget as the read limits', async () => {
     const core = await import('@breatic/core');
     const settings = getMiniToolsConfig();
     const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, presentation: { ...settings.presentation, source_ledger: { ...settings.presentation.source_ledger, max_bytes: 8192 } } });
-    loadProjectRole.mockResolvedValue('viewer');
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'running', deadlineAt: 1900000000000, status: 'running', usage: null } });
+    ingest(snapshot({ preparation: prep('in-flight', 'plan') }));
     try {
       expect((await resolveVideoPresentation(input)).sourceLedgerReadLimits).toEqual({ maxBytes: 8192 });
     } finally { spy.mockRestore(); }
   });
+});
 
-  it('D01 requests the ledger with its six configured budgets, no frame ceiling and both URLs derived from the registered key', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'new', deadlineAt: 1900000000000, status: 'accepted', usage: null } });
-    await ensureVideoPresentation({ assetId: asset.id });
-    const settings = getMiniToolsConfig().presentation;
-    const ledger = settings.source_ledger;
-    const request = videoPresentationAtIngest.mock.calls[0]![2] as { action: string; limits: Record<string, unknown>; sourceLedgerURL?: string; sourceLedgerTableURL?: string };
-    expect(request.action).toBe('accept');
-    expect(request.limits.maxSourceBytes).toBe(settings.max_source_bytes);
-    expect(request.limits.sourceLedger).toEqual({
-      maxBytes: ledger.max_bytes, probeStdoutBytes: ledger.probe_stdout_bytes, metadataBytes: ledger.metadata_bytes,
-      isoBoxCount: ledger.iso_box_count, matroskaElementCount: ledger.matroska_element_count, matroskaMaxBlocks: ledger.matroska_max_blocks,
-    });
-    expect(request.sourceLedgerURL).toBe(`https://assets.example.test/${videoSourceLedgerKeyFor(asset.storageKey)}`);
-    expect(request.sourceLedgerTableURL).toBe(`https://assets.example.test/${tableKeyFor(asset.storageKey)}`);
+describe('repair returns the same response (inner#1306 §3.5 web→server repair, §7.4 one admission entry)', () => {
+  it('RP01 a viewer\'s repair is an accept with repair set; preparation.jobId names the accepted job and there is no attempt field', async () => {
+    const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
+    const accept = acceptSent();
+    expect(accept).toMatchObject({ action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: H });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), ledger: null, pollAfterMs: 5000, sourceLedgerReadLimits: limits });
   });
 
-  it.each([
-    ['no ledger state', undefined],
-    ['a null ledger', null],
-  ])('D02 admits a finished, already ready source with %s once more on read', async (_name, sourceLedger) => {
-    ingestAnswers({ presentation, attempt: completed, ...(sourceLedger === undefined ? {} : { sourceLedger }) });
-    const got = await resolveVideoPresentation(input);
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'accept' }));
-    expect(got.sourceLedger).toEqual(ledgerOnly.sourceLedger);
-    expect(got.presentation).toEqual(presentation);
-  });
-
-  it.each([
-    ['pending', { state: 'pending', ...identity }],
-    ['ready', { state: 'ready', receipt: { ...identity, url: `https://assets.example.test/${asset.storageKey}.ledger.json`, etag: '"e"', size: 912,
-      sha256: 'b'.repeat(64), contentType: 'application/json', table: { url: `https://assets.example.test/${asset.storageKey}.table.json`, sha256: 'c'.repeat(64), size: 81, frameCount: 17 } } }],
-    ['content-failed', { state: 'failed', ...identity, errorCode: 'unsupported_rate' }],
-  ])('D03 leaves a finished source with a %s ledger as it is and projects that state', async (_name, sourceLedger) => {
-    ingestAnswers({ presentation, attempt: completed, sourceLedger });
-    const got = await resolveVideoPresentation(input);
-    expect(got.sourceLedger).toEqual(sourceLedger);
-    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
-    expect(queueAdd).not.toHaveBeenCalled();
-  });
-
-  it('D04 does not admit again while the original work is still running', async () => {
-    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'run', deadlineAt: 1900000000000, status: 'running', usage: null } });
-    await resolveVideoPresentation(input);
-    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
-    expect(queueAdd).toHaveBeenCalledTimes(1);
-  });
-
-  it('D05 a read of a finished source whose ledger failed transiently does not admit and projects the failure; admission is the accept path', async () => {
-    const failed = { state: 'failed', ...identity, errorCode: 'source_ledger_invalid' };
-    ingestAnswers({ presentation, attempt: completed, sourceLedger: failed });
-    const got = await resolveVideoPresentation(input);
-    expect(got.sourceLedger).toEqual(failed);
-    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
-    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'read' }));
-    expect(queueAdd).not.toHaveBeenCalled();
-  });
-
-  it('D06 the retry is the existing repair accept: it requests the ledger and returns the new pending ledger job', async () => {
-    videoPresentationAtIngest.mockResolvedValue(ledgerOnly);
-    const got = await repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'retry-press' });
-    const request = videoPresentationAtIngest.mock.calls[0]![2] as { action: string; repair?: boolean; limits: { sourceLedger?: unknown }; sourceLedgerURL?: string; sourceLedgerTableURL?: string };
-    expect(request).toMatchObject({ action: 'accept', repair: true });
-    expect(request.limits.sourceLedger).toBeDefined();
-    expect(request.sourceLedgerURL).toBe(`https://assets.example.test/${videoSourceLedgerKeyFor(asset.storageKey)}`);
-    expect(request.sourceLedgerTableURL).toBe(`https://assets.example.test/${tableKeyFor(asset.storageKey)}`);
-    expect(got.sourceLedger).toEqual(ledgerOnly.sourceLedger);
-    expect(got.attempt).toEqual({ jobId: 'ledger-only', deadlineAt: 1900000000000 });
+  it('RP02 a ledger-only repair of the selected version answers the pending ledger and queues the job ingest accepted', async () => {
+    ingest(snapshot(), snapshot({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null }, preparation: prep('ledger-only', 'plan') }));
+    const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'retry-press' });
+    expect(got).toMatchObject({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null }, preparation: prep('ledger-only', 'plan'), pollAfterMs: 5000 });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'ledger-only' }), expect.objectContaining({ jobId: 'ledger-only' }));
   });
 
-  it('D06 two concurrent retries queue the one producer job the ingest store accepted, never their own proposed ids', async () => {
-    videoPresentationAtIngest.mockResolvedValue(ledgerOnly);
+  it('RP03 two concurrent repairs queue the one job ingest accepted, never their own proposed ids', async () => {
+    const accepted = snapshot({ preparation: prep('ledger-only', 'plan') });
+    ingest(snapshot(), accepted);
     const [a, b] = await Promise.all([
-      repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'press-a' }),
-      repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'press-b' }),
+      repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press-a' }),
+      repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press-b' }),
     ]);
-    expect(a.sourceLedger).toEqual(ledgerOnly.sourceLedger);
-    expect(b.attempt).toEqual(a.attempt);
+    expect(a.preparation).toEqual(b.preparation);
     expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['ledger-only']));
+  });
+});
+
+describe('the probe job\'s own usage is a platform expense (inner#1306 §7.6, §5.1 step 8; E1 keeps usageFact + ack_usage)', () => {
+  const job = { assetId: asset.id, sourceFingerprint: H, jobId: 'video-presentation-a', deadlineAt: 1900000000000 };
+  const basic = getMiniToolsConfig().classes[getMiniToolsConfig().presentation.container_class]!;
+  const fact = {
+    jobId: job.jobId, actorUserId: input.userId, projectId: null, usage: { wallMs: 1000, cpuUsec: 10000 },
+    pricing: { containerClass: 'MediaContainer', size: { vcpu: basic.vcpu, memory_gib: basic.memory_gib, disk_gb: basic.disk_gb },
+      prices: { vcpu_second_usd: 0.00001, memory_gib_second_usd: 0.00002, disk_gb_second_usd: 0.00003 } },
+  };
+
+  it('U01 records the measured basic usage once under the original actor with multiplier 0, then acknowledges it', async () => {
+    videoPresentationAtIngest.mockResolvedValue(snapshot({ presentation: bundle, ledger: { state: 'ready', receipt, failure: null }, preparation: prep(job.jobId, 'publish'), usageFact: fact }));
+    await runVideoPresentation(job);
+    expect(createUsageRecorder).toHaveBeenCalledTimes(1);
+    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: `video-presentation:${job.jobId}`,
+      feature: 'mini_tool', actorUserId: input.userId, projectId: null, multiplier: 0 }));
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ source: 'container', service: 'video-presentation', provider: 'cloudflare',
+      costUsd: containerCostUsd(fact.usage, fact.pricing.size, fact.pricing.prices), costSource: 'computed' }));
+    const ack = videoPresentationAtIngest.mock.calls.findIndex((call) => (call[2] as Sent).action === 'ack_usage');
+    expect(ack).toBeGreaterThan(-1);
+    expect(settle.mock.invocationCallOrder[0]).toBeLessThan(videoPresentationAtIngest.mock.invocationCallOrder[ack]!);
+    expect(videoPresentationAtIngest.mock.calls[ack]![2]).toMatchObject({ storageKey: asset.storageKey, sourceFingerprint: H, jobId: job.jobId, deadlineAt: job.deadlineAt });
+  });
+
+  it('U02 records nothing and acknowledges nothing without a usage fact', async () => {
+    videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'plan') }));
+    await runVideoPresentation(job);
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+    expect(sent().some((request) => request.action === 'ack_usage')).toBe(false);
+  });
+
+  it('U03 refuses a usage fact of another job before recording it', async () => {
+    videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'plan'), usageFact: { ...fact, jobId: 'other-job' } }));
+    await expect(runVideoPresentation(job)).rejects.toThrow();
+    expect(recordServiceCall).not.toHaveBeenCalled();
+    expect(sent().some((request) => request.action === 'ack_usage')).toBe(false);
+  });
+
+  it('U04 a stale source hash records and asks nothing', async () => {
+    await runVideoPresentation({ ...job, sourceFingerprint: 'b'.repeat(64) });
+    expect(videoPresentationAtIngest).not.toHaveBeenCalled();
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it('U05 for any measured usage the recorded cost is the basic price of that usage, at multiplier 0, recorded once', async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.integer({ min: 0, max: 7_200_000 }), fc.option(fc.integer({ min: 0, max: 28_800_000_000 }), { nil: null }),
+      async (wallMs, cpuUsec) => {
+        vi.clearAllMocks();
+        createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
+        settle.mockResolvedValue(0);
+        const usage = { wallMs, cpuUsec };
+        videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'publish'), usageFact: { ...fact, usage } }));
+        await runVideoPresentation(job);
+        expect(createUsageRecorder).toHaveBeenCalledTimes(1);
+        expect(createUsageRecorder.mock.calls[0]![0]).toMatchObject({ multiplier: 0 });
+        expect(recordServiceCall).toHaveBeenCalledTimes(1);
+        expect(recordServiceCall.mock.calls[0]![0]).toMatchObject({ costUsd: containerCostUsd(usage, fact.pricing.size, fact.pricing.prices) });
+      },
+    ), { numRuns: 50 });
+  });
+});
+
+describe('queueing and recovery after admission (inner#1306 §5.1 step 1, §7.1.1 recovery waits for usage)', () => {
+  it('Q01 a failed preparation whose usage is not yet recorded is queued for recovery', async () => {
+    ingest(snapshot({ preparation: prep('failed-job', 'plan', 'classification_unknown'), usageFact: {
+      jobId: 'failed-job', actorUserId: input.userId, projectId: null, usage: { wallMs: 1, cpuUsec: null },
+      pricing: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } } } }));
+    await resolveVideoPresentation(input);
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'failed-job' }), expect.objectContaining({ jobId: 'failed-job' }));
   });
 });
