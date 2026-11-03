@@ -255,7 +255,8 @@ async function nextStep(pickup: Pickup): Promise<boolean> {
     const chunks = answer.work.chunks.map((_window, chunk) => ({ kind: 'presentation-chunk' as const, chunk }));
     const missing = chunks.filter((unit) => unitState(unit) === undefined);
     for (const unit of missing) await dispatch(pickup, unit);
-    if (missing.length > 0 || chunks.some((unit) => unitState(unit)?.state !== 'done')) return true;
+    if (missing.length > 0) return true;
+    // Every chunk exists and none is open (settleUnit came back for those): the DO refuses stitch until all are done.
     if (await advanceStage(pickup, 'stitch')) await dispatch(pickup, last);
     return true;
   }
