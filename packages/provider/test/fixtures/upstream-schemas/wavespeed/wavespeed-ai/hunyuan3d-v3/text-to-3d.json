@@ -3,14 +3,16 @@
   "fields": {
     "enable_pbr": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "face_count": [
       {
         "type": "integer",
         "minimum": 40000,
-        "maximum": 1500000
+        "maximum": 1500000,
+        "default": 500000
       }
     ],
     "generate_type": [
@@ -19,7 +21,8 @@
         "enum": [
           "Normal",
           "Geometry"
-        ]
+        ],
+        "default": "Normal"
       }
     ],
     "prompt": [

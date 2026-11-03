@@ -17,7 +17,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "image": [
@@ -32,7 +33,8 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 7000
       }
     ],
     "resolution": [
@@ -41,7 +43,8 @@
         "enum": [
           "768p",
           "2k"
-        ]
+        ],
+        "default": "768p"
       }
     ]
   },

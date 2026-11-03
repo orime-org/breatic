@@ -13,12 +13,14 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 2500
       }
     ],
     "keep_original_sound": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "character_orientation": [

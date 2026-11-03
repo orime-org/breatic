@@ -3,7 +3,10 @@
   "fields": {
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Generate an image of gray tabby cat hugging an otter with an orange scarf"
       }
     ],
     "quality": [
@@ -15,7 +18,8 @@
           "high",
           "xhigh",
           "max"
-        ]
+        ],
+        "default": "high"
       }
     ],
     "resolution": [
@@ -47,7 +51,8 @@
           "16:9",
           "9:21",
           "21:9"
-        ]
+        ],
+        "default": "1:1"
       }
     ],
     "output_format": [
@@ -57,7 +62,8 @@
           "jpeg",
           "png",
           "webp"
-        ]
+        ],
+        "default": "png"
       }
     ]
   },

@@ -3,7 +3,8 @@
   "fields": {
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 2500
       }
     ],
     "duration": [
@@ -23,7 +24,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "shot_type": [
@@ -32,7 +34,8 @@
         "enum": [
           "customize",
           "intelligent"
-        ]
+        ],
+        "default": "customize"
       }
     ],
     "aspect_ratio": [
@@ -42,7 +45,8 @@
           "16:9",
           "9:16",
           "1:1"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "multi_prompt": [
@@ -74,7 +78,8 @@
                   13,
                   14,
                   15
-                ]
+                ],
+                "default": 5
               }
             ],
             "": [
@@ -94,7 +99,8 @@
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

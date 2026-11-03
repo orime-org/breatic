@@ -10,17 +10,22 @@
     ],
     "draft": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Photorealistic style: Under a clear blue sky, a vast expanse of white daisy fields stretches out. The camera gradually zooms in and finally fixates on a close-up of a single daisy, with several glistening dewdrops resting on its petals."
       }
     ],
     "draft_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ],
     "duration": [
@@ -55,7 +60,8 @@
           28,
           29,
           30
-        ]
+        ],
+        "default": 5
       }
     ],
     "resolution": [
@@ -65,7 +71,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -78,12 +85,14 @@
           "4:3",
           "3:4",
           "21:9"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

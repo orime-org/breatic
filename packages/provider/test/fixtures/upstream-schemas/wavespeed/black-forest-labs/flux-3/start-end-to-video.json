@@ -19,12 +19,14 @@
       {
         "type": "integer",
         "minimum": 5,
-        "maximum": 20
+        "maximum": 20,
+        "default": 5
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "image": [
@@ -48,7 +50,8 @@
         "enum": [
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ]
   },

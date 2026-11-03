@@ -13,7 +13,8 @@
     ],
     "trim_first_second": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

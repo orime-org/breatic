@@ -3,7 +3,9 @@
   "fields": {
     "lyrics": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
       },
       {
         "type": "null"
@@ -21,20 +23,24 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
-    "prompt": [
+    "vocal_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       {
         "type": "null"
       }
     ],
-    "vocal_id": [
+    "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
       },
       {
         "type": "null"
@@ -42,7 +48,8 @@
     ],
     "reference_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       {
         "type": "null"
@@ -50,7 +57,20 @@
     ],
     "melody_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "gender": [
+      {
+        "type": "string",
+        "enum": [
+          "female",
+          "male"
+        ]
       },
       {
         "type": "null"
@@ -89,18 +109,6 @@
       {
         "type": "null"
       }
-    ],
-    "gender": [
-      {
-        "type": "string",
-        "enum": [
-          "female",
-          "male"
-        ]
-      },
-      {
-        "type": "null"
-      }
     ]
   },
   "required": [],
@@ -130,6 +138,14 @@
                   "break",
                   "outro"
                 ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "end": [
+              {
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -219,14 +235,6 @@
                 "type": "null"
               }
             ],
-            "end": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "": [
               {
                 "type": "object"
@@ -264,17 +272,17 @@
         "type": "null"
       }
     ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
     "audio.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
       }
     ],
     "audio": [

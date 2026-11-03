@@ -3,7 +3,9 @@
   "fields": {
     "text": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 1000,
+        "default": "Hello, this is a preview of your cloned voice! I hope you like it!"
       }
     ],
     "audio": [
@@ -20,12 +22,14 @@
     ],
     "noise_reduction": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "need_volume_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

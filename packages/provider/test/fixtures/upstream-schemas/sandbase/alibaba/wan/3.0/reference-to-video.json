@@ -42,7 +42,8 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 5000
       }
     ],
     "videos": [
@@ -95,7 +96,8 @@
           28,
           29,
           30
-        ]
+        ],
+        "default": 5
       }
     ],
     "resolution": [
@@ -105,7 +107,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -123,7 +126,8 @@
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

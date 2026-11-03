@@ -32,22 +32,26 @@
           "disgusted",
           "surprised",
           "neutral"
-        ]
+        ],
+        "default": "happy"
       }
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "english_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "format": [
@@ -113,7 +117,8 @@
       {
         "type": "number",
         "minimum": -12,
-        "maximum": 12
+        "maximum": 12,
+        "default": 0
       }
     ],
     "pronunciation_dict": [
@@ -149,7 +154,8 @@
       {
         "type": "number",
         "minimum": 0.5,
-        "maximum": 2
+        "maximum": 2,
+        "default": 1
       }
     ],
     "text": [
@@ -166,7 +172,8 @@
       {
         "type": "number",
         "minimum": 0.1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 1
       }
     ]
   },

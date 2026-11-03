@@ -1,25 +1,18 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/reference-to-video",
   "fields": {
-    "enable_safety_checker": [
+    "duration": [
       {
-        "type": "boolean"
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15,
+        "default": 5
       }
     ],
-    "reference_audio_urls": [
+    "enable_safety_checker": [
       {
-        "type": "array",
-        "maxItems": 3,
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "boolean",
+        "default": true
       }
     ],
     "seed": [
@@ -30,42 +23,6 @@
         "type": "null"
       }
     ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "prompt_expansion_mode": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 5,
-        "maximum": 15
-      }
-    ],
-    "reference_image_urls": [
-      {
-        "type": "array",
-        "maxItems": 9,
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
     "resolution": [
       {
         "type": "string",
@@ -74,21 +31,14 @@
           "768P",
           "2K",
           "4K"
-        ]
+        ],
+        "default": "2K"
       }
     ],
-    "aspect_ratio": [
+    "sync_mode": [
       {
-        "type": "string",
-        "enum": [
-          "adaptive",
-          "21:9",
-          "16:9",
-          "4:3",
-          "1:1",
-          "3:4",
-          "9:16"
-        ]
+        "type": "boolean",
+        "default": false
       }
     ],
     "reference_video_urls": [
@@ -107,9 +57,68 @@
         }
       }
     ],
-    "sync_mode": [
+    "reference_audio_urls": [
       {
-        "type": "boolean"
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "prompt_expansion_mode": [
+      {
+        "type": "string",
+        "default": "balanced"
+      },
+      {
+        "type": "null",
+        "default": "balanced"
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "adaptive",
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "adaptive"
+      }
+    ],
+    "reference_image_urls": [
+      {
+        "type": "array",
+        "maxItems": 9,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
       }
     ]
   },
@@ -117,17 +126,17 @@
     "prompt"
   ],
   "outputs": {
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_size": [

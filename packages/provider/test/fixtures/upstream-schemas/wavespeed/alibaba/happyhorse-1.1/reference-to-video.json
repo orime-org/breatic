@@ -14,14 +14,16 @@
           "5:4",
           "9:21",
           "21:9"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "duration": [
       {
         "type": "integer",
         "minimum": 3,
-        "maximum": 15
+        "maximum": 15,
+        "default": 5
       }
     ],
     "images": [
@@ -52,7 +54,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "seed": [

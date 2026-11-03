@@ -20,7 +20,8 @@
           "bounce",
           "silence",
           "remap"
-        ]
+        ],
+        "default": "cut_off"
       }
     ]
   },

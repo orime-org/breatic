@@ -1,6 +1,60 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/gemini-3.1-flash-tts",
   "fields": {
+    "style_instructions": [
+      {
+        "type": "string",
+        "maxLength": 4000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Pulcherrima",
+          "Puck",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ],
+        "default": "Kore"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
     "speakers": [
       {
         "type": "array",
@@ -8,11 +62,6 @@
         "maxItems": 10,
         "items": {
           "fields": {
-            "speaker_id": [
-              {
-                "type": "string"
-              }
-            ],
             "voice": [
               {
                 "type": "string",
@@ -50,6 +99,12 @@
                 ]
               }
             ],
+            "speaker_id": [
+              {
+                "type": "string",
+                "pattern": "^\\w+$"
+              }
+            ],
             "": [
               {
                 "type": "object",
@@ -75,6 +130,14 @@
         "type": "null"
       }
     ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
     "output_format": [
       {
         "type": "string",
@@ -82,27 +145,8 @@
           "wav",
           "mp3",
           "ogg_opus"
-        ]
-      }
-    ],
-    "temperature": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 2
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "style_instructions": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        ],
+        "default": "mp3"
       }
     ],
     "language_code": [
@@ -201,50 +245,13 @@
       {
         "type": "null"
       }
-    ],
-    "voice": [
-      {
-        "type": "string",
-        "enum": [
-          "Achernar",
-          "Achird",
-          "Algenib",
-          "Algieba",
-          "Alnilam",
-          "Aoede",
-          "Autonoe",
-          "Callirrhoe",
-          "Charon",
-          "Despina",
-          "Enceladus",
-          "Erinome",
-          "Fenrir",
-          "Gacrux",
-          "Iapetus",
-          "Kore",
-          "Laomedeia",
-          "Leda",
-          "Orus",
-          "Pulcherrima",
-          "Puck",
-          "Rasalgethi",
-          "Sadachbia",
-          "Sadaltager",
-          "Schedar",
-          "Sulafat",
-          "Umbriel",
-          "Vindemiatrix",
-          "Zephyr",
-          "Zubenelgenubi"
-        ]
-      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "audio.content_type": [
+    "audio.file_name": [
       {
         "type": "string"
       },
@@ -257,17 +264,17 @@
         "type": "string"
       }
     ],
-    "audio.file_name": [
+    "audio.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "audio.file_size": [
+    "audio.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"

@@ -15,7 +15,8 @@
       {
         "type": "integer",
         "minimum": 0,
-        "maximum": 4294967295
+        "maximum": 4294967295,
+        "default": 42
       }
     ],
     "resolution": [
@@ -24,7 +25,8 @@
         "enum": [
           "480p",
           "720p"
-        ]
+        ],
+        "default": "480p"
       }
     ],
     "audio_url": [
@@ -39,19 +41,22 @@
           "none",
           "regular",
           "high"
-        ]
+        ],
+        "default": "regular"
       }
     ],
     "num_frames": [
       {
         "type": "integer",
         "minimum": 41,
-        "maximum": 241
+        "maximum": 241,
+        "default": 145
       }
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

@@ -5,12 +5,14 @@
       {
         "type": "integer",
         "minimum": 4,
-        "maximum": 30
+        "maximum": 30,
+        "default": 5
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "image": [
@@ -36,7 +38,8 @@
           "720p",
           "1080p",
           "4k"
-        ]
+        ],
+        "default": "720p"
       }
     ]
   },

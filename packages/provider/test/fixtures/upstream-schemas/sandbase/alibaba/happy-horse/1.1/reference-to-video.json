@@ -23,7 +23,8 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ],
     "duration": [
@@ -43,7 +44,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "resolution": [
@@ -53,7 +55,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -70,7 +73,8 @@
           "3:4",
           "2:3",
           "9:16"
-        ]
+        ],
+        "default": "16:9"
       }
     ]
   },

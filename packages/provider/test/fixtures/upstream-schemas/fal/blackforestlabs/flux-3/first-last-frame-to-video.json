@@ -1,22 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=blackforestlabs/flux-3/first-last-frame-to-video",
   "fields": {
-    "generate_audio": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "720p",
-          "1080p",
-          "1440p",
-          "2160p"
-        ]
-      }
-    ],
     "prompt": [
       {
         "type": "string"
@@ -42,7 +26,33 @@
           18,
           19,
           20
-        ]
+        ],
+        "default": 5
+      }
+    ],
+    "start_image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "safety_tolerance": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "default": 2
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p",
+          "1440p",
+          "2160p"
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -57,24 +67,19 @@
           "1:1",
           "3:4",
           "9:16"
-        ]
-      }
-    ],
-    "safety_tolerance": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 4
-      }
-    ],
-    "start_image_url": [
-      {
-        "type": "string"
+        ],
+        "default": "auto"
       }
     ],
     "end_image_url": [
       {
         "type": "string"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -89,17 +94,17 @@
         "type": "integer"
       }
     ],
-    "video.content_type": [
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.file_name": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_size": [
@@ -110,7 +115,7 @@
         "type": "null"
       }
     ],
-    "video.file_name": [
+    "video.content_type": [
       {
         "type": "string"
       },

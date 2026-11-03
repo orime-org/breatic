@@ -8,12 +8,14 @@
           "mp3",
           "wav",
           "flac"
-        ]
+        ],
+        "default": "mp3"
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ]
   },

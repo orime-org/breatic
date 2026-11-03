@@ -3,21 +3,26 @@
   "fields": {
     "text": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000,
+        "default": "Hello, welcome to Sandbase"
       }
     ],
     "pitch": [
       {
         "type": "integer",
         "minimum": -12,
-        "maximum": 12
+        "maximum": 12,
+        "default": 0
       }
     ],
     "speed": [
       {
         "type": "number",
         "minimum": 0.5,
-        "maximum": 2
+        "maximum": 2,
+        "default": 1
       }
     ],
     "format": [
@@ -34,7 +39,8 @@
       {
         "type": "number",
         "minimum": 0.1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 1
       }
     ],
     "bitrate": [
@@ -68,12 +74,14 @@
           "disgusted",
           "surprised",
           "neutral"
-        ]
+        ],
+        "default": "happy"
       }
     ],
     "voice_id": [
       {
-        "type": "string"
+        "type": "string",
+        "default": "Wise_Woman"
       }
     ],
     "sample_rate": [
@@ -136,7 +144,8 @@
     ],
     "english_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

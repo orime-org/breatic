@@ -19,7 +19,8 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 20000
       }
     ],
     "videos": [
@@ -42,7 +43,8 @@
       {
         "type": "integer",
         "minimum": 3,
-        "maximum": 10
+        "maximum": 10,
+        "default": 8
       }
     ],
     "resolution": [
@@ -53,7 +55,8 @@
           "720p",
           "1080p",
           "4k"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -62,7 +65,8 @@
         "enum": [
           "16:9",
           "9:16"
-        ]
+        ],
+        "default": "16:9"
       }
     ]
   },

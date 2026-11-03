@@ -1,32 +1,10 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana-2",
   "fields": {
-    "num_images": [
+    "return_history": [
       {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4
-      }
-    ],
-    "enable_web_search": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "include_thoughts": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": false
       }
     ],
     "context": [
@@ -34,9 +12,38 @@
         "type": "array",
         "items": {
           "fields": {
-            "text": [
+            "thought_signature": [
               {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
               }
             ],
             "thought": [
@@ -71,35 +78,6 @@
                 "type": "null"
               }
             ],
-            "thought_signature": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ],
             "type": [
               {
                 "type": "string",
@@ -130,6 +108,11 @@
                 "enum": [
                   "signature"
                 ]
+              }
+            ],
+            "text": [
+              {
+                "type": "string"
               }
             ],
             "": [
@@ -199,9 +182,65 @@
         }
       }
     ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000
+      }
+    ],
+    "thinking_level": [
+      {
+        "type": "string",
+        "enum": [
+          "minimal",
+          "high"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "include_thoughts": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "safety_tolerance": [
+      {
+        "type": "string",
+        "enum": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "default": "4"
+      }
+    ],
+    "enable_image_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "limit_generations": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ],
     "temperature": [
@@ -214,14 +253,25 @@
         "type": "null"
       }
     ],
-    "sync_mode": [
+    "top_p": [
       {
-        "type": "boolean"
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "type": "null"
       }
     ],
-    "limit_generations": [
+    "output_format": [
       {
-        "type": "boolean"
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
       }
     ],
     "history": [
@@ -244,9 +294,45 @@
                 "minItems": 1,
                 "items": {
                   "fields": {
-                    "text": [
+                    "thought_signature": [
                       {
-                        "type": "string"
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
                       }
                     ],
                     "thought": [
@@ -282,41 +368,6 @@
                       },
                       {
                         "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "thought_signature": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "string"
                       },
                       {
                         "type": "null"
@@ -358,6 +409,11 @@
                         "enum": [
                           "audio"
                         ]
+                      }
+                    ],
+                    "text": [
+                      {
+                        "type": "string"
                       }
                     ],
                     "": [
@@ -456,24 +512,32 @@
         }
       }
     ],
-    "output_format": [
+    "enable_web_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "resolution": [
       {
         "type": "string",
         "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
       }
     ],
-    "return_history": [
+    "max_output_tokens": [
       {
-        "type": "boolean"
-      }
-    ],
-    "system_prompt": [
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32768
+      },
       {
-        "type": "string"
+        "type": "null"
       }
     ],
     "aspect_ratio": [
@@ -495,71 +559,33 @@
           "1:4",
           "8:1",
           "1:8"
-        ]
+        ],
+        "default": "auto"
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": "auto"
       }
     ],
-    "max_output_tokens": [
+    "num_images": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 32768
-      },
-      {
-        "type": "null"
+        "maximum": 4,
+        "default": 1
       }
     ],
-    "top_p": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "resolution": [
+    "system_prompt": [
       {
         "type": "string",
-        "enum": [
-          "0.5K",
-          "1K",
-          "2K",
-          "4K"
-        ]
+        "maxLength": 50000,
+        "default": ""
       }
     ],
-    "safety_tolerance": [
+    "sync_mode": [
       {
-        "type": "string",
-        "enum": [
-          "1",
-          "2",
-          "3",
-          "4",
-          "5",
-          "6"
-        ]
-      }
-    ],
-    "thinking_level": [
-      {
-        "type": "string",
-        "enum": [
-          "minimal",
-          "high"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_image_search": [
-      {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },
@@ -587,71 +613,6 @@
         "type": "string"
       }
     ],
-    "images": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "height": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "width": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "url"
-          ]
-        }
-      }
-    ],
     "conversations": [
       {
         "type": "array",
@@ -677,9 +638,45 @@
                         "minItems": 1,
                         "items": {
                           "fields": {
-                            "text": [
+                            "thought_signature": [
                               {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
                               }
                             ],
                             "thought": [
@@ -715,41 +712,6 @@
                               },
                               {
                                 "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ],
-                            "thought_signature": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -791,6 +753,11 @@
                                 "enum": [
                                   "audio"
                                 ]
+                              }
+                            ],
+                            "text": [
+                              {
+                                "type": "string"
                               }
                             ],
                             "": [
@@ -900,6 +867,71 @@
           },
           "required": [
             "messages"
+          ]
+        }
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
           ]
         }
       }

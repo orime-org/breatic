@@ -1,9 +1,29 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/image-to-video",
   "fields": {
-    "prompt_expansion_mode": [
+    "duration": [
       {
-        "type": "string"
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15,
+        "default": 5
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480P",
+          "768P",
+          "2K",
+          "4K"
+        ],
+        "default": "2K"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       },
       {
         "type": "null"
@@ -11,12 +31,46 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
-    "seed": [
+    "sync_mode": [
       {
-        "type": "integer"
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "target_audio_url": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt_expansion_mode": [
+      {
+        "type": "string",
+        "default": "balanced"
+      },
+      {
+        "type": "null",
+        "default": "balanced"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -29,67 +83,23 @@
       {
         "type": "null"
       }
-    ],
-    "image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 5,
-        "maximum": 15
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480P",
-          "768P",
-          "2K",
-          "4K"
-        ]
-      }
-    ],
-    "target_audio_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean"
-      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_size": [

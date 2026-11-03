@@ -9,7 +9,8 @@
           "mp3",
           "aac",
           "flac"
-        ]
+        ],
+        "default": "aac"
       }
     ],
     "duration": [

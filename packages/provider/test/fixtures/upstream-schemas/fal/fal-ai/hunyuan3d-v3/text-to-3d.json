@@ -1,6 +1,20 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan3d-v3/text-to-3d",
   "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_count": [
+      {
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000,
+        "default": 500000
+      }
+    ],
     "generate_type": [
       {
         "type": "string",
@@ -8,12 +22,8 @@
           "Normal",
           "LowPoly",
           "Geometry"
-        ]
-      }
-    ],
-    "enable_pbr": [
-      {
-        "type": "boolean"
+        ],
+        "default": "Normal"
       }
     ],
     "polygon_type": [
@@ -22,24 +32,20 @@
         "enum": [
           "triangle",
           "quadrilateral"
-        ]
+        ],
+        "default": "triangle"
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 1024
       }
     ],
-    "enable_safety_checker": [
+    "enable_pbr": [
       {
-        "type": "boolean"
-      }
-    ],
-    "face_count": [
-      {
-        "type": "integer",
-        "minimum": 40000,
-        "maximum": 1500000
+        "type": "boolean",
+        "default": false
       }
     ]
   },
@@ -47,20 +53,7 @@
     "prompt"
   ],
   "outputs": {
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_size": [
+    "seed": [
       {
         "type": "integer"
       },
@@ -68,7 +61,7 @@
         "type": "null"
       }
     ],
-    "model_urls.obj.file_name": [
+    "model_glb.content_type": [
       {
         "type": "string"
       },
@@ -76,7 +69,65 @@
         "type": "null"
       }
     ],
-    "model_urls.obj": [
+    "model_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "thumbnail.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "thumbnail.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail": [
       {
         "type": "object",
         "required": [
@@ -87,17 +138,17 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
     "model_urls.fbx.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
+      }
+    ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
       }
     ],
     "model_urls.fbx.file_size": [
@@ -127,9 +178,44 @@
         "type": "null"
       }
     ],
-    "model_urls.glb.url": [
+    "model_urls.obj.content_type": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
       }
     ],
     "model_urls.glb.content_type": [
@@ -138,6 +224,11 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
       }
     ],
     "model_urls.glb.file_size": [
@@ -167,17 +258,17 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
     "model_urls.usdz.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
       }
     ],
     "model_urls.usdz.file_size": [
@@ -210,91 +301,6 @@
     "model_urls": [
       {
         "type": "object"
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "thumbnail.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
       }
     ]
   }

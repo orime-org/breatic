@@ -13,20 +13,25 @@
     ],
     "noise_reduction": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "need_volume_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "text": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 1000,
+        "default": "Hello, this is a preview of your cloned voice! I hope you like it!"
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": "Hello, this is a preview of your cloned voice! I hope you like it!"
       }
     ],
     "model": [
@@ -37,17 +42,19 @@
           "speech-02-turbo",
           "speech-01-hd",
           "speech-01-turbo"
-        ]
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean"
+        ],
+        "default": "speech-02-hd"
       }
     ],
     "audio_url": [
       {
         "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -60,17 +67,17 @@
         "type": "string"
       }
     ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
     "audio.file_name": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
       }
     ],
     "audio.file_size": [

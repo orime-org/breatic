@@ -16,7 +16,8 @@
           "disgusted",
           "surprised",
           "neutral"
-        ]
+        ],
+        "default": "neutral"
       }
     ],
     "model_mode": [
@@ -26,7 +27,8 @@
           "lips",
           "face",
           "head"
-        ]
+        ],
+        "default": "face"
       }
     ],
     "video": [

@@ -18,7 +18,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "element_list": [
@@ -77,12 +78,14 @@
                   13,
                   14,
                   15
-                ]
+                ],
+                "default": 5
               }
             ],
             "prompt": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 512
               }
             ],
             "": [
@@ -113,12 +116,14 @@
         "enum": [
           "customize",
           "intelligence"
-        ]
+        ],
+        "default": "customize"
       }
     ],
     "sound": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

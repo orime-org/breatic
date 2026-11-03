@@ -1,61 +1,12 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4.5/edit",
   "fields": {
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "max_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 6
-      }
-    ],
     "seed": [
       {
         "type": "integer"
       },
       {
         "type": "null"
-      }
-    ],
-    "image_size.height": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142
-      }
-    ],
-    "image_size.width": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142
-      }
-    ],
-    "image_size": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "string",
-        "enum": [
-          "square_hd",
-          "square",
-          "portrait_4_3",
-          "portrait_16_9",
-          "landscape_4_3",
-          "landscape_16_9",
-          "auto_2K",
-          "auto_4K"
-        ]
       }
     ],
     "image_urls": [
@@ -73,16 +24,79 @@
         }
       }
     ],
-    "num_images": [
+    "image_size.width": [
       {
         "type": "integer",
-        "minimum": 1,
-        "maximum": 6
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object",
+        "default": {
+          "width": 2048,
+          "height": 2048
+        }
+      },
+      {
+        "type": "string",
+        "enum": [
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9",
+          "auto_2K",
+          "auto_4K"
+        ],
+        "default": {
+          "width": 2048,
+          "height": 2048
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
       }
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "max_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 1
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 1
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
       }
     ]
   },
@@ -96,9 +110,22 @@
         "type": "array",
         "items": {
           "fields": {
-            "height": [
+            "width": [
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
               },
               {
                 "type": "null"
@@ -120,22 +147,9 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "height": [
               {
                 "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
               },
               {
                 "type": "null"

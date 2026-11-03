@@ -12,7 +12,8 @@
     ],
     "lyrics": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ],
     "melody_id": [
@@ -27,7 +28,8 @@
           "mp3",
           "wav",
           "flac"
-        ]
+        ],
+        "default": "mp3"
       }
     ],
     "prompt": [

@@ -3,7 +3,8 @@
   "fields": {
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "audio_url": [
@@ -11,16 +12,11 @@
         "type": "string"
       }
     ],
-    "options.sync_mode": [
+    "options.temperature": [
       {
-        "type": "string",
-        "enum": [
-          "cut_off",
-          "loop",
-          "bounce",
-          "silence",
-          "remap"
-        ]
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
       },
       {
         "type": "null"
@@ -142,22 +138,6 @@
         "type": "null"
       }
     ],
-    "options.model_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "lips",
-          "face",
-          "head",
-          "lipsync",
-          "emotion",
-          "talking_head"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
     "options.prompt": [
       {
         "type": "string",
@@ -174,11 +154,32 @@
         "type": "null"
       }
     ],
-    "options.temperature": [
+    "options.model_mode": [
       {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head",
+          "lipsync",
+          "emotion",
+          "talking_head"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.sync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ]
       },
       {
         "type": "null"
@@ -206,7 +207,8 @@
           "bounce",
           "silence",
           "remap"
-        ]
+        ],
+        "default": "cut_off"
       }
     ]
   },

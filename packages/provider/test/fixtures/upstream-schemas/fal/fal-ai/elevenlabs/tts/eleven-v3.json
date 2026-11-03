@@ -1,34 +1,12 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/elevenlabs/tts/eleven-v3",
   "fields": {
-    "text": [
-      {
-        "type": "string"
-      }
-    ],
-    "language_code": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "stability": [
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
-      }
-    ],
-    "timestamps": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "voice": [
-      {
-        "type": "string"
+        "maximum": 1,
+        "default": 0.5
       }
     ],
     "apply_text_normalization": [
@@ -38,7 +16,35 @@
           "auto",
           "on",
           "off"
-        ]
+        ],
+        "default": "auto"
+      }
+    ],
+    "timestamps": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "default": "Rachel"
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "language_code": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   },
@@ -77,17 +83,17 @@
         "type": "string"
       }
     ],
-    "audio.file_name": [
+    "audio.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "audio.file_size": [
+    "audio.file_name": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"

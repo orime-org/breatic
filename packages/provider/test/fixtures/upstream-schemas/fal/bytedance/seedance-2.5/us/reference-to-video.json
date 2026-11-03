@@ -1,22 +1,40 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=bytedance/seedance-2.5/us/reference-to-video",
   "fields": {
-    "audio_urls": [
+    "codec": [
       {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
+        "type": "string",
+        "enum": [
+          "auto",
+          "H264",
+          "H265"
+        ],
+        "default": "auto"
       }
     ],
-    "image_urls": [
+    "bitrate_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "high"
+        ],
+        "default": "standard"
+      }
+    ],
+    "task": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "reference",
+          "editing",
+          "extension"
+        ],
+        "default": "reference"
+      }
+    ],
+    "video_urls": [
       {
         "type": "array",
         "items": {
@@ -33,18 +51,22 @@
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
-    "task": [
+    "draft": [
       {
-        "type": "string",
-        "enum": [
-          "auto",
-          "reference",
-          "editing",
-          "extension"
-        ]
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
       }
     ],
     "prompt": [
@@ -55,12 +77,7 @@
         "type": "null"
       }
     ],
-    "draft": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "video_urls": [
+    "audio_urls": [
       {
         "type": "array",
         "items": {
@@ -86,44 +103,8 @@
           "1:1",
           "3:4",
           "9:16"
-        ]
-      }
-    ],
-    "end_user_id": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "bitrate_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "standard",
-          "high"
-        ]
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480p",
-          "720p",
-          "1080p"
-        ]
-      }
-    ],
-    "codec": [
-      {
-        "type": "string",
-        "enum": [
-          "auto",
-          "H264",
-          "H265"
-        ]
+        ],
+        "default": "auto"
       }
     ],
     "duration": [
@@ -158,26 +139,11 @@
           "28",
           "29",
           "30"
-        ]
+        ],
+        "default": "auto"
       }
     ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ]
-  },
-  "required": [],
-  "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
-    "draft_id": [
+    "end_user_id": [
       {
         "type": "string"
       },
@@ -185,7 +151,36 @@
         "type": "null"
       }
     ],
-    "video.content_type": [
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "720p"
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ]
+  },
+  "required": [],
+  "outputs": {
+    "draft_id": [
       {
         "type": "string"
       },
@@ -198,7 +193,7 @@
         "type": "string"
       }
     ],
-    "video.file_name": [
+    "video.content_type": [
       {
         "type": "string"
       },
@@ -214,12 +209,25 @@
         "type": "null"
       }
     ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ]
   }

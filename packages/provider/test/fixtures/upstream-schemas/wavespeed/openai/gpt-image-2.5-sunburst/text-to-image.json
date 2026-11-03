@@ -20,17 +20,20 @@
           "16:9",
           "9:21",
           "21:9"
-        ]
+        ],
+        "default": "1:1"
       }
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "output_format": [
@@ -40,7 +43,8 @@
           "png",
           "jpeg",
           "webp"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "prompt": [
@@ -57,7 +61,8 @@
           "high",
           "xhigh",
           "max"
-        ]
+        ],
+        "default": "medium"
       }
     ],
     "resolution": [
@@ -67,7 +72,8 @@
           "1k",
           "2k",
           "4k"
-        ]
+        ],
+        "default": "1k"
       }
     ]
   },

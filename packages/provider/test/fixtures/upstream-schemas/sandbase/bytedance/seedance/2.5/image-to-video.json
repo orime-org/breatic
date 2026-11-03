@@ -10,7 +10,8 @@
     ],
     "draft": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "image": [
@@ -20,12 +21,16 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Create a 360-degree orbiting camera shot based on this photo."
       }
     ],
     "draft_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ],
     "duration": [
@@ -60,7 +65,8 @@
           28,
           29,
           30
-        ]
+        ],
+        "default": 5
       }
     ],
     "end_image": [
@@ -75,12 +81,14 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

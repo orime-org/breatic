@@ -27,9 +27,12 @@
     "purpose"
   ],
   "outputs": {
-    "id": [
+    "filename": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "bytes": [
@@ -56,12 +59,9 @@
         "type": "null"
       }
     ],
-    "filename": [
+    "id": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ]
   }

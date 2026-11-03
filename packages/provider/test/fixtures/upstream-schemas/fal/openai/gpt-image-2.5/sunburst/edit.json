@@ -1,46 +1,50 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/edit",
   "fields": {
-    "mask_url": [
+    "prompt": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32000
       }
     ],
     "sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
-    "output_format": [
+    "background": [
       {
         "type": "string",
         "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
+          "auto",
+          "transparent",
+          "opaque"
+        ],
+        "default": "auto"
       }
     ],
     "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
-        "maximum": 14142
+        "maximum": 14142,
+        "default": 512
       }
     ],
     "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
-        "maximum": 14142
+        "maximum": 14142,
+        "default": 512
       }
     ],
     "image_size": [
       {
-        "type": "object"
+        "type": "object",
+        "default": "auto"
       },
       {
         "type": "string",
@@ -52,22 +56,43 @@
           "landscape_4_3",
           "landscape_16_9",
           "auto"
-        ]
+        ],
+        "default": "auto"
       }
     ],
-    "enable_safety_checker": [
+    "output_compression": [
       {
-        "type": "boolean"
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      {
+        "type": "null"
       }
     ],
-    "background": [
+    "quality": [
       {
         "type": "string",
         "enum": [
           "auto",
-          "transparent",
-          "opaque"
-        ]
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
       }
     ],
     "image_urls": [
@@ -86,39 +111,26 @@
         }
       }
     ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "auto",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ]
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "num_images": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 1
       }
     ],
-    "output_compression": [
+    "mask_url": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 100
+        "type": "string"
       },
       {
         "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -132,17 +144,17 @@
         "type": "array",
         "items": {
           "fields": {
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "url": [
               {
                 "type": "string"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "file_size": [
@@ -161,15 +173,15 @@
                 "type": "null"
               }
             ],
-            "height": [
+            "file_name": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
               },

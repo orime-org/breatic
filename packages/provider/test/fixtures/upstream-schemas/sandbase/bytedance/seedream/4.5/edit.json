@@ -18,7 +18,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Replace the clothing in image 1 with the outfit from image 2."
       }
     ],
     "image_size.width": [
@@ -61,7 +64,8 @@
         "enum": [
           "jpeg",
           "png"
-        ]
+        ],
+        "default": "png"
       }
     ]
   },

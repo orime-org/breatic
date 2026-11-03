@@ -19,27 +19,32 @@
           "4:1",
           "1:8",
           "8:1"
-        ]
+        ],
+        "default": "1:1"
       }
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_image_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_web_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "output_format": [
@@ -48,7 +53,8 @@
         "enum": [
           "png",
           "jpeg"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "prompt": [
@@ -64,7 +70,8 @@
           "1k",
           "2k",
           "4k"
-        ]
+        ],
+        "default": "1k"
       }
     ]
   },

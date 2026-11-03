@@ -5,26 +5,30 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 20
+        "maximum": 20,
+        "default": 8
       }
     ],
     "normalization_setting.enabled": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "normalization_setting.target_loudness": [
       {
         "type": "number",
         "minimum": -70,
-        "maximum": -10
+        "maximum": -10,
+        "default": -18
       }
     ],
     "normalization_setting.target_peak": [
       {
         "type": "number",
         "minimum": -3,
-        "maximum": 0
+        "maximum": 0,
+        "default": -0.5
       }
     ],
     "normalization_setting": [
@@ -38,7 +42,8 @@
         "enum": [
           1,
           2
-        ]
+        ],
+        "default": 1
       }
     ],
     "audio_setting.bitrate": [
@@ -49,7 +54,8 @@
           64000,
           128000,
           256000
-        ]
+        ],
+        "default": 128000
       }
     ],
     "audio_setting.format": [
@@ -59,7 +65,8 @@
           "mp3",
           "pcm",
           "flac"
-        ]
+        ],
+        "default": "mp3"
       }
     ],
     "audio_setting.sample_rate": [
@@ -72,7 +79,8 @@
           24000,
           32000,
           44100
-        ]
+        ],
+        "default": 32000
       }
     ],
     "audio_setting": [
@@ -109,38 +117,45 @@
         "enum": [
           "url",
           "hex"
-        ]
-      }
-    ],
-    "voice_setting.pitch": [
-      {
-        "type": "integer",
-        "minimum": -12,
-        "maximum": 12
-      }
-    ],
-    "voice_setting.vol": [
-      {
-        "type": "number",
-        "minimum": 0.01,
-        "maximum": 10
-      }
-    ],
-    "voice_setting.voice_id": [
-      {
-        "type": "string"
+        ],
+        "default": "hex"
       }
     ],
     "voice_setting.speed": [
       {
         "type": "number",
         "minimum": 0.5,
-        "maximum": 2
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "voice_setting.vol": [
+      {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
+    "voice_setting.voice_id": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "default": "Wise_Woman"
+      }
+    ],
+    "voice_setting.pitch": [
+      {
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12,
+        "default": 0
       }
     ],
     "voice_setting.english_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "voice_setting.emotion": [
@@ -162,28 +177,38 @@
     ],
     "voice_setting": [
       {
-        "type": "object"
+        "type": "object",
+        "default": {
+          "vol": 1,
+          "voice_id": "Wise_Woman",
+          "pitch": 0,
+          "english_normalization": false,
+          "speed": 1
+        }
       }
     ],
     "voice_modify.intensity": [
       {
         "type": "integer",
         "minimum": -100,
-        "maximum": 100
-      }
-    ],
-    "voice_modify.timbre": [
-      {
-        "type": "integer",
-        "minimum": -100,
-        "maximum": 100
+        "maximum": 100,
+        "default": 0
       }
     ],
     "voice_modify.pitch": [
       {
         "type": "integer",
         "minimum": -100,
-        "maximum": 100
+        "maximum": 100,
+        "default": 0
+      }
+    ],
+    "voice_modify.timbre": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100,
+        "default": 0
       }
     ],
     "voice_modify": [
@@ -244,12 +269,15 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
       }
     ]
   },
@@ -262,17 +290,17 @@
         "type": "integer"
       }
     ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
     "audio.file_name": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
       }
     ],
     "audio.file_size": [

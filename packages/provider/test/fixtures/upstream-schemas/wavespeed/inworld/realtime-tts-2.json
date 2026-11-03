@@ -3,7 +3,8 @@
   "fields": {
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "output_format": [
@@ -15,21 +16,24 @@
           "OGG_OPUS",
           "FLAC",
           "WAV"
-        ]
+        ],
+        "default": "MP3"
       }
     ],
     "speaking_rate": [
       {
         "type": "number",
         "minimum": 0.5,
-        "maximum": 1.5
+        "maximum": 1.5,
+        "default": 1
       }
     ],
     "temperature": [
       {
         "type": "number",
         "minimum": 0.7,
-        "maximum": 1.5
+        "maximum": 1.5,
+        "default": 1
       }
     ],
     "text": [
@@ -106,7 +110,8 @@
           "Oren",
           "Nour",
           "Omar"
-        ]
+        ],
+        "default": "Dennis"
       }
     ]
   },

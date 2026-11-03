@@ -25,12 +25,14 @@
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "images": [
@@ -56,7 +58,8 @@
           "png",
           "jpeg",
           "webp"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "prompt": [
@@ -73,7 +76,8 @@
           "high",
           "xhigh",
           "max"
-        ]
+        ],
+        "default": "medium"
       }
     ],
     "resolution": [
@@ -83,7 +87,8 @@
           "1k",
           "2k",
           "4k"
-        ]
+        ],
+        "default": "1k"
       }
     ]
   },

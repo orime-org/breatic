@@ -8,7 +8,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 7000,
+        "default": "The camera slowly pulls back, revealing the full landscape as clouds drift overhead and light shifts across the terrain."
       }
     ],
     "duration": [
@@ -27,7 +30,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "end_image": [
@@ -41,12 +45,14 @@
         "enum": [
           "768P",
           "2K"
-        ]
+        ],
+        "default": "2K"
       }
     ],
     "aigc_watermark": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

@@ -1,23 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/pro/motion-control",
   "fields": {
-    "prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "character_orientation": [
-      {
-        "type": "string",
-        "enum": [
-          "image",
-          "video"
-        ]
-      }
-    ],
     "elements": [
       {
         "type": "array",
@@ -62,6 +45,15 @@
         "type": "null"
       }
     ],
+    "character_orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "image",
+          "video"
+        ]
+      }
+    ],
     "video_url": [
       {
         "type": "string"
@@ -69,17 +61,28 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
-      }
-    ],
-    "keep_original_sound": [
-      {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "image_url": [
       {
         "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "keep_original_sound": [
+      {
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -89,17 +92,17 @@
     "character_orientation"
   ],
   "outputs": {
-    "video.url": [
-      {
-        "type": "string"
-      }
-    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
       }
     ],
     "video.file_size": [

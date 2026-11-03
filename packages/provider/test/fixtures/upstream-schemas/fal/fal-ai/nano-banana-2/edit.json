@@ -1,44 +1,10 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana-2/edit",
   "fields": {
-    "num_images": [
+    "return_history": [
       {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4
-      }
-    ],
-    "image_urls": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
-    "enable_web_search": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "enable_image_search": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "include_thoughts": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": false
       }
     ],
     "context": [
@@ -46,9 +12,38 @@
         "type": "array",
         "items": {
           "fields": {
-            "text": [
+            "thought_signature": [
               {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1
               }
             ],
             "thought": [
@@ -83,35 +78,6 @@
                 "type": "null"
               }
             ],
-            "thought_signature": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ],
             "type": [
               {
                 "type": "string",
@@ -142,6 +108,11 @@
                 "enum": [
                   "signature"
                 ]
+              }
+            ],
+            "text": [
+              {
+                "type": "string"
               }
             ],
             "": [
@@ -211,9 +182,35 @@
         }
       }
     ],
-    "prompt": [
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio_url": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000
+      }
+    ],
+    "pdf_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "thinking_level": [
@@ -223,6 +220,65 @@
           "minimal",
           "high"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "include_thoughts": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "safety_tolerance": [
+      {
+        "type": "string",
+        "enum": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "default": "4"
+      }
+    ],
+    "enable_image_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "limit_generations": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "top_p": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
       },
       {
         "type": "null"
@@ -238,22 +294,23 @@
         "type": "null"
       }
     ],
-    "sync_mode": [
+    "output_format": [
       {
-        "type": "boolean"
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
       }
     ],
-    "pdf_url": [
+    "video_url": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "limit_generations": [
-      {
-        "type": "boolean"
       }
     ],
     "history": [
@@ -276,9 +333,45 @@
                 "minItems": 1,
                 "items": {
                   "fields": {
-                    "text": [
+                    "thought_signature": [
                       {
-                        "type": "string"
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
                       }
                     ],
                     "thought": [
@@ -314,41 +407,6 @@
                       },
                       {
                         "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "thought_signature": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "string"
                       },
                       {
                         "type": "null"
@@ -390,6 +448,11 @@
                         "enum": [
                           "audio"
                         ]
+                      }
+                    ],
+                    "text": [
+                      {
+                        "type": "string"
                       }
                     ],
                     "": [
@@ -488,32 +551,32 @@
         }
       }
     ],
-    "output_format": [
+    "enable_web_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "resolution": [
       {
         "type": "string",
         "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
       }
     ],
-    "return_history": [
+    "max_output_tokens": [
       {
-        "type": "boolean"
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32768
       },
       {
         "type": "null"
-      }
-    ],
-    "system_prompt": [
-      {
-        "type": "string"
       }
     ],
     "aspect_ratio": [
@@ -535,70 +598,33 @@
           "1:4",
           "8:1",
           "1:8"
-        ]
+        ],
+        "default": "auto"
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": "auto"
       }
     ],
-    "max_output_tokens": [
+    "num_images": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 32768
-      },
-      {
-        "type": "null"
+        "maximum": 4,
+        "default": 1
       }
     ],
-    "top_p": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "safety_tolerance": [
+    "system_prompt": [
       {
         "type": "string",
-        "enum": [
-          "1",
-          "2",
-          "3",
-          "4",
-          "5",
-          "6"
-        ]
+        "maxLength": 50000,
+        "default": ""
       }
     ],
-    "resolution": [
+    "sync_mode": [
       {
-        "type": "string",
-        "enum": [
-          "0.5K",
-          "1K",
-          "2K",
-          "4K"
-        ]
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": false
       }
     ]
   },
@@ -626,71 +652,6 @@
         "type": "string"
       }
     ],
-    "images": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "height": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "width": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "url"
-          ]
-        }
-      }
-    ],
     "conversations": [
       {
         "type": "array",
@@ -716,9 +677,45 @@
                         "minItems": 1,
                         "items": {
                           "fields": {
-                            "text": [
+                            "thought_signature": [
                               {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
                               }
                             ],
                             "thought": [
@@ -754,41 +751,6 @@
                               },
                               {
                                 "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ],
-                            "thought_signature": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -830,6 +792,11 @@
                                 "enum": [
                                   "audio"
                                 ]
+                              }
+                            ],
+                            "text": [
+                              {
+                                "type": "string"
                               }
                             ],
                             "": [
@@ -939,6 +906,71 @@
           },
           "required": [
             "messages"
+          ]
+        }
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
           ]
         }
       }

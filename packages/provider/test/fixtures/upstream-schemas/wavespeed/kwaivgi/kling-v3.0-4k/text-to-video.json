@@ -8,14 +8,16 @@
           "16:9",
           "9:16",
           "1:1"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "cfg_scale": [
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.5
       }
     ],
     "duration": [
@@ -35,7 +37,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "multi_prompt": [
@@ -63,12 +66,14 @@
                   13,
                   14,
                   15
-                ]
+                ],
+                "default": 5
               }
             ],
             "prompt": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 512
               }
             ],
             "": [
@@ -104,7 +109,8 @@
         "enum": [
           "customize",
           "intelligence"
-        ]
+        ],
+        "default": "customize"
       }
     ],
     "sound": [

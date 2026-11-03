@@ -24,22 +24,26 @@
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_image_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_web_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "images": [
@@ -64,7 +68,8 @@
         "enum": [
           "png",
           "jpeg"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "prompt": [
@@ -80,7 +85,8 @@
           "1k",
           "2k",
           "4k"
-        ]
+        ],
+        "default": "1k"
       }
     ]
   },

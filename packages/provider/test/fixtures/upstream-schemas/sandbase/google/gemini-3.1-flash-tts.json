@@ -35,12 +35,15 @@
           "Vindemiatrix",
           "Zephyr",
           "Zubenelgenubi"
-        ]
+        ],
+        "default": "Kore"
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
       }
     ],
     "speakers": [
@@ -111,7 +114,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 2
+        "maximum": 2,
+        "default": 1
       }
     ],
     "language_code": [
@@ -215,12 +219,14 @@
           "wav",
           "mp3",
           "ogg_opus"
-        ]
+        ],
+        "default": "mp3"
       }
     ],
     "style_instructions": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 4000
       }
     ]
   },

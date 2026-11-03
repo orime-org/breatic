@@ -25,12 +25,14 @@
           "720p",
           "1080p",
           "4k"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 20000
       }
     ],
     "aspect_ratio": [
@@ -39,7 +41,8 @@
         "enum": [
           "16:9",
           "9:16"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "reference_video_urls": [
@@ -62,7 +65,8 @@
       {
         "type": "integer",
         "minimum": 3,
-        "maximum": 10
+        "maximum": 10,
+        "default": 8
       }
     ]
   },
@@ -83,17 +87,17 @@
         "type": "string"
       }
     ],
-    "video.file_size": [
+    "video.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
       }
     ],
-    "video.content_type": [
+    "video.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"

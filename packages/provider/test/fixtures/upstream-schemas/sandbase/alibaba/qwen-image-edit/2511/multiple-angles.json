@@ -10,7 +10,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 10
+        "maximum": 10,
+        "default": 5
       }
     ],
     "images": [
@@ -51,21 +52,24 @@
         "enum": [
           "png",
           "jpeg"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "vertical_angle": [
       {
         "type": "number",
         "minimum": -30,
-        "maximum": 90
+        "maximum": 90,
+        "default": 0
       }
     ],
     "horizontal_angle": [
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 360
+        "maximum": 360,
+        "default": 0
       }
     ],
     "additional_prompt": [

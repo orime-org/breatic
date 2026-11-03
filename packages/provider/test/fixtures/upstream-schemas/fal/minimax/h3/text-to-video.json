@@ -1,17 +1,18 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/text-to-video",
   "fields": {
-    "prompt_expansion_mode": [
+    "duration": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15,
+        "default": 5
       }
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "seed": [
@@ -22,18 +23,6 @@
         "type": "null"
       }
     ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 5,
-        "maximum": 15
-      }
-    ],
     "resolution": [
       {
         "type": "string",
@@ -42,15 +31,41 @@
           "768P",
           "2K",
           "4K"
-        ]
+        ],
+        "default": "2K"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
       }
     ],
     "target_audio_url": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
       },
       {
         "type": "null"
+      }
+    ],
+    "prompt_expansion_mode": [
+      {
+        "type": "string",
+        "default": "balanced"
+      },
+      {
+        "type": "null",
+        "default": "balanced"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
       }
     ],
     "aspect_ratio": [
@@ -63,12 +78,8 @@
           "1:1",
           "3:4",
           "9:16"
-        ]
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean"
+        ],
+        "default": "16:9"
       }
     ]
   },
@@ -76,17 +87,17 @@
     "prompt"
   ],
   "outputs": {
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
       },
       {
         "type": "null"
-      }
-    ],
-    "video.url": [
-      {
-        "type": "string"
       }
     ],
     "video.file_size": [

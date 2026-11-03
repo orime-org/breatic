@@ -5,17 +5,21 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.5
       }
     ],
     "text": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
       }
     ],
     "voice_id": [
       {
-        "type": "string"
+        "type": "string",
+        "default": "Alicia"
       }
     ]
   },

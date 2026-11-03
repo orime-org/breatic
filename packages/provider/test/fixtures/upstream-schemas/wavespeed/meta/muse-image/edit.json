@@ -18,12 +18,14 @@
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "images": [
@@ -50,12 +52,14 @@
           "jpeg",
           "png",
           "webp"
-        ]
+        ],
+        "default": "jpeg"
       }
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ]
   },

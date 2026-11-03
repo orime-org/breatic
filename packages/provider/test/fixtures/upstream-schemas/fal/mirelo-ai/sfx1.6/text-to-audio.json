@@ -1,34 +1,32 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mirelo-ai/sfx1.6/text-to-audio",
   "fields": {
-    "duration": [
-      {
-        "type": "number",
-        "minimum": 0.1,
-        "maximum": 60
-      }
-    ],
-    "double_output": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "upload_audio_format": [
-      {
-        "type": "string",
-        "enum": [
-          "wav",
-          "mp3",
-          "aac",
-          "flac"
-        ]
-      }
-    ],
     "num_samples": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 4
+        "maximum": 4,
+        "default": 2
+      }
+    ],
+    "ambience": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "text_prompt": [
+      {
+        "type": "string",
+        "minLength": 4
+      }
+    ],
+    "duration": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 60,
+        "default": 10
       }
     ],
     "seed": [
@@ -41,14 +39,22 @@
         "type": "null"
       }
     ],
-    "ambience": [
+    "upload_audio_format": [
       {
-        "type": "boolean"
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "aac",
+          "flac"
+        ],
+        "default": "wav"
       }
     ],
-    "text_prompt": [
+    "double_output": [
       {
-        "type": "string"
+        "type": "boolean",
+        "default": false
       }
     ]
   },
@@ -61,9 +67,12 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
+            "file_size": [
               {
-                "type": "string"
+                "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "file_name": [
@@ -74,12 +83,9 @@
                 "type": "null"
               }
             ],
-            "file_size": [
+            "url": [
               {
-                "type": "integer"
-              },
-              {
-                "type": "null"
+                "type": "string"
               }
             ],
             "content_type": [
@@ -107,7 +113,8 @@
     ],
     "model": [
       {
-        "type": "string"
+        "type": "string",
+        "pattern": "^sfx-[0-9]+\\.[0-9]+$"
       }
     ]
   }

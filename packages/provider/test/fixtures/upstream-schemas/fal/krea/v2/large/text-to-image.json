@@ -1,48 +1,11 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=krea/v2/large/text-to-image",
   "fields": {
-    "styles": [
-      {
-        "type": "array",
-        "maxItems": 10,
-        "items": {
-          "fields": {
-            "strength": [
-              {
-                "type": "number",
-                "minimum": -2,
-                "maximum": 2
-              }
-            ],
-            "id": [
-              {
-                "type": "string"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "id"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "id"
-          ]
-        }
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "image_style_references": [
       {
         "type": "array",
         "maxItems": 10,
+        "default": [],
         "items": {
           "fields": {
             "image_url": [
@@ -54,7 +17,8 @@
               {
                 "type": "number",
                 "minimum": -2,
-                "maximum": 2
+                "maximum": 2,
+                "default": 1
               }
             ],
             "": [
@@ -74,40 +38,28 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
-      }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "enum": [
-          "1:1",
-          "4:3",
-          "3:2",
-          "16:9",
-          "2.35:1",
-          "4:5",
-          "2:3",
-          "9:16"
-        ]
+        "type": "boolean",
+        "default": true
       }
     ],
     "moodboards": [
       {
         "type": "array",
         "maxItems": 1,
+        "default": [],
         "items": {
           "fields": {
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
             "strength": [
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1
-              }
-            ],
-            "id": [
-              {
-                "type": "string"
+                "maximum": 1,
+                "default": 0.23
               }
             ],
             "": [
@@ -125,6 +77,37 @@
         }
       }
     ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "4:3",
+          "3:2",
+          "16:9",
+          "2.35:1",
+          "4:5",
+          "2:3",
+          "9:16"
+        ],
+        "default": "1:1"
+      }
+    ],
     "creativity": [
       {
         "type": "string",
@@ -133,15 +116,43 @@
           "low",
           "medium",
           "high"
-        ]
+        ],
+        "default": "medium"
       }
     ],
-    "seed": [
+    "styles": [
       {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "array",
+        "maxItems": 10,
+        "default": [],
+        "items": {
+          "fields": {
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2,
+                "default": 1
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
       }
     ]
   },
@@ -154,9 +165,30 @@
         "type": "array",
         "items": {
           "fields": {
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -170,30 +202,9 @@
                 "type": "null"
               }
             ],
-            "url": [
+            "file_name": [
               {
                 "type": "string"
-              }
-            ],
-            "width": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_size": [
-              {
-                "type": "integer"
               },
               {
                 "type": "null"

@@ -1,19 +1,21 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=bytedance/seedance-2.5/us/text-to-video",
   "fields": {
+    "codec": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "H264",
+          "H265"
+        ],
+        "default": "auto"
+      }
+    ],
     "generate_audio": [
       {
-        "type": "boolean"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "draft": [
-      {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "aspect_ratio": [
@@ -27,44 +29,19 @@
           "1:1",
           "3:4",
           "9:16"
-        ]
+        ],
+        "default": "auto"
       }
     ],
-    "end_user_id": [
+    "draft": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "prompt": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "bitrate_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "standard",
-          "high"
-        ]
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480p",
-          "720p",
-          "1080p"
-        ]
-      }
-    ],
-    "codec": [
-      {
-        "type": "string",
-        "enum": [
-          "auto",
-          "H264",
-          "H265"
-        ]
       }
     ],
     "duration": [
@@ -99,20 +76,11 @@
           "28",
           "29",
           "30"
-        ]
-      }
-    ]
-  },
-  "required": [
-    "prompt"
-  ],
-  "outputs": {
-    "seed": [
-      {
-        "type": "integer"
+        ],
+        "default": "auto"
       }
     ],
-    "draft_id": [
+    "end_user_id": [
       {
         "type": "string"
       },
@@ -120,7 +88,33 @@
         "type": "null"
       }
     ],
-    "video.content_type": [
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "720p"
+      }
+    ],
+    "bitrate_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "high"
+        ],
+        "default": "standard"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "draft_id": [
       {
         "type": "string"
       },
@@ -133,7 +127,7 @@
         "type": "string"
       }
     ],
-    "video.file_name": [
+    "video.content_type": [
       {
         "type": "string"
       },
@@ -149,12 +143,25 @@
         "type": "null"
       }
     ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ]
   }

@@ -10,12 +10,14 @@
           "9:16",
           "4:3",
           "3:4"
-        ]
+        ],
+        "default": "1:1"
       }
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "image": [
@@ -57,7 +59,8 @@
           "General",
           "Realistic",
           "Design"
-        ]
+        ],
+        "default": "Auto"
       }
     ]
   },

@@ -8,7 +8,8 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 2500
       }
     ],
     "duration": [
@@ -28,7 +29,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "end_image": [
@@ -42,7 +44,8 @@
         "enum": [
           "customize",
           "intelligent"
-        ]
+        ],
+        "default": "customize"
       }
     ],
     "multi_prompt": [
@@ -74,7 +77,8 @@
                   13,
                   14,
                   15
-                ]
+                ],
+                "default": 5
               }
             ],
             "": [
@@ -94,7 +98,8 @@
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

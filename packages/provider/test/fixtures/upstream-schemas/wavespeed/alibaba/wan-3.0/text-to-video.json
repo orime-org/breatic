@@ -10,24 +10,28 @@
           "1:1",
           "4:3",
           "3:4"
-        ]
+        ],
+        "default": "16:9"
       }
     ],
     "duration": [
       {
         "type": "integer",
         "minimum": 2,
-        "maximum": 30
+        "maximum": 30,
+        "default": 5
       }
     ],
     "enable_prompt_expansion": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "prompt": [
@@ -42,7 +46,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "seed": [

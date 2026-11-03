@@ -5,35 +5,8 @@
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 10
-      }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
+        "maximum": 10,
+        "default": 1
       }
     ],
     "image_urls": [
@@ -52,6 +25,38 @@
           "required": []
         }
       }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "webp"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1
+      }
     ]
   },
   "required": [
@@ -64,9 +69,9 @@
         "type": "array",
         "items": {
           "fields": {
-            "file_size": [
+            "content_type": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -80,6 +85,11 @@
                 "type": "null"
               }
             ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
             "file_name": [
               {
                 "type": "string"
@@ -88,20 +98,15 @@
                 "type": "null"
               }
             ],
-            "url": [
+            "width": [
               {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "width": [
+            "file_size": [
               {
                 "type": "integer"
               },

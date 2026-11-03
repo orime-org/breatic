@@ -1,20 +1,18 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mirelo-ai/sfx1.6/extend-audio",
   "fields": {
-    "upload_audio_format": [
+    "ambience": [
       {
-        "type": "string",
-        "enum": [
-          "wav",
-          "mp3",
-          "aac",
-          "flac"
-        ]
+        "type": "boolean",
+        "default": false
       }
     ],
-    "double_output": [
+    "text_prompt": [
       {
-        "type": "boolean"
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "seed": [
@@ -27,36 +25,43 @@
         "type": "null"
       }
     ],
-    "audio_url": [
+    "double_output": [
       {
-        "type": "string"
+        "type": "boolean",
+        "default": false
       }
     ],
-    "text_prompt": [
+    "upload_audio_format": [
       {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "ambience": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "num_samples": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 4
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "aac",
+          "flac"
+        ],
+        "default": "wav"
       }
     ],
     "append_duration": [
       {
         "type": "number",
         "minimum": 1,
-        "maximum": 57
+        "maximum": 57,
+        "default": 10
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "num_samples": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 2
       }
     ]
   },
@@ -69,9 +74,12 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
+            "file_size": [
               {
-                "type": "string"
+                "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "file_name": [
@@ -82,12 +90,9 @@
                 "type": "null"
               }
             ],
-            "file_size": [
+            "url": [
               {
-                "type": "integer"
-              },
-              {
-                "type": "null"
+                "type": "string"
               }
             ],
             "content_type": [
@@ -115,7 +120,8 @@
     ],
     "model": [
       {
-        "type": "string"
+        "type": "string",
+        "pattern": "^sfx-[0-9]+\\.[0-9]+$"
       }
     ]
   }

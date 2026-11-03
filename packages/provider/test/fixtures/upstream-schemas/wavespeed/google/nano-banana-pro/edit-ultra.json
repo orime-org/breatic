@@ -20,12 +20,14 @@
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "images": [
@@ -50,7 +52,8 @@
         "enum": [
           "png",
           "jpeg"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "prompt": [
@@ -64,7 +67,8 @@
         "enum": [
           "4k",
           "8k"
-        ]
+        ],
+        "default": "4k"
       }
     ]
   },

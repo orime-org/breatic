@@ -5,24 +5,28 @@
       {
         "type": "integer",
         "minimum": 0,
-        "maximum": 2
+        "maximum": 2,
+        "default": 1
       }
     ],
     "enable_base64_output": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "horizontal_angle": [
       {
         "type": "integer",
         "minimum": 0,
-        "maximum": 359
+        "maximum": 359,
+        "default": 0
       }
     ],
     "images": [
@@ -48,7 +52,8 @@
           "jpeg",
           "png",
           "webp"
-        ]
+        ],
+        "default": "jpeg"
       }
     ],
     "prompt": [
@@ -72,7 +77,8 @@
       {
         "type": "integer",
         "minimum": -30,
-        "maximum": 60
+        "maximum": 60,
+        "default": 0
       }
     ]
   },

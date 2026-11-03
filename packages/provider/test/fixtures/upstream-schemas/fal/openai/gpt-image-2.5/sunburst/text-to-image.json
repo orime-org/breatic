@@ -1,19 +1,17 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/text-to-image",
   "fields": {
-    "sync_mode": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "output_format": [
+    "prompt": [
       {
         "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
+        "minLength": 1,
+        "maxLength": 32000
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
       }
     ],
     "background": [
@@ -23,26 +21,30 @@
           "auto",
           "transparent",
           "opaque"
-        ]
+        ],
+        "default": "auto"
       }
     ],
     "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
-        "maximum": 14142
+        "maximum": 14142,
+        "default": 512
       }
     ],
     "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
-        "maximum": 14142
+        "maximum": 14142,
+        "default": 512
       }
     ],
     "image_size": [
       {
-        "type": "object"
+        "type": "object",
+        "default": "landscape_4_3"
       },
       {
         "type": "string",
@@ -54,17 +56,18 @@
           "landscape_4_3",
           "landscape_16_9",
           "auto"
-        ]
+        ],
+        "default": "landscape_4_3"
       }
     ],
-    "enable_safety_checker": [
+    "output_compression": [
       {
-        "type": "boolean"
-      }
-    ],
-    "prompt": [
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
       {
-        "type": "string"
+        "type": "null"
       }
     ],
     "quality": [
@@ -77,24 +80,33 @@
           "high",
           "xhigh",
           "max"
-        ]
+        ],
+        "default": "high"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
       }
     ],
     "num_images": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 1
       }
     ],
-    "output_compression": [
+    "enable_safety_checker": [
       {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 100
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -107,17 +119,17 @@
         "type": "array",
         "items": {
           "fields": {
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "url": [
               {
                 "type": "string"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "file_size": [
@@ -136,15 +148,15 @@
                 "type": "null"
               }
             ],
-            "height": [
+            "file_name": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
               },

@@ -29,7 +29,8 @@
           "Turkish (Turkey)",
           "Ukrainian (Ukraine)",
           "Vietnamese (Vietnam)"
-        ]
+        ],
+        "default": "English (United States)"
       }
     ],
     "speakers": [
@@ -136,7 +137,8 @@
           "Vindemiatrix",
           "Zephyr",
           "Zubenelgenubi"
-        ]
+        ],
+        "default": "Kore"
       }
     ]
   },

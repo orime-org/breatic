@@ -3,7 +3,8 @@
   "fields": {
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "maxLength": 8000
       }
     ],
     "quality": [
@@ -12,7 +13,8 @@
         "enum": [
           "low",
           "medium"
-        ]
+        ],
+        "default": "medium"
       }
     ],
     "resolution": [
@@ -21,7 +23,8 @@
         "enum": [
           "1k",
           "2k"
-        ]
+        ],
+        "default": "1k"
       }
     ],
     "aspect_ratio": [
@@ -47,7 +50,8 @@
         "enum": [
           "jpeg",
           "png"
-        ]
+        ],
+        "default": "jpeg"
       }
     ]
   },

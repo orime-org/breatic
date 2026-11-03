@@ -7,17 +7,20 @@
         "enum": [
           "flac",
           "wav"
-        ]
+        ],
+        "default": "flac"
       }
     ],
     "target_lufs": [
       {
         "type": "number",
         "minimum": -40,
-        "maximum": -8
+        "maximum": -8,
+        "default": -19
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": -19
       }
     ],
     "audio_url": [
@@ -29,7 +32,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.874
       }
     ]
   },

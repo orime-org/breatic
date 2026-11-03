@@ -10,7 +10,8 @@
     ],
     "draft": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "audios": [
@@ -45,7 +46,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Use Image1 as the visual reference and Video1 as the motion reference. Create a peaceful cinematic shoreline scene with rolling ocean waves at golden hour, soft foam, natural water movement, and no people."
       }
     ],
     "videos": [
@@ -66,7 +70,8 @@
     ],
     "draft_id": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     ],
     "duration": [
@@ -101,7 +106,8 @@
           28,
           29,
           30
-        ]
+        ],
+        "default": 5
       }
     ],
     "task_type": [
@@ -122,7 +128,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "aspect_ratio": [
@@ -141,7 +148,8 @@
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ]
   },

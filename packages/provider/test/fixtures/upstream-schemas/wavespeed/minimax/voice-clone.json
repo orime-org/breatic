@@ -5,7 +5,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.7
       }
     ],
     "audio": [
@@ -62,17 +63,20 @@
           "speech-2.6-turbo",
           "speech-2.8-hd",
           "speech-2.8-turbo"
-        ]
+        ],
+        "default": "speech-02-hd"
       }
     ],
     "need_noise_reduction": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "need_volume_normalization": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "text": [

@@ -1,6 +1,12 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan-video-foley",
   "fields": {
+    "negative_prompt": [
+      {
+        "type": "string",
+        "default": "noisy, harsh"
+      }
+    ],
     "seed": [
       {
         "type": "integer"
@@ -9,16 +15,25 @@
         "type": "null"
       }
     ],
-    "negative_prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "guidance_scale": [
       {
         "type": "number",
         "minimum": 1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 4.5
+      }
+    ],
+    "text_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "num_inference_steps": [
+      {
+        "type": "integer",
+        "minimum": 10,
+        "maximum": 100,
+        "default": 50
       }
     ],
     "video_url": [
@@ -28,19 +43,8 @@
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
-      }
-    ],
-    "num_inference_steps": [
-      {
-        "type": "integer",
-        "minimum": 10,
-        "maximum": 100
-      }
-    ],
-    "text_prompt": [
-      {
-        "type": "string"
+        "type": "boolean",
+        "default": true
       }
     ]
   },
@@ -54,6 +58,14 @@
         "type": "string"
       }
     ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.file_name": [
       {
         "type": "string"
@@ -65,14 +77,6 @@
     "video.file_size": [
       {
         "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"

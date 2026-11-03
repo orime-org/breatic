@@ -1,43 +1,65 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/ideogram/v3",
   "fields": {
-    "sync_mode": [
+    "image_size.width": [
       {
-        "type": "boolean"
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
       }
     ],
-    "style": [
+    "image_size.height": [
+      {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 14142,
+        "default": 512
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object",
+        "default": "square_hd"
+      },
       {
         "type": "string",
         "enum": [
-          "AUTO",
-          "GENERAL",
-          "REALISTIC",
-          "DESIGN"
-        ]
+          "square_hd",
+          "square",
+          "portrait_4_3",
+          "portrait_16_9",
+          "landscape_4_3",
+          "landscape_16_9"
+        ],
+        "default": "square_hd"
       },
       {
-        "type": "null"
-      }
-    ],
-    "enable_prompt_expansion": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "negative_prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean"
+        "type": "null",
+        "default": "square_hd"
       }
     ],
     "seed": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
       },
       {
         "type": "null"
@@ -61,122 +83,21 @@
         "type": "null"
       }
     ],
-    "color_palette.name": [
+    "negative_prompt": [
       {
         "type": "string",
-        "enum": [
-          "EMBER",
-          "FRESH",
-          "JUNGLE",
-          "MAGIC",
-          "MELON",
-          "MOSAIC",
-          "PASTEL",
-          "ULTRAMARINE"
-        ]
-      },
-      {
-        "type": "null"
+        "default": ""
       }
     ],
-    "color_palette.members": [
+    "enable_safety_checker": [
       {
-        "type": "array",
-        "items": {
-          "fields": {
-            "color_weight": [
-              {
-                "type": "number",
-                "minimum": 0.05,
-                "maximum": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "rgb.r": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255
-              }
-            ],
-            "rgb.b": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255
-              }
-            ],
-            "rgb.g": [
-              {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 255
-              }
-            ],
-            "rgb": [
-              {
-                "type": "object"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "rgb"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "rgb"
-          ]
-        }
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": true
       }
     ],
-    "color_palette": [
+    "prompt": [
       {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image_size.height": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142
-      }
-    ],
-    "image_size.width": [
-      {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "maximum": 14142
-      }
-    ],
-    "image_size": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "string",
-        "enum": [
-          "square_hd",
-          "square",
-          "portrait_4_3",
-          "portrait_16_9",
-          "landscape_4_3",
-          "landscape_16_9"
-        ]
-      },
-      {
-        "type": "null"
+        "type": "string"
       }
     ],
     "style_preset": [
@@ -251,9 +172,102 @@
         "type": "null"
       }
     ],
-    "prompt": [
+    "num_images": [
       {
-        "type": "string"
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8,
+        "default": 1
+      }
+    ],
+    "color_palette.members": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "color_weight": [
+              {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 1,
+                "default": 0.5
+              },
+              {
+                "type": "null",
+                "default": 0.5
+              }
+            ],
+            "rgb.g": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "rgb.r": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "rgb.b": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 0
+              }
+            ],
+            "rgb": [
+              {
+                "type": "object"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "rgb"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "rgb"
+          ]
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "color_palette.name": [
+      {
+        "type": "string",
+        "enum": [
+          "EMBER",
+          "FRESH",
+          "JUNGLE",
+          "MAGIC",
+          "MELON",
+          "MOSAIC",
+          "PASTEL",
+          "ULTRAMARINE"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "color_palette": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
       }
     ],
     "rendering_speed": [
@@ -263,29 +277,31 @@
           "TURBO",
           "BALANCED",
           "QUALITY"
+        ],
+        "default": "BALANCED"
+      }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "style": [
+      {
+        "type": "string",
+        "enum": [
+          "AUTO",
+          "GENERAL",
+          "REALISTIC",
+          "DESIGN"
         ]
-      }
-    ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 8
-      }
-    ],
-    "image_urls": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
       },
       {
         "type": "null"
@@ -296,6 +312,11 @@
     "prompt"
   ],
   "outputs": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
     "images": [
       {
         "type": "array",
@@ -306,7 +327,7 @@
                 "type": "string"
               }
             ],
-            "content_type": [
+            "file_name": [
               {
                 "type": "string"
               },
@@ -322,7 +343,7 @@
                 "type": "null"
               }
             ],
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
               },
@@ -343,11 +364,6 @@
             "url"
           ]
         }
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
       }
     ]
   }

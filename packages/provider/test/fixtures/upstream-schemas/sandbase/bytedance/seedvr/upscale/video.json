@@ -15,7 +15,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.1
       }
     ],
     "upscale_mode": [
@@ -24,7 +25,8 @@
         "enum": [
           "target",
           "factor"
-        ]
+        ],
+        "default": "factor"
       }
     ],
     "output_format": [
@@ -35,7 +37,8 @@
           "VP9 (.webm)",
           "PRORES4444 (.mov)",
           "GIF (.gif)"
-        ]
+        ],
+        "default": "X264 (.mp4)"
       }
     ],
     "output_quality": [
@@ -46,14 +49,16 @@
           "medium",
           "high",
           "maximum"
-        ]
+        ],
+        "default": "high"
       }
     ],
     "upscale_factor": [
       {
         "type": "number",
         "minimum": 1,
-        "maximum": 10
+        "maximum": 10,
+        "default": 2
       }
     ],
     "output_write_mode": [
@@ -63,7 +68,8 @@
           "fast",
           "balanced",
           "small"
-        ]
+        ],
+        "default": "balanced"
       }
     ],
     "target_resolution": [
@@ -74,7 +80,8 @@
           "1080p",
           "1440p",
           "2160p"
-        ]
+        ],
+        "default": "1080p"
       }
     ]
   },

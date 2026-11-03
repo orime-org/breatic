@@ -1,23 +1,15 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bria/eraser",
   "fields": {
-    "mask_type": [
-      {
-        "type": "string",
-        "enum": [
-          "manual",
-          "automatic"
-        ]
-      }
-    ],
     "image_url": [
       {
         "type": "string"
       }
     ],
-    "preserve_alpha": [
+    "sync_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "mask_url": [
@@ -25,9 +17,20 @@
         "type": "string"
       }
     ],
-    "sync_mode": [
+    "preserve_alpha": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "mask_type": [
+      {
+        "type": "string",
+        "enum": [
+          "manual",
+          "automatic"
+        ],
+        "default": "manual"
       }
     ]
   },
@@ -36,30 +39,14 @@
     "mask_url"
   ],
   "outputs": {
-    "image.width": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image.height": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "image.url": [
       {
         "type": "string"
       }
     ],
-    "image.file_name": [
+    "image.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
@@ -73,7 +60,23 @@
         "type": "null"
       }
     ],
-    "image.file_size": [
+    "image.height": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image.width": [
       {
         "type": "integer"
       },

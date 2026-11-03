@@ -18,7 +18,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Generate a photorealistic image of a gift basket on a white background labeled 'Relax & Unwind' with a ribbon and handwriting-like font, containing all the items in the reference pictures."
       }
     ],
     "quality": [
@@ -30,7 +33,8 @@
           "high",
           "xhigh",
           "max"
-        ]
+        ],
+        "default": "high"
       }
     ],
     "resolution": [
@@ -72,7 +76,8 @@
           "jpeg",
           "png",
           "webp"
-        ]
+        ],
+        "default": "png"
       }
     ]
   },

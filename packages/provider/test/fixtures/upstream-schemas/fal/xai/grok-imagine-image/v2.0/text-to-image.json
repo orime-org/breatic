@@ -1,41 +1,24 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=xai/grok-imagine-image/v2.0/text-to-image",
   "fields": {
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "num_images": [
       {
         "type": "integer",
         "minimum": 1,
-        "maximum": 10
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ]
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
+        "maximum": 10,
+        "default": 1
       }
     ],
     "enable_safety_checker": [
       {
-        "type": "boolean"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "1k",
-          "1.5k",
-          "2k"
-        ]
+        "type": "boolean",
+        "default": true
       }
     ],
     "aspect_ratio": [
@@ -58,7 +41,36 @@
           "auto",
           "21:9",
           "5:2"
-        ]
+        ],
+        "default": "1:1"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 8000
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "jpeg"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "1.5k",
+          "2k"
+        ],
+        "default": "1k"
       }
     ],
     "quality": [
@@ -68,12 +80,8 @@
           "low",
           "medium",
           "auto"
-        ]
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean"
+        ],
+        "default": "medium"
       }
     ]
   },
@@ -94,7 +102,20 @@
         "type": "array",
         "items": {
           "fields": {
-            "width": [
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
               {
                 "type": "integer"
               },
@@ -110,19 +131,6 @@
                 "type": "null"
               }
             ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "file_name": [
               {
                 "type": "string"
@@ -131,7 +139,7 @@
                 "type": "null"
               }
             ],
-            "file_size": [
+            "width": [
               {
                 "type": "integer"
               },

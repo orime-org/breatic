@@ -3,19 +3,23 @@
   "fields": {
     "text": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
       }
     ],
     "voice": [
       {
-        "type": "string"
+        "type": "string",
+        "default": "Rachel"
       }
     ],
     "stability": [
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.5
       }
     ],
     "language_code": [

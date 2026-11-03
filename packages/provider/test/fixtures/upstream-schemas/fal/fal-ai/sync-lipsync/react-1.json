@@ -3,7 +3,29 @@
   "fields": {
     "enable_safety_checker": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head"
+        ],
+        "default": "face"
+      }
+    ],
+    "audio_url": [
+      {
+        "type": "string"
       }
     ],
     "lipsync_mode": [
@@ -15,27 +37,8 @@
           "bounce",
           "silence",
           "remap"
-        ]
-      }
-    ],
-    "model_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "lips",
-          "face",
-          "head"
-        ]
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
+        ],
+        "default": "bounce"
       }
     ],
     "emotion": [
@@ -55,7 +58,8 @@
       {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.5
       }
     ]
   },
@@ -65,17 +69,17 @@
     "emotion"
   ],
   "outputs": {
-    "video.url": [
-      {
-        "type": "string"
-      }
-    ],
     "video.fps": [
       {
         "type": "number"
       },
       {
         "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
       }
     ],
     "video.file_name": [
@@ -94,17 +98,17 @@
         "type": "null"
       }
     ],
-    "video.duration": [
+    "video.file_size": [
       {
-        "type": "number"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "video.file_size": [
+    "video.duration": [
       {
-        "type": "integer"
+        "type": "number"
       },
       {
         "type": "null"

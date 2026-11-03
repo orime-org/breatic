@@ -35,7 +35,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 7000,
+        "default": "Keep the referenced character and motion consistent while creating a cinematic garden scene with synchronized ambient sound."
       }
     ],
     "videos": [
@@ -70,7 +73,8 @@
           13,
           14,
           15
-        ]
+        ],
+        "default": 5
       }
     ],
     "resolution": [
@@ -79,7 +83,8 @@
         "enum": [
           "768P",
           "2K"
-        ]
+        ],
+        "default": "2K"
       }
     ],
     "aspect_ratio": [
@@ -97,7 +102,8 @@
     ],
     "aigc_watermark": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

@@ -27,12 +27,14 @@
         "enum": [
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "turbo_mode": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

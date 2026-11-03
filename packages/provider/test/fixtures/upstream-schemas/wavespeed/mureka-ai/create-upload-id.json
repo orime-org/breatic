@@ -17,7 +17,8 @@
           "remix",
           "vocal",
           "voice"
-        ]
+        ],
+        "default": "audio"
       }
     ]
   },

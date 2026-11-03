@@ -1,11 +1,10 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/meshy/v6/text-to-3d",
   "fields": {
-    "target_polycount": [
+    "enable_animation": [
       {
-        "type": "integer",
-        "minimum": 100,
-        "maximum": 300000
+        "type": "boolean",
+        "default": false
       }
     ],
     "texture_image_url": [
@@ -16,25 +15,13 @@
         "type": "null"
       }
     ],
-    "enable_prompt_expansion": [
+    "texture_prompt": [
       {
-        "type": "boolean"
-      }
-    ],
-    "rigging_height_meters": [
+        "type": "string",
+        "maxLength": 600
+      },
       {
-        "type": "number",
-        "exclusiveMinimum": 0
-      }
-    ],
-    "enable_animation": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
+        "type": "null"
       }
     ],
     "mode": [
@@ -43,27 +30,20 @@
         "enum": [
           "preview",
           "full"
-        ]
+        ],
+        "default": "full"
       }
     ],
-    "is_a_t_pose": [
+    "enable_pbr": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
-    "animation_action_id": [
+    "prompt": [
       {
-        "type": "integer"
-      }
-    ],
-    "enable_rigging": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "should_remesh": [
-      {
-        "type": "boolean"
+        "type": "string",
+        "maxLength": 600
       }
     ],
     "topology": [
@@ -72,38 +52,8 @@
         "enum": [
           "quad",
           "triangle"
-        ]
-      }
-    ],
-    "texture_prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "symmetry_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "off",
-          "auto",
-          "on"
-        ]
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean"
+        ],
+        "default": "triangle"
       }
     ],
     "pose_mode": [
@@ -113,12 +63,8 @@
           "a-pose",
           "t-pose",
           ""
-        ]
-      }
-    ],
-    "enable_pbr": [
-      {
-        "type": "boolean"
+        ],
+        "default": ""
       }
     ],
     "model_type": [
@@ -129,7 +75,78 @@
           "lowpoly",
           "smart-topology",
           "smart-topology-t2"
-        ]
+        ],
+        "default": "standard"
+      }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "target_polycount": [
+      {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 300000,
+        "default": 30000
+      }
+    ],
+    "should_remesh": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "animation_action_id": [
+      {
+        "type": "integer",
+        "default": 92
+      }
+    ],
+    "rigging_height_meters": [
+      {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 1.7
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_rigging": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "is_a_t_pose": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "symmetry_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "off",
+          "auto",
+          "on"
+        ],
+        "default": "auto"
       }
     ]
   },
@@ -137,12 +154,12 @@
     "prompt"
   ],
   "outputs": {
-    "animation_fbx.url": [
+    "thumbnail.url": [
       {
         "type": "string"
       }
     ],
-    "animation_fbx.content_type": [
+    "thumbnail.content_type": [
       {
         "type": "string"
       },
@@ -150,7 +167,7 @@
         "type": "null"
       }
     ],
-    "animation_fbx.file_size": [
+    "thumbnail.file_size": [
       {
         "type": "integer"
       },
@@ -158,7 +175,7 @@
         "type": "null"
       }
     ],
-    "animation_fbx.file_name": [
+    "thumbnail.file_name": [
       {
         "type": "string"
       },
@@ -166,7 +183,7 @@
         "type": "null"
       }
     ],
-    "animation_fbx": [
+    "thumbnail": [
       {
         "type": "object",
         "required": [
@@ -177,20 +194,7 @@
         "type": "null"
       }
     ],
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_size": [
+    "seed": [
       {
         "type": "integer"
       },
@@ -198,274 +202,9 @@
         "type": "null"
       }
     ],
-    "model_glb.file_name": [
+    "actual_prompt": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "texture_urls": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "metallic.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "metallic.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "normal.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "roughness.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "base_color.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "base_color"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "base_color"
-          ]
-        }
-      }
-    ],
-    "model_urls.fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       },
       {
         "type": "null"
@@ -501,46 +240,6 @@
       }
     ],
     "model_urls.blend": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.usdz.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz": [
       {
         "type": "object",
         "required": [
@@ -631,6 +330,126 @@
         "type": "null"
       }
     ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
     "model_urls": [
       {
         "type": "object"
@@ -644,12 +463,12 @@
         "type": "null"
       }
     ],
-    "thumbnail.url": [
+    "rigged_character_fbx.url": [
       {
         "type": "string"
       }
     ],
-    "thumbnail.content_type": [
+    "rigged_character_fbx.content_type": [
       {
         "type": "string"
       },
@@ -657,7 +476,7 @@
         "type": "null"
       }
     ],
-    "thumbnail.file_size": [
+    "rigged_character_fbx.file_size": [
       {
         "type": "integer"
       },
@@ -665,7 +484,7 @@
         "type": "null"
       }
     ],
-    "thumbnail.file_name": [
+    "rigged_character_fbx.file_name": [
       {
         "type": "string"
       },
@@ -673,7 +492,7 @@
         "type": "null"
       }
     ],
-    "thumbnail": [
+    "rigged_character_fbx": [
       {
         "type": "object",
         "required": [
@@ -689,7 +508,20 @@
         "type": "string"
       }
     ],
-    "seed": [
+    "rigged_character_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "rigged_character_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_glb.file_size": [
       {
         "type": "integer"
       },
@@ -697,12 +529,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_armature_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.running_armature_glb.content_type": [
+    "rigged_character_glb.file_name": [
       {
         "type": "string"
       },
@@ -710,23 +537,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_armature_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb": [
+    "rigged_character_glb": [
       {
         "type": "object",
         "required": [
@@ -737,12 +548,12 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx.url": [
+    "model_glb.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.walking_fbx.content_type": [
+    "model_glb.content_type": [
       {
         "type": "string"
       },
@@ -750,7 +561,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx.file_size": [
+    "model_glb.file_size": [
       {
         "type": "integer"
       },
@@ -758,7 +569,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx.file_name": [
+    "model_glb.file_name": [
       {
         "type": "string"
       },
@@ -766,7 +577,84 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx": [
+    "model_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "animation_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "animation_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "animation_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb": [
       {
         "type": "object",
         "required": [
@@ -817,12 +705,12 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.url": [
+    "basic_animations.running_fbx.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.walking_glb.content_type": [
+    "basic_animations.running_fbx.content_type": [
       {
         "type": "string"
       },
@@ -830,7 +718,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.file_size": [
+    "basic_animations.running_fbx.file_size": [
       {
         "type": "integer"
       },
@@ -838,7 +726,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.file_name": [
+    "basic_animations.running_fbx.file_name": [
       {
         "type": "string"
       },
@@ -846,7 +734,47 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb": [
+    "basic_animations.running_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.running_armature_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb": [
       {
         "type": "object",
         "required": [
@@ -897,12 +825,12 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.url": [
+    "basic_animations.walking_glb.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.running_fbx.content_type": [
+    "basic_animations.walking_glb.content_type": [
       {
         "type": "string"
       },
@@ -910,7 +838,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.file_size": [
+    "basic_animations.walking_glb.file_size": [
       {
         "type": "integer"
       },
@@ -918,7 +846,7 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.file_name": [
+    "basic_animations.walking_glb.file_name": [
       {
         "type": "string"
       },
@@ -926,7 +854,47 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx": [
+    "basic_animations.walking_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.walking_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx": [
       {
         "type": "object",
         "required": [
@@ -945,132 +913,181 @@
         "type": "null"
       }
     ],
-    "rigged_character_glb.url": [
+    "texture_urls": [
       {
-        "type": "string"
-      }
-    ],
-    "rigged_character_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "actual_prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "animation_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "rigged_character_fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
+        "type": "array",
+        "items": {
+          "fields": {
+            "metallic.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "metallic.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "roughness.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "base_color.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ],
+            "normal.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "normal.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "base_color"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "base_color"
+          ]
+        }
       }
     ]
   }

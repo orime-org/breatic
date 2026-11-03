@@ -18,7 +18,10 @@
     ],
     "prompt": [
       {
-        "type": "string"
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Make a 3 panel comic in a gritty, noir art style with high-contrast black and white inks. Put the character in a humurous scene."
       }
     ],
     "resolution": [
@@ -29,7 +32,8 @@
           "1K",
           "2K",
           "4K"
-        ]
+        ],
+        "default": "1K"
       }
     ],
     "aspect_ratio": [
@@ -59,17 +63,20 @@
         "enum": [
           "jpeg",
           "png"
-        ]
+        ],
+        "default": "png"
       }
     ],
     "enable_web_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "enable_image_search": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },

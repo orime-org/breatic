@@ -1,12 +1,23 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=alibaba/wan-3.0/reference-to-video",
   "fields": {
-    "prompt": [
+    "file_url": [
       {
         "type": "string"
       },
       {
         "type": "null"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "1080p"
       }
     ],
     "seed": [
@@ -19,25 +30,22 @@
         "type": "null"
       }
     ],
-    "web_url": [
+    "duration": [
       {
-        "type": "string"
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 30,
+        "default": 5
       },
       {
-        "type": "null"
+        "type": "null",
+        "default": 5
       }
     ],
-    "aspect_ratio": [
+    "enable_safety_checker": [
       {
-        "type": "string",
-        "enum": [
-          "adaptive",
-          "16:9",
-          "4:3",
-          "1:1",
-          "3:4",
-          "9:16"
-        ]
+        "type": "boolean",
+        "default": true
       }
     ],
     "reference_video_urls": [
@@ -56,17 +64,50 @@
         }
       }
     ],
-    "resolution": [
+    "reference_audio_urls": [
       {
-        "type": "string",
-        "enum": [
-          "480p",
-          "720p",
-          "1080p"
-        ]
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
       }
     ],
-    "file_url": [
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 20000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_thinking": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "web_url": [
       {
         "type": "string"
       },
@@ -90,61 +131,24 @@
         }
       }
     ],
-    "enable_thinking": [
+    "aspect_ratio": [
       {
-        "type": "boolean"
-      }
-    ],
-    "reference_audio_urls": [
-      {
-        "type": "array",
-        "maxItems": 5,
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 2,
-        "maximum": 30
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_prompt_expansion": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean"
-      }
-    ],
-    "audio": [
-      {
-        "type": "boolean"
+        "type": "string",
+        "enum": [
+          "adaptive",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "adaptive"
       }
     ]
   },
   "required": [],
   "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
-    "video.num_frames": [
+    "video.file_size": [
       {
         "type": "integer"
       },
@@ -160,9 +164,17 @@
         "type": "null"
       }
     ],
-    "video.fps": [
+    "video.duration": [
       {
         "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -176,20 +188,15 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.num_frames": [
       {
-        "type": "string"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "video.duration": [
+    "video.fps": [
       {
         "type": "number"
       },
@@ -197,12 +204,9 @@
         "type": "null"
       }
     ],
-    "video.file_size": [
+    "video.url": [
       {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "string"
       }
     ],
     "video.height": [
@@ -224,6 +228,11 @@
     "duration": [
       {
         "type": "number"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ],
     "actual_prompt": [

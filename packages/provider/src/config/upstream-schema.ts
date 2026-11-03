@@ -19,6 +19,12 @@ export interface Leaf {
   exclusiveMaximum?: number;
   minItems?: number;
   maxItems?: number;
+  minLength?: number;
+  maxLength?: number;
+  /** For a string: the regular expression it must match, as the schema writes it. */
+  pattern?: string;
+  /** The value the upstream uses when a request leaves the field out. */
+  default?: unknown;
   /** For an object: the sub-fields it requires when it is sent. */
   required?: string[];
   /** For an object: sets of sub-fields of which it needs one whole set (an `anyOf` or `oneOf` of `required` lists). */
@@ -132,7 +138,7 @@ function num(value: unknown): number | undefined {
 }
 
 /**
- * The type a node names, or the one its enum or const implies.
+ * The type a node names, or the one its properties or items imply.
  * @param node - The node.
  * @returns The type.
  */
@@ -170,6 +176,12 @@ function collect(node: Node, path: string, root: unknown, fields: Record<string,
     const maxItems = num(branch.maxItems);
     if (minItems !== undefined) leaf.minItems = minItems;
     if (maxItems !== undefined) leaf.maxItems = maxItems;
+    const minLength = num(branch.minLength);
+    const maxLength = num(branch.maxLength);
+    if (minLength !== undefined) leaf.minLength = minLength;
+    if (maxLength !== undefined) leaf.maxLength = maxLength;
+    if (typeof branch.pattern === "string") leaf.pattern = branch.pattern;
+    if ("default" in branch) leaf.default = branch.default;
     if (leaf.type === "array" && isObject(branch.items)) {
       const items: Record<string, Leaf[]> = {};
       collect(branch.items, "", root, items, depth + 1);
@@ -209,6 +221,24 @@ export function snapshotOf(schema: unknown, options: { root: unknown; source: st
 }
 
 /**
+ * Whether a string matches a schema pattern. A pattern JavaScript cannot compile is taken as
+ * not matched, so a binding is never passed on a check that could not be made.
+ * @param pattern - The pattern as the schema writes it.
+ * @param value - The string.
+ * @returns True when it matches.
+ */
+function matches(pattern: string, value: string): boolean {
+  for (const flags of ["u", ""]) {
+    try {
+      return new RegExp(pattern, flags).test(value);
+    } catch {
+      // Not valid under these flags; try the next ones.
+    }
+  }
+  return false;
+}
+
+/**
  * Whether one shape accepts a value.
  * @param fields - The fields the shape's sub-fields are found in.
  * @param path - The shape's path.
@@ -223,8 +253,13 @@ function leafFits(fields: Record<string, Leaf[]>, path: string, leaf: Leaf, valu
       return true;
     case "null":
       return value === null;
-    case "string":
-      return typeof value === "string";
+    case "string": {
+      if (typeof value !== "string") return false;
+      const length = [...value].length;
+      if (leaf.minLength !== undefined && length < leaf.minLength) return false;
+      if (leaf.maxLength !== undefined && length > leaf.maxLength) return false;
+      return leaf.pattern === undefined || matches(leaf.pattern, value);
+    }
     case "boolean":
       return typeof value === "boolean";
     case "integer":
@@ -268,7 +303,7 @@ function fitsAt(fields: Record<string, Leaf[]>, path: string, value: unknown): b
 
 /**
  * Whether the upstream takes a value at a field: some shape at the path accepts it by type,
- * enum, bounds, list length and each item's fields; an object is checked field by field.
+ * enum, bounds, string length and pattern, list length and each item's fields; an object is checked field by field.
  * @param snapshot - The upstream's schema.
  * @param path - The dotted field.
  * @param value - The value written there.

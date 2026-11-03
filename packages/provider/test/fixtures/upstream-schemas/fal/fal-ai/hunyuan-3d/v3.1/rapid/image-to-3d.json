@@ -1,19 +1,21 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d",
   "fields": {
+    "enable_pbr": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "enable_geometry": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "input_image_url": [
       {
         "type": "string"
-      }
-    ],
-    "enable_pbr": [
-      {
-        "type": "boolean"
       }
     ]
   },
@@ -21,12 +23,7 @@
     "input_image_url"
   ],
   "outputs": {
-    "material_mtl.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "material_mtl.content_type": [
+    "thumbnail.file_name": [
       {
         "type": "string"
       },
@@ -34,7 +31,20 @@
         "type": "null"
       }
     ],
-    "material_mtl.file_size": [
+    "thumbnail.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "thumbnail.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.file_size": [
       {
         "type": "integer"
       },
@@ -42,20 +52,20 @@
         "type": "null"
       }
     ],
-    "material_mtl.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "material_mtl": [
+    "thumbnail": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "texture.file_name": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -82,7 +92,18 @@
         "type": "null"
       }
     ],
-    "texture.file_name": [
+    "texture": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "material_mtl.file_name": [
       {
         "type": "string"
       },
@@ -90,12 +111,41 @@
         "type": "null"
       }
     ],
-    "texture": [
+    "material_mtl.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "material_mtl.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "material_mtl.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "material_mtl": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb.file_name": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -122,20 +172,20 @@
         "type": "null"
       }
     ],
-    "model_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "model_glb": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -162,14 +212,6 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "model_urls.fbx": [
       {
         "type": "object",
@@ -181,41 +223,9 @@
         "type": "null"
       }
     ],
-    "model_urls.texture.url": [
+    "model_urls.glb.file_name": [
       {
         "type": "string"
-      }
-    ],
-    "model_urls.texture.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.texture.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.texture.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.texture": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       },
       {
         "type": "null"
@@ -242,14 +252,6 @@
         "type": "null"
       }
     ],
-    "model_urls.glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "model_urls.glb": [
       {
         "type": "object",
@@ -261,12 +263,7 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.usdz.content_type": [
+    "model_urls.texture.file_name": [
       {
         "type": "string"
       },
@@ -274,7 +271,20 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.file_size": [
+    "model_urls.texture.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.texture.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.texture.file_size": [
       {
         "type": "integer"
       },
@@ -282,15 +292,7 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.usdz": [
+    "model_urls.texture": [
       {
         "type": "object",
         "required": [
@@ -301,41 +303,9 @@
         "type": "null"
       }
     ],
-    "model_urls.mtl.url": [
+    "model_urls.obj.file_name": [
       {
         "type": "string"
-      }
-    ],
-    "model_urls.mtl.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.mtl.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.mtl.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.mtl": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       },
       {
         "type": "null"
@@ -362,7 +332,18 @@
         "type": "null"
       }
     ],
-    "model_urls.obj.file_name": [
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.mtl.file_name": [
       {
         "type": "string"
       },
@@ -370,7 +351,68 @@
         "type": "null"
       }
     ],
-    "model_urls.obj": [
+    "model_urls.mtl.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.mtl.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.mtl.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.mtl": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz": [
       {
         "type": "object",
         "required": [
@@ -384,46 +426,6 @@
     "model_urls": [
       {
         "type": "object"
-      }
-    ],
-    "thumbnail.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
       }
     ]
   }

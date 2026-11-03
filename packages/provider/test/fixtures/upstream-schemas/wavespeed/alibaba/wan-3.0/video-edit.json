@@ -10,12 +10,14 @@
     ],
     "enable_prompt_expansion": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ],
     "generate_audio": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       }
     ],
     "prompt": [
@@ -62,7 +64,8 @@
           "480p",
           "720p",
           "1080p"
-        ]
+        ],
+        "default": "720p"
       }
     ],
     "seed": [

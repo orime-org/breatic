@@ -15,7 +15,8 @@
           "3:4",
           "2:3",
           "9:16"
-        ]
+        ],
+        "default": "1:1"
       }
     ],
     "prompt": [
@@ -30,12 +31,14 @@
           "1k",
           "2k",
           "4k"
-        ]
+        ],
+        "default": "1k"
       }
     ],
     "transparency": [
       {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
       }
     ]
   },
