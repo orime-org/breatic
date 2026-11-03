@@ -668,10 +668,15 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
         }),
         ({ lines, from, fromAt, to, toAt, at }) => {
           const items = lines.map((content) => ({ type: 'bulletListItem', content }));
-          // Each line the copy can reach, in order: the lines, then the one after them.
+          // Each line the copy can reach, in order: their parent (-1), the
+          // lines, then the one after them.
           const reach = lines.length + 1;
-          const first = from % reach;
+          const first = (from % (reach + 1)) - 1;
           const last = first + (to % (reach - first));
+          // From the parent, only a copy whose end opens into the first nested
+          // line's words reads that line out of it; the nested lines it holds
+          // whole stay nested under it.
+          if (first < 0 && (last !== 0 || toAt === 0 || lines[0] === '')) return;
           /**
            * Copies the range and pastes it into the target line.
            * @param body - The document.
@@ -696,6 +701,7 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
             view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, a, b)));
             const html = tableClipped(editor as never, view)?.internal ?? view.serializeForClipboard(view.state.selection.content()).dom.innerHTML;
             view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, starts[starts.length - 1]! + at)));
+            view.focus();
             pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
             // The target line is the last one: what is pasted lands after the original 'tail'.
             type Read = { type: string; content?: unknown; children?: Read[] };
@@ -705,7 +711,7 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
             return after;
           };
           const nested = pasted([{ type: 'bulletListItem', content: 'par', children: items }, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
-          const flat = pasted([{ type: 'paragraph', content: 'par' }, ...items, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
+          const flat = pasted([{ type: 'bulletListItem', content: 'par' }, ...items, { type: 'paragraph', content: 'tail' }, { type: 'paragraph', content: 'xxyy' }], 1);
           expect(nested, `${JSON.stringify(lines)} ${first}@${fromAt}..${last}@${toAt} @${at}`).toBe(flat);
         },
       ),

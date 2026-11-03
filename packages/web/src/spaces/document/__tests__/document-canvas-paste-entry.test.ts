@@ -175,10 +175,10 @@ describe('text only, at the caret', () => {
     expect((editor.document as { content?: unknown }[])[0]!.content).toEqual([{ type: 'text', text: 'say https://example.com there', styles: {} }]);
   });
 
-  it.each(['bulletListItem', 'heading', 'checkListItem'])('on an empty %s, the first line takes its type', (type) => {
+  it.each(['bulletListItem', 'heading', 'checkListItem'])('on an empty %s, the first line takes its type and the last fills it', (type) => {
     const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type }, { type: 'paragraph', content: 'tail' }], 1);
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
-    expect(shape(editor)).toEqual(['paragraph:lead', `${type}:one`, 'paragraph:two', 'paragraph:tail']);
+    expect(shape(editor)).toEqual(['paragraph:lead', `${type}:one`, `${type}:two`, 'paragraph:tail']);
   });
 });
 

@@ -252,14 +252,22 @@ function contentWords(content: unknown): string {
 
 /**
  * Whether blocks hold one that is not a line of words (a medium, a table, a
- * rule), nested ones too: only content made of lines of words goes in by the
- * default paste, which puts any other block at a line's start under an empty
- * line of its own.
+ * rule), nested ones too: such content never goes in by the default paste,
+ * which puts any other block at a line's start under an empty line of its own.
  * @param blocks - The blocks.
  * @returns True when the body puts them in itself.
  */
 function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
   return blocks.some((block) => wordsIn(block.content) === null || holdsBlocks(block.children ?? []));
+}
+
+/**
+ * Whether blocks are one line: one block, nothing nested under it.
+ * @param blocks - The blocks.
+ * @returns True for one line.
+ */
+function isOneLine(blocks: readonly ReadBlock[]): boolean {
+  return blocks.length === 1 && (blocks[0]!.children ?? []).length === 0;
 }
 
 /**
@@ -650,7 +658,9 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
     if (table !== null) return putTableInCells(view, table);
     if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
   }
-  const words = !holdsBlocks(content.blocks) && !carriesOpenEnd(content.blocks);
+  // One line of words goes into the line as its words; more lines go by the
+  // placement, which keeps the reader's line its own type (§5.4.3).
+  const words = isOneLine(content.blocks) && !holdsBlocks(content.blocks) && !carriesOpenEnd(content.blocks);
   if (selection instanceof NodeSelection && !selection.node.isInline) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
   if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);
   const replaced = !selection.empty || opened;

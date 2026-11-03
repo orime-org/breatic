@@ -600,6 +600,20 @@ function inertBody(html: string): HTMLElement {
 }
 
 /**
+ * Blocks read from outside HTML with the words BlockNote's own paste puts in:
+ * read, written as BlockNote's HTML and read again (`pasteHTML`), the second
+ * read giving each run of white space as the one space a page shows. The
+ * first read keeps every space of the words (`preserveWhitespace`), and
+ * Notion's line breaks come out of it as line breaks.
+ * @param reader - The editor.
+ * @param html - The HTML.
+ * @returns The blocks.
+ */
+function pastedBlocks(reader: BlockReader, html: string): ReadBlock[] {
+  return reader.tryParseHTMLToBlocks(reader.blocksToFullHTML(reader.tryParseHTMLToBlocks(html) as never)) as ReadBlock[];
+}
+
+/**
  * Outside HTML read into blocks by markers (§5.4.2).
  * @param reader - The editor.
  * @param html - The HTML.
@@ -612,7 +626,7 @@ function readByMarkers(reader: BlockReader, html: string, lands: (url: string) =
   fillAddresses(body, lands);
   const { media, lost } = markMedia(body, lands);
   const found = new Set<number>();
-  const blocks = placeMarkers(withoutClosingBreak(reader.tryParseHTMLToBlocks(body.innerHTML) as ReadBlock[]), media, found);
+  const blocks = placeMarkers(withoutClosingBreak(pastedBlocks(reader, body.innerHTML)), media, found);
   return { blocks, lost: lost + media.length - found.size };
 }
 
@@ -672,7 +686,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const codeText = !withMedia && plain !== '' ? plain : null;
   if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
     const even = evenPastedTables(html);
-    return { blocks: reader.tryParseHTMLToBlocks(even) as ReadBlock[], lost: 0, plain: null, codeText, paste: (r) => r.pasteHTML(even) };
+    return { blocks: pastedBlocks(reader, even), lost: 0, plain: null, codeText, paste: (r) => r.pasteHTML(even) };
   }
   if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: null, paste: () => undefined };
   const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);

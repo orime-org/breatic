@@ -380,12 +380,80 @@ describe('a picture put last in the body', () => {
 });
 
 describe('content holding only paragraphs', () => {
-  it('lands as it does on main', async () => {
+  it('splits a line of words where the caret is', async () => {
     const editor = open([{ type: 'paragraph', content: 'abcd' }]);
     select(editor, positionOf(editor, 'abcd', 2));
     paste(editor, '<p>x</p><p>y</p>', 'x\ny');
     await settled();
     expect(lines(editor)).toEqual(['paragraph:abx', 'paragraph:ycd']);
+  });
+});
+
+describe.each(SOURCES)('%s of lines of words alone, on a line that is not a paragraph', (_source, put) => {
+  /**
+   * Opens a heading `abcd`, puts the caret in it, pastes, and reads the result.
+   * @param offset - Where in `abcd` the caret is.
+   * @param pieces - The content.
+   * @returns What lands.
+   */
+  async function at(offset: number, pieces: Piece[]): Promise<string[]> {
+    const editor = open([{ type: 'heading', content: 'abcd', props: { level: 2 } }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'abcd', offset));
+    put(editor, pieces);
+    await settled();
+    return lines(editor);
+  }
+
+  it('in its middle keeps the reader\'s type on both halves', async () => {
+    expect(await at(2, [W, V])).toEqual(['heading#2:abw', 'heading#2:vcd', 'paragraph:tail']);
+  });
+
+  it('at its start keeps the reader\'s type on the line the last words join', async () => {
+    expect(await at(0, [W, V])).toEqual(['paragraph:w', 'heading#2:vabcd', 'paragraph:tail']);
+  });
+
+  it('at its end keeps the reader\'s type on the line the first words join', async () => {
+    expect(await at(4, [W, V])).toEqual(['heading#2:abcdw', 'paragraph:v', 'paragraph:tail']);
+  });
+
+  it('of one line goes into the line as its words', async () => {
+    expect(await at(2, [W])).toEqual(['heading#2:abwcd', 'paragraph:tail']);
+  });
+});
+
+describe('web content of lines of words, its spaces', () => {
+  it('are the spaces the page shows, runs of them one space', async () => {
+    const editor = open([{ type: 'paragraph', content: 'xy' }]);
+    select(editor, positionOf(editor, 'xy', 2));
+    paste(editor, '<p>ab  cd</p>\n  <p>e <span>f</span> <span> g </span></p>', 'ab cd\ne f g');
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:xyab cd', 'paragraph:e f g']);
+  });
+
+  it('from Notion keep its line breaks', async () => {
+    const editor = open([{ type: 'paragraph', content: 'xy' }]);
+    select(editor, positionOf(editor, 'xy', 2));
+    paste(editor, '<!-- notionvc: 1 --><p>a  b\nc</p><p>d</p>', 'a  b\nc\nd');
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:xya b\nc', 'paragraph:d']);
+  });
+
+  it('in code stay as they are', async () => {
+    const editor = open([{ type: 'paragraph', content: 'xy' }]);
+    select(editor, positionOf(editor, 'xy', 2));
+    paste(editor, '<p>a  b</p><pre><code>c  d</code></pre>', 'a b\nc  d');
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:xya b', 'codeBlock:c  d']);
+  });
+});
+
+describe('web content of lines of words alone, over the whole of a heading', () => {
+  it('gives the heading\'s type to the leading words, as content holding a picture does', async () => {
+    const editor = open([{ type: 'heading', content: 'Head', props: { level: 2 } }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'Head', 0), positionOf(editor, 'Head', 4));
+    paste(editor, '<p>x</p><p>y</p>', 'x\ny');
+    await settled();
+    expect(lines(editor)).toEqual(['heading#2:x', 'paragraph:y', 'paragraph:tail']);
   });
 });
 

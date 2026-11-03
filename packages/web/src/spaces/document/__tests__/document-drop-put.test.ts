@@ -1062,6 +1062,19 @@ describe('a drag within the body, put as its paste at the drop point (design §5
   const item = (words: string, children: unknown[] = []): unknown => ({ type: 'bulletListItem', content: words, children });
   const para = (words: string): unknown => ({ type: 'paragraph', content: words });
 
+  it('pastes words copied from an item\'s middle into its nested item\'s middle as the same lines copied at the top level', async () => {
+    const nested = [item('par', [item('kid')]), para('xxyy')];
+    const flat = [item('par'), item('kid'), para('xxyy')];
+    for (const at of [2, 0]) {
+      // `tree` writes the nested item inside its parent's line.
+      const fromNested = (await copyPaste(nested, ['par', 1], ['kid', 2], ['xxyy', at])).slice(1);
+      const fromFlat = (await copyPaste(flat, ['par', 1], ['kid', 2], ['xxyy', at])).slice(2);
+      expect(fromNested).toEqual(fromFlat);
+    }
+    expect((await copyPaste(flat, ['par', 1], ['kid', 2], ['xxyy', 2])).slice(2)).toEqual(['paragraph:xxar', 'paragraph:kiyy']);
+    expect((await copyPaste(flat, ['par', 1], ['kid', 2], ['xxyy', 0])).slice(2)).toEqual(['bulletListItem:ar', 'paragraph:kixxyy']);
+  });
+
   it('pastes one item copied to its nested item\'s start as that item alone, never nesting the line it lands in', async () => {
     const doc = [item('par', [item('kid')]), para('next'), para('abcd')];
     const kept = ['bulletListItem:par[bulletListItem:kid]', 'paragraph:next'];

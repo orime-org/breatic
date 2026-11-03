@@ -355,7 +355,7 @@ describe('a web table whose cells hold media', () => {
       '<figure><table><tr><td><img src="https://elsewhere.example/a.png"> x</td></tr></table><figcaption>T</figcaption></figure>',
       '<figure><table><tr><td> x</td></tr></table></figure>',
       // The figure's only medium takes its caption, as BlockNote reads a figure.
-      'T', 'x', ' x',
+      'T', 'x', 'x',
     ],
   ])('with %s, keeps the medium and its caption in the original cell', async (_what, html, plainHtml, caption, words, plainWords) => {
     const plain = open([{ type: 'paragraph', content: 'lead' }]);
