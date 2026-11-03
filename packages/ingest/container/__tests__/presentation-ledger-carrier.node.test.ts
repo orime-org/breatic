@@ -52,6 +52,8 @@ let dir: string;
 const files = new Map<string, { path: string; contentType: string }>();
 let puts: Put[] = [];
 let putStatus = 200;
+// When set, the source read answers this type instead of the fixture's (CW01: the receipt takes the registered type, §91 D2-7).
+let servedType: string | null = null;
 
 /**
  * Generate one fixture with FFmpeg.
@@ -83,6 +85,7 @@ afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 beforeEach(() => {
   puts = [];
   putStatus = 200;
+  servedType = null;
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
@@ -90,12 +93,16 @@ beforeEach(() => {
       const body = new Uint8Array(await new Response(init?.body ?? (input instanceof Request ? input.body : null)).arrayBuffer());
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
       puts.push({ url, body, contentType: headers.get('content-type') });
+      // §91 D2-2: the Worker measures what landed and answers its receipt; the container forwards it.
+      if (url.host === 'presentation-carrier.local' && putStatus === 200) {
+        return Response.json({ storageKey: decodeURIComponent(url.pathname.slice(1)), sha256: sha256(body), sizeBytes: body.byteLength, contentType: headers.get('content-type') });
+      }
       return new Response(null, { status: putStatus });
     }
     const file = url.href.startsWith(SOURCE_BASE) ? files.get(url.href.slice(SOURCE_BASE.length)) : undefined;
     if (file === undefined) return new Response('missing', { status: 404 });
     const bytes = await readFile(file.path);
-    return new Response(bytes, { headers: { 'content-length': String(bytes.byteLength), 'content-type': file.contentType } });
+    return new Response(bytes, { headers: { 'content-length': String(bytes.byteLength), 'content-type': servedType ?? file.contentType } });
   }));
 });
 
@@ -195,25 +202,26 @@ describe('the ledger action writes full and compact through the edge PUT of the 
     expect(full.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180 });
   });
 
-  it('LW03 a toolInputId the source does not plan to writes nothing and answers a failure (code: §91 D2-3)', async () => {
-    const answer = await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: 'f'.repeat(64), encodeFacts: null }) as { kind: string; code?: string };
+  it('LW03 a toolInputId the source does not plan to writes nothing and fails source_ledger_plan_mismatch, a content failure (§91 D2-3)', async () => {
+    const answer = await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: 'f'.repeat(64), encodeFacts: null });
     expect(puts).toEqual([]);
-    expect(answer.kind).toBe('failed');
-    expect(answer.code).toMatch(/^[a-z][a-z0-9_]*$/);
+    expect(answer).toEqual({ kind: 'failed', code: 'source_ledger_plan_mismatch' });
   });
 
-  it('LW04 an edge that refuses the write (the DO claim) answers a failure, not written', async () => {
+  it('LW04 an edge that refuses the write (the DO claim) fails source_ledger_failed, not written', async () => {
     const planned = await probed('cfr.mp4');
     putStatus = 409;
-    const answer = await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: planned.toolInputId, encodeFacts: planned.encoding }) as { kind: string };
-    expect(answer.kind).toBe('failed');
+    const answer = await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: planned.toolInputId, encodeFacts: planned.encoding });
+    // §91 D2-3: the edge refusal is the transient source_ledger_failed.
+    expect(answer).toEqual({ kind: 'failed', code: 'source_ledger_failed' });
   });
 });
 
 describe('the carrier action (§5.1 steps 3–4, §4.1, §7.1; §91 D2-1, D2-2)', () => {
-  it('CW01 identity writes no object and answers the source itself as the native carrier', async () => {
+  it('CW01 identity writes no object and answers the source itself as the native carrier, with the registered content type', async () => {
     const fields = await common('cfr.mp4');
-    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...fields, route: 'identity' });
+    servedType = 'application/octet-stream';
+    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...fields, route: 'identity', contentType: 'video/mp4' });
     expect(puts).toEqual([]);
     expect(answer).toEqual({ kind: 'carrier', receipts: [{ role: 'carrier', packing: 'native', storageKey: 'video/cfr.mp4', sha256: fields.sourceFingerprint,
       sizeBytes: (await stat(files.get('cfr.mp4')!.path)).size, contentType: 'video/mp4' }] });
@@ -227,7 +235,7 @@ describe('the carrier action (§5.1 steps 3–4, §4.1, §7.1; §91 D2-1, D2-2)'
     ['u-h264-720.mp4', 'h264', ['bt709']],
   ] as const)('CW02 copying %s writes one MP4 at the copy key whose %s stream carries the plan matrix, frames and duration unchanged', async (name, codec, matrices) => {
     const source = files.get(name)!.path;
-    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...await common(name), route: 'copy' }) as { kind: string; receipts: Record<string, unknown>[] };
+    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...await common(name), route: 'copy', contentType: files.get(name)!.contentType }) as { kind: string; receipts: Record<string, unknown>[] };
     expect(puts).toHaveLength(1);
     const [put] = puts;
     // §91 D2-2: the basic copy writes where the first dispatched copy attempt would, `presentation-copy` attempt 1.
@@ -246,12 +254,17 @@ describe('the carrier action (§5.1 steps 3–4, §4.1, §7.1; §91 D2-1, D2-2)'
     expect(after.nb_read_packets).toBe(before.nb_read_packets);
     expect(Number(after.duration)).toBeCloseTo(Number(before.duration), 3);
     expect(await packetTimes(written)).toEqual(await packetTimes(source));
+    // §91 D2-6: faststart, the movie box before the media data.
+    const text = new TextDecoder('latin1').decode(put!.body);
+    expect(text.indexOf('moov')).toBeGreaterThan(-1);
+    expect(text.indexOf('moov')).toBeLessThan(text.indexOf('mdat'));
+    // The receipt is the Worker's measurement of what landed, forwarded unchanged (§91 D2-2, D2-7).
     expect(answer).toEqual({ kind: 'carrier', receipts: [{ role: 'carrier', packing: 'native', storageKey: key, sha256: sha256(put!.body), sizeBytes: put!.body.byteLength, contentType: 'video/mp4' }] });
   });
 
   it('CW03 a carrier write the edge refuses answers a failure', async () => {
     putStatus = 403;
-    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...await common('u-h264.mp4'), route: 'copy' }) as { kind: string };
+    const answer = await action('runPresentationCarrier')({ action: 'carrier', ...await common('u-h264.mp4'), route: 'copy', contentType: 'video/mp4' }) as { kind: string };
     expect(answer.kind).toBe('failed');
   });
 });

@@ -38,6 +38,8 @@ const CONTENT = [
   'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
   'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
   'resource_limit', 'source_ledger_over_cap',
+  // S6d D2-3 (§91): a re-probed plan of another toolInputId under the same frozen facts fails the same way every time.
+  'source_ledger_plan_mismatch',
 ] as const;
 // Presentation candidate codes classified by the same function (§10.6); they are never written into ledger state (§7.4).
 const CANDIDATE_CONTENT = ['too_long', 'packed_over_cap', 'packed_clock_mismatch'] as const;

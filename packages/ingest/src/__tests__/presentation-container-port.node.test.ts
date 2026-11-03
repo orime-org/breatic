@@ -121,7 +121,8 @@ describe('carrier through the run contract (§91 D2, D2-1; design §5.1 steps 3�
   it.each(['identity', 'copy'] as const)('PC01 a %s carrier sends one carrier request and hands back the written receipts for the store to measure', async (route) => {
     const send = vi.fn<Send>(async () => ({ kind: 'carrier', receipts: RECEIPTS }));
     expect(await (port(send) as FullPort).carrier(CAPABILITY, route)).toEqual({ kind: 'written', receipts: RECEIPTS });
-    expect(send.mock.calls).toEqual([[{ action: 'carrier', ...COMMON, route }]]);
+    // §91 D2-7: the registered content type travels with the carrier request.
+    expect(send.mock.calls).toEqual([[{ action: 'carrier', ...COMMON, route, contentType: ADMISSION.contentType }]]);
   });
 
   it('PC02 passes a failed carrier through with its code and rejects a malformed answer', async () => {

@@ -30,6 +30,7 @@ import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { videoPresentationVersionId } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
+import * as containerModule from '@ingest/media-container.js';
 import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
@@ -487,6 +488,151 @@ describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 s
       expect(await store.advanceStage(capability, 'publish')).toBe(true);
       const view = await store.read(key, H) as unknown as { presentation: Record<string, unknown> | null };
       expect(view.presentation).toMatchObject({ versionId: await expectedVersionId(1, carrier.receipt), playback: { carrier: { storageKey: carrier.receipt.storageKey, sha256: carrier.receipt.sha256 } } });
+    });
+  });
+});
+
+describe('a failed ledger write ends the instance in its class (§91 D2-3; design §10.6 失败分类)', () => {
+  it.each([
+    ['source_ledger_plan_mismatch', 'failed-content'],
+    ['source_ledger_failed', 'failed-transient'],
+  ] as const)('PR13 a writer whose ledger write rejects with %s leaves the instance %s', async (code, kind) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const port = fakePort(store, key, planned(IDENTITY_ROUTE));
+      port.writeLedger = vi.fn(async () => { throw Object.assign(new Error('The container could not write the ledger'), { code }); });
+      await admitAndPrepare(store, key, 'job-a', port);
+      expect((await store.read(key, H)).ledgers[T]).toEqual({ kind, code });
+    });
+  });
+});
+
+// S6d D2-2 (§91; design §5.1 step 3, line 304): the basic copy writes its carrier only through the Worker's outbound
+// handler for the named key, under a claim the DO grants the copy job before any byte arrives; the Worker measures what
+// landed (etag, size, SHA-256, content type) and answers that receipt. Modelled on `writeSourceLedgerPresentation`.
+describe('the basic copy carrier write through the edge (§91 D2-2)', () => {
+  type CarrierHandler = (request: Request, environment: unknown, ctx: unknown) => Promise<Response>;
+  type Claimable = MachineStore & {
+    claimPresentationCarrier: (identity: Identity, key: string, declaration: { byteLength: number; contentType: string }) => Promise<unknown>;
+    commitPresentationCarrier: (identity: Identity, owner: string, measured: Record<string, unknown>) => Promise<boolean>;
+  };
+  const BYTES = new Uint8Array([2, 7, 1, 8, 2, 8]);
+
+  /**
+   * The edge handler, failing when it is not exported.
+   * @returns It.
+   */
+  function carrierHandler(): CarrierHandler {
+    const found = (containerModule as Record<string, unknown>).writePresentationCarrier;
+    expect(found, 'writePresentationCarrier is exported from @ingest/media-container.js').toBeTypeOf('function');
+    return found as CarrierHandler;
+  }
+
+  /**
+   * One container PUT through the edge handler, with the store reached directly as the DO stub.
+   * @param store - The source's store.
+   * @param key - The source key.
+   * @param capability - The writing job.
+   * @param change - What differs from a correct write of the copy attempt 1 key.
+   * @param change.key - Another path key.
+   * @param change.query - Query overrides.
+   * @param change.contentLength - Another content length.
+   * @returns The response.
+   */
+  function put(store: MachineStore, key: string, capability: Identity, change: { key?: string; query?: Record<string, string>; contentLength?: number } = {}): Promise<Response> {
+    const url = new URL(`http://presentation-carrier.local/${change.key ?? copyKeyOf(key, capability.jobId)}`);
+    const query = { jobId: capability.jobId, sourceFingerprint: H, deadlineAt: String(capability.deadlineAt), token: capability.token, attempt: '1', byteLength: String(BYTES.length), ...change.query };
+    for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
+    const request = new Request(url, { method: 'PUT', body: BYTES, headers: { 'content-type': 'video/mp4', 'content-length': String(change.contentLength ?? BYTES.length) } });
+    const owner = store as Claimable;
+    const environment = { BUCKET: env.BUCKET, MEDIA: { idFromName: (name: string) => name, get: () => ({
+      claimPresentationCarrier: (...args: Parameters<Claimable['claimPresentationCarrier']>) => owner.claimPresentationCarrier(...args),
+      commitPresentationCarrier: (...args: Parameters<Claimable['commitPresentationCarrier']>) => owner.commitPresentationCarrier(...args),
+    }) } };
+    return carrierHandler()(request, environment, { params: { key } });
+  }
+
+  /**
+   * Run a basic copy whose carrier step runs `during` with the copy job's capability, in the copy stage.
+   * @param during - What the carrier step does; it answers the carrier outcome.
+   * @returns The source key and the prepare answer.
+   */
+  async function copyWith(during: (store: MachineStore, key: string, capability: Identity) => Promise<CarrierOutcome>): Promise<{ key: string; answer: Answer }> {
+    const key = await source();
+    const answer = await withStore(key, async (store) => {
+      const port = fakePort(store, key, planned(COPY_ROUTE));
+      port.carrier = vi.fn(async (capability: Identity) => during(store, key, capability));
+      return admitAndPrepare(store, key, 'job-a', port);
+    });
+    return { key, answer };
+  }
+
+  it('BC01 the copy job writes its key once: the object lands, the Worker answers its measured receipt and the store publishes it', async () => {
+    let receipt: Record<string, unknown> = {};
+    const { key, answer } = await copyWith(async (store, source, capability) => {
+      const response = await put(store, source, capability);
+      expect(response.status).toBe(200);
+      receipt = await response.json();
+      return { kind: 'written', receipts: [{ role: 'carrier', packing: 'native', ...receipt }] };
+    });
+    const copyKey = copyKeyOf(key, 'job-a');
+    const head = (await env.BUCKET.head(copyKey))!;
+    expect(head.httpMetadata?.contentType).toBe('video/mp4');
+    expect(receipt).toEqual({ storageKey: copyKey, sha256: await digest(BYTES), sizeBytes: BYTES.length, contentType: 'video/mp4' });
+    expect(answer.presentation).toMatchObject({ playback: { carrier: { storageKey: copyKey, etag: head.etag, size: BYTES.length, sha256: await digest(BYTES) } } });
+  });
+
+  it.each([
+    ['another attempt\'s key', (key: string): string => workKey(key, videoContainerJobId({ kind: 'presentation-copy', jobId: 'job-a', attempt: 2 }))],
+    ['another job\'s copy key', (key: string): string => copyKeyOf(key, 'job-b')],
+    ['the source key itself', (key: string): string => key],
+  ] as const)('BC02 refuses %s with 403 and stores nothing', async (_name, keyOf) => {
+    await copyWith(async (store, source, capability) => {
+      const target = keyOf(source);
+      const before = await env.BUCKET.head(target);
+      expect((await put(store, source, capability, { key: target })).status).toBe(403);
+      expect((await env.BUCKET.head(target))?.etag ?? null).toBe(before?.etag ?? null);
+      return { kind: 'failed', code: 'presentation_failed' };
+    });
+  });
+
+  it.each([['a wrong token', { token: 'not-the-token' }], ['another job id', { jobId: 'job-b' }]] as const)('BC03 refuses %s with 409 (no claim) and stores nothing', async (_name, query) => {
+    await copyWith(async (store, source, capability) => {
+      expect((await put(store, source, capability, { query })).status).toBe(409);
+      expect(await env.BUCKET.head(copyKeyOf(source, 'job-a'))).toBeNull();
+      return { kind: 'failed', code: 'presentation_failed' };
+    });
+  });
+
+  it.each([
+    ['a content length other than the declared length', { contentLength: 5 }],
+    ['no declared length', { query: { byteLength: '' } }],
+    ['a malformed fingerprint', { query: { sourceFingerprint: 'not-a-hash' } }],
+  ] as const)('BC04 refuses %s with 400 and stores nothing', async (_name, change) => {
+    await copyWith(async (store, source, capability) => {
+      expect((await put(store, source, capability, change)).status).toBe(400);
+      expect(await env.BUCKET.head(copyKeyOf(source, 'job-a'))).toBeNull();
+      return { kind: 'failed', code: 'presentation_failed' };
+    });
+  });
+
+  it('BC05 a second write of the same key is refused and leaves the first object as it landed', async () => {
+    await copyWith(async (store, source, capability) => {
+      const first = await put(store, source, capability);
+      expect(first.status).toBe(200);
+      const etag = (await env.BUCKET.head(copyKeyOf(source, 'job-a')))!.etag;
+      expect((await put(store, source, capability)).status).toBe(409);
+      expect((await env.BUCKET.head(copyKeyOf(source, 'job-a')))!.etag).toBe(etag);
+      return { kind: 'written', receipts: [{ role: 'carrier', packing: 'native', ...await first.json() }] };
+    });
+  });
+
+  it('BC06 the DO grants no carrier claim outside the copy stage of a copy-route job', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
+      const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
+      expect(await (store as Claimable).claimPresentationCarrier(capability, copyKeyOf(key, 'job-a'), { byteLength: BYTES.length, contentType: 'video/mp4' })).toBeNull();
     });
   });
 });

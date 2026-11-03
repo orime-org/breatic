@@ -120,7 +120,8 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
 const capabilityFields = { jobId: PROBE.jobId, sourceFingerprint: PROBE.sourceFingerprint, deadlineAt: PROBE.deadlineAt, token: 'token-a', storageKey: 'video/canonical.mp4',
   sourceURL: PROBE.sourceURL, limits: LIMITS, encoding: ENCODING, probe: PROBE.probe };
 const LEDGER = { action: 'ledger', ...capabilityFields, toolInputId: 'b'.repeat(64), encodeFacts: { keyframeOrdinals: [0, 10], codedWidth: 320, codedHeight: 180 } };
-const CARRIER = { action: 'carrier', ...capabilityFields, route: 'copy' };
+// §91 D2-7: the carrier request carries the registered content type, which the identity receipt takes.
+const CARRIER = { action: 'carrier', ...capabilityFields, route: 'copy', contentType: 'video/mp4' };
 const RECEIPT = { role: 'carrier', packing: 'native', storageKey: 'video/canonical.mp4.video-presentation:video-presentation-a:copy:a1', sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' };
 
 describe('the ledger action (§91 D2; design §5.1 step 5, §3.2 item 7)', () => {
@@ -161,9 +162,12 @@ describe('the carrier action (§91 D2; design §5.1 steps 3–4, §4.1)', () => 
     for (const route of ['dispatch_copy', 'encode', 'reuse']) expect(parseRequest({ ...CARRIER, route })).toBe(false);
   });
 
-  it('CA02 refuses a carrier request without its token', () => {
+  it('CA02 refuses a carrier request without its token or its registered content type', () => {
     const { token: _dropped, ...value } = CARRIER;
     expect(parseRequest(value)).toBe(false);
+    const { contentType: _type, ...untyped } = CARRIER;
+    expect(parseRequest(CARRIER)).toBe(true);
+    expect(parseRequest(untyped)).toBe(false);
   });
 
   it('CA03 answers the role-tagged receipts of the carrier, or a failure', () => {
