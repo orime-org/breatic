@@ -1391,6 +1391,36 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     expect(marked).toEqual(['bb']);
   });
 
+  it('moves a picture and a whole line into an empty line with that line\'s own row id, and copies them with the empty line\'s', async () => {
+    const doc = [
+      { type: 'paragraph', content: 'lead' },
+      { type: 'image', props: { url: PIC } },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'paragraph', content: 'mid' },
+      { type: 'paragraph' },
+      { type: 'paragraph', content: 'end' },
+    ] as Parameters<typeof open>[0];
+    const blocks = (editor: Editor): { id: string; content?: { text?: string }[] }[] => editor.document as never;
+    const moved = (await openReady(doc)).editor;
+    const tailId = blocks(moved)[2]!.id;
+    dragWithin(moved, positionOf(moved, 'lead', 4), positionOf(moved, 'tail', 4), emptyLine(moved));
+    await settled();
+    expect(lines(moved)).toEqual(['paragraph:lead', 'paragraph:mid', `image(${PIC})`, 'paragraph:tail', 'paragraph:end']);
+    expect(blocks(moved)[3]!.id).toBe(tailId);
+    unmountAll();
+    const copied = (await openReady(doc)).editor;
+    const emptyId = blocks(copied)[4]!.id;
+    const view = copied.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(copied, 'lead', 4), positionOf(copied, 'tail', 4))));
+    view.focus();
+    view.dom.parentElement!.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: false };
+    dropFormats(copied, emptyLine(copied), { 'text/html': '<p>x</p>' }, 1, true);
+    await settled();
+    expect(lines(copied)).toEqual(['paragraph:lead', `image(${PIC})`, 'paragraph:tail', 'paragraph:mid', `image(${PIC})`, 'paragraph:tail', 'paragraph:end']);
+    expect(blocks(copied)[5]!.id).toBe(emptyId);
+  });
+
   it('changes nothing when dropped onto the dragged content itself', async () => {
     const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
     const before = editor.prosemirrorView.state.doc.toJSON();

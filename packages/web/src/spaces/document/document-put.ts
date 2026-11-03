@@ -147,10 +147,20 @@ function asBodyNode(made: PMNode, source: PMNode): PMNode {
   }
   const children: PMNode[] = [];
   made.forEach((child, _offset, index) => children.push(index < source.childCount ? asBodyNode(child, source.child(index)) : child));
-  const id = source.attrs['id'] as unknown;
-  // A copy's ids are null, which its clipboard HTML writes as "null".
-  const attrs = typeof id === 'string' && id !== '' && id !== 'null' && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
+  const id = carriedId(source);
+  const attrs = id !== null && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
   return made.type.create(attrs, children, made.marks);
+}
+
+/**
+ * The row id a block read off the body's own content carries: a move's.
+ * @param source - The body's own node it was read from.
+ * @returns The id, or null for none (a copy's).
+ */
+function carriedId(source: PMNode | undefined): string | null {
+  const id = source?.attrs['id'] as unknown;
+  // A copy's ids are null, which its clipboard HTML writes as "null".
+  return typeof id === 'string' && id !== '' && id !== 'null' ? id : null;
 }
 
 /**
@@ -762,10 +772,11 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     } else if (!nonParagraph && WORDS.has(lastInReading(content[content.length - 1]!).type)) {
       // An empty plain line becomes the last pasted block when the content
       // ends in words, its type, attributes and nested blocks, keeping the
-      // line's id and nested blocks (§5.4.3); content ending in a medium
-      // leaves the line for the caret.
+      // line's id and nested blocks (§5.4.3), and a moved line keeping its
+      // own id (A19); content ending in a medium leaves the line for the caret.
       const tail = nodes[nodes.length - 1]!;
-      const put = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id: line.node.attrs['id'] }, tail.content)];
+      const id = carriedId(content[content.length - 1]![BODY_NODE]) ?? line.node.attrs['id'];
+      const put = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id }, tail.content)];
       laid = nestLast(put, line.node);
       tr.replaceWith(start, end, laid);
       finishCaret(tr, put, start);
