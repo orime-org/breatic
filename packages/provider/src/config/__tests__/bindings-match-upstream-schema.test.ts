@@ -34,6 +34,8 @@ interface CatalogParam {
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
 const SAMPLE_URL = "https://example.com/sample.png";
 const SAMPLE_TEXT = "sample text";
+/** A text sample that is also a single word, for item fields an upstream may restrict to word characters. */
+const SAMPLE_WORD = "sample";
 
 /**
  * The committed schema snapshot of one upstream endpoint.
@@ -102,7 +104,7 @@ function samplesOf(name: string, param: CatalogParam, binding: MediaBinding, sna
  * @returns The item.
  */
 function sampleItem(param: CatalogParam): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(param.fields ?? {}).map(([sub, f]) => [sub, f.values?.[0] ?? SAMPLE_TEXT]));
+  return Object.fromEntries(Object.entries(param.fields ?? {}).map(([sub, f]) => [sub, f.values?.[0] ?? SAMPLE_WORD]));
 }
 
 /**
@@ -159,28 +161,45 @@ function pathsOf(body: Record<string, unknown>, at = ""): string[] {
   });
 }
 
-/** One endpoint a run reaches: its schema and the fields it writes, by dotted path. */
+/** One endpoint a run reaches: its schema, the fields it writes and the objects it builds field by field, by dotted path. */
 interface Reached {
   upstream: string;
   endpoint: string;
   snapshot: SchemaSnapshot;
   written: ReadonlySet<string>;
+  built: ReadonlySet<string>;
 }
 
 /**
- * The fields a binding can ever write on its model's endpoint: its prompt field, every
- * param's field and every fixed field, with the objects they sit in.
+ * The fields a binding can ever write on its model's endpoint (its prompt field, every
+ * param's field and every fixed field, with the objects they sit in), and the objects among
+ * them it builds field by field (`voice_setting` of `voice_setting.voice_id`).
  * @param binding - The binding.
  * @returns The dotted paths.
  */
-function everWritten(binding: MediaBinding): Set<string> {
-  const fields = [binding.prompt_field, ...Object.values(binding.params ?? {}).map((p) => p.field), ...Object.keys(binding.fixed ?? {})];
-  return new Set(fields.filter((f): f is string => f !== undefined).flatMap((f) => f.split(".").map((_, i, parts) => parts.slice(0, i + 1).join("."))));
+function everWritten(binding: MediaBinding): { written: Set<string>; built: Set<string> } {
+  const fields = [binding.prompt_field, ...Object.values(binding.params ?? {}).map((p) => p.field), ...Object.keys(binding.fixed ?? {})].filter((f): f is string => f !== undefined);
+  const prefixes = (f: string): string[] => f.split(".").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("."));
+  return { written: new Set([...fields, ...fields.flatMap(prefixes)]), built: new Set(fields.flatMap(prefixes)) };
+}
+
+/**
+ * The objects a body carries, by dotted path.
+ * @param body - The body.
+ * @param at - The path of the body.
+ * @returns The paths.
+ */
+function objectsOf(body: Record<string, unknown>, at = ""): string[] {
+  return Object.entries(body).flatMap(([key, value]) => {
+    const path = at === "" ? key : `${at}.${key}`;
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? [path, ...objectsOf(value as Record<string, unknown>, path)] : [];
+  });
 }
 
 /**
  * The fields of a schema a request leaves to the upstream: at the top level, or inside an
- * object the request sends.
+ * object the request builds field by field. A field inside an object a param writes whole
+ * is that param's to fill.
  * @param reached - The endpoint.
  * @returns The dotted paths.
  */
@@ -188,7 +207,7 @@ function leftOut(reached: Reached): string[] {
   return Object.keys(reached.snapshot.fields).filter((path) => {
     if (reached.written.has(path)) return false;
     const parent = path.slice(0, Math.max(0, path.lastIndexOf(".")));
-    return parent === "" || reached.written.has(parent);
+    return parent === "" || reached.built.has(parent);
   });
 }
 
@@ -211,7 +230,11 @@ function counterpart(path: string, other: SchemaSnapshot): string | undefined {
  * when WaveSpeed has no such field, which the same run then reads differently there.
  * Keyed `upstream endpoint field`; each says why the two defaults give the same result.
  */
-const SAME_EFFECT: Readonly<Record<string, string>> = {};
+const SAME_EFFECT: Readonly<Record<string, string>> = {
+  "fal fal-ai/nano-banana-2/edit aspect_ratio": "fal's auto and WaveSpeed's none both take the input image's ratio (WaveSpeed: 'If not specified, it is determined automatically from the input image')",
+  "fal bytedance/seedance-2.5/us/reference-to-video aspect_ratio": "fal's auto and SandBase's none both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
+  "sandbase bytedance/seedance/2.5/reference-to-video aspect_ratio": "SandBase's none and fal's auto both let the model choose (SandBase: 'Omit to let the model choose from the prompt and reference inputs')",
+};
 
 const config = shipped();
 const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
@@ -232,12 +255,13 @@ const promptLimits = new Map(
 function reachedBy(binding: MediaBinding): Reached[] {
   const kind = config.upstreams[binding.upstream]?.kind;
   const own = snapshotFor(binding.upstream, binding.model_id);
-  const out: Reached[] = own === undefined ? [] : [{ upstream: binding.upstream, endpoint: binding.model_id, snapshot: own, written: everWritten(binding) }];
+  const out: Reached[] = own === undefined ? [] : [{ upstream: binding.upstream, endpoint: binding.model_id, snapshot: own, ...everWritten(binding) }];
   for (const step of binding.extra_steps ?? []) {
     const snapshot = snapshotFor(binding.upstream, step.endpoint);
     const codec = kind === undefined ? undefined : adapterOf(kind).steps[step.kind];
     if (snapshot === undefined || codec === undefined) continue;
-    out.push({ upstream: binding.upstream, endpoint: `${step.kind}:${step.endpoint}`, snapshot, written: new Set(pathsOf(codec.body(sampleStep(binding, step.for_param)))) });
+    const body = codec.body(sampleStep(binding, step.for_param));
+    out.push({ upstream: binding.upstream, endpoint: `${step.kind}:${step.endpoint}`, snapshot, written: new Set(pathsOf(body)), built: new Set(objectsOf(body)) });
   }
   return out;
 }
@@ -271,27 +295,64 @@ function rejectMatches(binding: MediaBinding, test: RegExp): boolean {
  */
 const escaped = (name: string): string => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** One string field a run writes from text, with the longest text our catalog lets a run put there. */
+interface TextField {
+  /** Where it is, for the message. */
+  where: string;
+  /** The name a reject's condition reads it by: the upstream field, the prompt field, or the list it sits in. */
+  named: string;
+  /** Whether it is a sub-field of each item of the list `named`. */
+  inList: boolean;
+  leaves: Leaf[];
+  ours?: number;
+}
+
 /**
- * The string fields a binding writes from text, with the longest text our catalog lets
- * a run put there: the prompt, text params, and text sub-fields of list items.
+ * The body of a binding's own call: its clone codec's when the call clones a source, else the binding's body.
+ * @param binding - The binding.
+ * @param prompt - The run's prompt.
+ * @returns The body.
+ */
+function ownBody(binding: MediaBinding, prompt: string): Record<string, unknown> {
+  const kind = config.upstreams[binding.upstream]?.kind;
+  const codec = binding.reused_by === undefined || kind === undefined ? undefined : adapterOf(kind).steps.voice;
+  return codec === undefined ? buildBody(binding, { prompt, params: {} }) : codec.body({ ...sampleStep(binding, undefined), prompt });
+}
+
+/**
+ * The string fields a binding's runs write from text: the prompt wherever a call carries it,
+ * text params, and text sub-fields of list items.
  * @param model - The model.
  * @param binding - The binding.
- * @param snapshot - The upstream's schema.
- * @returns Each field, the list it sits in for an item sub-field, its shapes and our limit.
+ * @param snapshot - The upstream's schema of the model's own endpoint.
+ * @returns Each field.
  */
-function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): { field: string; list?: string; leaves: Leaf[]; ours?: number }[] {
-  const out: { field: string; list?: string; leaves: Leaf[]; ours?: number }[] = [];
-  if (binding.prompt_field !== undefined) out.push({ field: binding.prompt_field, leaves: snapshot.fields[binding.prompt_field] ?? [], ours: promptLimits.get(model) });
+function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): TextField[] {
+  const out: TextField[] = [];
+  const prompt = binding.prompt_field;
+  if (prompt !== undefined) {
+    if (ownBody(binding, SAMPLE_TEXT)[prompt] === SAMPLE_TEXT) out.push({ where: prompt, named: prompt, inList: false, leaves: snapshot.fields[prompt] ?? [], ours: promptLimits.get(model) });
+    const kind = config.upstreams[binding.upstream]?.kind;
+    for (const step of binding.extra_steps ?? []) {
+      const codec = kind === undefined ? undefined : adapterOf(kind).steps[step.kind];
+      const stepSnapshot = snapshotFor(binding.upstream, step.endpoint);
+      if (codec === undefined || stepSnapshot === undefined) continue;
+      const body = codec.body({ ...sampleStep(binding, step.for_param), description: SAMPLE_WORD });
+      for (const path of pathsOf(body).filter((p) => at(body, p) === SAMPLE_TEXT)) {
+        out.push({ where: `${step.kind}:${step.endpoint} ${path}`, named: prompt, inList: false, leaves: stepSnapshot.fields[path] ?? [], ours: promptLimits.get(model) });
+      }
+    }
+  }
   for (const [name, param] of Object.entries(models.get(model) ?? {})) {
     const bound = binding.params?.[name];
     if (bound === undefined) continue;
-    if (param.type === "text") out.push({ field: bound.field, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars });
+    if (param.type === "text") out.push({ where: bound.field, named: bound.field, inList: false, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars });
     if (param.type !== "items") continue;
     const items = (snapshot.fields[bound.field] ?? []).find((leaf) => leaf.type === "array")?.items;
     for (const [sub, spec] of Object.entries(param.fields ?? {})) {
       const subField = bound.item_fields?.[sub]?.field;
       if (spec.type !== "text" || subField === undefined || items === undefined) continue;
-      out.push({ field: subField, list: bound.field, leaves: items.fields[subField] ?? [], ours: spec.max_chars });
+      out.push({ where: `${bound.field}[].${subField}`, named: bound.field, inList: true, leaves: items.fields[subField] ?? [], ours: spec.max_chars });
     }
   }
   return out;
@@ -320,13 +381,15 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(Object.keys(snapshot.outputs ?? {}), binding.output_field).toContain(binding.output_field);
   });
 
-  it("writes every value of every param it sends as the upstream takes it", () => {
+  it("writes every value of every param it sends as the upstream takes it, except a value its rejects keep out", async () => {
     const bad: string[] = [];
     for (const [name, param] of Object.entries(params)) {
       const field = binding.params?.[name]?.field;
       // A param an extra step serves is sent as what that step made, not as the run's value.
       if (field === undefined || binding.extra_steps?.some((step) => step.for_param === name)) continue;
       for (const value of samplesOf(name, param, binding, snapshot)) {
+        const run = { params: { [name]: value }, prompt: SAMPLE_TEXT, durations: {}, placeholders: [], durationsMissing: [] };
+        if ((await rejectedInput(provider.pricingRules(model), binding.upstream, run)) !== undefined) continue;
         const written = at(buildBody(binding, { prompt: "", params: { [name]: value } }), field);
         if (written === undefined) continue;
         if (!fieldFits(snapshot, field, written)) bad.push(`${name}=${JSON.stringify(value)} -> ${field}=${JSON.stringify(written)}`);
@@ -354,14 +417,13 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
 
   it("states as a reject each length bound and pattern of a text field it writes that our catalog lets a run break", () => {
     const unstated: string[] = [];
-    for (const { field, list, leaves, ours } of textFields(model, binding, snapshot)) {
+    for (const { where, named, inList, leaves, ours } of textFields(model, binding, snapshot)) {
       const text = leaves.find((leaf) => leaf.type === "string");
       if (text === undefined) continue;
-      const named = list === undefined ? `\\$length\\(\\s*${escaped(field)}\\s*\\)` : `\\b${escaped(list)}\\b.*\\$length\\(`;
-      const where = list === undefined ? field : `${list}[].${field}`;
-      if (text.maxLength !== undefined && (ours === undefined || ours > text.maxLength) && !rejectMatches(binding, new RegExp(`${named}[^<>]*>\\s*${text.maxLength}\\b`))) unstated.push(`${where} maxLength ${text.maxLength}`);
-      if (text.minLength !== undefined && text.minLength > 1 && !rejectMatches(binding, new RegExp(`${named}[^<>]*<\\s*${text.minLength}\\b`))) unstated.push(`${where} minLength ${text.minLength}`);
-      if (text.pattern !== undefined && !rejectMatches(binding, new RegExp(`\\b${escaped(list ?? field)}\\b`))) unstated.push(`${where} pattern ${text.pattern}`);
+      const length = inList ? `\\b${escaped(named)}\\b.*\\$length\\(` : `\\$length\\(\\s*${escaped(named)}\\s*\\)`;
+      if (text.maxLength !== undefined && (ours === undefined || ours > text.maxLength) && !rejectMatches(binding, new RegExp(`${length}[^<>]*>\\s*${text.maxLength}\\b`))) unstated.push(`${where} maxLength ${text.maxLength}`);
+      if (text.minLength !== undefined && text.minLength > 1 && !rejectMatches(binding, new RegExp(`${length}[^<>]*<\\s*${text.minLength}\\b`))) unstated.push(`${where} minLength ${text.minLength}`);
+      if (text.pattern !== undefined && !rejectMatches(binding, new RegExp(`\\b${escaped(named)}\\b`))) unstated.push(`${where} pattern ${text.pattern}`);
     }
     expect(unstated, unstated.join("\n")).toEqual([]);
   });
