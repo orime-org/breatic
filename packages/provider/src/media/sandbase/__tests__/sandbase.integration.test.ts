@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../../config/schema.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
 import { createProvider } from "../../../provider.js";
@@ -24,6 +24,9 @@ afterEach(async () => {
   await Promise.all([sb.close(), ws.close()]);
 });
 
+/** How long these cases let a completed run without outputs wait for them. */
+const EMPTY_OUTPUT_WAIT_MS = 60_000;
+
 /**
  * The configuration: SandBase first, a WaveSpeed-kind fake second.
  * @param extra - More models.
@@ -36,7 +39,7 @@ function config(extra: ProviderConfigInput["media"]["models"] = {}): ProviderCon
   ];
   return {
     upstreams: {
-      sandbase: { kind: "sandbase", base_url: `${sb.url}/v1`, key_env: "SANDBASE_API_KEY" },
+      sandbase: { kind: "sandbase", base_url: `${sb.url}/v1`, key_env: "SANDBASE_API_KEY", empty_output_wait_ms: EMPTY_OUTPUT_WAIT_MS },
       ws: { kind: "wavespeed", base_url: ws.url, key_env: "WS_KEY" },
     },
     media: {
@@ -62,7 +65,7 @@ function runner(keys: Record<string, string> = { SANDBASE_API_KEY: "sb-key", WS_
 
 const stored = (ticket: MediaTicket): MediaTicket => JSON.parse(JSON.stringify(ticket)) as MediaTicket;
 const live = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 60_000 });
-const options = { idempotencyKey: "task-1", sourceKeys: {}, clones: [] };
+const options = { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} };
 
 /**
  * Narrow an answer to one state.
@@ -126,16 +129,71 @@ describe("SandBase runs", () => {
     expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/r2.mp3" }]);
   });
 
-  it("keeps running while pending, running, or completed with no outputs yet", async () => {
+  it("keeps running while pending or running", async () => {
     const { run } = runner();
     let asks = 0;
     sb.answer(({ method, path }) => {
       if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r3", status: "pending" } };
-      if (path === "/v1/run/r3") return { status: 200, body: { id: "r3", status: ["pending", "running", "completed"][asks++] ?? "running", outputs: [] } };
+      if (path === "/v1/run/r3") return { status: 200, body: { id: "r3", status: ["pending", "running"][asks++] ?? "running" } };
       return undefined;
     });
     let answer = expectState(await sent(run), "running");
     for (let i = 0; i < 3; i++) answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+  });
+
+  describe("a completed run that answers no outputs", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /**
+     * Answer a completed run with no outputs until told otherwise, then with one.
+     * @param outputs - Whether the run answers its output now.
+     * @returns Nothing.
+     */
+    function completedRun(outputs: () => boolean): void {
+      sb.answer(({ method, path }) => {
+        if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r9", status: "pending" } };
+        if (path === "/v1/run/r9") return { status: 200, body: { id: "r9", status: "completed", ...(outputs() ? { outputs: [{ url: "https://media.example/r9.png" }] } : {}) } };
+        if (path === "/v1/tasks/r9/cost") return taskCost(true, "0.020000");
+        return undefined;
+      });
+    }
+
+    it("keeps running within the configured wait, and finishes once the output arrives", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const { run } = runner();
+      let ready = false;
+      completedRun(() => ready);
+      let answer = expectState(await sent(run), "running");
+      answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+      vi.setSystemTime(Date.now() + EMPTY_OUTPUT_WAIT_MS - 1_000);
+      answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+      ready = true;
+      const done = expectState(await run.poll(stored(answer.ticket), live()), "done");
+      expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/r9.png" }]);
+    });
+
+    it("fails the run with the cost still looked up once the wait has passed since it first answered so", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const { run } = runner();
+      completedRun(() => false);
+      let answer = expectState(await sent(run), "running");
+      answer = expectState(await run.poll(stored(answer.ticket), live()), "running");
+      vi.setSystemTime(Date.now() + EMPTY_OUTPUT_WAIT_MS + 1_000);
+      const failed = expectState(await run.poll(stored(answer.ticket), live()), "failed");
+      expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
+      expect((failed.reason as UpstreamTaskFailed).upstreamError).toMatch(/no output/i);
+      expect(failed.costs).toEqual([{ state: "known", usd: 0.02, source: "billing" }]);
+    });
+  });
+
+  it("names the endpoint as the model whatever field the body carries", async () => {
+    const binding = { upstream: "sandbase", weight: 1, model_id: "bfl/flux-2/flash", prompt_field: "prompt", fixed: { mode: "async", model: "someone/else" }, pricing };
+    const { run } = runner(undefined, { "model-field": { upstreams: [binding] } });
+    sb.answer(({ method }) => (method === "POST" ? { status: 202, body: { id: "r8", status: "pending" } } : { status: 200, body: { id: "r8", status: "running" } }));
+    expectState(await sent(run, "model-field"), "running");
+    expect((submits(sb.seen)[0]!.body as { model: string }).model).toBe("bfl/flux-2/flash");
   });
 
   it("fails the run on a failed or timed-out run, with SandBase's words", async () => {
@@ -167,6 +225,19 @@ describe("SandBase runs", () => {
     const done = expectState(await run.poll(stored(running.ticket), live()), "done");
     expect(done.outputs).toEqual([{ kind: "bytes", bytes: new Uint8Array(png), contentType: "image/png" }]);
     expect(JSON.stringify(running.ticket)).not.toContain("data:image");
+  });
+
+  it("delivers a percent-encoded data URI output byte for byte", async () => {
+    const { run } = runner();
+    sb.answer(({ method, path }) => {
+      if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r7", status: "pending" } };
+      if (path === "/v1/run/r7") return { status: 200, body: { id: "r7", status: "completed", outputs: [{ url: "data:image/jpeg,%FF%D8%FF%E0A" }] } };
+      if (path === "/v1/tasks/r7/cost") return taskCost(true, "0.02");
+      return undefined;
+    });
+    const running = expectState(await sent(run), "running");
+    const done = expectState(await run.poll(stored(running.ticket), live()), "done");
+    expect(done.outputs).toEqual([{ kind: "bytes", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x41]), contentType: "image/jpeg" }]);
   });
 
   it("fails the run with the cost still looked up when a run's answer is over the read limit", async () => {
@@ -301,7 +372,7 @@ describe("a MiniMax voice clone on SandBase", () => {
       return undefined;
     });
     const clones: unknown[] = [];
-    let answer: MediaAnswer = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [] }), "send");
+    let answer: MediaAnswer = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [], durations: {} }), "send");
     expect(answer.step.kind).toBe("voice");
     for (let i = 0; i < 10 && answer.state !== "done" && answer.state !== "failed"; i++) {
       answer = answer.state === "send" ? await run.send(stored(answer.ticket), live()) : await run.poll(stored(answer.ticket), live());
@@ -320,9 +391,28 @@ describe("a MiniMax voice clone on SandBase", () => {
     const { run } = runner(undefined, VOICE);
     sb.answer(({ method }) => (method === "POST" ? { status: 202, body: { id: "s1", status: "pending" } } : { status: 200, body: { id: "s1", status: "running" } }));
     const cached = [{ upstream: "sandbase", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "sb-voice-9" }];
-    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached }), "send");
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
     expect(planned.step.kind).toBe("speak");
     await run.send(stored(planned.ticket), live());
     expect(submits(sb.seen).map((s) => s.body)).toEqual([{ model: "minimax/speech/2.8/hd", text: "hello there", voice_id: "sb-voice-9" }]);
+  });
+
+  it.each([
+    ["answers the cached clone as retired when the speak step fails in MiniMax's words for a voice it no longer has", "MiniMax error: Voice ID does not exist", true],
+    ["keeps the cached clone when the speak step fails for another reason", "content policy violation", false],
+  ])("%s", async (_label, error, retired) => {
+    const { run } = runner(undefined, VOICE);
+    sb.answer(({ method, path }) => {
+      if (method === "POST") return { status: 202, body: { id: "s1", status: "pending" } };
+      if (path === "/v1/run/s1") return { status: 200, body: { id: "s1", status: "failed", error } };
+      if (path.startsWith("/v1/tasks/")) return taskCost(true, "0");
+      return undefined;
+    });
+    const cached = [{ upstream: "sandbase", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "sb-voice-9" }];
+    let answer: MediaAnswer = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
+    for (let i = 0; i < 5 && answer.state !== "done" && answer.state !== "failed"; i++) {
+      answer = answer.state === "send" ? await run.send(stored(answer.ticket), live()) : await run.poll(stored(answer.ticket), live());
+    }
+    expect(expectState(answer, "failed").retiredClones).toEqual(retired ? cached : []);
   });
 });

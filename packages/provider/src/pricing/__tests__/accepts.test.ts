@@ -24,7 +24,7 @@ function bound(prices: readonly number[] = [300, 100, 200], configured: readonly
     config: {
       upstreams: {
         wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
-        fal: { kind: "fal", base_url: "https://f.example", key_env: "FAL_KEY" },
+        fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" },
         sandbase: { kind: "sandbase", base_url: "https://s.example", key_env: "SANDBASE_API_KEY" },
       },
       media: {
@@ -99,6 +99,36 @@ describe("rejectedInput", () => {
   });
 });
 
+describe("estimates read only what the upstream is sent", () => {
+  it("gives a formula no param the run leaves out or empty", async () => {
+    const p = createProvider({
+      config: {
+        upstreams: { wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" } },
+        media: {
+          models: {
+            m: {
+              upstreams: [{
+                upstream: "wavespeed",
+                weight: 1,
+                model_id: "m",
+                params: { refs: { field: "reference" }, note: { field: "note" } },
+                pricing: { kind: "formula", base_price: 100, formula: '{"total_price": base_price + ($count(reference) > 0 ? 50 : 0) + ($exists(note) ? 7 : 0)}', discount_rate: 100 },
+              }],
+            },
+          },
+        },
+      },
+      keyOf: () => "k",
+      llmMaxRetries: 0,
+      cleanText: (t) => t,
+    });
+    const usd = async (params: Record<string, unknown>): Promise<number | undefined> => (await estimateCost(p.pricingRules("m"), p.availability("m"), run(params), { mode: "default" }))?.usd;
+    expect(await usd({ refs: null, note: "" })).toBeCloseTo(0.0001, 9);
+    expect(await usd({ refs: [], note: null })).toBeCloseTo(0.0001, 9);
+    expect(await usd({ refs: ["https://a/1.png"], note: "n" })).toBeCloseTo(0.000157, 9);
+  });
+});
+
 describe("estimates skip an upstream that cannot take the run", () => {
   it("orders only the upstreams that take the run", async () => {
     const p = bound();
@@ -169,7 +199,7 @@ function limited(configured: readonly boolean[] = [true, true]): ReturnType<type
     config: {
       upstreams: {
         wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
-        fal: { kind: "fal", base_url: "https://f.example", key_env: "FAL_KEY" },
+        fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" },
       },
       media: {
         models: {
@@ -248,10 +278,42 @@ describe("an upstream's own input limits (rejects)", () => {
     expect(ordered.state === "send" ? ordered.ticket.upstream : undefined).toBe("wavespeed");
   });
 
+  it("keeps only the upstream whose condition fails to evaluate out, naming the condition's reason, and routes the run elsewhere", async () => {
+    const p = createProvider({
+      config: {
+        upstreams: {
+          wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
+          fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" },
+        },
+        media: {
+          models: {
+            m: {
+              upstreams: [
+                { upstream: "fal", weight: 1, model_id: "m", output_field: "audio", params: { tag: { field: "tag" } }, rejects: [{ when: "$contains(tag, /x/)", reason: "fal tag pattern" }], pricing: pricing(100) },
+                { upstream: "wavespeed", weight: 2, model_id: "m", params: { tag: { field: "tag" } }, pricing: pricing(300) },
+              ],
+            },
+          },
+        },
+      },
+      keyOf: () => "k",
+      llmMaxRetries: 0,
+      cleanText: (t) => t,
+    });
+    const input = { ...run({ tag: 5 }), prompt: "" };
+    expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toEqual({ reason: expect.stringContaining("fal tag pattern") });
+    expect(await rejectedInput(p.pricingRules("m"), "wavespeed", input)).toBeUndefined();
+    expect((await orderByPrice(p.pricingRules("m"), p.availability("m"), input)).map((e) => e.upstream)).toEqual(["wavespeed"]);
+    expect((await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "default" }))?.upstream).toBe("wavespeed");
+    const runner = createMediaRunner(p, { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
+    const planned = await runner.plan("m", { prompt: "", params: { tag: 5 } }, { mode: "default" }, { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} });
+    expect(planned.state === "send" ? planned.ticket.upstream : planned.state).toBe("wavespeed");
+  });
+
   it("refuses a configuration whose condition is not JSONata, naming model, upstream and the condition", () => {
     const bad = (): unknown => createProvider({
       config: {
-        upstreams: { fal: { kind: "fal", base_url: "https://f.example", key_env: "FAL_KEY" } },
+        upstreams: { fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" } },
         media: { models: { m: { upstreams: [{ upstream: "fal", weight: 2, model_id: "m", output_field: "video", rejects: [{ when: "$length(", reason: "broken" }], pricing: pricing(1) }] } } },
       },
       keyOf: () => "k",

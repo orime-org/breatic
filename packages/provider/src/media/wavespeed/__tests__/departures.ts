@@ -3,8 +3,8 @@
 
 /** Where the WaveSpeed bindings depart from what today's code sends, for the fixture tests that compare the two. */
 
-/** Models WaveSpeed no longer serves (absent from `/api/v3/models` on 2026-11-01): they carry no WaveSpeed binding. */
-export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["meshy6-t23d", "veed-clean-audio", "recraft-v4-style-text-to-image", "sfx-1.6-extend-audio"]);
+/** Models WaveSpeed no longer serves (absent from `/api/v3/models`, rechecked on 2026-11-02): they carry no WaveSpeed binding. */
+export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "recraft-v4-style-text-to-image", "sfx-1.6-extend-audio"]);
 
 /**
  * Where a binding departs from today's body on purpose, by model: a field renamed to the

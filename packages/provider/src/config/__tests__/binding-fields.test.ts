@@ -8,7 +8,7 @@ const pricing = { kind: "formula", base_price: 100000, formula: "", discount_rat
 
 const upstreams = {
   wavespeed: { kind: "wavespeed", base_url: "https://api.wavespeed.ai/api/v3", key_env: "WAVESPEED_API_KEY" },
-  fal: { kind: "fal", base_url: "https://queue.fal.run", key_env: "FAL_KEY" },
+  fal: { kind: "fal", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY" },
   sandbase: { kind: "sandbase", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY" },
 };
 

@@ -83,7 +83,7 @@ const runner = (): MediaRunner => createMediaRunner(provider(), { mediaLimits: {
 
 const stored = (ticket: MediaTicket): MediaTicket => JSON.parse(JSON.stringify(ticket)) as MediaTicket;
 const live = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 60_000 });
-const options = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/a.mp3": "sha-a" }, clones: [] };
+const options = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/a.mp3": "sha-a" }, clones: [], durations: {} };
 const video = { prompt: "a fox in snow", params: {} };
 const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
 

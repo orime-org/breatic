@@ -72,6 +72,13 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("1");
   });
 
+  it("refuses a fal upstream without the billing address its costs are read from, naming the upstream", () => {
+    const problems = problemsOf({ upstreams: { queue: { kind: "fal", base_url: "https://queue.fal.run", key_env: "FAL_KEY" } }, media: { models: {} } });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("queue");
+    expect(problems[0]).toContain("billing_url");
+  });
+
   it("refuses a binding to an upstream that upstreams.yaml does not declare", () => {
     const problems = problemsOf(input([bind("replicate", 1)]));
     expect(problems).toHaveLength(1);

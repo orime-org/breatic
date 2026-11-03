@@ -148,6 +148,7 @@ describe("the element step's description", () => {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
+        durations: {},
       }),
       "send",
     );
@@ -172,6 +173,7 @@ describe("the element step's description", () => {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
+        durations: {},
       }),
       "send",
     );
@@ -201,6 +203,7 @@ describe("the element step's description", () => {
         idempotencyKey: "task-1",
         sourceKeys: {},
         clones: [],
+        durations: {},
       }),
       "send",
     );
@@ -223,6 +226,7 @@ describe("the element image's type", () => {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
+        durations: {},
       }),
       "send",
     );
@@ -269,6 +273,7 @@ describe("cached elements", () => {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: cached,
+        durations: {},
       }),
       "send",
     );
@@ -293,6 +298,7 @@ describe("cached elements", () => {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img", [second]: "sha-cat" },
         clones: cached,
+        durations: {},
       }),
       "send",
     );
@@ -316,6 +322,7 @@ describe("cached elements", () => {
       idempotencyKey: "task-1",
       sourceKeys: {},
       clones: [],
+      durations: {},
     });
     const kinds: string[] = [];
     while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
@@ -340,6 +347,7 @@ describe("a describe step followed by a switch", () => {
           idempotencyKey: "task-1",
           sourceKeys: { [imageUrl]: "sha-img" },
           clones: [],
+          durations: {},
         }),
         "send",
       );
@@ -363,7 +371,7 @@ describe("a describe step that cannot read its image", () => {
   async function describeOnly(image: string, bounds: { deadlineAt: number }): Promise<unknown> {
     const r = runner();
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
       "send",
     );
     return r.send(stored(planned.ticket), bounds).catch((e: unknown) => e);
@@ -447,7 +455,7 @@ describe("a describe step whose understand call reaches no upstream", () => {
     const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
     const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
       "send",
     );
     return r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
@@ -457,6 +465,17 @@ describe("a describe step whose understand call reaches no upstream", () => {
     const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key" })) as MediaAnswer, "failed");
     expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
     expect((answer.reason as NoUpstreamAvailable).reasons).toEqual([{ upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" }]);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
+  it.each([
+    ["the balance is too low", { status: 402, body: { error: { message: "Insufficient credits", code: 402 } } }, "insufficient_balance"],
+    ["it has no such model", { status: 400, body: { error: { message: "x is not a valid model ID", code: 400 } } }, "model_not_found"],
+  ] as const)("answers failed, as a media submit does, when every understand upstream says %s", async (_label, reply, failure) => {
+    openrouter.answer(() => reply);
+    const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })) as MediaAnswer, "failed");
+    expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect((answer.reason as NoUpstreamAvailable).reasons).toEqual([expect.objectContaining({ upstream: "openrouter", kind: "failed", failure })]);
     expect(wavespeed.seen).toHaveLength(0);
   });
 
@@ -492,7 +511,7 @@ describe("a describe step whose understand call reaches no upstream", () => {
     const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
     const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
       "send",
     );
     const error = await r.send(stored(planned.ticket), { deadlineAt: Date.now() + 1_500 }).catch((e: unknown) => e);
@@ -537,7 +556,7 @@ describe("a describe step and the understand model's answer", () => {
   async function describeImage(image = imageUrl): Promise<unknown> {
     const r = runner();
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
       "send",
     );
     return r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
@@ -570,7 +589,7 @@ describe("a describe step and the understand model's answer", () => {
       const { port } = silent.address() as AddressInfo;
       const r = runner();
       const planned = expectState(
-        await r.plan("kling-elements", { prompt: "go", params: { elements: [`http://127.0.0.1:${port}/fox.png`] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+        await r.plan("kling-elements", { prompt: "go", params: { elements: [`http://127.0.0.1:${port}/fox.png`] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }),
         "send",
       );
       const stop = new AbortController();
@@ -603,7 +622,7 @@ describe("ticketFromLegacy for an element step not yet sent", () => {
       ],
     };
     const answer = expectState(
-      await runner().ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }, legacy),
+      await runner().ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} }, legacy),
       "send",
     );
     expect(answer.step.kind).toBe("describe");
@@ -658,7 +677,7 @@ describe("a run with describe steps: every billed answer reaches the caller once
         const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
         const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
         const reached: Cost[] = [];
-        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] });
+        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} });
         let ended = false;
         for (let turn = 0; turn < 24 && !ended && (answer.state === "send" || answer.state === "running"); turn++) {
           const ticket = stored((answer as { ticket: MediaTicket }).ticket);

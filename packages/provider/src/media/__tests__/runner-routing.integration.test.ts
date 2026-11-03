@@ -8,7 +8,7 @@ import { NoUpstreamAvailable, SendNotAccepted } from "../../errors.js";
 import { estimateCost, orderByPrice, rejectedInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
-import { createMediaRunner, type MediaAnswer, type MediaTicket } from "../runner.js";
+import { createMediaRunner, type MediaAnswer, type MediaTicket, type PlanOptions } from "../runner.js";
 import { accepted, fakeUpstream, type FakeUpstream, type Reply } from "./fake-upstream.js";
 
 // Which upstream a run is sent to: one that can take its input, in the route's order, and a lasting refusal
@@ -39,6 +39,8 @@ interface Limits {
   webDrop: boolean[] | null;
   /** The voices of `voice_map.voice_id`, when set. */
   voices: string[] | null;
+  /** The longest audio it takes, as a `rejects` condition on the clip length; null for none. */
+  maxAudio: number | null;
 }
 
 /** How one upstream answers a submit. */
@@ -61,8 +63,10 @@ function binding(name: Name, weight: number, limits: Limits, price: number): Med
     params: {
       duration: { field: "duration", ...(limits.durations === null ? {} : { supported: limits.durations }) },
       voice_id: { field: "voice" },
+      audio: { field: "audio" },
       ...(limits.webDrop === null ? { web: { field: "web" } } : {}),
     },
+    ...(limits.maxAudio === null ? {} : { rejects: [{ when: `get_duration(audio) > ${limits.maxAudio}`, reason: `audio up to ${limits.maxAudio} s` }] }),
     ...(limits.webDrop === null ? {} : { drops: { web: limits.webDrop } }),
     ...(limits.voices === null ? {} : { voice_map: { voice_id: Object.fromEntries(limits.voices.map((v) => [v, v.toLowerCase()])) } }),
     ...(name === "fal" ? { output_field: "video" } : {}),
@@ -93,6 +97,15 @@ const limitsArb: fc.Arbitrary<Limits> = fc.record({
   durations: fc.option(fc.subarray([...DURATIONS], { minLength: 1 })),
   webDrop: fc.option(fc.subarray([true, false])),
   voices: fc.option(fc.subarray([...VOICES], { minLength: 1 })),
+  maxAudio: fc.option(fc.constantFrom(10, 30)),
+});
+
+describe("plan options", () => {
+  it("require the clip lengths, which every mode's rejects read", () => {
+    // @ts-expect-error durations is required
+    const withoutDurations: PlanOptions = { idempotencyKey: "t", sourceKeys: {}, clones: [] };
+    expect(withoutDurations.durations).toBeUndefined();
+  });
 });
 
 describe("a run is sent only where its input can go (critical path)", () => {
@@ -104,16 +117,17 @@ describe("a run is sent only where its input can go (critical path)", () => {
         fc.tuple(...NAMES.map(() => fc.constantFrom(true, true, true, false))),
         fc.tuple(limitsArb, limitsArb, limitsArb),
         fc.tuple(fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 0, max: 1000 })),
-        fc.record({ duration: fc.constantFrom(5, 10, 15, null, null), web: fc.constantFrom(true, false, null, null), voice_id: fc.constantFrom("Alicia", "Adam", "Warren", null, null) }),
+        fc.record({ duration: fc.constantFrom(5, 10, 15, null, null), web: fc.constantFrom(true, false, null, null), voice_id: fc.constantFrom("Alicia", "Adam", "Warren", null, null), audio: fc.constantFrom("https://cdn.example/a.mp3", null) }),
+        fc.constantFrom(5, 20, 45),
         fc.tuple(fc.constantFrom<Answer>("accept", "busy", "noModel"), fc.constantFrom<Answer>("accept", "busy", "balance", "noModel"), fc.constantFrom<Answer>("accept", "busy", "balance", "noModel")),
         fc.oneof(
           { arbitrary: fc.constant<Route>({ mode: "default" }), weight: 3 },
           { arbitrary: fc.constant<Route>({ mode: "cheapest" }), weight: 2 },
           { arbitrary: fc.constantFrom(...NAMES.map((upstream): Route => ({ mode: "upstream", upstream }))), weight: 1 },
         ),
-        async (weights, keyed, limits, prices, params, answers, route) => {
+        async (weights, keyed, limits, prices, params, audioSeconds, answers, route) => {
           const config: ProviderConfigInput = {
-            upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: KINDS[n], base_url: fakes[n].url, key_env: ENVS[n] }])),
+            upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: KINDS[n], base_url: fakes[n].url, key_env: ENVS[n], ...(n === "fal" ? { billing_url: `${fakes[n].url}/v1` } : {}) }])),
             media: { models: { m: { upstreams: NAMES.map((n, i) => binding(n, weights[i]!, limits[i]!, prices[i]!)) } } },
           };
           const keys = Object.fromEntries(NAMES.flatMap((n, i) => (keyed[i] ? [[ENVS[n], "key"]] : [])));
@@ -129,16 +143,19 @@ describe("a run is sent only where its input can go (critical path)", () => {
           }
           const rules = provider.pricingRules("m");
           const input = { prompt: "a fox", params };
-          const refusal = new Map(await Promise.all(NAMES.map(async (n) => [n, await rejectedInput(rules, n, { ...input, durations: {}, placeholders: [], durationsMissing: [] })] as const)));
+          // Every mode reads the clip lengths: each upstream's rejects do, and cheapest-mode prices.
+          const durations: Record<string, number[]> = params.audio === null ? {} : { audio: [audioSeconds] };
+          const prepared = { ...input, durations, placeholders: [], durationsMissing: [] };
+          const refusal = new Map(await Promise.all(NAMES.map(async (n) => [n, await rejectedInput(rules, n, prepared)] as const)));
           const takes = (name: Name): boolean => keyed[NAMES.indexOf(name)]! && refusal.get(name) === undefined;
           // The order the route tries: configured upstreams that can take the input.
           const expected: Name[] = route.mode === "upstream"
             ? NAMES.filter((n) => n === route.upstream && takes(n))
             : route.mode === "cheapest"
-              ? (await orderByPrice(rules, provider.availability("m"), { ...input, durations: {}, placeholders: [], durationsMissing: [] })).map((e) => e.upstream as Name)
+              ? (await orderByPrice(rules, provider.availability("m"), prepared)).map((e) => e.upstream as Name)
               : NAMES.filter(takes).sort((x, y) => weights[NAMES.indexOf(x)]! - weights[NAMES.indexOf(y)]!);
 
-          let answer: MediaAnswer = await runner.plan("m", input, route, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] });
+          let answer: MediaAnswer = await runner.plan("m", input, route, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations });
           let notAccepted = false;
           while (answer.state === "send") {
             try {
@@ -150,7 +167,7 @@ describe("a run is sent only where its input can go (critical path)", () => {
             }
           }
 
-          const estimate = await estimateCost(rules, provider.availability("m"), { ...input, durations: {}, placeholders: [], durationsMissing: [] }, route);
+          const estimate = await estimateCost(rules, provider.availability("m"), prepared, route);
           if (expected.length === 0) {
             // No upstream can take it: nothing is sent, and each configured upstream that refuses the input says so.
             expect(submitted).toEqual([]);

@@ -8,7 +8,7 @@ import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRe
 import { Aborted, NoAnswer } from "../../http/errors.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
-import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
+import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
 import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
 const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
@@ -138,10 +138,11 @@ function expectState<S extends MediaAnswer["state"]>(answer: MediaAnswer, state:
 }
 
 const live = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 60_000 });
-const options = (clones: MediaClone[] = []): { idempotencyKey: string; sourceKeys: Record<string, string>; clones: MediaClone[] } => ({
+const options = (clones: MediaClone[] = []): PlanOptions => ({
   idempotencyKey: "task-1",
   sourceKeys: { "https://cdn.example/a.mp3": "sha-a" },
   clones,
+  durations: {},
 });
 const video = { prompt: "a fox in snow", params: { duration: 5, aspect_ratio: "16:9" } };
 
@@ -684,7 +685,7 @@ describe("Mureka's steps", () => {
       void body;
       return result("p-song", "completed", ["https://out.example/song.mp3"]);
     });
-    let answer: MediaAnswer = await r.plan("mureka", song, DEFAULT, { ...keys, clones: [] });
+    let answer: MediaAnswer = await r.plan("mureka", song, DEFAULT, { ...keys, clones: [], durations: {} });
     const kinds: string[] = [];
     while (answer.state === "send" || answer.state === "running") {
       if (answer.state === "send") kinds.push(answer.step.kind);
@@ -700,7 +701,7 @@ describe("Mureka's steps", () => {
   });
 
   it("goes straight to the song when the run carries no source", async () => {
-    const answer = expectState(await runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [] }), "send");
+    const answer = expectState(await runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [], durations: {} }), "send");
     expect(answer.step.kind).toBe("generate");
   });
 
@@ -713,7 +714,7 @@ describe("Mureka's steps", () => {
         : result("p-song", "failed", [], "The provider rejected the request. Please check your inputs and try again.");
     });
     const cached: MediaClone[] = [{ upstream: "ws_a", kind: "vocal", sourceKey: "sha-vocal", upstreamId: "163346152292353" }];
-    const planned = expectState(await r.plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: cached }), "send");
+    const planned = expectState(await r.plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: cached, durations: {} }), "send");
     expect(planned.step.kind).toBe("generate");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     expect(submits(a.seen)[0]?.body).toMatchObject({ vocal_id: "163346152292353" });

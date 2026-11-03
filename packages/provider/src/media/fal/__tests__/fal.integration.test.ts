@@ -106,7 +106,7 @@ function runner(keys: Record<string, string> = { FAL_KEY: "fal-key", WS_KEY: "ws
 
 const stored = (ticket: MediaTicket): MediaTicket => JSON.parse(JSON.stringify(ticket)) as MediaTicket;
 const live = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 60_000 });
-const options = { idempotencyKey: "task-1", sourceKeys: {}, clones: [] };
+const options = { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} };
 
 /**
  * Narrow an answer to one state.
@@ -371,13 +371,13 @@ describe("a MiniMax voice clone on fal", () => {
       if (path === "/v1/models/billing-events") return events([0.01]);
       return undefined;
     });
-    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [] }), "send");
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: [], durations: {} }), "send");
     expect(planned.step.kind).toBe("voice");
     const { last, clones } = await driven(run, planned);
     const done = expectState(last, "done");
     expect(submits(fal.seen).map((s) => [s.path, s.body])).toEqual([
       ["/fal-ai/minimax/voice-clone", { audio_url: "https://cdn.example/voice.mp3" }],
-      ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1" } }],
+      ["/fal-ai/minimax/speech-2.8-hd", { prompt: "hello there", voice_setting: { voice_id: "fal-voice-1", emotion: "happy" } }],
     ]);
     expect(clones).toEqual([{ upstream: "fal", kind: "voice", sourceKey: "sha-a", upstreamId: "fal-voice-1" }]);
     expect(done.outputs).toEqual([{ kind: "url", url: "https://a/speech.mp3" }]);
@@ -387,9 +387,37 @@ describe("a MiniMax voice clone on fal", () => {
     const { run } = runner(undefined, VOICE);
     fal.answer(({ method }) => (method === "POST" ? queued("s1", "fal-ai/minimax") : { status: 200, body: { status: "IN_PROGRESS" } }));
     const cached = [{ upstream: "fal", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "fal-voice-9" }];
-    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached }), "send");
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
     expect(planned.step.kind).toBe("speak");
     await run.send(stored(planned.ticket), live());
-    expect(submits(fal.seen).map((s) => s.body)).toEqual([{ prompt: "hello there", voice_setting: { voice_id: "fal-voice-9" } }]);
+    expect(submits(fal.seen).map((s) => s.body)).toEqual([{ prompt: "hello there", voice_setting: { voice_id: "fal-voice-9", emotion: "happy" } }]);
+  });
+
+  it("answers the cached clone as retired when the speak step fails in MiniMax's words for a voice it no longer has", async () => {
+    const { run } = runner(undefined, VOICE);
+    fal.answer(({ method, path }) => {
+      if (method === "POST") return queued("s1", "fal-ai/minimax");
+      if (path.endsWith("/s1/status")) return { status: 200, body: { status: "COMPLETED", error: "MiniMax API error: Voice ID does not exist" } };
+      if (path === "/v1/models/billing-events") return events([]);
+      return undefined;
+    });
+    const cached = [{ upstream: "fal", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "fal-voice-9" }];
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
+    const failed = expectState((await driven(run, planned)).last, "failed");
+    expect(failed.retiredClones).toEqual(cached);
+  });
+
+  it("keeps the cached clone when the speak step fails for another reason", async () => {
+    const { run } = runner(undefined, VOICE);
+    fal.answer(({ method, path }) => {
+      if (method === "POST") return queued("s1", "fal-ai/minimax");
+      if (path.endsWith("/s1/status")) return { status: 200, body: { status: "COMPLETED", error: "content policy violation" } };
+      if (path === "/v1/models/billing-events") return events([]);
+      return undefined;
+    });
+    const cached = [{ upstream: "fal", kind: "voice" as const, sourceKey: "sha-a", upstreamId: "fal-voice-9" }];
+    const planned = expectState(await run.plan("voice-clone", speech, { mode: "default" }, { ...keyed, clones: cached, durations: {} }), "send");
+    const failed = expectState((await driven(run, planned)).last, "failed");
+    expect(failed.retiredClones).toEqual([]);
   });
 });

@@ -117,6 +117,11 @@ describe("buildBody — reseller binding vocabulary", () => {
     });
   });
 
+  it("writes a dotted fixed field into the object it names, beside a param's field there", () => {
+    const binding = { ...base, params: { voice: { field: "voice_setting.voice_id" } }, fixed: { "voice_setting.emotion": "happy" } } as MediaBinding;
+    expect(buildBody(binding, { prompt: "", params: { voice: "v1" } })).toEqual({ voice_setting: { voice_id: "v1", emotion: "happy" } });
+  });
+
   it("adds the binding's fixed fields to every body", () => {
     const binding = { ...base, prompt_field: "prompt", fixed: { rendering_speed: "QUALITY", mode: "async" } } as MediaBinding;
     expect(buildBody(binding, { prompt: "a cat", params: {} })).toEqual({ prompt: "a cat", rendering_speed: "QUALITY", mode: "async" });

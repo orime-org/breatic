@@ -4,6 +4,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { estimateCost, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
+import { createProvider } from "../../provider.js";
 import type { MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
 import { ROOT, shipped, yaml } from "./shipped.js";
@@ -38,7 +40,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "gpt-image-2.5-sunburst-edit": { fal: "openai/gpt-image-2.5/sunburst/edit", sandbase: "openai/gpt-image-2.5-sunburst/edit" },
   "muse-image-edit": { fal: "meta/muse-image/edit" },
   "nano-banana-pro-edit-ultra": {},
-  "qwen-image-edit-multiple-angles": { fal: "fal-ai/qwen-image-edit-2511-multiple-angles", sandbase: "alibaba/qwen-image-edit/2511/multiple-angles" },
+  // fal bills it per output megapixel at the source's size, which an estimate cannot know (inner#1859).
+  "qwen-image-edit-multiple-angles": { sandbase: "alibaba/qwen-image-edit/2511/multiple-angles" },
   "pro-upscaler": {},
   "bria-remove-background": { fal: "fal-ai/bria/background/remove" },
   "bria-genfill": {},
@@ -98,17 +101,24 @@ const models = config.media.models;
 const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
   models[model]?.upstreams.find((b) => b.upstream === upstream);
 
-/** ElevenLabs' premade voices among the catalog's elevenlabs-v3 voices: their samples live under `premade/voices/`. */
-function premadeVoices(): string[] {
+/**
+ * ElevenLabs' premade voices among the catalog's elevenlabs-v3 voices, each with ElevenLabs' own id:
+ * their samples live under `premade/voices/<voice id>/`.
+ * @returns Our voice name and ElevenLabs' id of each.
+ */
+function premadeVoices(): { name: string; id: string }[] {
   const tts = yaml<{ models: { name: string; voices?: { id: string; sample_url?: string }[] }[] }>("models/tts/models.yaml");
   const voices = tts.models.find((m) => m.name === "elevenlabs-v3")?.voices ?? [];
-  return voices.filter((v) => v.sample_url?.includes("/premade/voices/") === true).map((v) => v.id);
+  return voices.flatMap((v) => {
+    const id = /\/premade\/voices\/([^/]+)\//.exec(v.sample_url ?? "")?.[1];
+    return id === undefined ? [] : [{ name: v.id, id }];
+  });
 }
 
 describe("the reseller upstreams", () => {
   it("declares fal and SandBase", () => {
     expect(config.upstreams.fal).toEqual({ kind: "fal", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
-    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10 });
+    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
   });
 
   it("lists every catalog model", () => {
@@ -142,26 +152,26 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(sandbase?.params?.video).toMatchObject({ field: "videos", as: "list" });
   });
 
-  it.each(["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"])("serves %s on fal only at 1k and the five preset ratios", (model) => {
+  it.each(["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"])("serves %s on fal only at 1k and the preset ratios at or above the model's least pixel count", (model) => {
     const fal = bindingOf(model, "fal");
-    expect([...(fal?.params?.aspect_ratio?.supported ?? [])].sort()).toEqual(["16:9", "1:1", "3:4", "4:3", "9:16"]);
+    // fal's 16:9 and 9:16 presets are 1024x576, under the model's minimum (inner#1859 probes whether fal takes them).
+    expect([...(fal?.params?.aspect_ratio?.supported ?? [])].sort()).toEqual(["1:1", "3:4", "4:3"]);
     expect(fal?.drops?.resolution).toEqual(["1k"]);
   });
 
-  it("speaks elevenlabs-v3 only in ElevenLabs' premade voices, by name, on both", () => {
+  it("speaks elevenlabs-v3 only in ElevenLabs' premade voices, by ElevenLabs' voice id, on both", () => {
     const premade = premadeVoices();
     expect(premade).toHaveLength(23);
+    expect(premade.find((v) => v.name === "Adam")?.id).toBe("pNInz6obpgDQGcFmaJgB");
     for (const upstream of ["fal", "sandbase"]) {
       const binding = bindingOf("elevenlabs-v3", upstream);
-      expect(binding?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v, v])));
+      expect(binding?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v.name, v.id])));
       expect(binding?.drops?.similarity).toHaveProperty("all_values");
     }
   });
 
-  it("writes the multiple-angles distance as a zoom, close-up the highest, on both", () => {
-    for (const upstream of ["fal", "sandbase"]) {
-      expect(bindingOf("qwen-image-edit-multiple-angles", upstream)?.params?.distance).toMatchObject({ field: "zoom", values: { "0": 10, "1": 5, "2": 0 } });
-    }
+  it("writes the multiple-angles distance as a zoom on SandBase, close-up the highest", () => {
+    expect(bindingOf("qwen-image-edit-multiple-angles", "sandbase")?.params?.distance).toMatchObject({ field: "zoom", values: { "0": 10, "1": 5, "2": 0 } });
   });
 
   it("clones a MiniMax voice and speaks it in a second step on both", () => {
@@ -195,5 +205,77 @@ describe("SandBase runs", () => {
       if (modes.includes("async") && binding.fixed?.mode !== "async") sync.push(model);
     }
     expect(sync).toEqual([]);
+  });
+});
+
+describe("the WaveSpeed binding a relisted model gets back", () => {
+  it("serves meshy6-t23d on WaveSpeed under the id it is listed under again, ahead of fal", () => {
+    expect(bindingOf("meshy6-t23d", "wavespeed")).toMatchObject({ model_id: "meshy/v6/text-to-3d", weight: 1 });
+  });
+});
+
+describe("the limits a reseller states beyond its schema", () => {
+  const provider = createProvider({ config: shipped(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+
+  /**
+   * A run as the application prepares it.
+   * @param input - What differs from an empty run.
+   * @returns The run.
+   */
+  const run = (input: Partial<EstimateInput>): EstimateInput => ({ params: {}, prompt: "", durations: {}, placeholders: [], durationsMissing: [], ...input });
+
+  /**
+   * What an upstream refuses of a run of a model.
+   * @param model - The model.
+   * @param upstream - The upstream.
+   * @param input - The run.
+   * @returns What it refuses, if anything.
+   */
+  const refused = (model: string, upstream: string, input: Partial<EstimateInput>): ReturnType<typeof rejectedInput> => rejectedInput(provider.pricingRules(model), upstream, run(input));
+
+  it.each(["fal", "sandbase"])("keeps a HappyHorse prompt over 2500 characters off %s", async (upstream) => {
+    const reference = { images: ["https://a/1.png"] };
+    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: "x".repeat(2500), params: reference })).toBeUndefined();
+    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: "x".repeat(2501), params: reference })).toEqual({ reason: expect.stringContaining("2500") });
+  });
+
+  it("keeps a Mureka vocal sample outside 15 to 30 seconds off fal's voice clone", async () => {
+    const song = (seconds: number): Partial<EstimateInput> => ({ prompt: "a calm song", params: { vocal: "https://a/v.mp3" }, durations: { vocal: [seconds] } });
+    expect(await refused("mureka-v9.5-generate-song", "fal", song(20))).toBeUndefined();
+    for (const seconds of [10, 40]) expect(await refused("mureka-v9.5-generate-song", "fal", song(seconds)), `${seconds} s`).toEqual({ reason: expect.stringContaining("15") });
+  });
+
+  describe.each(["fal", "sandbase"])("Gemini speaker ids on %s", (upstream) => {
+    /**
+     * A two-speaker run whose first speaker is named so.
+     * @param first - The first speaker item.
+     * @returns The run.
+     */
+    const speakers = (first: Record<string, unknown>): Partial<EstimateInput> => ({ prompt: "Host: hi. Guest: hello.", params: { speakers: [first, { speaker: "Guest", voice: "Kore" }] } });
+
+    it("takes ASCII letters, digits and underscores", async () => {
+      expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers({ speaker: "Host_1", voice: "Charon" }))).toBeUndefined();
+    });
+
+    it.each([["empty", ""], ["space", "Al ice"], ["middle dot", "李·明"], ["CJK", "主持人"], ["emoji", "😀"], ["accented", "José"], ["number", 5], ["missing", undefined]])(
+      "keeps a %s speaker off, without failing the check",
+      async (_label, name) => {
+        const first = name === undefined ? { voice: "Charon" } : { speaker: name, voice: "Charon" };
+        expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers(first))).toEqual({ reason: expect.stringContaining("speaker") });
+      },
+    );
+  });
+
+  it("estimates fal InfiniteTalk at the 1.25x its fixed 241 frames always bill, short audio too", async () => {
+    const input = run({ params: { audio: "https://a/x.mp3", video: "https://a/v.mp4", resolution: "480p" }, durations: { audio: [2], video: [2] } });
+    const estimate = await estimateCost(provider.pricingRules("infinitetalk-video-to-video"), provider.availability("infinitetalk-video-to-video"), input, { mode: "upstream", upstream: "fal" });
+    expect(estimate?.usd).toBeCloseTo(0.3 * 2 * 1.25, 6);
+  });
+
+  it("prices a Krea run without style images at WaveSpeed's flat price and keeps the tie on WaveSpeed", async () => {
+    const rules = provider.pricingRules("krea-v2-large-text-to-image");
+    const input = run({ prompt: "a fox", params: { style_images: null } });
+    expect(await estimateCost(rules, provider.availability("krea-v2-large-text-to-image"), input, { mode: "default" })).toMatchObject({ upstream: "wavespeed", usd: expect.closeTo(0.06, 6) });
+    expect((await estimateCost(rules, provider.availability("krea-v2-large-text-to-image"), input, { mode: "cheapest" }))?.upstream).toBe("wavespeed");
   });
 });

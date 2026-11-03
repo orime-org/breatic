@@ -70,6 +70,21 @@ describe("snapshotOf", () => {
     const snap = falInput("fal-ai_gemini-tts", "GeminiTtsInput");
     expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
   });
+
+  it("records the value the upstream uses for a field a request leaves out", () => {
+    const snap = falInput("fal-ai_flux_dev", "FluxDevInput");
+    expect(snap.fields["guidance_scale"]).toEqual([expect.objectContaining({ default: 3.5 })]);
+    expect(snap.fields["enable_safety_checker"]).toEqual([expect.objectContaining({ type: "boolean", default: true })]);
+    expect(snap.fields["image_size"]?.every((leaf) => leaf.default === "landscape_4_3")).toBe(true);
+    expect(snap.fields["seed"]?.some((leaf) => "default" in leaf)).toBe(false);
+  });
+
+  it("records a string's length bounds and pattern, in a list item too", () => {
+    const snap = falInput("fal-ai_gemini-tts", "GeminiTtsInput");
+    expect(snap.fields["prompt"]).toEqual([expect.objectContaining({ type: "string", minLength: 1, maxLength: 50000 })]);
+    const list = snap.fields["speakers"]?.find((leaf) => leaf.type === "array");
+    expect(list?.items?.fields["speaker_id"]).toEqual([expect.objectContaining({ type: "string", pattern: "^\\w+$" })]);
+  });
 });
 
 describe("snapshotOf on an object whose anyOf names alternative required fields", () => {
@@ -128,6 +143,15 @@ describe("fieldFits", () => {
     expect(fieldFits(speech(), "voice_setting.pitch", 13)).toBe(false);
     expect(fieldFits(speech(), "pronunciation_dict.tone_list", ["a/b"])).toBe(true);
     expect(fieldFits(speech(), "pronunciation_dict.tone_list", [1])).toBe(false);
+  });
+
+  it("refuses a string outside its length bounds or pattern", () => {
+    expect(fieldFits(tts(), "prompt", "Hello")).toBe(true);
+    expect(fieldFits(tts(), "prompt", "")).toBe(false);
+    expect(fieldFits(tts(), "prompt", "x".repeat(50001))).toBe(false);
+    const speakers = (first: string): unknown[] => [{ speaker_id: first, voice: "Charon" }, { speaker_id: "Guest", voice: "Kore" }];
+    expect(fieldFits(tts(), "speakers", speakers("Host_1"))).toBe(true);
+    expect(fieldFits(tts(), "speakers", speakers("Al ice"))).toBe(false);
   });
 
   it("checks each item's fields and the list's length", () => {
