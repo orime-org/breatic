@@ -3,10 +3,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
-import { alphaManifestKeyFor, alphaPackedKeyFor, readVideoSourceLedger, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
-  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type VideoSourceLedgerCompanion, type VideoPresentationTableReadLimits,
-  type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
-  type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
+import { alphaManifestKeyFor, alphaPackedKeyFor, t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPresentationResponseSchema,
+  videoPresentationSourceBindingSchema, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type VideoPresentationTableReadLimits,
+  type StudioAssetEntity, type VideoPresentation, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
+  type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 import { fillMediaNumbers } from '@domain/asset/asset.repo.js';
 import { containerCostUsd } from '@domain/credit/container-cost.js';
@@ -18,12 +18,11 @@ export interface ResolveVideoPresentationInput { projectId: string; userId: stri
 export interface RepairVideoPresentationInput extends ResolveVideoPresentationInput { sourceFingerprint: string; requestId: string }
 /** An automatic registration or first-read metadata preparation. */
 export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean }
-/** Repair answers the current canonical identity and the fixed accepted work. */
-export type { VideoPresentationRepairResponse } from '@breatic/shared';
-/** The queue retains the accepted source identity and original deadline on retry. */
-export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
-/** The registered source and its whole validated frame table. */
-export interface VideoSourceLedgerRead { sourceBinding: VideoPresentationSourceBinding; ledger: VideoSourceLedgerCompanion }
+/**
+ * The queue retains the accepted source identity. The deadline is known only when this admission's own job was accepted;
+ * a job found by a read leaves it out (design §5.1 step 1: the deadline lives in the DO admission record).
+ */
+export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string; deadlineAt?: number }
 /** Source readiness and platform accounting remain independent observations. */
 export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
@@ -96,28 +95,41 @@ function originalOf(row: StudioAssetEntity): VideoPresentation['original'] | nul
 }
 
 /**
- * Queue the identity actually accepted by ingest, including replayed admissions.
+ * Queue the job ingest accepted while it still has work: a preparation in flight, or a finished one whose measured
+ * usage is not yet recorded.
  * @param row - The canonical registered winner, including dedup winners.
  * @param snapshot - Durable admission facts from its canonical-key owner.
- * @returns Fixed accepted work identity, or none before admission.
+ * @param proposed - The job this admission proposed and its deadline, when it admitted one.
+ * @returns Nothing once queued.
  * @throws {Error} When the queue refuses durable work.
  */
-async function enqueue(row: StudioAssetEntity, snapshot: VideoPresentationIngestSnapshot): Promise<VideoPresentationAttempt | null> {
-  const attempt = snapshot.attempt;
-  if (attempt === null) return null;
-  if (attempt.status === 'accepted' || attempt.status === 'running' || (attempt.usage !== null && attempt.usageRecorded !== true)) {
-    queue ??= createQueue(VIDEO_PRESENTATION_QUEUE);
-    const job: VideoPresentationJob = { assetId: row.id, sourceFingerprint: row.contentHash, jobId: attempt.jobId, deadlineAt: attempt.deadlineAt };
-    await queue.add('prepare', job, { ...defaultJobOpts(), jobId: attempt.jobId });
-  }
-  return { jobId: attempt.jobId, deadlineAt: attempt.deadlineAt };
+async function enqueue(row: StudioAssetEntity, snapshot: VideoPresentationIngestSnapshot, proposed: { jobId: string; deadlineAt: number } | null): Promise<void> {
+  const preparation = snapshot.preparation;
+  if (preparation === null || (preparation.failure !== null && snapshot.usageFact?.jobId !== preparation.jobId)) return;
+  queue ??= createQueue(VIDEO_PRESENTATION_QUEUE);
+  const job: VideoPresentationJob = { assetId: row.id, sourceFingerprint: row.contentHash, jobId: preparation.jobId,
+    ...(proposed?.jobId === preparation.jobId ? { deadlineAt: proposed.deadlineAt } : {}) };
+  await queue.add('prepare', job, { ...defaultJobOpts(), jobId: preparation.jobId });
 }
 
 /**
- * Accept source-scoped platform work without resetting a current attempt.
+ * The frozen price of one configured container class.
+ * @param containerClass - The class name.
+ * @returns Its size and prices.
+ * @throws {Error} When the class is not configured.
+ */
+function priceOf(containerClass: string): VideoPresentationPricing {
+  const config = getMiniToolsConfig();
+  const size = config.classes[containerClass];
+  if (size === undefined) throw new Error(`Container class ${containerClass} is not configured`);
+  return { containerClass, size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: { ...config.prices } };
+}
+
+/**
+ * Accept source-scoped platform work without resetting a current job (the one admission entry, repairs included).
  * @param row - Actual registered source, never a derivative.
  * @param options - Any parent deadline and explicit repair attribution.
- * @returns The persisted admission and descriptor facts.
+ * @returns The snapshot after admission.
  * @throws {Error} When ingest admission or queueing fails.
  */
 async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promise<VideoPresentationIngestSnapshot> {
@@ -125,10 +137,9 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
   const config = getMiniToolsConfig();
   const settings = config.presentation;
   const ledger = settings.source_ledger;
-  const size = config.classes[settings.container_class]!;
+  const proposed = { jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()) };
   const request: VideoPresentationIngestRequest = {
-    action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
-    jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()),
+    action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed,
     original: originalOf(row), contentType: row.mimeType, knownAlpha: options.knownAlpha === true, repair: options.repair === true,
     registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
@@ -138,10 +149,13 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset,
       sourceLedger: { maxBytes: ledger.max_bytes, probeStdoutBytes: ledger.probe_stdout_bytes, metadataBytes: ledger.metadata_bytes,
         isoBoxCount: ledger.iso_box_count, matroskaElementCount: ledger.matroska_element_count, matroskaMaxBlocks: ledger.matroska_max_blocks } },
-    pricing: { containerClass: settings.container_class, size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: { ...config.prices } },
+    // Both container prices are frozen together (design §5.1 step 1): basic probes and copies, standard-4 encodes.
+    pricing: { basic: priceOf(settings.container_class), standard4: priceOf(config.encoding.encoder.container_class) },
+    targetPolicyVersion: settings.policy_version,
+    policy: { chunkRetries: config.encoding.chunk_retries, maxAutoRepairs: ledger.max_auto_repairs },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
-  await enqueue(row, snapshot);
+  await enqueue(row, snapshot, proposed);
   return snapshot;
 }
 
@@ -155,22 +169,17 @@ function sourceLedgerReadLimits(): VideoPresentationTableReadLimits {
 }
 
 /**
- * Convert internal work facts to the owned public source response.
+ * Mirror the snapshot in the public response (design §3.5 web→server row, §5.1 step 6): the registered binding, the
+ * selected bundle, the target preparation and the selected version's ledger, polling exactly while the reader waits.
  * @param binding - Current registry identity.
  * @param snapshot - Validated durable source facts.
- * @returns A public response with polling only for accepted pending work.
+ * @returns The public response.
  * @throws {Error} When ingest violates the public source or geometry contract.
  */
 function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresentationIngestSnapshot): VideoPresentationResponse {
-  const attempt = snapshot.attempt;
-  const pending = attempt?.status === 'accepted' || attempt?.status === 'running';
-  return videoPresentationResponseSchema.parse({ sourceBinding: binding, presentation: snapshot.presentation,
-    ...(snapshot.manifest === undefined ? {} : { manifest: snapshot.manifest }),
-    preparation: attempt === null ? null : { status: attempt.status, attempt: { jobId: attempt.jobId, deadlineAt: attempt.deadlineAt },
-      ...(attempt.error === undefined ? {} : { error: attempt.error }) },
-    pollAfterMs: pending ? getMiniToolsConfig().poll_interval_ms : null,
-    // An ingest answer without the field predates the ledger; it stays unknown.
-    ...(snapshot.sourceLedger === undefined ? {} : { sourceLedger: snapshot.sourceLedger }),
+  return videoPresentationResponseSchema.parse({
+    sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation, ledger: snapshot.ledger,
+    pollAfterMs: videoPresentationAwaitsServer(snapshot) ? getMiniToolsConfig().poll_interval_ms : null,
     sourceLedgerReadLimits: sourceLedgerReadLimits(),
   });
 }
@@ -187,78 +196,40 @@ export async function resolveVideoPresentation(input: ResolveVideoPresentationIn
   await assertAccess(input);
   const { row, binding } = await registeredSource(input.canonicalURL);
   let snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
-    action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
+    action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash, targetPolicyVersion: getMiniToolsConfig().presentation.policy_version,
   });
-  // Work that is not running and has no ledger state yet is admitted once; any ledger state, including a failure, is answered as it is.
-  const status = snapshot.attempt?.status;
-  if (status !== 'accepted' && status !== 'running' && (snapshot.sourceLedger === undefined || snapshot.sourceLedger === null)) snapshot = await accept(row, {});
-  else await enqueue(row, snapshot);
+  // A source with nothing selected and no target work is admitted once; anything else, a failure included, is answered as it is.
+  if (snapshot.presentation === null && snapshot.preparation === null) snapshot = await accept(row, {});
+  else await enqueue(row, snapshot, null);
   return response(binding, snapshot);
-}
-
-/**
- * Read the stored source frame table of a registered video for a project member.
- *
- * The receipt is trusted only once it names the registered row's own hash and
- * the companion address derived from its own storage key. A source with no
- * ready table is refused here; admitting work to make one is the presentation
- * read's job, not this one's.
- * @param input - Current project member and selected canonical address.
- * @param deadlineAt - The calling task's own deadline, in epoch ms.
- * @param signal - The caller's signal.
- * @returns The registered binding and the whole validated table.
- * @throws {NotFoundError} When project read access is absent.
- * @throws {ValidationError} When the URL has no live registered video.
- * @throws {VideoSourceLedgerReadRefused} When there is no ready receipt for this source, or its body is not the stored table.
- * @throws {DeadlinePassed} When the deadline comes before the table is validated.
- * @throws {Error} When ingest or the companion delivery fails.
- */
-export async function readSourceLedger(input: ResolveVideoPresentationInput, deadlineAt: number, signal?: AbortSignal): Promise<VideoSourceLedgerRead> {
-  await assertAccess(input);
-  const { row, binding } = await registeredSource(input.canonicalURL);
-  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
-    action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
-  });
-  const state = snapshot.sourceLedger;
-  // A version 2 receipt is read by the v2 reader; this one reads version 1 only.
-  if (state === undefined || state === null || state.state !== 'ready' || state.receipt.schemaVersion !== 1) throw new VideoSourceLedgerReadRefused('receipt');
-  const storage = await getStorageAdapter();
-  if (state.receipt.sourceFingerprint !== binding.contentHash || state.receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey))) {
-    throw new VideoSourceLedgerReadRefused('receipt');
-  }
-  // Legacy callers still need the full v1 companion. Its measured counts bound
-  // parser allocation; the configured byte budget remains the operational cap.
-  const ledger = await readVideoSourceLedger(state.receipt, { ...sourceLedgerReadLimits(), maxPhysicalFrames: state.receipt.physicalFrameCount, maxOccurrences: Math.max(1, state.receipt.occurrenceCount) }, { deadlineAt, ...(signal === undefined ? {} : { signal }) });
-  return { sourceBinding: binding, ledger };
 }
 
 /**
  * Repair an unchanged registered source under read permission.
  * @param input - Member, canonical identity and idempotent press identity.
- * @returns Current source and accepted repair identity.
+ * @returns The same response as a read, naming the accepted job in its preparation.
  * @throws {NotFoundError} When project read access is absent.
  * @throws {VideoPresentationSourceChanged} When the client fingerprint is stale.
  * @throws {Error} When registration, admission or queueing fails.
  */
-export async function repairVideoPresentation(input: RepairVideoPresentationInput): Promise<VideoPresentationRepairResponse> {
+export async function repairVideoPresentation(input: RepairVideoPresentationInput): Promise<VideoPresentationResponse> {
   await assertAccess(input);
   const { row, binding } = await registeredSource(input.canonicalURL);
   if (binding.contentHash !== input.sourceFingerprint) throw new VideoPresentationSourceChanged(binding);
   const snapshot = await accept(row, { repair: true, requestId: input.requestId, userId: input.userId, projectId: input.projectId });
-  return { ...response(binding, snapshot), attempt: snapshot.attempt === null ? null : { jobId: snapshot.attempt.jobId, deadlineAt: snapshot.attempt.deadlineAt } };
+  return response(binding, snapshot);
 }
 
 /**
  * Arrange platform-funded presentation work after registration.
  * @param input - Registered winner and any parent run's original deadline.
- * @returns The accepted work, or none for a gone or non-video asset.
+ * @returns The target preparation after admission, or none for a gone or non-video asset.
  * @throws {Error} When durable admission or queueing fails.
  */
-export async function ensureVideoPresentation(input: EnsureVideoPresentationInput): Promise<VideoPresentationAttempt | null> {
+export async function ensureVideoPresentation(input: EnsureVideoPresentationInput): Promise<VideoPresentationIngestPreparation | null> {
   const row = await findById(input.assetId);
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return null;
-  const snapshot = await accept(row, input);
-  return snapshot.attempt === null ? null : { jobId: snapshot.attempt.jobId, deadlineAt: snapshot.attempt.deadlineAt };
+  return (await accept(row, input)).preparation;
 }
 
 /**
@@ -271,28 +242,29 @@ export async function runVideoPresentation(job: VideoPresentationJob): Promise<V
   const row = await findById(job.assetId);
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return { status: 'gone', usageRecorded: false, usagePending: false };
   if (row.contentHash !== job.sourceFingerprint) return { status: 'stale', usageRecorded: false, usagePending: false };
+  // ponytail: a job queued from a read has no deadline; the staged worker (E2) takes it from the DO's prepare answer.
+  if (job.deadlineAt === undefined) return { status: 'stale', usageRecorded: false, usagePending: false };
   const identity = { storageKey: row.storageKey, sourceFingerprint: row.contentHash, jobId: job.jobId, deadlineAt: job.deadlineAt };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
     ...identity, action: job.deadlineAt <= Date.now() ? 'expire' : 'run',
   });
-  if (snapshot.attempt?.jobId !== job.jobId) return { status: 'stale', usageRecorded: false, usagePending: false };
+  if (snapshot.preparation?.jobId !== job.jobId) return { status: 'stale', usageRecorded: false, usagePending: false };
   const original = snapshot.presentation?.original;
   if (original !== undefined && row.width === null && row.height === null && row.durationSeconds === null) {
     await fillMediaNumbers(row.id, { width: original.width, height: original.height, durationSeconds: original.duration });
   }
-  let usageRecorded = snapshot.attempt.usageRecorded === true;
+  // The snapshot carries the job's usage fact only while it is unacknowledged.
   const fact = snapshot.usageFact;
-  if (!usageRecorded && fact !== undefined) {
-    if (fact.jobId !== job.jobId) throw new Error('Presentation usage differs from its original attempt');
+  if (fact !== undefined) {
+    if (fact.jobId !== job.jobId) throw new Error('Presentation usage differs from its original job');
     const recorder = createUsageRecorder({ operationKey: `video-presentation:${fact.jobId}`, feature: 'mini_tool', actorUserId: fact.actorUserId,
       projectId: fact.projectId, multiplier: 0, onMissingCost: () => { throw new Error('Presentation expense requires actual measured usage'); } });
     recorder.recordServiceCall({ source: 'container', service: 'video-presentation', provider: 'cloudflare', requests: 1,
       costUsd: containerCostUsd(fact.usage, fact.pricing.size, fact.pricing.prices), costSource: 'computed' });
     await recorder.settle();
     await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { ...identity, action: 'ack_usage' });
-    usageRecorded = true;
   }
-  const ready = snapshot.presentation?.state === 'native' || snapshot.presentation?.state === 'alpha_ready';
-  return { status: ready ? 'ready' : 'failed', usageRecorded, usagePending: ready && !usageRecorded,
-    ...(snapshot.attempt.error === undefined ? {} : { error: snapshot.attempt.error }) };
+  const failure = snapshot.preparation.failure;
+  return { status: snapshot.presentation !== null && failure === null ? 'ready' : 'failed', usageRecorded: true, usagePending: false,
+    ...(failure === null ? {} : { error: failure }) };
 }
