@@ -68,9 +68,9 @@ function patched(value: Record<string, unknown>, path: readonly string[], replac
 }
 
 const ENCODER = {
-  container_class: 'MiniToolContainerStd4', start_seconds: 3, encode_pixels_per_second: 163_000_000,
-  // S6d D1-3 (§91): the 12-bit rates measured with ProRes 4444 by the same method (encode-throughput, 12-bit runs).
-  decode_convert_pixels_per_second: { sdr_8bit: 1_950_000_000, sdr_10bit: 705_000_000, sdr_12bit: 1_430_000_000, hdr_8bit: 152_000_000, hdr_10bit: 103_000_000, hdr_12bit: 116_000_000 },
+  container_class: 'MiniToolContainerStd4', start_seconds: 3, encode_pixels_per_second: 248_000_000,
+  // S6d D1-3 (§91): all rates re-measured under one condition, nproc 4 as on standard-4 (encode-throughput nproc4 and 12-bit runs).
+  decode_convert_pixels_per_second: { sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000 },
 };
 
 describe('EC S6b encoding and carrier configuration', () => {
