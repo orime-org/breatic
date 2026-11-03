@@ -32,7 +32,7 @@ export type Fact = { kind: 'verified'; bundle: Bundle } | { kind: 'finished'; us
 export interface Measured { etag: string; size: number; sha256: string; table: { etag: string; size: number; sha256: string } }
 /** S6c admission (design §3.5, §5.1): both frozen prices, the target policy version and the frozen retry caps. */
 export type Admission = Omit<VideoPresentationAdmission, 'pricing'> & {
-  pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number }; encoding: typeof ENCODING;
+  pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number }; encoding: typeof ENCODING; publicBaseURL: string;
 };
 export interface MachineStore {
   accept: (admission: Admission) => Promise<MachineView>;
@@ -60,6 +60,8 @@ export const D = 1_900_000_000_000;
 export const NOW = 1_800_000_000_000;
 // Config initial values (design §5.4 配置初值), frozen into the admission.
 export const POLICY = { chunkRetries: 3, maxAutoRepairs: 3 };
+// The public base every derived object URL hangs off (inner 1c3a5892).
+export const PUBLIC_BASE = 'https://assets.example.test';
 export const SOURCE_BYTES = new Uint8Array([1, 2, 3, 4]);
 export const TABLE = new TextEncoder().encode(JSON.stringify({ sourceFingerprint: H, toolInputId: T, planSha256: PLAN, presentation: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 3, step: 1, duration: 1 }] } }));
 export const FULL = new TextEncoder().encode(JSON.stringify({ schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN }));
@@ -104,7 +106,8 @@ export function admission(key: string, jobId: string, deadlineAt = D): Admission
     storageKey: key, sourceFingerprint: H, jobId, deadlineAt, original: ORIGINAL, contentType: 'video/mp4', knownAlpha: false,
     actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null, pricing: PRICING,
     limits: { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: 'medium', probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536, sourceLedger: { ...LEDGER_LIMITS } },
-    sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(key)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(key)}`,
+    // S6e (inner 1c3a5892): one frozen public base; ingest derives every object URL from it.
+    publicBaseURL: PUBLIC_BASE,
     targetPolicyVersion: 1, policy: POLICY, encoding: ENCODING,
   };
 }

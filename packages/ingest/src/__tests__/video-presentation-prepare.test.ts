@@ -30,7 +30,7 @@ import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { videoPresentationVersionId } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
-import { admission, bundle, D, H, PLAN, produceLedger, source, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { admission, bundle, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
 import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
@@ -383,7 +383,8 @@ describe('publishing after a dispatched copy or a stitch (inner 54ce9ea3 §5.1 s
       expect(view.presentation).toMatchObject({
         versionId: await expectedVersionId(1, carrier.receipt), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
         display: DISPLAY, playbackClock: CLOCK,
-        playback: { kind: 'native', carrier: { storageKey: carrier.receipt.storageKey, etag: carrier.etag, size: carrier.receipt.sizeBytes, sha256: carrier.receipt.sha256, contentType: 'video/mp4' } },
+        // inner 1c3a5892: the carrier URL is the frozen public base joined to its storage key.
+        playback: { kind: 'native', carrier: { storageKey: carrier.receipt.storageKey, url: `${PUBLIC_BASE}/${carrier.receipt.storageKey}`, etag: carrier.etag, size: carrier.receipt.sizeBytes, sha256: carrier.receipt.sha256, contentType: 'video/mp4' } },
       });
     });
   });

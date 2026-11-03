@@ -41,11 +41,12 @@ const accept = {
     copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
   },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
-  packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4', manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json',
+  // S6e (design §3.5 server/worker→ingest, inner 1c3a5892): one frozen public base replaces the per-object URLs.
+  publicBaseURL: 'https://assets.example.test',
 };
 const ledgerURL = 'https://assets.example.test/video/canonical.webm.ledger.json';
 const tableURL = 'https://assets.example.test/video/canonical.webm.table.json';
-const requested = { ...accept, limits: { ...accept.limits, sourceLedger: ledgerLimits }, sourceLedgerURL: ledgerURL, sourceLedgerTableURL: tableURL };
+const requested = { ...accept, limits: { ...accept.limits, sourceLedger: ledgerLimits } };
 
 /**
  * The request schema's verdict on one candidate admission.
@@ -57,7 +58,7 @@ function admits(value: unknown): boolean {
 }
 
 describe('presentation admission requesting the source ledger v2 (inner#1306 §77)', () => {
-  it('Q01 carries the six ledger budgets and both companion URLs unchanged', () => {
+  it('Q01 carries the six ledger budgets unchanged', () => {
     expect(videoPresentationIngestRequestSchema.parse(requested)).toEqual(requested);
   });
 
@@ -78,16 +79,11 @@ describe('presentation admission requesting the source ledger v2 (inner#1306 §7
   });
 
   it.each([
-    ['budgets without either URL', { limits: requested.limits }],
-    ['budgets without the table URL', { limits: requested.limits, sourceLedgerURL: ledgerURL }],
-    ['budgets without the ledger URL', { limits: requested.limits, sourceLedgerTableURL: tableURL }],
-    ['both URLs without budgets', { sourceLedgerURL: ledgerURL, sourceLedgerTableURL: tableURL }],
-    ['the same URL for both objects', { limits: requested.limits, sourceLedgerURL: ledgerURL, sourceLedgerTableURL: ledgerURL }],
-    ['a table URL that is not https', { limits: requested.limits, sourceLedgerURL: ledgerURL, sourceLedgerTableURL: 'http://assets.example.test/t.json' }],
-    ['a ledger URL that is not a URL', { limits: requested.limits, sourceLedgerURL: 'not a url', sourceLedgerTableURL: tableURL }],
-  ])('Q02 rejects %s', (_name, extra) => {
+    ['the ledger URL', { sourceLedgerURL: ledgerURL }],
+    ['the table URL', { sourceLedgerTableURL: tableURL }],
+  ])('Q02 rejects %s, now derived from the public base (inner 1c3a5892)', (_name, extra) => {
     expect(admits(requested)).toBe(true);
-    expect(admits({ ...accept, ...extra })).toBe(false);
+    expect(admits({ ...requested, ...extra })).toBe(false);
   });
 });
 

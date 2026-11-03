@@ -227,6 +227,14 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     });
   });
 
+  it('A06 sends the storage public base once and no per-object URL (inner 1c3a5892 §3.5 server/worker→ingest)', async () => {
+    await ensureVideoPresentation({ assetId: asset.id });
+    const accept = acceptSent() as unknown as Record<string, unknown>;
+    const sourceURL = publicUrl(asset.storageKey) as string;
+    expect(accept.publicBaseURL).toBe(sourceURL.slice(0, sourceURL.length - `/${asset.storageKey}`.length));
+    for (const retired of ['packedURL', 'manifestURL', 'sourceLedgerURL', 'sourceLedgerTableURL']) expect(retired in accept).toBe(false);
+  });
+
   it('A04 keeps the registered facts: unknown measurements stay null and a known width is retained', async () => {
     findById.mockResolvedValue({ ...asset, width: 95 });
     await ensureVideoPresentation({ assetId: asset.id });

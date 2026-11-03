@@ -46,7 +46,7 @@ const accept = {
   limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
   pricing: PRICING, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 }, encoding: ENCODING,
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
-  packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4', manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json',
+  publicBaseURL: 'https://assets.example.test',
 };
 const identity = { storageKey: KEY, sourceFingerprint: H, jobId: 'video-presentation-a' };
 const capability = { ...identity, deadlineAt: D, token: 'token-a' };
@@ -92,6 +92,37 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
     const value: Record<string, unknown> = { ...accept, encoding };
     if (encoding === undefined) delete value.encoding;
     expect(admits(value)).toBe(false);
+  });
+});
+
+describe('one frozen public base for every derived object (inner 1c3a5892 §3.5 server/worker→ingest)', () => {
+  it('UB01 an accept carries the public base and no per-object URL', () => {
+    expect(videoPresentationIngestRequestSchema.parse(accept)).toEqual(accept);
+  });
+
+  it.each([
+    ['no public base', { publicBaseURL: undefined }],
+    ['an http base', { publicBaseURL: 'http://assets.example.test' }],
+    ['a base with a trailing slash', { publicBaseURL: 'https://assets.example.test/' }],
+    ['a base that is not a URL', { publicBaseURL: 'assets' }],
+    ['the retired packed URL', { packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4' }],
+    ['the retired manifest URL', { manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json' }],
+    ['the retired ledger URL', { sourceLedgerURL: 'https://assets.example.test/video/canonical.webm.ledger.json' }],
+    ['the retired table URL', { sourceLedgerTableURL: 'https://assets.example.test/video/canonical.webm.table.json' }],
+  ])('UB02 rejects an accept with %s', (_name, change) => {
+    expect(admits(accept)).toBe(true);
+    const value: Record<string, unknown> = { ...accept, ...change };
+    for (const [field, entry] of Object.entries(change)) if (entry === undefined) delete value[field];
+    expect(admits(value)).toBe(false);
+  });
+
+  it.each([
+    ['the source', KEY],
+    ['a work object', `${KEY}.video-presentation:job:chunk:0:a1`],
+    ['a nested key', 'video/2026-11-03/clip one.mp4'],
+  ])('UB03 the one URL function answers base/key for %s', (_name, key) => {
+    const urlFor = exported<(publicBaseURL: string, storageKey: string) => string>('videoPresentationObjectURL');
+    expect(urlFor('https://assets.example.test', key)).toBe(`https://assets.example.test/${key}`);
   });
 });
 

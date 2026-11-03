@@ -30,13 +30,12 @@ const accept = {
     copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
   },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
-  packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4', manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json',
-  sourceLedgerURL: 'https://assets.example.test/video/canonical.webm.ledger.json',
-  sourceLedgerTableURL: 'https://assets.example.test/video/canonical.webm.table.json',
+  // S6e (inner 1c3a5892): one frozen public base replaces the per-object URLs.
+  publicBaseURL: 'https://assets.example.test',
 };
 
 describe('presentation admission at the ingest boundary (inner#1306 §77)', () => {
-  it('I01 passes the ledger budgets and both companion URLs through to the store', async () => {
+  it('I01 passes the ledger budgets and the public base through to the store', async () => {
     const acceptPresentation = vi.fn(async () => ({ presentation: null, attempt: null }));
     const env = {
       INGEST_SHARED_SECRET: 'secret',
@@ -49,8 +48,7 @@ describe('presentation admission at the ingest boundary (inner#1306 §77)', () =
     expect(response.status).toBe(200);
     expect(acceptPresentation).toHaveBeenCalledWith(expect.objectContaining({
       limits: expect.objectContaining({ sourceLedger: ledgerLimits }),
-      sourceLedgerURL: accept.sourceLedgerURL,
-      sourceLedgerTableURL: accept.sourceLedgerTableURL,
+      publicBaseURL: accept.publicBaseURL,
     }));
   });
 
