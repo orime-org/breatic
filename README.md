@@ -6,7 +6,7 @@
 
 Bring your brief, scenes and media into one project. Write in Document Spaces, generate and refine assets in Canvas Spaces, and work with an AI agent and collaborators in the context of your production.
 
-**Available online · Open source · Desktop browser**
+**Available online · Source-available · Desktop browser**
 
 [Try Breatic][hosted-app] · [Watch the 45-second demo](https://youtu.be/mc1XAqtJD_M) · [User guide](docs/USAGE.md) · [Self-host](self-host/LOCAL.md) · [Releases](https://github.com/orime-org/breatic/releases)
 
@@ -96,9 +96,9 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 ## License and permitted use
 
-Breatic is **open source** under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+Breatic is **source-available** under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`).
 
-You may use, study, modify and self-host Breatic for any purpose, including commercial use. If you modify Breatic and let other people use your modified version over a network, you must offer them its complete source code under the same license. See the license for the complete terms.
+You may read, modify and redistribute Breatic, and run it for yourself or inside your own organization, including for commercial work. You may not provide Breatic to third parties as a hosted or managed service. See the license for the complete terms.
 
 The Breatic name and logo are trademarks of Orime, Inc. and are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md). The license places no restriction on the content you create with Breatic.
 
