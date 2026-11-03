@@ -55,8 +55,11 @@ const removeBackgroundSchema = z.strictObject({
 const encoderDefaults = {
   container_class: "MiniToolContainerStd4" as const,
   start_seconds: 3,
-  encode_pixels_per_second: 163_000_000,
-  decode_convert_pixels_per_second: { sdr_8bit: 1_950_000_000, sdr_10bit: 705_000_000, hdr_8bit: 152_000_000, hdr_10bit: 103_000_000 },
+  // Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs), to be replaced by Cloudflare standard-4 measurements.
+  encode_pixels_per_second: 248_000_000,
+  decode_convert_pixels_per_second: {
+    sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000,
+  },
 };
 const pixelRate = z.number().positive().finite();
 const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults };
@@ -69,7 +72,7 @@ const encodingSchema = z.strictObject({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
     encode_pixels_per_second: pixelRate.default(encoderDefaults.encode_pixels_per_second),
-    decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate })
+    decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate })
       .default(encoderDefaults.decode_convert_pixels_per_second),
   }).default(encoderDefaults),
   // Derived from the ledger byte caps, never configured: a value carried by an already parsed configuration is replaced.
@@ -83,6 +86,31 @@ const carrierSchema = z.strictObject({
   max_short_side: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(carrierDefaults.max_short_side),
   color: z.strictObject({ primaries: colorTag, transfer: colorTag, matrix: colorTag, range: colorTag }).default(carrierDefaults.color),
 });
+
+// The identity qualification table (design §4.1): a source plays as itself only when its container, video codec,
+// profile, pixel format, bit depth and audio are in this table, with no rotation, square samples and a tagged matrix.
+// Only combinations official sources document as playable in desktop browsers belong here: MDN "Web video codec guide"
+// and "Media container formats" (MP4 + H.264 Baseline/Main/High 8-bit 4:2:0, AAC or no audio). Changing the table
+// changes the policy: raise presentation.policy_version with it.
+const identityFormatSchema = z.strictObject({
+  container: z.string().min(1),
+  video_codec: z.string().min(1),
+  profiles: z.array(z.string().min(1)).min(1),
+  pix_fmt: z.string().min(1),
+  bit_depth: z.number().int().positive().max(16),
+  audio_codecs: z.array(z.string().min(1)).min(1),
+  rotation: z.literal(0),
+  sar: z.literal("1:1"),
+  matrix_tagged: z.literal(true),
+});
+const identityFormatDefaults = [{
+  container: "mp4", video_codec: "h264", profiles: ["Constrained Baseline", "Baseline", "Main", "High"], pix_fmt: "yuv420p", bit_depth: 8,
+  audio_codecs: ["aac", "none"], rotation: 0 as const, sar: "1:1" as const, matrix_tagged: true as const,
+}];
+// One sampled frame classified alpha and colour of every measured fixture (inner#1306 test plan §91 D-6), so it is the default.
+const probeSampleFramesDefault = 1;
+// A single-frame source is shown this long (design §4.2.1).
+const singleFrameDurationMsDefault = 5000;
 
 const analysisProfileSchema = z.strictObject({
   id: z.string().min(1),
@@ -142,6 +170,9 @@ export const miniToolsConfigSchema = z
       container_class: z.string().min(1).default("MediaContainer"),
       // The target presentation policy every admission and read freezes (design §3.2 item 1); a configured block names it.
       policy_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      probe_sample_frames: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(probeSampleFramesDefault),
+      single_frame_duration_ms: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(singleFrameDurationMsDefault),
+      identity_formats: z.array(identityFormatSchema).default(identityFormatDefaults),
       // Every uploadable video gets a presentation and a ledger: this equals storage.upload.max_upload_bytes.
       max_source_bytes: z.number().int().positive().default(2_147_483_648),
       max_packed_bytes: z.number().int().positive().default(1_073_741_824),
@@ -149,7 +180,8 @@ export const miniToolsConfigSchema = z
       preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
       source_ledger: sourceLedgerConfigSchema.default(sourceLedgerDefaults),
       carrier: carrierSchema.default(carrierDefaults),
-    }).default({ container_class: "MediaContainer", policy_version: 1, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults, carrier: carrierDefaults }),
+    }).default({ container_class: "MediaContainer", policy_version: 1, probe_sample_frames: probeSampleFramesDefault, single_frame_duration_ms: singleFrameDurationMsDefault,
+      identity_formats: identityFormatDefaults, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults, carrier: carrierDefaults }),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),

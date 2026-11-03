@@ -47,13 +47,17 @@ encoding:
   encoder:
     container_class: "MiniToolContainerStd4"
     start_seconds: 3
-    encode_pixels_per_second: 163000000
+    # Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs),
+    # to be replaced by measurements on Cloudflare standard-4.
+    encode_pixels_per_second: 248000000
     # Source pixels per second, by source bit depth and dynamic range.
     decode_convert_pixels_per_second:
-      sdr_8bit: 1950000000
-      sdr_10bit: 705000000
-      hdr_8bit: 152000000
-      hdr_10bit: 103000000
+      sdr_8bit: 2200000000
+      sdr_10bit: 1310000000
+      sdr_12bit: 816000000
+      hdr_8bit: 106000000
+      hdr_10bit: 102000000
+      hdr_12bit: 109000000
 
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:
@@ -66,6 +70,24 @@ presentation:
   container_class: "MediaContainer"
   # The target presentation policy; raise it when a policy change must prepare every source again.
   policy_version: 1
+  # Frames the probe decodes to classify alpha and colour: one classified every measured fixture.
+  probe_sample_frames: 1
+  # How long a single-frame source is shown.
+  single_frame_duration_ms: 5000
+  # Sources that play as themselves (identity); anything else is normalized. Only combinations official sources
+  # document as playable in desktop browsers: MDN "Web video codec guide" and "Media container formats"
+  # (MP4 + H.264 Baseline/Main/High 8-bit 4:2:0, AAC or no audio). Changing this table changes the policy, so raise
+  # policy_version with it.
+  identity_formats:
+    - container: "mp4"
+      video_codec: "h264"
+      profiles: ["Constrained Baseline", "Baseline", "Main", "High"]
+      pix_fmt: "yuv420p"
+      bit_depth: 8
+      audio_codecs: ["aac", "none"]
+      rotation: 0
+      sar: "1:1"
+      matrix_tagged: true
   # Equal to storage.yaml upload.max_upload_bytes: every uploadable video is presented.
   max_source_bytes: 2147483648
   max_packed_bytes: 1073741824
