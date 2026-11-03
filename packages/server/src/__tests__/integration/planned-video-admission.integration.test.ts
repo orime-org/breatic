@@ -411,11 +411,12 @@ describe("S5 fresh frame and split execution admission", () => {
     const operation = Reflect.get(settings.executions, "video.extract-frames") as { max_outputs: number };
     const planner = vi.spyOn(miniTools, "planVideoFrames");
     try {
-      operation.max_outputs = 4; await control(f);
-      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 4]]);
-      operation.max_outputs = 3; f.body.outputs.pop();
+      // The seeded frame plan has five outputs (interval 1 s over 4.4 s).
+      operation.max_outputs = 5; await control(f);
+      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 5]]);
+      operation.max_outputs = 4; f.body.outputs.pop();
       expect((await post(f)).status).toBe(422);
-      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 4], [TABLE, f.body.draft.params, 3]]);
+      expect(planner.mock.calls).toEqual([[TABLE, f.body.draft.params, 5], [TABLE, f.body.draft.params, 4]]);
       expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
     } finally { planner.mockRestore(); }
   });
@@ -689,12 +690,27 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
   it("E3-A05 the quote covers the planned work when it exceeds the precheck: at least every job's start seconds", async () => {
     const f = await seed();
     (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
-    settings.prices.vcpu_second_usd = 1;
+    // A price at which one second is the 5-credit minimum and three seconds about 12 credits, well inside the seeded lot.
+    settings.prices.vcpu_second_usd = 0.01;
     await accept(f);
     const credits = (await parent(f.body.run_id)).params.miniToolExecution.credits;
     expect(credits).toBeGreaterThan(std4Credits(1));
     expect(credits).toBeGreaterThanOrEqual(std4Credits(settings.encoding.encoder.start_seconds));
     const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${f.body.run_id}`;
+    expect(hold).toEqual({ amount: credits });
+  });
+
+  it("E3-R01 a failed-subset retry quotes max(precheck, the retried outputs' planned work) at the frozen standard-4 price, like a fresh run", async () => {
+    const f = await seed();
+    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
+    settings.prices.vcpu_second_usd = 0.01;
+    await failedOriginal(f);
+    const body = retry(f, [2]); await accept(f, body);
+    const credits = (await parent(body.run_id)).params.miniToolExecution.credits;
+    // The retried output's batch job alone costs its start seconds: more than the 1 s precheck floor.
+    expect(credits).toBeGreaterThan(std4Credits(1));
+    expect(credits).toBeGreaterThanOrEqual(std4Credits(settings.encoding.encoder.start_seconds));
+    const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${body.run_id}`;
     expect(hold).toEqual({ amount: credits });
   });
 
