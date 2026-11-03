@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
-import { alphaManifestMatchesPresentation, alphaManifestSchema, alphaManifestKeyFor, alphaPackedKeyFor, parseVideoPresentation, videoPresentationKeyFor, videoPresentationSchema } from '../video-presentation.js';
+import { alphaManifestMatchesPresentation, alphaManifestSchema, parseVideoPresentation, videoPresentationKeyFor } from '../video-presentation.js';
+
+// S6e E4 (test plan §90, first deletion batch): `videoPresentationSchema`, `alphaPackedKeyFor` and
+// `alphaManifestKeyFor` have no caller outside tests; the descriptor checks below go through `parseVideoPresentation`.
 
 // Reviewed contract fixtures for inner#1306.
 const H = 'a'.repeat(64);
@@ -16,34 +19,31 @@ const alpha = { ...base, state: 'alpha_ready' as const, alpha: { manifestURL: `$
 const manifest = { schemaVersion: 1 as const, sourceFingerprint: H, packedURL: `${baseURL}.alpha.v1.mp4`, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
 
 describe('owned video presentation descriptor', () => {
-  it('derives sidecars from the canonical registered key', () => {
+  it('derives the descriptor pointer from the canonical registered key', () => {
     expect(videoPresentationKeyFor(key)).toBe('video/fixture/original.webm.video-presentation.v1.json');
-    expect(alphaPackedKeyFor(key)).toBe('video/fixture/original.webm.alpha.v1.mp4');
-    expect(alphaManifestKeyFor(key)).toBe('video/fixture/original.webm.alpha.v1.json');
   });
   it.each([native, alpha, { ...base, state: 'classifying', attempt }, { ...base, state: 'alpha_pending', attempt }, { ...base, state: 'failed', error: 'expired', attempt }])('accepts the independent $state descriptor', (value) => {
-    expect(videoPresentationSchema.parse(value)).toEqual(value);
     expect(parseVideoPresentation(value, H)).toEqual(value);
   });
   it.each([undefined, null, { ...native, schemaVersion: 2 }, { ...native, sourceFingerprint: H2 }])('keeps missing, obsolete and other-source descriptors unknown', (value) => {
     expect(parseVideoPresentation(value, H)).toBeNull();
   });
   it.each(['A'.repeat(64), 'abc', 'g'.repeat(64)])('rejects noncanonical SHA256 %s', (sourceFingerprint) => {
-    expect(videoPresentationSchema.safeParse({ ...native, sourceFingerprint }).success).toBe(false);
+    expect(parseVideoPresentation({ ...native, sourceFingerprint }, H)).toBeNull();
     expect(alphaManifestSchema.safeParse({ ...manifest, sourceFingerprint }).success).toBe(false);
   });
   it.each([0, -1, 0.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity])('rejects invalid original pixel size %s', (width) => {
-    expect(videoPresentationSchema.safeParse({ ...native, original: { ...base.original, width } }).success).toBe(false);
-    expect(videoPresentationSchema.safeParse({ ...native, original: { ...base.original, height: width } }).success).toBe(false);
+    expect(parseVideoPresentation({ ...native, original: { ...base.original, width } }, H)).toBeNull();
+    expect(parseVideoPresentation({ ...native, original: { ...base.original, height: width } }, H)).toBeNull();
   });
   it.each([0, -1, NaN, Infinity])('rejects invalid original duration %s', (duration) => {
-    expect(videoPresentationSchema.safeParse({ ...native, original: { ...base.original, duration } }).success).toBe(false);
+    expect(parseVideoPresentation({ ...native, original: { ...base.original, duration } }, H)).toBeNull();
   });
   it.each([{ ...base, state: 'alpha_ready' }, { ...base, state: 'failed' }, { ...base, state: 'classifying' }, { ...base, state: 'alpha_pending', attempt: { jobId: '' } }, { ...native, error: 'expired' }, { ...alpha, error: 'expired' }])('rejects internally inconsistent state $state', (value) => {
-    expect(videoPresentationSchema.safeParse(value).success).toBe(false);
+    expect(parseVideoPresentation(value, H)).toBeNull();
   });
   it('rejects renderer config inside the owned descriptor', () => {
-    expect(videoPresentationSchema.safeParse({ ...native, config: { info: { v: 2 } } }).success).toBe(false);
+    expect(parseVideoPresentation({ ...native, config: { info: { v: 2 } } }, H)).toBeNull();
   });
 });
 
