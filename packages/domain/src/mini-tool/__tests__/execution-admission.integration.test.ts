@@ -126,8 +126,10 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   },
   // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
   credits: 35,
+  // The frozen model part of the quote (display.duration), so a retry that reruns only generate can hold it alone.
+  modelCredits: 30,
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
-  planFingerprint: "1eca4c99f876f8d338c1c472525963d67f0825111f506a06addcce7ba4713a48",
+  planFingerprint: "4106ebcab29f975c4291db01d4a16f757103109b4bd808e327ae98c04d9a4b74",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
@@ -410,7 +412,10 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     outside.config.mockReturnValue(actual);
     await acceptMiniToolExecution(f.body, f.userId, start);
     const model = await estimateModelCredits("bria-fibo-video-background-remover", { params: {}, durations: { video: [5.055] }, sources: ["video"] });
-    expect(start.mock.calls[0]![0].credits).toBe(model!.credits + std4Credits(100000));
+    const accepted = start.mock.calls[0]![0] as unknown as { credits: number; modelCredits: number };
+    expect(accepted.modelCredits).toBe(model!.credits);
+    // A fresh run's quote is the frozen model part plus the preparation part.
+    expect(accepted.credits).toBe(accepted.modelCredits + std4Credits(100000));
   });
 
   it.each(["ref toolInputId", "nothing selected", "ledger pending", "full without encode facts"])("RB-A03 refuses when %s, before claiming the run", async (bad) => {

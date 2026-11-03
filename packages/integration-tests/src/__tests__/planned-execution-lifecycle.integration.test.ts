@@ -138,9 +138,17 @@ describe("narrow planned job reaches the original persistent lifecycle", () => {
   it("W15 sees active0 before the first adapter and sees pending mirror immediately after the actual identity callback", async () => {
     const f = await seedExecution(pg, "pending", false); remote(f);
     runPrediction.mockImplementation(async (_connection, _model, _body, resume) => {
-      expect((await observations(f)).record).toMatchObject({ status: "running", resultVersion: 0, outputs: [{ ...f.plan.outputs[0], result: null, late: false }], usage: [] });
+      // The preparation container_job already opened its pending container consumption before generate (E3b; §7.6, execution design §6.22).
+      const preparation = (await upstreamStepRepo.listSteps(f.taskId)).filter((row) => row.kind === "container_job")
+        .map((row) => (row.output.miniToolConsumption as { consumptionKey: string }).consumptionKey);
+      expect(preparation).toHaveLength(1);
+      const before = (await observations(f)).record;
+      expect(before).toMatchObject({ status: "running", resultVersion: 0, outputs: [{ ...f.plan.outputs[0], result: null, late: false }] });
+      expect(before.usage).toEqual([expect.objectContaining({ consumptionKey: preparation[0], state: "pending", costUsd: null, credits: null })]);
       await resume.persistTaskId(P); const step = await onlyStep(f);
-      expect((await observations(f)).record.usage).toEqual([{ consumptionKey: (step.output.miniToolConsumption as { consumptionKey: string }).consumptionKey, state: "pending", chargeTo: "user", costUsd: null, credits: null }]);
+      const provider = { consumptionKey: (step.output.miniToolConsumption as { consumptionKey: string }).consumptionKey, state: "pending", chargeTo: "user", costUsd: null, credits: null };
+      expect((await observations(f)).record.usage).toEqual(expect.arrayContaining([provider, expect.objectContaining({ consumptionKey: preparation[0], state: "pending" })]));
+      expect((await observations(f)).record.usage).toHaveLength(2);
       return { taskId: P, outputs: [TEMP] };
     });
     await runMiniToolExecutionTask(job(f), "token"); expect(runPrediction).toHaveBeenCalledTimes(1);

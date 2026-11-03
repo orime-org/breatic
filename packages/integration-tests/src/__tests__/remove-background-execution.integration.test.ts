@@ -70,8 +70,8 @@ const GOLDEN = {
   preparation: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3 },
-  credits: 35,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "330a3063c9822fa080a4bfbe676901dbd436e871da565cf29e4b33069c40b699",
+  credits: 35, modelCredits: 30,
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -129,7 +129,7 @@ async function planHash(plan: AcceptedMiniToolExecution): Promise<string> {
  * @throws {Error} When fixture SQL or the original deadline owner fails.
  */
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("330a3063c9822fa080a4bfbe676901dbd436e871da565cf29e4b33069c40b699");
+  expect(await planHash(GOLDEN)).toBe("6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {

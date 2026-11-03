@@ -36,8 +36,8 @@ const GOLDEN = {
   draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
   analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
   model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY,
-  presentationRef: PRESENTATION_REF, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) }, preparation: PREPARATION, credits: 35,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "330a3063c9822fa080a4bfbe676901dbd436e871da565cf29e4b33069c40b699",
+  presentationRef: PRESENTATION_REF, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) }, preparation: PREPARATION, credits: 35, modelCredits: 30,
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "6211a4911d3dbefec03b855742e7816b8c024c2aab5a87f18cb845db9235039d",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 
 export type FixturePg = ReturnType<typeof createPgClient>;
