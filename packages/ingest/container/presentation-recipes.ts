@@ -147,6 +147,36 @@ function audioOf(input: number, interval: { start: MiniToolPlanExact; end: MiniT
 const AAC = ["-map", "[a]", "-c:a", "aac", "-ar", "48000"];
 
 /**
+ * The start of the source frame shown at a span's clip start: the last video packet at or before it, read from the span's
+ * keyframe on. A span starting on its keyframe starts on a frame.
+ * @param source - The downloaded source.
+ * @param entry - The source span.
+ * @param run - The lifetime and IO bounds.
+ * @returns The frame start, exact; the clip start when no frame starts before it.
+ * @throws {Error} When ffprobe fails or answers without the stream's time base.
+ */
+async function frameStartAt(source: string, entry: Extract<MiniToolPlanEntry, { kind: "source" }>, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<[bigint, bigint]> {
+  const clip = rational(entry.clipStart);
+  const decode = rational(entry.decodeStart);
+  if (decode[0] * clip[1] === clip[0] * decode[1]) return clip;
+  // One second past the clip start covers packets that B-frame reordering delivers after a later one.
+  const until: [bigint, bigint] = [clip[0] + clip[1], clip[1]];
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0",
+    "-read_intervals", `${seconds(decode)}%${seconds(until)}`, "-show_entries", "stream=time_base:packet=pts", "-of", "json", source], run)).toString("utf8")) as
+    { streams?: { time_base?: string }[]; packets?: { pts?: number }[] };
+  const base = /^(\d+)\/(\d+)$/u.exec(answer.streams?.[0]?.time_base ?? "");
+  if (base === null) throw new Error("Source span probe has no video time base");
+  const [tickNumerator, tickDenominator] = [BigInt(base[1]!), BigInt(base[2]!)];
+  let best: bigint | null = null;
+  for (const packet of answer.packets ?? []) {
+    if (packet.pts === undefined) continue;
+    const pts = BigInt(packet.pts);
+    if (pts * tickNumerator * clip[1] <= clip[0] * tickDenominator && (best === null || pts > best)) best = pts;
+  }
+  return best === null ? clip : [best * tickNumerator, tickDenominator];
+}
+
+/**
  * Render a window (§5.4 chunking and chunk time; §7.17 entries): each source span decodes from its keyframe and shows from its clip
  * start, each derived-empty entry is one black frame, all on a `1/timescale` clock from 0 that opens with a keyframe; the
  * next frame's start ends each frame and the window end ends the last, so a held frame keeps its span. A model input adds
@@ -179,10 +209,11 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     const [lengthNumerator, lengthDenominator] = minus(entry.displayEnd, entry.displayStart);
     const [clipNumerator, clipDenominator] = rational(entry.clipStart);
     const clipEnd: [bigint, bigint] = [clipNumerator * lengthDenominator + lengthNumerator * clipDenominator, clipDenominator * lengthDenominator];
-    // ponytail: a frame that starts before clipStart is dropped rather than shown from clipStart; the worker's spans start on frames.
+    // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
+    const first = await frameStartAt(source, entry, run);
     args.push("-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
-    graph.push(`[${inputs}:v:0]trim=start=${seconds([clipNumerator, clipDenominator])}:end=${seconds(clipEnd)},settb=1/${clock},` +
-      `setpts=PTS-${roundTimes([clipNumerator, clipDenominator], clock)}+${offset},${picture(target, `p${at}`)}[e${at}]`);
+    graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
+      `setpts=max(PTS-${roundTimes([clipNumerator, clipDenominator], clock)}\\,0)+${offset},${picture(target, `p${at}`)}[e${at}]`);
     inputs += 1;
   }
   graph.push(`${entries.map((_entry, at) => `[e${at}]`).join("")}interleave=nb_inputs=${entries.length},settb=1/${clock}[v]`);
