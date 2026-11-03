@@ -169,12 +169,38 @@ const plan = planShape.transform((value, ctx) => {
   return value;
 });
 
-/** The full ledger: the complete plan with its origin mapping, bound to toolInputId and planSha256. */
+/**
+ * The physical encode facts beside the plan (§3.2 item 7): each presented frame's source keyframe ordinal and the coded
+ * size. They do not change the presentation, so they stay outside planSha256 and toolInputId; the receipt digest binds them.
+ */
+const encoding = z.strictObject({
+  keyframeOrdinals: z.array(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)), codedWidth: pixel, codedHeight: pixel,
+});
+
+/** The full ledger: the complete plan with its origin mapping and the encode facts, bound to toolInputId and planSha256. */
 export const videoPresentationLedgerSchema = z.strictObject({
-  schemaVersion: z.literal(2), sourceFingerprint: hash, toolInputId: hash, planSha256: hash, attempt, plan,
+  schemaVersion: z.literal(2), sourceFingerprint: hash, toolInputId: hash, planSha256: hash, attempt, plan, encoding,
+}).superRefine((value, ctx) => {
+  const frames = presentationFrameCount(value.plan.presentation);
+  const ordinals = value.encoding.keyframeOrdinals;
+  if (ordinals.some((ordinal, index) => ordinal >= frames || (index > 0 && ordinal <= ordinals[index - 1]!))) {
+    ctx.addIssue({ code: 'custom', path: ['encoding', 'keyframeOrdinals'], message: 'Keyframes are strictly increasing presented frames' });
+  }
 });
 /** A parsed full ledger. */
 export type VideoPresentationLedger = z.infer<typeof videoPresentationLedgerSchema>;
+
+/**
+ * One keyframe flag per presented frame, the shape `planVideoEncodeChunks` takes.
+ * @param ledger - A parsed full ledger.
+ * @returns The flags.
+ * @throws {never} Never.
+ */
+export function videoPresentationKeyframeFlags(ledger: VideoPresentationLedger): boolean[] {
+  const flags = Array.from({ length: presentationFrameCount(ledger.plan.presentation) }, () => false);
+  for (const ordinal of ledger.encoding.keyframeOrdinals) flags[ordinal] = true;
+  return flags;
+}
 
 /** The receipt of the full ledger and its compact object, two separately measured objects. */
 export const videoPresentationLedgerReceiptSchema = z.strictObject({

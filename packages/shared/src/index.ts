@@ -960,6 +960,7 @@ export {
 export {
   readVideoPresentationTable,
   readVideoPresentationCompact,
+  readVideoPresentationLedger,
   videoPresentationTableReadLimitsSchema,
   type VideoPresentationTableReadLimits,
 } from "@shared/upload/read-video-presentation-table.js";
@@ -971,6 +972,7 @@ export {
   videoPresentationLedgerReceiptSchema,
   videoPresentationCompactSchema,
   projectVideoPresentationCompact,
+  videoPresentationKeyframeFlags,
   videoPresentationRefSchema,
   videoPresentationPlanSha256,
   videoPresentationToolInputId,
