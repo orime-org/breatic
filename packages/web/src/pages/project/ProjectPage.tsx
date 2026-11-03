@@ -7,7 +7,7 @@ import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { MAX_SPACES_PER_PROJECT, newId, type SpaceRpcResponse } from '@breatic/shared';
@@ -69,6 +69,7 @@ import {
   writeOpenTabs,
 } from '@web/lib/project-tabs-storage';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
+import { PROJECT_VISIT_ACCOUNT_SOURCE } from '@web/pages/project/project-visit-account';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -149,6 +150,7 @@ export default function ProjectPage(): React.JSX.Element {
   // decorative and the backend keys on the bare uuid, so resolve it once here
   // and use it for every API call + the Yjs document name downstream.
   const projectId = projectUuidFromRouteParam(routeParam);
+  const location = useLocation();
   // Gate the shared collab socket on userId — the #1381 boot-race fix: don't
   // dial until AuthBootstrap has resolved a session, or the first connect
   // races the cookie and sticks on authFailed forever (regressed in v14 reset).
@@ -166,6 +168,13 @@ export default function ProjectPage(): React.JSX.Element {
       }
       return failureCount < 2;
     },
+  });
+
+  // Page-entry identity outlives query loading, permission rechecks and providers.
+  useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error, {
+    accountId: userId ?? null,
+    navigationKey: location.key,
+    accountSource: PROJECT_VISIT_ACCOUNT_SOURCE,
   });
 
   const { refetch } = projectQuery;
@@ -234,10 +243,6 @@ function ProjectWorkspace({
   project: ProjectDetail;
 }): React.JSX.Element {
   const t = useTranslation();
-
-  // Record the open once the project has loaded — floats it to the top of the
-  // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
-  useRecordProjectOpen(projectId, true);
 
   // Follow the user between the two regions, so the canvas keyboard and
   // clipboard gates and the active-state colours read the same value.
