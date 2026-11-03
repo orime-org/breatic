@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: Elastic-2.0
 
 -- Only absolute ISO UTC values are admitted to the immutable expression.
 -- Fixed parsing settings exclude session timezone, DateStyle and relative dates.

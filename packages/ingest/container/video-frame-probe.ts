@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** One decoded video sample in presentation order on its source clock. */
 export interface VideoSourceFrame { frameIndex: number; pts: number }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { VideoSourceFrame } from "@ingest/container/video-frame-probe.js";
 import type { MiniToolPlanPixelRect } from "@shared/upload/mini-tool-plan-types.js";

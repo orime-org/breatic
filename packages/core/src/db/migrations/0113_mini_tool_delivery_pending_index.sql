@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: LicenseRef-BSAL-1.0
+-- SPDX-License-Identifier: Elastic-2.0
 
 CREATE INDEX tasks_mini_tool_delivery_pending_idx ON tasks (id)
   WHERE source = 'mini_tool' AND status IN ('completed', 'failed')

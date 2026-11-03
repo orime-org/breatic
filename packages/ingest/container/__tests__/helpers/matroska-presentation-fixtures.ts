@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
 import type { MatroskaPhysicalVideoProbe } from "@ingest/container/physical-video-probe.js";

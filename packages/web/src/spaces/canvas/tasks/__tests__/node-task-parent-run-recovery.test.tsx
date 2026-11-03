@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Original open-panel/query boundary with controlled HTTP IO; SQL durability is covered in the real server suite. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

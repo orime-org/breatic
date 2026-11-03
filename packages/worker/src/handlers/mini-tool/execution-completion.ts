@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { logger, type getStreamRedis } from "@breatic/core";
 import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion } from "@breatic/domain";

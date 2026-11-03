@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** Real PG node-task/parent/history identities and real project-scoped HTTP; no provider or media IO. */
 import { randomBytes, randomUUID } from "node:crypto";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Remove-background durable admission (S6e E3b, inner#1306 test plan §90; design §5.3 remove-bg and model-input rows,

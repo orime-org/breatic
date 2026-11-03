@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The staged presentation job (inner#1306; frames-split design §5.1 steps 1, 2 and 2a, §5.4, §7.1, §7.1.1, §7.6).

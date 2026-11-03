@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Real HTTP middleware, PG roles/assets/tasks/rows/credit holds and BullMQ. No supplier or media is invoked.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { queryOptions, type UseQueryOptions } from '@tanstack/react-query';
 import { t, videoPresentationRepairResponseSchema, videoPresentationResponseSchema, type VideoPresentationResponse, type VideoPresentationRepairResponse } from '@breatic/shared';

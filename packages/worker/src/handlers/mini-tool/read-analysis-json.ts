@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { assetRepo } from "@breatic/domain";
 import { assertBeforeDeadline, httpRequest, readBytesWithin, untilDeadline, type StudioAssetEntity } from "@breatic/shared";

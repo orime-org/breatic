@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /** SQL, canonical rows, history, node tasks and both Redis databases are real. */
 import { randomUUID } from "node:crypto";
