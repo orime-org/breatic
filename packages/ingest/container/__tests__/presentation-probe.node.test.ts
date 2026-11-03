@@ -271,6 +271,12 @@ describe('packet-level demux and a bounded sample decode (design §5.1 step 2; �
       expect(Number(decode.args[at + 1])).toBeLessThanOrEqual(sampleFrames);
     }
   });
+
+  it('PD03 the frozen sample count reaches the decode: 3 frames are decoded when the probe facts say 3', async () => {
+    planned(await probed('cfr.mp4', { probe: { ...PROBE, sampleFrames: 3 } }));
+    const counts = calls.filter((call) => call.program === 'ffmpeg').map((call) => call.args[call.args.indexOf('-frames:v') + 1]);
+    expect(counts).toContain('3');
+  });
 });
 
 describe('colour matrix, geometry and transfer (design §4.3)', () => {
@@ -354,6 +360,26 @@ describe('identity qualification from the versioned format table (design §4.1; 
     ['a codec outside the table (ProRes)', 'prores422.mov'],
   ])('IQ02 %s does not qualify', async (_name, file) => {
     expect(planned(await probed(file)).routeInput.identityQualified).toBe(false);
+  });
+});
+
+describe('each field of the frozen identity table decides on its own (§91 D1-1)', () => {
+  const seed = IDENTITY_FORMATS[0]!;
+
+  it('IQ03 the seeded table qualifies the plain CFR source', async () => {
+    expect(planned(await probed('cfr.mp4', { probe: { ...PROBE, identityFormats: [seed] } })).routeInput.identityQualified).toBe(true);
+  });
+
+  it.each([
+    ['container', { container: 'mov' }],
+    ['video codec', { videoCodec: 'hevc' }],
+    ['profiles', { profiles: ['Main'] }],
+    ['pixel format', { pixFmt: 'yuv444p' }],
+    ['bit depth', { bitDepth: 10 }],
+    ['audio codecs (the source has no audio)', { audioCodecs: ['aac'] }],
+  ])('IQ03 a table that differs from the CFR source only in %s does not qualify it', async (_field, change) => {
+    const answer = planned(await probed('cfr.mp4', { probe: { ...PROBE, identityFormats: [{ ...seed, ...change }] } }));
+    expect(answer.routeInput.identityQualified).toBe(false);
   });
 });
 
