@@ -62,6 +62,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
         cb({ marker: "fake-tx" }),
       ),
     },
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     projectMembersRepo: {
       getRole: vi.fn(),
       getOwner: vi.fn(),

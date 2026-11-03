@@ -78,6 +78,7 @@ const assertStudioStorageAllowance = vi.fn();
 
 vi.mock("@breatic/core", () => ({
   AppError: class AppError extends Error {},
+  accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.test.invalid" },
   getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   getStorageConfig: () => ({
