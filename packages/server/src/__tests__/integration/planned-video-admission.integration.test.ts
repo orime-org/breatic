@@ -714,6 +714,20 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     expect(hold).toEqual({ amount: credits });
   });
 
+  it("E3-R02 a failed-subset retry quotes with the start seconds frozen at the original admission, not today's encoder.start_seconds", async () => {
+    const f = await seed();
+    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
+    settings.prices.vcpu_second_usd = 0.01;
+    await failedOriginal(f);
+    // Today's configuration changes after admission (§3.2 item 1; §7.11 a retry reuses frozen facts).
+    settings.encoding.encoder.start_seconds = 3000;
+    const body = retry(f, [2]); await accept(f, body);
+    const credits = (await parent(body.run_id)).params.miniToolExecution.credits;
+    // The retried output's job at the frozen 3 s start plus its small frozen work, far below 3000 s.
+    expect(credits).toBeGreaterThanOrEqual(std4Credits(3));
+    expect(credits).toBeLessThanOrEqual(std4Credits(10));
+  });
+
   it("E3-A06 the layout uses the full ledger's keyframes: without encode facts nothing is admitted", async () => {
     const f = await seed(); await control(f);
     const { encoding: _dropped, ...without } = f.full; const json = JSON.stringify(without);

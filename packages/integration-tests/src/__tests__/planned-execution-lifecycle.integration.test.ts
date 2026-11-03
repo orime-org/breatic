@@ -204,6 +204,22 @@ describe("original waiting and returned-provider boundary", () => {
     const f = await seedExecution(pg); runPrediction.mockRejectedValue(new Error("fixture pre-return terminal error"));
     await runMiniToolExecutionTask(job(f, 2), "token"); const row = await executionSnapshot(pg, f); expect(row.status).toBe("failed"); expect(row.result.settlement).toMatchObject({ consumptionSetComplete: false });
   });
+  it("W16 a terminal pre-return failure whose completion write fails throws for retry: preparation done is not the vendor's return", async () => {
+    const f = await seedExecution(pg); runPrediction.mockRejectedValue(new Error("fixture pre-return terminal error"));
+    const fn = `reject_failed_completion_${f.taskId.replaceAll("-", "")}`;
+    await pg.unsafe(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.result->'miniToolExecution'->>'status' = 'failed' THEN RAISE EXCEPTION 'fixture_completion_failed'; END IF; RETURN NEW; END $$`);
+    await pg.unsafe(`CREATE TRIGGER ${fn} BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+    try {
+      await expect(runMiniToolExecutionTask(job(f, 2), "token")).rejects.toThrow();
+      const steps = await upstreamStepRepo.listSteps(f.taskId);
+      // The preparation ran and finished; the vendor (generate) never returned.
+      expect(steps.some((step) => step.kind === "container_job")).toBe(true);
+      expect(steps.filter((step) => step.kind === "generate").every((step) => step.output.miniToolStep === undefined
+        || miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome !== "done")).toBe(true);
+    } finally {
+      await pg.unsafe(`DROP TRIGGER ${fn} ON tasks`); await pg.unsafe(`DROP FUNCTION ${fn}()`);
+    }
+  });
   it("W07 preserves the original known upstream-failure classifier without spending another retry", async () => {
     const f = await seedExecution(pg); runPrediction.mockImplementation(async (_c, _m, _b, resume) => { await resume.persistTaskId(P); throw new UpstreamTaskFailed("wavespeed", "fixture upstream rejected"); });
     await runMiniToolExecutionTask(job(f, 0), "token"); expect((await executionSnapshot(pg, f)).status).toBe("failed"); expect(runPrediction).toHaveBeenCalledTimes(1); expect(storeFromUrl).not.toHaveBeenCalled();
