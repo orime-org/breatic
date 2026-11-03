@@ -144,7 +144,8 @@ async function packets(path: string): Promise<Packet[]> {
  * @returns One mean per frame.
  */
 async function lumaMeans(path: string, crop?: { x: number; y: number; width: number; height: number }): Promise<number[]> {
-  const filter = `${crop === undefined ? '' : `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},`}scale=32:16:flags=area,format=gray`;
+  // Grey first: a crop on 4:2:0 rounds a 1-pixel width down to the chroma step (0).
+  const filter = `format=gray,${crop === undefined ? '' : `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},`}scale=32:16:flags=area`;
   const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-vf', filter, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
   const bytes = stdout as unknown as Buffer;
   return Array.from({ length: bytes.length / 512 }, (_unused, frame) => bytes.subarray(frame * 512, frame * 512 + 512).reduce((sum, value) => sum + value, 0) / 512);
@@ -192,6 +193,9 @@ beforeAll(async () => {
   await make('odd.mp4', ['-f', 'lavfi', '-i', 'color=c=white:s=161x97:r=25:d=0.4', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', ...tagged]);
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
   // Straight alpha of 64 over the whole picture, lossless PNG in QuickTime.
+  // Ten frames at 25 fps, each a different grey (limited-range luma 16 + 20n), keyframes at frames 0 and 5.
+  await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128",
+    '-c:v', 'libx264', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25']);
   await make('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
@@ -294,6 +298,29 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 128, 36]);
     // The right plane is the alpha as grey: 64, read back through a full-range grey conversion.
     for (const mean of await lumaMeans(file!, { x: 64, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 64)).toBeLessThan(6);
+  });
+
+  // An edit that starts inside a source frame keeps that frame, shown from clipStart (design §7.17 时间线「被剪辑起点截去一部分的帧保留」;
+  // D1 CT04 「the first kept partially」). §5.4 cuts chunks only at presented-frame boundaries, so a chunk window never starts
+  // mid-frame; a partial frame exists only where a span starts mid-frame, as the first entry (CE09) or a later one (CE10).
+  it('CE09 a span whose clipStart is inside a source frame shows that frame from pts 0 until its source end', async () => {
+    const recipe = { ...chunk({ start: 0, end: 4 }, [span(r(1, 5), r(13, 50), r(0), r(7, 50))]), timescale: 50 };
+    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4') }, [recipe]);
+    const list = await packets(file!);
+    expect(list.map(packet => [Number(packet.pts_time), Number(packet.duration_time)])).toEqual([[0, 0.02], [0.02, 0.04], [0.06, 0.04], [0.1, 0.04]]);
+    const [source, encoded] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(file!)];
+    expect(encoded).toHaveLength(4);
+    encoded.forEach((mean, n) => expect(Math.abs(mean - source[6 + n]!)).toBeLessThan(5));
+  });
+
+  it('CE10 a later span starting inside a source frame keeps that frame from its clipStart', async () => {
+    const recipe = { ...chunk({ start: 0, end: 6 }, [span(r(0), r(0), r(0), r(2, 25)), span(r(1, 5), r(13, 50), r(2, 25), r(11, 50))]), timescale: 50 };
+    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4') }, [recipe]);
+    const list = await packets(file!);
+    expect(list.map(packet => [Number(packet.pts_time), Number(packet.duration_time)])).toEqual([[0, 0.04], [0.04, 0.04], [0.08, 0.02], [0.1, 0.04], [0.14, 0.04], [0.18, 0.04]]);
+    const [source, encoded] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(file!)];
+    expect(encoded).toHaveLength(6);
+    [0, 1, 6, 7, 8, 9].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
   });
 });
 
