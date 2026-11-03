@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { planTimelineEdit, timelineSourceOverflow } from '@web/data/yjs/timeline-edit';
-import { validateTimelineRange } from '@web/data/yjs/timeline-time';
+import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
+import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/timeline-time';
 import type { TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema } from '@breatic/shared';
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
