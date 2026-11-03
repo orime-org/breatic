@@ -129,7 +129,7 @@ describe('Timeline edit session undo steps', () => {
     expect(session.getSnapshot().canUndo).toBe(false);
   });
 
-  it('needs one undo per edit without joinPrevious', () => {
+  it('needs one undo per edit without a hold', () => {
     const { mine, session } = pair();
     session.edit(move(X, 11));
     session.edit(move(X, 12));
@@ -141,11 +141,11 @@ describe('Timeline edit session undo steps', () => {
     expect(session.getSnapshot().canUndo).toBe(false);
   });
 
-  it('merges a joinPrevious edit into the previous step, as a held arrow key does', () => {
+  it('merges the continued edits of a hold into the step that started it, as a held arrow key does (S3)', () => {
     const { mine, session } = pair();
-    session.edit(move(X, 11));
-    session.edit(move(X, 12), { joinPrevious: true });
-    session.edit(move(X, 13), { joinPrevious: true });
+    session.edit(move(X, 11), { hold: 'start' });
+    session.edit(move(X, 12), { hold: 'continue' });
+    session.edit(move(X, 13), { hold: 'continue' });
     expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(13);
     session.undo();
     expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(10);
@@ -512,8 +512,8 @@ describe('Timeline edit session undo and redo against a concurrent peer (inner#1
   it.each(CASES)('restores a complete clip a later repeat of a held move removed (G1, seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
     // X[0,10) nudged right to 4 covers Z[12,14) only on the last repeats; the hold is one undo step.
     const { mine, peer, session } = apart([clip(A, MAIN, 0, 48), clip(MOVED, 'v2', 0, 10), clip(COVERED, 'v2', 12, 2, { sourceId: SHORT_SOURCE.id })], seededByMe, [SOURCE, SHORT_SOURCE]);
-    expect(session.edit(move(MOVED, 1)).ok).toBe(true);
-    for (let frame = 2; frame <= 4; frame += 1) expect(session.edit(move(MOVED, frame), { joinPrevious: true }).ok).toBe(true);
+    expect(session.edit(move(MOVED, 1), { hold: 'start' }).ok).toBe(true);
+    for (let frame = 2; frame <= 4; frame += 1) expect(session.edit(move(MOVED, frame), { hold: 'continue' }).ok).toBe(true);
     expect(mine.getMap('clips').has(COVERED)).toBe(false);
     expect(applyTimelineEdit(peer, move(COVERED, 100), Symbol('peer')).ok).toBe(true);
     sync(mine, peer, mineFirst);
@@ -957,5 +957,64 @@ describe('Timeline edit session refuses a nudge past the largest safe frame (inn
     expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(near);
     session.undo();
     expect(session.getSnapshot().canUndo).toBe(false);
+  });
+});
+
+describe('Timeline edit session joins a key hold only to its own step (inner#1708 S3)', () => {
+  const OTHER = cid(110);
+  const fresh = (): ReturnType<typeof pair> => pair([clip(X, 'v2', 0, 20), clip(OTHER, 'v2', 100, 20)]);
+
+  it('does not join a continued hold to an unrelated earlier step', () => {
+    const { mine, session } = fresh();
+    expect(session.edit({ operation: 'delete', parameters: { clipId: OTHER }, placement: OFF }).ok).toBe(true);
+    expect(session.edit(move(X, 1), { hold: 'continue' }).ok).toBe(true);
+    expect(session.edit(move(X, 2), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(0);
+    expect(readTimelineDocument(mine).clips[OTHER]).toBe(undefined);
+    expect(session.getSnapshot().canUndo).toBe(true);
+  });
+
+  it('undoes a started hold and its continuations in one step', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(X, 1), { hold: 'start' }).ok).toBe(true);
+    for (let frame = 2; frame <= 4; frame += 1) expect(session.edit(move(X, frame), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(0);
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+
+  it('joins continuations only to each other when the start was refused', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(X, 5)).ok).toBe(true);
+    expect(session.edit(move(cid(111), 1), { hold: 'start' })).toEqual({ ok: false, reason: 'target_missing' });
+    expect(session.edit(move(X, 6), { hold: 'continue' }).ok).toBe(true);
+    expect(session.edit(move(X, 7), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(5);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(0);
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+
+  it('starts a new step when an edit without a hold came between', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(X, 1), { hold: 'start' }).ok).toBe(true);
+    expect(session.edit(move(OTHER, 150)).ok).toBe(true);
+    expect(session.edit(move(X, 2), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(1);
+    expect(readTimelineDocument(mine).clips[OTHER]?.startFrame).toBe(150);
+  });
+
+  it('starts a new step when an undo came between', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(OTHER, 150)).ok).toBe(true);
+    expect(session.edit(move(X, 1), { hold: 'start' }).ok).toBe(true);
+    session.undo();
+    expect(session.edit(move(X, 2), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(0);
+    expect(readTimelineDocument(mine).clips[OTHER]?.startFrame).toBe(150);
   });
 });

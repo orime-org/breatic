@@ -415,3 +415,27 @@ describe('head trims when the source timebase differs from the Timeline rate (in
     expect(plan.next.clips[A]).toMatchObject({ startFrame: 10, sourceInFrame: 20, durationFrames: 90 });
   });
 });
+
+describe('trimming a clip whose source is missing (inner#1708 S1)', () => {
+  /** A[10,30) on v2 with in-point 5; its source is not stored. */
+  const sourceless: TimelineDocumentV1 = { ...timeline([clip(A, 'v2', 10, 20, { sourceInFrame: 5 })]), sources: {} };
+
+  it.each([
+    ['trim-start', 3, { startFrame: 13, sourceInFrame: 8, durationFrames: 17 }],
+    ['trim-start', -3, { startFrame: 7, sourceInFrame: 2, durationFrames: 23 }],
+    ['trim-end', 3, { startFrame: 10, sourceInFrame: 5, durationFrames: 23 }],
+  ] as const)('commits %s by %i as a set_range for the planner to judge', (mode, delta, range) => {
+    const preview = previewTimelineGesture(sourceless, A, mode, delta, null, FREE);
+    if (preview === null) throw new Error('Expected a preview');
+    expect(timelineGestureCommand(sourceless, preview, mode, OFF, newTrack)).toEqual({
+      operation: 'set_range', parameters: { clipId: A, ...range }, placement: OFF,
+    });
+  });
+
+  it('never moves the in-point below 0 nor the duration below one frame', () => {
+    const early = previewTimelineGesture(sourceless, A, 'trim-start', -20, null, FREE);
+    expect(early?.sourceInFrame).toBeGreaterThanOrEqual(0);
+    const short = previewTimelineGesture(sourceless, A, 'trim-end', -100, null, FREE);
+    expect(short?.durationFrames).toBeGreaterThanOrEqual(1);
+  });
+});

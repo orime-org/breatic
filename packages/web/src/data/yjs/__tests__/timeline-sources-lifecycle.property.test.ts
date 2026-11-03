@@ -113,7 +113,7 @@ async function play(docs: readonly Y.Doc[], sessions: readonly TimelineEditSessi
       const command = commandFor(doc, step.kind === 'untracked-delete' ? { ...step, kind: 'delete' } : step, next);
       if (command !== null) {
         if (step.kind === 'untracked-delete') applyTimelineEdit(doc, command, UNTRACKED);
-        else session.edit(command, { joinPrevious: step.kind === 'move' && step.join });
+        else session.edit(command, step.kind === 'move' ? { hold: step.join ? 'continue' as const : 'start' as const } : {});
       }
     }
     if (step.syncAfter) {

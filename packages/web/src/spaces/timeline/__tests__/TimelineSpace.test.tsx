@@ -1987,3 +1987,86 @@ describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', ()
     expect(Object.keys(layout().clips)).toEqual([CLIP.id]);
   });
 });
+
+describe('TimelineSpace round-ten review fixes (inner#1708 S1, S2, S3, Q1)', () => {
+  const MISSING_SOURCE = '10000000-0000-4000-8000-0000000000ff';
+
+  /**
+   * The warning toasts shown so far.
+   * @returns Their messages.
+   * @throws {never} Never.
+   */
+  function warnings(): unknown[] {
+    return vi.mocked(toast.warning).mock.calls.map(([message]) => message);
+  }
+
+  it('warns with the missing-video message when trimming a clip without its video (S1)', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    const doc = seedLayout([clipAt(X, 'v2', 10, 20, { sourceInFrame: 5, sourceId: MISSING_SOURCE })]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const handle = screen.getByTestId('timeline-trim-end-' + X);
+    const before = Y.encodeStateAsUpdate(doc);
+    // 6 px at 2 px per frame lengthens the clip by three frames.
+    pointer(handle, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 4);
+    pointer(document, 'pointerMove', 6);
+    pointer(document, 'pointerUp', 6);
+    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.missing_source')));
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+  });
+
+  it.each([['Alt+ArrowDown', 'ArrowDown'], ['Alt+ArrowUp', 'ArrowUp']] as const)('warns that the track is missing on %s for a clip on a removed track (S2)', async (_name, key) => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
+    const row = await screen.findByTestId('timeline-conflict-' + X);
+    fireEvent.click(row);
+    const before = Y.encodeStateAsUpdate(doc);
+    press(row, key, { altKey: true });
+    await waitFor(() => expect(warnings()).toContain(t('timeline.errors.track_missing')));
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(layout().clips[X]).toMatchObject({ trackId: 'v2', startFrame: 10 });
+  });
+
+  it('keeps a held arrow key from joining an unrelated earlier edit (S3)', async () => {
+    const OTHER = '30000000-0000-4000-8000-000000000081';
+    seedLayout([clipAt(X, 'v2', 0, 20), clipAt(OTHER, 'v2', 100, 20)]);
+    showTimeline();
+    const other = await screen.findByTestId('timeline-clip-' + OTHER);
+    fireEvent.click(other);
+    press(other, 'Delete');
+    await waitFor(() => expect(layout().clips[OTHER]).toBe(undefined));
+    const clip = screen.getByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    // The key was already held before this clip was selected, so every press arrives as a repeat.
+    press(clip, 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(1));
+    press(screen.getByTestId('timeline-clip-' + X), 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(2));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(0));
+    expect(layout().clips[OTHER]).toBe(undefined);
+    expect(screen.getByTestId('timeline-undo')).toBeEnabled();
+  });
+
+  it('orders the main-track clip buttons by time after an insert at frame 0 (Q1)', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + CLIP.id);
+    await openMaterial();
+    fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
+    fireEvent.change(screen.getByTestId('timeline-start-frame'), { target: { value: '0' } });
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
+    const added = Object.values(layout().clips).find((item) => item.id !== CLIP.id);
+    expect(added?.startFrame).toBe(0);
+    await waitFor(() => {
+      const order = [...screen.getByTestId('timeline-track-' + MAIN).querySelectorAll('[data-testid^="timeline-clip-"][data-track-id]')]
+        .map((element) => element.getAttribute('data-testid'));
+      expect(order).toEqual([`timeline-clip-${added?.id ?? ''}`, `timeline-clip-${CLIP.id}`]);
+    });
+  });
+});
