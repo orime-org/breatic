@@ -11,6 +11,7 @@ import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/regis
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runMiniToolContainerAnalysis } from "../run-container-analysis.js";
+import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ config: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(),
   advance: vi.fn(), read: vi.fn(), finish: vi.fn(), charge: vi.fn() }));
@@ -67,6 +68,7 @@ function execution(kind: "people" | "scene_cuts" = "people"): Execution {
       schemaVersion: 1, analysisRunId: TASK, projectId: PROJECT, spaceId: SPACE, hostNodeId: HOST, draftId: record.draftId,
       revision: record.revision, kind, binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
       source: { nodeId: HOST, canonicalURL: record.binding.canonicalURL, mediaInfo: record.binding.mediaInfo },
+      ...FROZEN_PRESENTATION,
     } } };
 }
 

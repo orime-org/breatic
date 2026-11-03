@@ -11,6 +11,7 @@ import { miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, type MiniTo
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
+import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), steps: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
   extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), stream: {} }));
@@ -49,6 +50,7 @@ const execution: miniToolAnalysisService.MiniToolAnalysisExecution = { record,
     hostNodeId: "80000000-0000-4000-8000-000000000001", draftId: record.draftId, revision: record.revision, kind: "people",
     source: { nodeId: "80000000-0000-4000-8000-000000000001", canonicalURL: record.binding.canonicalURL, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
+    ...FROZEN_PRESENTATION,
   } } };
 
 /** Build a queue envelope whose non-authoritative source differs from the SQL original. @returns The delivery. */

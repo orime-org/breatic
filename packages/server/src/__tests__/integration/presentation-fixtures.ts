@@ -51,8 +51,7 @@ export const REMOVAL_ATTEMPT = { jobId: "video-presentation:removal-source", dea
  * @throws {never} Never.
  */
 export function ledgerKeys(sourceKey: string, toolInputId: string): { full: string; table: string } {
-  type KeyFor = (key: string, input: string) => string;
-  return { full: (shared.videoSourceLedgerKeyFor as unknown as KeyFor)(sourceKey, toolInputId), table: (shared.videoSourceLedgerTableKeyFor as unknown as KeyFor)(sourceKey, toolInputId) };
+  return { full: shared.videoSourceLedgerKeyFor(sourceKey, toolInputId), table: shared.videoSourceLedgerTableKeyFor(sourceKey, toolInputId) };
 }
 
 /**

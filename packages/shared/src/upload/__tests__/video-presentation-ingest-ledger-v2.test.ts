@@ -183,7 +183,7 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
 
 describe('ledger storage keys per toolInputId (inner#1306 §77; S6e E4-7, design §5.1 step 5, §7.15)', () => {
   type KeyFor = (key: string, toolInputId: string) => string;
-  const fullKeyFor = ledgerModule.videoSourceLedgerKeyFor as unknown as KeyFor;
+  const fullKeyFor: KeyFor = ledgerModule.videoSourceLedgerKeyFor;
   const tableKeyFor = (ledgerModule as Record<string, unknown>).videoSourceLedgerTableKeyFor as KeyFor | undefined;
   const key = 'video/canonical.webm';
   const t = 'e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec';

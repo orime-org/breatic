@@ -9,6 +9,7 @@ import type { MiniToolAnalysisJob, miniToolAnalysisService } from "@breatic/doma
 import { MINI_TOOL_ANALYSIS_JOB, miniToolAnalysisRecordSchema } from "@breatic/shared/mini-tools";
 import { runTask } from "@worker/handlers/dispatch.js";
 import type { MiniToolAnalysisExecutor } from "../run-analysis-task.js";
+import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ analysis: vi.fn(), container: vi.fn(), legacy: vi.fn() }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), getStreamRedis: () => ({}) }));
@@ -41,6 +42,7 @@ function originalExecution(kind: "people" | "scene_cuts"): miniToolAnalysisServi
     analysisRunId: TASK, draftId: record.draftId, revision: record.revision, kind,
     source: { nodeId: context.hostNodeId, canonicalURL: url, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
+    ...FROZEN_PRESENTATION,
   } } };
 }
 

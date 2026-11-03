@@ -103,6 +103,10 @@ const cuts = [{ frameIndex: 30, pts: 9.3, detectionScore: 85 }];
 let sql: ReturnType<typeof postgres>;
 let http: ReturnType<typeof createServer>;
 let origin: string;
+// Registered objects have https URLs, as the presentation snapshot contract requires (`httpsUrl`); the global fetch is
+// wrapped so a request to this base is answered by the loopback object route instead of the network.
+const PUBLIC_BASE = "https://assets.analysis-task.test/objects";
+const networkFetch = globalThis.fetch;
 let app: ReturnType<typeof createApp>;
 let server: Server;
 let consumer: GroupConsumer;
@@ -630,10 +634,15 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
   origin = "http://127.0.0.1:" + (http.address() as AddressInfo).port;
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.startsWith(PUBLIC_BASE + "/")) return networkFetch(input, init);
+    return networkFetch(origin + "/objects/" + url.slice(PUBLIC_BASE.length + 1), input instanceof Request ? { method: input.method, headers: input.headers, signal: input.signal, ...init } : init);
+  };
   initCore({
     ...process.env, DATABASE_URL: inject("DATABASE_URL"), YJS_DATABASE_URL: inject("YJS_DATABASE_URL"),
     REDIS_QUEUE_URL: redisURL(4), REDIS_STREAM_URL: redisURL(5), REDIS_COLLAB_URL: redisURL(6), REDIS_URL: redisURL(7),
-    REDIS_KEY_PREFIX: PREFIX, INGEST_BASE_URL: origin, UPLOAD_BASE_URL: origin + "/objects",
+    REDIS_KEY_PREFIX: PREFIX, INGEST_BASE_URL: origin, UPLOAD_BASE_URL: PUBLIC_BASE,
     INGEST_SHARED_SECRET: SECRET, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "7",
     STRIPE_SECRET_KEY: "sk_test_unused_by_analysis_task", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_analysis_task",
     WAVESPEED_API_KEY: "unused-by-analysis-task",
@@ -683,6 +692,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  globalThis.fetch = networkFetch;
   if (worker) await cleanup(() => worker.close(true));
   if (events) await cleanup(() => events.close());
   if (consumer) await cleanup(() => consumer.stop());
@@ -712,6 +722,8 @@ afterAll(async () => {
       await tx`DELETE FROM node_tasks WHERE task_id=${fixture.taskId}`;
       await tx`DELETE FROM node_history WHERE project_id=${fixture.projectId}`;
       await tx`DELETE FROM upload_grants WHERE project_id=${fixture.projectId}`;
+      // Registered thumbnails are referenced by the project (migration 0109); their references go first.
+      await tx`DELETE FROM project_asset_refs WHERE project_id=${fixture.projectId}`;
       await tx`DELETE FROM studio_assets WHERE studio_id=${fixture.studioId}`;
       await tx`DELETE FROM agent_usage_records WHERE project_id=${fixture.projectId}`;
       await tx`DELETE FROM credit_ledger WHERE reference_id=${fixture.taskId}`;

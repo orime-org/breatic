@@ -47,7 +47,7 @@ export function tableKeyFor(key: string, toolInputId: string): string {
  * @throws {never} Never.
  */
 export function fullKeyFor(key: string, toolInputId: string): string {
-  return (sharedModule.videoSourceLedgerKeyFor as unknown as (value: string, input: string) => string)(key, toolInputId);
+  return sharedModule.videoSourceLedgerKeyFor(key, toolInputId);
 }
 
 /** Expose complete bytes, keeping cancellation-observed sources live until demand. @throws {never} Never. */
