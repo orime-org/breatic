@@ -90,8 +90,6 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
     || execution.ledgerReceipts.source.sourceFingerprint !== execution.binding.contentHash
     || execution.ledgerReceipts.source.toolInputId !== execution.presentationRef.source.toolInputId
     || (execution.tool !== "video.remove-bg" && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
-    // A fresh removal prepares its own model input; a retry reuses the original run's.
-    || (execution.tool === "video.remove-bg" && (execution.body.video.job === `${execution.taskId}:prep:0`) !== (execution.retry === undefined))
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) throw new Error("Planned execution differs from its original parent or complete plan");
   return { task, execution };
