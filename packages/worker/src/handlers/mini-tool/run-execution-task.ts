@@ -56,7 +56,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           throw new DelayedError();
         }
         const steps = await upstreamStepRepo.listSteps(taskId);
-        const pastReturn = steps.find((step) => step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
+        // Only the vendor call (generate) returning is the no-throw boundary; preparation container jobs retry on their own.
+        const pastReturn = steps.find((step) => step.kind === "generate" && step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
         returned ||= pastReturn !== undefined;
         ctx = { ...ctx, ...(pastReturn === undefined ? {} : { stepId: pastReturn.id }) };
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
@@ -70,7 +71,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           error: failure, consumptionSet: "uncertain" };
       }
       const steps = await upstreamStepRepo.listSteps(taskId);
-      returned ||= steps.some((step) => step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
+      returned ||= steps.some((step) => step.kind === "generate" && step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
       completion.consumptionSet = steps.some((step) => step.output.miniToolStep !== undefined
         && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) ? "uncertain" : "complete";
     }
