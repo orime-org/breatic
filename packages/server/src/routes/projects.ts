@@ -178,6 +178,7 @@ projects.delete(
     await projectTransferService.withdrawProjectTransfer(
       c.req.param("transferId"),
       c.req.param("id"),
+      c.get("user").id,
     );
     return c.json({ data: { ok: true } });
   },

@@ -14,6 +14,7 @@
  * room and a single upload throws its refusal straight to the reader.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
   assetService,
@@ -233,6 +234,7 @@ export async function issueUploadTicket(
  * @param scope - Where it goes and who asked.
  * @param item - The file.
  * @param admitStorage - Asked once this file needs room; false refuses it.
+ * @param recordUserAction - Whether this file is the batch request's first accepted file.
  * @returns The answer when the file is settled here, otherwise what opening
  *   its upload needs.
  * @throws {Error} When the ingest Worker is not configured.
@@ -241,6 +243,7 @@ async function prepareUpload(
   scope: TicketScope,
   item: TicketItem,
   admitStorage: () => Promise<boolean>,
+  recordUserAction = true,
 ): Promise<TicketOutcome | Prepared> {
   const { userId, studioId, projectId } = scope;
   const { upload, ingest } = getStorageConfig();
@@ -253,6 +256,7 @@ async function prepareUpload(
   // entirely — no key, no grant, no ticket.
   const dedupHit = await assetUploadService.checkUploadDedup({ studioId, contentHash: item.client_hash });
   if (dedupHit) {
+    if (recordUserAction) await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "project_action" });
     logger.info({ hash: item.client_hash, userId, studioId, projectId }, "upload_ticket_dedup_hit");
     // No bytes move, but the node now shows something it did not show before:
     // a task row is opened and settled in the same pass, pointing at the
@@ -319,6 +323,7 @@ async function prepareUpload(
       },
     },
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },
+    recordUserAction,
   );
   // The upload's two hours, read off the row or the grant just opened
   // (inner#1367). The ticket carries it; every session token the Worker
@@ -428,14 +433,18 @@ export async function issueUploadTicketBatch(
       },
     ));
   const prepared: (TicketOutcome | Prepared)[] = [];
+  let actionRecorded = false;
   for (const item of items) {
     prepared.push(
       await prepareUpload(
         scope,
         { ...item, space_id: context.spaceId, source: "mini_tool", tool_name: context.toolName },
         admit,
+        !actionRecorded,
       ),
     );
+    const outcome = prepared.at(-1);
+    if (outcome && outcome.kind !== "refused") actionRecorded = true;
   }
   return Promise.all(
     prepared.map((file) => (file.kind === "prepared" ? openPrepared(scope, file) : file)),

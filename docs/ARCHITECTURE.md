@@ -849,6 +849,16 @@ Project Owner 和 Team Studio Admin 可邀请已有账号或未注册邮箱。�
 
 两条发邀请接口共用按用户的 `invite` 额度,匿名预览使用按 IP 的 `invite-preview` 额度,数值只在 `config/rate-limits.yaml` 配置,超限答 429 并记日志。实现入口为 server 的 `modules/invitation/`,账号转换由 `claim-email-invitations.ts` 调度,两类邀请仓库各自持有对应表的 SQL。
 
+## Durable account activity
+
+`account_activity_events` is an append-only first-party interaction history in the product database. Its five kinds are `project_access`, `generation_started`, `project_action`, `agent_started` and `project_edit`. All application writers use `accountActivityRepo.recordActivity`; automatic worker completion, memory consolidation and deferred usage lookup do not create new user activity. Business writes in the product database share their transaction with the event. Space RPC events describe the accepted user command across the separate Yjs database, rather than promising content durability.
+
+A Project page entry sends a stable UUID as `visit_id` to `POST /api/v1/projects/:id/opened`. The original activity row is also its receipt, unique on `(user_id, visit_id)`. Only its insertion updates `project_last_opened`; retries preserve the original timestamp and order. POST keeps `ok: true` and returns `account_id`, `visit_id`, `project_id`, `occurred_at`. The authenticated `GET /api/v1/projects/:id/opened/:visitId` reads that account's historical binding even after Project access is lost, returning `recorded` with its receipt or `unconfirmed` with the three identities. It returns no Project data. SQL renders receipt timestamps as UTC text to preserve microseconds. Shared request and receipt schemas live in `project-visit-contract.ts`.
+
+The collab native `beforeSync` hook records authenticated writable content `SyncUpdate` frames containing structs or a delete set, before apply. It excludes meta documents, handshake frames, empty updates and presence. Persistence failures retain their original error in application logs and throw into Hocuspocus's existing document-close path; this closes the document connection, not the entire multiplexed WebSocket.
+
+`account_activity_coverage` starts empty. After all required server and collab collectors are deployed and checked, an operator explicitly opens contract version 1 with `pnpm db:activity-coverage open --version 1 --operator <operator-id>`. Suspend it with the corresponding `close` command. Both operations use the server clock and log the operator and persisted result. A per-version transaction lock and unique open index prevent concurrent opens; intervals cannot overlap history or end before their start. A later reopening preserves any closed gap. Never open coverage merely because the migration or one service has deployed.
+
 ## Coding standards (function definition format)
 
 本节是 breatic 全栈(`core` / `server` / `worker` / `collab` / `shared` / `web`)的**函数定义格式规范**:一个函数定义"长什么样"——它的文档注释、参数描述、返回类型、异常类型该写在哪、怎么写。规范由 ESLint 在 CI 强制(error 级,违反即 fail)。

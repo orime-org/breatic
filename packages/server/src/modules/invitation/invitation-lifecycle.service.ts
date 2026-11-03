@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { accountActivityRepo } from "@breatic/core";
 import { ConflictError, db, ForbiddenError, getLimitsForStudio, NotFoundError, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
@@ -216,6 +217,7 @@ export async function prepareInvitation(input: {
     const invitation = await repo.findRecipientById(created.id, tx);
     if (!invitation) throw new Error("Created invitation could not be read");
     if (user) await notifyRecipient(target, invitation, inviterName, tx);
+    if (input.kind === "project") await accountActivityRepo.recordActivity({ userId: input.invitedBy, projectId: target.id, kind: "project_action" }, tx);
     return { duplicate: false, invitation, target, invitee: user, inviterName };
   });
 }

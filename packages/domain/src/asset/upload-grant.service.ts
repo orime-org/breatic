@@ -23,7 +23,7 @@
  * pays for it are things the entrance knows and this does not.
  */
 
-import { currentConsent, storageKey } from "@breatic/core";
+import { currentConsent, storageKey, type DbTx } from "@breatic/core";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { issueGrant, type GrantAssetSource } from "@domain/asset/upload-grant.repo.js";
 
@@ -62,6 +62,7 @@ export type UploadTarget =
  *   frame lifted out of a video).
  * @param params.context.generationTaskId - The generation these bytes came out
  *   of, when one did.
+ * @param tx - Optional enclosing upload admission transaction.
  * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
@@ -81,7 +82,7 @@ export async function issueUploadGrant(params: UploadTarget & {
     assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
   };
-}): Promise<{ key: string; studioId: string }> {
+}, tx?: DbTx): Promise<{ key: string; studioId: string }> {
   const studioId =
     params.projectId !== undefined
       ? await resolveOwnerStudioId(params.projectId)
@@ -96,6 +97,6 @@ export async function issueUploadGrant(params: UploadTarget & {
     context: { ...params.context, projectId: params.projectId ?? null },
     // Read by the finishing paths, which run without the browser's cookie.
     analyticsConsent: currentConsent(),
-  });
+  }, tx);
   return { key, studioId };
 }

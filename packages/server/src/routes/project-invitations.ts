@@ -93,7 +93,7 @@ projectInvites.delete(
   async (c) => {
     const projectId = getProjectId(c);
     const invitationId = c.req.param("invitationId");
-    await projectInviteService.revokeInvite(projectId, invitationId);
+    await projectInviteService.revokeInvite(projectId, invitationId, c.get("user").id);
     return c.json({ data: { ok: true } });
   },
 );

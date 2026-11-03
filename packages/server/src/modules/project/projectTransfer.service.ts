@@ -39,6 +39,7 @@
  * grant off a week-old row.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -184,6 +185,7 @@ export async function requestProjectTransfer(
         });
       await transfersRepo.attachNotification(transferId, notification.id, tx);
       // Carried out of the transaction because the mail is sent outside it.
+      await accountActivityRepo.recordActivity({ userId: fromUserId, projectId, kind: "project_action" }, tx);
       return { done: true as const, shareToken: filed.shareToken };
     });
     if (isRefused(filedOffer)) throw refusalError(filedOffer.refusal);
@@ -329,6 +331,7 @@ export async function confirmProjectTransfer(
       },
       tx,
     });
+    await accountActivityRepo.recordActivity({ userId: receiverUserId, projectId, kind: "project_action" }, tx);
     return { projectId, oldOwnerId: fromUserId };
   });
 
@@ -366,6 +369,7 @@ export async function declineProjectTransfer(
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     await settle(opened, "declined", tx);
+    await accountActivityRepo.recordActivity({ userId: receiverUserId, projectId: opened.projectId, kind: "project_action" }, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
@@ -381,10 +385,12 @@ export async function declineProjectTransfer(
  * @param transferId - The `project_transfers` row id
  * @param projectId - The project the caller was authorised as owner of
  * @throws {NotFoundError} no live offer of this project matches that id
+ * @param actorUserId - Authenticated current owner withdrawing this offer.
  */
 export async function withdrawProjectTransfer(
   transferId: string,
   projectId: string,
+  actorUserId?: string,
 ): Promise<void> {
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
     const withdrawn = await transfersRepo.cancelIfPending(
@@ -396,6 +402,7 @@ export async function withdrawProjectTransfer(
     if (withdrawn.notificationId !== null) {
       await notificationRepo.retire(withdrawn.notificationId, tx);
     }
+    if (actorUserId) await accountActivityRepo.recordActivity({ userId: actorUserId, projectId, kind: "project_action" }, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);

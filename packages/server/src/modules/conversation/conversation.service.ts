@@ -465,6 +465,7 @@ export async function deleteConversation(
  * message written instead, the first one in is the one that counts.
  * @param conversationId - The conversation, already checked writable by the caller.
  * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
  * @returns How it went: answered (with the turn to resume), already settled,
  *   not fitting the questions, or no such card.
  * @throws {NotFoundError} if the conversation is gone.
@@ -472,6 +473,7 @@ export async function deleteConversation(
 export async function answerAsk(
   conversationId: string,
   answer: AskUserAnswer,
+  actor?: messageRepo.AnswerActor,
 ): Promise<messageRepo.AnswerOutcome> {
   return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
     const asked = readQuestionnaire(input);
@@ -480,7 +482,7 @@ export async function answerAsk(
     if (reason !== null) return { reason };
     const result = { answers: answer.answers };
     return { output: result, forModel: askResultForModel(answer.toolCallId, result, ASK_USER) };
-  });
+  }, actor);
 }
 
 /**
@@ -492,6 +494,7 @@ export async function answerAsk(
  * result, content included, goes only to the model's copy.
  * @param conversationId - The conversation, already checked writable by the caller.
  * @param answer - What the browser sent.
+ * @param actor - Trusted account and Project admitting this answer.
  * @returns How it went: answered (with the turn to resume), already settled,
  *   not fitting the request, or no such card.
  * @throws {NotFoundError} if the conversation is gone.
@@ -499,6 +502,7 @@ export async function answerAsk(
 export async function answerSpaceRequest(
   conversationId: string,
   answer: SpaceRequestAnswer,
+  actor?: messageRepo.AnswerActor,
 ): Promise<messageRepo.AnswerOutcome> {
   return messageRepo.answerWaitingAsk(conversationId, answer.toolCallId, (input) => {
     const asked = spaceRequestInputSchema.safeParse(input);
@@ -507,5 +511,5 @@ export async function answerSpaceRequest(
     if (reason !== null) return { reason };
     const result: SpaceRequestResult = answer.decision === "shared" ? { spaces: answer.spaces } : { declined: true };
     return { output: cardOutputOf(result), forModel: askResultForModel(answer.toolCallId, result, REQUEST_SPACE_CONTENT) };
-  });
+  }, actor);
 }

@@ -39,7 +39,7 @@ import { createInvitation } from "@server/modules/invitation/invitation.service.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
+import { accountActivityRepo, db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
@@ -181,6 +181,7 @@ export async function confirmInvite(
       tx,
     );
     await projectJoinRequestService.settleOnJoin(accepted.projectId, accepted.invitedUserId, tx);
+    await accountActivityRepo.recordActivity({ userId: receiverUserId, projectId: accepted.projectId, kind: "project_action" }, tx);
 
     if (accepted.notificationId) {
       await notificationRepo.markRead(
@@ -245,12 +246,15 @@ export async function declineInvite(
   receiverUserId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    const projectId = await invitesRepo.getTargetProjectId(invitationId, tx);
+    if (!projectId) throw new NotFoundError(t("server.error.not_found"));
     const declined = await invitesRepo.declineIfPending(
       invitationId,
       receiverUserId,
       tx,
     );
     if (!declined) throw new NotFoundError(t("server.error.not_found"));
+    await accountActivityRepo.recordActivity({ userId: receiverUserId, projectId, kind: "project_action" }, tx);
     if (declined.notificationId) {
       await notificationRepo.markRead(
         declined.notificationId,
@@ -271,10 +275,12 @@ export async function declineInvite(
  * @param projectId - The owner's project UUID (guard)
  * @param invitationId - The `project_invitations` row id to revoke
  * @throws {NotFoundError} no matching LIVE pending invite in this project
+ * @param actorUserId - Authenticated owner withdrawing the invitation.
  */
 export async function revokeInvite(
   projectId: string,
   invitationId: string,
+  actorUserId?: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     if (!await projectRepo.lockLiveProject(projectId, tx)) throw new NotFoundError(t("server.error.not_found"));
@@ -284,6 +290,7 @@ export async function revokeInvite(
       tx,
     );
     if (!revoked) throw new NotFoundError(t("server.error.not_found"));
+    if (actorUserId) await accountActivityRepo.recordActivity({ userId: actorUserId, projectId, kind: "project_action" }, tx);
     if (revoked.notificationId && revoked.invitedUserId) {
       await notificationRepo.markRead(
         revoked.notificationId,

@@ -63,7 +63,8 @@ import {
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
+import { createActivityHook } from "@collab/hooks/account-activity.js";
+import { createAuthHook } from "@collab/hooks/auth.js";
 import {
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
@@ -350,6 +351,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       ? recordingFailedAuth(authenticate, connectionGate)
       : authenticate,
 
+    beforeSync: createActivityHook(),
+
     extensions,
 
     // The last chance to get a document's content out before it is
@@ -442,7 +445,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       instance,
       connection,
     }) => {
-      const auth = context as AuthContext;
+      const auth = context;
       // One connection per document per socket. A session-aware client
       // (`documentName\0sessionId`) can open a document twice on one socket,
       // and both arrive with the same document name and socket id — the key
@@ -454,7 +457,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // remembered. The previous connection's `onDisconnect` has already
       // forgotten it, so a reconnect of the same document is let in.
       if (liveConnections.find(documentName, socketId) !== undefined) {
-        refusedDuplicates.add(context as object);
+        refusedDuplicates.add(context);
         logger.warn(
           { userId: auth.user.id, documentName, socketId, reason: "duplicate_document_on_socket" },
           "auth_rejected",
@@ -538,7 +541,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     onDisconnect: async ({ documentName, context, socketId }) => {
       // A refused duplicate held nothing; what is recorded under its socket
       // and document belongs to the connection it duplicated.
-      if (refusedDuplicates.has(context as object)) return;
+      if (refusedDuplicates.has(context)) return;
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean
