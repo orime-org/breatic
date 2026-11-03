@@ -120,6 +120,8 @@ const CONTENT_FAILURES: ReadonlySet<string> = new Set([
   'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
   'resource_limit', 'source_ledger_over_cap',
   'too_long', 'packed_over_cap', 'packed_clock_mismatch',
+  // A re-probe under the same frozen facts that plans another toolInputId fails the same way every time (§91 D2-3).
+  'source_ledger_plan_mismatch',
 ]);
 
 /**
@@ -132,24 +134,4 @@ export function classifyVideoSourceLedgerFailure(errorCode: string): VideoSource
   return CONTENT_FAILURES.has(errorCode) ? 'content' : 'transient';
 }
 
-/**
- * Derive the full source ledger key of one plan (toolInputId) beside the registered canonical storage key.
- * @param key - Original registered canonical storage key.
- * @param toolInputId - The plan's toolInputId; each plan's ledger is its own object (design §5.1 step 5).
- * @returns The deterministic full ledger key.
- * @throws {never} Never.
- */
-export function videoSourceLedgerKeyFor(key: string, toolInputId: string): string {
-  return `${key}.video-source-ledger.${toolInputId}.json`;
-}
-
-/**
- * Derive the compact presentation table key of one plan (toolInputId) beside the registered canonical storage key.
- * @param key - Original registered canonical storage key.
- * @param toolInputId - The plan's toolInputId.
- * @returns The deterministic compact table key.
- * @throws {never} Never.
- */
-export function videoSourceLedgerTableKeyFor(key: string, toolInputId: string): string {
-  return `${key}.video-presentation-table.${toolInputId}.json`;
-}
+export { videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor } from '@shared/upload/video-presentation-keys.js';

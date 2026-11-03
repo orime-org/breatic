@@ -52,3 +52,25 @@ export const videoPresentationProbeSchema = z.strictObject({
 });
 /** Parsed frozen probe facts. */
 export type VideoPresentationProbeFacts = z.infer<typeof videoPresentationProbeSchema>;
+
+const storageKey = z.string().min(1).max(500);
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const measuredObject = {
+  storageKey, sha256: hash, sizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), contentType: z.string().min(1).max(100),
+};
+/** The job DO's measured receipt of one output a stitch or copy attempt wrote, tagged with its role (§5.1 step 4, §90 E4-15). */
+export const videoPresentationOutputReceiptSchema = z.discriminatedUnion('role', [
+  z.strictObject({ role: z.literal('carrier'), packing: z.enum(['native', 'alpha-packed']), ...measuredObject }),
+  z.strictObject({ role: z.literal('manifest'), ...measuredObject }),
+]);
+/** A parsed output receipt. */
+export type VideoPresentationOutputReceipt = z.infer<typeof videoPresentationOutputReceiptSchema>;
+/** Every output of one stitch or copy attempt: exactly one carrier, and a manifest exactly beside an alpha-packed carrier, at another key. */
+export const videoPresentationOutputReceiptsSchema = z.array(videoPresentationOutputReceiptSchema).min(1).superRefine((receipts, ctx) => {
+  const carriers = receipts.filter((receipt) => receipt.role === 'carrier');
+  const manifests = receipts.filter((receipt) => receipt.role === 'manifest');
+  const packed = carriers.length === 1 && carriers[0]!.packing === 'alpha-packed';
+  if (carriers.length !== 1 || manifests.length !== (packed ? 1 : 0) || new Set(receipts.map((receipt) => receipt.storageKey)).size !== receipts.length) {
+    ctx.addIssue({ code: 'custom', message: 'Expected one carrier, and one manifest at its own key exactly when the carrier is alpha-packed' });
+  }
+});

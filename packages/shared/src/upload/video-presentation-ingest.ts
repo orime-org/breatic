@@ -9,10 +9,12 @@ import {
 } from '@shared/upload/video-presentation-version.js';
 import { videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
-import { videoPresentationEncodingSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema } from '@shared/upload/video-presentation-policy.js';
+export { videoPresentationWorkKeyFor } from '@shared/upload/video-presentation-keys.js';
+import { videoPresentationEncodingSchema, videoPresentationOutputReceiptsSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema } from '@shared/upload/video-presentation-policy.js';
 export {
   videoPresentationEncodingSchema, videoPresentationIdentityFormatSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema,
-  type VideoPresentationEncoding, type VideoPresentationIdentityFormat, type VideoPresentationProbeFacts,
+  videoPresentationOutputReceiptSchema, videoPresentationOutputReceiptsSchema,
+  type VideoPresentationEncoding, type VideoPresentationIdentityFormat, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt,
 } from '@shared/upload/video-presentation-policy.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
@@ -128,25 +130,6 @@ export const videoPresentationChunkUnitSchema = z.discriminatedUnion('kind', [
 ]);
 /** A parsed unit. */
 export type VideoPresentationChunkUnit = z.infer<typeof videoPresentationChunkUnitSchema>;
-const measuredObject = {
-  storageKey, sha256: hash, sizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), contentType: z.string().min(1).max(100),
-};
-/** The job DO's measured receipt of one output a stitch or copy attempt wrote, tagged with its role (§5.1 step 4, §90 E4-15). */
-export const videoPresentationOutputReceiptSchema = z.discriminatedUnion('role', [
-  z.strictObject({ role: z.literal('carrier'), packing: z.enum(['native', 'alpha-packed']), ...measuredObject }),
-  z.strictObject({ role: z.literal('manifest'), ...measuredObject }),
-]);
-/** A parsed output receipt. */
-export type VideoPresentationOutputReceipt = z.infer<typeof videoPresentationOutputReceiptSchema>;
-/** Every output of one stitch or copy attempt: exactly one carrier, and a manifest exactly beside an alpha-packed carrier, at another key. */
-export const videoPresentationOutputReceiptsSchema = z.array(videoPresentationOutputReceiptSchema).min(1).superRefine((receipts, ctx) => {
-  const carriers = receipts.filter((receipt) => receipt.role === 'carrier');
-  const manifests = receipts.filter((receipt) => receipt.role === 'manifest');
-  const packed = carriers.length === 1 && carriers[0]!.packing === 'alpha-packed';
-  if (carriers.length !== 1 || manifests.length !== (packed ? 1 : 0) || new Set(receipts.map((receipt) => receipt.storageKey)).size !== receipts.length) {
-    ctx.addIssue({ code: 'custom', message: 'Expected one carrier, and one manifest at its own key exactly when the carrier is alpha-packed' });
-  }
-});
 /** One attempt report of a unit (§7.1.1). */
 export const videoPresentationChunkReportSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('Sub') }),
@@ -235,17 +218,6 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
 });
 /** A parsed prepare answer. */
 export type VideoPresentationPrepareAnswer = z.infer<typeof videoPresentationPrepareAnswerSchema>;
-
-/**
- * The output key of one presentation sub-job (§5.4): job id, output key, operation and usage identity are one string.
- * @param sourceKey - The registered source key.
- * @param jobIdOfAttempt - The attempt's full container job id.
- * @returns The key.
- * @throws {never} Never.
- */
-export function videoPresentationWorkKeyFor(sourceKey: string, jobIdOfAttempt: string): string {
-  return `${sourceKey}.${jobIdOfAttempt}`;
-}
 
 /**
  * The public URL of an object ingest writes or receives: the frozen public base joined to its key.
