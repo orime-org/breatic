@@ -85,7 +85,9 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
  * another value asks for what WaveSpeed cannot do (a switch turned on that
  * fal serves). `noPrompt`: its schema has no prompt, and one sent is ignored.
  * `delisted`: WaveSpeed no longer serves the model, so it gets no WaveSpeed
- * binding (fal serves it).
+ * binding (fal serves it). `modelId`: the id WaveSpeed lists the model under
+ * when it is not the catalog's. `spellings`: a param's `values` and
+ * `absent_value` where WaveSpeed's field takes other values than ours.
  */
 const WAVESPEED: Readonly<Record<string, {
   renames?: Readonly<Record<string, string>>;
@@ -93,6 +95,8 @@ const WAVESPEED: Readonly<Record<string, {
   drops?: Readonly<Record<string, readonly (string | number | boolean)[] | { all_values: string }>>;
   noPrompt?: true;
   delisted?: true;
+  modelId?: string;
+  spellings?: Readonly<Record<string, { values?: Readonly<Record<string, string>>; absent_value?: string | number | boolean }>>;
 }>> = {
   "flux-3-start-end-to-video": { renames: { start_image: "image", end_image: "last_image" } },
   "muse-image-edit": { renames: { image_urls: "images" }, refuses: { aspect_ratio: ["9:21"] } },
@@ -106,7 +110,13 @@ const WAVESPEED: Readonly<Record<string, {
   "nano-banana-2-quick-edit": { refuses: { output_format: ["webp"] } },
   "elevenlabs-v3": { drops: { similarity: { all_values: IGNORED } } },
   "sfx-1.6-text-to-audio": { drops: { loop: [false], double_output: [false] } },
-  "meshy6-t23d": { delisted: true },
+  // Relisted as meshy/v6/text-to-3d (/api/v3/models, 2026-11-03); the old id stays delisted.
+  "meshy6-t23d": {
+    modelId: "meshy/v6/text-to-3d",
+    renames: { ta_pose: "pose_mode" },
+    spellings: { ta_pose: { values: { true: "t-pose" }, absent_value: false } },
+    drops: { art_style: { all_values: "WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)" } },
+  },
   "veed-clean-audio": { delisted: true },
   "recraft-v4-style-text-to-image": { delisted: true },
   "sfx-1.6-extend-audio": { delisted: true },
@@ -230,6 +240,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       ...(spec.item_key === undefined ? {} : { item_key: spec.item_key }),
       ...(spec.absent_value === undefined ? {} : { absent_value: spec.absent_value }),
       ...(transform === undefined ? {} : { transform }),
+      ...facts.spellings?.[name],
     };
   }
   const steps = (model.extra_steps ?? []).map((step) => {
@@ -248,7 +259,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   return {
     upstream: "wavespeed",
     weight: 1,
-    model_id: provider.model_id,
+    model_id: facts.modelId ?? provider.model_id,
     // Today's 3D path sends the prompt on every call, "" when there is none, and drops only null params.
     ...(threeD ? { ...(facts.noPrompt ? {} : { prompt_field: "prompt" }), send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),

@@ -83,10 +83,10 @@ function carried(value: unknown, absent: unknown): boolean {
 }
 
 describe("the body fixture samples every input the bindings read", () => {
-  it("carries every bound param with a value in some case of its model, except those an extra step serves", () => {
+  it("carries every bound param with a value in some case of its model, except those an extra step serves or the comparison omits", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
-      const served = new Set((binding.extra_steps ?? []).map((step) => step.for_param));
+      const served = new Set([...(binding.extra_steps ?? []).map((step) => step.for_param), ...(DEPARTURES[model]?.omit ?? [])]);
       const cases = fixture.cases.filter((c) => c.model === model);
       for (const [name, spec] of Object.entries(binding.params ?? {})) {
         if (served.has(name)) continue;

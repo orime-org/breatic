@@ -22,6 +22,9 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
   "sfx-1.6-text-to-audio": { omit: ["ambience", "double_output"] },
   "hunyuan3d-v3-i23d": { omit: ["prompt"] },
   "hunyuan3d-v3.1-rapid": { omit: ["prompt"] },
+  // Relisted as meshy/v6/text-to-3d, whose schema has no art_style and spells ta_pose as pose_mode "t-pose":
+  // today's body sends both under the old id. Each value the binding writes is checked against the schema.
+  "meshy6-t23d": { omit: ["art_style", "ta_pose"] },
 };
 
 /**

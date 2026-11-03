@@ -15,6 +15,33 @@
 models:
   meshy6-t23d:
     upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: meshy/v6/text-to-3d
+        prompt_field: prompt
+        send_empty: true
+        params:
+          topology:
+            field: topology
+          target_polycount:
+            field: target_polycount
+          enable_pbr:
+            field: enable_pbr
+          symmetry_mode:
+            field: symmetry_mode
+          ta_pose:
+            field: pose_mode
+            values:
+              "true": t-pose
+            absent_value: false
+        drops:
+          art_style:
+            all_values: WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)
+        pricing:
+          kind: formula
+          base_price: 1440000
+          formula: ""
+          discount_rate: 100
       - upstream: fal
         weight: 2
         model_id: fal-ai/meshy/v6/text-to-3d
