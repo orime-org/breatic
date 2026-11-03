@@ -48,7 +48,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
   | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"];
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
     /** The standard-4 model-input preparation (§5.3): its policy and presentation-frame chunk windows. */
-    preparation: MiniToolContainerPolicy & { chunks: FrameWindow[] } }
+    preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number } }
   | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout; container: MiniToolContainerPolicy;
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
@@ -303,7 +303,8 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   if (model === undefined) throw new AppError(503, t("server.mini_tool.unavailable"));
   const layout = preparationLayout(ledger, config);
   assertWithinParallelCap(layout.jobs, config);
-  const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks };
+  const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks,
+    chunkRetries: config.encoding.chunk_retries };
   return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
     body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
     presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt }, versionIds: { source: versionId }, preparation,

@@ -40,7 +40,7 @@ const storedPlanSchema = z.union([
     provider: z.strictObject({ provider: z.literal("wavespeed"), model_id: z.literal("bria/fibo/video-background-remover") }),
     body: z.strictObject({ video: z.strictObject({ kind: z.literal("prepared"), inputId: z.literal("source"), job: z.string().regex(/^[0-9a-f-]{36}:prep:0$/) }),
       background_color: z.literal("Transparent"), output_container_and_codec: z.literal("webm_vp9"), preserve_audio: z.literal(true) }),
-    preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) }),
+    preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1), chunkRetries: index }),
   }),
   z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject(container),
