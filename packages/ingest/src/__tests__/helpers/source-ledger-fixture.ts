@@ -14,6 +14,12 @@ export const ORIGINAL = { width: 95, height: 63, duration: 2.4 };
 // inner#1306 §77: six budgets, no frame-count ceiling.
 export const LEDGER_LIMITS = { maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216,
   isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000 };
+// S6e E2-1 (design §3.2 item 1): the encoding parameters frozen at admission.
+export const ENCODING = {
+  chunkShare: 0.5, maxParallelChunks: 8,
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+  copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
+};
 // S6c (design §3.5, §5.1): admission freezes the basic and the standard-4 prices together.
 export const PRICING = {
   basic: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 }, prices: { vcpu_second_usd: 1, memory_gib_second_usd: 1, disk_gb_second_usd: 1 } },

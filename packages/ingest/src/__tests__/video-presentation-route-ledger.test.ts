@@ -74,7 +74,7 @@ function acceptBody(key: string, jobId: string): Record<string, unknown> {
     action: 'accept', storageKey: key, sourceFingerprint: H, jobId, deadlineAt: value.deadlineAt, original: value.original, contentType: value.contentType,
     repair: true, limits: value.limits, pricing: value.pricing, targetPolicyVersion: value.targetPolicyVersion, actorUserId: value.actorUserId, projectId: value.projectId,
     packedURL: `https://assets.example.test/${key}.packed.mp4`, manifestURL: `https://assets.example.test/${key}.alpha.json`,
-    sourceLedgerURL: value.sourceLedgerURL, sourceLedgerTableURL: value.sourceLedgerTableURL, policy: POLICY,
+    sourceLedgerURL: value.sourceLedgerURL, sourceLedgerTableURL: value.sourceLedgerTableURL, policy: POLICY, encoding: value.encoding,
   };
 }
 

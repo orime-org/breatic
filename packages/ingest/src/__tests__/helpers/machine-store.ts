@@ -15,7 +15,7 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { expect } from 'vitest';
 import { videoPresentationKeyFor, videoSourceLedgerKeyFor } from '@breatic/shared';
 import { VideoPresentationStore, type VideoPresentationAdmission, type SourceLedgerDeclaration, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
-import { digest, LEDGER_LIMITS, ORIGINAL, PRICING, tableKeyFor } from './source-ledger-fixture.js';
+import { digest, ENCODING, LEDGER_LIMITS, ORIGINAL, PRICING, tableKeyFor } from './source-ledger-fixture.js';
 
 export type Route = 'identity' | 'copy' | 'dispatch_copy' | 'encode' | 'reuse';
 export interface Identity { storageKey: string; sourceFingerprint: string; jobId: string; deadlineAt: number; token: string }
@@ -32,7 +32,7 @@ export type Fact = { kind: 'verified'; bundle: Bundle } | { kind: 'finished'; us
 export interface Measured { etag: string; size: number; sha256: string; table: { etag: string; size: number; sha256: string } }
 /** S6c admission (design §3.5, §5.1): both frozen prices, the target policy version and the frozen retry caps. */
 export type Admission = Omit<VideoPresentationAdmission, 'pricing'> & {
-  pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number };
+  pricing: typeof PRICING; targetPolicyVersion: number; policy: { chunkRetries: number; maxAutoRepairs: number }; encoding: typeof ENCODING;
 };
 export interface MachineStore {
   accept: (admission: Admission) => Promise<MachineView>;
@@ -105,7 +105,7 @@ export function admission(key: string, jobId: string, deadlineAt = D): Admission
     actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null, pricing: PRICING,
     limits: { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: 'medium', probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536, sourceLedger: { ...LEDGER_LIMITS } },
     sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(key)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(key)}`,
-    targetPolicyVersion: 1, policy: POLICY,
+    targetPolicyVersion: 1, policy: POLICY, encoding: ENCODING,
   };
 }
 

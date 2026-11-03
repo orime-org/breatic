@@ -1,0 +1,417 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * The worker's staged presentation job (inner#1306 test plan §90 E2; frames-split
+ * design §5.1 steps 1, 2 and 2a, §5.4 作业身份, §7.1, §7.1.1, §7.6; interface
+ * choices E2-3 to E2-7 and E2-9).
+ *
+ * One durable job per presentation jobId, following `advance-plan-job.ts`: each
+ * pickup reads the DO once through `prepare` (D comes only from its capability)
+ * and the `/jobs` state of the attempts it knows, submits only the next allowed
+ * stage or attempt, and throws StillRunning while work is in flight. Sub-jobs
+ * run on the frozen standard-4 class with §5.4 job ids and the shared key
+ * function; each attempt's usage is recorded once as a platform expense keyed by
+ * its full job id, then marked with `report_chunk Rec`. At D the job fails
+ * `expired`. The ingest boundary is faked at `fetch`, so the tests do not depend
+ * on which shared client the handler uses.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fc from 'fast-check';
+import * as shared from '@breatic/shared';
+import { videoContainerJobId } from '@breatic/shared/mini-tools';
+import type * as coreModule from '@breatic/core';
+import { containerCostUsd } from '@breatic/domain';
+import * as handler from '@worker/handlers/video-presentation.js';
+import { StillRunning } from '@worker/providers/still-running.js';
+
+const { findById, createUsageRecorder, recordServiceCall, settle } = vi.hoisted(() => ({
+  findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(),
+}));
+vi.mock('@breatic/core', async (original) => {
+  const actual = await original<typeof coreModule>();
+  return {
+    ...actual,
+    env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
+    getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
+  };
+});
+vi.mock('@breatic/domain', async (original) => ({
+  ...await original<Record<string, unknown>>(),
+  assetRepo: { findById },
+  createUsageRecorder,
+}));
+
+const H = 'a'.repeat(64);
+const T = 'c'.repeat(64);
+const PLAN = 'd'.repeat(64);
+const KEY = 'video/canonical.webm';
+const JOB = 'video-presentation-a';
+const ACTOR = '6061c056-f758-47c1-9527-8495ecba60e3';
+const asset = { id: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: H, storageKey: KEY, kind: 'video', deletedAt: null, mimeType: 'video/webm' };
+const data = { assetId: asset.id, sourceFingerprint: H, jobId: JOB };
+const price = (containerClass: string, vcpu: number, memory: number, disk: number): { containerClass: string; size: { vcpu: number; memory_gib: number; disk_gb: number }; prices: { vcpu_second_usd: number; memory_gib_second_usd: number; disk_gb_second_usd: number } } => ({
+  containerClass, size: { vcpu, memory_gib: memory, disk_gb: disk }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.000003, disk_gb_second_usd: 0.0000001 },
+});
+const PRICING = { basic: price('MediaContainer', 0.25, 1, 4), standard4: price('MiniToolContainerStd4', 4, 12, 20) };
+const RECEIPT = {
+  schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN, producerVersion: 2, attempt: { jobId: JOB, deadlineAt: 0 },
+  url: `https://assets.example.test/${KEY}.ledger.json`, etag: '"e"', size: 912, sha256: 'b'.repeat(64), contentType: 'application/json',
+  table: { url: `https://assets.example.test/${KEY}.table.json`, sha256: 'c'.repeat(64), size: 81, contentType: 'application/json', frameCount: 96 },
+};
+const STAGES: Record<string, string[]> = { identity: ['plan', 'publish'], copy: ['plan', 'copy', 'publish'], dispatch_copy: ['plan', 'dispatch_copy', 'publish'], encode: ['plan', 'encode', 'stitch', 'publish'] };
+
+interface Sent { path: string; method: string; body: Record<string, unknown> | null }
+let sent: Sent[] = [];
+let answer: Record<string, unknown>;
+let reports: Map<string, Record<string, unknown>>;
+let D: number;
+
+type Unit = { state: string; attempt: number; attempts: { attempt: number; jobId: string; state: string; usageRecorded: boolean }[] };
+
+/**
+ * A worker-only prepare answer.
+ * @param fields - What differs from a granted encode job with a ready candidate ledger.
+ * @returns It.
+ */
+function prepareAnswer(fields: Record<string, unknown> = {}): Record<string, unknown> {
+  const route = (fields.route as string | undefined) ?? 'encode';
+  const { route: _route, ...rest } = fields;
+  return {
+    sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, ledger: null,
+    preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'plan', failure: null },
+    capability: { token: 'token-a', deadlineAt: D },
+    plan: { route, stages: STAGES[route], toolInputId: T, planSha256: PLAN },
+    work: route === 'encode' ? { kind: 'encode', chunks: [{ start: 0, end: 48 }, { start: 48, end: 96 }] } : route === 'dispatch_copy' ? { kind: 'dispatch_copy' } : { kind: 'none' },
+    candidateLedger: { state: 'ready', receipt: { ...RECEIPT, attempt: { jobId: JOB, deadlineAt: D } }, failure: null },
+    units: {},
+    frozen: { pricing: PRICING, actorUserId: ACTOR, projectId: null },
+    ...rest,
+  };
+}
+
+/**
+ * The §5.4 id of one presentation sub-job attempt.
+ * @param kind - The unit kind.
+ * @param attempt - The attempt number.
+ * @param chunk - The chunk index for chunks.
+ * @returns The job id.
+ */
+function subJob(kind: 'chunk' | 'stitch' | 'copy', attempt: number, chunk = 0): string {
+  if (kind === 'chunk') return videoContainerJobId({ kind: 'presentation-chunk', jobId: JOB, chunk, attempt });
+  return videoContainerJobId({ kind: kind === 'stitch' ? 'presentation-stitch' : 'presentation-copy', jobId: JOB, attempt });
+}
+
+/**
+ * The output key of one sub-job, from the shared key function.
+ * @param jobId - The sub-job id.
+ * @returns The key.
+ */
+function workKey(jobId: string): string {
+  const keyFor = (shared as Record<string, unknown>).videoPresentationWorkKeyFor as ((storageKey: string, id: string) => string) | undefined;
+  expect(keyFor, 'videoPresentationWorkKeyFor is exported from @breatic/shared').toBeTypeOf('function');
+  return keyFor!(KEY, jobId);
+}
+
+/**
+ * One unit with a single attempt.
+ * @param jobId - The attempt's job id.
+ * @param state - The unit state.
+ * @param attemptState - The attempt state.
+ * @param attempt - The attempt number.
+ * @param usageRecorded - Whether its usage is recorded.
+ * @returns It.
+ */
+function unit(jobId: string, state: string, attemptState: string, attempt = 1, usageRecorded = false): Unit {
+  return { state, attempt, attempts: [{ attempt, jobId, state: attemptState, usageRecorded }] };
+}
+
+/**
+ * The staged step under test, read at call time so a missing export fails each case on its own.
+ * @returns It.
+ */
+function advance(): (job: typeof data) => Promise<unknown> {
+  const fn = (handler as Record<string, unknown>).advanceVideoPresentation;
+  expect(fn, 'advanceVideoPresentation is exported from @worker/handlers/video-presentation.js').toBeTypeOf('function');
+  return fn as (job: typeof data) => Promise<unknown>;
+}
+
+/**
+ * Requests to the presentation route with this action.
+ * @param action - The action.
+ * @returns Their bodies in order.
+ */
+function actions(action: string): Record<string, unknown>[] {
+  return sent.filter((call) => call.path === '/video-presentation' && call.body?.action === action).map((call) => call.body!);
+}
+
+/**
+ * Container jobs submitted to `/jobs`.
+ * @returns Their requests in order.
+ */
+function submitted(): Record<string, unknown>[] {
+  return sent.filter((call) => call.path === '/jobs' && call.method === 'POST').map((call) => call.body!);
+}
+
+/**
+ * The index of the first call matching a predicate.
+ * @param match - The predicate.
+ * @returns The index.
+ */
+function indexOf(match: (call: Sent) => boolean): number {
+  return sent.findIndex(match);
+}
+
+/**
+ * A finished `/jobs` report for a submitted request shape.
+ * @param jobId - The sub-job id.
+ * @param state - Done or failed.
+ * @param usage - Its measured usage.
+ * @returns The report.
+ */
+function finished(jobId: string, state: 'done' | 'failed', usage: { wallMs: number; cpuUsec: number | null } | null): Record<string, unknown> {
+  const output = { outputIndex: 0, storageKey: workKey(jobId), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4' };
+  return state === 'done' ? { schemaVersion: 2, state, outputs: [output], usage } : { schemaVersion: 2, state, outputs: [], reason: 'tool_failed', usage };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  sent = [];
+  reports = new Map();
+  D = Date.now() + 3_600_000;
+  answer = prepareAnswer();
+  findById.mockResolvedValue(asset);
+  createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
+  settle.mockResolvedValue(0);
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
+    const method = init?.method ?? 'GET';
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : null;
+    const path = url.pathname.startsWith('/jobs/') ? '/jobs/read' : url.pathname;
+    sent.push({ path, method, body });
+    if (path === '/video-presentation') {
+      if (body?.action === 'prepare') return Response.json(answer);
+      if (body?.action === 'advance_stage' || body?.action === 'report_chunk') return Response.json({ accepted: true });
+      return Response.json({ sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, preparation: null, ledger: null });
+    }
+    if (path === '/jobs') return Response.json({ schemaVersion: 2, state: 'starting' });
+    if (path === '/jobs/read') {
+      const id = decodeURIComponent(url.pathname.split('/').at(-1)!);
+      const report = reports.get(id);
+      return report === undefined ? new Response('missing', { status: 404 }) : Response.json(report);
+    }
+    return new Response('unexpected', { status: 500 });
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('each pickup reads the DO once through prepare (inner#1306 §5.1 step 1, E2-3, E2-9)', () => {
+  it('ST01 sends prepare with the job identity only: the queue carries no deadline and D comes from the DO', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' }, candidateLedger: null });
+    await advance()(data);
+    expect(actions('prepare')).toEqual([{ action: 'prepare', storageKey: KEY, sourceFingerprint: H, jobId: JOB }]);
+  });
+
+  it.each([
+    ['a gone row', null],
+    ['a deleted row', { ...asset, deletedAt: new Date() }],
+    ['a row whose bytes changed', { ...asset, contentHash: 'b'.repeat(64) }],
+  ])('ST02 asks ingest nothing for %s', async (_name, row) => {
+    findById.mockResolvedValue(row);
+    await advance()(data);
+    expect(sent).toEqual([]);
+  });
+
+  it('ST03 a job the DO does not grant ends without dispatch and without waiting', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' }, candidateLedger: null });
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(submitted()).toEqual([]);
+  });
+});
+
+describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1306 §5.1 step 2a, §5.4, §7.17, E2-5)', () => {
+  it('DS01 dispatched copy: advance to dispatch_copy, record Sub, then submit the copy attempt 1 and wait', async () => {
+    answer = prepareAnswer({ route: 'dispatch_copy' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, jobId: JOB, deadlineAt: D, token: 'token-a', stage: 'dispatch_copy' })]);
+    const job = submitted();
+    expect(job).toHaveLength(1);
+    const id = subJob('copy', 1);
+    expect(job[0]).toMatchObject({ jobId: id, containerClass: PRICING.standard4.containerClass, deadlineAt: D });
+    const inputs = job[0]!.inputs as { inputId: string; storageKey: string }[];
+    expect(inputs).toEqual([{ inputId: expect.any(String), storageKey: KEY }]);
+    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId } })]);
+    expect(actions('report_chunk')).toEqual([expect.objectContaining({ token: 'token-a', unit: { kind: 'presentation-copy' }, report: { kind: 'Sub' } })]);
+    expect(indexOf((call) => call.body?.action === 'report_chunk')).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
+  });
+
+  it('DS02 encode: advance to encode and submit one chunk_encode attempt per window, each with its own key', async () => {
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage').map((body) => body.stage)).toEqual(['encode']);
+    const jobs = submitted();
+    expect(jobs.map((job) => job.jobId)).toEqual([subJob('chunk', 1, 0), subJob('chunk', 1, 1)]);
+    expect(jobs.map((job) => (job.outputs as { recipe: { window: unknown } }[])[0]!.recipe.window)).toEqual([{ start: 0, end: 48 }, { start: 48, end: 96 }]);
+    expect(new Set(jobs.map((job) => (job.outputs as { storageKey: string }[])[0]!.storageKey)).size).toBe(2);
+    for (const job of jobs) expect(job).toMatchObject({ containerClass: PRICING.standard4.containerClass, deadlineAt: D });
+    expect(actions('report_chunk').map((body) => body.unit)).toEqual([{ kind: 'presentation-chunk', chunk: 0 }, { kind: 'presentation-chunk', chunk: 1 }]);
+  });
+
+  it('DS03 the full ledger is not ready: nothing is dispatched and the job waits (E2-6)', async () => {
+    answer = prepareAnswer({ candidateLedger: { state: 'pending', receipt: null, failure: null } });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage')).toEqual([]);
+    expect(submitted()).toEqual([]);
+  });
+
+  it('DS04 stitch is dispatched only once every chunk is done, over the chunk outputs in order', async () => {
+    const units = {
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 2, 1), 'done', 'done', 2, true),
+    };
+    answer = prepareAnswer({ units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage').map((body) => body.stage)).toEqual(['stitch']);
+    const jobs = submitted();
+    expect(jobs.map((job) => job.jobId)).toEqual([subJob('stitch', 1)]);
+    expect((jobs[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toMatchObject({ kind: 'stitch', chunks: [workKey(subJob('chunk', 1, 0)), workKey(subJob('chunk', 2, 1))] });
+  });
+
+  it('DS05 one chunk still open: no stitch yet', async () => {
+    const units = {
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'open', 'pending'),
+    };
+    answer = prepareAnswer({ units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage')).toEqual([]);
+    expect(submitted()).toEqual([]);
+  });
+});
+
+describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)', () => {
+  const inFlight = (): Record<string, unknown> => prepareAnswer({
+    units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'open', 'pending'), [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'open', 'pending') },
+    preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null },
+  });
+
+  it('AT01 a done attempt is reported Done, its usage recorded once as a platform expense keyed by its job id at the frozen standard-4 price, then Rec', async () => {
+    answer = inFlight();
+    const usage = { wallMs: 90_000, cpuUsec: 300_000_000 };
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'done', usage));
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    const chunkReports = actions('report_chunk').filter((body) => (body.unit as { chunk?: number }).chunk === 0).map((body) => body.report as { kind: string; attempt?: number });
+    expect(chunkReports.map((report) => report.kind)).toEqual(['Done', 'Rec']);
+    expect(chunkReports.every((report) => report.attempt === 1)).toBe(true);
+    expect(createUsageRecorder).toHaveBeenCalledTimes(1);
+    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: subJob('chunk', 1, 0), multiplier: 0, actorUserId: ACTOR, projectId: null }));
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ source: 'container',
+      costUsd: containerCostUsd(usage, PRICING.standard4.size, PRICING.standard4.prices), costSource: 'computed' }));
+    const rec = indexOf((call) => call.body?.action === 'report_chunk' && (call.body.report as { kind: string }).kind === 'Rec');
+    expect(settle.mock.invocationCallOrder[0]).toBeLessThan((vi.mocked(fetch).mock.invocationCallOrder[rec])!);
+  });
+
+  it('AT02 an attempt whose usage is not measured yet keeps the job waiting and records nothing', async () => {
+    answer = inFlight();
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'done', { wallMs: 90_000, cpuUsec: null }));
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(false);
+  });
+
+  it('AT03 a failed attempt is reported Fail with its reason and measured usage', async () => {
+    answer = inFlight();
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: 2000 }));
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    const fail = actions('report_chunk').find((body) => (body.report as { kind: string }).kind === 'Fail');
+    expect(fail).toMatchObject({ unit: { kind: 'presentation-chunk', chunk: 0 }, report: { kind: 'Fail', attempt: 1, code: 'tool_failed' } });
+  });
+
+  it('AT04 the DO opened the next attempt: it is submitted under its own §5.4 id and key, never the old one', async () => {
+    const retried: Unit = { state: 'open', attempt: 2, attempts: [
+      { attempt: 1, jobId: subJob('chunk', 1, 0), state: 'failed', usageRecorded: true },
+      { attempt: 2, jobId: subJob('chunk', 2, 0), state: 'pending', usageRecorded: false },
+    ] };
+    answer = prepareAnswer({ units: { [`video-presentation:${JOB}:chunk:0`]: retried, [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'done', 'done', 1, true) },
+      preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    const jobs = submitted();
+    expect(jobs.map((job) => job.jobId)).toEqual([subJob('chunk', 2, 0)]);
+    expect((jobs[0]!.outputs as { storageKey: string }[])[0]!.storageKey).toBe(workKey(subJob('chunk', 2, 0)));
+    expect(workKey(subJob('chunk', 2, 0))).not.toBe(workKey(subJob('chunk', 1, 0)));
+  });
+
+  it('AT05 a failed candidate dispatches nothing more and does not wait', async () => {
+    answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
+      units: { [`video-presentation:${JOB}:chunk:0`]: { state: 'failed', attempt: 4, attempts: [1, 2, 3, 4].map((attempt) => ({ attempt, jobId: subJob('chunk', attempt, 0), state: 'failed', usageRecorded: true })) } } });
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(submitted()).toEqual([]);
+    expect(actions('advance_stage')).toEqual([]);
+  });
+
+  it('AT06 the job is not over while an attempt with usage is unrecorded', async () => {
+    answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
+      units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: null }));
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+  });
+
+  it('AT07 the basic execution\'s own usage is recorded once under `video-presentation:<jobId>` at multiplier 0 and acknowledged after it settles', async () => {
+    const usageFact = { jobId: JOB, actorUserId: ACTOR, projectId: null, usage: { wallMs: 4200, cpuUsec: 1_000_000 }, pricing: PRICING.basic };
+    answer = prepareAnswer({ route: 'identity', usageFact, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'plan', failure: null } });
+    await advance()(data).catch(() => undefined);
+    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: `video-presentation:${JOB}`, multiplier: 0, actorUserId: ACTOR }));
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ costUsd: containerCostUsd(usageFact.usage, PRICING.basic.size, PRICING.basic.prices) }));
+    const ack = actions('ack_usage');
+    expect(ack).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, jobId: JOB, deadlineAt: D })]);
+  });
+});
+
+describe('usage invariant over any measurement (inner#1306 §7.6, §7.1.1 Rec; critical path)', () => {
+  it('AT08 for any measured usage of a done attempt, one record at multiplier 0 keyed by that attempt at the frozen standard-4 price, then Rec', async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.integer({ min: 0, max: 7_200_000 }), fc.integer({ min: 0, max: 28_800_000_000 }), fc.integer({ min: 1, max: 4 }),
+      async (wallMs, cpuUsec, attempt) => {
+        sent = [];
+        reports = new Map();
+        createUsageRecorder.mockClear();
+        recordServiceCall.mockClear();
+        const id = subJob('chunk', attempt, 0);
+        answer = prepareAnswer({ units: { [`video-presentation:${JOB}:chunk:0`]: unit(id, 'open', 'pending', attempt), [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'done', 'done', 1, true) },
+          preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+        reports.set(id, finished(id, 'done', { wallMs, cpuUsec }));
+        await advance()(data).catch(() => undefined);
+        expect(createUsageRecorder).toHaveBeenCalledTimes(1);
+        expect(createUsageRecorder.mock.calls[0]![0]).toMatchObject({ operationKey: id, multiplier: 0 });
+        expect(recordServiceCall).toHaveBeenCalledTimes(1);
+        expect(recordServiceCall.mock.calls[0]![0]).toMatchObject({ costUsd: containerCostUsd({ wallMs, cpuUsec }, PRICING.standard4.size, PRICING.standard4.prices) });
+        expect(actions('report_chunk').filter((body) => (body.report as { kind: string }).kind === 'Rec')).toEqual([expect.objectContaining({ report: { kind: 'Rec', attempt } })]);
+      },
+    ), { numRuns: 40 });
+  });
+});
+
+describe('the deadline bounds the job (inner#1306 §5.1 step 1, §5.4 预算, E2-6)', () => {
+  it('DL01 at D with work in flight the job fails `expired` and submits nothing new', async () => {
+    D = Date.now() - 1;
+    answer = prepareAnswer({ units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'open', 'pending') },
+      preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    await advance()(data).catch(() => undefined);
+    expect(actions('fail')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, jobId: JOB, deadlineAt: D, code: 'expired' })]);
+    expect(submitted()).toEqual([]);
+  });
+
+  it('DL02 waiting on a ledger that is not ready ends at D as `expired`', async () => {
+    D = Date.now() - 1;
+    answer = prepareAnswer({ candidateLedger: { state: 'pending', receipt: null, failure: null } });
+    await advance()(data).catch(() => undefined);
+    expect(actions('fail')).toEqual([expect.objectContaining({ code: 'expired' })]);
+  });
+});

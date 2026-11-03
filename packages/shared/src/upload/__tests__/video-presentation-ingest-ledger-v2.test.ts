@@ -34,6 +34,12 @@ const accept = {
     standard4: { containerClass: 'MiniToolContainerStd4', size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
   },
   targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
+  // S6e E2-1: the encoding parameters are frozen at admission.
+  encoding: {
+    chunkShare: 0.5, maxParallelChunks: 8,
+    encoder: { startSeconds: 3, encodePixelsPerSecond: 163000000, decodeConvertPixelsPerSecond: { sdr_8bit: 1950000000, sdr_10bit: 705000000, hdr_8bit: 152000000, hdr_10bit: 103000000 } },
+    copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
+  },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
   packedURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.mp4', manifestURL: 'https://assets.example.test/video/canonical.webm.alpha.v1.json',
 };

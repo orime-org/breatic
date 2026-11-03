@@ -9,18 +9,17 @@
  * together, the target policy version on every read and accept, the retry caps
  * from configuration), consumes the S6c snapshot and answers the response that
  * mirrors it. A user-run prep inherits that run's deadline; a standalone read or
- * repair fixes its own two hours. The probe job's own usage is recorded from the
- * snapshot's usageFact as a platform expense (multiplier 0) and acknowledged
- * after it settles; per-attempt sub-job usage belongs to E2.
+ * repair fixes its own two hours. S6e E2 (§90 E2-1, E2-9): the accept also
+ * freezes the encoding parameters; the queue carries only the job identity, D
+ * lives in the DO admission record, and the staged job with its usage recording
+ * is the worker's (`packages/worker/src/handlers/__tests__/video-presentation.test.ts`).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import fc from 'fast-check';
 import { type StudioAssetEntity } from '@breatic/shared';
 import { budgetDeadlineFrom, getMiniToolsConfig } from '@breatic/core';
 import type * as coreModule from '@breatic/core';
-import { containerCostUsd } from '../../credit/container-cost.js';
-import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation } from '../video-presentation.service.js';
+import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
@@ -216,6 +215,18 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     expect(accept).toMatchObject({ action: 'accept', targetPolicyVersion: 7 });
   });
 
+  it('A05 freezes the encoding parameters from configuration on the accept (E2-1)', async () => {
+    await ensureVideoPresentation({ assetId: asset.id });
+    const config = getMiniToolsConfig();
+    const encoder = config.encoding.encoder;
+    expect((acceptSent() as unknown as Record<string, unknown>).encoding).toEqual({
+      chunkShare: config.encoding.chunk_share, maxParallelChunks: config.encoding.max_parallel_chunks,
+      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second },
+      copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
+      carrier: { maxShortSide: config.presentation.carrier.max_short_side, color: config.presentation.carrier.color },
+    });
+  });
+
   it('A04 keeps the registered facts: unknown measurements stay null and a known width is retained', async () => {
     findById.mockResolvedValue({ ...asset, width: 95 });
     await ensureVideoPresentation({ assetId: asset.id });
@@ -224,13 +235,12 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
 });
 
 describe('deadlines fixed once at admission (inner#1306 §5.1 step 1)', () => {
-  it('D01 a prep triggered inside a user run inherits that run\'s deadline and queues that deadline', async () => {
+  it('D01 a prep triggered inside a user run inherits that run\'s deadline; the queue carries only the job identity (E2-9)', async () => {
     const parent = 1900000000000;
     await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: parent, knownAlpha: true });
     const accept = acceptSent();
     expect(accept).toMatchObject({ deadlineAt: parent, knownAlpha: true });
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ assetId: asset.id, sourceFingerprint: H, jobId: accept.jobId, deadlineAt: parent }),
-      expect.objectContaining({ jobId: accept.jobId }));
+    expect(queueAdd).toHaveBeenCalledWith('prepare', { assetId: asset.id, sourceFingerprint: H, jobId: accept.jobId }, expect.objectContaining({ jobId: accept.jobId }));
   });
 
   it('D02 a standalone read admission fixes its own two hours', async () => {
@@ -262,7 +272,7 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     const got = await resolveVideoPresentation(input);
     expect(sent().map((request) => request.action)).toEqual(['read']);
     expect(got).toMatchObject({ preparation: prep('in-flight', 'encode'), pollAfterMs: 5000 });
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'in-flight' }), expect.objectContaining({ jobId: 'in-flight' }));
+    expect(queueAdd).toHaveBeenCalledWith('prepare', { assetId: asset.id, sourceFingerprint: H, jobId: 'in-flight' }, expect.objectContaining({ jobId: 'in-flight' }));
   });
 
   it('R03 a failed target preparation with nothing selected is answered as it is: no admission, no queue, no polling', async () => {
@@ -349,68 +359,6 @@ describe('repair returns the same response (inner#1306 §3.5 web→server repair
     ]);
     expect(a.preparation).toEqual(b.preparation);
     expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['ledger-only']));
-  });
-});
-
-describe('the probe job\'s own usage is a platform expense (inner#1306 §7.6, §5.1 step 8; E1 keeps usageFact + ack_usage)', () => {
-  const job = { assetId: asset.id, sourceFingerprint: H, jobId: 'video-presentation-a', deadlineAt: 1900000000000 };
-  const basic = getMiniToolsConfig().classes[getMiniToolsConfig().presentation.container_class]!;
-  const fact = {
-    jobId: job.jobId, actorUserId: input.userId, projectId: null, usage: { wallMs: 1000, cpuUsec: 10000 },
-    pricing: { containerClass: 'MediaContainer', size: { vcpu: basic.vcpu, memory_gib: basic.memory_gib, disk_gb: basic.disk_gb },
-      prices: { vcpu_second_usd: 0.00001, memory_gib_second_usd: 0.00002, disk_gb_second_usd: 0.00003 } },
-  };
-
-  it('U01 records the measured basic usage once under the original actor with multiplier 0, then acknowledges it', async () => {
-    videoPresentationAtIngest.mockResolvedValue(snapshot({ presentation: bundle, ledger: { state: 'ready', receipt, failure: null }, preparation: prep(job.jobId, 'publish'), usageFact: fact }));
-    await runVideoPresentation(job);
-    expect(createUsageRecorder).toHaveBeenCalledTimes(1);
-    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: `video-presentation:${job.jobId}`,
-      feature: 'mini_tool', actorUserId: input.userId, projectId: null, multiplier: 0 }));
-    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ source: 'container', service: 'video-presentation', provider: 'cloudflare',
-      costUsd: containerCostUsd(fact.usage, fact.pricing.size, fact.pricing.prices), costSource: 'computed' }));
-    const ack = videoPresentationAtIngest.mock.calls.findIndex((call) => (call[2] as Sent).action === 'ack_usage');
-    expect(ack).toBeGreaterThan(-1);
-    expect(settle.mock.invocationCallOrder[0]).toBeLessThan(videoPresentationAtIngest.mock.invocationCallOrder[ack]!);
-    expect(videoPresentationAtIngest.mock.calls[ack]![2]).toMatchObject({ storageKey: asset.storageKey, sourceFingerprint: H, jobId: job.jobId, deadlineAt: job.deadlineAt });
-  });
-
-  it('U02 records nothing and acknowledges nothing without a usage fact', async () => {
-    videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'plan') }));
-    await runVideoPresentation(job);
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-    expect(sent().some((request) => request.action === 'ack_usage')).toBe(false);
-  });
-
-  it('U03 refuses a usage fact of another job before recording it', async () => {
-    videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'plan'), usageFact: { ...fact, jobId: 'other-job' } }));
-    await expect(runVideoPresentation(job)).rejects.toThrow();
-    expect(recordServiceCall).not.toHaveBeenCalled();
-    expect(sent().some((request) => request.action === 'ack_usage')).toBe(false);
-  });
-
-  it('U04 a stale source hash records and asks nothing', async () => {
-    await runVideoPresentation({ ...job, sourceFingerprint: 'b'.repeat(64) });
-    expect(videoPresentationAtIngest).not.toHaveBeenCalled();
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-  });
-
-  it('U05 for any measured usage the recorded cost is the basic price of that usage, at multiplier 0, recorded once', async () => {
-    await fc.assert(fc.asyncProperty(
-      fc.integer({ min: 0, max: 7_200_000 }), fc.option(fc.integer({ min: 0, max: 28_800_000_000 }), { nil: null }),
-      async (wallMs, cpuUsec) => {
-        vi.clearAllMocks();
-        createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
-        settle.mockResolvedValue(0);
-        const usage = { wallMs, cpuUsec };
-        videoPresentationAtIngest.mockResolvedValue(snapshot({ preparation: prep(job.jobId, 'publish'), usageFact: { ...fact, usage } }));
-        await runVideoPresentation(job);
-        expect(createUsageRecorder).toHaveBeenCalledTimes(1);
-        expect(createUsageRecorder.mock.calls[0]![0]).toMatchObject({ multiplier: 0 });
-        expect(recordServiceCall).toHaveBeenCalledTimes(1);
-        expect(recordServiceCall.mock.calls[0]![0]).toMatchObject({ costUsd: containerCostUsd(usage, fact.pricing.size, fact.pricing.prices) });
-      },
-    ), { numRuns: 50 });
   });
 });
 
