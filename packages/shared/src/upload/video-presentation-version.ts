@@ -28,7 +28,8 @@ const identity = { versionId: hash, toolInputId: hash, planSha256: hash, policyV
 
 /** The selected presentation version (P descriptor); pending work belongs to preparation, so there is no state. */
 export const videoPresentationVersionSchema = z.strictObject({
-  schemaVersion: z.literal(1), sourceFingerprint: hash, ...identity,
+  // producerVersion and profileVersion are the versionId inputs a reuse is decided by (§3.5 P descriptor, §7.1).
+  schemaVersion: z.literal(1), sourceFingerprint: hash, ...identity, producerVersion: positiveCount, profileVersion: positiveCount,
   original: z.strictObject({ width: pixel.nullable(), height: pixel.nullable(), duration: z.number().finite().positive().nullable() }),
   display,
   playback: z.discriminatedUnion('kind', [

@@ -7,11 +7,9 @@ import { videoPresentationOriginalSchema } from '@shared/upload/video-presentati
 import {
   videoPresentationLedgerReceiptSchema, videoPresentationVersionSchema, type VideoPresentationLedgerReceipt, type VideoPresentationVersion,
 } from '@shared/upload/video-presentation-version.js';
-import type { VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
+import { videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
-import { untilDeadline } from '@shared/http/deadline.js';
-import type { VideoPresentation } from '@shared/upload/video-presentation-types.js';
-import type { VideoPresentationProcessLimits, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
+import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 /** Actual configured instance size and rates captured before compute starts. */
@@ -55,33 +53,6 @@ export interface VideoPresentationIngestSnapshot {
   ledger: VideoPresentationIngestLedger | null;
   usageFact?: VideoPresentationUsageFact;
 }
-/** Plain internal calls; only ingest owns storage and container execution. */
-export type VideoPresentationIngestRequest = {
-  action: 'read' | 'accept' | 'run' | 'expire' | 'ack_usage';
-  storageKey: string;
-  sourceFingerprint: string;
-  jobId?: string;
-  deadlineAt?: number;
-  original?: VideoPresentation['original'] | null;
-  registeredMetadata?: VideoPresentationRegisteredMetadata;
-  contentType?: string;
-  knownAlpha?: boolean;
-  repair?: boolean;
-  limits?: VideoPresentationProcessLimits;
-  pricing?: VideoPresentationIngestPricing;
-  /** The target presentation policy; every admission and read carries it. */
-  targetPolicyVersion?: number;
-  policy?: VideoPresentationAdmissionPolicy;
-  actorUserId?: string;
-  projectId?: string | null;
-  packedURL?: string;
-  manifestURL?: string;
-  /** Public address of the full source ledger; sent with `sourceLedgerTableURL` and `limits.sourceLedger`, or not at all. */
-  sourceLedgerURL?: string;
-  /** Public address of the compact presentation table written with the ledger. */
-  sourceLedgerTableURL?: string;
-};
-
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
 export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing> = z.strictObject({
   containerClass: z.string().min(1),
@@ -90,7 +61,6 @@ export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing>
 });
 const retryCap = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const budget = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-const httpsUrl = z.url().refine(value => value.startsWith('https://'));
 /** Limits are validated at the edge and frozen for the original accepted job; the ledger has byte and parser budgets, never a frame count ceiling. */
 export const videoPresentationProcessLimitsSchema: z.ZodType<VideoPresentationProcessLimits> = z.strictObject({
   sourceLedger: z.strictObject({
@@ -99,30 +69,6 @@ export const videoPresentationProcessLimitsSchema: z.ZodType<VideoPresentationPr
   maxSourceBytes: z.number().int().positive(), maxPackedBytes: z.number().int().positive(),
   crf: z.number().int().min(0).max(51), preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']),
   probeStdoutBytes: z.number().int().positive(), analysisStdoutBytes: z.number().int().positive(), stderrTailBytes: z.number().int().positive(),
-});
-/** The backend-only operation contract contains no client classification claim. */
-export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIngestRequest> = z.strictObject({
-  action: z.enum(['read', 'accept', 'run', 'expire', 'ack_usage']), storageKey: z.string().min(1).max(500), sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  jobId: z.string().min(1).max(200).optional(), deadlineAt: z.number().int().positive().optional(),
-  original: videoPresentationOriginalSchema.nullable().optional(),
-  registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
-  contentType: z.string().min(1).optional(), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
-  limits: videoPresentationProcessLimitsSchema.optional(),
-  pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }).optional(),
-  targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
-  policy: z.strictObject({ chunkRetries: retryCap, maxAutoRepairs: retryCap }).optional(),
-  actorUserId: z.uuid().optional(),
-  projectId: z.uuid().nullable().optional(), packedURL: z.url().optional(), manifestURL: z.url().optional(),
-  sourceLedgerURL: httpsUrl.optional(), sourceLedgerTableURL: httpsUrl.optional(),
-}).superRefine((value, ctx) => {
-  const ledgerParts = [value.limits?.sourceLedger, value.sourceLedgerURL, value.sourceLedgerTableURL].filter(part => part !== undefined).length;
-  if (ledgerParts !== 0 && ledgerParts !== 3) ctx.addIssue({ code: 'custom', message: 'A ledger request carries its budgets and both object addresses together' });
-  if (value.sourceLedgerURL !== undefined && value.sourceLedgerURL === value.sourceLedgerTableURL) ctx.addIssue({ code: 'custom', message: 'The ledger and its table are different objects' });
-  if (value.action !== 'read' && (value.jobId === undefined || value.deadlineAt === undefined)) ctx.addIssue({ code: 'custom', message: 'Attempt operations require their fixed identity' });
-  if ((value.action === 'read' || value.action === 'accept') && value.targetPolicyVersion === undefined) ctx.addIssue({ code: 'custom', message: 'Admission and read carry the target policy' });
-  if (value.action === 'accept' && (value.original === undefined || value.contentType === undefined || value.limits === undefined || value.pricing === undefined || value.policy === undefined || value.actorUserId === undefined || value.projectId === undefined || value.packedURL === undefined || value.manifestURL === undefined)) {
-    ctx.addIssue({ code: 'custom', message: 'Admission requires frozen source facts, pricing, attribution and capabilities' });
-  }
 });
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);
@@ -170,6 +116,184 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
 }).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
 
+const storageKey = z.string().min(1).max(500);
+const jobId = z.string().min(1).max(200);
+const deadlineAt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const attemptNumber = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const rate = z.number().positive().finite();
+const colorTag = z.string().min(1);
+const identity = { storageKey, sourceFingerprint: hash, jobId };
+const capability = { ...identity, deadlineAt, token: z.string().min(1) };
+const stage = z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']);
+
+/** The encoding parameters frozen at admission (design §3.2 item 1, §5.4): chunking, encoder rates, copy margin and carrier. */
+export const videoPresentationEncodingSchema = z.strictObject({
+  chunkShare: z.number().positive().max(1), maxParallelChunks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  encoder: z.strictObject({
+    startSeconds: z.number().nonnegative().finite(), encodePixelsPerSecond: rate,
+    decodeConvertPixelsPerSecond: z.strictObject({ sdr_8bit: rate, sdr_10bit: rate, hdr_8bit: rate, hdr_10bit: rate }),
+  }),
+  copyDiskMarginBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  carrier: z.strictObject({ maxShortSide: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), color: z.strictObject({ primaries: colorTag, transfer: colorTag, matrix: colorTag, range: colorTag }) }),
+});
+/** A parsed frozen encoding policy. */
+export type VideoPresentationEncoding = z.infer<typeof videoPresentationEncodingSchema>;
+
+/** One presentation container unit, without its job id (§5.4). */
+export const videoPresentationChunkUnitSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('presentation-chunk'), chunk: index }),
+  z.strictObject({ kind: z.literal('presentation-stitch') }),
+  z.strictObject({ kind: z.literal('presentation-copy') }),
+]);
+/** A parsed unit. */
+export type VideoPresentationChunkUnit = z.infer<typeof videoPresentationChunkUnitSchema>;
+/** The job DO's measured receipt of a carrier a stitch or copy attempt wrote (§5.1 step 4). */
+export const videoPresentationCarrierReceiptSchema = z.strictObject({
+  storageKey, sha256: hash, sizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), contentType: z.string().min(1).max(100),
+});
+/** A parsed carrier receipt. */
+export type VideoPresentationCarrierReceipt = z.infer<typeof videoPresentationCarrierReceiptSchema>;
+/** One attempt report of a unit (§7.1.1). */
+export const videoPresentationChunkReportSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('Sub') }),
+  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipt: videoPresentationCarrierReceiptSchema.optional() }),
+  z.strictObject({ kind: z.literal('Fail'), attempt: attemptNumber, code: errorCode, usage: z.number().nonnegative().finite().nullable() }),
+  z.strictObject({ kind: z.literal('Exp') }),
+  z.strictObject({ kind: z.literal('Rec'), attempt: attemptNumber }),
+]);
+/** A parsed unit report. */
+export type VideoPresentationChunkReport = z.infer<typeof videoPresentationChunkReportSchema>;
+
+/** Plain internal calls; only ingest owns storage and container execution. Admission and read carry the target policy. */
+export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('read'), storageKey, sourceFingerprint: hash, targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+  z.strictObject({
+    action: z.literal('accept'), ...identity, deadlineAt,
+    original: videoPresentationOriginalSchema.nullable(),
+    registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
+    contentType: z.string().min(1), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
+    limits: videoPresentationProcessLimitsSchema,
+    pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }),
+    targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    policy: z.strictObject({ chunkRetries: retryCap, maxAutoRepairs: retryCap }),
+    encoding: videoPresentationEncodingSchema,
+    actorUserId: z.uuid(), projectId: z.uuid().nullable(),
+    // Every derived object's URL is this base joined to its key (videoPresentationObjectURL).
+    publicBaseURL: z.url().refine(value => value.startsWith('https://') && !value.endsWith('/'), 'Expected an https base without a trailing slash'),
+  }),
+  z.strictObject({ action: z.literal('prepare'), ...identity }),
+  z.strictObject({ action: z.literal('advance_stage'), ...capability, stage }),
+  z.strictObject({ action: z.literal('report_chunk'), ...capability, unit: videoPresentationChunkUnitSchema, report: videoPresentationChunkReportSchema }),
+  // Only the job's measured usage travels; a bundle is assembled by the DO itself (§5.1 step 4).
+  z.strictObject({ action: z.literal('report'), ...capability, fact: z.strictObject({ kind: z.literal('finished'), usage }) }),
+  z.strictObject({ action: z.literal('fail'), ...identity, deadlineAt, code: errorCode }),
+  z.strictObject({ action: z.literal('ack_usage'), ...identity, deadlineAt }),
+]);
+/** A parsed internal request. */
+export type VideoPresentationIngestRequest = z.infer<typeof videoPresentationIngestRequestSchema>;
+
+/** The worker-only answer to `prepare` (E2-3): the snapshot plus the capability, plan, work, candidate ledger, units and frozen facts. */
+export const videoPresentationPrepareAnswerSchema = z.strictObject({
+  sourceBinding: z.strictObject({ storageKey, sourceFingerprint: hash }),
+  presentation: videoPresentationVersionSchema.nullable(),
+  preparation: videoPresentationIngestPreparationSchema.nullable(),
+  ledger: videoPresentationIngestLedgerSchema.nullable(),
+  usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
+  capability: z.strictObject({ token: z.string().min(1), deadlineAt }).nullable(),
+  plan: z.strictObject({ route: z.enum(['reuse', 'identity', 'copy', 'dispatch_copy', 'encode']), stages: z.array(stage), toolInputId: hash, planSha256: hash }).nullable(),
+  work: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({ kind: z.literal('dispatch_copy') }),
+    z.strictObject({ kind: z.literal('encode'), chunks: z.array(z.strictObject({ start: index, end: index })).min(1) }),
+  ]),
+  candidateLedger: videoPresentationIngestLedgerSchema.nullable(),
+  units: z.record(z.string().min(1), z.strictObject({
+    state: z.enum(['none', 'open', 'done', 'failed']), attempt: index,
+    attempts: z.array(z.strictObject({ attempt: attemptNumber, jobId: z.string().min(1), state: z.enum(['pending', 'done', 'failed']), usageRecorded: z.boolean() })),
+  })),
+  frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable() }),
+}).superRefine((value, ctx) => {
+  checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx);
+  const { plan, work } = value;
+  if (value.capability === null && plan !== null) ctx.addIssue({ code: 'custom', path: ['plan'], message: 'Only a granted job has a plan' });
+  if (plan !== null && plan.stages.join() !== videoCarrierRouteStages(plan.route).join()) ctx.addIssue({ code: 'custom', path: ['plan', 'stages'], message: 'The stages are not the route\'s' });
+  if (work.kind !== 'none' && plan?.route !== work.kind) ctx.addIssue({ code: 'custom', path: ['work'], message: 'The work does not belong to the route' });
+  if (work.kind === 'encode') {
+    let cursor = 0;
+    for (const chunk of work.chunks) {
+      if (chunk.start !== cursor || chunk.end <= chunk.start) ctx.addIssue({ code: 'custom', path: ['work', 'chunks'], message: 'Chunks tile the frames from 0 without gaps' });
+      cursor = chunk.end;
+    }
+  }
+  const receipt = value.candidateLedger?.receipt ?? null;
+  if (value.candidateLedger !== null && (plan === null || (receipt !== null && (receipt.toolInputId !== plan.toolInputId || receipt.sourceFingerprint !== value.sourceBinding.sourceFingerprint)))) {
+    ctx.addIssue({ code: 'custom', path: ['candidateLedger'], message: 'The candidate ledger belongs to another tool input' });
+  }
+});
+/** A parsed prepare answer. */
+export type VideoPresentationPrepareAnswer = z.infer<typeof videoPresentationPrepareAnswerSchema>;
+
+/**
+ * The output key of one presentation sub-job (§5.4): job id, output key, operation and usage identity are one string.
+ * @param sourceKey - The registered source key.
+ * @param jobIdOfAttempt - The attempt's full container job id.
+ * @returns The key.
+ * @throws {never} Never.
+ */
+export function videoPresentationWorkKeyFor(sourceKey: string, jobIdOfAttempt: string): string {
+  return `${sourceKey}.${jobIdOfAttempt}`;
+}
+
+/**
+ * The public URL of an object ingest writes or receives: the frozen public base joined to its key.
+ * @param publicBaseURL - The https base without a trailing slash.
+ * @param key - The storage key.
+ * @returns The URL.
+ * @throws {never} Never.
+ */
+export function videoPresentationObjectURL(publicBaseURL: string, key: string): string {
+  return `${publicBaseURL}/${key}`;
+}
+
+/**
+ * Post one request to the presentation route.
+ * @param baseURL - Ingest base address.
+ * @param secret - Shared backend credential.
+ * @param request - The request.
+ * @returns The unparsed answer.
+ * @throws {Error} When ingest refuses.
+ */
+function askPresentation(baseURL: string, secret: string, request: VideoPresentationIngestRequest): Promise<unknown> {
+  return askWorker<unknown>(`${baseURL}/video-presentation`, {
+    method: 'POST', headers: { 'x-ingest-secret': secret, 'content-type': 'application/json' }, body: JSON.stringify(videoPresentationIngestRequestSchema.parse(request)),
+  }, { replaySafe: true });
+}
+
+/**
+ * Prepare (or re-read) one presentation job: the worker-only answer.
+ * @param baseURL - Ingest base address.
+ * @param secret - Shared backend credential.
+ * @param request - The job identity.
+ * @returns The validated answer.
+ * @throws {Error} When ingest refuses or answers a malformed answer.
+ */
+export async function prepareVideoPresentationAtIngest(baseURL: string, secret: string, request: Extract<VideoPresentationIngestRequest, { action: 'prepare' }>): Promise<VideoPresentationPrepareAnswer> {
+  return videoPresentationPrepareAnswerSchema.parse(await askPresentation(baseURL, secret, request));
+}
+
+/**
+ * Submit one stage or unit event of a presentation job.
+ * @param baseURL - Ingest base address.
+ * @param secret - Shared backend credential.
+ * @param request - The event.
+ * @returns Whether the DO accepted it.
+ * @throws {Error} When ingest refuses or answers malformed.
+ */
+export async function stepVideoPresentationAtIngest(baseURL: string, secret: string, request: Extract<VideoPresentationIngestRequest, { action: 'advance_stage' | 'report_chunk' }>): Promise<boolean> {
+  return z.strictObject({ accepted: z.boolean() }).parse(await askPresentation(baseURL, secret, request)).accepted;
+}
+
 /**
  * Call the authenticated presentation auxiliary-work boundary.
  * @param baseURL - Ingest base address.
@@ -181,10 +305,7 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
 export async function videoPresentationAtIngest(
   baseURL: string,
   secret: string,
-  request: VideoPresentationIngestRequest,
+  request: Exclude<VideoPresentationIngestRequest, { action: 'prepare' | 'advance_stage' | 'report_chunk' }>,
 ): Promise<VideoPresentationIngestSnapshot> {
-  const answered = await askWorker<unknown>(`${baseURL}/video-presentation`, {
-    method: 'POST', headers: { 'x-ingest-secret': secret, 'content-type': 'application/json' }, body: JSON.stringify(request),
-  }, { replaySafe: true, ...(request.action === 'run' && request.deadlineAt !== undefined ? { bound: untilDeadline(request.deadlineAt) } : {}) });
-  return videoPresentationIngestSnapshotSchema.parse(answered);
+  return videoPresentationIngestSnapshotSchema.parse(await askPresentation(baseURL, secret, request));
 }
