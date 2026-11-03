@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type {
-  VideoSourceLedgerCompanion, PhysicalVideoProbe, MatroskaPhysicalVideoProbe, OwnedVideoPresentation, VideoEditSpan, VideoSourceLedgerV2, VideoSourceRun,
+  PhysicalVideoProbe, MatroskaPhysicalVideoProbe, OwnedVideoPresentation, VideoEditSpan, VideoSourceLedgerV2, VideoSourceRun,
 } from "@shared/upload/video-source-ledger-types.js";
 import { projectPresentationTable, rational, type PresentationRational, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import { planVideoPresentationTimeline, videoAudioSampleIndex, VIDEO_AUDIO_SAMPLE_RATE, type VideoTimelineFrame } from "@shared/mini-tools/video-presentation-timeline.js";
@@ -18,52 +18,9 @@ import { assembleMatroskaVideoPresentation } from "@ingest/container/matroska-vi
 interface SourceLedgerAssemblyBase {
   sourceFingerprint: string;
   attempt: { jobId: string; deadlineAt: number };
-  limits: { maxPhysicalFrames: number; maxOccurrences: number };
 }
-/** Complete same-source bounded reader/physical facts, not an IO request. */
-export type VideoSourceLedgerAssemblyInput = SourceLedgerAssemblyBase & ({
-  kind: "iso_bmff";
-  metadata: IsoBmffMetadata;
-  physical: PhysicalVideoProbe;
-} | {
-  kind: "matroska";
-  metadata: MatroskaMetadata;
-  physical: MatroskaPhysicalVideoProbe;
-});
-
-/**
- * Assemble the complete source companion by reusing the existing pure format owners.
- * @param input - Accepted immutable identity, original facts and mandatory limits.
- * @returns Complete selected-track provenance and the original owners' exact schedule.
- * @throws {Error} When mandatory limits, complete physical facts or the original format owner reject the source.
- */
-export function assembleVideoSourceLedger(input: VideoSourceLedgerAssemblyInput): VideoSourceLedgerCompanion {
-  const { maxPhysicalFrames, maxOccurrences } = input.limits;
-  if (!Number.isSafeInteger(maxPhysicalFrames) || maxPhysicalFrames <= 0 || !Number.isSafeInteger(maxOccurrences) || maxOccurrences <= 0) {
-    throw new Error("Source ledger ceilings must be positive safe integers");
-  }
-  if (input.physical.frames.length === 0 || input.physical.frames.length > maxPhysicalFrames) throw new Error("Complete physical source exceeds its frame ceiling or is empty");
-  const identity = { schemaVersion: 1 as const, producerVersion: 1 as const, sourceFingerprint: input.sourceFingerprint, attempt: input.attempt };
-  if (input.kind === "matroska") {
-    const presentation = assembleMatroskaVideoPresentation(input.metadata, input.physical, maxOccurrences);
-    return {
-      ...identity, strategy: "matroska_rate_one", physical: input.physical, presentation,
-      container: { kind: "matroska", timestampScaleNs: input.metadata.timestampScaleNs,
-        track: input.metadata.tracks.find((track) => track.trackNumber === input.physical.trackNumber)!,
-        blocks: input.metadata.blocks.filter((block) => block.trackNumber === input.physical.trackNumber) },
-    };
-  }
-  const explicit = assembleExplicitIsoVideoPresentation(input.metadata, input.physical, maxOccurrences);
-  const presentation = explicit === null ? assembleUneditedIsoVideoPresentation(input.metadata, input.physical, maxOccurrences) : explicit;
-  return {
-    ...identity, strategy: explicit === null ? "iso_unedited_rate_one" : "iso_explicit_rate_one", physical: input.physical, presentation,
-    container: { kind: "iso_bmff", movieTimescale: input.metadata.movieTimescale, movieDurationTicks: input.metadata.movieDurationTicks,
-      track: input.metadata.tracks.find((track) => track.trackId === input.physical.trackId)! },
-  };
-}
-
 /** Already admitted source identity and the complete facts the container parsed from it. */
-export type VideoSourceLedgerV2Input = Omit<SourceLedgerAssemblyBase, "limits"> & ({
+export type VideoSourceLedgerV2Input = SourceLedgerAssemblyBase & ({
   kind: "iso_bmff";
   metadata: IsoBmffMetadata;
   physical: PhysicalVideoProbe;

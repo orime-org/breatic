@@ -148,16 +148,29 @@ export const videoPresentationChunkUnitSchema = z.discriminatedUnion('kind', [
 ]);
 /** A parsed unit. */
 export type VideoPresentationChunkUnit = z.infer<typeof videoPresentationChunkUnitSchema>;
-/** The job DO's measured receipt of a carrier a stitch or copy attempt wrote (§5.1 step 4). */
-export const videoPresentationCarrierReceiptSchema = z.strictObject({
+const measuredObject = {
   storageKey, sha256: hash, sizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), contentType: z.string().min(1).max(100),
+};
+/** The job DO's measured receipt of one output a stitch or copy attempt wrote, tagged with its role (§5.1 step 4, §90 E4-15). */
+export const videoPresentationOutputReceiptSchema = z.discriminatedUnion('role', [
+  z.strictObject({ role: z.literal('carrier'), packing: z.enum(['native', 'alpha-packed']), ...measuredObject }),
+  z.strictObject({ role: z.literal('manifest'), ...measuredObject }),
+]);
+/** A parsed output receipt. */
+export type VideoPresentationOutputReceipt = z.infer<typeof videoPresentationOutputReceiptSchema>;
+/** Every output of one stitch or copy attempt: exactly one carrier, and a manifest exactly beside an alpha-packed carrier, at another key. */
+export const videoPresentationOutputReceiptsSchema = z.array(videoPresentationOutputReceiptSchema).min(1).superRefine((receipts, ctx) => {
+  const carriers = receipts.filter((receipt) => receipt.role === 'carrier');
+  const manifests = receipts.filter((receipt) => receipt.role === 'manifest');
+  const packed = carriers.length === 1 && carriers[0]!.packing === 'alpha-packed';
+  if (carriers.length !== 1 || manifests.length !== (packed ? 1 : 0) || new Set(receipts.map((receipt) => receipt.storageKey)).size !== receipts.length) {
+    ctx.addIssue({ code: 'custom', message: 'Expected one carrier, and one manifest at its own key exactly when the carrier is alpha-packed' });
+  }
 });
-/** A parsed carrier receipt. */
-export type VideoPresentationCarrierReceipt = z.infer<typeof videoPresentationCarrierReceiptSchema>;
 /** One attempt report of a unit (§7.1.1). */
 export const videoPresentationChunkReportSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('Sub') }),
-  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipt: videoPresentationCarrierReceiptSchema.optional() }),
+  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipts: videoPresentationOutputReceiptsSchema.optional() }),
   z.strictObject({ kind: z.literal('Fail'), attempt: attemptNumber, code: errorCode, usage: z.number().nonnegative().finite().nullable() }),
   z.strictObject({ kind: z.literal('Exp') }),
   z.strictObject({ kind: z.literal('Rec'), attempt: attemptNumber }),
@@ -184,7 +197,12 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
   }),
   z.strictObject({ action: z.literal('prepare'), ...identity }),
   z.strictObject({ action: z.literal('advance_stage'), ...capability, stage }),
-  z.strictObject({ action: z.literal('report_chunk'), ...capability, unit: videoPresentationChunkUnitSchema, report: videoPresentationChunkReportSchema }),
+  z.strictObject({ action: z.literal('report_chunk'), ...capability, unit: videoPresentationChunkUnitSchema, report: videoPresentationChunkReportSchema }).superRefine((value, ctx) => {
+    // A stitch or copy Done names what its job wrote; a chunk's outputs are named by their job id alone.
+    if (value.report.kind === 'Done' && (value.report.receipts === undefined) !== (value.unit.kind === 'presentation-chunk')) {
+      ctx.addIssue({ code: 'custom', path: ['report', 'receipts'], message: 'A stitch or copy Done carries its output receipts and a chunk Done none' });
+    }
+  }),
   // Only the job's measured usage travels; a bundle is assembled by the DO itself (§5.1 step 4).
   z.strictObject({ action: z.literal('report'), ...capability, fact: z.strictObject({ kind: z.literal('finished'), usage }) }),
   z.strictObject({ action: z.literal('fail'), ...identity, deadlineAt, code: errorCode }),
@@ -211,6 +229,8 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
   units: z.record(z.string().min(1), z.strictObject({
     state: z.enum(['none', 'open', 'done', 'failed']), attempt: index,
     attempts: z.array(z.strictObject({ attempt: attemptNumber, jobId: z.string().min(1), state: z.enum(['pending', 'done', 'failed']), usageRecorded: z.boolean() })),
+    // The receipts of the attempt that completed a stitch or copy unit, as the DO stored them.
+    receipts: videoPresentationOutputReceiptsSchema.optional(),
   })),
   // Null only for a job this DO never admitted.
   frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable() }).nullable(),

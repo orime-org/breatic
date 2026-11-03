@@ -2,28 +2,16 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Read a stored source ledger companion and hand it back only when every byte
- * is the one its receipt measured (inner#1306).
- *
- * A ready receipt says a small object was stored; it is not a usable frame
- * table. The table is usable once the whole body has arrived under the
- * caller's one read deadline, its size and SHA-256 equal the receipt's, and
- * the strict parser accepts it against the receipt and the current read
- * policy. Anything less is a refusal and no part of the arrays is returned.
- *
- * The receipt is only data here: which receipt belongs to which registered
- * source, and who may read it, is the caller's to have settled first.
+ * Read stored ledger JSON and hand it back only when every byte is the one
+ * its receipt measured (inner#1306). Which receipt belongs to which source,
+ * and who may read it, is the caller's to have settled first.
  */
-
-import { z } from 'zod';
 
 import { MAX_TIMER_MS } from '@shared/http/constants.js';
 import { assertBeforeDeadline, untilDeadline } from '@shared/http/deadline.js';
 import { readBytesWithin } from '@shared/http/read-within.js';
 import { httpRequest } from '@shared/http/request.js';
 import { reduceMediaType } from '@shared/upload/media-type.js';
-import { parseVideoSourceLedger, videoSourceLedgerReceiptSchema } from '@shared/upload/video-source-ledger.js';
-import type { VideoSourceLedgerCompanion, VideoSourceLedgerReceipt } from '@shared/upload/video-source-ledger-types.js';
 
 /** Why a stored companion was not handed back. */
 export class VideoSourceLedgerReadRefused extends Error {
@@ -40,16 +28,6 @@ export class VideoSourceLedgerReadRefused extends Error {
     this.reason = reason;
   }
 }
-
-/** The current read policy: the stored object's byte ceiling and the parser's two count ceilings. */
-export interface VideoSourceLedgerReadLimits { maxBytes: number; maxPhysicalFrames: number; maxOccurrences: number }
-
-const ceiling = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-
-/** The read policy as the presentation response carries it. */
-export const videoSourceLedgerReadLimitsSchema: z.ZodType<VideoSourceLedgerReadLimits> = z.strictObject({
-  maxBytes: ceiling, maxPhysicalFrames: ceiling, maxOccurrences: ceiling,
-});
 
 /**
  * Lowercase SHA-256 of the bytes exactly as they arrived.
@@ -69,40 +47,6 @@ async function digestOf(bytes: Uint8Array): Promise<string> {
  */
 async function drop(res: Response): Promise<void> {
   await res.body?.cancel().catch(() => undefined);
-}
-
-/**
- * Read a source ledger companion against its receipt.
- * @param receipt - The ready receipt the caller has already bound to the current source.
- * @param limits - The current read policy, captured once for this read.
- * @param options - The one absolute read deadline and the caller's signal.
- * @param options.deadlineAt - When this read must be done, in epoch ms; never the receipt's own producer deadline.
- * @param options.signal - The caller's signal.
- * @returns The whole validated companion.
- * @throws {VideoSourceLedgerReadRefused} When the receipt, policy, response or bytes are not the stored companion.
- * @throws {DeadlinePassed} When the read deadline comes before the companion is validated.
- * @throws {BodyTooLarge} When more bytes arrive than the receipt measured.
- * @throws {EmptyBody} When the response carries no body.
- * @throws {Error} The transport's own failure, or the caller's abort reason.
- */
-export async function readVideoSourceLedger(
-  receipt: VideoSourceLedgerReceipt,
-  limits: VideoSourceLedgerReadLimits,
-  options: { deadlineAt: number; signal?: AbortSignal },
-): Promise<VideoSourceLedgerCompanion> {
-  const { deadlineAt, signal } = options;
-  const policy = videoSourceLedgerReadLimitsSchema.safeParse(limits);
-  if (!policy.success) throw new VideoSourceLedgerReadRefused('limits');
-  const stored = videoSourceLedgerReceiptSchema.safeParse(receipt);
-  if (!stored.success) throw new VideoSourceLedgerReadRefused('receipt');
-  const measured = stored.data;
-  if (measured.size > policy.data.maxBytes || measured.physicalFrameCount > policy.data.maxPhysicalFrames ||
-    measured.occurrenceCount > policy.data.maxOccurrences) throw new VideoSourceLedgerReadRefused('over_limit');
-
-  const value = await readMeasuredVideoJson(measured, { deadlineAt, ...(signal === undefined ? {} : { signal }) });
-  const companion = parseVideoSourceLedger(value, measured, policy.data);
-  if (companion === null) throw new VideoSourceLedgerReadRefused('content');
-  return companion;
 }
 
 /**

@@ -256,7 +256,7 @@ function positiveInteger(value: string | null): number | null {
  * @throws {never} Infrastructure faults are logged and returned as failed writes.
  */
 export async function writeSourceLedgerPresentation(request: Request, env: MediaEnv, ctx: OutboundHandlerContext<ServeOneKey>): Promise<Response> {
-  if (request.method !== 'PUT' || askedKey(request) !== videoSourceLedgerKeyFor(ctx.params.key)) return new Response('Not allowed', { status: 403 });
+  if (request.method !== 'PUT') return new Response('Not allowed', { status: 403 });
   const query = new URL(request.url).searchParams;
   const jobId = query.get('jobId');
   const sourceFingerprint = query.get('sourceFingerprint');
@@ -272,6 +272,8 @@ export async function writeSourceLedgerPresentation(request: Request, env: Media
     token === null || token.length === 0 || toolInputId === null || !/^[a-f0-9]{64}$/.test(toolInputId) || planSha256 === null || !/^[a-f0-9]{64}$/.test(planSha256) ||
     query.get('producerVersion') !== '2' || byteLength === null || tableByteLength === null || frameCount === null ||
     contentLength === null || contentLength !== byteLength + tableByteLength || request.body === null) return new Response('Invalid ledger write', { status: 400 });
+  // Each plan's ledger is its own object: the path is the full key of the toolInputId the query names (design §5.1 step 5).
+  if (askedKey(request) !== videoSourceLedgerKeyFor(ctx.params.key, toolInputId)) return new Response('Not allowed', { status: 403 });
   try {
     const owner = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
     const result = await writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: { storageKey: ctx.params.key, jobId, sourceFingerprint, deadlineAt, token }, toolInputId,

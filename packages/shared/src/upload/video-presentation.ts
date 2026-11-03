@@ -14,7 +14,7 @@ export const rect = z.strictObject({ x: coordinate, y: coordinate, width: pixel,
 export const videoPresentationOriginalSchema = z.strictObject({ width: pixel, height: pixel, duration: z.number().finite().positive() });
 
 /** The owned classification record, never a renderer configuration. */
-export const videoPresentationSchema: z.ZodType<VideoPresentation> = z.strictObject({
+const videoPresentationSchema: z.ZodType<VideoPresentation> = z.strictObject({
   schemaVersion: z.literal(1),
   sourceFingerprint: fingerprint,
   original: videoPresentationOriginalSchema,
@@ -71,20 +71,6 @@ export const alphaManifestSchema: z.ZodType<AlphaManifest> = z.strictObject({
  * @throws {never} Never.
  */
 export function videoPresentationKeyFor(key: string): string { return `${key}.video-presentation.v1.json`; }
-/**
- * Derives a packed derivative key from its registered canonical key.
- * @param key - Registered canonical storage key.
- * @returns Deterministic versioned packed key.
- * @throws {never} Never.
- */
-export function alphaPackedKeyFor(key: string): string { return `${key}.alpha.v1.mp4`; }
-/**
- * Derives an alpha manifest key from its registered canonical key.
- * @param key - Registered canonical storage key.
- * @returns Deterministic versioned alpha manifest key.
- * @throws {never} Never.
- */
-export function alphaManifestKeyFor(key: string): string { return `${key}.alpha.v1.json`; }
 /**
  * Reads a descriptor only when its shape and canonical fingerprint match.
  * @param value - Untrusted descriptor JSON.

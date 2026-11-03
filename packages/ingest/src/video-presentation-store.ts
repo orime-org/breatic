@@ -12,7 +12,7 @@
 import {
   videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationObjectURL, videoPresentationVersionId, videoPresentationVersionSchema,
   videoPresentationWorkKeyFor, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
-  type VideoPresentationAdmissionPolicy, type VideoPresentationCarrierReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
+  type VideoPresentationAdmissionPolicy, type VideoPresentationOutputReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
   type VideoPresentationEncoding, type VideoPresentationIngestLedger, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt, type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact,
   type VideoPresentationVersion,
@@ -130,8 +130,8 @@ interface JobRecord {
   bundle: unknown;
   chunks: Record<string, PresentationChunk>;
   prepared?: PresentationPlanFacts;
-  /** The measured carrier receipt of each done stitch or copy unit. */
-  receipts?: Record<string, VideoPresentationCarrierReceipt>;
+  /** The role-tagged output receipts of the attempt that completed each stitch or copy unit (§90 E4-15). */
+  receipts?: Record<string, VideoPresentationOutputReceipt[]>;
 }
 interface LedgerOnlyJob { admission: VideoPresentationAdmission; token: string; toolInputId: string }
 interface ClaimRecord { claim: SourceLedgerWriteClaim; declaration: SourceLedgerDeclaration; planSha256: string; status: 'active' | 'released' | 'refused' }
@@ -343,6 +343,7 @@ export class VideoPresentationStore {
       const plan = facts === undefined ? null : { route: facts.route, stages: videoCarrierRouteStages(facts.route), toolInputId: facts.toolInputId, planSha256: facts.planSha256 };
       const units = Object.fromEntries(Object.entries(job?.chunks ?? {}).map(([key, chunk]) => [key, {
         state: chunk.state, attempt: chunk.attempt, attempts: chunk.attempts.map(({ attempt, jobId, state: attemptState, usageRecorded }) => ({ attempt, jobId, state: attemptState, usageRecorded })),
+        ...(job?.receipts?.[key] === undefined ? {} : { receipts: job.receipts[key] }),
       }]));
       const frozen = admission?.pricing === undefined || admission.actorUserId === undefined ? null
         : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null };
@@ -424,8 +425,9 @@ export class VideoPresentationStore {
     const { candidate, admission } = job;
     if (facts === undefined || candidate.state !== 'building' || (facts.route !== 'dispatch_copy' && facts.route !== 'encode')) return false;
     const unit = unitKey(admission.jobId, { kind: facts.route === 'encode' ? 'presentation-stitch' : 'presentation-copy' });
-    const receipt = job.receipts?.[unit];
-    if (job.chunks[unit]?.state !== 'done' || receipt === undefined) return false;
+    // Publishing an alpha-packed carrier with its manifest arrives with S6d; until then only a native carrier publishes.
+    const receipt = job.receipts?.[unit]?.find((output) => output.role === 'carrier');
+    if (job.chunks[unit]?.state !== 'done' || receipt === undefined || receipt.packing !== 'native') return false;
     const head = await this.bucket.head(receipt.storageKey);
     const sha256 = head?.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType || sha256 !== receipt.sha256) return false;
@@ -504,11 +506,12 @@ export class VideoPresentationStore {
       else event = report;
       const step = advancePresentationChunk(before, event, chunkIdentity);
       if (step.rejected) return false;
-      // A carrier receipt counts only for the attempt that completed the unit, naming that attempt's own output key.
-      if (report.kind === 'Done' && report.receipt !== undefined && before.state === 'open' && step.next.state === 'done') {
+      // Output receipts count only for the attempt that completed the unit, its carrier at that attempt's own output key.
+      if (report.kind === 'Done' && report.receipts !== undefined && before.state === 'open' && step.next.state === 'done') {
         const attemptJob = videoContainerJobId({ ...chunkIdentity, attempt: report.attempt });
-        if (report.receipt.storageKey !== videoPresentationWorkKeyFor(job.admission.storageKey, attemptJob)) return false;
-        job.receipts = { ...job.receipts, [key]: report.receipt };
+        const carrier = report.receipts.find((receipt) => receipt.role === 'carrier');
+        if (carrier?.storageKey !== videoPresentationWorkKeyFor(job.admission.storageKey, attemptJob)) return false;
+        job.receipts = { ...job.receipts, [key]: report.receipts };
       }
       job.chunks[key] = step.next;
       for (const effect of step.effects) {
@@ -598,7 +601,7 @@ export class VideoPresentationStore {
       for (const [toolInputId, record] of Object.entries(state.ledgers)) {
         const instance = record.instance;
         if (instance.kind === 'ready' && record.proof !== null) {
-          const failure = await this.checkReceipt(storageKey, record.proof);
+          const failure = await this.checkReceipt(storageKey, toolInputId, record.proof);
           if (failure !== null) await this.ledgerEvent(state, toolInputId, { kind: 'Check', failure });
         } else if (instance.kind === 'pending' && !instance.writerArchived) {
           await this.recoverWrite(state, storageKey, toolInputId, record, instance.writer);
@@ -634,8 +637,8 @@ export class VideoPresentationStore {
         (declaration.planSha256 !== undefined && declaration.planSha256 !== record.planSha256) ||
         declaration.producerVersion !== 2 || !within(declaration.byteLength, limits.maxBytes) || !within(declaration.table?.byteLength, limits.maxBytes) ||
         !within(declaration.table.frameCount, Number.MAX_SAFE_INTEGER)) return null;
-      const key = videoSourceLedgerKeyFor(admission.storageKey);
-      const tableKey = videoSourceLedgerTableKeyFor(admission.storageKey);
+      const key = videoSourceLedgerKeyFor(admission.storageKey, toolInputId);
+      const tableKey = videoSourceLedgerTableKeyFor(admission.storageKey, toolInputId);
       const [head, tableHead] = await Promise.all([this.bucket.head(key), this.bucket.head(tableKey)]);
       const claim = { owner: crypto.randomUUID(), key, priorETag: head?.etag ?? null, byteLength: declaration.byteLength,
         table: { key: tableKey, priorETag: tableHead?.etag ?? null, byteLength: declaration.table.byteLength } };
@@ -908,12 +911,13 @@ export class VideoPresentationStore {
   /**
    * Check a ready receipt against both stored objects (§7.4 Check).
    * @param storageKey - The canonical key.
+   * @param toolInputId - The instance whose objects the receipt names.
    * @param proof - The receipt and its physical proof.
    * @returns The failure code, or null when both objects are the committed ones.
    * @throws {Error} When R2 fails.
    */
-  private async checkReceipt(storageKey: string, proof: ProvenReceipt): Promise<'source_ledger_missing' | 'source_ledger_invalid' | null> {
-    const [object, table] = await Promise.all([this.bucket.head(videoSourceLedgerKeyFor(storageKey)), this.bucket.head(videoSourceLedgerTableKeyFor(storageKey))]);
+  private async checkReceipt(storageKey: string, toolInputId: string, proof: ProvenReceipt): Promise<'source_ledger_missing' | 'source_ledger_invalid' | null> {
+    const [object, table] = await Promise.all([this.bucket.head(videoSourceLedgerKeyFor(storageKey, toolInputId)), this.bucket.head(videoSourceLedgerTableKeyFor(storageKey, toolInputId))]);
     if (object === null || table === null) return 'source_ledger_missing';
     const owned = (stored: R2Object): boolean => stored.httpMetadata?.contentType === 'application/json' &&
       stored.customMetadata?.sourceLedgerJobId === proof.receipt.attempt.jobId && stored.customMetadata.sourceLedgerClaimOwner === proof.owner;
@@ -960,7 +964,7 @@ export class VideoPresentationStore {
     const current = state.current;
     for (const proven of Object.values(record.archived)) {
       const samePlan = current !== null && current.candidate.toolInputId === toolInputId && current.planSha256 === proven.receipt.planSha256;
-      if (!workTerminal(current?.candidate) || !samePlan || await this.checkReceipt(storageKey, proven) !== null) continue;
+      if (!workTerminal(current?.candidate) || !samePlan || await this.checkReceipt(storageKey, toolInputId, proven) !== null) continue;
       const step = await this.ledgerEvent(state, toolInputId, { kind: 'H2', receipt: proven.receipt, workTerminal: true, samePlan: true });
       if (record.instance.kind === 'ready' && !step.rejected) { record.proof = proven; return; }
     }

@@ -1063,12 +1063,9 @@ export {
 } from "@shared/analytics/attribution.js";
 
 export {
-  videoPresentationSchema,
   videoPresentationOriginalSchema,
   alphaManifestSchema,
   videoPresentationKeyFor,
-  alphaPackedKeyFor,
-  alphaManifestKeyFor,
   parseVideoPresentation,
   alphaManifestMatchesPresentation,
   type VideoPresentation,
@@ -1076,14 +1073,9 @@ export {
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
 export {
-  videoSourceLedgerCompanionSchema,
-  videoSourceLedgerReceiptSchema,
-  videoSourceLedgerStateSchema,
-  parseVideoSourceLedger,
   videoSourceLedgerKeyFor,
   videoSourceLedgerTableKeyFor,
   videoSourceLedgerV2Schema,
-  videoSourceLedgerReceiptV2Schema,
   classifyVideoSourceLedgerFailure,
 } from "@shared/upload/video-source-ledger.js";
 export {
@@ -1115,22 +1107,12 @@ export {
   type VideoPresentationRef,
 } from "@shared/upload/video-presentation-version.js";
 export {
-  readVideoSourceLedger,
   VideoSourceLedgerReadRefused,
-  videoSourceLedgerReadLimitsSchema,
-  type VideoSourceLedgerReadLimits,
 } from "@shared/upload/read-video-source-ledger.js";
 export type {
-  VideoSourceLedgerAttempt,
-  VideoSourceLedgerStrategy,
-  VideoSourceLedgerReceipt,
-  VideoSourceLedgerCompanion,
-  VideoSourceLedgerState,
-  VideoSourceLedgerStateV2,
   VideoSourceLedgerReceiptV2,
   VideoSourceLedgerV2,
   VideoSourceLedgerFailureClass,
-  VideoSourceLedgerParseLimits,
   VideoSourceLedgerProcessLimits,
 } from "@shared/upload/video-source-ledger-types.js";
 export {
@@ -1150,12 +1132,13 @@ export {
   videoPresentationEncodingSchema,
   videoPresentationChunkUnitSchema,
   videoPresentationChunkReportSchema,
-  videoPresentationCarrierReceiptSchema,
+  videoPresentationOutputReceiptSchema,
+  videoPresentationOutputReceiptsSchema,
   type VideoPresentationPrepareAnswer,
   type VideoPresentationEncoding,
   type VideoPresentationChunkUnit,
   type VideoPresentationChunkReport,
-  type VideoPresentationCarrierReceipt,
+  type VideoPresentationOutputReceipt,
   videoPresentationIngestSnapshotSchema,
   videoPresentationIngestRequestSchema,
   videoPresentationIngestLedgerSchema,

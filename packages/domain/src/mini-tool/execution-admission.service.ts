@@ -269,8 +269,8 @@ async function selectedToolInput(request: MiniToolPlannedRequest, binding: MiniT
   const storage = await getStorageAdapter();
   if (selected === null || selected.sourceFingerprint !== binding.contentHash || selected.toolInputId !== ref.toolInputId || selected.planSha256 !== ref.planSha256
     || receipt === null || receipt.sourceFingerprint !== binding.contentHash || receipt.toolInputId !== ref.toolInputId || receipt.planSha256 !== ref.planSha256
-    || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey))
-    || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey))) throw new ValidationError(t("server.mini_tool.foreignSource"));
+    || receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(sourceKey, ref.toolInputId))
+    || receipt.table.url !== storage.publicUrl(videoSourceLedgerTableKeyFor(sourceKey, ref.toolInputId))) throw new ValidationError(t("server.mini_tool.foreignSource"));
   return { versionId: selected.versionId, receipt };
 }
 

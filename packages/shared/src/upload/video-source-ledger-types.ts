@@ -108,57 +108,7 @@ export interface MatroskaPhysicalVideoProbe {
 }
 
 /** The existing accepted platform preparation identity. */
-export interface VideoSourceLedgerAttempt { jobId: string; deadlineAt: number }
-/** Only source strategies independently supported by the original producer. */
-export type VideoSourceLedgerStrategy = 'iso_explicit_rate_one' | 'iso_unedited_rate_one' | 'matroska_rate_one';
-/** Small measured companion receipt; it is not the validated full frame table. */
-export interface VideoSourceLedgerReceipt {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  producerVersion: 1;
-  strategy: VideoSourceLedgerStrategy;
-  attempt: VideoSourceLedgerAttempt;
-  url: string;
-  etag: string;
-  size: number;
-  sha256: string;
-  contentType: 'application/json';
-  physicalFrameCount: number;
-  occurrenceCount: number;
-}
-/** Shared immutable source facts, distinct from runtime storage or native clocks. */
-interface VideoSourceLedgerBase {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  producerVersion: 1;
-  attempt: VideoSourceLedgerAttempt;
-  presentation: OwnedVideoPresentation;
-}
-/** Complete companion JSON; only the original selected track is retained. */
-export type VideoSourceLedgerCompanion = VideoSourceLedgerBase & ({
-  strategy: 'iso_explicit_rate_one' | 'iso_unedited_rate_one';
-  physical: PhysicalVideoProbe;
-  container: { kind: 'iso_bmff'; movieTimescale: string; movieDurationTicks: string; track: IsoBmffTrackMetadata };
-} | {
-  strategy: 'matroska_rate_one';
-  physical: MatroskaPhysicalVideoProbe;
-  container: { kind: 'matroska'; timestampScaleNs: string; track: MatroskaTrackMetadata; blocks: MatroskaBlockMetadata[] };
-});
-/** Independent capability state; ready means a stored receipt exists. Version 1 states stay readable until their readers move to version 2. */
-export type VideoSourceLedgerState = null | {
-  state: 'pending'; schemaVersion: 1; sourceFingerprint: string; producerVersion: 1; attempt: VideoSourceLedgerAttempt;
-} | { state: 'ready'; receipt: VideoSourceLedgerReceipt } | {
-  state: 'failed'; schemaVersion: 1; sourceFingerprint: string; producerVersion: 1; attempt: VideoSourceLedgerAttempt; errorCode: string;
-} | VideoSourceLedgerStateV2;
-/** Version 2 capability state: ready names the full ledger and the compact table written with it. */
-export type VideoSourceLedgerStateV2 = {
-  state: 'pending'; schemaVersion: 2; sourceFingerprint: string; producerVersion: 2; attempt: VideoSourceLedgerAttempt;
-} | { state: 'ready'; receipt: VideoSourceLedgerReceiptV2 } | {
-  state: 'failed'; schemaVersion: 2; sourceFingerprint: string; producerVersion: 2; attempt: VideoSourceLedgerAttempt; errorCode: string;
-};
-/** Mandatory caller ceilings without operational defaults in the parser. */
-export interface VideoSourceLedgerParseLimits { maxPhysicalFrames: number; maxOccurrences: number }
-
+interface VideoSourceLedgerAttempt { jobId: string; deadlineAt: number }
 /** Frozen operations budgets for one source-ledger production; there is no frame-count ceiling. */
 export interface VideoSourceLedgerProcessLimits {
   maxBytes: number;
