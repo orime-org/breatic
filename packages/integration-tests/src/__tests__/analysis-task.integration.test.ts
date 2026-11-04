@@ -37,6 +37,7 @@ import {
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { presentedSource } from "@server/__tests__/integration/presentation-fixtures.js";
 import type { createApp } from "@server/app.js";
+import { candidateCropRecipeOf } from "@worker/handlers/video-presentation-recipes.js";
 import type { TasksJobData } from "@worker/handlers/dispatch.js";
 import type { lookupMiniToolConsumption } from "@worker/handlers/mini-tool/lookup-consumption.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
@@ -66,6 +67,7 @@ interface Fixture extends StudioFixture {
   historyBefore: Record<string, unknown>[];
   sourceBefore: Record<string, unknown>;
   accepted: MiniToolAnalysisRecord | null;
+  ledger: Record<string, unknown>;
 }
 interface TaskSnapshot {
   status: string;
@@ -100,6 +102,10 @@ const candidates = [
   { detectionIndex: 5, faceBox: { x: 0.7, y: 0.5, width: 0.0075, height: 0.015 }, pixelCrop: { x: 280, y: 100, width: 3, height: 3 } },
 ];
 const cuts = [{ frameIndex: 30, pts: 9.3, detectionScore: 85 }];
+// §93 D5 (design §7.17 people anchor row): the worker builds the recipes from the frozen full ledger, so the anchor is a
+// presented frame of it: ordinal 250 at 250/200 s, a source keyframe of the 1011-frame 960x540 removal plan
+// (server presentation-fixtures.ts: keyframes 0, 250, 500, 750, 1000). The display people JSON is on that 960x540 frame.
+const ANCHOR = { frameIndex: 250, pts: 1.25 };
 let sql: ReturnType<typeof postgres>;
 let http: ReturnType<typeof createServer>;
 let origin: string;
@@ -186,7 +192,7 @@ function outputBytes(fixture: Fixture, output: MiniToolPlanJobRequest["outputs"]
     case "people":
       return jsonObject({
         schemaVersion: 1, kind: "people", coordinateSpace: "display",
-        anchor: { frameIndex: 1, pts: 0.25 }, width: 400, height: 200,
+        anchor: ANCHOR, width: 960, height: 540,
         candidates: fixture.scenario === "empty" ? [] : candidates,
       });
     case "inspect_video":
@@ -390,12 +396,12 @@ async function seed(scenario: Scenario, delayed = false): Promise<Fixture> {
   };
   const body: MiniToolAnalysisRequest = scenario === "scene"
     ? { ...identity, kind: "scene_cuts", params: { range: { start: 1.1, end: 25 } } }
-    : { ...identity, kind: "people", params: { anchor: { frameIndex: 1, pts: 0.25 } } };
+    : { ...identity, kind: "people", params: { anchor: ANCHOR } };
   const [sourceBefore] = await sql<Record<string, unknown>[]>`SELECT * FROM studio_assets WHERE id=${sourceAssetId}`;
   const fixture: Fixture = {
     ...base, taskId, spaceId, hostNodeId, sourceAssetId, sourceKey, sourceURL, sourceHash,
     lotId, token, scenario, delayed, release: false, body, anchor: connection,
-    hostBefore: {}, historyBefore: [], sourceBefore: sourceBefore!, accepted: null,
+    hostBefore: {}, historyBefore: [], sourceBefore: sourceBefore!, accepted: null, ledger: presentation.full,
   };
   fixtures.push(fixture);
   fixtureBySource.set(sourceAssetId, fixture);
@@ -745,7 +751,7 @@ describe("accepted analysis → real task execution → canonical registration a
     const fixture = await seed("empty");
     const record = await execute(fixture);
     await assertCompleted(fixture, record, 1, 1);
-    expect(record.result).toMatchObject({ kind: "people", anchor: { frameIndex: 1, pts: 0.25 }, people: [] });
+    expect(record.result).toMatchObject({ kind: "people", anchor: ANCHOR, people: [] });
     await settle(fixture, 1);
   });
 
@@ -753,11 +759,12 @@ describe("accepted analysis → real task execution → canonical registration a
     const fixture = await seed("people");
     const record = await execute(fixture);
     const steps = await assertCompleted(fixture, record, 2, 4);
-    expect(record.result).toMatchObject({ kind: "people", anchor: { frameIndex: 1, pts: 0.25 }, people: await expectedPeople(fixture, steps) });
+    expect(record.result).toMatchObject({ kind: "people", anchor: ANCHOR, people: await expectedPeople(fixture, steps) });
     const plan = miniToolPlanJobRequestSchema.parse(steps[1]!.output.miniToolPlanJob);
+    // §93 D5 (design §7.17 「唯一写点：worker的配方构造」): each crop is the anchor's frame recipe on the frozen ledger's entry.
     expect(plan.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe }))).toEqual(candidates.map((candidate) => ({
-      outputIndex: candidate.detectionIndex, recipe: { kind: "frame", inputId: fixture.sourceAssetId, frameIndex: 1, orientation: "display",
-        crop: { sourceWidth: 400, sourceHeight: 200, rect: candidate.pixelCrop } },
+      outputIndex: candidate.detectionIndex, recipe: candidateCropRecipeOf(fixture.ledger as unknown as Parameters<typeof candidateCropRecipeOf>[0], ANCHOR,
+        fixture.sourceAssetId, { sourceWidth: 960, sourceHeight: 540, rect: candidate.pixelCrop }),
     })));
     await settle(fixture, 2);
   });
