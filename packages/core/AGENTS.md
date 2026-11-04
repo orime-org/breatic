@@ -6,7 +6,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Database code lives in core
 
-**The Drizzle schema, migrations and database clients live only in `src/db/`; worker has no `drizzle-orm` dependency and reaches the database only through `@breatic/domain` repos.** Repos in server, domain and collab all query through core's `db` / `yjsDb`, so a second schema or client elsewhere would split the pool and the migration history.
+**The Drizzle schema, migrations and database clients live only in `src/db/`; worker has no `drizzle-orm` dependency and reaches the database through repository and service APIs in `@breatic/core` and `@breatic/domain`.** Repos in server, domain and collab all query through core's `db` / `yjsDb`, so a second schema or client elsewhere would split the pool and the migration history.
 
 ### Two Postgres databases
 
@@ -106,3 +106,9 @@ Check: is this really separated by DB number or port? Channels and cookie names 
 ### Logger methods need their instance
 
 **Call pino level methods on the logger (`logger.error(...)`); never assign one to a variable and call it bare.** They use `this`, and tests cannot catch the mistake because the default `logger` export is an auto-binding Proxy until `initLogger` swaps in the raw instance that production uses.
+
+## Durable account activity
+
+**All first-party account activity inserts go through `accountActivityRepo.recordActivity(input, tx?)`.** User-facing business writes pass their existing product transaction; worker completion, automatic memory and deferred usage do not produce fresh interactions. Project access carries a stable account-scoped `visitId`; its original row is the immutable receipt.
+
+**Collection coverage starts empty and is opened only after every promised collector is verified.** Use `accountActivityCoverageRepo` through `pnpm db:activity-coverage <open|close> --version 1 --operator <operator-id>`; never synthesize coverage from legacy timestamps or bridge a known outage.

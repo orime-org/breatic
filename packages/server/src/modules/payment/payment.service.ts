@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Payment service — Stripe Checkout for credit purchases.
@@ -27,7 +27,7 @@ import type {
   CreditSourceKind,
   PurchaseRow,
 } from "@breatic/shared";
-import { t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
+import { parseCreditDecimal, serializeCreditMicro, t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
 import {
   AppError,
   NotFoundError,
@@ -1026,20 +1026,25 @@ export async function getPurchaseHistory(
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
   );
+  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId!));
+  for (const row of rows) {
+    if (row.sourceKind === "gift" && !origins.has(row.sourceId!)) throw new Error("Gift receipt origin missing");
+  }
   return toPage(
     rows,
     size,
     (row) => ({
       rowId: row.rowId,
       sourceKind: row.sourceKind as CreditSourceKind,
+      ...(row.sourceKind === "gift" ? { giftOrigin: origins.get(row.sourceId!)! } : {}),
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
       taxCents: row.taxCents,
       currency: row.currency,
-      creditsGranted: row.creditsGranted,
+      creditsGranted: serializeCreditMicro(parseCreditDecimal(row.creditsGranted)),
       remainingCredits:
-        row.remainingCredits === null ? null : Number(row.remainingCredits),
+        row.remainingCredits === null ? null : serializeCreditMicro(parseCreditDecimal(row.remainingCredits)),
       lifecycle: row.lifecycle as CreditLotLifecycle | null,
       designatedStudioId: row.designatedStudioId,
       designatedStudioName: row.designatedStudioName,

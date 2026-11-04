@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The template button in a generate panel's corner (inner#977, inner#1345,
@@ -20,6 +20,7 @@ import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { wire } from '../helpers/mini-tool';
 
 test.use({ viewport: { width: 1440, height: 1080 } });
 
@@ -81,24 +82,6 @@ test.afterEach(async () => {
 });
 
 /**
- * Wire one node into another through the live canvas module.
- * @param from - The node wired in.
- * @param to - The node it goes into.
- */
-async function wire(from: string, to: string): Promise<void> {
-  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  await page.evaluate(
-    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ at)) as {
-        addEdge: (p: string, s: string, e: unknown) => boolean;
-      };
-      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
-    },
-    [projectId, spaceId, from, to, canvasAt] as [string, string, string, string, string],
-  );
-}
-
-/**
  * Move the pointer onto one goal's row the way a hand does, in steps, which
  * opens its submenu.
  * @param goal - The goal.
@@ -138,6 +121,35 @@ async function graph(): Promise<{ names: string[]; edges: string[] }> {
       return { names: nodes.map((n) => n.data.name ?? n.id).sort(), edges: edges.map((e) => `${name(e.source)} -> ${name(e.target)}`).sort() };
     },
     [projectId, spaceId, canvasAt] as [string, string, string],
+  );
+}
+
+/**
+ * The group a template's new nodes formed beside an anchor, read from the open Space's document.
+ * @param anchorId - The anchor.
+ * @returns The distance from the group's right edge to the anchor's left edge, the anchor card's width, and how many members the group holds.
+ */
+async function groupBesideAnchor(anchorId: string): Promise<{ gap: number; card: number; members: number }> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  return page.evaluate(
+    async ([pid, sid, anchor, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readNodePlacements: (p: string, s: string) => { id: string; type: string; x: number; width?: number }[];
+        readCanvasGraph: (p: string, s: string) => { nodes: { parentId?: string }[] };
+      };
+      const placements = canvas.readNodePlacements(pid, sid);
+      const group = placements.find((p) => p.type === 'group');
+      const anchorAt = placements.find((p) => p.id === anchor);
+      // offsetWidth ignores the viewport's scale, so it is the card's width on the canvas.
+      const card = (document.querySelector(`.react-flow__node[data-id="${anchor}"]`) as HTMLElement | null)?.offsetWidth;
+      if (!group || !anchorAt || !card) throw new Error('no group, anchor or anchor card');
+      return {
+        gap: anchorAt.x - (group.x + (group.width ?? 0)),
+        card,
+        members: canvas.readCanvasGraph(pid, sid).nodes.filter((n) => n.parentId === group.id).length,
+      };
+    },
+    [projectId, spaceId, anchorId, canvasAt] as [string, string, string, string],
   );
 }
 
@@ -213,7 +225,7 @@ test('picking a template @s the reference already wired in and places nothing ne
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await pickStoryboard();
 
   const prompt = page.getByTestId('generate-prompt-editor');
@@ -230,12 +242,12 @@ test('picking the single-view scene places the three views it generates first, a
   await page.getByTestId('generate-template-single-view-refs-scene').click();
 
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
-  // The anchor, the empty character and the front, side and back views.
-  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  // The anchor, the empty character, the front, side and back views, and the group the four new nodes form.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(6, { timeout: 15_000 });
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(7);
   // Three views into the scene, and the character into the three views and the scene.
   expect(await graph()).toEqual({
-    names: ['Back', 'Character', 'Front', 'Side', 'video-template'],
+    names: ['Back', 'Character', 'Character in a video scene', 'Front', 'Side', 'video-template'],
     edges: [
       'Back -> video-template',
       'Character -> Back',
@@ -251,6 +263,11 @@ test('picking the single-view scene places the three views it generates first, a
   // What to put in the character, and to generate each view first.
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(4);
   await expectNodesInView(page, 5);
+  // The group holds the four new nodes and stands right beside the anchor, left of it.
+  const { gap, card, members } = await groupBesideAnchor(nodeId);
+  expect(members).toBe(4);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThan(card);
   await page.screenshot({ path: test.info().outputPath('single-view-scene-applied.png') });
   expect(await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).count()).toBe(1);
 });
@@ -273,12 +290,12 @@ test('picking the single-view scene feeds a photo already wired into the video n
     },
     [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
   );
-  await wire(heroId, nodeId);
+  await wire(page, { projectId, spaceId }, heroId, nodeId);
   await openGoal('character');
   await page.getByTestId('generate-template-single-view-refs-scene').click();
 
-  // The anchor, the photo and the three views; no empty character.
-  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  // The anchor, the photo, the three views and the group the three new views form; no empty character.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(6, { timeout: 15_000 });
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(7);
   expect((await graph()).edges).toEqual([
     'Back -> video-template',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import {
   Background,
@@ -136,6 +136,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
+import { DELETE_KEYS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';
 import { whatToFocus } from '@web/spaces/canvas/lib/after-placing';
 import { FIT_VIEW_OPTIONS } from '@web/spaces/canvas/viewport-config';
 import {
@@ -404,7 +405,7 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
 /**
  * File-picker `accept` per modality for the empty-node double-click /
  * Upload-menu fill. Media modalities pick by MIME; a text node uploads a
- * document (txt / md / pdf / doc / xlsx) whose content is extracted locally
+ * document (txt / md / pdf / docx / xls / xlsx) whose content is extracted locally
  * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
  * no picker, so `CanvasSpaceInner`'s activate handler no-ops for them.
  */
@@ -415,7 +416,7 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
 // first-frame extraction is the real codec gate (#1816). Text is not on this
 // list at all: its content is extracted in the browser and nothing is stored.
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
-  text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
+  text: '.txt,.md,.pdf,.docx,.xls,.xlsx,text/*',
   image: uploadAcceptFor('image'),
   video: uploadAcceptFor('video'),
   audio: uploadAcceptFor('audio'),
@@ -441,8 +442,6 @@ const STAGGER_WRAP = 8;
  * busy until every batch's prefix settles.
  */
 const UPLOAD_BATCH_OP = 'upload-batch';
-
-const DELETE_KEYS = ['Backspace', 'Delete'];
 
 /**
  * Background dot grid base. Doubled from the old gap (12) + size (1) so the
@@ -1399,23 +1398,17 @@ function CanvasSpaceInner({
     [getInternalNode, rfStoreApi, setViewport],
   );
 
-  // A template picked in a generate panel lands around that panel's node
-  // (inner#1345 6.5): every other node is in the way, and so is every group
-  // but the one the node sits in, which grows around what joins it.
+  // A template picked in a generate panel lands beside that panel's node, or
+  // in the places its earlier instance holds (inner#1345 6.5), where its flow
+  // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
-      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
-      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
-      const occupied = occupiedRects(around, (id) => {
-        const measured = getInternalNode(id)?.measured;
-        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
-      });
-      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
-    [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
+    [placeProposalAt, showPlaced],
   );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
@@ -4788,8 +4781,8 @@ function CanvasSpaceInner({
             panOnScrollMode={PanOnScrollMode.Free}
             // Double-click on the empty canvas must NOT zoom (#4): an accidental
             // zoom-in on a misclick is jarring, and the gesture is reserved for a
-            // future use. Zoom stays on the viewport-toolbar buttons / Cmd-+/- /
-            // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
+            // future use. Zoom stays on the viewport-toolbar buttons /
+            // Cmd- or Ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
             zoomOnDoubleClick={false}
           >
             {/* Everyone else's pointer. Inside ReactFlow because it portals into
@@ -5198,7 +5191,7 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
 
 /**
  * Where a template picked in a panel is aimed. Unused while the panel's node
- * is on the canvas: the template lines up on that node.
+ * is on the canvas: the template lines up on the nodes already there.
  */
 const TEMPLATE_AIM = { x: 0, y: 0 };
 

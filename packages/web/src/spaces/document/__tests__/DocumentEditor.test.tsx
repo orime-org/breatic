@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The editor chrome: the scrolling body, the whole-document entry, the bubble
@@ -17,7 +17,7 @@
  */
 
 import * as React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -467,5 +467,206 @@ describe('DocumentEditor', () => {
     await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument());
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([landed?.how === 'comment' ? landed.threadId : '']);
     expect(screen.queryByTestId('document-proposal-landed')).not.toBeInTheDocument();
+  });
+
+  describe('a located proposal (inner#1646)', () => {
+    /**
+     * A located spot for the chrome to draw.
+     * @param target - The block the proposal points at, and a comment's quote.
+     * @param target.blockId - The block, or null for the end.
+     * @param target.quote - A comment's quoted words.
+     * @returns The published location.
+     */
+    function located(target: { blockId: string | null; quote?: string }): ProposalLocation {
+      const proposal: DocumentProposal = {
+        proposalId: '33333333-3333-4333-8333-333333333333', spaceId: 'd1', spaceName: 'Document',
+        kind: target.quote === undefined ? 'rewrite' : 'comment', blockId: target.blockId, ...(target.quote === undefined ? {} : { quote: target.quote }),
+        body: 'Output', title: 'Suggestion', heading: '', original: '', blockType: null, lossy: false,
+      };
+      return Object.freeze({ how: 'source', ...target, documentName: NAME, handle, pending: { proposal, action: 'locate', order: 0 }, owner: {} }) as unknown as ProposalLocation;
+    }
+
+    /** The body's own scroller. */
+    const bodyViewport = (): HTMLElement => document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`)
+      ?? document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+
+    /**
+     * Gives each DOM range the rectangle of the words it covers.
+     * @param rects - A rectangle by the words a range covers.
+     * @returns The spy, to restore.
+     */
+    function rangeRects(rects: Readonly<Record<string, DOMRect>>): MockInstance {
+      return vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (this: Range) {
+        return rects[this.toString()] ?? new DOMRect(0, 0, 0, 0);
+      });
+    }
+
+    it('outlines the whole block a rewrite points at, and scrolls it into view', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Before' }, { type: 'paragraph', content: 'Target' }] as never);
+      const blockId = (editor.document[1] as { id: string }).id;
+      const own = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+      const firstLine = own.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+      const viewport = bodyViewport();
+      const spies = [
+        vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+        vi.spyOn(firstLine, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 30)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+      ];
+      const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      try {
+        rerender(<DocumentEditor handle={handle} landed={located({ blockId })} />);
+
+        await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '92px', left: '27px', width: '316px', height: '176px',
+        }));
+        expect(scroll).toHaveBeenCalledOnce();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        scroll.mockRestore();
+      }
+    });
+
+    it('outlines a located block with the blocks nested under it, which a rewrite replaces too (implementation review round 1)', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [
+        { type: 'bulletListItem', content: 'Parent', children: [{ type: 'bulletListItem', content: 'Child' }] },
+      ] as never);
+      const blockId = (editor.document[0] as { id: string }).id;
+      const outer = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+      const own = outer.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+      const viewport = bodyViewport();
+      const spies = [
+        vi.spyOn(outer, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+        vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 30)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+      ];
+      const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      try {
+        rerender(<DocumentEditor handle={handle} landed={located({ blockId })} />);
+
+        await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '92px', left: '27px', width: '316px', height: '176px',
+        }));
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        scroll.mockRestore();
+      }
+    });
+
+    it('starts a located block\'s outline at its first line, leaving the margin above it out (visual review)', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Before' }, { type: 'paragraph', content: 'Target' }] as never);
+      const location = located({ blockId: (editor.document[1] as { id: string }).id });
+      const outer = handle.surface.querySelector<HTMLElement>(`[data-id="${location.blockId!}"]`)!;
+      const own = outer.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+      const viewport = bodyViewport();
+      const spies = [
+        vi.spyOn(outer, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+        vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 102, 300, 30)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+      ];
+      const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => undefined);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      try {
+        rerender(<DocumentEditor handle={handle} landed={location} />);
+
+        await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '104px', left: '27px', width: '316px', height: '164px',
+        }));
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        scroll.mockRestore();
+      }
+    });
+
+    it('outlines only a comment\'s quoted words, the box around every cell they run across', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['Shot', 'Action'] }, { cells: ['Close', 'She turns'] }] })] as never);
+      const blockId = (editor.document[0] as { id: string }).id;
+      await waitFor(() => expect(document.querySelector('.doc-table-frame [data-radix-scroll-area-viewport]')).not.toBeNull());
+      const table = document.querySelector<HTMLElement>('.doc-table-frame [data-radix-scroll-area-viewport]')!;
+      const viewport = bodyViewport();
+      const spies: MockInstance[] = [
+        rangeRects({ Close: new DOMRect(100, 200, 40, 20), 'She turns': new DOMRect(200, 210, 70, 20) }),
+        vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 200, 90, 30)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+        vi.spyOn(table, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+      ];
+      const sideways = vi.spyOn(table, 'scrollTo').mockImplementation(() => undefined);
+      viewport.style.setProperty('--space-2', '8px');
+      viewport.scrollTop = 30;
+      viewport.scrollLeft = 5;
+      try {
+        rerender(<DocumentEditor handle={handle} landed={located({ blockId, quote: 'Close\nShe turns' })} />);
+
+        await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+          top: '202px', left: '87px', width: '186px', height: '46px',
+        }));
+        expect(sideways).not.toHaveBeenCalled();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        sideways.mockRestore();
+      }
+    });
+
+    it('scrolls a wide table sideways to the quoted words before scrolling the body, outlining only what its frame shows', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['Shot', 'Action'] }, { cells: ['Close', 'She turns'] }] })] as never);
+      const blockId = (editor.document[0] as { id: string }).id;
+      await waitFor(() => expect(document.querySelector('.doc-table-frame [data-radix-scroll-area-viewport]')).not.toBeNull());
+      const table = document.querySelector<HTMLElement>('.doc-table-frame [data-radix-scroll-area-viewport]')!;
+      const viewport = bodyViewport();
+      const order: string[] = [];
+      const spies: MockInstance[] = [
+        // The words and their cell run past the frame's right edge; the stubs do not move them when it scrolls.
+        rangeRects({ 'She turns': new DOMRect(250, 210, 130, 20) }),
+        vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(250, 210, 130, 20)),
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+        vi.spyOn(table, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 300, 400)),
+      ];
+      const sideways = vi.spyOn(table, 'scrollTo').mockImplementation(() => { order.push('table'); });
+      const down = vi.spyOn(viewport, 'scrollTo').mockImplementation(() => { order.push('body'); });
+      viewport.style.setProperty('--space-2', '8px');
+      try {
+        rerender(<DocumentEditor handle={handle} landed={located({ blockId, quote: 'She turns' })} />);
+
+        await waitFor(() => expect(down).toHaveBeenCalled());
+        expect(sideways).toHaveBeenCalledWith({ left: 70, behavior: 'instant' });
+        expect(order).toEqual(['table', 'body']);
+        expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({ left: '232px', width: '76px', top: '182px', height: '36px' });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        sideways.mockRestore();
+        down.mockRestore();
+      }
+    });
+
+    it('draws nothing once the block it points at is deleted', async () => {
+      const { editor } = handle;
+      const { rerender } = render(<DocumentEditor handle={handle} />);
+      editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Before' }, { type: 'paragraph', content: 'Target' }] as never);
+      const blockId = (editor.document[1] as { id: string }).id;
+      const location = located({ blockId });
+      editor.removeBlocks([blockId]);
+
+      rerender(<DocumentEditor handle={handle} landed={location} />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(screen.queryByTestId('document-proposal-landed')).toBeNull();
+    });
   });
 });

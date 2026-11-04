@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Project service — business logic for canvas projects.
@@ -19,10 +19,10 @@
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { projectAuthService } from "@breatic/core";
+import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
+import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { adClickFrom, t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
@@ -130,6 +130,7 @@ export async function create(
       spaceType,
       description,
     );
+    await accountActivityRepo.recordActivity({ userId, projectId: created.id, kind: "project_action" }, tx);
     return { project: created, isFirst };
   });
   reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
@@ -447,7 +448,7 @@ export async function update(
   },
 ): Promise<ProjectEntity> {
   await assertMayManage(projectId, userId);
-  return writeMeta(projectId, patch);
+  return writeMeta(projectId, userId, patch);
 }
 
 /** A project, live or archived, and the caller's two roles on it. */
@@ -506,18 +507,21 @@ export async function assertMayManage(projectId: string, userId: string): Promis
  * meantime — the write itself carries the `archived_at IS NULL` condition, so
  * it serialises with the archive on the project row.
  * @param projectId - Project UUID
+ * @param userId - Authenticated actor changing the metadata.
  * @param patch - Fields to write
  * @returns The updated project
  * @throws {ConflictError} when the project is no longer live to write to
  */
 async function writeMeta(
   projectId: string,
+  userId: string,
   patch: Parameters<typeof projectRepo.updateProjectMeta>[1],
 ): Promise<ProjectEntity> {
   return db.transaction(async (tx) => {
     const updated = await projectRepo.updateProjectMeta(projectId, patch, tx);
     if (!updated) throw new ConflictError(t("server.project.archived"));
     await projectEditsRepo.touchProjectEdit(projectId, tx);
+    await accountActivityRepo.recordActivity({ userId, projectId, kind: "project_edit" }, tx);
     return updated;
   });
 }
@@ -545,7 +549,7 @@ export async function setCover(
 ): Promise<ProjectEntity> {
   const project = await assertMayManage(projectId, userId);
   const url = await pictureUrl(project.studioId, assetId);
-  return writeMeta(projectId, { thumbnailUrl: url });
+  return writeMeta(projectId, userId, { thumbnailUrl: url });
 }
 
 /**
@@ -587,6 +591,8 @@ export async function duplicate(
     await assertStudioHasProjectRoom(source.studioId, tx);
     const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    await projectAssetReferenceService.copyProjectAssetReferences(sourceId, copy.id, tx);
+    await accountActivityRepo.recordActivity({ userId, projectId: copy.id, kind: "project_action" }, tx);
     return { project: copy, isFirst };
   });
   reportProjectCreated(project, { via: "duplicate", is_first: isFirst });
@@ -621,7 +627,11 @@ export async function assertNotArchived(projectId: string | null): Promise<void>
  */
 export async function archive(projectId: string, userId: string): Promise<void> {
   if (!mayArchive(await managementFacts(projectId, userId))) throw new ForbiddenError(t("server.error.forbidden"));
-  const outcome = await db.transaction((tx) => projectRepo.archiveProject(projectId, userId, tx));
+  const outcome = await db.transaction(async (tx) => {
+    const outcome = await projectRepo.archiveProject(projectId, userId, tx);
+    if (outcome === "done") await accountActivityRepo.recordActivity({ userId, projectId, kind: "project_action" }, tx);
+    return outcome;
+  });
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.already_archived"));
 }
@@ -643,7 +653,9 @@ export async function restore(projectId: string, userId: string): Promise<void> 
   const result = await db.transaction(async (tx) => {
     const room = await studioProjectRoom(project.studioId, tx);
     if (room === null) return { outcome: "missing" as const, limit: 0 };
-    return { outcome: await projectRepo.restoreProject(projectId, tx, room.hasRoom), limit: room.limit };
+    const outcome = await projectRepo.restoreProject(projectId, tx, room.hasRoom);
+    if (outcome === "done") await accountActivityRepo.recordActivity({ userId, projectId, kind: "project_action" }, tx);
+    return { outcome, limit: room.limit };
   });
   const { outcome, limit } = result;
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));

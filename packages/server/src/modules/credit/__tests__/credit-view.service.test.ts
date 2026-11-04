@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * What the studio credits endpoint reads, per request.
@@ -71,8 +71,8 @@ function ledgerRow(
 beforeEach(() => {
   vi.clearAllMocks();
   readStudioCredits.mockResolvedValue({
-    spendable: 100,
-    debt: 0,
+    spendable: "100.000000",
+    debt: "0.000000",
     lots: [],
     ledger: [],
   });
@@ -116,7 +116,7 @@ describe("GET a studio's credits", () => {
     const view = await getStudioCredits("s-1", "1", CURSOR);
 
     expect(view.ledger?.items).toHaveLength(1);
-    expect(view.ledger?.items[0]).toMatchObject({ charged: -10 });
+    expect(view.ledger?.items[0]).toMatchObject({ charged: "-10.000000" });
     expect(view.ledger?.nextCursor).not.toBeNull();
     const decoded = JSON.parse(
       Buffer.from(view.ledger.nextCursor as string, "base64url").toString("utf8"),
@@ -174,15 +174,15 @@ describe("a lot on a studio's credits page (inner#1052)", () => {
 
   it("carries exactly what the page shows: who bought it, when, and what is left of it", async () => {
     readStudioCredits.mockResolvedValue({
-      spendable: 37.25, debt: 0, held: 0, available: 37.25, lots: [storedLot("Alice")], ledger: [],
+      spendable: "37.250000", debt: "0.000000", held: "0.000000", available: "37.250000", lots: [storedLot("Alice")], ledger: [],
     });
     const view = await getStudioCredits("s-1", undefined, undefined);
     const lot = view.lots![0]!;
     expect(Object.keys(lot).sort()).toEqual(PAGE_FIELDS);
     expect(lot).toStrictEqual({
       id: "lot-1",
-      purchasedCredits: 120.5,
-      remainingCredits: 37.25,
+      purchasedCredits: "120.500000",
+      remainingCredits: "37.250000",
       createdAt: "2026-10-01T08:09:10.123Z",
       buyerName: "Alice",
     });
@@ -190,7 +190,7 @@ describe("a lot on a studio's credits page (inner#1052)", () => {
 
   it("keeps the buyer key, as null, when the buyer's personal studio is gone", async () => {
     readStudioCredits.mockResolvedValue({
-      spendable: 37.25, debt: 0, held: 0, available: 37.25, lots: [storedLot(null)], ledger: [],
+      spendable: "37.250000", debt: "0.000000", held: "0.000000", available: "37.250000", lots: [storedLot(null)], ledger: [],
     });
     const view = await getStudioCredits("s-1", undefined, undefined);
     const lot = view.lots![0]!;

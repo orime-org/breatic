@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Recent repository — the single home of the `project_last_opened` table.
@@ -17,8 +17,8 @@
  * project, must be filtered out — see the WHERE predicate below.
  */
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { db, type DbTx } from "@breatic/core";
 import {
   projectLastOpened,
   projects,
@@ -28,25 +28,29 @@ import {
 import type { ProjectRole, RecentItem } from "@breatic/shared";
 
 /**
- * Record that `userId` opened `projectId` now.
+ * Record the original admitted visit instant for `userId` and `projectId`.
  *
  * Composite-PK UPSERT: a first open inserts a row; a re-open updates
- * `last_opened_at = now()` in place (no duplicate row, `created_at`
+ * `last_opened_at` in place (no duplicate row, `created_at`
  * preserved as the first-open time). The caller is responsible for the
  * access check BEFORE calling this — the repo only writes.
  * @param userId - The viewing user's UUID
  * @param projectId - The opened project's UUID
+ * @param occurredAt - The original admitted visit instant.
+ * @param tx - Transaction claiming the visit and updating recent together.
  */
 export async function upsertOpen(
   userId: string,
   projectId: string,
+  occurredAt: Date,
+  tx?: DbTx,
 ): Promise<void> {
-  await db
+  await (tx ?? db)
     .insert(projectLastOpened)
-    .values({ userId, projectId })
+    .values({ userId, projectId, lastOpenedAt: occurredAt })
     .onConflictDoUpdate({
       target: [projectLastOpened.userId, projectLastOpened.projectId],
-      set: { lastOpenedAt: sql`now()` },
+      set: { lastOpenedAt: occurredAt },
     });
 }
 

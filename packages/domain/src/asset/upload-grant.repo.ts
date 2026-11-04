@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
@@ -19,9 +19,8 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { db, uploadGrants } from "@breatic/core";
-import type { DbTx } from "@breatic/core";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { db, uploadGrants, type DbTx } from "@breatic/core";
 import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
 
 /**
@@ -82,6 +81,20 @@ export interface UploadGrant {
 }
 
 /**
+ * Read consumed grants in immutable-id order for explicit media backfill.
+ * @param cursor - The last emitted grant identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Consumed grant provenance after the cursor.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanConsumedMediaGrants(cursor: string | null, limit: number): Promise<UploadGrant[]> {
+  const rows = await db.select().from(uploadGrants).where(and(
+    isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
+  )).orderBy(uploadGrants.id).limit(limit);
+  return rows.map(toEntity);
+}
+
+/**
  * Map a Drizzle row to an {@link UploadGrant}.
  * @param row - Raw row selected from `upload_grants`.
  * @returns The mapped grant.
@@ -138,6 +151,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   bytes, when one did.
  * @param input.analyticsConsent - The uploading browser's analytics consent;
  *   absent reads as no consent.
+ * @param tx - Optional enclosing upload admission transaction.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
  */
@@ -159,8 +173,8 @@ export async function issueGrant(input: {
     generationTaskId?: string | null;
   };
   analyticsConsent?: ConsentSnapshot;
-}): Promise<UploadGrant> {
-  const rows = await db
+}, tx?: DbTx): Promise<UploadGrant> {
+  const rows = await (tx ?? db)
     .insert(uploadGrants)
     .values({
       userId: input.userId,
@@ -275,14 +289,16 @@ export async function claimFinalize(params: {
  * @param params.storageKey - The key being registered.
  * @param params.userId - The authenticated caller.
  * @param params.assetId - The ledger row the bytes registered as.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call consumed the grant; false otherwise.
+ * @throws {Error} When the database write fails.
  */
 export async function consumeGrant(params: {
   storageKey: string;
   userId: string;
   assetId: string;
-}): Promise<boolean> {
-  const rows = await db
+}, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ consumedAt: sql`now()`, assetId: params.assetId })
     .where(
@@ -335,8 +351,9 @@ export async function completeTransferGrant(storageKey: string): Promise<boolean
  * which proves nothing but that it holds the shared secret — every fact about
  * who this upload belongs to comes off the row itself.
  * @param storageKey - The key the report names.
- * @param tx - Optional transaction retained through maintenance admission.
+ * @param tx - An enclosing business transaction.
  * @returns The grant, or null when no such key was ever issued.
+ * @throws {Error} When the database read fails.
  */
 export async function findGrantByKey(
   storageKey: string,
@@ -348,6 +365,21 @@ export async function findGrantByKey(
     .where(eq(uploadGrants.storageKey, storageKey))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Lock the immutable grant identity before choosing or replaying its terminal.
+ * @param storageKey - The unique key issued with the grant.
+ * @param tx - The transaction that will commit the terminal decision.
+ * @returns The current grant after any earlier writer commits.
+ * @throws {Error} When the row lock or database read fails.
+ */
+export async function lockGrantByKey(storageKey: string, tx: DbTx): Promise<UploadGrant | null> {
+  const [row] = await tx.select().from(uploadGrants)
+    .where(eq(uploadGrants.storageKey, storageKey))
+    .for("update")
+    .limit(1);
+  return row === undefined ? null : toEntity(row);
 }
 
 /**
@@ -383,11 +415,13 @@ export async function findOwnGrants(
  * this row is what tells the operations-side cleanup that it has no owner.
  * @param storageKey - The key being written off.
  * @param reason - Why, as the upload status query will answer it.
+ * @param tx - The transaction holding this grant's terminal lock.
  * @returns True when this call voided the grant; false when it was already
  *   consumed or already voided.
+ * @throws {Error} When the database write fails.
  */
-export async function voidGrant(storageKey: string, reason: string): Promise<boolean> {
-  const rows = await db
+export async function voidGrant(storageKey: string, reason: string, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
     .update(uploadGrants)
     .set({ voidedAt: sql`now()`, failureReason: reason })
     .where(

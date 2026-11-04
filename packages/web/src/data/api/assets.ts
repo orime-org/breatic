@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { apiGet, apiPost, request } from '@web/data/api/request';
 import type { ApiEnvelope } from '@web/data/api/types';

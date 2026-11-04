@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * A turn's obligations survive its consumer walking away mid-stream.
@@ -37,8 +37,8 @@ const addMessage = vi.fn(
 const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
-  charged: 5,
-  shortfall: 0,
+  charged: "5.000000",
+  shortfall: "0.000000",
   studioId: 's1',
   lotIds: ['l1'],
 }));
@@ -251,8 +251,8 @@ describe("一个回合扣不满时", () => {
     // 事后发现。
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true,
-      charged: 30,
-      shortfall: 70,
+      charged: "30.000000",
+      shortfall: "70.000000",
       studioId: "s1",
       lotIds: ["l1"],
     });
@@ -277,14 +277,14 @@ describe("一个回合扣不满时", () => {
         typeof call[1] === "string" && call[1].includes("CREDIT_SHORTFALL"),
     );
     expect(line, "短扣没有留下任何对账记录").toBeDefined();
-    expect(line?.[0]).toMatchObject({ shortfall: 70, charged: 30 });
+    expect(line?.[0]).toMatchObject({ shortfall: "70.000000", charged: "30.000000" });
   });
 
   it("logs a turn charge whose readers could not be told", async () => {
     chargeOnceForGeneration.mockResolvedValueOnce({
       billed: true,
-      charged: 30,
-      shortfall: 0,
+      charged: "30.000000",
+      shortfall: "0.000000",
       studioId: "s1",
       lotIds: ["l1"],
       signalFailure: new Error("redis down"),

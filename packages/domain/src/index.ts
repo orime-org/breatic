@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -70,6 +70,7 @@ export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
 export * as uploadFinishService from "@domain/asset/upload-finish.service.js";
 export {
@@ -115,6 +116,8 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
+  AWAITS_READER,
+  REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,

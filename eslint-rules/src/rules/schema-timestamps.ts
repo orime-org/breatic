@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
@@ -13,6 +13,9 @@ import { createRule } from "#rules/create-rule";
  * stated reason becomes a place to park violations.
  */
 const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
+  ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
+  ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
+  ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
   [
     "membershipTierChanges",

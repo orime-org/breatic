@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { Box3, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
@@ -81,13 +81,13 @@ export class SceneMiniMapRuntime {
     if (this.disposed) return;
     this.objects = objects;
     this.target.copy(target);
-    const existing = new Map(objects.filter((object) => object.exists).map((object) => [object.id, object]));
+    const existing = new Map(objects.map((object) => [object.id, object]));
     for (const [id, item] of this.items) {
       const object = existing.get(id);
       if (!object || !ready.has(id) || JSON.stringify(object.model) !== item.source) this.remove(id);
     }
     for (const object of objects) {
-      if (!object.exists || !ready.has(object.id)) continue;
+      if (!ready.has(object.id)) continue;
       let item = this.items.get(object.id);
       if (!item) {
         const created: OverviewItem = { source: JSON.stringify(object.model), lease: this.resources.acquire(object.model), root: null };

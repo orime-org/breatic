@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 import { create } from 'zustand';
 
@@ -51,6 +51,7 @@ export type TrayNotice =
   | { key: 'full'; limit: number }
   | { key: 'tooLong' }
   | { key: 'unsupported'; filename: string }
+  | { key: 'unsupportedMedia'; filename: string; kind: string; formats: string }
   | { key: 'tooLarge'; filename: string }
   | { key: 'unavailable' }
   | { key: 'sendUnavailable' };
@@ -285,6 +286,8 @@ export function trayNoticeText(notice: TrayNotice): string {
       return t('chat.composer.attachTooLarge', { filename: notice.filename });
     case 'unsupported':
       return t('chat.composer.attachUnsupported', { filename: notice.filename });
+    case 'unsupportedMedia':
+      return t('canvas.upload.unsupportedType', { filename: notice.filename, kind: notice.kind, formats: notice.formats });
   }
 }
 

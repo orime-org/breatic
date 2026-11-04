@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * The propose tool takes a template on a generate node and judges the node it
@@ -447,7 +447,7 @@ describe("the guide text node answerFor appends (design 6.7 step 8)", () => {
 
 describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", () => {
   for (const anchorKey of [false, true]) {
-    it(`marks each non-anchor template node, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
+    it(`marks each non-anchor template node and each input, gives the resource its path, and marks nothing else (anchor key ${anchorKey ? "written" : "left out"})`, () => {
       const shape = agentShape(SHEET, { anchorKey });
       const answer = placedAnswer(answerFor(shape.sent, undefined, FIXTURES));
       expect(answer.nodes.some((node) => "template" in node)).toBe(false);
@@ -459,7 +459,7 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
       expect(node("node:sheet")?.templateNode).toBeUndefined();
       expect(node("node:sheet")?.resource).toBeUndefined();
       for (const input of ["pose", "front", "back", "character"]) {
-        expect(node(`input:${input}`)?.templateNode).toBeUndefined();
+        expect(node(`input:${input}`)?.templateNode).toEqual({ template: "fixture-sheet", key: input, input: true, anchor: shape.at.get("node:sheet") });
         expect(node(`input:${input}`)?.resource).toBeUndefined();
       }
       expect(parsed.nodes).toHaveLength(shape.sent.nodes.length + 1);
@@ -487,6 +487,21 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     expect(answer.nodes[0]?.templateNode).toBeUndefined();
   });
 
+  it("keeps an instance's own node marked as its own when it also feeds another instance's input", () => {
+    const shape = agentShape(SHEET);
+    const sketch = shape.at.get("node:sketch") ?? -1;
+    const sent: Sent = {
+      ...shape.sent,
+      nodes: [
+        ...shape.sent.nodes,
+        { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Generate Sketch first" } }, { text: "Redraw " }, { ref: sketch }] },
+      ],
+      edges: [...shape.sent.edges, { fromIndex: sketch, toIndex: shape.sent.nodes.length, into: "pool" }],
+    };
+    const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
+    expect(answer.nodes[sketch]?.templateNode).toEqual({ template: "fixture-sheet", key: "sketch" });
+  });
+
   it("places two instances chained, the first anchor standing as the second's input", () => {
     const first = solo();
     const sent: Sent = {
@@ -499,7 +514,8 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
     };
     const answer = placedAnswer(answerFor(sent, undefined, FIXTURES));
     expect(answer.nodes).toHaveLength(3);
-    expect(answer.nodes.map((node) => node.templateNode)).toEqual([undefined, undefined, undefined]);
+    // The first instance's input is its own; the first anchor, fed on into the second, stays the first's.
+    expect(answer.nodes.map((node) => node.templateNode)).toEqual([{ template: "fixture-solo", key: "reference", input: true, anchor: 1 }, undefined, undefined]);
   });
 
   it("places two whole instances in one proposal, each with its own guide", () => {

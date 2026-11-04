@@ -97,6 +97,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       action: "upload",
       label: labelForUrl(url),
     },
+    true,
   );
 
   try {

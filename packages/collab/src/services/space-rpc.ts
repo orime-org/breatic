@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: Elastic-2.0
 
 /**
  * Collab-side handlers for client-initiated Space lifecycle RPCs.
@@ -48,6 +48,7 @@
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
  */
+import { accountActivityRepo } from "@breatic/core";
 import { reportSpaceAction, reportSpaceCreated } from "@collab/services/space-analytics.js";
 import { randomUUID } from "node:crypto";
 
@@ -56,6 +57,7 @@ import * as Y from "yjs";
 
 import {
   createLogger,
+  getTimelineConfig,
   projectActivitiesRepo,
   writeSpaceEntry,
   type NewProjectActivity,
@@ -716,8 +718,8 @@ async function runCreate(
       // The name the creator gave the Space lives on its tab, in meta — the
       // content document carries no name of its own. What it does carry is
       // whatever that kind's initial content is: one empty paragraph for a
-      // Document, versioned scene roots for 3D, or empty content for Canvas/Timeline.
-      encodeInitialSpaceContent(type),
+      // Document and 3D seed their roots; Timeline also requires configured settings.
+      encodeInitialSpaceContent(type, type === "timeline" ? getTimelineConfig().defaults : undefined),
     );
   } catch (seedError) {
     logger.error(
@@ -1299,18 +1301,26 @@ export async function handleSpaceRpc(
   request: SpaceRpcRequest,
 ): Promise<SpaceRpcResponse> {
   try {
+    let result: SpaceRpcResponse;
     switch (request.type) {
       case "space:create":
-        return await handleCreate(ctx, projectId, caller, request);
+        result = await handleCreate(ctx, projectId, caller, request);
+        break;
       case "space:delete":
-        return await handleDelete(ctx, projectId, caller, request);
+        result = await handleDelete(ctx, projectId, caller, request);
+        break;
       case "space:lock":
-        return await handleLock(ctx, projectId, caller, request);
+        result = await handleLock(ctx, projectId, caller, request);
+        break;
       case "space:rename":
-        return await handleRename(ctx, projectId, caller, request);
+        result = await handleRename(ctx, projectId, caller, request);
+        break;
       case "space:restore":
-        return await handleRestore(ctx, projectId, caller, request);
+        result = await handleRestore(ctx, projectId, caller, request);
+        break;
     }
+    if (result.ok) await accountActivityRepo.recordActivity({ userId: caller.userId, projectId, kind: "project_action" });
+    return result;
   } catch (e) {
     // Last resort for programmer errors only — every anticipated failure is
     // handled inside its handler with a controlled message. What a raw
