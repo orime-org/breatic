@@ -122,6 +122,33 @@ describe("what the prompt says the model can do", () => {
   });
 });
 
+describe("what the prompt says the model's job is", () => {
+  // Without a stated job the model answered as a general assistant: asked to
+  // scale a canvas picture, it gave a command line, another app and a website,
+  // then wrote a web page for the reader to screenshot (#1366).
+  const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
+
+  it("says the job is to get the reader's work made here, with what Breatic does", () => {
+    expect(wording()).toMatch(/Your job is to get the reader's work made here, in this Project, with what Breatic does/);
+  });
+
+  it("keeps work Breatic does inside Breatic", () => {
+    expect(wording()).toMatch(/Never send them to another program, a command line or a website for work Breatic does/);
+  });
+
+  it("says plainly what Breatic cannot do, with the nearest result it can give", () => {
+    expect(wording()).toMatch(/say so in one plain sentence and give the nearest result it can give/);
+  });
+
+  it("says the model does not write programs, scripts or web pages for the reader", () => {
+    expect(wording()).toMatch(/You do not write programs, scripts or web pages for the reader/);
+  });
+
+  it("asks for the result, not the reasons it might fail", () => {
+    expect(wording()).toMatch(/Answer with the result, not with reasons it might fail/);
+  });
+});
+
 describe("how the prompt says to write a reply", () => {
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 

@@ -130,6 +130,9 @@ describe("the guide as a tool", () => {
     const said = typeof description === "string" ? description.replace(/\s+/g, " ") : "";
     expect(said).toMatch(/canvas/i);
     expect(said).toMatch(/document/i);
+    // The guide has a Mini-tools section; a description that leaves them out
+    // let "scale this picture up" go unlooked-up (#1366).
+    expect(said).toMatch(/mini-tools/i);
     expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
   });
