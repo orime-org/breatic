@@ -953,7 +953,8 @@ export function renderProductGuide(): string {
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
-      "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
+      "eight handles on the node and takes a ratio and a size in pixels in the panel; the size is the box's, " +
+      "inside the picture, so a crop never makes the picture larger. Rotating turns and flips the " +
       "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, in four " +
       `groups headed ${quoted(t("canvas.miniTool.adjustGroup.light"))}, ${quoted(t("canvas.miniTool.adjustGroup.color"))}, ` +
       `${quoted(t("canvas.miniTool.adjustGroup.detail"))} and ${quoted(t("canvas.miniTool.adjustGroup.effects"))}, and ` +

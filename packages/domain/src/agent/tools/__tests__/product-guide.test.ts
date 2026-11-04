@@ -930,6 +930,13 @@ describe("mini-tools and the task rows", () => {
     }
   });
 
+  // The crop box is clamped to the picture (NodeCropLayer). Read as "a size in
+  // pixels" alone, the Agent told a reader to crop a 500-wide picture to 2100
+  // wide (#1366).
+  it("says a crop's size is the box inside the picture and never makes it larger", () => {
+    expect(section("Mini-tools")).toMatch(/the size is the box's, inside the picture, so a crop never makes the picture larger/i);
+  });
+
   // The canvas moves by itself on these two presses; the reader may ask why.
   it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
     const tools = section("Mini-tools");
