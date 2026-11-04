@@ -261,6 +261,8 @@ export interface MiniToolOutput {
   readonly modality: MiniToolMedium | "text";
   /** Upper-case prefix of the new node's name, as in `CROP-IMAGE-1`. */
   readonly namePrefix: string;
+  /** A video stored as WebM rather than MP4: a transparent split output, VP9 with alpha (§93 D5-12). */
+  readonly container?: "webm";
 }
 
 /**
