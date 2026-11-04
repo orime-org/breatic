@@ -523,12 +523,18 @@ describe('audio spans land on the 48 kHz sample grid (§91 D4-2; design line 858
   const q = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
   const target = { width: 160, height: 96, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
   let clicks: string;
+  let clicks10: string;
   beforeAll(async () => {
     clicks = join(dir, 'clicks.mp4');
     // Clicks at original samples 24000, 43200 and 72000 (0.5, 0.9 and 1.5 s), on a black 2 s picture.
     await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=160x96:r=25:d=2',
       '-f', 'lavfi', '-i', "aevalsrc='if(eq(n\\,24000)+eq(n\\,43200)+eq(n\\,72000)\\,0.9\\,0)':s=48000:d=2",
       '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clicks]);
+    // Eleven clicks, at original sample 48000·k + 1000 (k = 0…10), over 11 s; the span below covers the first ten.
+    clicks10 = join(dir, 'clicks10.mp4');
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=160x96:r=25:d=11',
+      '-f', 'lavfi', '-i', "aevalsrc='if(eq(mod(n\\,48000)\\,1000)\\,0.9\\,0)':s=48000:d=11",
+      '-c:v', 'libx264', '-g', '25', '-bf', '0', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clicks10]);
   });
 
   /**
@@ -541,9 +547,12 @@ describe('audio spans land on the 48 kHz sample grid (§91 D4-2; design line 858
     const edit = ignoreEditList ? ['-ignore_editlist', '1'] : [];
     const { stdout } = await run('ffmpeg', ['-v', 'error', ...edit, '-copyts', '-i', path, '-map', '0:a:0', '-af', 'aresample=async=1:first_pts=0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
     const samples = new Int16Array(new Uint8Array(stdout).buffer.slice(0));
+    // A click relabelled to another rate and band-limited back to 48 kHz keeps its position, not its amplitude: find each
+    // as a local peak against the file's own level (half its largest sample), one per 200-sample neighbourhood.
+    const level = samples.reduce((top, sample) => Math.max(top, Math.abs(sample)), 0) / 2;
     const peaks: number[] = [];
     for (let at = 0; at < samples.length; at += 1) {
-      if (Math.abs(samples[at]!) < 16000) continue;
+      if (Math.abs(samples[at]!) < level) continue;
       const last = peaks.at(-1);
       if (last !== undefined && at - last < 200) { if (Math.abs(samples[at]!) > Math.abs(samples[last]!)) peaks[peaks.length - 1] = at; continue; }
       peaks.push(at);
@@ -585,6 +594,22 @@ describe('audio spans land on the 48 kHz sample grid (§91 D4-2; design line 858
     const landed = await clicksAt(await render(spans));
     expect(landed).toHaveLength(expected.length);
     landed.forEach((sample, index) => expect(Math.abs(sample - expected[index]!)).toBeLessThanOrEqual(1));
+  });
+
+  // The implementer's shortcut (presentation-recipes.ts `ponytail:`: a relabel whose intermediate rate would exceed 384 kHz
+  // is rounded to the nearest hertz) must not move samples off the grid: at a 16.16 rate of 65535/65536 over 10 s, every
+  // click still lands within one sample of presentationStart·48000 + (media - sourceStart·48000)·b/a (design line 858).
+  it('DS02 a span at the 16.16 rate 65535/65536 over 10 s: each click lands on its sample, within one, to the last', async () => {
+    const media = (await clicksAt(clicks10, true)).filter(sample => sample < 10 * 48000);
+    expect(media).toHaveLength(10);
+    const output = await produce({ [SOURCE]: clicks10 }, { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 250 }, timescale: 25,
+      entries: [{ kind: 'source', decodeStart: q(0), clipStart: q(0), displayStart: q(0), displayEnd: q(10), rate: q(1) }], target,
+      audio: { start: q(0), end: q(10), origin: q(0), spans: [{ sourceStart: q(0), sourceEnd: q(10), presentationStart: q(0), rate: q(65535, 65536) }] } });
+    const landed = await clicksAt(output);
+    const expected = media.map(sample => Math.round((sample * 65536) / 65535));
+    expect(landed).toHaveLength(expected.length);
+    const drift = landed.map((sample, index) => sample - expected[index]!);
+    expect(drift.map(Math.abs).every(value => value <= 1), `drift per click: ${drift.join(', ')}`).toBe(true);
   });
 });
 
