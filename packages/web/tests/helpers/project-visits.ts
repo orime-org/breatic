@@ -3,6 +3,8 @@
 
 import { expect, type Page, type Request, type Response } from 'playwright/test';
 import type { AccountActivityKind, ProjectVisitLookup, ProjectVisitOpened, ProjectVisitReceipt, ProjectVisitRequest } from '@breatic/shared';
+import type * as YjsManagerModule from '@web/data/yjs/manager';
+import type * as CollabSocketModule from '@web/data/yjs/collab-socket';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
@@ -85,8 +87,8 @@ export async function readVisit(response: Pick<Response, 'ok' | 'status' | 'text
 export async function reconnectProject(page: Page, projectId: string): Promise<void> {
   const urls = { manager: await liveModuleUrl(page, YJS_MANAGER), socket: await liveModuleUrl(page, 'data/yjs/collab-socket.tsx') };
   await Promise.all([page.waitForEvent('websocket'), page.evaluate(async ({ urls, projectId }) => {
-    const manager = await import(/* @vite-ignore */ urls.manager) as typeof import('@web/data/yjs/manager');
-    const socket = await import(/* @vite-ignore */ urls.socket) as typeof import('@web/data/yjs/collab-socket');
+    const manager = await import(/* @vite-ignore */ urls.manager) as typeof YjsManagerModule;
+    const socket = await import(/* @vite-ignore */ urls.socket) as typeof CollabSocketModule;
     const name = manager.docName.projectMeta(projectId);
     if (!manager.hasDoc(name)) throw new Error('The real Project meta document is absent');
     const provider = socket.acquireDocProvider(name, manager.getDoc(name));
