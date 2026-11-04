@@ -449,7 +449,7 @@ export class VideoPresentationStore {
     if (facts === undefined || candidate.state !== 'building' || (facts.route !== 'dispatch_copy' && facts.route !== 'encode')) return false;
     const unit = unitKey(admission.jobId, { kind: facts.route === 'encode' ? 'presentation-stitch' : 'presentation-copy' });
     const receipt = job.receipts?.[unit]?.find((output) => output.role === 'carrier');
-    if (job.chunks[unit]?.state !== 'done' || receipt === undefined || (receipt.packing === 'alpha-packed' && receipt.geometry === undefined)) return false;
+    if (job.chunks[unit]?.state !== 'done' || receipt === undefined) return false;
     const head = await this.bucket.head(receipt.storageKey);
     const sha256 = head?.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType || sha256 !== receipt.sha256) return false;

@@ -110,28 +110,26 @@ export class FullLedgerInvalid extends Error {
 const CONTENT_REFUSALS: ReadonlySet<string> = new Set(['content_type', 'size', 'digest', 'content']);
 
 /**
- * Read a job's full ledger and require it to be the plan the DO answered (§5.3 validatedFullLedger, §91 D3b-7): the bytes
- * match the receipt's sha256 and size, and its toolInputId and planSha256 are the plan's.
+ * Read a job's full ledger and require it to be the plan the DO answered (§5.3 validatedFullLedger, §91 D3b-7): the receipt
+ * names the plan's toolInputId and planSha256, and the shared read requires the bytes to match the receipt's sha256 and
+ * size and the ledger to name the receipt's source, toolInputId and planSha256.
  * @param receipt - The candidate's ledger receipt.
  * @param plan - The plan the DO answered.
  * @param plan.toolInputId - Its toolInputId.
  * @param plan.planSha256 - Its plan digest.
  * @param deadlineAt - The job deadline.
  * @returns The full ledger.
- * @throws {FullLedgerInvalid} When what arrived fails the receipt, or the receipt or ledger is another plan's.
+ * @throws {FullLedgerInvalid} When the receipt is another plan's, or what arrived fails the receipt.
  * @throws {Error} When the read fails in transport (reset, non-2xx before the body, deadline).
  */
 export async function readJobLedger(receipt: VideoPresentationLedgerReceipt, plan: { toolInputId: string; planSha256: string }, deadlineAt: number): Promise<VideoPresentationLedger> {
   if (receipt.toolInputId !== plan.toolInputId || receipt.planSha256 !== plan.planSha256) throw new FullLedgerInvalid(new Error('The ledger receipt is not the planned tool input'));
-  let ledger: VideoPresentationLedger;
   try {
-    ledger = await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, { deadlineAt });
+    return await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, { deadlineAt });
   } catch (error) {
     if (error instanceof BodyTooLarge || error instanceof EmptyBody || (error instanceof VideoSourceLedgerReadRefused && CONTENT_REFUSALS.has(error.reason))) throw new FullLedgerInvalid(error);
     throw error;
   }
-  if (ledger.toolInputId !== plan.toolInputId || ledger.planSha256 !== plan.planSha256) throw new FullLedgerInvalid(new Error('The full ledger is not the planned tool input'));
-  return ledger;
 }
 
 /**
