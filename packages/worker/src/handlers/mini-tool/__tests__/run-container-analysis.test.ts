@@ -1,21 +1,34 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+/**
+ * The people and scene analysis runner (O-* oracle ids below). S6d D5 (inner#1306 test plan §93; frames-split design
+ * §7.17 「唯一写点：worker的配方构造」, people anchor and scene_cuts rows, D4-5, D5-7): the runner reads the full ledger
+ * the analysis froze (`ledgerReceipts.source`, served here at its receipt URL with the cfr96 bytes) and writes the
+ * job recipes with the D4 builders; there is no inspect_video output. The anchor is frame 48, a source keyframe of
+ * cfr96 (keyframes 0 and 48), so the decodeStart rule does not change any expectation.
+ */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as domainModule from "@breatic/domain";
 import type * as coreModule from "@breatic/core";
 import type { OpenMiniToolPlanJobInput, miniToolAnalysisService, MiniToolDisplayPeople } from "@breatic/domain";
-import { DeadlinePassed, miniToolPlanJobRequestSchema, type MiniToolPlanJobRequest, type StudioAssetEntity } from "@breatic/shared";
+import { DeadlinePassed, miniToolPlanJobRequestSchema, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
+import { verdictStands } from "@worker/handlers/understand-failure.js";
+import { candidateCropRecipeOf, peopleRecipeOf, sceneCutsRecipeOf } from "@worker/handlers/video-presentation-recipes.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runMiniToolContainerAnalysis } from "../run-container-analysis.js";
-import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ config: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(),
-  advance: vi.fn(), read: vi.fn(), finish: vi.fn(), charge: vi.fn() }));
-vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), getMiniToolsConfig: h.config }));
+  advance: vi.fn(), read: vi.fn(), finish: vi.fn(), charge: vi.fn(),
+  // Every application-layer catch logs (root AGENTS.md); the frozen-ledger failure is logged with its task and tool input.
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
+vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), getMiniToolsConfig: h.config,
+  logger: h.logger as unknown as typeof coreModule.logger }));
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual, openContainerOutputs: h.grants, settleMiniToolCharge: h.charge,
@@ -34,12 +47,45 @@ const USER = "60000000-0000-4000-8000-000000000001";
 const SOURCE_KEY = "original/sql-owned-source.mp4";
 const DEADLINE = 1792927200000;
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
-const people: MiniToolDisplayPeople = { schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor: { frameIndex: 1, pts: 0.25 },
-  width: 400, height: 200, candidates: [
+// §93 D5 (design §7.17 people anchor row): the frozen full ledger is the container-written cfr96 ledger (96 frames of
+// 1/25 s, 320x180, keyframes 0 and 48; worker fixtures/presentation/PROVENANCE.txt). A case may serve other bytes.
+const CFR96 = readFileSync(new URL("../../__tests__/fixtures/presentation/cfr96.ledger.json", import.meta.url));
+/** The ledger the receipt names, with an optional plan edit (served bytes and receipt follow it). @returns Its bytes. */
+function ledgerBytesOf(edit?: (plan: Record<string, unknown>) => void): Buffer {
+  const ledger = JSON.parse(CFR96.toString("utf8")) as { plan: Record<string, unknown> };
+  if (edit === undefined) return CFR96;
+  edit(ledger.plan); return Buffer.from(JSON.stringify(ledger));
+}
+const LEDGER_URL = "https://assets.test.invalid/original.mp4.video-source-ledger.cfr96.json";
+const LEDGER_CONFIG = { source_ledger: { max_bytes: 1048576 } };
+let ledgerBytes: Buffer = CFR96;
+let receiptBytes: Buffer = CFR96;
+let ledgerFault: "reset" | null = null;
+/** The frozen tool input of the analysis: presentation ref, receipt of `receiptBytes` and version id. @returns It. */
+function frozenPresentation(): Record<string, unknown> {
+  const ledger = JSON.parse(receiptBytes.toString("utf8")) as { sourceFingerprint: string; toolInputId: string; planSha256: string };
+  return { presentationRef: { source: { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 } },
+    ledgerReceipts: { source: { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256,
+      producerVersion: 2, attempt: { jobId: "video-presentation:analysis-source", deadlineAt: 1900000000000 }, url: LEDGER_URL, etag: "full-etag",
+      size: receiptBytes.byteLength, sha256: createHash("sha256").update(receiptBytes).digest("hex"), contentType: "application/json",
+      table: { url: "https://assets.test.invalid/original.mp4.video-presentation-table.cfr96.json", sha256: "d".repeat(64), size: 81, contentType: "application/json", frameCount: 96 } } },
+    versionIds: { source: "e".repeat(64) } };
+}
+/** The ledger the builders read, parsed from the served bytes. @returns It. */
+function ledger(): VideoPresentationLedger {
+  return JSON.parse(ledgerBytes.toString("utf8")) as VideoPresentationLedger;
+}
+// The anchor is presented frame 48 at 48/25 s, a source keyframe; the crops lie inside the 320x180 display.
+const people: MiniToolDisplayPeople = { schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor: { frameIndex: 48, pts: 1.92 },
+  width: 320, height: 180, candidates: [
     { detectionIndex: 0, faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, pixelCrop: { x: 40, y: 20, width: 80, height: 60 } },
     { detectionIndex: 2, faceBox: { x: 0.5, y: 0.2, width: 0.1, height: 0.25 }, pixelCrop: { x: 200, y: 40, width: 40, height: 50 } },
-    { detectionIndex: 5, faceBox: { x: 0.7, y: 0.5, width: 0.2, height: 0.3 }, pixelCrop: { x: 280, y: 100, width: 80, height: 60 } },
+    { detectionIndex: 5, faceBox: { x: 0.7, y: 0.5, width: 0.2, height: 0.3 }, pixelCrop: { x: 240, y: 100, width: 80, height: 60 } },
   ] };
+// The scanned scene range starts on keyframe 48 and ends at the display end (3.84 s).
+const SCENE_RANGE = { start: 1.92, end: 3.84 };
+// Pending §93 D5-8 (the scene_cuts JSON a container writes on entries): the scene cases below that still read an
+// inspect_video output keep the pre-D5 request (`legacySceneRequest`) until that shape is decided.
 const frames = Array.from({ length: 60 }, (_, frameIndex) => ({ frameIndex, pts: (frameIndex * frameIndex + frameIndex) / 100 }));
 const inspection = { schemaVersion: 1, kind: "inspect_video", probe: {}, source: { width: 400, height: 200, rotation: 0, hasAudio: false,
   timeBase: "1/100", frameTable: { frames, videoEnd: 36 } } };
@@ -54,13 +100,14 @@ let payload: unknown;
 let grantSequence: number;
 
 /** Construct a valid SQL-owned execution using the independent people and scene source clocks. @returns The accepted execution. */
-function execution(kind: "people" | "scene_cuts" = "people"): Execution {
+function execution(kind: "people" | "scene_cuts" = "people", range: { start: number; end: number } = { start: 1.1, end: 25 }): Execution {
   const profile = { id: `original-${kind}-profile`, version: "original-version", weightsHash: null, params: { threshold: 27 } };
   const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, anchor: people.anchor }
-    : { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, range: { start: 1.1, end: 25 } };
+    : { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, range };
+  const presented = frozenPresentation() as { ledgerReceipts: { source: { sourceFingerprint: string } } };
   const record = miniToolAnalysisRecordSchema.parse({ schemaVersion: 1, draftId: "70000000-0000-4000-8000-000000000001",
     revision: "80000000-0000-4000-8000-000000000001", analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind,
-    inputFingerprint: "a".repeat(64), analysisInput: input, binding: { assetId: SOURCE, contentHash: "b".repeat(64),
+    inputFingerprint: "a".repeat(64), analysisInput: input, binding: { assetId: SOURCE, contentHash: presented.ledgerReceipts.source.sourceFingerprint,
       canonicalURL: input.sourceURL, kind: "video", mediaInfo: { width: 400, height: 200, duration: 36, mimeType: "video/mp4" } },
     status: "running", result: null, error: null, usage: [], artifactUnavailable: false });
   return { record, context: { taskId: TASK, userId: USER, projectId: PROJECT, spaceId: SPACE, hostNodeId: HOST },
@@ -68,8 +115,8 @@ function execution(kind: "people" | "scene_cuts" = "people"): Execution {
       schemaVersion: 1, analysisRunId: TASK, projectId: PROJECT, spaceId: SPACE, hostNodeId: HOST, draftId: record.draftId,
       revision: record.revision, kind, binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
       source: { nodeId: HOST, canonicalURL: record.binding.canonicalURL, mediaInfo: record.binding.mediaInfo },
-      ...FROZEN_PRESENTATION,
-    } } };
+      ...presented,
+    } } } as Execution;
 }
 
 /** Build the canonical row for a written output without claiming a real media execution. @returns The registered fixture row. */
@@ -105,10 +152,18 @@ function expectedPeople(original: Execution, observations: MiniToolDisplayPeople
 
 beforeEach(() => {
   vi.resetAllMocks(); steps = []; grantSequence = 0; payload = structuredClone(people);
+  ledgerBytes = CFR96; receiptBytes = CFR96; ledgerFault = null;
   vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 60000);
-  h.config.mockReturnValue({ plan_limits: LIMITS, analyses: {
+  h.config.mockReturnValue({ plan_limits: LIMITS, presentation: LEDGER_CONFIG, analyses: {
     people: { container_class: "MiniToolContainerStd1" }, scene_cuts: { container_class: "MiniToolContainerStd1" },
   } });
+  // The frozen ledger is served at its receipt URL; nothing else goes over HTTP here (the job boundary is mocked).
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+    const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
+    if (url !== LEDGER_URL) return new Response("unexpected", { status: 500 });
+    if (ledgerFault === "reset") throw new TypeError("fetch failed: connection reset");
+    return new Response(ledgerBytes, { headers: { "content-type": "application/json" } });
+  }));
   h.list.mockImplementation(async () => steps);
   h.ensure.mockImplementation(async (_taskId: string, plan: StepPlan) => {
     for (const [position, planned] of plan.entries()) {
@@ -142,19 +197,41 @@ beforeEach(() => {
     return { asset: asset(index, false), json: index === 1 ? structuredClone(scenes) : structuredClone(payload) };
   });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+/**
+ * Today's configuration on a replay: the run class and limits come from the stored request, so reading them throws; the
+ * ledger read's byte cap stays readable (the frozen receipt, not today's configuration, decides which ledger is read).
+ * @param message - The thrown message.
+ * @returns The configuration double.
+ */
+function replayConfig(message: string): Record<string, unknown> {
+  return { presentation: LEDGER_CONFIG, get plan_limits(): never { throw new Error(message); }, get analyses(): never { throw new Error(message); } };
+}
 
 /** Make the original initial request independently from the new orchestration. @returns The stored first plan. */
 function initialRequest(original: Execution = execution()): MiniToolPlanJobRequest {
   const input = original.record.analysisInput;
-  const outputs: MiniToolPlanJobRequest["outputs"] = input.kind === "people" ? [{ outputIndex: 0, storageKey: "persisted/people.txt", contentType: "text/plain",
-    recipe: { kind: "people", inputId: SOURCE, anchor: input.anchor, profile: input.profile, orientation: "display" } }]
+  // §93 D5 (design §7.17 people anchor row, 「唯一写点：worker的配方构造」): the anchor becomes its full-ledger entry and PNG target.
+  // §93 D5 (design §7.17 scene_cuts row, 「去掉inspect_video步骤」): one scene_cuts output on the range's entries, no inspect_video.
+  const outputs = (input.kind === "people" ? [{ outputIndex: 0, storageKey: "persisted/people.txt", contentType: "text/plain",
+    recipe: peopleRecipeOf(ledger(), input.anchor, SOURCE, input.profile) }]
     : input.kind === "scene_cuts" ? [
-      { outputIndex: 0, storageKey: "persisted/inspect.txt", contentType: "text/plain", recipe: { kind: "inspect_video", inputId: SOURCE } },
-      { outputIndex: 1, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: { kind: "scene_cuts", inputId: SOURCE, range: input.range, profile: input.profile } },
-    ] : [];
+      { outputIndex: 0, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: sceneCutsRecipeOf(ledger(), input.range, SOURCE, input.profile) },
+    ] : []) as unknown as MiniToolPlanJobRequest["outputs"]; // The shared recipe types gain people and scene_cuts on entries with the runner.
   return { schemaVersion: 2, jobId: `task:${original.context.taskId}/chunk:0`, containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE,
     limits: structuredClone(LIMITS), inputs: [{ inputId: SOURCE, storageKey: SOURCE_KEY }], outputs };
+}
+
+/** The pre-D5 scene request (inspect0, scenes1), kept for the scene cases pending §93 D5-8. @returns The stored first plan. */
+function legacySceneRequest(original: Execution): MiniToolPlanJobRequest {
+  const input = original.record.analysisInput;
+  if (input.kind !== "scene_cuts") throw new Error("Fixture requires a scene analysis");
+  return { schemaVersion: 2, jobId: `task:${original.context.taskId}/chunk:0`, containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE,
+    limits: structuredClone(LIMITS), inputs: [{ inputId: SOURCE, storageKey: SOURCE_KEY }], outputs: [
+      { outputIndex: 0, storageKey: "persisted/inspect.txt", contentType: "text/plain", recipe: { kind: "inspect_video", inputId: SOURCE } },
+      { outputIndex: 1, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: { kind: "scene_cuts", inputId: SOURCE, range: input.range, profile: input.profile } },
+    ] };
 }
 
 /** Restore one original task step with its first plan and optional initial JSON values. @returns The owned fixture step. */
@@ -169,10 +246,11 @@ function storedStep(request: MiniToolPlanJobRequest, position: number, json: Rec
 
 /** The golden thumbnail request consumes original display pixels without normalized inversion. @returns The stored thumbnail plan. */
 function thumbnailRequest(candidates: MiniToolDisplayPeople["candidates"] = people.candidates, position = 1): MiniToolPlanJobRequest {
+  // §93 D5 (design §7.17 「唯一写点：worker的配方构造」; D4-5): each crop is the anchor's frame recipe on its full-ledger entry plus
+  // the existing display crop, instead of the source frameIndex with orientation display.
   return { ...initialRequest(), jobId: `task:${TASK}/chunk:${position}`, outputs: candidates.map((candidate) => ({
     outputIndex: candidate.detectionIndex, storageKey: `persisted/thumbnail-${candidate.detectionIndex}.png`, contentType: "image/png",
-    recipe: { kind: "frame", inputId: SOURCE, frameIndex: 1, orientation: "display",
-      crop: { sourceWidth: 400, sourceHeight: 200, rect: candidate.pixelCrop } },
+    recipe: candidateCropRecipeOf(ledger(), people.anchor, SOURCE, { sourceWidth: 320, sourceHeight: 180, rect: candidate.pixelCrop }),
   })) };
 }
 
@@ -185,21 +263,21 @@ function expectedScene(original: Execution): Extract<MiniToolAnalysisResult, { k
 
 // O-A1/A2/A4, O-S1/S3, O-P1 and O-F1/F2: IO is mocked; both domain assemblers stay real.
 describe("accepted container analysis orchestration", () => {
-  it("executes the original scene inspect0 and scenes1 in one user-funded job", async () => {
-    const original = execution("scene_cuts"); payload = structuredClone(inspection);
-    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
+  // §93 D5 (design §7.17 scene_cuts row 「去掉inspect_video步骤」, 「唯一写点：worker的配方构造」): the one job carries a single
+  // scene_cuts output on the range's full-ledger entries. The result assembly is pending §93 D5-8 (the scene JSON on entries),
+  // so this case asserts only what is submitted.
+  it("AR01 submits one user-funded scene_cuts output built from the frozen ledger and no inspect_video", async () => {
+    const original = execution("scene_cuts", SCENE_RANGE);
+    await runMiniToolContainerAnalysis(original, DEADLINE).catch(() => undefined);
     expect(h.grants).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectId: PROJECT, actingUserId: USER, taskId: TASK, deadlineAt: DEADLINE,
-      outputs: [expect.objectContaining({ modality: "text" }), expect.objectContaining({ modality: "text" })] }));
+      outputs: [expect.objectContaining({ modality: "text" })] }));
     const call: OpenMiniToolPlanJobInput = h.advance.mock.calls[0]![0];
     expect(call).toEqual({ taskId: TASK, stepId: steps[0]!.id, chunkIndex: 0, chargeTo: "user", request: { ...initialRequest(original),
       outputs: initialRequest(original).outputs.map((output, index) => ({ ...output, storageKey: `derived/grant-0/${index}.txt` })) } });
-    expect(h.advance).toHaveBeenCalledTimes(1);
-    expect(h.read.mock.calls).toEqual([[asset(0, false).id, DEADLINE], [asset(1, false).id, DEADLINE]]);
-    expect(steps[0]!.output).toMatchObject({ "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes });
-    expect(h.finish).not.toHaveBeenCalled(); expect(h.charge).not.toHaveBeenCalled();
+    expect(call.request.outputs.some((output) => output.recipe.kind === "inspect_video")).toBe(false);
   });
 
-  it("executes display people0 then exact original pixel thumbnails with platform ownership", async () => {
+  it("AR02 executes display people0 then exact original pixel thumbnails with platform ownership", async () => {
     const original = execution();
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     expect(h.advance).toHaveBeenCalledTimes(2);
@@ -250,11 +328,16 @@ describe("accepted container analysis orchestration", () => {
     expect(h.advance.mock.calls[1]?.[0].request.outputs[0]).toMatchObject({ outputIndex: 5, recipe: { crop: { rect: { x: 40, y: 20, width: 1, height: 1 } } } });
   });
 
-  it("uses actual portrait display geometry while preserving the original encoded binding", async () => {
-    const original = execution(); const observations = { ...people, width: 200, height: 400, candidates: [{ detectionIndex: 2,
+  // §93 D5 (design §7.17 「方向与几何」): a portrait display comes from the frozen plan (180x320), so the served ledger is
+  // cfr96 with that display; the crop and the PNG target both use it while the binding keeps the encoded 400x200.
+  it("AR03 uses actual portrait display geometry while preserving the original encoded binding", async () => {
+    ledgerBytes = receiptBytes = ledgerBytesOf((plan) => { plan.display = { ...plan.display as object, width: 180, height: 320 }; });
+    const original = execution(); const observations = { ...people, width: 180, height: 320, candidates: [{ detectionIndex: 2,
       faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, pixelCrop: { x: 20, y: 40, width: 40, height: 120 } }] }; payload = observations;
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original, observations));
-    expect(h.advance.mock.calls[1]?.[0].request.outputs[0]).toMatchObject({ recipe: { crop: { sourceWidth: 200, sourceHeight: 400, rect: observations.candidates[0]!.pixelCrop } } });
+    expect(h.advance.mock.calls[1]?.[0].request.outputs[0]).toMatchObject({ recipe: { target: { width: 180, height: 320 },
+      crop: { sourceWidth: 180, sourceHeight: 320, rect: observations.candidates[0]!.pixelCrop } } });
+    expect(original.record.binding.mediaInfo).toMatchObject({ width: 400, height: 200 });
   });
 
   it("retains an empty scene result without creating media or split outputs", async () => {
@@ -268,10 +351,10 @@ describe("accepted container analysis orchestration", () => {
 // O-A7/A13, O-C1–C4/C12: caches belong to the complete stored initial step, not the current configuration.
 describe("original request and JSON cache recovery", () => {
   it("replays stored scene requests and caches without reading current configuration or opening grants", async () => {
-    const original = execution("scene_cuts"); const request = initialRequest(original);
+    const original = execution("scene_cuts"); const request = legacySceneRequest(original);
     const step = storedStep(request, 0, { "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes });
     const before = structuredClone(step.output);
-    h.config.mockImplementation(() => { throw new Error("Replay must not read changed configuration"); });
+    h.config.mockReturnValue(replayConfig("Replay must not read changed configuration"));
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
     expect(h.advance).toHaveBeenCalledExactlyOnceWith({ taskId: TASK, stepId: step.id, chunkIndex: 0, chargeTo: "user", request });
     expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
@@ -283,7 +366,7 @@ describe("original request and JSON cache recovery", () => {
     const request = initialRequest(original); const step = storedStep(request, 0, { "miniToolAnalysisJson:0": observations });
     step.itemIndex = 7;
     const firstDescriptor = { kind: step.kind, endpoint: step.endpoint, itemIndex: step.itemIndex };
-    h.config.mockImplementation(() => { throw new Error("Original request owns the remaining run class and limits"); });
+    h.config.mockReturnValue(replayConfig("Original request owns the remaining run class and limits"));
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original, observations));
     const calls: OpenMiniToolPlanJobInput[] = h.advance.mock.calls.map((call) => call[0]);
     expect(calls.map((call) => ({ chunk: call.chunkIndex, class: call.request.containerClass, limits: call.request.limits, deadline: call.request.deadlineAt })))
@@ -296,7 +379,7 @@ describe("original request and JSON cache recovery", () => {
   });
 
   it("reads and stores only the missing scene JSON by its canonical output index", async () => {
-    const original = execution("scene_cuts"); const request = initialRequest(original);
+    const original = execution("scene_cuts"); const request = legacySceneRequest(original);
     const step = storedStep(request, 0, { "miniToolAnalysisJson:0": inspection });
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
     expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(1, false).id, DEADLINE);
@@ -335,13 +418,13 @@ describe("original request and JSON cache recovery", () => {
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     const requests = steps.map((step) => structuredClone(step.output.miniToolPlanJob));
     h.grants.mockClear(); h.read.mockClear();
-    h.config.mockImplementation(() => { throw new Error("Replay must not read new deployment policy"); });
+    h.config.mockReturnValue(replayConfig("Replay must not read new deployment policy"));
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
     expect(steps.map((step) => step.output.miniToolPlanJob)).toEqual(requests);
   });
 
-  it.each([null, false, 0, "", { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 2, pts: 0.5 } }])("validates a present cached JSON value rather than refetching it: %j", async (json) => {
+  it.each([null, false, 0, "", { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 49, pts: 1.96 } }])("validates a present cached JSON value rather than refetching it: %j", async (json) => {
       const original = execution(); storedStep(initialRequest(original), 0, { "miniToolAnalysisJson:0": json });
       await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toThrow();
       expect(h.read).not.toHaveBeenCalled(); expect(h.grants).not.toHaveBeenCalled();
@@ -373,7 +456,7 @@ describe("unchanged deadline and late pure assembly", () => {
   });
 
   it.each(["people", "scene_cuts"] as const)("allows complete cached %s results after the report window without new grants or JSON GET", async (kind) => {
-    const original = execution(kind); storedStep(initialRequest(original), 0,
+    const original = execution(kind); storedStep(kind === "people" ? initialRequest(original) : legacySceneRequest(original), 0,
       kind === "people" ? { "miniToolAnalysisJson:0": people } : { "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes });
     if (kind === "people") storedStep(thumbnailRequest(), 1);
     vi.mocked(Date.now).mockReturnValue(DEADLINE + 10001);
@@ -383,7 +466,7 @@ describe("unchanged deadline and late pure assembly", () => {
   });
 
   it.each(["people", "scene_cuts"] as const)("retains a stored %s report but refuses a missing JSON GET after D", async (kind) => {
-    const original = execution(kind); storedStep(initialRequest(original), 0, kind === "scene_cuts" ? { "miniToolAnalysisJson:0": inspection } : {});
+    const original = execution(kind); storedStep(kind === "people" ? initialRequest(original) : legacySceneRequest(original), 0, kind === "scene_cuts" ? { "miniToolAnalysisJson:0": inspection } : {});
     vi.mocked(Date.now).mockReturnValue(DEADLINE + 1);
     await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toBeInstanceOf(DeadlinePassed);
     expect(h.advance).toHaveBeenCalledTimes(1); expect(h.read).not.toHaveBeenCalled(); expect(h.grants).not.toHaveBeenCalled();
@@ -416,9 +499,9 @@ describe("unchanged deadline and late pure assembly", () => {
 // O-P6/P8/P9/P15 and O-S4/S5/S6: real domain parsers observe content and cross-artifact relationships.
 describe("registered content and failure propagation", () => {
   it.each([
-    { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 2, pts: 0.5 } },
+    { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 49, pts: 1.96 } },
     { ...people, candidates: [people.candidates[0], people.candidates[0]] },
-    { ...people, candidates: [{ ...people.candidates[0], pixelCrop: { x: 399, y: 0, width: 2, height: 1 } }] },
+    { ...people, candidates: [{ ...people.candidates[0], pixelCrop: { x: 319, y: 0, width: 2, height: 1 } }] },
   ])("does not allocate thumbnails for invalid display content %j", async (json) => {
     payload = json;
     await expect(runMiniToolContainerAnalysis(execution(), DEADLINE)).rejects.toThrow();
@@ -491,7 +574,7 @@ describe("registered content and failure propagation", () => {
   });
 
   it.each([false, true])("preserves a failed scene report rather than reinterpreting its complete=%s output set", async (complete) => {
-    const original = execution("scene_cuts"); const request = initialRequest(original); storedStep(request, 0);
+    const original = execution("scene_cuts"); const request = legacySceneRequest(original); storedStep(request, 0);
     const ended = registered(request); const subset = complete ? ended.report.outputs : ended.report.outputs.slice(0, 1);
     const failed: RegisteredMiniToolPlanJob = { ...ended, report: { ...ended.report, state: "failed", reason: "tool_failed", outputs: subset },
       assets: complete ? ended.assets : ended.assets.filter((entry) => subset.some((output) => output.outputIndex === entry.outputIndex)) };
@@ -555,5 +638,32 @@ describe("registered content and failure propagation", () => {
     original.record.analysisRunId = next; original.params.analysis.analysisRunId = next; original.context.taskId = next;
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     expect(h.advance.mock.calls[0]?.[0].request.jobId).toBe(`task:${next}/chunk:0`);
+  });
+});
+
+// §93 D5 (D4-7, §91 D3b-9 frozen-run rule, same as prepare-model-input.ts): the analysis froze its ledger receipt, so
+// bytes that fail it never recover in this run: it ends as source_ledger_invalid before any grant or job, and the
+// failure is logged with its task and tool input. A transport failure is not a content mismatch and keeps the retry.
+describe("the frozen full ledger (§93 D5, D4-7)", () => {
+  it.each([["people", undefined], ["scene_cuts", SCENE_RANGE]] as const)("AR04 %s: frozen ledger bytes that fail the receipt end the run as source_ledger_invalid", async (kind, range) => {
+    ledgerBytes = Buffer.concat([CFR96, Buffer.from(" ")]);
+    const original = execution(kind, range);
+    const thrown: unknown = await runMiniToolContainerAnalysis(original, DEADLINE).then(() => null, (error: unknown) => error);
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String((thrown as Error).message)).toContain("source_ledger_invalid");
+    // The verdict stands: the outer lane fails the analysis at once instead of rereading the same bytes.
+    expect(verdictStands(thrown)).toBe(true);
+    expect(h.grants).not.toHaveBeenCalled(); expect(h.advance).not.toHaveBeenCalled(); expect(h.ensure).not.toHaveBeenCalled();
+    const toolInputId = (original.params.analysis as unknown as { presentationRef: { source: { toolInputId: string } } }).presentationRef.source.toolInputId;
+    expect(h.logger.error).toHaveBeenCalledWith(expect.objectContaining({ ctx: expect.objectContaining({ taskId: TASK, toolInputId }) }), expect.any(String));
+  });
+
+  it("AR05 a ledger read that fails in transport submits nothing and keeps the normal retry", async () => {
+    ledgerFault = "reset";
+    const thrown: unknown = await runMiniToolContainerAnalysis(execution(), DEADLINE).then(() => null, (error: unknown) => error);
+    expect(thrown).toBeInstanceOf(Error);
+    expect(verdictStands(thrown)).toBe(false);
+    expect(String((thrown as Error).message)).not.toContain("source_ledger_invalid");
+    expect(h.grants).not.toHaveBeenCalled(); expect(h.advance).not.toHaveBeenCalled();
   });
 });
