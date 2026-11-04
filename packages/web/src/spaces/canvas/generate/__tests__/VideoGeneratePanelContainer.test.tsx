@@ -2590,7 +2590,9 @@ describe('the multi-shot mode', () => {
       enterStoryboardShots('p', 's', 'target', 5);
       typeShot(1, 'the words before');
     });
-    await screen.findByText('the words before');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-storyboard-shot-2-editor').textContent).toContain('the words before'),
+    );
     // A collaborator's remove and undo, arriving as one update: the shot
     // comes back as a new map with the same id and seconds and a new prompt.
     const shots = shotListOf('p', 's', 'target');

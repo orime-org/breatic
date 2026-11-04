@@ -54,6 +54,7 @@ import {
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
+import { usePromptPreviews } from '@web/spaces/canvas/generate/prompt-preview';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -439,28 +440,33 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // Which box the caret was last in. Clicking a rail row keeps the caret where
-  // it is (`ReferenceRail` preventDefaults the mousedown, which is what lets
-  // the chip land at the caret rather than at the end), but plenty of other
-  // things take focus first: tabbing to the row, the model picker, the params
-  // popover. In every one of those neither editor is focused, so which box to
-  // insert into has to be remembered rather than read at click time.
-  const lastFocusedBox = React.useRef<'prompt' | 'lyrics'>('prompt');
-  const onPromptFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'prompt';
+  // Which of the two boxes is open while both are there (#1201); the style box
+  // whenever the lyrics box is not, and again each time it comes back.
+  const [openedBox, setOpenedBox] = React.useState<'prompt' | 'lyrics'>('prompt');
+  if (!lyrics && openedBox !== 'prompt') setOpenedBox('prompt');
+  const expanded = lyrics ? openedBox : 'prompt';
+  // Set by the reader's own click on a row, and spent once that box is shown.
+  const focusOnOpen = React.useRef(false);
+  const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
+    focusOnOpen.current = true;
+    setOpenedBox(box);
   }, []);
-  const onLyricsFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'lyrics';
-  }, []);
+  React.useEffect(() => {
+    if (!focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    (expanded === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
+  }, [expanded, lyricsEditorRef, promptEditorRef]);
+  // The rail's insert lands in the box on show: a chip put into the hidden
+  // one would arrive where the writer cannot see it.
   const onInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       const target =
-        lastFocusedBox.current === 'lyrics' && lyricsEditorRef.current
+        expanded === 'lyrics' && lyricsEditorRef.current
           ? lyricsEditorRef.current
           : promptEditorRef.current;
       target?.insertReference(item);
     },
-    [promptEditorRef, lyricsEditorRef],
+    [expanded, promptEditorRef, lyricsEditorRef],
   );
 
   const onExecute = React.useCallback((): void => {
@@ -585,7 +591,6 @@ function AudioGeneratePanelBody({
           // An audio node collects only text rows, and a text chip serializes
           // into the prompt itself — no id ever becomes a model input here.
           onAtMentionsChange={noop}
-          onFocus={onPromptFocus}
           references={references}
           // A media `@` chip is a model input on the other two panels; here
           // no audio model declares a pool for one to travel in.
@@ -598,7 +603,6 @@ function AudioGeneratePanelBody({
       fragment,
       promptPlaceholder,
       onPromptChange,
-      onPromptFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
@@ -625,7 +629,6 @@ function AudioGeneratePanelBody({
           // source node's words into the lyrics string, the way it does in the
           // box above.
           onAtMentionsChange={noop}
-          onFocus={onLyricsFocus}
           // The same pool the style box reads: a song's words are often
           // already written in a text node on the canvas, and `@` is how they
           // get in (user 2026-09-06).
@@ -640,13 +643,28 @@ function AudioGeneratePanelBody({
       lyricsFragment,
       lyricsPlaceholder,
       onLyricsChange,
-      onLyricsFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
       lyricsEditorRef,
     ],
   );
+
+  // Each box's first line for its row while it is closed.
+  const referenceWord = t('canvas.generatePanel.reference');
+  const notePrefix = t('canvas.generatePanel.notePrefix');
+  const previewWords = React.useMemo(
+    () => ({ reference: referenceWord, notePrefix }),
+    [referenceWord, notePrefix],
+  );
+  const previewSources = React.useMemo(
+    () => [
+      ...(fragment ? [{ id: 'prompt', fragment }] : []),
+      ...(lyrics && lyricsFragment ? [{ id: 'lyrics', fragment: lyricsFragment }] : []),
+    ],
+    [fragment, lyrics, lyricsFragment],
+  );
+  const previews = usePromptPreviews(previewSources, previewWords);
 
   const creditText = useCreditText(
     vm.modelEntry,
@@ -694,6 +712,11 @@ function AudioGeneratePanelBody({
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
       promptLabel={promptLabel}
+      promptPlaceholder={promptPlaceholder}
+      expanded={expanded}
+      onExpand={onExpand}
+      promptPreview={previews.prompt ?? ''}
+      lyricsPreview={previews.lyrics ?? ''}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

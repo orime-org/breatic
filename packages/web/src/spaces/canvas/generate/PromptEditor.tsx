@@ -68,6 +68,13 @@ export interface PromptEditorHandle {
    * @param text - The text to insert.
    */
   insertText: (text: string) => void;
+  /**
+   * Puts the caret in this editor: back where the reader last left it, or at
+   * the end when they never put one here. Any focus counts as a placed caret
+   * from then on, so a caret dropped at the start would draw every later
+   * insert to the start.
+   */
+  focus: () => void;
 }
 
 /**
@@ -455,6 +462,10 @@ export const PromptEditor = React.forwardRef<
           .focus()
           .insertContentAt({ from, to }, { type: 'text', text: `${before}${text}${after}` })
           .run();
+      },
+      focus: (): void => {
+        if (editor.isDestroyed) return;
+        editor.commands.focus(keptOf.get(editor)?.caretPlaced === true ? null : 'end');
       },
       serializePrompt: (tokens?: MentionTokens): string | null =>
         editor.isDestroyed
