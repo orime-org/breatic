@@ -5,8 +5,10 @@
  * The table documents held before cells could hold blocks (inner#1619), kept
  * so a document that still carries one shows it.
  *
- * Documents keep these as stored, with no conversion or upgrade. One is
- * shown and its words can be edited, nothing more:
+ * Collab converts a stored one into a table whose cells hold blocks when it
+ * loads the document (#1362, `packages/collab/src/services/legacy-table-conversion.ts`);
+ * these nodes stay so a document opens before and after that. Until then one
+ * is shown and its words can be edited, nothing more:
  *
  * - The node names, attributes and content rules are the ones stored
  *   documents hold (`table > tableRow > tableCell | tableHeader >

@@ -26,7 +26,9 @@
  *
  * Temporary (#1362): it exists only to convert tables stored before inner#1619.
  * Delete this module, its call in `hocuspocus.ts` and
- * `doc_table_migrate_lock_ms` once no stored document holds a `table` element.
+ * `doc_table_migrate_lock_ms` once no stored document holds a `table` element,
+ * and then the legacy nodes in `packages/web/src/spaces/document/document-table-legacy.ts`
+ * and `packages/shared/src/document-schema.ts`.
  */
 
 import * as Y from "yjs";
@@ -332,6 +334,5 @@ export async function convertStoredTablesOnLoad(load: ConversionOnLoad): Promise
   if (!(await load.takeLock(conversionLockKey(load.documentName)))) return 0;
   const stored = await load.readStored();
   if (stored !== null) Y.applyUpdate(load.document, stored, LEGACY_TABLE_CONVERSION_ORIGIN);
-  if (!hasLegacyTable(load.document)) return 0;
   return convertLegacyTables(load.document);
 }
