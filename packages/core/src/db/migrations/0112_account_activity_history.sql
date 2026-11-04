@@ -4,8 +4,8 @@
 -- Product database: durable interaction history; intentionally no backfill.
 CREATE TABLE account_activity_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  project_id uuid REFERENCES projects(id) ON DELETE RESTRICT,
+  user_id uuid NOT NULL CONSTRAINT account_activity_events_user_id_fkey REFERENCES users(id) ON DELETE RESTRICT,
+  project_id uuid CONSTRAINT account_activity_events_project_id_fkey REFERENCES projects(id) ON DELETE RESTRICT,
   kind text NOT NULL,
   occurred_at timestamptz NOT NULL DEFAULT now(),
   visit_id uuid,
