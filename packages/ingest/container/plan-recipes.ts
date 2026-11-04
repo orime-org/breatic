@@ -143,7 +143,7 @@ function decoderArgs(input: string, selection: string): string[] {
  */
 async function analyze(request: PlanRecipeRequest, selection: string, expectedFrameCount: number, prepared?: PlanDisplayFrame): Promise<Record<string, unknown>> {
   const recipe = request.recipe;
-  if (recipe.kind !== "people" && recipe.kind !== "scene_cuts") throw new TypeError("Expected an analysis recipe");
+  if ((recipe.kind !== "people" && recipe.kind !== "scene_cuts") || "entry" in recipe || "entries" in recipe) throw new TypeError("Expected an analysis recipe on source facts");
   const { width, height } = prepared ?? request.facts.source;
   const path = join(request.directory, "analysis-request.json");
   await writePlanJson(path, { kind: recipe.kind, width, height, expectedFrameCount, profile: recipe.profile });
@@ -222,6 +222,7 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       return { width: geometry.width, height: geometry.height, durationSeconds: null, cover: null };
     }
     case "people": {
+      if ("entry" in recipe) throw new TypeError("The people recipe on entries runs as a presentation recipe");
       const anchor = facts.source.frameTable.frames[recipe.anchor.frameIndex];
       if (anchor === undefined || anchor.pts !== recipe.anchor.pts) throw new Error("Analysis anchor differs from the frozen source ledger");
       const prepared = recipe.orientation === "display"
@@ -233,6 +234,7 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       return { ...NO_MEDIA };
     }
     case "scene_cuts": {
+      if ("entries" in recipe) throw new TypeError("The scene_cuts recipe on entries runs as a presentation recipe");
       const mapping = facts.source.frameTable.frames.filter((frame) => frame.pts >= recipe.range.start && frame.pts < recipe.range.end);
       if (mapping.length === 0) throw new Error("Scene range has no source frames");
       const result = await analyze(request, `select=between(n\\,${mapping[0]!.frameIndex}\\,${mapping[mapping.length - 1]!.frameIndex})`, mapping.length);
@@ -241,6 +243,7 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       return { ...NO_MEDIA };
     }
     case "segment": {
+      if ("entries" in recipe) throw new TypeError("The segment recipe on entries runs as a presentation recipe");
       const start = recipe.range.start;
       const count = facts.source.frameTable.frames.filter((frame) => frame.pts >= start && frame.pts < recipe.range.end).length;
       if (count === 0) throw new Error("Segment range has no source frames");

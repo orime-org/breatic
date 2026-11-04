@@ -18,11 +18,22 @@ import type { PlanLimits } from "@ingest/container/plan-recipes.js";
 import { probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
+import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
+import { readSceneCutObservations, readYuNetFaces } from "@ingest/container/analysis-detection.js";
 
 /** The recipes this module runs. */
-export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }> | FrameRecipe;
+export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }>
+  | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe;
 /** A still frame on a full-ledger entry (§91 D4-3). */
 type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: "frame"; entry: MiniToolPlanEntry }>;
+/** People detection on the anchor's entry (§91 D4-5). */
+type PeopleRecipe = Extract<MiniToolPlanRecipe, { kind: "people"; entry: MiniToolPlanEntry }>;
+/** Scene detection over a window's entries (§91 D4-5). */
+type SceneRecipe = Extract<MiniToolPlanRecipe, { kind: "scene_cuts"; entries: unknown }>;
+/** A split segment on a window's entries (§91 D4-4). */
+type SegmentRecipe = Extract<MiniToolPlanRecipe, { kind: "segment"; entries: unknown }>;
+/** The process lifetime and IO bounds of one command. */
+type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number };
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
   recipe: PresentationRecipe;
@@ -44,11 +55,11 @@ const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601
 /**
  * Whether a recipe is one of the presentation recipes.
  * @param recipe - A validated recipe.
- * @returns True for copy, chunk, stitch, model input and a frame on a full-ledger entry.
+ * @returns True for copy, chunk, stitch, model input, and frame, people, scene_cuts and segment on full-ledger entries.
  * @throws {never} Never.
  */
 export function isPresentationRecipe(recipe: MiniToolPlanRecipe): recipe is PresentationRecipe {
-  return KINDS.has(recipe.kind) || (recipe.kind === "frame" && "entry" in recipe);
+  return KINDS.has(recipe.kind) || "entry" in recipe || ((recipe.kind === "scene_cuts" || recipe.kind === "segment") && "entries" in recipe);
 }
 
 /**
@@ -124,7 +135,10 @@ function picture(target: MiniToolPlanTarget, label: string): string {
   const head = `${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${rect.width}:${rect.height}:in_color_matrix=${matrix}`;
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
-  const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
+  const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
+  // A VP9 split output keeps its display size, odd sides included, and its straight alpha (§4.3 odd-size row, §91 D4-4).
+  if (target.format === "webm-vp9") return `${head}:out_color_matrix=bt709:out_range=tv,format=${target.alpha === "straight" ? "yuva420p" : "yuv420p"},setsar=1,${unrotated}`;
+  const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${unrotated}`;
   if (target.alpha === "none") return `${head}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${pad},${tail}`;
   return `${head},format=gbrap,split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=rgb24,${pad}[${label}c];` +
     `[${label}a]alphaextract,format=rgb24,${pad}[${label}m];[${label}c][${label}m]hstack,${tail}`;
@@ -319,23 +333,25 @@ async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<M
   return best === null ? clip : [best * tickNumerator, tickDenominator];
 }
 
+/** The inputs and filter graph presenting a window's frames, ending at `[v]`. */
+interface WindowGraph { args: string[]; graph: string[]; inputs: number; facts: SourceFacts }
+
 /**
- * Render a window (§5.4 chunking and chunk time; §7.17 entries): each source span decodes from its keyframe and shows from its clip
- * start, each derived-empty entry is one black frame, all on a `1/timescale` clock from 0 that opens with a keyframe; the
- * next frame's start ends each frame and the window end ends the last, so a held frame keeps its span. A model input adds
- * its interval's audio (§5.3, §91 D3-4); a chunk has none.
- * @param recipe - The chunk or model-input recipe.
+ * Present a window's entries as frames (§5.4 chunking and chunk time; §7.17 entries): each source span decodes from its
+ * keyframe on the media timeline and shows from its clip start at its rate, each derived-empty entry is one composed frame,
+ * all on a `1/timescale` clock from 0, one output frame per presented frame.
+ * @param entries - The window's entries.
+ * @param clock - The timescale.
  * @param source - The downloaded source.
- * @param output - The MP4 to write.
  * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
+ * @param frame - The chain after a source span's timing, given a unique label prefix.
+ * @param empty - The source of one composed frame for a derived-empty entry.
+ * @returns The inputs and graph.
  * @throws {RangeError} When a time is malformed.
- * @throws {Error} When FFmpeg fails.
+ * @throws {Error} When ffprobe fails.
  */
-async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_encode" | "prepare_model_input" }>, source: string, output: string,
-  run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<void> {
-  const { entries, target } = recipe;
-  const clock = BigInt(recipe.timescale);
+async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint, source: string, run: Run,
+  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
   const graph: string[] = [];
@@ -344,8 +360,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   for (const [at, entry] of entries.entries()) {
     const offset = roundTimes(minus(span(entry).start, origin), clock);
     if (entry.kind === "empty") {
-      // Black: a transparent fill packs to black colour and black alpha.
-      graph.push(`color=c=black:s=${target.width}x${target.height}:r=1:d=1,format=yuv420p,setsar=1,${BT709_TAGS},settb=1/${clock},setpts=${offset}[e${at}]`);
+      graph.push(`${empty(entry)},settb=1/${clock},setpts=${offset}[e${at}]`);
       continue;
     }
     // At rate a/b the span shows media [clipStart, clipStart + length·a/b), each frame for its media duration·b/a (§7.17).
@@ -356,19 +371,71 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
-      `setpts=max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${offset},${picture(target, `p${at}`)}[e${at}]`);
+      `setpts=max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${offset},${frame(`p${at}`)}[e${at}]`);
     inputs += 1;
   }
   graph.push(`${entries.map((_entry, at) => `[e${at}]`).join("")}interleave=nb_inputs=${entries.length},settb=1/${clock}[v]`);
-  const audio = recipe.kind === "prepare_model_input" && recipe.audio !== null && facts.audio ? audioOf(inputs, recipe.audio) : null;
+  return { args, graph, inputs, facts };
+}
+
+/**
+ * The video encoder, frame timing and muxer of a target: H.264 MP4 on the presentation track clock, or a VP9 WebM split
+ * output with its alpha (§91 D4-4); the next frame's start ends each frame and the window end ends the last.
+ * @param target - The target.
+ * @param clock - The timescale.
+ * @param end - The window end in ticks.
+ * @returns The encoder and timing arguments, and the muxer arguments.
+ * @throws {never} Never.
+ */
+function videoOutput(target: MiniToolPlanTarget, clock: bigint, end: bigint): { video: string[]; muxer: string[] } {
+  const timing = ["-fps_mode", "passthrough", "-enc_time_base:v", `1/${clock}`, "-bsf:v", `setts=duration=if(eq(NEXT_PTS\\,NOPTS)\\,${end}-PTS\\,NEXT_PTS-PTS)`];
+  if (target.format === "webm-vp9") {
+    const alpha = target.alpha === "straight";
+    return { video: ["-c:v", "libvpx-vp9", "-pix_fmt", alpha ? "yuva420p" : "yuv420p", "-crf", String(target.crf), "-b:v", "0", "-deadline", "good", "-row-mt", "1",
+      ...(alpha ? ["-auto-alt-ref", "0"] : []), ...timing], muxer: ["-f", "webm"] };
+  }
+  return { video: ["-c:v", "libx264", "-preset", target.preset, "-crf", String(target.crf), "-bf", "0", "-pix_fmt", "yuv420p", ...timing, "-video_track_timescale", String(clock)],
+    muxer: ["-movflags", "+faststart", "-f", "mp4"] };
+}
+
+/**
+ * The audio encoder of a target: AAC in MP4, Opus in a VP9 WebM split output (§7.17 segment row).
+ * @param target - The target.
+ * @returns The audio mapping and encoder arguments.
+ * @throws {never} Never.
+ */
+function audioOutput(target: MiniToolPlanTarget): string[] {
+  return target.format === "webm-vp9" ? ["-map", "[a]", "-c:a", "libopus", "-ar", "48000"] : AAC;
+}
+
+/**
+ * Render a window into its target (§5.4; §7.17 segment row): the window's frames with the target picture, opening with a
+ * keyframe; a model input or a segment adds its interval's audio (§5.3, §91 D3-4, D4-4), a chunk has none.
+ * @param recipe - The chunk, model-input or segment recipe.
+ * @param source - The downloaded source.
+ * @param output - The file to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns Nothing once written.
+ * @throws {RangeError} When a time is malformed.
+ * @throws {Error} When FFmpeg fails.
+ */
+async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_encode" | "prepare_model_input" }> | SegmentRecipe, source: string, output: string, run: Run): Promise<void> {
+  const { entries, target } = recipe;
+  const clock = BigInt(recipe.timescale);
+  const transparent = target.format === "webm-vp9" && target.alpha === "straight";
+  // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
+  const window = await windowGraph(entries, clock, source, run, (label) => picture(target, label),
+    (entry) => `color=c=black${transparent && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,` +
+      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`);
+  const { args, graph } = window;
+  const audio = recipe.kind !== "chunk_encode" && recipe.audio !== null && window.facts.audio ? audioOf(window.inputs, recipe.audio) : null;
   if (audio !== null) {
     args.push(...audio.args, source);
     graph.push(audio.graph);
   }
-  const end = roundTimes(minus(span(entries[entries.length - 1]!).end, origin), clock);
-  args.push("-filter_complex", graph.join(";"), "-map", "[v]", "-c:v", "libx264", "-preset", target.preset, "-crf", String(target.crf), "-bf", "0", "-pix_fmt", "yuv420p",
-    "-fps_mode", "passthrough", "-enc_time_base:v", `1/${clock}`, "-bsf:v", `setts=duration=if(eq(NEXT_PTS\\,NOPTS)\\,${end}-PTS\\,NEXT_PTS-PTS)`,
-    "-video_track_timescale", String(clock), ...(audio === null ? ["-an"] : AAC), "-movflags", "+faststart", "-f", "mp4", output);
+  const end = roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock);
+  const { video, muxer } = videoOutput(target, clock, end);
+  args.push("-filter_complex", graph.join(";"), "-map", "[v]", ...video, ...(audio === null ? ["-an"] : audioOutput(target)), ...muxer, output);
   await runPlanCommand("ffmpeg", args, run);
 }
 
@@ -391,7 +458,8 @@ async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, f
   const source = local(files, recipe.inputId);
   const audio = recipe.audio !== null && (await sourceFacts(source, run)).audio ? audioOf(1, recipe.audio) : null;
   if (audio !== null) args.push(...audio.args, source, "-filter_complex", audio.graph);
-  args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : AAC), "-movflags", "+faststart", "-f", "mp4", output);
+  const webm = recipe.target.format === "webm-vp9";
+  args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : audioOutput(recipe.target)), ...(webm ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), output);
   await runPlanCommand("ffmpeg", args, run);
 }
 
@@ -447,6 +515,94 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
 }
 
 /**
+ * Run the pinned detector process on raw BGR frames (the separate Python process, as the source-facts analyses run it).
+ * @param kind - The detector.
+ * @param profile - Its frozen profile.
+ * @param frames - The geometry and count of the frames, and the FFmpeg arguments that write them to stdout.
+ * @param frames.width - Their width.
+ * @param frames.height - Their height.
+ * @param frames.count - How many there are.
+ * @param frames.args - The FFmpeg arguments.
+ * @param directory - The run's directory.
+ * @param signal - The lifetime.
+ * @param limits - The frozen IO bounds.
+ * @returns The detector's JSON object.
+ * @throws {Error} When the detector, its input or its JSON fails.
+ */
+async function detect(kind: "people" | "scene_cuts", profile: unknown, frames: { width: number; height: number; count: number; args: string[] }, directory: string,
+  signal: AbortSignal, limits: PlanLimits): Promise<Record<string, unknown>> {
+  const path = join(directory, "analysis-request.json");
+  await writeJson(path, { kind, width: frames.width, height: frames.height, expectedFrameCount: frames.count, profile });
+  const answer: unknown = JSON.parse(Buffer.from(await runAnalysisPipeline({
+    decoder: { program: "ffmpeg", args: frames.args }, processor: { program: "python3", args: ["/app/analysis-runtime.py", path] },
+    width: frames.width, height: frames.height, expectedFrameCount: frames.count, signal,
+    limits: { stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes },
+  })).toString("utf8"));
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) throw new TypeError("Expected a complete detector object");
+  return answer as Record<string, unknown>;
+}
+
+/**
+ * Store JSON facts as text without allowing a string to mimic SVG bytes.
+ * @param output - The file.
+ * @param value - The value.
+ * @returns Nothing once written.
+ * @throws {Error} When writing fails.
+ */
+async function writeJson(output: string, value: unknown): Promise<void> {
+  await writeFile(output, JSON.stringify(value).replace(/</g, "\\u003c"));
+}
+
+/**
+ * Detect people on the anchor's frame (§7.17 people anchor row, §91 D4-5): the frame is rendered upright at the target size,
+ * and the JSON gives the candidates in that display geometry, with no anchor (the accepted record holds it, §93 D5-8).
+ * @param recipe - The people recipe.
+ * @param source - The downloaded source.
+ * @param output - The JSON to write.
+ * @param request - The run's directory, lifetime and bounds.
+ * @param run - The lifetime and IO bounds of one command.
+ * @returns Nothing once written.
+ * @throws {Error} When rendering, detection or writing fails.
+ */
+async function detectPeople(recipe: PeopleRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
+  const { width, height } = recipe.target;
+  const anchor = join(request.directory, "people-anchor.png");
+  await renderFrame({ kind: "frame", inputId: recipe.inputId, entry: recipe.entry, target: recipe.target }, source, anchor, run);
+  const result = await detect("people", recipe.profile, { width, height, count: 1,
+    args: ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-i", anchor, "-map", "0:v:0", "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"] },
+  request.directory, request.signal, request.limits);
+  await writeJson(output, { schemaVersion: 1, kind: "people", coordinateSpace: "display", width, height, candidates: readYuNetFaces(result.faces, { width, height }, true) });
+}
+
+/**
+ * Detect scene cuts over a window (§7.17 scene_cuts row, §91 D4-5): the window's frames are presented in display geometry,
+ * one per presented frame, and each cut is recorded by its presentation ordinal (§93 D5-8).
+ * @param recipe - The scene_cuts recipe.
+ * @param source - The downloaded source.
+ * @param output - The JSON to write.
+ * @param request - The run's directory, lifetime and bounds.
+ * @param run - The lifetime and IO bounds of one command.
+ * @returns Nothing once written.
+ * @throws {RangeError} When the plan matrix has no decode value.
+ * @throws {Error} When rendering, detection or writing fails.
+ */
+async function detectScenes(recipe: SceneRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
+  const { width, height, colorMatrix, toneMap } = recipe.target;
+  const matrix = SCALE_MATRICES[colorMatrix];
+  if (matrix === undefined) throw new RangeError(`No decode matrix for ${colorMatrix}`);
+  const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
+    () => `${toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
+  const count = recipe.window.end - recipe.window.start;
+  const result = await detect("scene_cuts", recipe.profile, { width, height, count,
+    args: [...window.args, "-filter_complex", window.graph.join(";"), "-map", "[v]", "-fps_mode", "passthrough", "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"] },
+  request.directory, request.signal, request.limits);
+  const ordinals = Array.from({ length: count }, (_unused, at) => ({ frameIndex: recipe.window.start + at, pts: (recipe.window.start + at) / recipe.timescale }));
+  await writeJson(output, { schemaVersion: 1, kind: "scene_cuts",
+    cuts: readSceneCutObservations(result.cuts, ordinals).map((cut) => ({ ordinal: cut.frameIndex, detectionScore: cut.detectionScore })) });
+}
+
+/**
  * Run one presentation recipe and read back what it wrote.
  * @param request - The recipe, its files and lifetime.
  * @returns The output's media numbers, and for a packed stitch its packing geometry (§91 D3-3; the DO writes the manifest).
@@ -457,6 +613,11 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
   const { recipe, inputs, output, directory, signal, limits } = request;
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   if (recipe.kind === "frame") return { ...await renderFrame(recipe, local(inputs, recipe.inputId), output, run), durationSeconds: null, cover: null };
+  if (recipe.kind === "people" || recipe.kind === "scene_cuts") {
+    if (recipe.kind === "people") await detectPeople(recipe, local(inputs, recipe.inputId), output, request, run);
+    else await detectScenes(recipe, local(inputs, recipe.inputId), output, request, run);
+    return { width: null, height: null, durationSeconds: null, cover: null };
+  }
   if (recipe.kind === "copy_carrier") await copyWithMatrixTag(local(inputs, recipe.inputId), output, recipe.colorMatrix, { signal, limits });
   else if (recipe.kind === "stitch") await stitch(recipe, inputs, directory, output, run);
   else await renderWindow(recipe, local(inputs, recipe.inputId), output, run);
