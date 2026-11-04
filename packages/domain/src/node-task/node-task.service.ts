@@ -172,8 +172,11 @@ export async function settle(opts: {
     await repo.attachResult(opts.taskId, opts.nodeHistoryId);
   }
 
+  // The status read above predates the update: a concurrent report may have
+  // moved the row between the two, so only a fresh read says where it ended.
+  const landed = applied || (await repo.findById(opts.taskId))?.status === outcome;
   const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, landed: applied || row.status === outcome, counts };
+  return { applied, landed, counts };
 }
 
 /**
