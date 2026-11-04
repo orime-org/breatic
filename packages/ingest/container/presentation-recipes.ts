@@ -20,10 +20,6 @@ import { pickMediaMetadata } from "@ingest/media-metadata.js";
 
 /** The recipes this module runs. */
 export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }>;
-/** Where an alpha-packed carrier keeps its colour and alpha planes, the fields of the alpha manifest (§3.5). */
-export interface PresentationPacking { packedWidth: number; packedHeight: number; colorRect: MiniToolPlanPixelRect; alphaRect: MiniToolPlanPixelRect }
-/** What a presentation recipe produced. */
-export type PresentationOutput = MediaOfOutput & { packing?: PresentationPacking };
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
   recipe: PresentationRecipe;
@@ -147,6 +143,19 @@ function audioOf(input: number, interval: { start: MiniToolPlanExact; end: MiniT
 const AAC = ["-map", "[a]", "-c:a", "aac", "-ar", "48000"];
 
 /**
+ * Whether the source has an audio stream: the plan does not record it, so a recipe always names its interval and the
+ * output carries audio only when there is some (§91 D3b-2; §7.17 the first audio stream in ffprobe order).
+ * @param source - The downloaded source.
+ * @param run - The lifetime and IO bounds.
+ * @returns Whether ffprobe lists an audio stream.
+ * @throws {Error} When ffprobe fails.
+ */
+async function hasAudio(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<boolean> {
+  const listed = await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", source], run);
+  return listed.toString("utf8").trim() !== "";
+}
+
+/**
  * The start of the source frame shown at a span's clip start: the last video packet at or before it, read from the span's
  * keyframe on. A span starting on its keyframe starts on a frame.
  * @param source - The downloaded source.
@@ -217,7 +226,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     inputs += 1;
   }
   graph.push(`${entries.map((_entry, at) => `[e${at}]`).join("")}interleave=nb_inputs=${entries.length},settb=1/${clock}[v]`);
-  const audio = recipe.kind === "prepare_model_input" ? recipe.audio : null;
+  const audio = recipe.kind === "prepare_model_input" && await hasAudio(source, run) ? recipe.audio : null;
   if (audio !== null) {
     args.push("-i", source);
     graph.push(audioOf(inputs, audio));
@@ -245,8 +254,10 @@ async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, f
   const list = join(directory, "stitch.txt");
   await writeFile(list, recipe.chunks.map((chunk) => `file '${local(files, chunk.inputId)}'\nduration ${seconds(rational(chunk.duration))}\n`).join(""));
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-f", "concat", "-safe", "0", "-i", list];
-  if (recipe.audio !== null) args.push("-i", local(files, recipe.inputId), "-filter_complex", audioOf(1, recipe.audio));
-  args.push("-map", "0:v:0", "-c:v", "copy", ...(recipe.audio === null ? ["-an"] : AAC), "-movflags", "+faststart", "-f", "mp4", output);
+  const source = local(files, recipe.inputId);
+  const audio = await hasAudio(source, run) ? recipe.audio : null;
+  if (audio !== null) args.push("-i", source, "-filter_complex", audioOf(1, audio));
+  args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : AAC), "-movflags", "+faststart", "-f", "mp4", output);
   await runPlanCommand("ffmpeg", args, run);
 }
 
@@ -269,7 +280,7 @@ function local(files: ReadonlyMap<string, string>, inputId: string): string {
  * @returns The output's media numbers, and for a packed stitch its packing geometry (§91 D3-3; the DO writes the manifest).
  * @throws {Error} When a process fails or the output has no complete video metadata.
  */
-export async function executePresentationRecipe(request: PresentationRecipeRequest): Promise<PresentationOutput> {
+export async function executePresentationRecipe(request: PresentationRecipeRequest): Promise<MediaOfOutput> {
   request.signal.throwIfAborted();
   const { recipe, inputs, output, directory, signal, limits } = request;
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
