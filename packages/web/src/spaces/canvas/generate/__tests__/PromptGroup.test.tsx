@@ -7,11 +7,24 @@
  * and a box is never unmounted, so what it holds stays.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { PromptGroup, type PromptGroupItem } from '@web/spaces/canvas/generate/PromptGroup';
+
+/**
+ * A prompt holding some lines.
+ * @param lines - One paragraph each.
+ * @returns The fragment, inside a document.
+ */
+function words(...lines: string[]): Y.XmlFragment {
+  const fragment = new Y.Doc().getXmlFragment('prompt');
+  writePlainTextIntoBody(fragment, lines.join('\n'));
+  return fragment;
+}
 
 /**
  * One prompt row.
@@ -23,7 +36,7 @@ function item(id: string, over: Partial<PromptGroupItem> = {}): PromptGroupItem 
   return {
     id,
     name: `Name ${id}`,
-    preview: `First line of ${id}`,
+    fragment: words(`First line of ${id}`, 'more'),
     placeholder: `Describe ${id}`,
     editor: <textarea data-testid={`box-${id}`} aria-label={`box ${id}`} />,
     ...over,
@@ -60,7 +73,7 @@ describe('the prompt group', () => {
   it('shows a collapsed row its first line, the placeholder when it is empty, and the open row neither', () => {
     render(
       <PromptGroup
-        items={[item('a'), item('b'), item('c', { preview: '' })]}
+        items={[item('a'), item('b'), item('c', { fragment: words() })]}
         value='a'
         onValueChange={vi.fn()}
       />,
@@ -69,6 +82,25 @@ describe('the prompt group', () => {
     expect(screen.getByRole('button', { name: /Name b/ })).toHaveTextContent('First line of b');
     expect(screen.getByRole('button', { name: /Name c/ })).toHaveTextContent('Describe c');
     expect(screen.getByRole('button', { name: /Name a/ })).not.toHaveTextContent('First line of a');
+  });
+
+  it('follows what is typed into a closed prompt', () => {
+    const b = item('b', { fragment: words('Old line') });
+    render(<PromptGroup items={[item('a'), b]} value='a' onValueChange={vi.fn()} />);
+
+    act(() => {
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText('New first line')]);
+      b.fragment?.insert(0, [paragraph]);
+    });
+
+    expect(screen.getByRole('button', { name: /Name b/ })).toHaveTextContent('New first line');
+  });
+
+  it('shows the placeholder on the row of a prompt with nothing stored', () => {
+    render(<PromptGroup items={[item('a'), item('b', { fragment: null })]} value='a' onValueChange={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /Name b/ })).toHaveTextContent('Describe b');
   });
 
   it('draws a lone prompt with its name as today, not as a row to click', () => {

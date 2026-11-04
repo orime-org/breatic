@@ -845,7 +845,8 @@ export function renderProductGuide(): string {
       "Only one shot is open at a time, the first when the panel opens: each other shot is one row showing its " +
       "number, its seconds and the first line of its words, and its minus, plus and " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} still work there. Clicking a row opens that ` +
-      "shot and folds the open one; an added shot opens; removing the open shot opens the one after it; and " +
+      "shot and folds the open one; an added shot opens; removing the open shot opens the one after it, or the " +
+      "one before it when it was the last; and " +
       "clicking a chip in the strip puts it in the open shot's box. Under the " +
       `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
       "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +

@@ -54,7 +54,6 @@ import {
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
-import { usePromptPreviews } from '@web/spaces/canvas/generate/prompt-preview';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -274,6 +273,8 @@ function AudioGeneratePanelBody({
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
+  /** The lyrics box's words while the box is on the panel: asked for, and seeded on the node. */
+  const shownLyricsFragment = lyrics ? lyricsFragment : null;
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasSession((s) => {
     const session = s.pickSession;
@@ -442,14 +443,13 @@ function AudioGeneratePanelBody({
   );
   // Which of the two boxes is open while both are there (#1201); the style box
   // whenever the lyrics box is not, and again each time it comes back.
-  const [openedBox, setOpenedBox] = React.useState<'prompt' | 'lyrics'>('prompt');
-  if (!lyrics && openedBox !== 'prompt') setOpenedBox('prompt');
-  const expanded = lyrics ? openedBox : 'prompt';
+  const [expanded, setExpanded] = React.useState<'prompt' | 'lyrics'>('prompt');
+  if (shownLyricsFragment === null && expanded !== 'prompt') setExpanded('prompt');
   // Set by the reader's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
     focusOnOpen.current = true;
-    setOpenedBox(box);
+    setExpanded(box);
   }, []);
   React.useEffect(() => {
     if (!focusOnOpen.current) return;
@@ -614,7 +614,7 @@ function AudioGeneratePanelBody({
   const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      lyrics && lyricsFragment ? (
+      shownLyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
@@ -622,7 +622,7 @@ function AudioGeneratePanelBody({
           // blank line between blocks, which reads as prose; here the line
           // structure is the content and the vendor is handed it as typed.
           blockSeparator={'\n'}
-          fragment={lyricsFragment}
+          fragment={shownLyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
           // The `@` chip carries no id to the vendor here; it substitutes the
@@ -639,8 +639,7 @@ function AudioGeneratePanelBody({
         />
       ) : null,
     [
-      lyrics,
-      lyricsFragment,
+      shownLyricsFragment,
       lyricsPlaceholder,
       onLyricsChange,
       references,
@@ -649,22 +648,6 @@ function AudioGeneratePanelBody({
       lyricsEditorRef,
     ],
   );
-
-  // Each box's first line for its row while it is closed.
-  const referenceWord = t('canvas.generatePanel.reference');
-  const notePrefix = t('canvas.generatePanel.notePrefix');
-  const previewWords = React.useMemo(
-    () => ({ reference: referenceWord, notePrefix }),
-    [referenceWord, notePrefix],
-  );
-  const previewSources = React.useMemo(
-    () => [
-      ...(fragment ? [{ id: 'prompt', fragment }] : []),
-      ...(lyrics && lyricsFragment ? [{ id: 'lyrics', fragment: lyricsFragment }] : []),
-    ],
-    [fragment, lyrics, lyricsFragment],
-  );
-  const previews = usePromptPreviews(previewSources, previewWords);
 
   const creditText = useCreditText(
     vm.modelEntry,
@@ -715,8 +698,8 @@ function AudioGeneratePanelBody({
       promptPlaceholder={promptPlaceholder}
       expanded={expanded}
       onExpand={onExpand}
-      promptPreview={previews.prompt ?? ''}
-      lyricsPreview={previews.lyrics ?? ''}
+      promptFragment={fragment}
+      lyricsFragment={shownLyricsFragment}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

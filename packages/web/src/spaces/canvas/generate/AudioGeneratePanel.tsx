@@ -3,6 +3,7 @@
 
 import { ArrowUp, Star, X } from 'lucide-react';
 import * as React from 'react';
+import type * as Y from 'yjs';
 
 import type { GenerationTemplate, ModelEntry, Voice } from '@breatic/shared';
 
@@ -111,10 +112,10 @@ interface AudioGeneratePanelProps {
   expanded: 'prompt' | 'lyrics';
   /** The reader opened the other box. */
   onExpand: (box: 'prompt' | 'lyrics') => void;
-  /** The prompt's first line, as its box shows it. */
-  promptPreview: string;
-  /** The lyrics' first line, as their box shows it. */
-  lyricsPreview: string;
+  /** The prompt's words, for its row's first line while it is closed. */
+  promptFragment: Y.XmlFragment | null;
+  /** The lyrics' words, for their row's first line while they are closed. */
+  lyricsFragment: Y.XmlFragment | null;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -179,8 +180,8 @@ interface AudioGeneratePanelProps {
  * @param root0.promptPlaceholder - What the closed, empty prompt row shows.
  * @param root0.expanded - Which box is open while both are there.
  * @param root0.onExpand - Called with the box the reader opened.
- * @param root0.promptPreview - The prompt's first line.
- * @param root0.lyricsPreview - The lyrics' first line.
+ * @param root0.promptFragment - The prompt's words.
+ * @param root0.lyricsFragment - The lyrics' words.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -224,8 +225,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   promptPlaceholder,
   expanded,
   onExpand,
-  promptPreview,
-  lyricsPreview,
+  promptFragment,
+  lyricsFragment,
   references,
   referencePicking = false,
   slots,
@@ -280,7 +281,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
     const style: PromptGroupItem = {
       id: 'prompt',
       name: promptLabel,
-      preview: promptPreview,
+      fragment: promptFragment,
       placeholder: promptPlaceholder,
       editor: promptSlot,
       testId: 'generate-prompt-group-prompt',
@@ -291,7 +292,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
       {
         id: 'lyrics',
         name: lyricsLabel,
-        preview: lyricsPreview,
+        fragment: lyricsFragment,
         placeholder: lyricsPlaceholder,
         editor: lyricsSlot,
         testId: 'generate-prompt-group-lyrics',
@@ -299,12 +300,12 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
     ];
   }, [
     promptLabel,
-    promptPreview,
+    promptFragment,
     promptPlaceholder,
     promptSlot,
     lyricsSlot,
     lyricsLabel,
-    lyricsPreview,
+    lyricsFragment,
     lyricsPlaceholder,
   ]);
   const onPick = React.useCallback(
@@ -399,7 +400,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           a control's name. */}
       <PromptGroup
         items={boxes}
-        value={lyricsSlot === null ? 'prompt' : expanded}
+        value={expanded}
         onValueChange={onPick}
         className='gap-2.5'
         nameClassName='text-xs font-medium text-muted-foreground'

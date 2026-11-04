@@ -25,6 +25,7 @@ import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import * as Y from 'yjs';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
@@ -76,6 +77,17 @@ function renderPanel(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
+/**
+ * A box's words, in a document so they can be read.
+ * @param text - The words.
+ * @returns The fragment.
+ */
+function words(text: string): Y.XmlFragment {
+  const fragment = new Y.Doc().getXmlFragment('prompt');
+  writePlainTextIntoBody(fragment, text);
+  return fragment;
+}
+
 /** The props every case supplies, so a case names only what it exercises. */
 const BASE = {
   models: [ELEVEN, FISH],
@@ -101,8 +113,8 @@ const BASE = {
   promptPlaceholder: 'Describe the style',
   expanded: 'prompt' as const,
   onExpand: (): void => {},
-  promptPreview: '',
-  lyricsPreview: '',
+  promptFragment: null,
+  lyricsFragment: null,
   references: [],
   params: {},
   referencePicking: false,
@@ -420,7 +432,7 @@ describe('AudioGeneratePanel — the box labels', () => {
         promptLabel={STYLE_LABEL}
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={<div data-testid='lyrics-editor' />}
-        lyricsPreview='Walking down the empty street'
+        lyricsFragment={words('Walking down the empty street')}
       />,
     );
     expect(screen.getByTestId('prompt-editor')).toBeVisible();
@@ -451,7 +463,7 @@ describe('AudioGeneratePanel — the box labels', () => {
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={<div data-testid='lyrics-editor' />}
         expanded='lyrics'
-        promptPreview='Lo-fi hip hop, mellow piano'
+        promptFragment={words('Lo-fi hip hop, mellow piano')}
       />,
     );
     expect(screen.getByTestId('lyrics-editor')).toBeVisible();

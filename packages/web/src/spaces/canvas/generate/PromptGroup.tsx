@@ -13,10 +13,12 @@
  * only swaps its row for its plain name, as it was before there were rows.
  */
 
-import * as React from 'react';
+import type * as React from 'react';
+import type * as Y from 'yjs';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@web/components/ui/accordion';
 import { cn } from '@web/lib/utils';
+import { usePromptPreviewLine } from '@web/spaces/canvas/generate/prompt-preview';
 
 /** One prompt in the group. */
 export interface PromptGroupItem {
@@ -26,9 +28,12 @@ export interface PromptGroupItem {
   readonly name: string | undefined;
   /** Controls beside the name, which work whether the prompt is open or not. */
   readonly controls?: React.ReactNode;
-  /** The first line of its words, shown on its row while it is closed. */
-  readonly preview: string;
-  /** What the row shows in place of an empty preview. */
+  /**
+   * The prompt's words, whose first line its row shows while it is closed;
+   * null for a box with no stored prompt, whose row shows the placeholder.
+   */
+  readonly fragment: Y.XmlFragment | null;
+  /** What the row shows when the prompt has no words. */
   readonly placeholder: string;
   /** The box. */
   readonly editor: React.ReactNode;
@@ -71,14 +76,8 @@ export function PromptGroup({
   nameClassName = 'text-xs font-medium text-foreground',
 }: PromptGroupProps): React.JSX.Element {
   const lone = items.length === 1;
-  const onChange = React.useCallback(
-    (next: string) => {
-      if (next !== '') onValueChange(next);
-    },
-    [onValueChange],
-  );
   return (
-    <Accordion type='single' value={value} onValueChange={onChange} className={cn('flex flex-col gap-2', className)}>
+    <Accordion type='single' value={value} onValueChange={onValueChange} className={cn('flex flex-col gap-2', className)}>
       {items.map((item) => {
         const open = item.id === value;
         const name = <span className={cn('shrink-0', nameClassName)}>{item.name}</span>;
@@ -97,14 +96,11 @@ export function PromptGroup({
                   <AccordionTrigger data-testid={item.testId === undefined ? undefined : `${item.testId}-toggle`}>
                     {name}
                     {!open && (
-                      <span
-                        className={cn(
-                          'min-w-0 truncate text-xs',
-                          item.preview === '' ? 'text-muted-foreground' : 'text-foreground',
-                        )}
-                      >
-                        {item.preview === '' ? item.placeholder : item.preview}
-                      </span>
+                      item.fragment === null ? (
+                        <PreviewText line='' placeholder={item.placeholder} />
+                      ) : (
+                        <PreviewLine fragment={item.fragment} placeholder={item.placeholder} />
+                      )
                     )}
                   </AccordionTrigger>
                 )}
@@ -119,4 +115,31 @@ export function PromptGroup({
       })}
     </Accordion>
   );
+}
+
+/**
+ * A closed row's line, or its placeholder when the prompt has no words.
+ * @param root0 - Component props.
+ * @param root0.line - The line.
+ * @param root0.placeholder - What shows in its place when it is empty.
+ * @returns The text.
+ */
+function PreviewText({ line, placeholder }: { line: string; placeholder: string }): React.JSX.Element {
+  return (
+    <span className={cn('min-w-0 truncate text-xs', line === '' ? 'text-muted-foreground' : 'text-foreground')}>
+      {line === '' ? placeholder : line}
+    </span>
+  );
+}
+
+/**
+ * A closed row's line, following the prompt while the row is closed; an open
+ * prompt draws no row line and follows nothing.
+ * @param root0 - Component props.
+ * @param root0.fragment - The prompt.
+ * @param root0.placeholder - What shows when it has no words.
+ * @returns The text.
+ */
+function PreviewLine({ fragment, placeholder }: { fragment: Y.XmlFragment; placeholder: string }): React.JSX.Element {
+  return <PreviewText line={usePromptPreviewLine(fragment)} placeholder={placeholder} />;
 }

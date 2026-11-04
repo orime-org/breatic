@@ -339,6 +339,8 @@ describe("what the guide says", () => {
     expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
     expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
     expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
+    expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
     expect(panel).not.toMatch(/clicked into last/);
     // AudioGeneratePanel.tsx: the style and lyrics boxes, one open at a time.
     expect(panel).toMatch(/Only one of the two is open at a time/);

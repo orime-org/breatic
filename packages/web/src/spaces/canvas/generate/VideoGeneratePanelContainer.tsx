@@ -67,7 +67,6 @@ import {
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { AddShotRow, ShotList, addBlockedKey } from '@web/spaces/canvas/generate/storyboard-controls';
-import { usePromptPreviews } from '@web/spaces/canvas/generate/prompt-preview';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -951,18 +950,6 @@ function VideoGeneratePanelBody({
     () => (spec && shots ? addBlockedKey(shots.map((shot) => shot.duration), total, spec.maxShots) : undefined),
     [spec, shots, total],
   );
-  // Each shot's first line for its row while it is closed.
-  const referenceWord = t('canvas.generatePanel.reference');
-  const notePrefix = t('canvas.generatePanel.notePrefix');
-  const previewWords = React.useMemo(
-    () => ({ reference: referenceWord, notePrefix }),
-    [referenceWord, notePrefix],
-  );
-  const previewSources = React.useMemo(
-    () => (spec && shots ? shots.map((shot) => ({ id: shot.id, fragment: shot.prompt })) : []),
-    [spec, shots],
-  );
-  const shotPreviews = usePromptPreviews(previewSources, previewWords);
   const promptSlot = React.useMemo(() => {
     if (!vm.promptRequired) return <PromptNotUsedNotice />;
     // The shots take the prompt box's place in the multi-shot mode.
@@ -973,7 +960,6 @@ function VideoGeneratePanelBody({
           shots={shots}
           expanded={expandedShot}
           onExpand={onExpandShot}
-          previews={shotPreviews}
           placeholder={shotPlaceholder}
           onStep={onStepShot}
           onRemove={onRemoveShot}
@@ -990,7 +976,6 @@ function VideoGeneratePanelBody({
     mainEditor,
     expandedShot,
     onExpandShot,
-    shotPreviews,
     shotPlaceholder,
     renderShotEditor,
     onStepShot,

@@ -14,6 +14,7 @@
 import { Minus, Plus } from 'lucide-react';
 import * as React from 'react';
 import { addShot, stepShot } from '@breatic/shared';
+import type * as Y from 'yjs';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -70,6 +71,8 @@ export const AddShotRow = React.memo(function AddShotRow({
 export interface ShotRow {
   readonly id: string;
   readonly duration: number;
+  /** Its words, whose first line its row shows while it is closed. */
+  readonly prompt: Y.XmlFragment;
 }
 
 interface ShotListProps<Shot extends ShotRow> {
@@ -79,8 +82,6 @@ interface ShotListProps<Shot extends ShotRow> {
   expanded: string;
   /** The reader opened another shot. */
   onExpand: (shotId: string) => void;
-  /** Each shot's first line, by id, as its box shows it. */
-  previews: Readonly<Record<string, string>>;
   /** What a closed shot with no words shows. */
   placeholder: string;
   /** Move one second into or out of a shot. */
@@ -117,7 +118,6 @@ export function addBlockedKey(
  * @param root0.shots - The shots.
  * @param root0.expanded - The open shot.
  * @param root0.onExpand - Opens a shot.
- * @param root0.previews - Each shot's first line.
  * @param root0.placeholder - What an empty closed shot shows.
  * @param root0.onStep - Steps a shot's seconds.
  * @param root0.onRemove - Removes a shot.
@@ -128,7 +128,6 @@ export function ShotList<Shot extends ShotRow>({
   shots,
   expanded,
   onExpand,
-  previews,
   placeholder,
   onStep,
   onRemove,
@@ -140,7 +139,7 @@ export function ShotList<Shot extends ShotRow>({
     (shot, index): PromptGroupItem => ({
       id: shot.id,
       name: t('canvas.generatePanel.storyboard.shot', { n: index + 1 }),
-      preview: previews[shot.id] ?? '',
+      fragment: shot.prompt,
       placeholder,
       editor: renderEditor(shot, index),
       testId: `generate-storyboard-shot-${index + 1}`,

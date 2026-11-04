@@ -10,6 +10,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { AddShotRow, ShotList } from '@web/spaces/canvas/generate/storyboard-controls';
 
@@ -25,6 +27,17 @@ function row(addBlocked?: string): ReturnType<typeof render> {
 }
 
 /**
+ * A shot's words, in a document so they can be read.
+ * @param text - The words.
+ * @returns The fragment.
+ */
+function words(text: string): Y.XmlFragment {
+  const fragment = new Y.Doc().getXmlFragment('prompt');
+  writePlainTextIntoBody(fragment, text);
+  return fragment;
+}
+
+/**
  * The shot list with two or three shots, one open.
  * @param over - Props to change.
  * @returns The render result.
@@ -32,10 +45,13 @@ function row(addBlocked?: string): ReturnType<typeof render> {
 function shotList(over: Partial<React.ComponentProps<typeof ShotList>> = {}): ReturnType<typeof render> {
   return render(
     <ShotList
-      shots={[{ id: 's0', duration: 2 }, { id: 's1', duration: 3 }, { id: 's2', duration: 1 }]}
+      shots={[
+        { id: 's0', duration: 2, prompt: words('A rooftop at dawn') },
+        { id: 's1', duration: 3, prompt: words('She turns around') },
+        { id: 's2', duration: 1, prompt: words('') },
+      ]}
       expanded='s0'
       onExpand={NOOP}
-      previews={{ s0: 'A rooftop at dawn', s1: 'She turns around', s2: '' }}
       placeholder='Describe this shot'
       onStep={NOOP}
       onRemove={NOOP}
@@ -86,7 +102,7 @@ describe('the shot list', () => {
   });
 
   it('draws a lone shot with its title row as today, not as a row to click', () => {
-    shotList({ shots: [{ id: 's0', duration: 5 }] });
+    shotList({ shots: [{ id: 's0', duration: 5, prompt: words('') }] });
 
     expect(screen.getByTestId('generate-storyboard-shot-1')).toHaveTextContent('Shot 1');
     expect(screen.queryByRole('button', { name: /Shot 1/ })).toBeNull();
