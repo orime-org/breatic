@@ -19,6 +19,7 @@ import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { chunkInputId, modelInputTarget, readJobLedger, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
@@ -26,7 +27,14 @@ type UpstreamStep = upstreamStepRepo.UpstreamStep;
  * One preparation unit: its §5.4 id per attempt, its recipe, its consumption chunk index, and whether its output is the
  * prepared input the run keeps (with the chunk outputs that output consumed).
  */
-interface Unit { spec: (attempt: number) => VideoContainerJobSpec; recipe: () => MiniToolPlanRecipe | null; chunkIndex: number; final: boolean; consumed?: string[] }
+interface Unit {
+  spec: (attempt: number) => VideoContainerJobSpec;
+  /** The recipe and the inputs it binds besides the source (a stitch's chunks). */
+  recipe: () => { recipe: MiniToolPlanRecipe; inputs?: { inputId: string; storageKey: string }[] } | null;
+  chunkIndex: number;
+  final: boolean;
+  consumed?: string[];
+}
 
 /** The one input of every preparation job: the registered source. */
 const SOURCE_INPUT_ID = "00000000-0000-4000-8000-000000000001";
@@ -96,13 +104,13 @@ async function advanceUnit(execution: Removal, unit: Unit, deadlineAt: number): 
     const state = existing?.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(existing.output.miniToolStep);
     if (state?.result?.outcome === "failed") continue;
     if (existing !== undefined && state?.result?.outcome === "done") return storedRequest(existing)!.outputs[0]!.storageKey;
-    const recipe = unit.recipe();
-    if (recipe === null) throw new Error("The preparation recipe needs its chunk outputs");
+    const built = unit.recipe();
+    if (built === null) throw new Error("The preparation recipe needs its chunk outputs");
     const { preparation } = execution;
     const candidate: MiniToolPlanJobRequest = {
       schemaVersion: 2, jobId, containerClass: preparation.containerClass, deadlineAt, limits: preparation.limits,
-      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }],
-      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: "video/mp4", recipe }],
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...built.inputs ?? []],
+      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: "video/mp4", recipe: built.recipe }],
     };
     const step = existing ?? await appendStep(execution.taskId, { kind: "container_job", endpoint: preparation.containerClass, itemIndex: unit.chunkIndex });
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: unit.chunkIndex, chargeTo: "user", request: candidate });
@@ -141,16 +149,23 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
     return key;
   }
   const taskId = execution.taskId;
+  // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
+  const ledger = await readJobLedger(execution.ledgerReceipts.source, execution.presentationRef.source, deadlineAt);
+  const target = modelInputTarget(ledger, execution.preparation.encode);
+  const timescale = ledger.plan.presentation.timescale;
   if (single) {
+    const window = { start: chunks[0]!.start, end: chunks[0]!.end };
     return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep", taskId, input: 0, attempt }), chunkIndex: 0, final: true,
-      recipe: () => ({ kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window: { start: chunks[0]!.start, end: chunks[0]!.end } }) }, deadlineAt);
+      recipe: () => ({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale, entries: windowEntries(ledger, window), target,
+        audio: windowInterval(ledger, window) } }) }, deadlineAt);
   }
   const outputs: (string | null)[] = [];
   let waiting = false;
   for (const [chunk, window] of chunks.entries()) {
     try {
       outputs.push(await advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunkIndex: chunk, final: false,
-        recipe: () => ({ kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end } }) }, deadlineAt));
+        recipe: () => ({ recipe: { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale,
+          entries: windowEntries(ledger, window), target } }) }, deadlineAt));
     } catch (error) {
       if (!(error instanceof StillRunning)) throw error;
       waiting = true;
@@ -159,5 +174,9 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
   }
   if (waiting) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
   return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunkIndex: chunks.length, final: true, consumed: outputs as string[],
-    recipe: () => ({ kind: "stitch", inputId: SOURCE_INPUT_ID, chunks: outputs as string[] }) }, deadlineAt);
+    recipe: () => ({
+      recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
+        audio: windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end }), target },
+      inputs: (outputs as string[]).map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
+    }) }, deadlineAt);
 }

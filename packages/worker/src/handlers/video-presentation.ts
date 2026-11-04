@@ -18,11 +18,12 @@ import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins,
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadlineIfAhead, videoPresentationAtIngest,
   videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationChunkReport,
-  type VideoPresentationChunkUnit, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
+  type VideoPresentationChunkUnit, type VideoPresentationLedger, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
 } from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/providers/still-running.js';
+import { carrierTarget, chunkInputId, readJobLedger, wholeAudio, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
 /** The one input of every presentation sub-job: the registered source. */
 const SOURCE_INPUT_ID = '00000000-0000-4000-8000-000000000001';
@@ -33,6 +34,8 @@ interface Pickup {
   capability: { storageKey: string; sourceFingerprint: string; jobId: string; deadlineAt: number; token: string };
   answer: VideoPresentationPrepareAnswer;
   frozen: NonNullable<VideoPresentationPrepareAnswer['frozen']>;
+  /** The job's full ledger, read once per pickup when a recipe needs it. */
+  ledger?: Promise<VideoPresentationLedger>;
 }
 type Unit = VideoPresentationPrepareAnswer['units'][string];
 
@@ -75,31 +78,51 @@ function attemptJobId(jobId: string, unit: VideoPresentationChunkUnit, attempt: 
 }
 
 /**
- * The complete standard-4 request of one attempt: the frozen class and D, the source as its one input and the attempt's
- * own output key; only the outer recipe shape (§7.17).
+ * The job's full ledger, read once per pickup: the candidate's, else the selected version's when it is the planned one.
+ * @param pickup - The pickup.
+ * @returns The validated full ledger.
+ * @throws {Error} When there is no plan or receipt, or the ledger is not the planned one (§91 D3b-7).
+ */
+function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
+  const { answer, capability } = pickup;
+  const receipt = answer.candidateLedger?.receipt ?? answer.ledger?.receipt ?? null;
+  if (answer.plan === null || receipt === null) return Promise.reject(new Error('The presentation job has no planned full ledger'));
+  pickup.ledger ??= readJobLedger(receipt, answer.plan, capability.deadlineAt);
+  return pickup.ledger;
+}
+
+/**
+ * The complete standard-4 request of one attempt: the frozen class and D, the attempt's own output key, and its recipe
+ * built from the full ledger (§7.17, §91 D3b): the source as input, and for a stitch each done chunk bound beside it.
  * @param pickup - The pickup.
  * @param unit - The unit.
  * @param jobId - The attempt's job id.
  * @returns The request, or null when the recipe cannot be formed from the DO's answer.
- * @throws {never} Never.
+ * @throws {Error} When the full ledger cannot be read or is not the planned one.
  */
-function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobId: string): MiniToolPlanJobRequest | null {
+async function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobId: string): Promise<MiniToolPlanJobRequest | null> {
   const { answer, identity, capability, frozen } = pickup;
+  const windows = answer.work.kind === 'encode' ? answer.work.chunks : [];
+  const inputs = [{ inputId: SOURCE_INPUT_ID, storageKey: identity.storageKey }];
   let recipe: MiniToolPlanRecipe;
-  if (unit.kind === 'presentation-copy') recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID };
+  if (unit.kind === 'presentation-copy') recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: (await ledgerOf(pickup)).plan.colorMatrix };
   else if (unit.kind === 'presentation-chunk') {
-    const window = answer.work.kind === 'encode' ? answer.work.chunks[unit.chunk] : undefined;
+    const window = windows[unit.chunk];
     if (window === undefined) return null;
-    recipe = { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end } };
+    const ledger = await ledgerOf(pickup);
+    recipe = { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
+      entries: windowEntries(ledger, window), target: carrierTarget(ledger, frozen.carrier) };
   } else {
-    const chunks = answer.work.kind === 'encode' ? answer.work.chunks.map((_window, chunk) => doneOutput(pickup, { kind: 'presentation-chunk', chunk })) : [];
+    const chunks = windows.map((_window, chunk) => doneOutput(pickup, { kind: 'presentation-chunk', chunk }));
     if (chunks.length === 0 || chunks.some((key) => key === null)) return null;
-    recipe = { kind: 'stitch', inputId: SOURCE_INPUT_ID, chunks: chunks as string[] };
+    const ledger = await ledgerOf(pickup);
+    inputs.push(...chunks.map((key, chunk) => ({ inputId: chunkInputId(chunk), storageKey: key! })));
+    recipe = { kind: 'stitch', inputId: SOURCE_INPUT_ID, chunks: windows.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
+      audio: wholeAudio(ledger), target: carrierTarget(ledger, frozen.carrier) };
   }
   return {
     schemaVersion: 2, jobId, containerClass: frozen.pricing.standard4.containerClass, deadlineAt: capability.deadlineAt, limits: getMiniToolsConfig().plan_limits,
-    inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: identity.storageKey }],
-    outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType: 'video/mp4', recipe }],
+    inputs, outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType: 'video/mp4', recipe }],
   };
 }
 
@@ -180,7 +203,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
   for (const attempt of state.attempts) {
     const latestPending = attempt.state === 'pending' && attempt.attempt === state.attempt && state.state === 'open';
     if (!latestPending && attempt.usageRecorded) continue;
-    const request = requestFor(pickup, unit, attempt.jobId);
+    const request = await requestFor(pickup, unit, attempt.jobId);
     if (request === null) { again = true; continue; }
     let report: MiniToolPlanJobReport | null;
     if (latestPending) {
@@ -191,9 +214,10 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
       }
       if (report.state === 'done') {
         const output = report.outputs[0];
-        // A one-output job wrote a native carrier; the alpha roles come with S6d's manifest output (§90 E4-15).
-        const receipt = unit.kind !== 'presentation-chunk' && output !== undefined
-          ? { receipts: [{ role: 'carrier' as const, packing: 'native' as const, storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType }] } : {};
+        // The one carrier the job wrote: alpha-packed with the geometry the container reported, else native; the DO writes the manifest (§91 D3-3).
+        const carrier = output === undefined ? undefined : { role: 'carrier' as const, storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType,
+          ...(output.packing === undefined ? { packing: 'native' as const } : { packing: 'alpha-packed' as const, geometry: output.packing }) };
+        const receipt = unit.kind !== 'presentation-chunk' && carrier !== undefined ? { receipts: [carrier] } : {};
         await reportUnit(pickup, unit, { kind: 'Done', attempt: attempt.attempt, usage: report.usage.wallMs, ...receipt });
       } else {
         await reportUnit(pickup, unit, { kind: 'Fail', attempt: attempt.attempt, code: report.reason, usage: report.usage?.wallMs ?? null });
@@ -220,7 +244,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
  */
 async function dispatch(pickup: Pickup, unit: VideoPresentationChunkUnit): Promise<void> {
   if (!await reportUnit(pickup, unit, { kind: 'Sub' })) return;
-  const request = requestFor(pickup, unit, attemptJobId(pickup.identity.jobId, unit, 1));
+  const request = await requestFor(pickup, unit, attemptJobId(pickup.identity.jobId, unit, 1));
   if (request === null) return;
   try { await advanceMiniToolPlanJob(request); } catch (error) { if (!(error instanceof StillRunning)) throw error; }
 }
