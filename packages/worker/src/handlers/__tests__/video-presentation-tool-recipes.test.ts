@@ -120,3 +120,48 @@ describe('the segment recipe from the full ledger (§92 D4-4; design §7.17 segm
     expect(() => builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 0, end: 3.84 } }, INPUT, CARRIER, windows)).toThrow(RangeError);
   });
 });
+
+// S6d D4-5 and the people-analysis crop (§92; design §7.17 people and scene_cuts rows, 「唯一写点：worker的配方构造」): the
+// anchor and the scanned range become D3-style entries from the frozen ledger; scene cuts come back as presentation
+// ordinals and the worker's result assembly checks them against the table. Every span starts on a keyframe (0 or 48).
+describe('people, candidate crops and scene cuts from the full ledger (§92 D4-5)', () => {
+  type PeopleBuilder = (ledger: unknown, anchor: { frameIndex: number; pts: number }, inputId: string, profile: string) => Record<string, unknown>;
+  type CropBuilder = (ledger: unknown, anchor: { frameIndex: number; pts: number }, inputId: string, crop: Record<string, unknown>) => Record<string, unknown>;
+  type ScenesBuilder = (ledger: unknown, range: { start: number; end: number }, inputId: string, profile: string) => Record<string, unknown>;
+  type ScenesResult = (ledger: unknown, window: { start: number; end: number }, cuts: number[]) => { frameIndex: number; pts: number }[];
+  const ENTRY48 = { kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(49, 25), rate: r(1) };
+  const PNG = { width: 320, height: 180, colorMatrix: 'bt709', toneMap: 'none', pngBitDepth: 8, alpha: 'none' };
+
+  it('PB01 the people anchor is the frame\'s entry with the upright display target', () => {
+    expect(builder<PeopleBuilder>('peopleRecipeOf')(cfr96(), { frameIndex: 48, pts: 1.92 }, INPUT, 'standard')).toEqual({ kind: 'people', inputId: INPUT, entry: ENTRY48, target: PNG, profile: 'standard' });
+  });
+
+  it('PB02 a candidate crop is the anchor\'s frame recipe with the display crop (run-container-analysis.ts candidate crops)', () => {
+    const crop = { sourceWidth: 320, sourceHeight: 180, rect: { x: 10, y: 20, width: 100, height: 80 } };
+    expect(builder<CropBuilder>('candidateCropRecipeOf')(cfr96(), { frameIndex: 48, pts: 1.92 }, INPUT, crop)).toEqual({ kind: 'frame', inputId: INPUT, entry: ENTRY48, target: PNG, crop });
+  });
+
+  it('PB03 an anchor on a derived-empty frame carries its empty entry (detection runs on the composed frame)', () => {
+    const ledger = cfr96((plan) => {
+      const mapping = plan.originMapping as unknown as { entries: unknown[]; lastSource: { supportEnd: unknown } };
+      mapping.entries = [{ kind: 'source', start: 0, count: 95, step: 1 }, { kind: 'derived-empty' }];
+      mapping.lastSource.supportEnd = r(19, 5);
+    });
+    expect(builder<PeopleBuilder>('peopleRecipeOf')(ledger, { frameIndex: 95, pts: 3.8 }, INPUT, 'standard')).toMatchObject({ entry: { kind: 'empty', fill: 'black', window: { start: r(19, 5), end: r(96, 25) } } });
+  });
+
+  it('PB04 a scanned range becomes its entries, each with its presentation-ordinal offset, without an inspect step', () => {
+    expect(builder<ScenesBuilder>('sceneCutsRecipeOf')(cfr96(), { start: 1.92, end: 3.84 }, INPUT, 'standard')).toEqual({
+      kind: 'scene_cuts', inputId: INPUT, window: { start: 48, end: 96 }, timescale: 25, profile: 'standard',
+      entries: [{ kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(96, 25), rate: r(1), ordinalOffset: 48 }],
+      target: { width: 320, height: 180, colorMatrix: 'bt709', toneMap: 'none' },
+    });
+  });
+
+  it('PB05 the result assembly maps cut ordinals to the table\'s display times and refuses one outside the window', () => {
+    const result = builder<ScenesResult>('sceneCutsResultOf');
+    expect(result(cfr96(), { start: 48, end: 96 }, [60, 72])).toEqual([{ frameIndex: 60, pts: 2.4 }, { frameIndex: 72, pts: 2.88 }]);
+    expect(() => result(cfr96(), { start: 48, end: 96 }, [40])).toThrow(RangeError);
+  });
+});
+
