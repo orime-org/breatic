@@ -325,6 +325,9 @@ describe("S5 fresh frame and split execution admission", () => {
       outputs: original.outputs, targetNodeIds: original.outputs.map((o) => o.nodeId), credits: estimate(tool),
       container: { containerClass: "MiniToolContainerStd4", precheckSeconds: tool === "video.split" ? 23 : 17,
         size: settings.classes.MiniToolContainerStd4, prices: settings.prices, limits: settings.plan_limits } });
+    // §93 D5-2 (design D-2 「crf/preset 取冻结的受理 limits」, §5.4 「编码参数完全一致」): the run's encode parameters and retry cap are
+    // frozen with its container, as remove-bg freezes them with its preparation.
+    expect(plan.container).toMatchObject({ encode: { crf: settings.presentation.crf, preset: settings.presentation.preset }, chunkRetries: settings.encoding.chunk_retries });
     const { requestFingerprint, planFingerprint, ...projection } = plan;
     expect(requestFingerprint).toBe(await hashMiniToolValue(original)); expect(planFingerprint).toBe(await hashMiniToolValue(projection));
     const rows = await pg`SELECT node_id,budget_ms,action FROM node_tasks WHERE task_id=${f.body.run_id} ORDER BY node_id`;
