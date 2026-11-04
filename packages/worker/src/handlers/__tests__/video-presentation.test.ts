@@ -595,6 +595,15 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(submitted().map((job) => (job.outputs as { recipe: { timescale: number } }[])[0]!.recipe.timescale)).toEqual([50, 50]);
   });
 
+  // §91 W7 (user decision; design §7.17): decodeStart is the span's first frame's own source time; the container's
+  // `-noaccurate_seek -ss` lands on the keyframe at or before it. A window starting mid-GOP names its first frame, not the
+  // keyframe before it.
+  it('RB16 a window starting mid-GOP: decodeStart is its first frame\'s source time, not the preceding keyframe', async () => {
+    answer = prepareAnswer({ work: { kind: 'encode', chunks: [{ start: 0, end: 10 }, { start: 10, end: 96 }] } });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(entriesSubmitted()[1]).toEqual([{ kind: 'source', decodeStart: r(2, 5), clipStart: r(2, 5), displayStart: r(2, 5), displayEnd: r(96, 25), rate: r(1) }]);
+  });
+
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
     const id = subJob('stitch', 1);
     const units: Record<string, Unit> = { [`video-presentation:${JOB}:stitch`]: unit(id, 'open', 'pending'),
