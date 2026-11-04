@@ -92,6 +92,7 @@ function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
   if (answer.plan === null || receipt === null) return Promise.reject(new Error('The presentation job has no planned full ledger'));
   pickup.ledger ??= readJobLedger(receipt, answer.plan, capability.deadlineAt).catch(async (error: unknown) => {
     if (!(error instanceof FullLedgerInvalid)) throw error;
+    logger.error({ err: error, ctx: { ...identity, toolInputId: answer.plan?.toolInputId, receiptSha256: receipt.sha256 } }, 'video_presentation_ledger_invalid');
     const policy = answer.preparation?.targetPolicyVersion;
     if (policy !== undefined) {
       await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'read', storageKey: identity.storageKey, sourceFingerprint: identity.sourceFingerprint, targetPolicyVersion: policy });

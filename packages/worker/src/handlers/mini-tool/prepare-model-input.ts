@@ -9,7 +9,7 @@
  * next attempt's id up to the configured chunk retries. A failed-output retry reuses the original run's prepared object.
  */
 
-import { getMiniToolsConfig } from "@breatic/core";
+import { getMiniToolsConfig, logger } from "@breatic/core";
 import {
   miniToolStepStateSchema, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo,
   type AcceptedMiniToolExecution,
@@ -153,7 +153,10 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
   // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
   // new run freezes the repaired ledger). A transport failure keeps the normal retry.
   const ledger = await readJobLedger(execution.ledgerReceipts.source, execution.presentationRef.source, deadlineAt).catch((error: unknown) => {
-    if (error instanceof FullLedgerInvalid) throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    if (error instanceof FullLedgerInvalid) {
+      logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_prepare_ledger_invalid");
+      throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    }
     throw error;
   });
   const target = modelInputTarget(ledger, execution.preparation.encode);
