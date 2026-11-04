@@ -158,6 +158,7 @@ interface OpenPlanResult { request: Record<string, unknown>; consumption: Consum
  * @param storageKey - A newly issued candidate output key.
  * @returns The exact proposed first request.
  */
+// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
 function plannedRequest(fixture: Fixture, storageKey = "issued/frame-8.png"): Record<string, unknown> {
   const inputId = "20000000-0000-4000-8000-000000000001";
   return {
@@ -165,7 +166,7 @@ function plannedRequest(fixture: Fixture, storageKey = "issued/frame-8.png"): Re
     deadlineAt: 1792920000000,
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
     inputs: [{ inputId, storageKey: "frozen/source.mp4" }],
-    outputs: [{ outputIndex: 8, storageKey, contentType: "image/png", recipe: { kind: "frame", inputId, frameIndex: 42 } }],
+    outputs: [{ outputIndex: 8, storageKey, contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "42", denominator: "25" }, clipStart: { numerator: "42", denominator: "25" }, displayStart: { numerator: "42", denominator: "25" }, displayEnd: { numerator: "43", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
   };
 }
 

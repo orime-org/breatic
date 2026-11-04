@@ -143,11 +143,12 @@ async function failTaskWrite(f: Fixture, run: () => Promise<unknown>): Promise<v
 /** Prepare a container-only fixture through its existing request and expense owner.
  * @throws {Error} When the complete plan opening fails.
  */
+// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
 async function container(): Promise<{ f: Fixture; plan: MiniToolPlanJobRequest; identity: MiniToolConsumptionIdentity; parser: MiniToolStepResultParser }> {
   const f = await seed("container_job"); const inputId = crypto.randomUUID();
   const plan = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId: `task:${f.taskId}:chunk:0`, containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE,
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, inputs: [{ inputId, storageKey: "source/video.mp4" }],
-    outputs: [{ outputIndex: 8, storageKey: "issued/frame-8.png", contentType: "image/png", recipe: { kind: "frame", inputId, frameIndex: 4 } }] });
+    outputs: [{ outputIndex: 8, storageKey: "issued/frame-8.png", contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "4", denominator: "25" }, clipStart: { numerator: "4", denominator: "25" }, displayStart: { numerator: "4", denominator: "25" }, displayEnd: { numerator: "1", denominator: "5" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }] });
   await openMiniToolPlanJob({ taskId: f.taskId, stepId: f.stepId, chunkIndex: 0, chargeTo: "platform", request: plan });
   return { f, plan, identity: { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 0 }, parser: { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(plan, value) } };
 }
