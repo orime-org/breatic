@@ -449,7 +449,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['a source entry', frameRecipe],
     ['a derived-empty entry', { ...frameRecipe, entry: EMPTY }],
     ['a 16-bit, tone-mapped, alpha-keeping target', { ...frameRecipe, target: { ...FRAME_TARGET, pngBitDepth: 16, toneMap: 'sdr-bt709', alpha: 'straight' } }],
-    ['a display crop', { ...frameRecipe, crop: { x: 2, y: 2, width: 100, height: 80 } }],
+    // The existing display crop (people candidates), in the display geometry of the target.
+    ['a display crop', { ...frameRecipe, crop: { sourceWidth: 320, sourceHeight: 180, rect: { x: 2, y: 2, width: 100, height: 80 } } }],
   ])('FR01 admits a frame recipe with %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
   });
@@ -461,6 +462,7 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['a 12-bit PNG', { ...frameRecipe, target: { ...FRAME_TARGET, pngBitDepth: 12 } }],
     ['a packed alpha', { ...frameRecipe, target: { ...FRAME_TARGET, alpha: 'packed' } }],
     ['a target without its tone map', { ...frameRecipe, target: { width: 320, height: 180, colorMatrix: 'bt709', pngBitDepth: 8, alpha: 'none' } }],
+    ['a crop whose source size is not the target\'s', { ...frameRecipe, crop: { sourceWidth: 640, sourceHeight: 360, rect: { x: 2, y: 2, width: 100, height: 80 } } }],
   ])('FR02 rejects a frame recipe with %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.safeParse(frameRecipe).success).toBe(true);
     expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);
