@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { miniToolPlanLimitsSchema, readVideoPresentationLedger, videoPresentationLedgerReceiptSchema, type TaskEntity, type VideoPresentationLedger } from "@breatic/shared";
+import { miniToolPlanLimitsSchema, readVideoPresentationLedger, x264PresetSchema, videoPresentationLedgerReceiptSchema, type TaskEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { getMiniToolsConfig } from "@breatic/core";
 import {
   canonicalMiniToolValue, hashMiniToolValue, miniToolExecutionRecipeSchema, miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema,
@@ -40,7 +40,8 @@ const storedPlanSchema = z.union([
     provider: z.strictObject({ provider: z.literal("wavespeed"), model_id: z.literal("bria/fibo/video-background-remover") }),
     body: z.strictObject({ video: z.strictObject({ kind: z.literal("prepared"), inputId: z.literal("source"), job: z.string().regex(/^[0-9a-f-]{36}:prep:0$/) }),
       background_color: z.literal("Transparent"), output_container_and_codec: z.literal("webm_vp9"), preserve_audio: z.literal(true) }),
-    preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1), chunkRetries: index }),
+    preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1), chunkRetries: index,
+      encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }) }),
     modelCredits: z.number().nonnegative(),
   }),
   z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,

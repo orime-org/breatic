@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getNodeTaskConfig, projectAuthService, type MiniToolsConfig, type DbTx } from "@breatic/core";
 import {
   TaskStatus, ceilToCreditCent, readVideoPresentationCompact, readVideoPresentationLedger, t, videoPresentationKeyframeFlags,
-  type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
+  type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
   batchVideoRunOutputs, canonicalMiniToolValue, estimateVideoJobSeconds, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
@@ -51,8 +51,8 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
     /** The model's own quote, frozen apart from the preparation so a failed-output retry quotes generate alone. */
     modelCredits: number;
-    /** The standard-4 model-input preparation (§5.3): its policy and presentation-frame chunk windows. */
-    preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number } }
+    /** The standard-4 model-input preparation (§5.3): its policy, presentation-frame chunk windows and encode parameters (§91 D3b-5). */
+    preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] } } }
   | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout;
     /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
     container: MiniToolContainerPolicy & { startSeconds: number };
@@ -284,7 +284,7 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   const layout = preparationLayout(ledger, config);
   assertWithinParallelCap(layout.jobs, config);
   const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks,
-    chunkRetries: config.encoding.chunk_retries };
+    chunkRetries: config.encoding.chunk_retries, encode: { crf: config.presentation.crf, preset: config.presentation.preset } };
   return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
     body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
     presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt }, versionIds: { source: versionId }, preparation,
