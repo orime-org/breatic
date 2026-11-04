@@ -298,7 +298,9 @@ describe("complete original thumbnail associations", () => {
     { name: "recipe uses another valid source alias", change: (f: Fixture) => {
       f.job.request.inputs.push({ inputId: OTHER_SOURCE, storageKey: "different/source.mp4" }); frameRecipe(f.job).inputId = OTHER_SOURCE;
     } },
-    { name: "another recipe kind", change: (f: Fixture) => { f.job.request.outputs[1]!.recipe = { kind: "inspect_video", inputId: SOURCE } as unknown as MiniToolPlanRecipe; } },
+    // §93 D5 (design §7.17 「去掉inspect_video步骤」): another kind is a people recipe on the same entry, not the removed inspect_video.
+    { name: "another recipe kind", change: (f: Fixture) => { f.job.request.outputs[1]!.recipe = { kind: "people", inputId: SOURCE, entry: structuredClone(ANCHOR_ENTRY),
+      target: { ...PNG_TARGET }, profile: { id: "people-detector", version: "1", weightsHash: null, params: {} } } as unknown as MiniToolPlanRecipe; } },
     // §93 D5-7 (design §7.17 frame row 「方向与几何」): the entry recipe is always upright, so there is no orientation to omit;
     // the anchor check moves from frameIndex to the entry.
     { name: "another anchor entry", change: (f: Fixture) => { frameRecipe(f.job).entry = { ...ANCHOR_ENTRY, clipStart: r(1, 2), decodeStart: r(1, 2), displayStart: r(1, 2), displayEnd: r(3, 4) }; } },
