@@ -769,7 +769,6 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
     out.splice(0, parents);
     if (!wordless(out[0])) out[0] = { ...out[0]!, [OPEN_NESTED]: true };
   }
-  if (start > 0 && out.length > 1 && wordless(out[0])) out.splice(0, 1, edge(out[0]!), ...(out[0]!.children ?? []));
   const end = levels(marker[2]!);
   /**
    * A block without the nested line its end opens into, and that line.
@@ -789,6 +788,9 @@ function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] 
     const [kept, line] = openLine(out[out.length - 1]!, end - 1);
     if (line !== null) out.splice(out.length - 1, 1, kept, wordless(line) ? line : { ...line, [OPEN_NESTED]: true });
   }
+  // After the end's line is lifted: a copy from a parent's empty end into its
+  // nested line reads as one block until then.
+  if (start > 0 && out.length > 1 && wordless(out[0])) out.splice(0, 1, edge(out[0]!), ...(out[0]!.children ?? []));
   const last = out[out.length - 1];
   if (end > 0 && out.length > 1 && wordless(last) && (last!.children ?? []).length === 0) out[out.length - 1] = edge(last!);
   return out;

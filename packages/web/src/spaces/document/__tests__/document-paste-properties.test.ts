@@ -715,7 +715,10 @@ describe('a copy whose lines are nested (design §5.4.1)', () => {
           expect(nested, `${JSON.stringify(lines)} ${first}@${fromAt}..${last}@${toAt} @${at}`).toBe(flat);
         },
       ),
-      { numRuns: 300 },
+      // From the end of the parent's words to the end of its first nested
+      // line: the start opens into an empty line that is only the copy's
+      // first line once the end has lifted the nested line out.
+      { numRuns: 300, examples: [[{ lines: ['a'], from: 0, fromAt: 3, to: 1, toAt: 1, at: 0 }], [{ lines: ['a', ''], from: 0, fromAt: 3, to: 1, toAt: 1, at: 0 }]] },
     );
   });
 });
