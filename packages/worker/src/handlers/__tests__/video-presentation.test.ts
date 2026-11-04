@@ -547,10 +547,14 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect((submitted()[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toMatchObject({ kind: 'copy_carrier', colorMatrix: 'bt601' });
   });
 
-  // §91 D3b-7 (design §5.3 validatedFullLedger): while the candidate's own ledger is not ready, ledgerOf falls back to the
-  // selected version's receipt; that receipt names another plan, so it is refused before any read (recipes.ts W1). The
-  // pickup settling an open attempt neither reads that ledger nor builds or submits a request from it, and waits.
-  it('RB14 a selected version\'s receipt of another plan is refused unread: no fetch, nothing submitted, the pickup waits', async () => {
+  // §91 D3b-7 / W1 decision (design E2-6, §5.3 validatedFullLedger): a job reads only its candidate's own ledger. The
+  // selected version's ledger is either that same ledger (same toolInputId) or another plan's, so there is no fallback:
+  // while the candidate's ledger is not ready the pickup only waits. It reads nothing, asks the DO nothing, logs no
+  // error, reports nothing and submits nothing, even with an open attempt to settle.
+  it.each([
+    ['pending', { state: 'pending', receipt: null, failure: null }],
+    ['failed', { state: 'failed', receipt: null, failure: 'source_ledger_invalid' }],
+  ] as const)('RB14 a candidate ledger that is %s, beside a selected version of another plan with a ready ledger: the pickup only waits', async (_name, candidateLedger) => {
     const selected = {
       schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
       original: { width: 320, height: 180, duration: 3.84 }, display: { width: 320, height: 180, duration: r(96, 25) },
@@ -560,7 +564,7 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     answer = prepareAnswer({
       presentation: selected, ledger: { state: 'ready', receipt: { ...RECEIPT, attempt: { jobId: 'video-presentation-selected', deadlineAt: D } }, failure: null },
       plan: { route: 'encode', stages: STAGES.encode, toolInputId: 'e'.repeat(64), planSha256: 'f'.repeat(64) },
-      candidateLedger: { state: 'pending', receipt: null, failure: null },
+      candidateLedger,
       preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null },
       units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'open', 'pending') },
     });
@@ -568,6 +572,8 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(sent.filter((call) => call.path === 'ledger')).toEqual([]);
     expect(sent.filter((call) => call.path === '/jobs' || call.path === '/jobs/read')).toEqual([]);
     expect(actions('report_chunk')).toEqual([]);
+    expect(actions('read')).toEqual([]);
+    expect([...logger.error.mock.calls, ...logger.warn.mock.calls]).toEqual([]);
   });
 
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
