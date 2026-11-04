@@ -117,7 +117,7 @@ export interface MiniToolExecutionProgress {
   planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionRecord["outputs"];
 }
 /**
- * Commit newly registered outputs of a running execution without ending it (design §7.11 「registered，非终态提交」): the
+ * Commit newly registered outputs of a running execution without ending it (design §7.11, registered with a non-terminal commit): the
  * same resultVersion arbitration as the terminal commit, a committed result is never rewritten, a registration is checked
  * like the terminal one's and failures wait for the terminal commit. Delivery to canvas nodes stays with the terminal
  * commit; a per-poll delivery would call synchronizeMiniToolDelivery after the store below.
