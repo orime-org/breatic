@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { logger, type getStreamRedis } from "@breatic/core";
-import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion } from "@breatic/domain";
+import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion, type miniToolExecutionService as ExecutionService } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { deliverMiniToolOutput, wakePendingMiniToolDelivery } from "@worker/handlers/mini-tool/delivery-worker.js";
 
@@ -42,4 +42,22 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
     logger.error({ err, ctx: { taskId, projectId: execution.projectId, spaceId: execution.spaceId, phase: "execution-notify" } }, "mini_tool_execution_delivery_failed");
   }
   return finished;
+}
+
+/**
+ * Commit a pickup's newly registered outputs non-terminally (design §7.11, §93 D5-11). Delivery to canvas nodes stays with
+ * the terminal commit (`finishMiniToolExecutionAndNotify`); a per-poll delivery would call `deliverMiniToolOutput` here
+ * for each newly registered output once that is decided.
+ * @param taskId - The original accepted task.
+ * @param progress - The complete indexed mapping and the version it was read at.
+ * @returns The committed execution.
+ * @throws {Error} When the commit is refused or persistence fails.
+ */
+export async function commitMiniToolExecutionProgress(taskId: string, progress: ExecutionService.MiniToolExecutionProgress): Promise<MiniToolExecution> {
+  try {
+    return await miniToolExecutionService.commitMiniToolExecutionProgress(taskId, progress);
+  } catch (err) {
+    logger.error({ err, ctx: { taskId, phase: "execution-progress" } }, "mini_tool_execution_progress_failed");
+    throw err;
+  }
 }

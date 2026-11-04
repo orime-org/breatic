@@ -429,7 +429,7 @@ export function peopleRecipeOf(ledger: VideoPresentationLedger, anchor: FrameSel
  * @returns The frame window.
  * @throws {RangeError} When an end is not a frame boundary or the range is empty.
  */
-function rangeWindow(ledger: VideoPresentationLedger, range: { start: number; end: number }): FrameWindow {
+export function rangeWindow(ledger: VideoPresentationLedger, range: { start: number; end: number }): FrameWindow {
   const frames = presentedFrames(ledger);
   const scale = ledger.plan.presentation.timescale;
   const start = frames.findIndex((frame) => frame.start / scale === range.start);
