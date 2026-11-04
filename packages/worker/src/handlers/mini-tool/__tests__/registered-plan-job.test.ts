@@ -194,3 +194,24 @@ describe("original planned job registration", () => {
     expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ taskId }), "node_task_counts_publish_failed");
   });
 });
+
+// §93 D5-10 (design §7.15 块对象「拼接提交后」释放; prepare-model-input.ts PP02): a split stitch is registered through this
+// function and names the chunk outputs it consumed, which are retired with its done result, never before. This round's
+// choice of the option (may be vetoed): a second argument `{ retire }`.
+describe("chunk outputs retired with a done stitch (§93 D5-10)", () => {
+  const CHUNKS = ["video/source.mp4.work/T:out:0:enc:0:a1", "video/source.mp4.work/T:out:0:enc:1:a1"];
+  type WithRetire = (value: typeof input, options: { retire: readonly string[] }) => ReturnType<typeof advanceRegisteredMiniToolPlanJob>;
+
+  it("RP01 a done stitch records its result together with the retirement of the consumed chunk keys", async () => {
+    await (advanceRegisteredMiniToolPlanJob as unknown as WithRetire)(input, { retire: CHUNKS });
+    expect(h.record).toHaveBeenCalledExactlyOnceWith({ taskId, stepId, identity, outcome: "done", result: done, presentation: { retire: CHUNKS } },
+      expect.objectContaining({ kind: "container_job" }));
+  });
+
+  it("RP02 a failed stitch keeps the chunks for its next attempt", async () => {
+    h.advance.mockResolvedValue(failed);
+    await (advanceRegisteredMiniToolPlanJob as unknown as WithRetire)(input, { retire: CHUNKS });
+    const recorded = h.record.mock.calls[0]![0] as { presentation?: { retire?: string[] } };
+    expect(recorded.presentation?.retire ?? []).not.toEqual(expect.arrayContaining([CHUNKS[0]]));
+  });
+});
