@@ -28,6 +28,7 @@ import type { StudioAssetEntity } from "@breatic/shared";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import type * as uploadModule from "@worker/handlers/backend-upload.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
 import { seedStudioFixture, type StudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
@@ -59,8 +60,8 @@ const LEDGER_BYTES = readFileSync(new URL("../../../worker/src/handlers/__tests_
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510",
   planSha256: "4615adfc86906e4cb29165aba35bd4751f87c51822318e4e7fc49dd3c6b2c9ee", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", etag: "full-etag", size: 1205,
-  sha256: "abf6f7636edd183f42f7c5b9fccca8b60daab697ebd9a36b259dea236653af56", contentType: "application/json",
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", etag: "full-etag", size: 1206,
+  sha256: "2858d801733195d81ffc09e1883532591115345abf3eaa01035e7f4c81524177", contentType: "application/json",
   table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", sha256: "7948ba2144023683a03b45b7f58d90031e14e7314c1561b48f39a226d20d0ac7", size: 353, contentType: "application/json", frameCount: 96 },
 };
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
@@ -80,7 +81,7 @@ const GOLDEN = {
     // §91 D3b-5: the model input's encode parameters are frozen at admission like the presentation's.
     encode: { crf: 18, preset: "medium" } },
   credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "5d499dfcece191b406cceb1b449151efd5c0b149f27b07fcd45e664dee78ebc9",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "f29f141ba52bcef63aeb2ad570f9c72b84f4ebd1d53284c7f851fb40ca91b9ff",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -106,7 +107,10 @@ function doneReport(request: Record<string, unknown>): Record<string, unknown> {
   const output = (request.outputs as { outputIndex: number; storageKey: string; contentType: string }[])[0]!;
   return { schemaVersion: 2, state: "done", outputs: [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }], usage: { wallMs: 1000, cpuUsec: 2000000 } };
 }
+// The bytes the receipt URL serves; WP07 serves other bytes.
+let ledgerBody: Buffer = LEDGER_BYTES;
 beforeEach(() => {
+  ledgerBody = LEDGER_BYTES;
   vi.resetAllMocks(); configure(); overrides.chunkRetries = undefined;
   jobs.submitted.length = 0; jobs.scripted.clear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -121,7 +125,7 @@ beforeEach(() => {
       if (request === undefined) return new Response("missing", { status: 404 });
       return Response.json(jobs.scripted.get(id) ?? doneReport(request));
     }
-    if (url.href === RECEIPT.url) return new Response(LEDGER_BYTES, { headers: { "content-type": "application/json" } });
+    if (url.href === RECEIPT.url) return new Response(ledgerBody, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
   }));
 });
@@ -187,7 +191,7 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
 });
 
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("5d499dfcece191b406cceb1b449151efd5c0b149f27b07fcd45e664dee78ebc9");
+  expect(await planHash(GOLDEN)).toBe("f29f141ba52bcef63aeb2ad570f9c72b84f4ebd1d53284c7f851fb40ca91b9ff");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
@@ -503,6 +507,19 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     await runMiniToolRemoveBackground(retry.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
     expect(jobs.submitted).toEqual([]);
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, `${f.plan.taskId}:prep:0:a1`));
+  });
+
+  // §91 D3b-9 (design §7.4 Check, §10.6 失败分类): the frozen receipt cannot change within the run, so a full ledger that
+  // fails it is a deterministic `source_ledger_invalid` (transient class: a new run freezes the repaired ledger). The run
+  // fails at once instead of polling to the two-hour deadline; nothing is prepared and the provider is not reached.
+  it("WP07 a full ledger that fails its frozen receipt fails the run as source_ledger_invalid without preparing or generating", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    ledgerBody = Buffer.concat([LEDGER_BYTES, Buffer.from(" ")]);
+    const failure = await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).then(() => null, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(UpstreamTaskFailed);
+    expect(`${(failure as UpstreamTaskFailed).message} ${(failure as UpstreamTaskFailed).upstreamError}`).toContain("source_ledger_invalid");
+    expect(preparations(f)).toEqual([]);
+    expect(runPrediction).not.toHaveBeenCalled();
   });
 
   it("WP06 the preparation retry cap is the one frozen at admission, not today's encoding.chunk_retries", async () => {

@@ -434,6 +434,17 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(submitted()).toEqual([]);
   });
 
+  // §91 D3b-9 (design §7.4 `Check`: a ready ledger with a real physical mismatch moves to failed-transient, and §7.1 `Lt`
+  // starts the automatic ledgerOnly repair): the worker asks the DO to check (the `read` action runs Check against R2) and
+  // waits for the repaired receipt, instead of failing every pickup until the deadline.
+  it('RB05 a full ledger that fails its receipt makes the pickup ask the DO to check it, submit nothing and wait', async () => {
+    await serve(LEDGERS.cfr96);
+    ledgerBytes = Buffer.concat([ledgerBytes, Buffer.from(' ')]);
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(submitted()).toEqual([]);
+    expect(actions('read')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, targetPolicyVersion: 1 })]);
+  });
+
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
     const id = subJob('stitch', 1);
     const units: Record<string, Unit> = { [`video-presentation:${JOB}:stitch`]: unit(id, 'open', 'pending'),
