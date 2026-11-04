@@ -98,3 +98,23 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
     expect(put).not.toHaveBeenCalled();
   });
 });
+
+// S6d D4-6 (inner#1306 §92; design §7.17 「容器不读帧表」, scene_cuts 「去掉inspect_video步骤」): once frame, segment, people and
+// scene_cuts carry full-ledger entries, no recipe reads the per-frame probe, so a job of them never runs inspectPlanInput
+// (the `-show_frames` probe behind `frameTable`).
+describe("no recipe inspects the source frame by frame after D4 (§92 D4-6)", () => {
+  const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+  const entry = { kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) };
+  const png = { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" };
+  const video = { width: 400, height: 200, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" };
+  it.each([
+    ["frame", { kind: "frame", inputId: A, entry, target: png }],
+    ["people", { kind: "people", inputId: A, entry, target: png, profile: "standard" }],
+    ["scene_cuts", { kind: "scene_cuts", inputId: A, window: { start: 0, end: 1 }, timescale: 25, profile: "standard", entries: [{ ...entry, ordinalOffset: 0 }], target: { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none" } }],
+    ["segment", { kind: "segment", inputId: A, window: { start: 0, end: 1 }, timescale: 25, entries: [entry], target: video, audio: null }],
+  ])("DP06 a %s recipe on full-ledger entries runs without inspectPlanInput", async (_name, recipe) => {
+    await runPlanJob({ ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe }] } as unknown as PlanRunBody);
+    expect(inspectPlanInput).not.toHaveBeenCalled();
+  });
+});
+

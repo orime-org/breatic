@@ -468,6 +468,11 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);
   });
 
+  // S6d D4-6 (§92; design §7.17 scene_cuts 「去掉inspect_video步骤」): the inspect_video recipe has no producer after D4.
+  it('DP07 the inspect_video recipe is no longer admitted', () => {
+    expect(miniToolPlanRecipeSchema.safeParse({ kind: 'inspect_video', inputId: INPUT }).success).toBe(false);
+  });
+
   it('RC03 a stitch job request binds every chunk it names as an input', () => {
     expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs)).success).toBe(true);
     expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs.slice(0, 1))).success).toBe(false);
