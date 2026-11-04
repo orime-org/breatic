@@ -105,6 +105,9 @@ beforeAll(async () => {
     '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
   await ff('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
+  // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
+  await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
+    '-c:v', 'libx264', '-g', '1', '-bf', '0', '-pix_fmt', 'yuv420p', '-crf', '0', ...tagged]);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -163,5 +166,27 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
   it('FC06 the frame is upright in the display geometry (§7.17 方向与几何): a 90° source gives 96x160', async () => {
     const png = await frame('rot90.mp4', { entry: frameAt([1, 1]), target: { ...OPAQUE, width: 96, height: 160 } });
     expect(header(png)).toMatchObject({ width: 96, height: 160 });
+  });
+
+  // §93 D5 (frames-split design §7.17 frame row; people candidate crops): the display crop rides on the entry recipe, so the
+  // pixel-exact crop facts of the removed display-crop executor test (odd origin and size, one pixel, the whole frame) are
+  // re-expressed here on the full-ledger frame recipe.
+  it.each([
+    ['the whole box', { x: 40, y: 20, width: 20, height: 12 }, (x: number, y: number): boolean => x >= 0 && y >= 0],
+    ['an odd origin and size inside it', { x: 41, y: 21, width: 5, height: 3 }, (): boolean => true],
+    ['one pixel at its corner', { x: 59, y: 31, width: 1, height: 1 }, (): boolean => true],
+    ['a crop across its left edge', { x: 37, y: 20, width: 5, height: 1 }, (x: number): boolean => x >= 3],
+    ['the whole frame', { x: 0, y: 0, width: 160, height: 96 }, (x: number, y: number): boolean => x >= 40 && x < 60 && y >= 20 && y < 32],
+  ])('FC07 a display crop of %s keeps exactly the selected pixels', async (_name, rect, white) => {
+    const png = await frame('box.mp4', { entry: frameAt([0, 1]), target: OPAQUE, crop: { sourceWidth: 160, sourceHeight: 96, rect } });
+    expect(header(png)).toMatchObject({ width: rect.width, height: rect.height, colorType: 2 });
+    const { stdout } = await run('ffmpeg', ['-v', 'error', '-i', await saved(png), '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+    const gray = stdout as unknown as Buffer;
+    for (let y = 0; y < rect.height; y += 1) {
+      for (let x = 0; x < rect.width; x += 1) {
+        const value = gray[y * rect.width + x]!;
+        expect(white(x, y) ? value > 200 : value < 40, `pixel (${x}, ${y}) = ${value}`).toBe(true);
+      }
+    }
   });
 });
