@@ -116,8 +116,8 @@ function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex:
     model: tool, credits: 1, requestFingerprint: "c".repeat(64), planFingerprint: "d".repeat(64),
     presentationRef: { source: { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 } },
     ledgerReceipts: { source: { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256, producerVersion: 2,
-      attempt: { jobId: "video-presentation:fixture", deadlineAt: 1900000000000 }, url: LEDGER_URL, etag: "full-etag", size: CFR96.byteLength,
-      sha256: createHash("sha256").update(CFR96).digest("hex"), contentType: "application/json",
+      attempt: { jobId: "video-presentation:fixture", deadlineAt: 1900000000000 }, url: LEDGER_URL, etag: "full-etag", size: ledgerBytes.byteLength,
+      sha256: createHash("sha256").update(ledgerBytes).digest("hex"), contentType: "application/json",
       table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.cfr96.json", sha256: "e".repeat(64), size: 81, contentType: "application/json", frameCount: 96 } } },
     versionIds: { source: "f".repeat(64) },
     layout, outputSeconds: recipes.map(() => 1),
@@ -149,7 +149,7 @@ function serve(execution: Record<string, unknown>): void {
 function asset(key: string, video: boolean): StudioAssetEntity {
   const id = createHash("sha256").update(key).digest("hex");
   return { id: `${id.slice(0, 8)}-${id.slice(8, 12)}-4${id.slice(13, 16)}-8${id.slice(17, 20)}-${id.slice(20, 32)}`, studioId: "b0000000-0000-4000-8000-000000000001",
-    contentHash: id, storageKey: key, fileUrl: `https://assets.example.test/${key}`, sizeBytes: 100, mimeType: video ? "video/mp4" : "image/png",
+    contentHash: id, storageKey: key, fileUrl: `https://assets.example.test/${key}`, sizeBytes: 100, mimeType: video ? (key.endsWith(".webm") ? "video/webm" : "video/mp4") : "image/png",
     kind: video ? "video" : "image", source: "ai", producedByUserId: USER, generationTaskId: TASK, width: 320, height: 180,
     durationSeconds: video ? 1.92 : null, createdAt: new Date("2026-11-04T00:00:00Z"), deletedAt: null };
 }
@@ -321,8 +321,11 @@ beforeEach(() => {
   });
   h.grants.mockImplementation(async (input: GrantInput) => {
     const sequence = grantSequence++;
+    // §93 D5-12 (this round's choice): a video output may ask for a WebM container.
     return input.outputs.map((output, index) => output.modality === "video"
-      ? { storageKey: `derived/grant-${sequence}/${index}.mp4`, contentType: "video/mp4", coverKey: `derived/grant-${sequence}/${index}.cover.jpg` }
+      ? (output as { container?: string }).container === "webm"
+        ? { storageKey: `derived/grant-${sequence}/${index}.webm`, contentType: "video/webm", coverKey: `derived/grant-${sequence}/${index}.webm.cover.jpg` }
+        : { storageKey: `derived/grant-${sequence}/${index}.mp4`, contentType: "video/mp4", coverKey: `derived/grant-${sequence}/${index}.cover.jpg` }
       : { storageKey: `derived/grant-${sequence}/${index}.png`, contentType: "image/png" });
   });
   h.findById.mockImplementation(async (id: string) => {
@@ -530,5 +533,32 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     // The failed attempt's own output is retired with its result, as on the preparation path.
     const failedChunk = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { retire?: string[] } }).find((value) => value.outcome === "failed");
     expect(failedChunk?.presentation?.retire).toEqual([videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))]);
+  });
+});
+
+// §93 D5-12 (frames-split design §7.17 segment row 「透明源输出VP9+透明+Opus的WebM并保留奇数尺寸」, §4.3): a transparent source's
+// split output is a VP9 WebM with alpha, so its grant, declared content type and registration are WebM; an opaque one stays
+// MP4. This round's choice of the grant input (may be vetoed): `{ modality: "video", namePrefix, container: "webm" }`.
+describe("the container of a split output follows the plan's alpha (§93 D5-12)", () => {
+  it("VW01 a transparent source's segments are granted, declared and registered as WebM", async () => {
+    const transparent = JSON.parse(CFR96.toString("utf8")) as { plan: { policy: { emptyFill: string } } };
+    transparent.plan.policy.emptyFill = "transparent";
+    ledgerBytes = Buffer.from(JSON.stringify(transparent));
+    serve(plan("video.split"));
+    const completion = await drive();
+    expect((h.grants.mock.calls[0]![0] as GrantInput).outputs).toEqual([0, 1].map(() => expect.objectContaining({ modality: "video", container: "webm" })));
+    const [request] = submitted();
+    expect(request!.outputs.map((output) => ({ key: output.storageKey.endsWith(".webm"), contentType: output.contentType, format: (output.recipe as { target: { format: string } }).target.format })))
+      .toEqual([0, 1].map(() => ({ key: true, contentType: "video/webm", format: "webm-vp9" })));
+    expect(completion!.outputs.map((output) => (output.result as { mimeType?: string } | null)?.mimeType)).toEqual(["video/webm", "video/webm"]);
+  });
+
+  it("VW02 an opaque source's segments stay MP4", async () => {
+    serve(plan("video.split"));
+    const completion = await drive();
+    expect((h.grants.mock.calls[0]![0] as GrantInput).outputs.every((output) => (output as { container?: string }).container !== "webm")).toBe(true);
+    expect(submitted()[0]!.outputs.map((output) => ({ key: output.storageKey.endsWith(".mp4"), contentType: output.contentType })))
+      .toEqual([0, 1].map(() => ({ key: true, contentType: "video/mp4" })));
+    expect(completion!.outputs.map((output) => (output.result as { mimeType?: string } | null)?.mimeType)).toEqual(["video/mp4", "video/mp4"]);
   });
 });
