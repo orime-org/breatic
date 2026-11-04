@@ -95,13 +95,15 @@ const completedJobs = new Set<string>();
 const errors: unknown[] = [];
 const cleanupErrors: unknown[] = [];
 const thumbnails = new Map<number, ObjectBytes>();
-const frames = Array.from({ length: 60 }, (_, frameIndex) => ({ frameIndex, pts: (frameIndex * frameIndex + frameIndex) / 100 }));
 const candidates = [
   { detectionIndex: 0, faceBox: { x: 0.1, y: 0.1, width: 0.0125, height: 0.015 }, pixelCrop: { x: 40, y: 20, width: 5, height: 3 } },
   { detectionIndex: 2, faceBox: { x: 0.5, y: 0.2, width: 0.0025, height: 0.005 }, pixelCrop: { x: 200, y: 40, width: 1, height: 1 } },
   { detectionIndex: 5, faceBox: { x: 0.7, y: 0.5, width: 0.0075, height: 0.015 }, pixelCrop: { x: 280, y: 100, width: 3, height: 3 } },
 ];
-const cuts = [{ frameIndex: 30, pts: 9.3, detectionScore: 85 }];
+// §93 D5-8 (design §7.17 scene_cuts row 「切点按呈现序号记录」): the container reports cuts by presentation ordinal over the scanned
+// range [1.25, 2.5) (frames 250–499, from keyframe 250); the result shows ordinal 300 at 300/200 s.
+const SCENE_RANGE = { start: 1.25, end: 2.5 };
+const cuts = [{ frameIndex: 300, pts: 1.5, detectionScore: 85 }];
 // §93 D5 (design §7.17 people anchor row): the worker builds the recipes from the frozen full ledger, so the anchor is a
 // presented frame of it: ordinal 250 at 250/200 s, a source keyframe of the 1011-frame 960x540 removal plan
 // (server presentation-fixtures.ts: keyframes 0, 250, 500, 750, 1000). The display people JSON is on that 960x540 frame.
@@ -191,18 +193,12 @@ function outputBytes(fixture: Fixture, output: MiniToolPlanJobRequest["outputs"]
   switch (output.recipe.kind) {
     case "people":
       return jsonObject({
-        schemaVersion: 1, kind: "people", coordinateSpace: "display",
-        anchor: ANCHOR, width: 960, height: 540,
+        // §93 D5-8: no anchor echo; measured in the recipe target's 960x540.
+        schemaVersion: 1, kind: "people", coordinateSpace: "display", width: 960, height: 540,
         candidates: fixture.scenario === "empty" ? [] : candidates,
       });
-    case "inspect_video":
-      return jsonObject({ schemaVersion: 1, kind: "inspect_video", probe: {}, source: {
-        width: 400, height: 200, rotation: 0, hasAudio: false, timeBase: "1/100",
-        frameTable: { frames, videoEnd: 36 },
-      } });
     case "scene_cuts":
-      return jsonObject({ schemaVersion: 1, kind: "scene_cuts", timeBase: "1/100",
-        frameCount: 60, sourceFrameMapping: frames.slice(10, 50), cuts });
+      return jsonObject({ schemaVersion: 1, kind: "scene_cuts", cuts: [{ ordinal: 300, detectionScore: 85 }] });
     case "frame": {
       const image = thumbnails.get(output.outputIndex);
       if (image === undefined) throw new Error("Unexpected thumbnail output index");
@@ -395,7 +391,7 @@ async function seed(scenario: Scenario, delayed = false): Promise<Fixture> {
     presentationRef: presentation.presentationRef,
   };
   const body: MiniToolAnalysisRequest = scenario === "scene"
-    ? { ...identity, kind: "scene_cuts", params: { range: { start: 1.1, end: 25 } } }
+    ? { ...identity, kind: "scene_cuts", params: { range: SCENE_RANGE } }
     : { ...identity, kind: "people", params: { anchor: ANCHOR } };
   const [sourceBefore] = await sql<Record<string, unknown>[]>`SELECT * FROM studio_assets WHERE id=${sourceAssetId}`;
   const fixture: Fixture = {
@@ -772,8 +768,11 @@ describe("accepted analysis → real task execution → canonical registration a
   it("maps scene cuts to the original VFR ledger and settles only the actual measured user cost", async () => {
     const fixture = await seed("scene");
     const record = await execute(fixture);
-    await assertCompleted(fixture, record, 1, 2);
-    expect(record.result).toMatchObject({ kind: "scene_cuts", frameCount: 60, timeBase: { numerator: 1, denominator: 100 }, cuts });
+    // §93 D5 (design §7.17 「去掉inspect_video步骤」): one step with one output grant (was inspect plus scenes).
+    await assertCompleted(fixture, record, 1, 1);
+    // §93 D5-8: the presentation clock (1/200) and the ledger's 1011 frames; one scene_cuts output, no inspect_video.
+    expect(record.result).toMatchObject({ kind: "scene_cuts", frameCount: 1011, timeBase: { numerator: 1, denominator: 200 }, cuts });
+    expect(submitted.filter((request) => request.inputs[0]!.inputId === fixture.sourceAssetId).flatMap((request) => request.outputs.map((output) => output.recipe.kind))).toEqual(["scene_cuts"]);
     await settle(fixture, 1);
   });
 
