@@ -34,6 +34,7 @@ vi.mock("@cloudflare/containers", () => ({
 }));
 
 const NOW = 1700000000000;
+// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
 const PLAN: MiniToolPlanJobRequest = {
   limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
   schemaVersion: 2, jobId: "plan-chunk-1", containerClass: "MiniToolContainerStd1", deadlineAt: NOW + 7200000,
@@ -42,8 +43,8 @@ const PLAN: MiniToolPlanJobRequest = {
     { inputId: "20000000-0000-4000-8000-000000000002", storageKey: "fixtures/source-b.mp4" },
   ],
   outputs: [
-    { outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", coverKey: "results/T/o08.cover.png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", frameIndex: 30 } },
-    { outputIndex: 9, storageKey: "results/T/o09.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", frameIndex: 31 } },
+    { outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", coverKey: "results/T/o08.cover.png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", entry: { kind: "source", decodeStart: { numerator: "6", denominator: "5" }, clipStart: { numerator: "6", denominator: "5" }, displayStart: { numerator: "6", denominator: "5" }, displayEnd: { numerator: "31", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
+    { outputIndex: 9, storageKey: "results/T/o09.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", entry: { kind: "source", decodeStart: { numerator: "31", denominator: "25" }, clipStart: { numerator: "31", denominator: "25" }, displayStart: { numerator: "31", denominator: "25" }, displayEnd: { numerator: "32", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
   ],
 };
 const WRITTEN = { sha256: "a".repeat(64), sizeBytes: 64, contentType: "image/png" };
@@ -118,7 +119,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
       { ...PLAN, inputs: [{ ...PLAN.inputs[0]!, storageKey: "fixtures/other.mp4" }, PLAN.inputs[1]!] },
       { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, outputIndex: 16 }, PLAN.outputs[1]!] },
       { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, storageKey: "results/other.png" }, PLAN.outputs[1]!] },
-      { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, recipe: { kind: "frame", inputId: PLAN.inputs[0]!.inputId, frameIndex: 31 } }, PLAN.outputs[1]!] },
+      { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, recipe: { kind: "frame", inputId: PLAN.inputs[0]!.inputId, entry: { kind: "source", decodeStart: { numerator: "31", denominator: "25" }, clipStart: { numerator: "31", denominator: "25" }, displayStart: { numerator: "31", denominator: "25" }, displayEnd: { numerator: "32", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }, PLAN.outputs[1]!] },
     ];
     for (const changed of changes) {
       await expect(object.submit(changed)).rejects.toThrow();

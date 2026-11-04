@@ -3,11 +3,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
-import { executePlanRecipe, inspectPlanInput } from "@ingest/container/plan-recipes.js";
+import { executePresentationRecipe } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
 
-vi.mock("@ingest/container/plan-recipes.js", () => ({ executePlanRecipe: vi.fn(), inspectPlanInput: vi.fn() }));
+// §93 D5 (frames-split design §7.17 「唯一写点：worker的配方构造」, 「容器不读帧表」): every job recipe is written on full-ledger
+// entries and runs as a presentation recipe, so the per-source inspection seam (`inspectPlanInput`) and the frame-table
+// executor are no longer on the path; the download, alias and lifetime facts are asserted on the presentation executor.
+vi.mock("@ingest/container/presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), executePresentationRecipe: vi.fn() }));
 vi.mock("@ingest/container/plan-command.js", () => ({ runPlanCommand: vi.fn() }));
 vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn(), cpuUsec: vi.fn() }));
 
@@ -16,14 +19,16 @@ const A = "20000000-0000-4000-8000-000000000001";
 const B = "20000000-0000-4000-8000-000000000002";
 const ALIAS = "20000000-0000-4000-8000-000000000003";
 const MEDIA = { width: 400, height: 200, durationSeconds: null, cover: null };
-const FACTS = { source: { frameTable: { frames: [{ frameIndex: 0, pts: 0 }], videoEnd: 1 }, width: 400, height: 200, rotation: 0, hasAudio: false, timeBase: "1/1000" }, raw: {} };
+const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+const ENTRY = { kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) } as const;
+const PNG = { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } as const;
 const JOB: PlanRunBody = {
   schemaVersion: 2, attemptId: "30000000-0000-4000-8000-000000000001", deadlineAt: NOW + 7200000,
   limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
   inputs: [{ inputId: A, url: "http://r2.local/source-a?attempt=current" }, { inputId: B, url: "http://r2.local/source-b?attempt=current" }, { inputId: ALIAS, url: "http://r2.local/source-a?attempt=current" }],
   outputs: [
-    { outputIndex: 8, key: "results/T/o08.png", url: "http://r2.local/out-8?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: ALIAS, frameIndex: 0 } },
-    { outputIndex: 9, key: "results/T/o09.png", url: "http://r2.local/out-9?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: B, frameIndex: 0 } },
+    { outputIndex: 8, key: "results/T/o08.png", url: "http://r2.local/out-8?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: ALIAS, entry: ENTRY, target: PNG } },
+    { outputIndex: 9, key: "results/T/o09.png", url: "http://r2.local/out-9?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: B, entry: ENTRY, target: PNG } },
   ],
   reportUrl: "http://jobs.local/report?attempt=current",
 };
@@ -37,8 +42,7 @@ beforeEach(() => {
   vi.mocked(put).mockResolvedValue();
   vi.mocked(cpuUsec).mockResolvedValue(123);
   vi.mocked(runPlanCommand).mockRejectedValue(new Error("optional cover unavailable"));
-  vi.mocked(inspectPlanInput).mockResolvedValue(FACTS);
-  vi.mocked(executePlanRecipe).mockResolvedValue(MEDIA);
+  vi.mocked(executePresentationRecipe).mockResolvedValue(MEDIA);
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -46,12 +50,11 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
   it("retains input aliases, downloads each actual URL once, and preserves output indices", async () => {
     await runPlanJob(JOB);
     expect(download).toHaveBeenCalledTimes(2);
-    expect(inspectPlanInput).toHaveBeenCalledTimes(2);
-    const calls = vi.mocked(executePlanRecipe).mock.calls;
+    const calls = vi.mocked(executePresentationRecipe).mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls.map(([request]) => request.recipe)).toEqual(JOB.outputs.map((output) => output.recipe));
-    expect(calls[0]![0].input).toBe(vi.mocked(download).mock.calls[0]![1]);
-    expect(calls[1]![0].input).toBe(vi.mocked(download).mock.calls[1]![1]);
+    expect(calls[0]![0].inputs.get(ALIAS)).toBe(vi.mocked(download).mock.calls[0]![1]);
+    expect(calls[1]![0].inputs.get(B)).toBe(vi.mocked(download).mock.calls[1]![1]);
     const options = vi.mocked(fetch).mock.calls[0]![1]!;
     expect(JSON.parse(String(options.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: true, cpuUsec: 123, outputs: JOB.outputs.map((output) => ({ outputIndex: output.outputIndex, storageKey: output.key, ...MEDIA })) });
   });
@@ -60,15 +63,15 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
     const timeout = vi.spyOn(AbortSignal, "timeout");
     await runPlanJob(JOB);
     expect(timeout).toHaveBeenCalledExactlyOnceWith(7200000);
-    const signal = vi.mocked(executePlanRecipe).mock.calls[0]![0].signal;
+    const signal = vi.mocked(executePresentationRecipe).mock.calls[0]![0].signal;
     expect(vi.mocked(download).mock.calls.every((args) => args[2] === signal)).toBe(true);
     expect(vi.mocked(put).mock.calls.every((args) => args[2] === signal)).toBe(true);
-    expect(vi.mocked(inspectPlanInput).mock.calls.every((args) => args[1] === signal && args[2] === JOB.limits)).toBe(true);
+    expect(vi.mocked(executePresentationRecipe).mock.calls.every(([request]) => request.signal === signal && request.limits === JOB.limits)).toBe(true);
     expect(vi.mocked(fetch).mock.calls[0]![1]?.signal).toBe(signal);
   });
 
   it("reports index8 as the actual completed subset when the next recipe fails", async () => {
-    vi.mocked(executePlanRecipe).mockResolvedValueOnce(MEDIA).mockRejectedValueOnce(new Error("second recipe failed"));
+    vi.mocked(executePresentationRecipe).mockResolvedValueOnce(MEDIA).mockRejectedValueOnce(new Error("second recipe failed"));
     await runPlanJob(JOB);
     expect(put).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: false, cpuUsec: 123, reason: "tool_failed", outputs: [{ outputIndex: 8, storageKey: JOB.outputs[0]!.key, ...MEDIA }] });
@@ -84,24 +87,24 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
   });
 
   it("does not fetch or execute against an unbound recipe input", async () => {
-    const job = { ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe: { kind: "frame" as const, inputId: "unbound", frameIndex: 0 } }] };
+    const job = { ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe: { kind: "frame" as const, inputId: "unbound", entry: ENTRY, target: PNG } }] };
     await runPlanJob(job);
     expect(download).not.toHaveBeenCalled();
-    expect(executePlanRecipe).not.toHaveBeenCalled();
+    expect(executePresentationRecipe).not.toHaveBeenCalled();
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toMatchObject({ ok: false, outputs: [] });
   });
 
   it("does not begin any source IO or compute when the original deadline already passed", async () => {
     await runPlanJob({ ...JOB, deadlineAt: NOW - 1 });
     expect(download).not.toHaveBeenCalled();
-    expect(executePlanRecipe).not.toHaveBeenCalled();
+    expect(executePresentationRecipe).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
   });
 });
 
 // S6d D4-6 (inner#1306 §92; design §7.17 「容器不读帧表」, scene_cuts 「去掉inspect_video步骤」): once frame, segment, people and
-// scene_cuts carry full-ledger entries, no recipe reads the per-frame probe, so a job of them never runs inspectPlanInput
-// (the `-show_frames` probe behind `frameTable`).
+// scene_cuts carry full-ledger entries, no recipe reads the per-frame probe: each runs as a presentation recipe (§93 D5:
+// re-expressed on that executor, so the pin no longer names the inspection seam it removed).
 describe("no recipe inspects the source frame by frame after D4 (§92 D4-6)", () => {
   const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
   const entry = { kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) };
@@ -112,9 +115,9 @@ describe("no recipe inspects the source frame by frame after D4 (§92 D4-6)", ()
     ["people", { kind: "people", inputId: A, entry, target: png, profile: "standard" }],
     ["scene_cuts", { kind: "scene_cuts", inputId: A, window: { start: 0, end: 1 }, timescale: 25, profile: "standard", entries: [{ ...entry, ordinalOffset: 0 }], target: { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none" } }],
     ["segment", { kind: "segment", inputId: A, window: { start: 0, end: 1 }, timescale: 25, entries: [entry], target: video, audio: null }],
-  ])("DP06 a %s recipe on full-ledger entries runs without inspectPlanInput", async (_name, recipe) => {
+  ])("DP06 a %s recipe on full-ledger entries runs as a presentation recipe", async (_name, recipe) => {
     await runPlanJob({ ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe }] } as unknown as PlanRunBody);
-    expect(inspectPlanInput).not.toHaveBeenCalled();
+    expect(vi.mocked(executePresentationRecipe).mock.calls.map(([request]) => request.recipe)).toEqual([recipe]);
   });
 });
 

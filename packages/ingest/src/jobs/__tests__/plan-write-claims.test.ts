@@ -51,6 +51,7 @@ function observedBucket(calls: string[]): R2Bucket {
  * @returns The production outbound route and actual durable/R2 fixture.
  * @throws {Error} When fixture initialization or handler lookup fails.
  */
+// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
 async function fixture(): Promise<Fixture> {
   const nonce = crypto.randomUUID();
   const key = `plan-write-claim/${nonce}/result.png`;
@@ -58,7 +59,7 @@ async function fixture(): Promise<Fixture> {
     schemaVersion: 2, jobId: nonce, containerClass: "MiniToolContainerStd1", deadlineAt: Date.now() + 7200000,
     limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
     inputs: [{ inputId: "20000000-0000-4000-8000-000000000001", storageKey: `plan-write-claim/${nonce}/source.mp4` }],
-    outputs: [{ outputIndex: 8, storageKey: key, contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", frameIndex: 30 } }],
+    outputs: [{ outputIndex: 8, storageKey: key, contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", entry: { kind: "source", decodeStart: { numerator: "6", denominator: "5" }, clipStart: { numerator: "6", denominator: "5" }, displayStart: { numerator: "6", denominator: "5" }, displayEnd: { numerator: "31", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
   };
   const id = env.PLAN_WRITE_TEST.idFromName(nonce);
   const stub = env.PLAN_WRITE_TEST.get(id);
