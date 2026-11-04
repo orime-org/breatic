@@ -101,7 +101,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       signal.throwIfAborted();
       const recipe = output.recipe;
       const file = join(directory, `output-${output.outputIndex}`);
-      let metadata: MediaOfOutput & Pick<PlanContainerOutput, "packing">;
+      let metadata: MediaOfOutput;
       if (isPresentationRecipe(recipe)) {
         const inputs = new Map<string, string>();
         for (const id of named(recipe)) inputs.set(id, await fetchInput(id));

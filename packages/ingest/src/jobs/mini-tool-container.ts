@@ -104,6 +104,7 @@ function reportOf(record: JobRecord): MiniToolJobReport | MiniToolPlanJobReport 
         cover: cover === undefined || output.coverKey === undefined ? null : {
           storageKey: output.coverKey, ...cover, width: media?.cover?.width ?? null, height: media?.cover?.height ?? null,
         },
+        ...(media?.packing === undefined ? {} : { packing: media.packing }),
       };
     });
     const measured = record.reported === undefined ? null : usage;
@@ -286,7 +287,8 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
         if (!declared || declared.storageKey !== output.storageKey || seen.has(output.outputIndex)) throw new Error("Unexpected planned report output identity");
         if (output.cover !== null && declared.coverKey === undefined) throw new Error("Unexpected planned report cover");
         seen.add(output.outputIndex);
-        media[output.storageKey] = { width: output.width, height: output.height, durationSeconds: output.durationSeconds, cover: output.cover };
+        media[output.storageKey] = { width: output.width, height: output.height, durationSeconds: output.durationSeconds, cover: output.cover,
+          ...(output.packing === undefined ? {} : { packing: output.packing }) };
       }
       if (body.ok && seen.size !== record.request.outputs.length) throw new Error("Incomplete planned report metadata");
       if (record.reported !== undefined) {

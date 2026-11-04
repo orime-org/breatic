@@ -10,7 +10,7 @@
  */
 
 import {
-  videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationObjectURL, videoPresentationVersionId, videoPresentationVersionSchema,
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationDoneReceiptsSchema, videoPresentationKeyFor, videoPresentationLedgerReceiptSchema, videoPresentationObjectURL, videoPresentationVersionId, videoPresentationVersionSchema,
   videoPresentationWorkKeyFor, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor,
   type VideoPresentationAdmissionPolicy, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
   type VideoPresentationEncoding, type VideoPresentationIngestLedger, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
@@ -366,8 +366,10 @@ export class VideoPresentationStore {
         state: chunk.state, attempt: chunk.attempt, attempts: chunk.attempts.map(({ attempt, jobId, state: attemptState, usageRecorded }) => ({ attempt, jobId, state: attemptState, usageRecorded })),
         ...(job?.receipts?.[key] === undefined ? {} : { receipts: job.receipts[key] }),
       }]));
-      const frozen = admission?.pricing === undefined || admission.actorUserId === undefined ? null
-        : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null };
+      // The carrier's encode parameters frozen at admission reach the worker, so every chunk encodes alike (§5.4, §91 D3b-1).
+      const frozen = admission?.pricing === undefined || admission.actorUserId === undefined || admission.limits === undefined || admission.encoding === undefined ? null
+        : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null,
+          carrier: { crf: admission.limits.crf, preset: admission.limits.preset, maxShortSide: admission.encoding.carrier.maxShortSide } };
       return { ...snapshot, capability, plan, work: facts?.work ?? { kind: 'none' },
         candidateLedger: plan === null ? null : wireLedger(state?.ledgers[plan.toolInputId]?.instance), units, frozen };
     });
@@ -446,18 +448,49 @@ export class VideoPresentationStore {
     const { candidate, admission } = job;
     if (facts === undefined || candidate.state !== 'building' || (facts.route !== 'dispatch_copy' && facts.route !== 'encode')) return false;
     const unit = unitKey(admission.jobId, { kind: facts.route === 'encode' ? 'presentation-stitch' : 'presentation-copy' });
-    // Publishing an alpha-packed carrier with its manifest arrives with S6d; until then only a native carrier publishes.
     const receipt = job.receipts?.[unit]?.find((output) => output.role === 'carrier');
-    if (job.chunks[unit]?.state !== 'done' || receipt === undefined || receipt.packing !== 'native') return false;
+    if (job.chunks[unit]?.state !== 'done' || receipt === undefined || (receipt.packing === 'alpha-packed' && receipt.geometry === undefined)) return false;
     const head = await this.bucket.head(receipt.storageKey);
     const sha256 = head?.checksums.sha256 === undefined ? null : [...new Uint8Array(head.checksums.sha256)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType || sha256 !== receipt.sha256) return false;
     const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), etag: head.etag, size: head.size, sha256, contentType: receipt.contentType };
-    const bundle = await this.assembleVersion(job, facts, carrier);
+    let bundle = await this.assembleVersion(job, facts, carrier);
+    if (receipt.geometry !== undefined) {
+      const manifest = await this.writeManifest(job, bundle, receipt.geometry);
+      if (manifest === null) return false;
+      bundle = { ...bundle, playback: { kind: 'alpha-packed', carrier, manifest } };
+      const { storageKey, sha256: digest, size, contentType } = manifest;
+      job.receipts = { ...job.receipts, [unit]: [...job.receipts![unit]!.filter((output) => output.role !== 'manifest'), { role: 'manifest', storageKey, sha256: digest, sizeBytes: size, contentType }] };
+    }
     const step = advancePresentationCandidate(candidate, { kind: 'Ev', jobId: admission.jobId, fact: { kind: 'verified' } }, this.policy(admission));
     if (step.next.state === 'verified') job.bundle = bundle;
     await this.applyCandidateStep(state, job, step);
     return job.candidate.state === 'verified';
+  }
+
+  /**
+   * Write the alpha-packed manifest when the bundle is assembled (§3.5, §91 D3-3, D3b-3): the version identity, the measured
+   * carrier and the geometry its job reported, at the carrier key plus `.manifest.json`; the manifest does not enter its own
+   * versionId, which the carrier alone gives. The bytes are deterministic, so a repeated publish writes the same object.
+   * @param job - The job.
+   * @param version - The version assembled over the measured carrier.
+   * @param geometry - The packed geometry.
+   * @returns The manifest's measured receipt, or null when the geometry does not fit the version.
+   * @throws {Error} When R2 fails.
+   */
+  private async writeManifest(job: JobRecord, version: VideoPresentationVersion, geometry: NonNullable<Extract<VideoPresentationOutputReceipt, { role: 'carrier' }>['geometry']>): Promise<Extract<VideoPresentationVersion['playback'], { kind: 'alpha-packed' }>['manifest'] | null> {
+    const { versionId, toolInputId, planSha256, policyVersion, playback } = version;
+    const parsed = alphaPackedManifestSchema.safeParse({ schemaVersion: 1, versionId, toolInputId, planSha256, policyVersion, packed: playback.carrier, ...geometry });
+    if (!parsed.success) return null;
+    const storageKey = `${playback.carrier.storageKey}.manifest.json`;
+    const contentType = 'application/json';
+    // The manifest's own receipt is not inside it, so the version it describes can be checked before it is written.
+    const placeholder = { storageKey, url: this.objectURL(job.admission, storageKey), etag: '-', size: 1, sha256: '0'.repeat(64), contentType };
+    if (!alphaPackedManifestMatchesVersion(parsed.data, { ...version, playback: { kind: 'alpha-packed', carrier: playback.carrier, manifest: placeholder } })) return null;
+    const bytes = new TextEncoder().encode(JSON.stringify(parsed.data));
+    const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const object = await this.bucket.put(storageKey, bytes, { httpMetadata: { contentType }, sha256 });
+    return { ...placeholder, etag: object.etag, size: bytes.byteLength, sha256 };
   }
 
   /**
@@ -613,6 +646,8 @@ export class VideoPresentationStore {
       const step = advancePresentationChunk(before, event, chunkIdentity);
       if (step.rejected) return false;
       // Output receipts count only for the attempt that completed the unit, its carrier at that attempt's own output key.
+      // A Done carries its one carrier, an alpha-packed one with its geometry; the manifest is the DO's own (§91 D3-3).
+      if (report.kind === 'Done' && report.receipts !== undefined && !videoPresentationDoneReceiptsSchema.safeParse(report.receipts).success) return false;
       if (report.kind === 'Done' && report.receipts !== undefined && before.state === 'open' && step.next.state === 'done') {
         const attemptJob = videoContainerJobId({ ...chunkIdentity, attempt: report.attempt });
         const carrier = report.receipts.find((receipt) => receipt.role === 'carrier');

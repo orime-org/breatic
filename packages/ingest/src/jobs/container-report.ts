@@ -8,12 +8,18 @@
 
 import { CONTAINER_FAILURES, type ContainerFailure } from "@shared/mini-tools/types.js";
 
+/** A rectangle in an alpha-packed carrier's coded frame. */
+interface PackedRect { x: number; y: number; width: number; height: number }
+/** An alpha-packed output's plane geometry (§91 D3-3), in the alpha manifest's field names. */
+export interface PackedGeometry { packedWidth: number; packedHeight: number; colorRect: PackedRect; alphaRect: PackedRect }
 /** The numbers ffprobe read inside the container, per main output. */
 export interface MediaOfOutput {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
   cover: { width: number | null; height: number | null } | null;
+  /** Only on an alpha-packed planned output. */
+  packing?: PackedGeometry;
 }
 
 /** What the container reports. */
@@ -25,15 +31,8 @@ export interface ContainerReportBody {
   reason?: ContainerFailure;
 }
 
-/** A rectangle in an alpha-packed carrier's coded frame. */
-interface PackedRect { x: number; y: number; width: number; height: number }
 /** One explicitly indexed output's metadata, independent of Worker byte measurements. */
-export interface PlanContainerOutput extends MediaOfOutput {
-  outputIndex: number;
-  storageKey: string;
-  /** An alpha-packed stitch's plane geometry (§91 D3-3), in the alpha manifest's field names. */
-  packing?: { packedWidth: number; packedHeight: number; colorRect: PackedRect; alphaRect: PackedRect };
-}
+export interface PlanContainerOutput extends MediaOfOutput { outputIndex: number; storageKey: string }
 /** The versioned report from one immutable container attempt. */
 export interface PlanContainerReportBody {
   schemaVersion: 2;
@@ -55,6 +54,32 @@ function mediaNumber(value: unknown): boolean {
 }
 
 /**
+ * Whether a value is an object whose named fields are all finite numbers.
+ * @param item - The untrusted value.
+ * @param keys - The fields.
+ * @returns Whether each is a finite number.
+ * @throws {never} Never.
+ */
+function numbers(item: unknown, keys: readonly string[]): boolean {
+  return typeof item === "object" && item !== null && keys.every((key) => {
+    const field = (item as Record<string, unknown>)[key];
+    return typeof field === "number" && Number.isFinite(field);
+  });
+}
+
+/**
+ * Whether a value has the shape of packed geometry; its plane rules are the shared schema's, checked on the job report.
+ * @param value - The untrusted value.
+ * @returns Whether every field is a finite number in place.
+ * @throws {never} Never.
+ */
+function isPackedGeometry(value: unknown): value is PackedGeometry {
+  if (!numbers(value, ["packedWidth", "packedHeight"])) return false;
+  const raw = value as Record<string, unknown>;
+  return numbers(raw.colorRect, ["x", "y", "width", "height"]) && numbers(raw.alphaRect, ["x", "y", "width", "height"]);
+}
+
+/**
  * Read one owned metadata object returned by a planned recipe.
  * @param value - The untrusted report value.
  * @returns The metadata, or null for an invalid shape.
@@ -66,7 +91,9 @@ function planMedia(value: unknown): MediaOfOutput | null {
   if (![raw.width, raw.height, raw.durationSeconds].every(mediaNumber)) return null;
   const cover = raw.cover;
   if (cover !== null && (typeof cover !== "object" || !mediaNumber((cover as Record<string, unknown>).width) || !mediaNumber((cover as Record<string, unknown>).height))) return null;
-  return { width: raw.width as number | null, height: raw.height as number | null, durationSeconds: raw.durationSeconds as number | null, cover: cover as MediaOfOutput["cover"] };
+  if (raw.packing !== undefined && !isPackedGeometry(raw.packing)) return null;
+  return { width: raw.width as number | null, height: raw.height as number | null, durationSeconds: raw.durationSeconds as number | null, cover: cover as MediaOfOutput["cover"],
+    ...(raw.packing === undefined ? {} : { packing: raw.packing }) };
 }
 
 /**
