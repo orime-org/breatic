@@ -3,7 +3,7 @@
 
 import { expect } from 'playwright/test';
 import type { RecentFeedItem } from '@web/data/api/studios';
-import type { ProjectVisitOpened } from '@breatic/shared';
+import type { ProjectVisitLookup, ProjectVisitOpened } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
@@ -114,7 +114,13 @@ test('a committed opened response lost in transit is queried by its original ide
     await route.abort('failed');
   });
   try {
-    const recoveredAnswer = page.waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname.startsWith(`/api/v1/projects/${projectId}/opened/`));
+    const recoveryLookups: ProjectVisitLookup[] = [];
+    const recoveredAnswer = page.waitForResponse(async (response) => {
+      if (response.request().method() !== 'GET' || !new URL(response.url()).pathname.startsWith(`/api/v1/projects/${projectId}/opened/`)) return false;
+      const lookup = await dataOf<ProjectVisitLookup>(response, 'application original-result lookup');
+      recoveryLookups.push(lookup);
+      return lookup.status === 'recorded';
+    });
     await openSmokeProject(page);
     const recovered = await dataOf<RecordedVisitLookup>(await recoveredAnswer, 'real original-result recovery');
     expect(committed).toBeDefined();
@@ -135,6 +141,6 @@ test('a committed opened response lost in transit is queried by its original ide
     expect(fresh.visit_id).not.toBe(committed!.visit_id);
     const persisted = await inspectVisitDb(fresh);
     for (const receipt of [committed!, fresh]) expect(persisted.events.filter((event) => event.visit_id === receipt.visit_id)).toEqual([{ kind: 'project_access', visit_id: receipt.visit_id, occurred_at: receipt.occurred_at }]);
-    await saveVisitEvidence('lost-response-original-evidence', { committed, recovered, replay, fresh, before, after, persisted, posts: traffic.posts });
+    await saveVisitEvidence('lost-response-original-evidence', { committed, recoveryLookups, recovered, replay, fresh, before, after, persisted, posts: traffic.posts });
   } finally { await page.unroute(path); traffic.stop(); }
 });
