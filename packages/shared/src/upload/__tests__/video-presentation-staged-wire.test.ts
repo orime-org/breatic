@@ -21,6 +21,7 @@ import * as shared from '../../index.js';
 import { videoPresentationIngestRequestSchema } from '../video-presentation-ingest.js';
 import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from '../mini-tool-plan-job.js';
 import { videoContainerJobId } from '../../mini-tools/video-encode-plan.js';
+import type { MiniToolPlanRecipe } from '../mini-tool-plan-types.js';
 import { videoPresentationKeyFor } from '../video-presentation.js';
 import { videoSourceLedgerKeyFor } from '../video-source-ledger.js';
 
@@ -471,6 +472,28 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
   // S6d D4-6 (§92; design §7.17 scene_cuts 「去掉inspect_video步骤」): the inspect_video recipe has no producer after D4.
   it('DP07 the inspect_video recipe is no longer admitted', () => {
     expect(miniToolPlanRecipeSchema.safeParse({ kind: 'inspect_video', inputId: INPUT }).success).toBe(false);
+  });
+
+  // S6d D5 (§93; design §7.17 frame row 「不得把presentation ordinal当原解码n」): the transitional frame pieces are gone once the
+  // last frameIndex producer (the people candidate crop, run-container-analysis.ts) writes entries: the recipe schema is one
+  // discriminated union on kind with a single frame member (no `.or(entryFrame)`), whose type and schema name no frameIndex
+  // or orientation at all (no `frameIndex?: never; orientation?: never`).
+  it('FR03 the recipe schema is one discriminated union on kind, without a second frame schema beside it', () => {
+    expect((miniToolPlanRecipeSchema.def as { discriminator?: unknown }).discriminator).toBe('kind');
+  });
+
+  it.each([['frameIndex'], ['orientation']])('FR04 a frame recipe that carries %s, even undefined, is refused', (field) => {
+    expect(miniToolPlanRecipeSchema.safeParse({ ...frameRecipe, [field]: undefined }).success).toBe(false);
+  });
+
+  it('FR05 the frame recipe type declares no frameIndex or orientation (typecheck)', () => {
+    const entry = { kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) } as const;
+    const target = { width: 320, height: 180, colorMatrix: 'bt709', toneMap: 'none', pngBitDepth: 8, alpha: 'none' } as const;
+    // @ts-expect-error The frame recipe type has no frameIndex property (an excess property once `frameIndex?: never` is gone).
+    const withFrameIndex: Extract<MiniToolPlanRecipe, { kind: 'frame' }> = { kind: 'frame', inputId: INPUT, entry, target, frameIndex: undefined };
+    // @ts-expect-error The frame recipe type has no orientation property (an excess property once `orientation?: never` is gone).
+    const withOrientation: Extract<MiniToolPlanRecipe, { kind: 'frame' }> = { kind: 'frame', inputId: INPUT, entry, target, orientation: undefined };
+    expect([withFrameIndex.kind, withOrientation.kind]).toEqual(['frame', 'frame']);
   });
 
   it('RC03 a stitch job request binds every chunk it names as an input', () => {
