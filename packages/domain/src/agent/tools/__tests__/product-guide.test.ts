@@ -130,6 +130,9 @@ describe("the guide as a tool", () => {
     const said = typeof description === "string" ? description.replace(/\s+/g, " ") : "";
     expect(said).toMatch(/canvas/i);
     expect(said).toMatch(/document/i);
+    // The guide has a Mini-tools section; a description that leaves them out
+    // let "scale this picture up" go unlooked-up (#1366).
+    expect(said).toMatch(/mini-tools/i);
     expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
   });
@@ -925,6 +928,13 @@ describe("mini-tools and the task rows", () => {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
       expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
     }
+  });
+
+  // The crop box is clamped to the picture (NodeCropLayer). Read as "a size in
+  // pixels" alone, the Agent told a reader to crop a 500-wide picture to 2100
+  // wide (#1366).
+  it("says a crop's size is the box inside the picture and never makes it larger", () => {
+    expect(section("Mini-tools")).toMatch(/the size is the box's, inside the picture, so a crop never makes the picture larger/i);
   });
 
   // The canvas moves by itself on these two presses; the reader may ask why.
