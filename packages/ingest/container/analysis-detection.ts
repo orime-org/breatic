@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { VideoSourceFrame } from "@ingest/container/video-frame-probe.js";
 import type { MiniToolPlanPixelRect } from "@shared/upload/mini-tool-plan-types.js";
 
 /** A candidate still awaiting registered thumbnail and persistent person identity. */
@@ -10,8 +9,10 @@ export interface AnalysisFaceCandidate {
   faceBox: { x: number; y: number; width: number; height: number };
   pixelCrop?: MiniToolPlanPixelRect;
 }
-/** A cut on the exact source clock, independent of a detector's nominal fps. */
-export interface AnalysisSceneCut extends VideoSourceFrame { detectionScore: number }
+/** One frame a detector saw, named by its index and time. */
+export interface AnalysisFrame { frameIndex: number; pts: number }
+/** A cut on a named frame, independent of a detector's nominal fps. */
+export interface AnalysisSceneCut extends AnalysisFrame { detectionScore: number }
 
 /**
  * Recognize actual finite numeric results without coercing strings or null.
@@ -69,7 +70,7 @@ export function readYuNetFaces(detections: unknown, dimensions: { width: number;
  * @returns Cuts carrying original source identities and timestamps.
  * @throws {TypeError} When an observation, metric or frozen mapping is invalid.
  */
-export function readSceneCutObservations(observations: unknown, sourceFrames: readonly VideoSourceFrame[]): AnalysisSceneCut[] {
+export function readSceneCutObservations(observations: unknown, sourceFrames: readonly AnalysisFrame[]): AnalysisSceneCut[] {
   if (sourceFrames.length === 0) throw new TypeError("Expected a complete nonempty source mapping");
   const sourceIndices = new Set<number>();
   for (const frame of sourceFrames) {
