@@ -35,7 +35,7 @@ import {
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { getSceneConfig, projectAuthService } from "@breatic/core";
-import { logger, NotFoundError } from "@breatic/core";
+import { AppError, logger, NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
 import type { ProjectDetail } from "@breatic/shared";
 
@@ -274,7 +274,7 @@ projects.post("/:id/opened", validate("json", projectVisitRequestSchema), async 
     const receipt = await recentService.recordOpen(id, user.id, visit_id);
     return c.json({ data: { ok: true as const, ...receipt } });
   } catch (err) {
-    logger.error({ err: err instanceof Error && err.cause instanceof Error ? err.cause : err,
+    if (!(err instanceof AppError)) logger.error({ err: err instanceof Error && err.cause instanceof Error ? err.cause : err,
       ctx: { operation: "record_project_visit", userId: user.id, projectId: id, visitId: visit_id } }, "Project visit admission failed");
     throw err;
   }
