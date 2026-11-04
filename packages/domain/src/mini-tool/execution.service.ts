@@ -85,7 +85,8 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       }
     }
     const changed = canonicalMiniToolValue(current.outputs) !== canonicalMiniToolValue(outputs);
-    if (current.resultVersion > 0 && !changed) {
+    // A repeated terminal commit changes nothing; a running execution whose outputs progress commits already hold still ends here.
+    if (current.resultVersion > 0 && !changed && plan.task.status !== "pending" && plan.task.status !== "running") {
       if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
       else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
       return { task: await currentTask(id, tx), execution: plan.execution, record: recordFromPlan({ ...plan, task: await currentTask(id, tx) }) };
@@ -111,6 +112,55 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
   });
 }
+/** A non-terminal observation: the complete indexed mapping with `result: null` for outputs still pending (§93 D5-11). */
+export interface MiniToolExecutionProgress {
+  planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionRecord["outputs"];
+}
+/**
+ * Commit newly registered outputs of a running execution without ending it (design §7.11 「registered，非终态提交」): the
+ * same resultVersion arbitration as the terminal commit, a committed result is never rewritten, a registration is checked
+ * like the terminal one's and failures wait for the terminal commit. Delivery to canvas nodes stays with the terminal
+ * commit; a per-poll delivery would call synchronizeMiniToolDelivery after the store below.
+ * @param taskId - The original accepted SQL task.
+ * @param progress - The complete indexed mapping and the version it was read at.
+ * @returns The current state and original context, unchanged when nothing new is registered.
+ * @throws {ConflictError} When the mapping, a committed result or the version differs.
+ * @throws {Error} When the run has ended, a registration is not the canonical winner, or persistence fails.
+ */
+export async function commitMiniToolExecutionProgress(taskId: string, progress: MiniToolExecutionProgress): Promise<MiniToolExecution> {
+  const id = z.uuid().parse(taskId);
+  const incoming = z.strictObject({
+    planFingerprint: z.string().regex(/^[a-f0-9]{64}$/), expectedVersion: z.number().int().nonnegative(), outputs: z.array(miniToolExecutionOutputSchema).min(1),
+  }).parse(progress);
+  return db.transaction(async (tx) => {
+    const plan = await lockedPlan(id, tx);
+    const current = recordFromPlan(plan);
+    if (incoming.planFingerprint !== plan.execution.planFingerprint || !sameMapping(incoming.outputs, plan.execution)) {
+      throw new ConflictError(t("server.idempotency.mismatch"));
+    }
+    if (plan.task.status !== "pending" && plan.task.status !== "running") throw new Error("An ended execution takes no progress commit");
+    const outputs: MiniToolExecutionOutput[] = [];
+    for (const [index, output] of incoming.outputs.entries()) {
+      const held = current.outputs[index]!;
+      if (held.result?.status === "registered") {
+        if (output.result !== null && canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
+        outputs.push(held);
+      } else if (output.result?.status === "registered") {
+        await requireRegistered(output);
+        outputs.push({ ...output, late: false });
+      } else {
+        outputs.push(held);
+      }
+    }
+    if (canonicalMiniToolValue(current.outputs) === canonicalMiniToolValue(outputs)) return { task: plan.task, execution: plan.execution, record: current };
+    if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
+    const record = miniToolExecutionRecordSchema.parse({ ...current, outputs, resultVersion: current.resultVersion + 1 });
+    await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
+    const task = await currentTask(id, tx);
+    return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
+  });
+}
+
 /**
  * Read only original tasks and current project membership for a collaborator.
  * @param projectId - The Project in the route path.

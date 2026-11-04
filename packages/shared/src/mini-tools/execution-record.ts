@@ -81,7 +81,10 @@ export const miniToolExecutionRecordSchema: z.ZodType<MiniToolExecutionRecord> =
     ctx.addIssue({ code: "custom", message: "Output and consumption identities must be unique" });
   }
   if (record.status === "pending" || record.status === "running") {
-    if (record.resultVersion !== 0 || record.error !== null || record.outputs.some((output) => output.result !== null || output.late)) {
+    // A running execution may hold outputs registered by non-terminal progress commits (design §7.11); failures and late
+    // receipts come only with the terminal commit.
+    if (record.error !== null || record.outputs.some((output) => output.late || output.result?.status === "failed" ||
+      (output.result !== null && record.resultVersion === 0))) {
       ctx.addIssue({ code: "custom", message: "Active execution has no terminal media snapshot" });
     }
   } else if (record.status !== "cancelled") {
