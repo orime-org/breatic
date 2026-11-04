@@ -9,7 +9,7 @@
  */
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { rational } from "@shared/mini-tools/video-presentation-projection.js";
+import { gcd, rational } from "@shared/mini-tools/video-presentation-projection.js";
 import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
@@ -127,25 +127,35 @@ function picture(target: MiniToolPlanTarget, label: string): string {
     `[${label}a]alphaextract,format=rgb24,${pad}[${label}m];[${label}c][${label}m]hstack,${tail}`;
 }
 
+// The highest intermediate rate the exact relabel resamples to; above it the relabelled rate is rounded to the hertz.
+const MAX_RELABEL_RATE = 384000n;
+
 /**
- * An exact time, possibly negative, as FFmpeg seconds.
- * @param value - The numerator and denominator.
- * @returns The decimal text.
+ * Relabel 48 kHz samples to play at a rate (§4.2 rational relabel: no atempo, no pitch preservation): resample to a rate R
+ * whose R·rate is whole, declare the samples R·rate, and resample back to 48 kHz, so the duration becomes duration / rate.
+ * @param rate - The reduced rate.
+ * @returns The filter chain, empty at rate 1.
  * @throws {never} Never.
  */
-function signedSeconds([numerator, denominator]: [bigint, bigint]): string {
-  return numerator < 0n ? `-${seconds([-numerator, denominator])}` : seconds([numerator, denominator]);
+function relabel([numerator, denominator]: [bigint, bigint]): string {
+  if (numerator === denominator) return "";
+  const base = 48000n * denominator / gcd(48000n, denominator);
+  // ponytail: a rate whose exact intermediate rate exceeds the cap (a 16.16 rate such as 65535/65536) is relabelled at the
+  // rounded hertz, drifting at most 0.5 Hz in 384 kHz; an exact path would need a resampler that takes a rational ratio.
+  if (base > MAX_RELABEL_RATE) return `,aresample=48000,asetrate=${(2n * 48000n * numerator + denominator) / (2n * denominator)},aresample=48000`;
+  return `,aresample=${base},asetrate=${base * numerator / denominator},aresample=48000`;
 }
 
 /**
- * The audio of a presentation interval as AAC at 48 kHz from output time 0 (§4.2, §91 D3b-11). With the plan's audio spans
- * the source is read on its media timeline (edit list ignored) and each span's samples are placed at their presentation
- * time; without, the edit list is applied and presentation time is movie time less the origin. Silence before the first
- * sample is kept.
+ * The audio of a presentation interval as AAC at 48 kHz from output time 0 (§4.2, §91 D3b-11, D4-2). With the plan's audio
+ * spans the source is read on its media timeline (edit list ignored); each span's media samples, its bounds rounded to the
+ * 48 kHz grid as FFmpeg `av_rescale` rounds (nearest, halves away from 0), are relabelled to its rate and placed at their
+ * presentation sample. Without spans the edit list is applied and presentation time is movie time less the origin.
+ * Silence before the first sample is kept.
  * @param input - The FFmpeg input index the source's audio is opened at.
  * @param audio - The recipe's audio.
  * @returns The input arguments and the filter chain ending at `[a]`, or null when no span meets the interval.
- * @throws {RangeError} When a span changes rate, which §91 D4 adds.
+ * @throws {RangeError} When a time is malformed.
  */
 function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; graph: string } | null {
   const start = rational(audio.start);
@@ -158,16 +168,17 @@ function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; gra
   }
   const branches: string[] = [];
   for (const edit of audio.spans) {
-    const [rateNumerator, rateDenominator] = rational(edit.rate);
-    if (rateNumerator !== rateDenominator) throw new RangeError("An audio span at a rate other than 1 is not rendered yet");
+    const rate = rational(edit.rate);
     const shownFrom = rational(edit.presentationStart);
-    const shownTo = plus(shownFrom, minusQ(rational(edit.sourceEnd), rational(edit.sourceStart)));
+    // Media [sourceStart, sourceEnd) is shown for its length / rate.
+    const shownTo = plus(shownFrom, times(minusQ(rational(edit.sourceEnd), rational(edit.sourceStart)), [rate[1], rate[0]]));
     const from = later(shownFrom, start);
     const to = earlier(shownTo, end);
     if (!before(from, to)) continue;
-    const mediaFrom = plus(rational(edit.sourceStart), minusQ(from, shownFrom));
-    const mediaTo = plus(mediaFrom, minusQ(to, from));
-    branches.push(`atrim=start=${seconds(mediaFrom)}:end=${seconds(mediaTo)},asetpts=PTS+(${signedSeconds(minusQ(minusQ(from, start), mediaFrom))})/TB,${pad}`);
+    const mediaFrom = plus(rational(edit.sourceStart), times(minusQ(from, shownFrom), rate));
+    const mediaTo = plus(mediaFrom, times(minusQ(to, from), rate));
+    branches.push(`aresample=48000,atrim=start_pts=${roundTimes(mediaFrom, 48000n)}:end_pts=${roundTimes(mediaTo, 48000n)},asetpts=PTS-STARTPTS${relabel(rate)},` +
+      `asetpts=PTS+${roundTimes(minusQ(from, start), 48000n)},${pad}`);
   }
   if (branches.length === 0) return null;
   const labels = branches.map((_branch, at) => `[s${at}]`);
@@ -186,6 +197,17 @@ function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; gra
  */
 function plus(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
   return [left[0] * right[1] + right[0] * left[1], left[1] * right[1]];
+}
+
+/**
+ * Multiply two exact values.
+ * @param left - One.
+ * @param right - The other.
+ * @returns The product.
+ * @throws {never} Never.
+ */
+function times(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
+  return [left[0] * right[0], left[1] * right[1]];
 }
 
 /**
@@ -304,7 +326,7 @@ async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<M
  * @param output - The MP4 to write.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RangeError} When a span changes rate, which §91 D4 adds.
+ * @throws {RangeError} When a time is malformed.
  * @throws {Error} When FFmpeg fails.
  */
 async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_encode" | "prepare_model_input" }>, source: string, output: string,
@@ -323,16 +345,15 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
       graph.push(`color=c=black:s=${target.width}x${target.height}:r=1:d=1,format=yuv420p,setsar=1,${BT709_TAGS},settb=1/${clock},setpts=${offset}[e${at}]`);
       continue;
     }
+    // At rate a/b the span shows media [clipStart, clipStart + length·a/b), each frame for its media duration·b/a (§7.17).
     const [rateNumerator, rateDenominator] = rational(entry.rate);
-    if (rateNumerator !== rateDenominator) throw new RangeError("A span at a rate other than 1 is not rendered yet");
-    const [lengthNumerator, lengthDenominator] = minus(entry.displayEnd, entry.displayStart);
     const [clipNumerator, clipDenominator] = rational(entry.clipStart);
-    const clipEnd: [bigint, bigint] = [clipNumerator * lengthDenominator + lengthNumerator * clipDenominator, clipDenominator * lengthDenominator];
+    const clipEnd = plus([clipNumerator, clipDenominator], times(minus(entry.displayEnd, entry.displayStart), [rateNumerator, rateDenominator]));
     // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
-      `setpts=max(PTS-${roundTimes([clipNumerator, clipDenominator], clock)}\\,0)+${offset},${picture(target, `p${at}`)}[e${at}]`);
+      `setpts=max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${offset},${picture(target, `p${at}`)}[e${at}]`);
     inputs += 1;
   }
   graph.push(`${entries.map((_entry, at) => `[e${at}]`).join("")}interleave=nb_inputs=${entries.length},settb=1/${clock}[v]`);
