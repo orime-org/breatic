@@ -95,13 +95,7 @@ export function PromptGroup({
                 ) : (
                   <AccordionTrigger data-testid={item.testId === undefined ? undefined : `${item.testId}-toggle`}>
                     {name}
-                    {!open && (
-                      item.fragment === null ? (
-                        <PreviewText line='' placeholder={item.placeholder} />
-                      ) : (
-                        <PreviewLine fragment={item.fragment} placeholder={item.placeholder} />
-                      )
-                    )}
+                    {!open && <PreviewLine fragment={item.fragment} placeholder={item.placeholder} />}
                   </AccordionTrigger>
                 )}
                 {item.controls}
@@ -118,28 +112,25 @@ export function PromptGroup({
 }
 
 /**
- * A closed row's line, or its placeholder when the prompt has no words.
+ * A closed row's line, following the prompt while the row is closed, or its
+ * placeholder when the prompt has no words; an open prompt draws no row line
+ * and follows nothing.
  * @param root0 - Component props.
- * @param root0.line - The line.
- * @param root0.placeholder - What shows in its place when it is empty.
+ * @param root0.fragment - The prompt, or null for a box with no stored prompt.
+ * @param root0.placeholder - What shows when it has no words.
  * @returns The text.
  */
-function PreviewText({ line, placeholder }: { line: string; placeholder: string }): React.JSX.Element {
+function PreviewLine({
+  fragment,
+  placeholder,
+}: {
+  fragment: Y.XmlFragment | null;
+  placeholder: string;
+}): React.JSX.Element {
+  const line = usePromptPreviewLine(fragment);
   return (
     <span className={cn('min-w-0 truncate text-xs', line === '' ? 'text-muted-foreground' : 'text-foreground')}>
       {line === '' ? placeholder : line}
     </span>
   );
-}
-
-/**
- * A closed row's line, following the prompt while the row is closed; an open
- * prompt draws no row line and follows nothing.
- * @param root0 - Component props.
- * @param root0.fragment - The prompt.
- * @param root0.placeholder - What shows when it has no words.
- * @returns The text.
- */
-function PreviewLine({ fragment, placeholder }: { fragment: Y.XmlFragment; placeholder: string }): React.JSX.Element {
-  return <PreviewText line={usePromptPreviewLine(fragment)} placeholder={placeholder} />;
 }

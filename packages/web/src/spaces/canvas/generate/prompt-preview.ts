@@ -16,7 +16,7 @@ import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-n
 import { chipDisplayText } from '@web/spaces/canvas/generate/reference-mention';
 
 /** The interface words the box itself draws around stored content. */
-export interface PreviewWords {
+interface PreviewWords {
   /** What a chip with no name shows (`canvas.generatePanel.reference`). */
   reference: string;
   /** What a note's line starts with (`canvas.generatePanel.notePrefix`). */
@@ -40,22 +40,22 @@ export function promptPreviewLine(fragment: Y.XmlFragment, words: PreviewWords):
 
 /**
  * A prompt's preview line, kept up to date as anyone types into it.
- * @param fragment - The prompt.
+ * @param fragment - The prompt, or null for a box with no stored prompt.
  * @returns The line, or the empty string for a prompt with no words.
  */
-export function usePromptPreviewLine(fragment: Y.XmlFragment): string {
+export function usePromptPreviewLine(fragment: Y.XmlFragment | null): string {
   const t = useTranslation();
   const reference = t('canvas.generatePanel.reference');
   const notePrefix = t('canvas.generatePanel.notePrefix');
   const subscribe = React.useCallback(
     (notify: () => void): (() => void) => {
-      fragment.observeDeep(notify);
-      return () => fragment.unobserveDeep(notify);
+      fragment?.observeDeep(notify);
+      return () => fragment?.unobserveDeep(notify);
     },
     [fragment],
   );
   const read = React.useCallback(
-    (): string => promptPreviewLine(fragment, { reference, notePrefix }),
+    (): string => (fragment === null ? '' : promptPreviewLine(fragment, { reference, notePrefix })),
     [fragment, reference, notePrefix],
   );
   return React.useSyncExternalStore(subscribe, read);

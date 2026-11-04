@@ -2498,6 +2498,34 @@ describe('the multi-shot mode', () => {
     expect(caretIn(2)).toBe(false);
   });
 
+  it('keeps the shot open by default open when a collaborator brings back a shot before it (#1201)', async () => {
+    await openOn('multi_shot', threeShots);
+    const shots = shotListOf('p', 's', 'target');
+    if (!shots) throw new Error('no shots');
+    const second = readShots('p', 's', 'target')?.[1]?.id;
+    // A collaborator removes the first shot, so the second opens in its place,
+    // then brings the first back in front of it.
+    const removed = new Y.Map<unknown>();
+    act(() => {
+      getDoc(docName.canvasSpace('p', 's')).transact(() => {
+        const old = shots.get(0);
+        removed.set('id', old.get('id'));
+        removed.set('duration', old.get('duration'));
+        removed.set('prompt', new Y.XmlFragment());
+        shots.delete(0, 1);
+      });
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(2));
+    expect(readShots('p', 's', 'target')?.[0]?.id).toBe(second);
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
+    act(() => {
+      shots.insert(0, [removed]);
+    });
+    await waitFor(() => expect(readShots('p', 's', 'target')).toHaveLength(3));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
+  });
+
   it('shows a collapsed shot its first line, a chip by its name (#1201)', async () => {
     await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     act(() => {

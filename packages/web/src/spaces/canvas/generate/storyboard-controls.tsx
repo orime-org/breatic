@@ -13,7 +13,7 @@
 
 import { Minus, Plus } from 'lucide-react';
 import * as React from 'react';
-import { addShot, stepShot } from '@breatic/shared';
+import { addShot, getLocale, stepShot } from '@breatic/shared';
 import type * as Y from 'yjs';
 
 import { Button } from '@web/components/ui/button';
@@ -134,9 +134,13 @@ export function ShotList<Shot extends ShotRow>({
   renderEditor,
 }: ShotListProps<Shot>): React.JSX.Element {
   const t = useTranslation();
-  const durations = shots.map((shot) => shot.duration);
-  const items = shots.map(
-    (shot, index): PromptGroupItem => ({
+  // `t` stays the same function across a language switch; the locale is what
+  // the names and labels below follow.
+  const locale = getLocale();
+  // Built once per shot list, so opening another shot leaves every box as it is.
+  const items = React.useMemo(() => {
+    const durations = shots.map((shot) => shot.duration);
+    return shots.map((shot, index): PromptGroupItem => ({
       id: shot.id,
       name: t('canvas.generatePanel.storyboard.shot', { n: index + 1 }),
       fragment: shot.prompt,
@@ -188,8 +192,9 @@ export function ShotList<Shot extends ShotRow>({
           </Button>
         </>
       ),
-    }),
-  );
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read the words when the locale changes
+  }, [shots, placeholder, renderEditor, onStep, onRemove, t, locale]);
   return (
     <div data-testid='generate-storyboard-shots'>
       <PromptGroup

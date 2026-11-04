@@ -7,15 +7,20 @@
  * shot cannot be added, the reason in its place.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type * as React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
+import { setLocale } from '@breatic/shared';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { AddShotRow, ShotList } from '@web/spaces/canvas/generate/storyboard-controls';
 
 const NOOP = (): void => {};
+
+afterEach(() => {
+  setLocale('en');
+});
 
 /**
  * The add-shot row.
@@ -99,6 +104,39 @@ describe('the shot list', () => {
     expect(onStep).toHaveBeenCalledWith('s1', -1);
     expect(onRemove).toHaveBeenCalledWith('s1');
     expect(onExpand).not.toHaveBeenCalled();
+  });
+
+  it('leaves every shot box alone when another shot opens', () => {
+    const renderEditor = vi.fn((shot: { id: string }) => <textarea data-testid={`box-${shot.id}`} />);
+    const shots = [
+      { id: 's0', duration: 2, prompt: words('A rooftop at dawn') },
+      { id: 's1', duration: 3, prompt: words('She turns around') },
+    ];
+    const { rerender } = shotList({ shots, renderEditor });
+    renderEditor.mockClear();
+
+    rerender(
+      <ShotList
+        shots={shots}
+        expanded='s1'
+        onExpand={NOOP}
+        placeholder='Describe this shot'
+        onStep={NOOP}
+        onRemove={NOOP}
+        renderEditor={renderEditor}
+      />,
+    );
+
+    expect(screen.getByTestId('box-s1')).toBeVisible();
+    expect(renderEditor).not.toHaveBeenCalled();
+  });
+
+  it('names the shots in the language the reader switches to', () => {
+    shotList();
+
+    act(() => setLocale('zh-CN'));
+
+    expect(screen.getByTestId('generate-storyboard-shot-2')).toHaveTextContent('镜头 2');
   });
 
   it('draws a lone shot with its title row as today, not as a row to click', () => {

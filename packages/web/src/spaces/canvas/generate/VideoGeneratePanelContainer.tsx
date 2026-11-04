@@ -294,23 +294,22 @@ function VideoGeneratePanelBody({
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The shot whose box is open (#1201): the one the reader opened or added
-  // while it exists, else the first. Leaving the mode forgets it, so coming
-  // back opens the first shot again.
+  // The shot whose box is open (#1201), held by id so a collaborator adding or
+  // bringing back a shot never moves it: the first when the mode opens, then
+  // the one the reader opens or adds. When it is removed, by anyone, the one
+  // that took its place opens, or the one before it when it was the last.
+  // Leaving the mode forgets it, so coming back opens the first shot again.
   const [openedShot, setOpenedShot] = React.useState<string | null>(null);
   const [seenShots, setSeenShots] = React.useState(shots);
-  if (!spec && openedShot !== null) setOpenedShot(null);
-  if (shots !== seenShots) {
-    setSeenShots(shots);
-    // The open shot was removed, by anyone: open the one that took its place,
-    // or the one before it when it was the last.
-    if (openedShot !== null && shots && !shots.some((shot) => shot.id === openedShot)) {
-      const at = seenShots?.findIndex((shot) => shot.id === openedShot) ?? -1;
-      setOpenedShot((shots[at] ?? shots[at - 1])?.id ?? null);
-    }
+  if (shots !== seenShots) setSeenShots(shots);
+  let nextShot = openedShot;
+  if (!spec || !shots) nextShot = null;
+  else if (!shots.some((shot) => shot.id === openedShot)) {
+    const at = seenShots?.findIndex((shot) => shot.id === openedShot) ?? -1;
+    nextShot = (shots[at] ?? shots[at - 1] ?? shots[0])?.id ?? null;
   }
-  const expandedShot =
-    openedShot !== null && shots?.some((shot) => shot.id === openedShot) ? openedShot : (shots?.[0]?.id ?? '');
+  if (nextShot !== openedShot) setOpenedShot(nextShot);
+  const expandedShot = nextShot ?? '';
   const expandedShotRef = React.useRef(expandedShot);
   expandedShotRef.current = expandedShot;
   const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
