@@ -21,3 +21,9 @@ cfr96-source-a.ledger.json
   cfr96.ledger.json bound to source fingerprint "a" x 64 (the removal integration fixture's source):
   sourceFingerprint replaced, toolInputId recomputed with videoPresentationToolInputId, attempt set to
   { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 }; checked with videoPresentationLedgerSchema.
+
+Audio edits (inner#1306 §91 D3b-10). The probe did not yet record the audio track's edit list, so cfr96.ledger.json and
+cfr96-source-a.ledger.json carry it by hand: the regenerated cfr96.mp4 (byte-identical, same sourceFingerprint) has one
+audio edit (segment 3840 of movie timescale 1000, media time 1024 of 48000, rate 1), which as plan spans is
+[{ sourceStart 8/375, sourceEnd 1448/375, presentationStart 0, rate 1 }]. planSha256 and toolInputId were recomputed with
+videoPresentationPlanSha256 and videoPresentationToolInputId, and both ledgers checked with videoPresentationLedgerSchema.

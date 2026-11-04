@@ -58,13 +58,15 @@ const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000
 // fixtures/presentation/PROVENANCE.txt). The fetch fake serves its bytes at the receipt URL.
 const LEDGER_BYTES = readFileSync(new URL("../../../worker/src/handlers/__tests__/fixtures/presentation/cfr96-source-a.ledger.json", import.meta.url));
 const RECEIPT = {
-  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510",
-  planSha256: "4615adfc86906e4cb29165aba35bd4751f87c51822318e4e7fc49dd3c6b2c9ee", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", etag: "full-etag", size: 1206,
-  sha256: "2858d801733195d81ffc09e1883532591115345abf3eaa01035e7f4c81524177", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", sha256: "7948ba2144023683a03b45b7f58d90031e14e7314c1561b48f39a226d20d0ac7", size: 353, contentType: "application/json", frameCount: 96 },
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400",
+  planSha256: "e7107a03209bc1b3ea4be74b6a6f0e7dd04f0c62431b78560be411c4cda7beb9", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", etag: "full-etag", size: 1409,
+  sha256: "539b98d8b94dc35e0da0be98fdd3e0358a2aa7d4196caf6e61658181abd6db11", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", sha256: "74c5313481331d9e42c9a8f9b69bff0bed3d0539e36b90020bb1eb5c1a86af74", size: 353, contentType: "application/json", frameCount: 96 },
 };
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+// §91 D3b-10/11: model input places audio by the plan's audio spans.
+const AUDIO_SPANS = (JSON.parse(LEDGER_BYTES.toString("utf8")) as { plan: { audioSpans: unknown } }).plan.audioSpans;
 const MODEL_TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium" };
 const GOLDEN = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
@@ -81,7 +83,7 @@ const GOLDEN = {
     // §91 D3b-5: the model input's encode parameters are frozen at admission like the presentation's.
     encode: { crf: 18, preset: "medium" } },
   credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "f29f141ba52bcef63aeb2ad570f9c72b84f4ebd1d53284c7f851fb40ca91b9ff",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "4b3eceb3f049882131231a7fdbee83cb41081998eb069910f378827055a5403a",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -109,8 +111,11 @@ function doneReport(request: Record<string, unknown>): Record<string, unknown> {
 }
 // The bytes the receipt URL serves; WP07 serves other bytes.
 let ledgerBody: Buffer = LEDGER_BYTES;
+// A transport failure of the ledger read, before any body (WP08).
+let ledgerFault: "reset" | 503 | null = null;
 beforeEach(() => {
   ledgerBody = LEDGER_BYTES;
+  ledgerFault = null;
   vi.resetAllMocks(); configure(); overrides.chunkRetries = undefined;
   jobs.submitted.length = 0; jobs.scripted.clear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -125,7 +130,11 @@ beforeEach(() => {
       if (request === undefined) return new Response("missing", { status: 404 });
       return Response.json(jobs.scripted.get(id) ?? doneReport(request));
     }
-    if (url.href === RECEIPT.url) return new Response(ledgerBody, { headers: { "content-type": "application/json" } });
+    if (url.href === RECEIPT.url) {
+      if (ledgerFault === "reset") throw new TypeError("fetch failed: connection reset");
+      if (ledgerFault === 503) return new Response("unavailable", { status: 503 });
+      return new Response(ledgerBody, { headers: { "content-type": "application/json" } });
+    }
     return new Response("unexpected", { status: 500 });
   }));
 });
@@ -191,7 +200,7 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
 });
 
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("f29f141ba52bcef63aeb2ad570f9c72b84f4ebd1d53284c7f851fb40ca91b9ff");
+  expect(await planHash(GOLDEN)).toBe("4b3eceb3f049882131231a7fdbee83cb41081998eb069910f378827055a5403a");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
@@ -442,7 +451,7 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     // §5.3 model-input row, §91 D3-4: the selected interval's spans from the full ledger, the display geometry (even sides, no
     // carrier cap), the plan matrix, SDR, opaque, the frozen encode parameters and the interval's audio.
     expect(output.recipe).toEqual({ kind: "prepare_model_input", inputId: (request!.inputs as { inputId: string }[])[0]!.inputId, window: { start: 0, end: 96 }, timescale: 25,
-      entries: [{ kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(96, 25), rate: r(1) }], target: MODEL_TARGET, audio: { start: r(0), end: r(96, 25) } });
+      entries: [{ kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(96, 25), rate: r(1) }], target: MODEL_TARGET, audio: { start: r(0), end: r(96, 25), origin: r(0), spans: AUDIO_SPANS } });
     expect(runPrediction).toHaveBeenCalledTimes(1);
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, id));
     const rows = await upstreamStepRepo.listSteps(f.plan.taskId);
@@ -491,7 +500,7 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     const inputs = preparations(f)[2]!.inputs as { inputId: string; storageKey: string }[];
     expect(inputs.map((input) => input.storageKey)).toEqual([f.plan.sourceKey, prepared(f, chunk(0)).key, prepared(f, chunk(1)).key]);
     expect(recipes[2]).toEqual({ kind: "stitch", inputId: inputs[0]!.inputId, chunks: [{ inputId: inputs[1]!.inputId, duration: r(48, 25) }, { inputId: inputs[2]!.inputId, duration: r(48, 25) }],
-      audio: { start: r(0), end: r(96, 25) }, target: MODEL_TARGET });
+      audio: { start: r(0), end: r(96, 25), origin: r(0), spans: AUDIO_SPANS }, target: MODEL_TARGET });
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, stitch));
   });
 
@@ -520,6 +529,20 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     expect(`${(failure as UpstreamTaskFailed).message} ${(failure as UpstreamTaskFailed).upstreamError}`).toContain("source_ledger_invalid");
     expect(preparations(f)).toEqual([]);
     expect(runPrediction).not.toHaveBeenCalled();
+  });
+
+  // §91 D3b-9: a transport failure is not a content mismatch: the run is not failed and keeps its normal transient retry.
+  it.each([["a connection reset", "reset"], ["a 503 before any body", 503]] as const)("WP08 %s reading the full ledger leaves the run running and retried; the next read prepares", async (_name, fault) => {
+    const f = await seed(); completeProvider(); backend(f);
+    ledgerFault = fault;
+    const failure = await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).then(() => null, (error: unknown) => error);
+    expect(failure).not.toBeNull();
+    expect(failure).not.toBeInstanceOf(UpstreamTaskFailed);
+    expect(preparations(f)).toEqual([]);
+    expect((await parent(f)).status).toBe("running");
+    ledgerFault = null;
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    expect(preparations(f)).toHaveLength(1);
   });
 
   it("WP06 the preparation retry cap is the one frozen at admission, not today's encoding.chunk_retries", async () => {

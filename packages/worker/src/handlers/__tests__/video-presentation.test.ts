@@ -59,6 +59,8 @@ const T = CFR96.toolInputId;
 const PLAN = CFR96.planSha256;
 // The bytes the ledger URL serves, and their identity; a case may serve another full ledger.
 let ledgerBytes: Buffer = LEDGERS.cfr96;
+// A transport failure of the ledger read, before any body (RB06).
+let ledgerFault: 'reset' | 503 | null = null;
 const KEY = 'video/canonical.webm';
 const JOB = 'video-presentation-a';
 const ACTOR = '6061c056-f758-47c1-9527-8495ecba60e3';
@@ -75,6 +77,8 @@ const RECEIPT = {
 };
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
 // §91 D-2: the carrier target from the plan (320x180 needs no cap or padding, BT.709, SDR, opaque) and the frozen crf/preset.
+// §91 D3b-10/11: the stitch places audio by the plan's audio spans (cfr96: the AAC priming edit).
+const AUDIO_SPANS = (JSON.parse(LEDGERS.cfr96.toString('utf8')) as { plan: { audioSpans: unknown } }).plan.audioSpans;
 const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
 const STAGES: Record<string, string[]> = { identity: ['plan', 'publish'], copy: ['plan', 'copy', 'publish'], dispatch_copy: ['plan', 'dispatch_copy', 'publish'], encode: ['plan', 'encode', 'stitch', 'publish'] };
 
@@ -198,6 +202,7 @@ beforeEach(() => {
   reports = new Map();
   D = Date.now() + 3_600_000;
   ledgerBytes = LEDGERS.cfr96;
+  ledgerFault = null;
   answer = prepareAnswer();
   findById.mockResolvedValue(asset);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
@@ -207,7 +212,12 @@ beforeEach(() => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
     const method = init?.method ?? 'GET';
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : null;
-    if (url.href === RECEIPT.url) { sent.push({ path: 'ledger', method, body: null }); return new Response(ledgerBytes, { headers: { 'content-type': 'application/json' } }); }
+    if (url.href === RECEIPT.url) {
+      sent.push({ path: 'ledger', method, body: null });
+      if (ledgerFault === 'reset') throw new TypeError('fetch failed: connection reset');
+      if (ledgerFault === 503) return new Response('unavailable', { status: 503 });
+      return new Response(ledgerBytes, { headers: { 'content-type': 'application/json' } });
+    }
     const path = url.pathname.startsWith('/jobs/') ? '/jobs/read' : url.pathname;
     sent.push({ path, method, body });
     if (path === '/video-presentation') {
@@ -335,7 +345,7 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(new Set(inputs.map((input) => input.inputId)).size).toBe(3);
     expect((jobs[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toEqual({ kind: 'stitch', inputId: inputs[0]!.inputId,
       chunks: [{ inputId: inputs[1]!.inputId, duration: r(48, 25) }, { inputId: inputs[2]!.inputId, duration: r(48, 25) }],
-      audio: { start: r(0), end: r(96, 25) }, target: TARGET });
+      audio: { start: r(0), end: r(96, 25), origin: r(0), spans: AUDIO_SPANS }, target: TARGET });
   });
 
   it('DS06 every chunk dispatched, one finishing on this pickup and one still running: no advance to stitch and no stitch job', async () => {
@@ -443,6 +453,20 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     expect(submitted()).toEqual([]);
     expect(actions('read')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, targetPolicyVersion: 1 })]);
+  });
+
+  // §91 D3b-9: a transport failure is not a content mismatch: no Check is asked for and the pickup keeps its normal
+  // transient retry; once the read succeeds the chunks are dispatched.
+  it.each([['a connection reset', 'reset'], ['a 503 before any body', 503]] as const)('RB06 %s reading the full ledger asks for no check, submits nothing and retries', async (_name, fault) => {
+    await serve(LEDGERS.cfr96);
+    ledgerFault = fault;
+    await expect(advance()(data)).rejects.toBeDefined();
+    expect(actions('read')).toEqual([]);
+    expect(actions('fail')).toEqual([]);
+    expect(submitted()).toEqual([]);
+    ledgerFault = null;
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(submitted()).toHaveLength(2);
   });
 
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {

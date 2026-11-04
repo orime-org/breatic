@@ -31,7 +31,7 @@ type Span = { sourceStart: Exact; sourceEnd: Exact; presentationStart: Exact; ra
 interface Plan {
   display: { width: number; height: number; duration: Exact };
   presentation: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-  originMapping: { timeBase: Exact; entries: { kind: string; start?: number }[] };
+  originMapping: { timeBase: Exact; origin: Exact; entries: { kind: string; start?: number }[] };
   videoSpans: Span[] | null; audioSpans: Span[] | null;
 }
 
@@ -53,6 +53,10 @@ const AAC_FRAME = 1024 / 48000;
 let dir: string;
 let cut: string;
 let plan: Plan;
+let lead: string;
+let leadPlan: Plan;
+let lag: string;
+let lagPlan: Plan;
 const served = new Map<string, string>();
 const written = new Map<string, Uint8Array>();
 let reports: { ok: boolean }[] = [];
@@ -121,13 +125,104 @@ async function flashAt(path: string, ignoreEditList = false): Promise<number> {
  */
 async function toneAt(path: string, ignoreEditList = false): Promise<number> {
   const edit = ignoreEditList ? ['-ignore_editlist', '1'] : [];
-  const { stdout: first } = await run('ffprobe', ['-v', 'error', ...edit, '-select_streams', 'a:0', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-read_intervals', '%+#1', path]);
-  const { stdout } = await run('ffmpeg', ['-v', 'error', ...edit, '-i', path, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  // -copyts keeps each sample on its track time (movie time, or media time with the edit list ignored); aresample with
+  // first_pts=0 lays the samples out from time 0, so a track that starts late is padded and the index is the time.
+  const { stdout } = await run('ffmpeg', ['-v', 'error', ...edit, '-copyts', '-i', path, '-map', '0:a:0', '-af', 'aresample=async=1:first_pts=0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
   const samples = new Int16Array(new Uint8Array(stdout).buffer.slice(0));
   const index = samples.findIndex(sample => Math.abs(sample) > 10000);
   expect(index, 'a tone burst').toBeGreaterThanOrEqual(0);
-  // With the edit list applied, decoded samples start at presentation 0; ignoring it, at the first packet's media time.
-  return (ignoreEditList ? Number(first.trim().split('\n')[0]!.replace(',', '')) : 0) + index / 48000;
+  return index / 48000;
+}
+
+/** One ISO track's facts: handler, media timescale and edit list (segment duration, media time, 16.16 rate). */
+interface IsoTrack { handler: string; timescale: number; edits: [number, number, number][] }
+
+/**
+ * Read the movie timescale and every track's edit list straight from the MP4 boxes, independently of the probe.
+ * @param path - The file.
+ * @returns The movie timescale and the tracks.
+ */
+async function isoTracks(path: string): Promise<{ movie: number; tracks: IsoTrack[] }> {
+  const b = await readFile(path);
+  const boxes = function* (start: number, end: number): Generator<[string, number, number]> {
+    let at = start;
+    while (at + 8 <= end) {
+      let size = b.readUInt32BE(at);
+      let header = 8;
+      if (size === 1) { size = Number(b.readBigUInt64BE(at + 8)); header = 16; }
+      if (size === 0) size = end - at;
+      yield [b.toString('latin1', at + 4, at + 8), at + header, at + size];
+      at += size;
+    }
+  };
+  let movie = 0;
+  const tracks: IsoTrack[] = [];
+  for (const [type, start, end] of boxes(0, b.length)) {
+    if (type !== 'moov') continue;
+    for (const [inner, s2, e2] of boxes(start, end)) {
+      if (inner === 'mvhd') movie = b.readUInt32BE(s2 + (b[s2] === 1 ? 20 : 12));
+      if (inner !== 'trak') continue;
+      const track: IsoTrack = { handler: '', timescale: 0, edits: [] };
+      for (const [part, s3, e3] of boxes(s2, e2)) {
+        if (part === 'edts') {
+          for (const [, s4] of boxes(s3, e3)) {
+            const wide = b[s4] === 1;
+            let cursor = s4 + 8;
+            for (let n = b.readUInt32BE(s4 + 4); n > 0; n -= 1) {
+              const duration = wide ? Number(b.readBigUInt64BE(cursor)) : b.readUInt32BE(cursor);
+              const media = wide ? Number(b.readBigInt64BE(cursor + 8)) : b.readInt32BE(cursor + 4);
+              cursor += wide ? 16 : 8;
+              track.edits.push([duration, media, b.readInt32BE(cursor)]);
+              cursor += 4;
+            }
+          }
+        }
+        if (part === 'mdia') {
+          for (const [leaf, s4] of boxes(s3, e3)) {
+            if (leaf === 'mdhd') track.timescale = b.readUInt32BE(s4 + (b[s4] === 1 ? 20 : 12));
+            if (leaf === 'hdlr') track.handler = b.toString('latin1', s4 + 8, s4 + 12);
+          }
+        }
+      }
+      tracks.push(track);
+    }
+  }
+  return { movie, tracks };
+}
+
+/**
+ * The audio track's edit list as plan spans, by the rule the video spans follow (design §3.5 full row 「音视频spans」):
+ * each non-empty edit presents media [m, m + d·rate) from its movie time, rebased by the plan's origin.
+ * @param path - The file.
+ * @param origin - The plan's origin in seconds.
+ * @returns The spans as seconds.
+ */
+async function audioEditSpans(path: string, origin: number): Promise<{ sourceStart: number; sourceEnd: number; presentationStart: number; rate: number }[]> {
+  const { movie, tracks } = await isoTracks(path);
+  const track = tracks.find(item => item.handler === 'soun')!;
+  const spans: { sourceStart: number; sourceEnd: number; presentationStart: number; rate: number }[] = [];
+  let at = 0;
+  for (const [duration, media, rate] of track.edits) {
+    if (media !== -1 && duration > 0) spans.push({ sourceStart: media / track.timescale, sourceEnd: media / track.timescale + (duration / movie) * (rate / 65536), presentationStart: at / movie - origin, rate: rate / 65536 });
+    at += duration;
+  }
+  return spans;
+}
+
+/**
+ * The container's own plan of a source.
+ * @param path - The source.
+ * @returns The plan.
+ */
+async function planOf(path: string): Promise<Plan> {
+  const bytes = await readFile(path);
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes, { headers: { 'content-length': String(bytes.byteLength), 'content-type': 'video/mp4' } })));
+  const planned = await (runOwner as unknown as Record<string, (body: unknown) => Promise<{ kind: string; plan: Plan }>>).runPresentationProbe!({ action: 'probe',
+    jobId: 'video-presentation:av', sourceFingerprint: createHash('sha256').update(bytes).digest('hex'), deadlineAt: Date.now() + 3_600_000,
+    sourceURL: 'http://source.test/av.mp4', limits: PROBE_LIMITS, encoding: ENCODING, probe: PROBE });
+  vi.unstubAllGlobals();
+  expect(planned.kind).toBe('planned');
+  return planned.plan;
 }
 
 beforeAll(async () => {
@@ -140,14 +235,16 @@ beforeAll(async () => {
   // A stream-copy cut: packets start at the 0.4 s keyframe and each track's edit starts later (design §4.1 row 2, D1 CT04).
   await ff('cut.mp4', ['-ss', '0.5', '-i', join(dir, 'base.mp4'), '-c', 'copy']);
   cut = join(dir, 'cut.mp4');
-  const bytes = await readFile(cut);
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes, { headers: { 'content-length': String(bytes.byteLength), 'content-type': 'video/mp4' } })));
-  const planned = await (runOwner as unknown as Record<string, (body: unknown) => Promise<{ kind: string; plan: Plan }>>).runPresentationProbe!({ action: 'probe',
-    jobId: 'video-presentation:av', sourceFingerprint: createHash('sha256').update(bytes).digest('hex'), deadlineAt: Date.now() + 3_600_000,
-    sourceURL: 'http://source.test/cut.mp4', limits: PROBE_LIMITS, encoding: ENCODING, probe: PROBE });
-  vi.unstubAllGlobals();
-  expect(planned.kind).toBe('planned');
-  plan = planned.plan;
+  // §91 D3b-10: a 250 ms leading empty edit on both tracks (the audio's starting earlier than the picture's): origin is not 0.
+  await ff('lead.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'base.mp4'), '-c', 'copy', '-use_editlist', '1']);
+  lead = join(dir, 'lead.mp4');
+  // The picture's edit starts at 0.25 s and the sound's at 0.5 s: presentation starts on the first frame (origin 1/4, no
+  // earlier audio, design §4.2.1 开头行) and the sound starts later than presentation 0.
+  await ff('lag.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'base.mp4'), '-itsoffset', '0.5', '-i', join(dir, 'base.mp4'), '-map', '0:v', '-map', '1:a', '-c', 'copy', '-use_editlist', '1']);
+  lag = join(dir, 'lag.mp4');
+  plan = await planOf(cut);
+  leadPlan = await planOf(lead);
+  lagPlan = await planOf(lag);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -169,16 +266,27 @@ beforeEach(() => {
  * The recipe fields the worker writes for the whole display: one rate-1 span from the plan, the plan target and audio.
  * @returns The fields.
  */
-function whole(): Record<string, unknown> {
-  const scale = plan.presentation.timescale;
-  const [span] = plan.videoSpans!;
-  const entry = plan.originMapping.entries[0]!;
-  const decodeStart = r(entry.start! * value(plan.originMapping.timeBase), 12800);
+function whole(of: Plan = plan): Record<string, unknown> {
+  const scale = of.presentation.timescale;
+  const entry = of.originMapping.entries[0]!;
+  const decodeStart = r(entry.start! * value(of.originMapping.timeBase), 12800);
+  const clipStart = of.videoSpans === null ? decodeStart : of.videoSpans[0]!.sourceStart;
   return {
-    inputId: SOURCE, window: { start: 0, end: presentationFrameCount(plan.presentation) }, timescale: scale,
-    entries: [{ kind: 'source', decodeStart, clipStart: span!.sourceStart, displayStart: { numerator: '0', denominator: '1' }, displayEnd: plan.display.duration, rate: { numerator: '1', denominator: '1' } }],
-    target: { width: plan.display.width, height: plan.display.height, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' },
+    inputId: SOURCE, window: { start: 0, end: presentationFrameCount(of.presentation) }, timescale: scale,
+    entries: [{ kind: 'source', decodeStart, clipStart, displayStart: { numerator: '0', denominator: '1' }, displayEnd: of.display.duration, rate: { numerator: '1', denominator: '1' } }],
+    target: { width: of.display.width, height: of.display.height, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' },
   };
+}
+
+/**
+ * The recipe's audio (§91 D3b-11): the whole display interval in presentation time, the plan's origin and the plan's audio
+ * spans; with spans the container places media time by them, without (no audio edit) presentation = movie time - origin.
+ * @param of - The plan.
+ * @param spans - The audio spans to send.
+ * @returns The audio field.
+ */
+function audioOf(of: Plan, spans: Span[] | null): Record<string, unknown> {
+  return { start: { numerator: '0', denominator: '1' }, end: of.display.duration, origin: of.originMapping.origin, spans };
 }
 
 describe('an edited source keeps picture and sound at their plan times (§4.2, §7.17 timeline row)', () => {
@@ -193,28 +301,67 @@ describe('an edited source keeps picture and sound at their plan times (§4.2, �
    * Chunk then stitch the whole display of the cut source.
    * @returns The stitched carrier.
    */
-  async function stitched(): Promise<string> {
-    const fields = whole();
-    const chunk = await produce({ [SOURCE]: cut }, { kind: 'chunk_encode', ...fields });
-    return produce({ [SOURCE]: cut, [CHUNK]: chunk }, { kind: 'stitch', inputId: SOURCE, chunks: [{ inputId: CHUNK, duration: plan.display.duration }],
-      audio: { start: { numerator: '0', denominator: '1' }, end: plan.display.duration }, target: fields.target });
+  async function stitched(source = cut, of = plan, spans: Span[] | null = of.audioSpans): Promise<string> {
+    const fields = whole(of);
+    const chunk = await produce({ [SOURCE]: source }, { kind: 'chunk_encode', ...fields });
+    return produce({ [SOURCE]: source, [CHUNK]: chunk }, { kind: 'stitch', inputId: SOURCE, chunks: [{ inputId: CHUNK, duration: of.display.duration }],
+      audio: audioOf(of, spans), target: fields.target });
   }
 
   /**
    * Prepare the model input over the whole display of the cut source.
    * @returns The model input.
    */
-  function modelInput(): Promise<string> {
-    return produce({ [SOURCE]: cut }, { kind: 'prepare_model_input', ...whole(), audio: { start: { numerator: '0', denominator: '1' }, end: plan.display.duration } });
+  function modelInput(source = cut, of = plan, spans: Span[] | null = of.audioSpans): Promise<string> {
+    return produce({ [SOURCE]: source }, { kind: 'prepare_model_input', ...whole(of), audio: audioOf(of, spans) });
   }
 
-  it.each([['chunk then stitch', stitched], ['prepare_model_input', modelInput]] as const)('AV01 %s: the white frame lands on its plan time', async (_name, render) => {
+  it.each([['chunk then stitch', (): Promise<string> => stitched()], ['prepare_model_input', (): Promise<string> => modelInput()]] as const)('AV01 %s: the white frame lands on its plan time', async (_name, render) => {
     const expected = present(plan.videoSpans!, await flashAt(cut, true));
     expect(Math.abs(await flashAt(await render()) - expected)).toBeLessThan(0.5 / plan.presentation.timescale);
   });
 
-  it.each([['chunk then stitch', stitched], ['prepare_model_input', modelInput]] as const)('AV02 %s: the tone burst lands where the source\'s audio edit puts it, within one AAC frame', async (_name, render) => {
+  it.each([['chunk then stitch', (): Promise<string> => stitched()], ['prepare_model_input', (): Promise<string> => modelInput()]] as const)('AV02 %s: the tone burst lands where the source\'s audio edit puts it, within one AAC frame', async (_name, render) => {
     const expected = await toneAt(cut);
     expect(Math.abs(await toneAt(await render()) - expected)).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  // §91 D3b-10 (design §3.5 full row 「full包含§3.1的originMapping及音视频spans」, §7.17 timeline row): the plan records the
+  // audio track's edits the way it records the video's, rebased by the same origin.
+  it.each([['the cut source (origin 0)', (): [string, Plan] => [cut, plan]], ['the leading-empty-edit source', (): [string, Plan] => [lead, leadPlan]], ['the late-sound source', (): [string, Plan] => [lag, lagPlan]]] as const)('AS01 the plan of %s records the audio edit list as audioSpans', async (_name, which) => {
+    const [source, of] = which();
+    const expected = await audioEditSpans(source, value(of.originMapping.origin));
+    expect(expected.length).toBeGreaterThan(0);
+    expect(of.audioSpans).not.toBeNull();
+    expect(of.audioSpans!.map(span => ({ sourceStart: value(span.sourceStart), sourceEnd: value(span.sourceEnd), presentationStart: value(span.presentationStart), rate: value(span.rate) })))
+      .toEqual(expected.map(span => ({ sourceStart: expect.closeTo(span.sourceStart, 9), sourceEnd: expect.closeTo(span.sourceEnd, 9), presentationStart: expect.closeTo(span.presentationStart, 9), rate: span.rate })));
+  });
+
+  it('AS02 both offset sources are presented from a later movie time: origin is not 0 (the late-sound source from its first frame, 1/4)', () => {
+    expect(value(leadPlan.originMapping.origin)).toBeGreaterThan(0);
+    expect(value(lagPlan.originMapping.origin)).toBe(0.25);
+  });
+
+  // Presentation time is movie time less the origin. Where the sound starts at the origin (the derived-lead source) the
+  // first sample is presentation 0; where it starts later (the late-sound source) it must keep its gap.
+  it.each([
+    ['chunk then stitch of the derived-lead source', (): [string, Plan] => [lead, leadPlan], true],
+    ['prepare_model_input of the derived-lead source', (): [string, Plan] => [lead, leadPlan], false],
+    ['chunk then stitch of the late-sound source', (): [string, Plan] => [lag, lagPlan], true],
+    ['prepare_model_input of the late-sound source', (): [string, Plan] => [lag, lagPlan], false],
+  ] as const)('AV03 %s: the tone burst lands at its plan presentation time', async (_name, which, stitch) => {
+    const [source, of] = which();
+    const render = (): Promise<string> => (stitch ? stitched(source, of) : modelInput(source, of));
+    const expected = await toneAt(source) - value(of.originMapping.origin);
+    expect(Math.abs(await toneAt(await render()) - expected)).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  // The same late-sound source with the audio spans the plan must record (AS01), read from its edit list: the container
+  // places the media samples by them.
+  it.each([['chunk then stitch', true], ['prepare_model_input', false]] as const)('AV04 %s of the late-sound source with its audio spans: the tone burst lands at its plan presentation time', async (_name, stitch) => {
+    const spans = (await audioEditSpans(lag, value(lagPlan.originMapping.origin))).map(span => ({
+      sourceStart: r(span.sourceStart, 48000), sourceEnd: r(span.sourceEnd, 48000), presentationStart: r(span.presentationStart, 1000), rate: r(span.rate, 1) }));
+    const output = stitch ? await stitched(lag, lagPlan, spans) : await modelInput(lag, lagPlan, spans);
+    expect(Math.abs(await toneAt(output) - (await toneAt(lag) - value(lagPlan.originMapping.origin)))).toBeLessThanOrEqual(AAC_FRAME);
   });
 });
