@@ -3,15 +3,15 @@
 
 import { z } from "zod";
 import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport,
-  type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanPixelRect, type StudioAssetEntity } from "@breatic/shared";
-import { canonicalMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolAnchorSchema,
+  type MiniToolPlanEntry, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanPixelRect, type StudioAssetEntity } from "@breatic/shared";
+import { canonicalMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema,
   type MiniToolAnalysisArtifact, type MiniToolAnalysisRecord, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 
 const pixelCoordinate = z.number().int().nonnegative();
 const pixelSize = z.number().int().positive();
 const displayPeopleSchema = z.strictObject({
-  schemaVersion: z.literal(1), kind: z.literal("people"), coordinateSpace: z.literal("display"),
-  anchor: miniToolAnchorSchema, width: pixelSize, height: pixelSize,
+  // §93 D5-8: the recipe on an entry has no anchor, so the container echoes none; the accepted anchor is the result's.
+  schemaVersion: z.literal(1), kind: z.literal("people"), coordinateSpace: z.literal("display"), width: pixelSize, height: pixelSize,
   candidates: z.array(z.strictObject({
     detectionIndex: pixelCoordinate,
     faceBox: miniToolAnalysisResultSchema.options[0].shape.people.element.shape.faceBox,
@@ -36,7 +36,6 @@ export interface MiniToolDisplayPeople {
   schemaVersion: 1;
   kind: "people";
   coordinateSpace: "display";
-  anchor: MiniToolPeopleAnalysisResult["anchor"];
   width: number;
   height: number;
   candidates: { detectionIndex: number; faceBox: MiniToolPeopleAnalysisResult["people"][number]["faceBox"]; pixelCrop: MiniToolPlanPixelRect }[];
@@ -50,18 +49,21 @@ export interface MiniToolRegisteredAnalysisJob {
 }
 
 /**
- * Read display candidates bound to the accepted original people anchor.
+ * Read display candidates of the accepted people analysis, measured in its people recipe's target geometry (§93 D5-8).
  * @param accepted - The original SQL accepted analysis.
  * @param observations - Its registered display detector JSON.
- * @returns Validated candidates on the original display anchor.
- * @throws {Error} When content, geometry, candidate identities or the anchor is invalid.
+ * @param target - The people recipe's display target, when the caller holds it.
+ * @param target.width - Its width.
+ * @param target.height - Its height.
+ * @returns Validated candidates in the display geometry.
+ * @throws {Error} When content, geometry or candidate identities are invalid, or the geometry is not the target's.
  */
-export function readMiniToolDisplayPeople(accepted: MiniToolAnalysisRecord, observations: unknown): MiniToolDisplayPeople {
+export function readMiniToolDisplayPeople(accepted: MiniToolAnalysisRecord, observations: unknown, target?: { width: number; height: number }): MiniToolDisplayPeople {
   const original = miniToolAnalysisRecordSchema.parse(accepted);
   if (original.kind !== "people" || original.analysisInput.kind !== "people") throw new Error("Display candidates require the original people analysis");
   const people = displayPeopleSchema.parse(observations);
-  if (canonicalMiniToolValue(people.anchor) !== canonicalMiniToolValue(original.analysisInput.anchor)) {
-    throw new Error("Display candidates differ from the original people anchor");
+  if (target !== undefined && (people.width !== target.width || people.height !== target.height)) {
+    throw new Error("Display candidates were not measured in the people recipe's target geometry");
   }
   return people;
 }
@@ -72,14 +74,17 @@ export function readMiniToolDisplayPeople(accepted: MiniToolAnalysisRecord, obse
  * @param sourceKey - The SQL frozen source key mapped by the original source alias.
  * @param observations - The original registered display candidates.
  * @param jobs - Original thumbnail plans, reports and registered rows from the owning task.
+ * @param anchorEntry - The anchor's full-ledger entry, from the people job the caller built (§93 D5-9).
  * @returns The complete run-scoped people result with canonical image references.
  * @throws {Error} When candidates, original recipes, reports or registered rows differ.
  */
 export function assembleMiniToolPeopleAnalysis(
-  accepted: MiniToolAnalysisRecord, sourceKey: string, observations: unknown, jobs: readonly MiniToolRegisteredAnalysisJob[],
+  accepted: MiniToolAnalysisRecord, sourceKey: string, observations: unknown, jobs: readonly MiniToolRegisteredAnalysisJob[], anchorEntry: MiniToolPlanEntry,
 ): MiniToolPeopleAnalysisResult {
   const original = miniToolAnalysisRecordSchema.parse(accepted);
   const people = readMiniToolDisplayPeople(original, observations);
+  if (original.analysisInput.kind !== "people") throw new Error("People assembly requires the original people analysis");
+  const { anchor } = original.analysisInput;
   const candidates = new Map(people.candidates.map((candidate) => [candidate.detectionIndex, candidate]));
   const references = new Map<number, MiniToolAnalysisArtifact>();
   for (const job of jobs) {
@@ -98,9 +103,10 @@ export function assembleMiniToolPeopleAnalysis(
     for (const output of request.outputs) {
       const candidate = candidates.get(output.outputIndex);
       const recipe = output.recipe;
+      // §93 D5-7: each thumbnail is the anchor's frame recipe on its entry, cropped in the display geometry.
       if (candidate === undefined || references.has(output.outputIndex) || output.contentType !== "image/png" ||
-        recipe.kind !== "frame" || recipe.inputId !== original.binding.assetId || recipe.orientation !== "display" ||
-        recipe.frameIndex !== people.anchor.frameIndex || recipe.crop === undefined ||
+        recipe.kind !== "frame" || !("entry" in recipe) || recipe.inputId !== original.binding.assetId ||
+        canonicalMiniToolValue(recipe.entry) !== canonicalMiniToolValue(anchorEntry) || recipe.crop === undefined ||
         recipe.crop.sourceWidth !== people.width || recipe.crop.sourceHeight !== people.height ||
         canonicalMiniToolValue(recipe.crop.rect) !== canonicalMiniToolValue(candidate.pixelCrop)) {
         throw new Error("People thumbnail recipe differs from its original display candidate");
@@ -122,7 +128,7 @@ export function assembleMiniToolPeopleAnalysis(
   const result: MiniToolPeopleAnalysisResult = {
     schemaVersion: 1, kind: "people", draftId: original.draftId, revision: original.revision,
     analysisRunId: original.analysisRunId, acceptedAt: original.acceptedAt, binding: original.binding,
-    analysisInput: original.analysisInput, inputFingerprint: original.inputFingerprint, anchor: people.anchor,
+    analysisInput: original.analysisInput, inputFingerprint: original.inputFingerprint, anchor,
     people: people.candidates.map((candidate) => ({ personId: `person:${original.analysisRunId}:${candidate.detectionIndex}`,
       faceBox: candidate.faceBox, artifactRefs: [references.get(candidate.detectionIndex)!] })),
   };
