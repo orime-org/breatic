@@ -34,8 +34,8 @@ type VideoTool = Extract<AcceptedMiniToolExecution, { tool: "video.extract-frame
 export type VideoToolResult = MiniToolExecutionOutput["result"];
 /** What one pickup observed of every output, by output index. */
 export interface VideoToolPickup { results: Map<number, NonNullable<VideoToolResult>>; waiting: boolean }
-/** The tool's PNG or video output, as its recipe and the grant it is written to. */
-interface PlannedOutput { outputIndex: number; recipe: MiniToolPlanRecipe; modality: "image" | "video" }
+/** The tool's PNG or video output and its recipe. */
+interface PlannedOutput { outputIndex: number; recipe: MiniToolPlanRecipe }
 type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 
 /** An output result's schema. */
@@ -98,6 +98,27 @@ function failedResult(reason: string): NonNullable<VideoToolResult> {
 }
 
 /**
+ * Whether a recipe writes a VP9 WebM: a transparent source's split output (§7.17 segment row, §93 D5-12).
+ * @param recipe - The recipe.
+ * @returns Whether its target is WebM.
+ * @throws {never} Never.
+ */
+function webm(recipe: MiniToolPlanRecipe): boolean {
+  return "target" in recipe && "format" in recipe.target && recipe.target.format === "webm-vp9";
+}
+
+/**
+ * The grant a planned output is written to: a PNG for a frame, an MP4 or, for a transparent split output, a WebM video.
+ * @param recipe - The output's recipe.
+ * @returns The grant's output declaration.
+ * @throws {never} Never.
+ */
+function grantOf(recipe: MiniToolPlanRecipe): { modality: "image" | "video"; namePrefix: string; container?: "webm" } {
+  if (recipe.kind === "frame") return { modality: "image", namePrefix: "FRAME" };
+  return { modality: "video", namePrefix: "SPLIT", ...(webm(recipe) ? { container: "webm" as const } : {}) };
+}
+
+/**
  * The job recipe of a planned output (§7.17, the worker's recipe construction): a frame's entry and PNG target, or a segment over its range's
  * frames with the frozen encode.
  * @param execution - The run.
@@ -108,10 +129,10 @@ function failedResult(reason: string): NonNullable<VideoToolResult> {
  */
 function plannedOutput(execution: VideoTool, ledger: VideoPresentationLedger, outputIndex: number): PlannedOutput {
   const recipe = execution.outputs[outputIndex]!.recipe;
-  if (recipe.kind === "frame") return { outputIndex, modality: "image", recipe: frameRecipeOf(ledger, { frameIndex: recipe.frameIndex, pts: recipe.pts }, SOURCE_INPUT_ID) };
+  if (recipe.kind === "frame") return { outputIndex, recipe: frameRecipeOf(ledger, { frameIndex: recipe.frameIndex, pts: recipe.pts }, SOURCE_INPUT_ID) };
   if (recipe.kind !== "segment") throw new Error("A frames or split run plans only frames and segments");
   const window = rangeWindow(ledger, recipe.range);
-  return { outputIndex, modality: "video", recipe: segmentRecipesOf(ledger, { range: recipe.range }, SOURCE_INPUT_ID, execution.container.encode, [window])[0]! };
+  return { outputIndex, recipe: segmentRecipesOf(ledger, { range: recipe.range }, SOURCE_INPUT_ID, execution.container.encode, [window])[0]! };
 }
 
 /**
@@ -138,7 +159,7 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
     if (request === null) {
       const planned = pending.map((index) => plannedOutput(execution, ledger, index));
       const grants = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,
-        outputs: planned.map((output) => ({ modality: output.modality, namePrefix: output.modality === "image" ? "FRAME" : "SPLIT" })) });
+        outputs: planned.map((output) => grantOf(output.recipe)) });
       if (grants.length !== planned.length) throw new Error("Tool outputs require their complete upload grants");
       request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
         inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }],
@@ -185,7 +206,7 @@ async function advanceChunk(execution: VideoTool, output: number, chunk: number,
     if (stored !== null && state?.result?.outcome === "done") return stored.outputs[0]!.storageKey;
     const candidate: MiniToolPlanJobRequest = stored ?? { schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt,
       limits: execution.container.limits, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }],
-      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: "video/mp4", recipe }] };
+      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: webm(recipe) ? "video/webm" : "video/mp4", recipe }] };
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
     const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
     if (report.state !== "done" && report.state !== "failed") return null;
@@ -236,7 +257,7 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
     let request = stored;
     if (request === null) {
       const grants = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,
-        outputs: [{ modality: "video", namePrefix: "SPLIT" }] });
+        outputs: [grantOf(stitch)] });
       if (grants.length !== 1) throw new Error("The stitched segment requires its upload grant");
       request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
         inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))],
