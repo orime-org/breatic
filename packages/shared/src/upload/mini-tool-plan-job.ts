@@ -10,10 +10,10 @@ import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import { x264PresetSchema } from "@shared/upload/video-presentation-policy.js";
 import { packedGeometrySchema } from "@shared/upload/video-presentation.js";
 import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
-import type { MiniToolPlanEntry, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+import type { MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
 export type {
-  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanFrameTarget, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan,
+  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanFrameTarget, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan, MiniToolPlanPlacedEntry, MiniToolPlanAnalysisTarget, MiniToolPlanDetectorProfile,
 } from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
@@ -34,10 +34,27 @@ const editSpan = z.strictObject({ sourceStart: time, sourceEnd: time, presentati
   .refine((span) => compare(span.sourceEnd, span.sourceStart) > 0n);
 // §91 D3b-11: the interval in presentation time with the plan's origin and audio spans (null when the track has no edit).
 const audio = z.strictObject({ start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() }).refine((value) => compare(value.end, value.start) > 0n);
-const entry = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime })
-    .refine((span) => compare(span.decodeStart, span.clipStart) <= 0n && compare(span.displayEnd, span.displayStart) > 0n),
-  z.strictObject({ kind: z.literal("empty"), fill: z.enum(["black", "transparent"]), window: interval }),
+const sourceShape = { kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime };
+const emptyShape = { kind: z.literal("empty"), fill: z.enum(["black", "transparent"]), window: interval };
+
+/**
+ * Whether a source span decodes no later than it is shown from and covers a positive interval.
+ * @param span - A structurally valid span.
+ * @param span.decodeStart - Its decode start.
+ * @param span.clipStart - Its clip start.
+ * @param span.displayStart - Its presentation start.
+ * @param span.displayEnd - Its presentation end.
+ * @returns Whether it is well formed.
+ * @throws {never} Never.
+ */
+function spanValid(span: { decodeStart: MiniToolPlanExact; clipStart: MiniToolPlanExact; displayStart: MiniToolPlanExact; displayEnd: MiniToolPlanExact }): boolean {
+  return compare(span.decodeStart, span.clipStart) <= 0n && compare(span.displayEnd, span.displayStart) > 0n;
+}
+
+const entry = z.discriminatedUnion("kind", [z.strictObject(sourceShape).refine(spanValid), z.strictObject(emptyShape)]);
+// §91 D4-5: a scene-cut entry names the presentation ordinal of its first frame.
+const placedEntry = z.discriminatedUnion("kind", [
+  z.strictObject({ ...sourceShape, ordinalOffset: index }).refine(spanValid), z.strictObject({ ...emptyShape, ordinalOffset: index }),
 ]);
 
 /**
@@ -50,14 +67,30 @@ function entryInterval(value: MiniToolPlanEntry): { start: { numerator: string; 
   return value.kind === "source" ? { start: value.displayStart, end: value.displayEnd } : value.window;
 }
 
-// Entries are in presentation order, end to end, and two derived-empty frames never sit side by side (§7.17).
-const entries = z.array(entry).min(1).refine((list) => list.every((value, at) => at === 0 ||
-  (compare(entryInterval(list[at - 1]!).end, entryInterval(value).start) === 0n && !(value.kind === "empty" && list[at - 1]!.kind === "empty"))));
-const evenSide = z.number().int().positive().refine((value) => value % 2 === 0);
+/**
+ * Whether entries run in presentation order end to end with no two derived-empty frames side by side (§7.17).
+ * @param list - Structurally valid entries.
+ * @returns Whether they are contiguous.
+ * @throws {never} Never.
+ */
+function contiguous(list: readonly MiniToolPlanEntry[]): boolean {
+  return list.every((value, at) => at === 0 ||
+    (compare(entryInterval(list[at - 1]!).end, entryInterval(value).start) === 0n && !(value.kind === "empty" && list[at - 1]!.kind === "empty")));
+}
+
+const entries = z.array(entry).min(1).refine(contiguous);
+const placedEntries = z.array(placedEntry).min(1).refine(contiguous)
+  .refine((list) => list.every((value, at) => at === 0 || value.ordinalOffset > list[at - 1]!.ordinalOffset), "Ordinal offsets increase");
+const side = z.number().int().positive();
+// An H.264 carrier or split output has even sides; a transparent VP9 split output keeps the display size (§4.3 odd-size row).
 const target = z.strictObject({
-  width: evenSide, height: evenSide, displayRect: pixelRect.nullable(), colorMatrix: z.string().min(1),
-  toneMap: z.enum(["none", "sdr-bt709"]), alpha: z.enum(["none", "packed"]), crf: z.number().int().min(0).max(51), preset: x264PresetSchema,
-}).refine((value) => value.displayRect === null || (value.displayRect.x + value.displayRect.width <= value.width && value.displayRect.y + value.displayRect.height <= value.height));
+  width: side, height: side, displayRect: pixelRect.nullable(), colorMatrix: z.string().min(1),
+  toneMap: z.enum(["none", "sdr-bt709"]), alpha: z.enum(["none", "packed", "straight"]), crf: z.number().int().min(0).max(51), preset: x264PresetSchema,
+  format: z.enum(["mp4-h264", "webm-vp9"]).optional(),
+}).refine((value) => value.displayRect === null || (value.displayRect.x + value.displayRect.width <= value.width && value.displayRect.y + value.displayRect.height <= value.height))
+  .refine((value) => value.format === "webm-vp9" || (value.width % 2 === 0 && value.height % 2 === 0), "An H.264 target has even sides")
+  .refine((value) => value.alpha !== "straight" || value.format === "webm-vp9", "Straight alpha is a VP9 output's")
+  .refine((value) => value.alpha !== "packed" || value.format === undefined, "A packed carrier is no split output");
 const windowRecipe = { inputId, window: ordinals, timescale: z.number().int().positive(), entries, target };
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
@@ -72,9 +105,17 @@ const frameTarget = z.strictObject({
   pngBitDepth: z.union([z.literal(8), z.literal(16)]), alpha: z.enum(["none", "straight"]),
 });
 // §91 D4-3: one full-ledger entry and its PNG target; a crop names the target's display geometry.
-const entryFrame = z.strictObject({ kind: z.literal("frame"), inputId, entry, target: frameTarget, crop: frameCrop.optional(),
-  frameIndex: z.never().optional(), orientation: z.never().optional() })
+const entryFrame = z.strictObject({ kind: z.literal("frame"), inputId, entry, target: frameTarget, crop: frameCrop.optional() })
   .refine((recipe) => recipe.crop === undefined || (recipe.crop.sourceWidth === recipe.target.width && recipe.crop.sourceHeight === recipe.target.height));
+const analysisTarget = z.strictObject({ width: side, height: side, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
+// §91 D4-4, D4-5: the split segment, the people anchor and the scanned scene window on full-ledger entries.
+const entryRecipes = z.union([
+  entryFrame,
+  z.strictObject({ kind: z.literal("people"), inputId, entry, target: frameTarget, profile }),
+  z.strictObject({ kind: z.literal("scene_cuts"), inputId, window: ordinals, timescale: z.number().int().positive(), profile, entries: placedEntries, target: analysisTarget })
+    .refine((recipe) => recipe.entries[0]!.ordinalOffset === recipe.window.start && recipe.entries.every((value) => value.ordinalOffset < recipe.window.end)),
+  z.strictObject({ kind: z.literal("segment"), ...windowRecipe, audio: audio.nullable() }),
+]);
 
 /** The versioned per-output media recipes admitted by the planned job lane. */
 export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
@@ -92,7 +133,7 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
     audio: audio.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
   z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
-]).or(entryFrame) satisfies z.ZodType<MiniToolPlanRecipe>;
+]).or(entryRecipes) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */
 export const miniToolPlanJobRequestSchema = z.strictObject({

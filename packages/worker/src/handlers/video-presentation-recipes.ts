@@ -11,7 +11,7 @@
 import { getMiniToolsConfig } from '@breatic/core';
 import {
   BodyTooLarge, EmptyBody, readVideoPresentationLedger, VideoSourceLedgerReadRefused, type MiniToolPlanAudio, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanInterval, type MiniToolPlanTarget,
-  type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
+  type MiniToolPlanDetectorProfile, type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
 import { videoCarrierGeometry } from '@breatic/shared/mini-tools';
@@ -345,18 +345,13 @@ export function chunkInputId(chunk: number): string {
 /** A tool PNG's target (§91 D4-3, §7.17 frame row). */
 type FrameTarget = MiniToolPlanFrameTarget;
 /** A split output's target (§91 D4-4, §4.3 odd-size row): opaque H.264 MP4 at even sides, transparent VP9 WebM at the display size. */
-export type SegmentTarget = Omit<MiniToolPlanTarget, 'alpha'> & { alpha: 'none' | 'straight'; format: 'mp4-h264' | 'webm-vp9' };
-/** An analysis picture's target: the display geometry and the plan's colour conversion. */
-interface AnalysisTarget { width: number; height: number; colorMatrix: string; toneMap: MiniToolPlanTarget['toneMap'] }
+export type SegmentTarget = MiniToolPlanTarget & { format: 'mp4-h264' | 'webm-vp9' };
 /** A presentation-coordinate frame selection, as the execution and analysis record it (§91 D4-10). */
 export interface FrameSelection { frameIndex: number; pts: number }
 /** A frame recipe on a full-ledger entry. */
 export type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: 'frame'; entry: MiniToolPlanEntry }>;
-/** The job-level recipes a split segment becomes; their shared schemas arrive with the tool runners (§92). */
-export type SegmentRecipe =
-  | { kind: 'segment'; inputId: string; window: FrameWindow; timescale: number; entries: MiniToolPlanEntry[]; target: SegmentTarget; audio: MiniToolPlanAudio }
-  | { kind: 'chunk_encode'; inputId: string; window: FrameWindow; timescale: number; entries: MiniToolPlanEntry[]; target: SegmentTarget }
-  | { kind: 'stitch'; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio; target: SegmentTarget };
+/** The job-level recipes a split segment becomes. */
+export type SegmentRecipe = Extract<MiniToolPlanRecipe, { kind: 'segment' | 'chunk_encode' | 'stitch' }>;
 
 /**
  * The plan's PNG target (§7.17 frame row, §4.3): the upright display geometry, its matrix and tone mapping, the plan's PNG
@@ -420,7 +415,8 @@ export function candidateCropRecipeOf(ledger: VideoPresentationLedger, anchor: F
  * @returns The recipe.
  * @throws {RangeError} When the anchor is not a presented frame.
  */
-export function peopleRecipeOf<P>(ledger: VideoPresentationLedger, anchor: FrameSelection, inputId: string, profile: P): { kind: 'people'; inputId: string; entry: MiniToolPlanEntry; target: FrameTarget; profile: P } {
+export function peopleRecipeOf(ledger: VideoPresentationLedger, anchor: FrameSelection, inputId: string, profile: MiniToolPlanDetectorProfile):
+  Extract<MiniToolPlanRecipe, { kind: 'people'; entry: MiniToolPlanEntry }> {
   return { kind: 'people', inputId, entry: frameEntry(ledger, anchor), target: frameTarget(ledger), profile };
 }
 
@@ -509,8 +505,8 @@ export function segmentRecipesOf(ledger: VideoPresentationLedger, selection: { r
  * @returns The recipe.
  * @throws {RangeError} When the range is not on frame boundaries.
  */
-export function sceneCutsRecipeOf<P>(ledger: VideoPresentationLedger, range: { start: number; end: number }, inputId: string, profile: P):
-  { kind: 'scene_cuts'; inputId: string; window: FrameWindow; timescale: number; profile: P; entries: (MiniToolPlanEntry & { ordinalOffset: number })[]; target: AnalysisTarget } {
+export function sceneCutsRecipeOf(ledger: VideoPresentationLedger, range: { start: number; end: number }, inputId: string, profile: MiniToolPlanDetectorProfile):
+  Extract<MiniToolPlanRecipe, { kind: 'scene_cuts'; entries: unknown }> {
   const { plan } = ledger;
   const window = rangeWindow(ledger, range);
   return { kind: 'scene_cuts', inputId, window, timescale: plan.presentation.timescale, profile,

@@ -42,9 +42,12 @@ export interface MiniToolPlanTarget {
   displayRect: MiniToolPlanPixelRect | null;
   colorMatrix: string;
   toneMap: "none" | "sdr-bt709";
-  alpha: "none" | "packed";
+  /** `packed` for an alpha carrier; `straight` for a transparent VP9 split output. */
+  alpha: "none" | "packed" | "straight";
   crf: number;
   preset: "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow";
+  /** A split output's container and codec (§91 D4-4); a carrier and a model input have none. */
+  format?: "mp4-h264" | "webm-vp9";
 }
 /** A presentation window's frames, on its own clock of `1/timescale` from 0. */
 interface MiniToolPlanWindowRecipe {
@@ -65,12 +68,22 @@ export interface MiniToolPlanFrameTarget {
   alpha: "none" | "straight";
 }
 
+/** A scene-cut entry with the presentation ordinal of its first frame (§91 D4-5). */
+export type MiniToolPlanPlacedEntry = MiniToolPlanEntry & { ordinalOffset: number };
+/** An analysis picture's target: display geometry and the plan's colour conversion. */
+export interface MiniToolPlanAnalysisTarget { width: number; height: number; colorMatrix: string; toneMap: "none" | "sdr-bt709" }
+
 /** Media recipes shared with a container that loads no validation libraries. */
 export type MiniToolPlanRecipe =
   | { kind: "inspect_video"; inputId: string }
   | { kind: "frame"; inputId: string; frameIndex: number; orientation?: "display"; crop?: MiniToolPlanFrameCrop }
   // The frame one full-ledger entry presents (§7.17 frame row), optionally cropped in its display geometry.
-  | { kind: "frame"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop; frameIndex?: never; orientation?: never }
+  | { kind: "frame"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop }
+  // The split segment, the people anchor and the scanned scene window on full-ledger entries (§91 D4-4, D4-5).
+  | ({ kind: "segment"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe)
+  | { kind: "people"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; profile: MiniToolPlanDetectorProfile }
+  | { kind: "scene_cuts"; inputId: string; window: { start: number; end: number }; timescale: number; profile: MiniToolPlanDetectorProfile;
+    entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
   | { kind: "segment"; inputId: string; range: { start: number; end: number }; audioEnd?: number }
   | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile; orientation?: "display" }
   | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
