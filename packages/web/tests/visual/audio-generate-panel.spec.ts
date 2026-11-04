@@ -178,12 +178,13 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 
 test('text to music: two boxes, and an empty lyrics box refuses the submit', async ({ page }) => {
   const nodeId = crypto.randomUUID();
-  // Panned up first, because this panel carries two editors and stands 396px
-  // against the suite's 720px window — measured 2026-09-05, against 234px on
-  // the sound-effect mode. Left of the origin for the reason the other cases
-  // are: the minimap in the bottom-right corner takes clicks meant for it.
+  // Panned up first, because this panel carries two editors and grows when the
+  // lyrics box opens. Panned left as well: the Space frames its one node in
+  // the middle, and there the generate button lands under the minimap in the
+  // bottom-right corner, which takes clicks meant for it.
   await seedNode(nodeId, 'audio', undefined, -50);
   await panCanvasDown(250);
+  await page.mouse.wheel(200, 0);
   await openGenerate(nodeId);
 
   await page.getByTestId('generate-audio-mode-trigger').click();
