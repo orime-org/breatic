@@ -276,3 +276,81 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
     await expect(miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).rejects.toBeInstanceOf(Error);
   });
 });
+
+// §93 D5-11 (frames-split design §7.11 line 616 「registered，非终态提交」, line 622 「worker每次轮询把新完成产物做非终态提交，全部
+// 产物结束后做一次终态提交」, §10.8 失败与提交): the execution service gains a non-terminal commit of newly finished outputs,
+// arbitrated by resultVersion like the terminal one, never rewriting a committed result, at most one registration per
+// output. This round's choice of its name and input (may be vetoed): `commitMiniToolExecutionProgress(taskId,
+// { planFingerprint, expectedVersion, outputs })`, the complete indexed mapping with `result: null` for outputs still pending.
+describe("non-terminal progress commits (§93 D5-11)", () => {
+  type Progress = { planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionCompletion["outputs"] };
+  /** The new entry, read at call time so its absence fails each case on its own. @returns It. */
+  function commit(): (taskId: string, progress: Progress) => Promise<{ record: MiniToolExecutionRecord }> {
+    const fn = (miniToolExecutionService as unknown as Record<string, unknown>).commitMiniToolExecutionProgress;
+    expect(fn, "commitMiniToolExecutionProgress is exported from the execution service").toBeTypeOf("function");
+    return fn as (taskId: string, progress: Progress) => Promise<{ record: MiniToolExecutionRecord }>;
+  }
+  /** A progress commit of the fixture's registered output. @returns It. */
+  function progress(f: ExecutionFixture, expectedVersion = 0): Progress {
+    return { planFingerprint: f.plan.planFingerprint, expectedVersion, outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }] };
+  }
+
+  it("NP01 commits a newly registered output while the run stays running and unbilled", async () => {
+    const f = await seedExecution(pg, "running");
+    const { record } = await commit()(f.taskId, progress(f));
+    expect(record).toEqual({ ...f.record, status: "running", resultVersion: 1, outputs: progress(f).outputs });
+    const row = await executionSnapshot(pg, f);
+    expect({ status: row.status, completed_at: row.completed_at, billed_at: row.billed_at, error_message: row.error_message })
+      .toEqual({ status: "running", completed_at: null, billed_at: null, error_message: null });
+    expect(await publicRecord(f)).toEqual(record);
+  });
+
+  it("NP02 a pending output stays pending: a progress commit with nothing new changes nothing", async () => {
+    const f = await seedExecution(pg, "running"); const before = await executionSnapshot(pg, f);
+    const { record } = await commit()(f.taskId, { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, result: null, late: false }] });
+    expect(record).toEqual({ ...f.record, status: "running" });
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+
+  it("NP03 a stale resultVersion is refused without a write", async () => {
+    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f));
+    const before = await executionSnapshot(pg, f);
+    const contender = { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed" as const, error: ERROR }, late: false }] };
+    await expect(commit()(f.taskId, contender)).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+
+  it("NP04 repeating the same registration is idempotent: no second registration and no version change", async () => {
+    const f = await seedExecution(pg, "running"); const first = await commit()(f.taskId, progress(f)); const before = await executionSnapshot(pg, f);
+    expect((await commit()(f.taskId, progress(f, 1))).record).toEqual(first.record);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+
+  it("NP05 a committed result is never rewritten, by another registration or by a failure", async () => {
+    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f)); const before = await executionSnapshot(pg, f);
+    const other = { ...progress(f, 1), outputs: [{ ...f.plan.outputs[0]!, late: false,
+      result: { ...f.registered, assetId: randomUUID(), contentHash: "e".repeat(64), canonicalURL: "https://assets.example.test/video/other.webm" } }] };
+    await expect(commit()(f.taskId, other)).rejects.toBeInstanceOf(Error);
+    await expect(commit()(f.taskId, { ...progress(f, 1), outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed", error: ERROR }, late: false }] })).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+
+  it("NP06 a registration that is not the canonical winner is refused like the terminal commit's", async () => {
+    const f = await seedExecution(pg, "running"); const before = await executionSnapshot(pg, f);
+    await expect(commit()(f.taskId, { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, late: false, result: { ...f.registered, size: f.registered.size + 1 } }] })).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+
+  it("NP07 the one terminal commit after progress keeps the committed output and ends the run", async () => {
+    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f));
+    const { record } = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1));
+    expect(record).toMatchObject({ status: "completed", resultVersion: 2, outputs: progress(f).outputs, error: null });
+    expect((await executionSnapshot(pg, f)).status).toBe("completed");
+  });
+
+  it("NP08 a progress commit after the terminal one is refused", async () => {
+    const f = await seedExecution(pg); await terminal(f); const before = await executionSnapshot(pg, f);
+    await expect(commit()(f.taskId, progress(f, 1))).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
+  });
+});
