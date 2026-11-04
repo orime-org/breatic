@@ -31,7 +31,8 @@ function builder<T>(name: string): T {
   return fn as T;
 }
 type FrameBuilder = (ledger: unknown, selection: { frameIndex: number; pts: number }, inputId: string) => Record<string, unknown>;
-type SegmentBuilder = (ledger: unknown, selection: { range: { start: number; end: number } }, inputId: string, carrier: typeof CARRIER) => Record<string, unknown>[];
+// The chunk windows come from the shared §5.4 planner with the run's frozen parameters; the builder takes them as given.
+type SegmentBuilder = (ledger: unknown, selection: { range: { start: number; end: number } }, inputId: string, carrier: typeof CARRIER, windows: { start: number; end: number }[]) => Record<string, unknown>[];
 
 /**
  * cfr96 with its plan edited (the derived fields that must agree are edited with it by the caller).
@@ -77,7 +78,7 @@ describe('the frame recipe from the full ledger (§92 D4-3; design §7.17 frame 
 
 describe('the segment recipe from the full ledger (§92 D4-4; design §7.17 segment row, §4.3 奇数行)', () => {
   it('TB05 a range of whole frames becomes one segment over its window: entries, the H.264 target, the frozen encode and the interval audio', () => {
-    const segments = builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 1.92, end: 3.84 } }, INPUT, CARRIER);
+    const segments = builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 1.92, end: 3.84 } }, INPUT, CARRIER, [{ start: 48, end: 96 }]);
     expect(segments).toEqual([{
       kind: 'segment', inputId: INPUT, window: { start: 48, end: 96 }, timescale: 25,
       entries: [{ kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(96, 25), rate: r(1) }],
@@ -92,10 +93,30 @@ describe('the segment recipe from the full ledger (§92 D4-4; design §7.17 segm
     ['a transparent display keeps its odd size in VP9 WebM', { width: 161, height: 97 }, 'transparent', { width: 161, height: 97, format: 'webm-vp9', alpha: 'straight' }],
   ] as const)('TB06 %s (§4.3 奇数行)', (_name, display, fill, expected) => {
     const ledger = cfr96((plan) => { Object.assign(plan.display!, display); plan.policy!.emptyFill = fill; });
-    expect(builder<SegmentBuilder>('segmentRecipesOf')(ledger, { range: { start: 0, end: 1.92 } }, INPUT, CARRIER)[0]!.target).toMatchObject(expected);
+    expect(builder<SegmentBuilder>('segmentRecipesOf')(ledger, { range: { start: 0, end: 1.92 } }, INPUT, CARRIER, [{ start: 0, end: 48 }])[0]!.target).toMatchObject(expected);
   });
 
   it('TB07 a range that does not start on a frame boundary is refused', () => {
-    expect(() => builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 0.01, end: 1.92 } }, INPUT, CARRIER)).toThrow(RangeError);
+    expect(() => builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 0.01, end: 1.92 } }, INPUT, CARRIER, [{ start: 0, end: 48 }])).toThrow(RangeError);
+  });
+
+  it('TB08 a range planned as two windows gives two chunk_encode recipes with the segment target and a stitch over them (§5.4)', () => {
+    const target = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium', format: 'mp4-h264' };
+    const spans = (read('cfr96').plan as { audioSpans: unknown }).audioSpans;
+    expect(builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 0, end: 3.84 } }, INPUT, CARRIER, [{ start: 0, end: 48 }, { start: 48, end: 96 }])).toEqual([
+      { kind: 'chunk_encode', inputId: INPUT, window: { start: 0, end: 48 }, timescale: 25, target,
+        entries: [{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(48, 25), rate: r(1) }] },
+      { kind: 'chunk_encode', inputId: INPUT, window: { start: 48, end: 96 }, timescale: 25, target,
+        entries: [{ kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(96, 25), rate: r(1) }] },
+      { kind: 'stitch', inputId: INPUT, chunks: [{ inputId: recipes.chunkInputId(0), duration: r(48, 25) }, { inputId: recipes.chunkInputId(1), duration: r(48, 25) }],
+        audio: { start: r(0), end: r(96, 25), origin: r(0), spans }, target },
+    ]);
+  });
+
+  it.each([
+    ['windows that leave a gap', [{ start: 0, end: 40 }, { start: 48, end: 96 }]],
+    ['windows that are not the range\'s frames', [{ start: 0, end: 48 }]],
+  ])('TB09 refuses %s', (_name, windows) => {
+    expect(() => builder<SegmentBuilder>('segmentRecipesOf')(cfr96(), { range: { start: 0, end: 3.84 } }, INPUT, CARRIER, windows)).toThrow(RangeError);
   });
 });
