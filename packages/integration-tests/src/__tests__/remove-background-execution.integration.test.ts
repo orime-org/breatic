@@ -12,7 +12,7 @@
  * case says otherwise), then submits `generate` with the prepared object's public URL. A failed-output retry reuses the
  * original preparation. The golden plan hash was recomputed independently with Python.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
@@ -38,9 +38,11 @@ const { runPrediction, storeFromUrl } = vi.hoisted(() => ({
 }));
 // Today's configuration can differ from what a run froze at admission (§3.2 item 1); WP06 changes the chunk retry cap.
 const overrides = vi.hoisted(() => ({ chunkRetries: undefined as number | undefined }));
+// WP09 reads what the handlers log; the spy stands in for the core logger in this file.
+const log = vi.hoisted(() => { const spy = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn(), child: vi.fn() }; spy.child.mockReturnValue(spy); return spy; });
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
-  return { ...actual, getMiniToolsConfig: (): ReturnType<typeof actual.getMiniToolsConfig> => {
+  return { ...actual, logger: log as unknown as typeof actual.logger, getMiniToolsConfig: (): ReturnType<typeof actual.getMiniToolsConfig> => {
     const config = actual.getMiniToolsConfig();
     return overrides.chunkRetries === undefined ? config : { ...config, encoding: { ...config.encoding, chunk_retries: overrides.chunkRetries } };
   } };
@@ -116,7 +118,7 @@ let ledgerFault: "reset" | 503 | null = null;
 beforeEach(() => {
   ledgerBody = LEDGER_BYTES;
   ledgerFault = null;
-  vi.resetAllMocks(); configure(); overrides.chunkRetries = undefined;
+  vi.resetAllMocks(); log.child.mockReturnValue(log); configure(); overrides.chunkRetries = undefined;
   jobs.submitted.length = 0; jobs.scripted.clear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -543,6 +545,33 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     ledgerFault = null;
     await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
     expect(preparations(f)).toHaveLength(1);
+  });
+
+  // §91 D3b mutation P2: the catch that fails the run logs it (root AGENTS.md "Application-layer error logging").
+  it("WP09 a full ledger that fails its frozen receipt is logged with the run's taskId and toolInputId", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    ledgerBody = Buffer.concat([LEDGER_BYTES, Buffer.from(" ")]);
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch(() => undefined);
+    expect([...log.error.mock.calls]).toContainEqual([expect.objectContaining({ ctx: expect.objectContaining({ taskId: f.plan.taskId, toolInputId: f.plan.presentationRef.source.toolInputId }) }), expect.any(String)]);
+  });
+
+  // §91 D3b mutation W15 (§91 D3b-11): the model input's audio carries the plan's origin.
+  it("WP10 a ledger whose origin is not 0 gives a model input whose audio carries that origin", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const ledger = JSON.parse(LEDGER_BYTES.toString("utf8")) as { sourceFingerprint: string; toolInputId: string; planSha256: string; plan: { originMapping: { origin: unknown } } };
+    ledger.plan.originMapping.origin = r(1, 4);
+    ledger.planSha256 = await (shared as unknown as { videoPresentationPlanSha256: (value: unknown) => Promise<string> }).videoPresentationPlanSha256(ledger.plan);
+    ledger.toolInputId = await (shared as unknown as { videoPresentationToolInputId: (value: { sourceFingerprint: string; planSha256: string }) => Promise<string> }).videoPresentationToolInputId({ sourceFingerprint: ledger.sourceFingerprint, planSha256: ledger.planSha256 });
+    ledgerBody = Buffer.from(`${JSON.stringify(ledger)}\n`);
+    const plan = structuredClone(f.plan);
+    plan.ledgerReceipts.source = { ...plan.ledgerReceipts.source, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256, size: ledgerBody.byteLength,
+      sha256: createHash("sha256").update(ledgerBody).digest("hex") };
+    plan.presentationRef.source = { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 };
+    plan.planFingerprint = await planHash(plan);
+    await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
+    await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false).catch((error: unknown) => { if (!(error instanceof StillRunning)) throw error; });
+    const recipe = (preparations(f)[0]!.outputs as { recipe: { audio: { origin: unknown } } }[])[0]!.recipe;
+    expect(recipe.audio.origin).toEqual(r(1, 4));
   });
 
   it("WP06 the preparation retry cap is the one frozen at admission, not today's encoding.chunk_retries", async () => {

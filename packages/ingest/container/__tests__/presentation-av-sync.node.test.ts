@@ -57,6 +57,8 @@ let lead: string;
 let leadPlan: Plan;
 let lag: string;
 let lagPlan: Plan;
+let noedit: string;
+let noeditPlan: Plan;
 const served = new Map<string, string>();
 const written = new Map<string, Uint8Array>();
 let reports: { ok: boolean }[] = [];
@@ -242,9 +244,13 @@ beforeAll(async () => {
   // earlier audio, design §4.2.1 开头行) and the sound starts later than presentation 0.
   await ff('lag.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'base.mp4'), '-itsoffset', '0.5', '-i', join(dir, 'base.mp4'), '-map', '0:v', '-map', '1:a', '-c', 'copy', '-use_editlist', '1']);
   lag = join(dir, 'lag.mp4');
+  // The same tracks with no edit list at all (§91 D3b mutation C7): media time is movie time on both.
+  await ff('noedit.mp4', ['-i', join(dir, 'base.mp4'), '-c', 'copy', '-use_editlist', '0']);
+  noedit = join(dir, 'noedit.mp4');
   plan = await planOf(cut);
   leadPlan = await planOf(lead);
   lagPlan = await planOf(lag);
+  noeditPlan = await planOf(noedit);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -363,5 +369,36 @@ describe('an edited source keeps picture and sound at their plan times (§4.2, �
       sourceStart: r(span.sourceStart, 48000), sourceEnd: r(span.sourceEnd, 48000), presentationStart: r(span.presentationStart, 1000), rate: r(span.rate, 1) }));
     const output = stitch ? await stitched(lag, lagPlan, spans) : await modelInput(lag, lagPlan, spans);
     expect(Math.abs(await toneAt(output) - (await toneAt(lag) - value(lagPlan.originMapping.origin)))).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  /**
+   * Where an output's sound starts: the stream's start with the edit list applied, and its first packet's time without it.
+   * @param path - The output.
+   * @returns Both, in seconds.
+   */
+  async function soundStart(path: string): Promise<{ start: number; firstPacket: number }> {
+    const { stdout: start } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', path]);
+    const { stdout: first } = await run('ffprobe', ['-v', 'error', '-ignore_editlist', '1', '-select_streams', 'a:0', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-read_intervals', '%+#1', path]);
+    return { start: Number(start.trim()), firstPacket: Number(first.trim().split('\n')[0]!.replace(',', '')) };
+  }
+
+  // §91 D3b mutation C4 (D3b-11 「保留音频起点之前的静音」): the silence before the late sound is real samples from 0, not an
+  // offset an edit list carries, so a player or model reading the file without edit lists keeps the sync.
+  it.each([['chunk then stitch', true], ['prepare_model_input', false]] as const)('AV05 %s of the late-sound source: the sound track starts at 0 with decoded silence before the burst', async (_name, stitch) => {
+    const output = stitch ? await stitched(lag, lagPlan) : await modelInput(lag, lagPlan);
+    expect(await soundStart(output)).toEqual({ start: 0, firstPacket: 0 });
+    const tone = await toneAt(output);
+    const { stdout } = await run('ffmpeg', ['-v', 'error', '-ignore_editlist', '1', '-i', output, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+    const samples = new Int16Array(new Uint8Array(stdout).buffer.slice(0));
+    expect(samples.length / 48000).toBeGreaterThan(tone);
+    expect(Math.max(...samples.subarray(0, Math.floor((tone - 0.05) * 48000)).map(Math.abs))).toBeLessThan(200);
+  });
+
+  // §91 D3b mutation C7 (D3b-11, spans null: presentation = movie time - origin). A probed plan gives origin 0 for a sound
+  // track without edits (it starts at movie 0), so the recipe here names an origin by hand to pin the wire rule.
+  it.each([['chunk then stitch', true], ['prepare_model_input', false]] as const)('AV06 %s with no audio edit list and an origin of 1/4: the tone burst lands at movie time less the origin', async (_name, stitch) => {
+    const of = { ...noeditPlan, originMapping: { ...noeditPlan.originMapping, origin: { numerator: '1', denominator: '4' } } };
+    const output = stitch ? await stitched(noedit, of, null) : await modelInput(noedit, of, null);
+    expect(Math.abs(await toneAt(output) - (await toneAt(noedit) - 0.25))).toBeLessThanOrEqual(AAC_FRAME);
   });
 });

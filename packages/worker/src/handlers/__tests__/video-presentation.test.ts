@@ -475,6 +475,78 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(submitted()).toHaveLength(2);
   });
 
+  // ---- Cases that each fail on one deletion mutation of the D3b builder (inner#1306 §91 D3b mutations) ----
+
+  /**
+   * A chunk window's recipe entries from the submitted jobs.
+   * @returns Each job's entries.
+   */
+  function entriesSubmitted(): Record<string, unknown>[][] {
+    return submitted().map((job) => (job.outputs as { recipe: { entries: Record<string, unknown>[] } }[])[0]!.recipe.entries);
+  }
+
+  it('RB07 a ledger whose content differs from its receipt at the same length (digest only) is a content mismatch: read, nothing submitted, wait', async () => {
+    await serve(LEDGERS.cfr96);
+    const text = ledgerBytes.toString('utf8');
+    const swapped = text.replace('"deadlineAt":1900000000000', '"deadlineAt":1900000000001');
+    expect(swapped).not.toBe(text);
+    ledgerBytes = Buffer.from(swapped);
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(submitted()).toEqual([]);
+    expect(actions('read')).toHaveLength(1);
+  });
+
+  it('RB08 an invalid full ledger moves no stage and reports no Sub for any unit (§91 D3b-9 「不提交」)', async () => {
+    await serve(LEDGERS.cfr96);
+    ledgerBytes = Buffer.concat([ledgerBytes, Buffer.from(' ')]);
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(actions('advance_stage')).toEqual([]);
+    expect(actions('report_chunk').filter((body) => (body.report as { kind: string }).kind === 'Sub')).toEqual([]);
+  });
+
+  it('RB10 a window over two video edits gives one source entry per edit, each with its own clip start (§7.17)', async () => {
+    await serve(LEDGERS.cut, { work: { kind: 'encode', chunks: [{ start: 0, end: 38 }] } }, (plan) => {
+      plan.videoSpans = [
+        { sourceStart: r(1, 10), sourceEnd: r(4, 5), presentationStart: r(0), rate: r(1) },
+        { sourceStart: r(4, 5), sourceEnd: r(8, 5), presentationStart: r(7, 10), rate: r(1) },
+      ] as unknown as Record<string, unknown>;
+    });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(entriesSubmitted()).toEqual([[
+      { kind: 'source', decodeStart: r(2, 25), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) },
+      { kind: 'source', decodeStart: r(4, 5), clipStart: r(4, 5), displayStart: r(7, 10), displayEnd: r(3, 2), rate: r(1) },
+    ]]);
+  });
+
+  it('RB11 a derived-empty frame of a transparent plan is a transparent empty entry', async () => {
+    await serve(LEDGERS.cfr96, {}, (plan) => {
+      plan.policy!.emptyFill = 'transparent';
+      const mapping = plan.originMapping as unknown as { entries: unknown[]; lastSource: { supportEnd: unknown } };
+      mapping.entries = [{ kind: 'source', start: 0, count: 95, step: 1 }, { kind: 'derived-empty' }];
+      mapping.lastSource.supportEnd = r(19, 5);
+    });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(entriesSubmitted()[1]!.at(-1)).toEqual({ kind: 'empty', fill: 'transparent', window: { start: r(19, 5), end: r(96, 25) } });
+  });
+
+  it('RB12 a plan with a non-zero origin: the stitch audio carries that origin (§91 D3b-11)', async () => {
+    const units = {
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+      [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'done', 'done', 1, true),
+    };
+    await serve(LEDGERS.cfr96, { units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } }, (plan) => {
+      (plan.originMapping as unknown as { origin: unknown }).origin = r(1, 4);
+    });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect((submitted()[0]!.outputs as { recipe: { audio: { origin: unknown } } }[])[0]!.recipe.audio.origin).toEqual(r(1, 4));
+  });
+
+  it('RB13 the copy of a plan whose matrix is BT.601 tags BT.601', async () => {
+    await serve(LEDGERS.cfr96, { route: 'dispatch_copy' }, (plan) => { (plan as unknown as { colorMatrix: string }).colorMatrix = 'bt601'; });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect((submitted()[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toMatchObject({ kind: 'copy_carrier', colorMatrix: 'bt601' });
+  });
+
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
     const id = subJob('stitch', 1);
     const units: Record<string, Unit> = { [`video-presentation:${JOB}:stitch`]: unit(id, 'open', 'pending'),

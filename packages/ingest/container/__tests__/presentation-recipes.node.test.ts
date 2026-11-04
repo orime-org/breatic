@@ -532,4 +532,12 @@ describe('copy_carrier and prepare_model_input', () => {
     expect(Math.min(...await lumaMeans(file!, { x: 0, y: 0, width: 161, height: 97 }))).toBeGreaterThan(200);
     expect(Math.min(...await lumaMeans(file!, { x: 160, y: 0, width: 1, height: 96 }))).toBeGreaterThan(200);
   });
+
+  // §91 D3b mutation C6 (D3b-2): the model input's counterpart of ST06.
+  it('PM03 a source without audio and an audio interval prepares a video-only model input and does not fail', async () => {
+    const recipe = { ...modelInput({ ...TARGET, colorMatrix: 'bt601' }, { start: r(0), end: r(2, 5), origin: r(0), spans: null }), window: { start: 0, end: 10 }, entries: [span(r(0), r(0), r(0), r(2, 5))] };
+    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [recipe]);
+    expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video']);
+    expect(await packets(file!)).toHaveLength(10);
+  });
 });
