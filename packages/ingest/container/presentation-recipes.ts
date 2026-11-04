@@ -14,13 +14,14 @@ import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolP
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
-import type { PlanLimits } from "@ingest/container/plan-recipes.js";
 import { probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
 import { readSceneCutObservations, readYuNetFaces } from "@ingest/container/analysis-detection.js";
 
+/** Caller-frozen process IO bounds, with no local operational fallback. */
+export interface PlanLimits { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number }
 /** The recipes this module runs. */
 export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }>
   | FrameRecipe | PeopleRecipe | SceneRecipe | SegmentRecipe;
@@ -45,22 +46,11 @@ export interface PresentationRecipeRequest {
   limits: PlanLimits;
 }
 
-const KINDS: ReadonlySet<string> = new Set(["copy_carrier", "chunk_encode", "stitch", "prepare_model_input"]);
 // §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames.
 const TONE_MAP = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
 const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
 const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601: "bt601", bt2020nc: "bt2020" };
-
-/**
- * Whether a recipe is one of the presentation recipes.
- * @param recipe - A validated recipe.
- * @returns True for copy, chunk, stitch, model input, and frame, people, scene_cuts and segment on full-ledger entries.
- * @throws {never} Never.
- */
-export function isPresentationRecipe(recipe: MiniToolPlanRecipe): recipe is PresentationRecipe {
-  return KINDS.has(recipe.kind) || "entry" in recipe || ((recipe.kind === "scene_cuts" || recipe.kind === "segment") && "entries" in recipe);
-}
 
 /**
  * Subtract two exact times.

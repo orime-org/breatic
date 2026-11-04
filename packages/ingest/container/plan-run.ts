@@ -7,8 +7,7 @@ import { join } from "node:path";
 import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { executePlanRecipe, inspectPlanInput, type PlanLimits, type PlanSource } from "@ingest/container/plan-recipes.js";
-import { executePresentationRecipe, isPresentationRecipe } from "@ingest/container/presentation-recipes.js";
+import { executePresentationRecipe, type PlanLimits } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
 import { coverArgs } from "@ingest/probe-command.js";
@@ -61,7 +60,6 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   const signal = remaining <= 0 ? AbortSignal.abort(new DOMException("Planned job deadline passed", "AbortError")) : AbortSignal.timeout(remaining);
   const completed: PlanContainerOutput[] = [];
   const files = new Map<string, string>();
-  const facts = new Map<string, PlanSource>();
   let directory: string | undefined;
   let outputIndex: number | undefined;
   let ok = false;
@@ -101,24 +99,10 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       signal.throwIfAborted();
       const recipe = output.recipe;
       const file = join(directory, `output-${output.outputIndex}`);
-      let metadata: MediaOfOutput;
-      if (isPresentationRecipe(recipe)) {
-        const inputs = new Map<string, string>();
-        for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
-        metadata = await executePresentationRecipe({ recipe, inputs, output: file, directory, signal, limits: job.limits });
-      } else {
-        // §91 D4-6: a people, scene_cuts or segment recipe on full-ledger entries reads no per-frame probe; its execution
-        // arrives with those tools' runners.
-        const raw = recipe as unknown as Record<string, unknown>;
-        if (raw.entry !== undefined || raw.entries !== undefined) throw new Error(`The ${recipe.kind} recipe on full-ledger entries is not executable yet`);
-        const input = await fetchInput(recipe.inputId);
-        let source = facts.get(input);
-        if (source === undefined) {
-          source = await inspectPlanInput(input, signal, job.limits);
-          facts.set(input, source);
-        }
-        metadata = await executePlanRecipe({ recipe, input, output: file, directory, facts: source, signal, limits: job.limits });
-      }
+      // Every recipe carries what the worker wrote from the full ledger; the container reads no frame table (§7.17).
+      const inputs = new Map<string, string>();
+      for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
+      const metadata: MediaOfOutput = await executePresentationRecipe({ recipe, inputs, output: file, directory, signal, limits: job.limits });
       try { await put(output.url, file, signal); }
       catch (error) { reason = "internal"; throw error; }
       const cover = output.coverUrl !== undefined && metadata.width !== null
