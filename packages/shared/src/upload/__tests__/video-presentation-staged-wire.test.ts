@@ -441,6 +441,31 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);
   });
 
+  // S6d D4-3 (§92; design §7.17 frame row): a frame names one D3-style entry and its PNG target, never a presentation ordinal.
+  const FRAME_TARGET = { width: 320, height: 180, colorMatrix: 'bt709', toneMap: 'none', pngBitDepth: 8, alpha: 'none' };
+  const frameRecipe = { kind: 'frame', inputId: INPUT, entry: SPAN, target: FRAME_TARGET };
+
+  it.each([
+    ['a source entry', frameRecipe],
+    ['a derived-empty entry', { ...frameRecipe, entry: EMPTY }],
+    ['a 16-bit, tone-mapped, alpha-keeping target', { ...frameRecipe, target: { ...FRAME_TARGET, pngBitDepth: 16, toneMap: 'sdr-bt709', alpha: 'straight' } }],
+    ['a display crop', { ...frameRecipe, crop: { x: 2, y: 2, width: 100, height: 80 } }],
+  ])('FR01 admits a frame recipe with %s', (_name, recipe) => {
+    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
+  });
+
+  it.each([
+    ['the earlier frameIndex shape', { kind: 'frame', inputId: INPUT, frameIndex: 30, orientation: 'display' }],
+    ['no entry', { kind: 'frame', inputId: INPUT, target: FRAME_TARGET }],
+    ['a frameIndex beside the entry', { ...frameRecipe, frameIndex: 30 }],
+    ['a 12-bit PNG', { ...frameRecipe, target: { ...FRAME_TARGET, pngBitDepth: 12 } }],
+    ['a packed alpha', { ...frameRecipe, target: { ...FRAME_TARGET, alpha: 'packed' } }],
+    ['a target without its tone map', { ...frameRecipe, target: { width: 320, height: 180, colorMatrix: 'bt709', pngBitDepth: 8, alpha: 'none' } }],
+  ])('FR02 rejects a frame recipe with %s', (_name, recipe) => {
+    expect(miniToolPlanRecipeSchema.safeParse(frameRecipe).success).toBe(true);
+    expect(miniToolPlanRecipeSchema.safeParse(recipe).success).toBe(false);
+  });
+
   it('RC03 a stitch job request binds every chunk it names as an input', () => {
     expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs)).success).toBe(true);
     expect(miniToolPlanJobRequestSchema.safeParse(jobOf(stitch, chunkInputs.slice(0, 1))).success).toBe(false);
