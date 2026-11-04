@@ -10,7 +10,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import type { MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
+import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
@@ -128,49 +128,158 @@ function picture(target: MiniToolPlanTarget, label: string): string {
 }
 
 /**
- * The audio of an interval of the source as AAC at 48 kHz from output time 0 (§4.2).
- * @param input - The FFmpeg input index of the source.
- * @param interval - The source interval.
- * @param interval.start - Its start.
- * @param interval.end - Its end.
- * @returns The filter chain and its output label.
- * @throws {RangeError} When a time is malformed.
+ * An exact time, possibly negative, as FFmpeg seconds.
+ * @param value - The numerator and denominator.
+ * @returns The decimal text.
+ * @throws {never} Never.
  */
-function audioOf(input: number, interval: { start: MiniToolPlanExact; end: MiniToolPlanExact }): string {
-  return `[${input}:a:0]atrim=start=${seconds(rational(interval.start))}:end=${seconds(rational(interval.end))},asetpts=PTS-STARTPTS,aresample=48000[a]`;
+function signedSeconds([numerator, denominator]: [bigint, bigint]): string {
+  return numerator < 0n ? `-${seconds([-numerator, denominator])}` : seconds([numerator, denominator]);
+}
+
+/**
+ * The audio of a presentation interval as AAC at 48 kHz from output time 0 (§4.2, §91 D3b-11). With the plan's audio spans
+ * the source is read on its media timeline (edit list ignored) and each span's samples are placed at their presentation
+ * time; without, the edit list is applied and presentation time is movie time less the origin. Silence before the first
+ * sample is kept.
+ * @param input - The FFmpeg input index the source's audio is opened at.
+ * @param audio - The recipe's audio.
+ * @returns The input arguments and the filter chain ending at `[a]`, or null when no span meets the interval.
+ * @throws {RangeError} When a span changes rate, which §91 D4 adds.
+ */
+function audioOf(input: number, audio: MiniToolPlanAudio): { args: string[]; graph: string } | null {
+  const start = rational(audio.start);
+  const end = rational(audio.end);
+  const pad = "aresample=48000:async=1:first_pts=0";
+  if (audio.spans === null) {
+    const movieStart = plus(start, rational(audio.origin));
+    const movieEnd = plus(end, rational(audio.origin));
+    return { args: ["-i"], graph: `[${input}:a:0]atrim=start=${seconds(movieStart)}:end=${seconds(movieEnd)},asetpts=PTS-(${seconds(movieStart)})/TB,${pad}[a]` };
+  }
+  const branches: string[] = [];
+  for (const edit of audio.spans) {
+    const [rateNumerator, rateDenominator] = rational(edit.rate);
+    if (rateNumerator !== rateDenominator) throw new RangeError("An audio span at a rate other than 1 is not rendered yet");
+    const shownFrom = rational(edit.presentationStart);
+    const shownTo = plus(shownFrom, minusQ(rational(edit.sourceEnd), rational(edit.sourceStart)));
+    const from = later(shownFrom, start);
+    const to = earlier(shownTo, end);
+    if (!before(from, to)) continue;
+    const mediaFrom = plus(rational(edit.sourceStart), minusQ(from, shownFrom));
+    const mediaTo = plus(mediaFrom, minusQ(to, from));
+    branches.push(`atrim=start=${seconds(mediaFrom)}:end=${seconds(mediaTo)},asetpts=PTS+(${signedSeconds(minusQ(minusQ(from, start), mediaFrom))})/TB,${pad}`);
+  }
+  if (branches.length === 0) return null;
+  const labels = branches.map((_branch, at) => `[s${at}]`);
+  const split = branches.length === 1 ? `[${input}:a:0]${branches[0]}[a]`
+    : `[${input}:a:0]asplit=${branches.length}${labels.join("")};${branches.map((branch, at) => `${labels[at]}${branch}[m${at}]`).join(";")};` +
+      `${branches.map((_branch, at) => `[m${at}]`).join("")}amix=inputs=${branches.length}:normalize=0:duration=longest[a]`;
+  return { args: ["-ignore_editlist", "1", "-i"], graph: split };
+}
+
+/**
+ * Add two exact values.
+ * @param left - One.
+ * @param right - The other.
+ * @returns The sum.
+ * @throws {never} Never.
+ */
+function plus(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
+  return [left[0] * right[1] + right[0] * left[1], left[1] * right[1]];
+}
+
+/**
+ * Subtract two exact values.
+ * @param left - The minuend.
+ * @param right - The subtrahend.
+ * @returns The difference.
+ * @throws {never} Never.
+ */
+function minusQ(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
+  return [left[0] * right[1] - right[0] * left[1], left[1] * right[1]];
+}
+
+/**
+ * Whether one exact value is below another.
+ * @param left - One.
+ * @param right - The other.
+ * @returns Whether left is below right.
+ * @throws {never} Never.
+ */
+function before(left: [bigint, bigint], right: [bigint, bigint]): boolean {
+  return left[0] * right[1] < right[0] * left[1];
+}
+
+/**
+ * The later of two exact values.
+ * @param left - One.
+ * @param right - The other.
+ * @returns The larger.
+ * @throws {never} Never.
+ */
+function later(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
+  return before(left, right) ? right : left;
+}
+
+/**
+ * The earlier of two exact values.
+ * @param left - One.
+ * @param right - The other.
+ * @returns The smaller.
+ * @throws {never} Never.
+ */
+function earlier(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigint] {
+  return before(left, right) ? left : right;
 }
 
 const AAC = ["-map", "[a]", "-c:a", "aac", "-ar", "48000"];
 
+/** What the recipes need to know of a source before reading it. */
+interface SourceFacts { iso: boolean; audio: boolean }
+
 /**
- * Whether the source has an audio stream: the plan does not record it, so a recipe always names its interval and the
- * output carries audio only when there is some (§91 D3b-2; §7.17 the first audio stream in ffprobe order).
+ * Whether the source is ISO BMFF (its edit lists are ignored so packet times are media time, the recipe's timeline;
+ * design §7.17 timeline row) and whether it has audio: the plan does not record it, so a recipe always names its interval
+ * and the output carries audio only when there is some (§91 D3b-2; §7.17 the first audio stream in ffprobe order).
  * @param source - The downloaded source.
  * @param run - The lifetime and IO bounds.
- * @returns Whether ffprobe lists an audio stream.
+ * @returns The facts.
  * @throws {Error} When ffprobe fails.
  */
-async function hasAudio(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<boolean> {
-  const listed = await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", source], run);
-  return listed.toString("utf8").trim() !== "";
+async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name:stream=codec_type", "-of", "json", source], run))
+    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string }[] };
+  const names = (answer.format?.format_name ?? "").split(",");
+  return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio") };
+}
+
+/**
+ * The input options that put an ISO source on its media timeline.
+ * @param facts - The source facts.
+ * @returns `-ignore_editlist 1` for ISO, nothing otherwise.
+ * @throws {never} Never.
+ */
+function mediaTimeline(facts: SourceFacts): string[] {
+  return facts.iso ? ["-ignore_editlist", "1"] : [];
 }
 
 /**
  * The start of the source frame shown at a span's clip start: the last video packet at or before it, read from the span's
  * keyframe on. A span starting on its keyframe starts on a frame.
  * @param source - The downloaded source.
+ * @param facts - Its facts.
  * @param entry - The source span.
  * @param run - The lifetime and IO bounds.
  * @returns The frame start, exact; the clip start when no frame starts before it.
  * @throws {Error} When ffprobe fails or answers without the stream's time base.
  */
-async function frameStartAt(source: string, entry: Extract<MiniToolPlanEntry, { kind: "source" }>, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<[bigint, bigint]> {
+async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<MiniToolPlanEntry, { kind: "source" }>, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<[bigint, bigint]> {
   const clip = rational(entry.clipStart);
   const decode = rational(entry.decodeStart);
   if (decode[0] * clip[1] === clip[0] * decode[1]) return clip;
   // One second past the clip start covers packets that B-frame reordering delivers after a later one.
   const until: [bigint, bigint] = [clip[0] + clip[1], clip[1]];
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0",
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", ...mediaTimeline(facts), "-select_streams", "v:0",
     "-read_intervals", `${seconds(decode)}%${seconds(until)}`, "-show_entries", "stream=time_base:packet=pts", "-of", "json", source], run)).toString("utf8")) as
     { streams?: { time_base?: string }[]; packets?: { pts?: number }[] };
   const base = /^(\d+)\/(\d+)$/u.exec(answer.streams?.[0]?.time_base ?? "");
@@ -205,6 +314,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
   const graph: string[] = [];
+  const facts = await sourceFacts(source, run);
   let inputs = 0;
   for (const [at, entry] of entries.entries()) {
     const offset = roundTimes(minus(span(entry).start, origin), clock);
@@ -219,17 +329,17 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     const [clipNumerator, clipDenominator] = rational(entry.clipStart);
     const clipEnd: [bigint, bigint] = [clipNumerator * lengthDenominator + lengthNumerator * clipDenominator, clipDenominator * lengthDenominator];
     // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
-    const first = await frameStartAt(source, entry, run);
-    args.push("-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    const first = await frameStartAt(source, facts, entry, run);
+    args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
       `setpts=max(PTS-${roundTimes([clipNumerator, clipDenominator], clock)}\\,0)+${offset},${picture(target, `p${at}`)}[e${at}]`);
     inputs += 1;
   }
   graph.push(`${entries.map((_entry, at) => `[e${at}]`).join("")}interleave=nb_inputs=${entries.length},settb=1/${clock}[v]`);
-  const audio = recipe.kind === "prepare_model_input" && await hasAudio(source, run) ? recipe.audio : null;
+  const audio = recipe.kind === "prepare_model_input" && recipe.audio !== null && facts.audio ? audioOf(inputs, recipe.audio) : null;
   if (audio !== null) {
-    args.push("-i", source);
-    graph.push(audioOf(inputs, audio));
+    args.push(...audio.args, source);
+    graph.push(audio.graph);
   }
   const end = roundTimes(minus(span(entries[entries.length - 1]!).end, origin), clock);
   args.push("-filter_complex", graph.join(";"), "-map", "[v]", "-c:v", "libx264", "-preset", target.preset, "-crf", String(target.crf), "-bf", "0", "-pix_fmt", "yuv420p",
@@ -255,8 +365,8 @@ async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, f
   await writeFile(list, recipe.chunks.map((chunk) => `file '${local(files, chunk.inputId)}'\nduration ${seconds(rational(chunk.duration))}\n`).join(""));
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-f", "concat", "-safe", "0", "-i", list];
   const source = local(files, recipe.inputId);
-  const audio = await hasAudio(source, run) ? recipe.audio : null;
-  if (audio !== null) args.push("-i", source, "-filter_complex", audioOf(1, audio));
+  const audio = recipe.audio !== null && (await sourceFacts(source, run)).audio ? audioOf(1, recipe.audio) : null;
+  if (audio !== null) args.push(...audio.args, source, "-filter_complex", audio.graph);
   args.push("-map", "0:v:0", "-c:v", "copy", ...(audio === null ? ["-an"] : AAC), "-movflags", "+faststart", "-f", "mp4", output);
   await runPlanCommand("ffmpeg", args, run);
 }
