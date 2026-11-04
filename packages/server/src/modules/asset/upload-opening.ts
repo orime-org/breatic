@@ -98,8 +98,8 @@ export async function openUpload(
  * @param task - The budget and the label for the row, when one is opened.
  * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
  * @returns The key, the studio, and the row's id when there is a row.
- * @throws {Error} Whatever issuing the grant or opening the row throws; a lane
- *   that has to settle the grant on a failed row does that itself.
+ * @throws {Error} When grant, activity or node-row persistence fails; their
+ *   shared product transaction rolls back.
  */
 export async function openUpload(
   grant: GrantInput,
