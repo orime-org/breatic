@@ -258,16 +258,13 @@ projects.get("/:id/credits", validate("query", creditAmountFormatQuerySchema), a
 });
 
 /**
- * `POST /projects/:id/opened` — record that the caller just opened this
- * project, floating it to the top of their cross-studio "Recent" feed.
+ * `POST /projects/:id/opened` confirms this account's Project entry receipt.
  *
- * A dedicated write endpoint: the `GET /:id` open path writes nothing, while
- * recording an open is an explicit write the project page fires on mount. NOT behind
- * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
- * collapsing no-access to a `404` so existence is never leaked). A stable
- * visit UUID replays its original receipt without moving the recent feed.
- * @returns `200` with `ok` and the original visit receipt; `404` when the caller cannot
- *   access the project
+ * First admission checks current viewer access in the service and records the
+ * activity and Recent timestamp together. A stable visit UUID returns its
+ * original account/Project receipt on replay, preserving the Recent order.
+ * @returns `200` with `ok` and the original visit receipt; `404` when first
+ *   admission cannot access the Project.
  */
 projects.post("/:id/opened", validate("json", projectVisitRequestSchema), async (c) => {
   const user = c.get("user");

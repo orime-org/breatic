@@ -23,19 +23,17 @@ import { newId, t, type AccountActivityEntity, type ProjectVisitReceipt, type Pr
 const RECENT_LIMIT = 12;
 
 /**
- * Record that `userId` just opened `projectId`.
+ * Confirm this account's Project entry and return its stable receipt.
  *
- * Access-gated: the caller must be able to view the project, or the open is
- * rejected (and nothing is written) — so a client cannot seed open rows for
- * projects it has no business touching. In the real flow this is always
- * reachable because the project-load path (`GET /projects/:id`) has already
- * admitted the member before the page records the open.
+ * First admission requires current viewer access. A recorded account/Project
+ * binding returns its original receipt, including after access changes.
+ * The first activity insertion and Recent update share one transaction.
  * @param projectId - The opened project's UUID (untrusted client input)
  * @param userId - The authenticated user's UUID
  * @param visitId - Stable original page entry, generated for legacy callers.
  * @returns Original access receipt without replaying its business writes.
- * @throws {NotFoundError} when the caller cannot access the project (collapses
- *   missing / no-membership into 404 so project existence is not leaked)
+ * @throws {NotFoundError} When first admission cannot access the Project.
+ * @throws {ValidationError} When the visit belongs to another Project.
  */
 export async function recordOpen(
   projectId: string,
