@@ -33,9 +33,8 @@ interface TaskRowRequest {
   /**
    * How long this upload may run before a reader judges it dead.
    *
-   * Named by the lane rather than read here: the browser's is sized for a
-   * person who may genuinely still be uploading, while the lane that takes an
-   * address is bounded by one call the configuration ends in minutes.
+   * Each caller supplies the common node-task budget from
+   * getNodeTaskConfig().default_budget_ms.
    */
   budgetMs: number;
   /** What the row's first line names. */
