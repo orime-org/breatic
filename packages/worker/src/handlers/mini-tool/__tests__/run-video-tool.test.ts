@@ -562,3 +562,26 @@ describe("the container of a split output follows the plan's alpha (§93 D5-12)"
     expect(completion!.outputs.map((output) => (output.result as { mimeType?: string } | null)?.mimeType)).toEqual(["video/mp4", "video/mp4"]);
   });
 });
+
+// §93 D5-12 (frames-split design §7.17 segment row 「超过一个块份额时按§5.4分块，chunk_encode用同样的条目写法」): the chunks of an
+// oversized segment are encoded for the same output, so a transparent source's chunk work objects are declared WebM too.
+describe("the container of an oversized segment's chunks follows the plan's alpha (§93 D5-12)", () => {
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
+  // [0, 3.84) spans both cfr96 keyframes; the frozen windows start on them (0 and 48).
+  const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
+
+  it.each([["transparent", "video/webm", "webm-vp9"], ["opaque", "video/mp4", "mp4-h264"]] as const)("VW03 a %s source's run-chunk work objects are declared %s", async (alpha, contentType, format) => {
+    if (alpha === "transparent") {
+      const transparent = JSON.parse(CFR96.toString("utf8")) as { plan: { policy: { emptyFill: string } } };
+      transparent.plan.policy.emptyFill = "transparent";
+      ledgerBytes = Buffer.from(JSON.stringify(transparent));
+    }
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE]));
+    await drive();
+    const chunks = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.outputs[0]!);
+    expect(chunks).toHaveLength(2);
+    expect(chunks.map((output) => ({ contentType: output.contentType, format: (output.recipe as { target: { format: string } }).target.format })))
+      .toEqual([0, 1].map(() => ({ contentType, format })));
+    expect(submitted().map((request) => request.outputs[0]!.contentType)).toEqual([contentType]);
+  });
+});
