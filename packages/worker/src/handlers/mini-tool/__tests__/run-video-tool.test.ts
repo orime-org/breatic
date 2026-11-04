@@ -14,7 +14,13 @@
  *
  * The job boundary (`advanceRegisteredMiniToolPlanJob`), grants, steps, the SQL lifecycle and the completion owner are
  * mocked; the recipe builders and the ledger read stay real. Every frame and span starts on a cfr96 keyframe (0 or 48).
- * The chunk-and-stitch path of an oversized segment waits for §93 D5-10 and is not here.
+ *
+ * §93 D5-10: a segment in `layout.encodes` runs its frozen chunk windows as `run-chunk` jobs on the model-input preparation
+ * path (work keys, `openMiniToolPlanJob` + `advanceMiniToolPlanJob`, a failed attempt's output retired with its result,
+ * prepare-model-input.ts:110–125), then one `run-stitch` job through `advanceRegisteredMiniToolPlanJob` with the option
+ * that retires the consumed chunk keys after the stitch commits. §93 D5-11 (design line 616, 622, 960): every poll commits
+ * the newly finished outputs non-terminally (`commitMiniToolExecutionProgress`, mocked here as the domain entry), one
+ * terminal commit follows once all outputs have ended, and a caught exception fails only outputs not yet committed.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -23,16 +29,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob, OpenMiniToolPlanJobInput } from "@breatic/domain";
-import type { MiniToolPlanJobRequest, StudioAssetEntity, VideoPresentationLedger } from "@breatic/shared";
+import { videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { frameRecipeOf, segmentRecipesOf } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, frameRecipeOf, segmentRecipesOf } from "@worker/handlers/video-presentation-recipes.js";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({
   start: vi.fn(), plan: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(),
-  advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), removal: vi.fn(),
+  advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), removal: vi.fn(), progress: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/core", async (original) => {
@@ -42,13 +49,15 @@ vi.mock("@breatic/core", async (original) => {
 });
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
-  return { ...actual, readMiniToolExecutionPlan: h.plan, openContainerOutputs: h.grants,
+  return { ...actual, readMiniToolExecutionPlan: h.plan, openContainerOutputs: h.grants, openMiniToolPlanJob: h.openPlan, recordMiniToolStepResult: h.record,
     assetRepo: { ...actual.assetRepo, findById: h.findById, findCoverOf: h.findCoverOf },
-    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start },
+    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, commitMiniToolExecutionProgress: h.progress },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
-vi.mock("@worker/handlers/mini-tool/execution-completion.js", () => ({ finishMiniToolExecutionAndNotify: h.finish }));
+// Partial, so a progress wrapper added beside the terminal one runs for real over the mocked domain entry.
+vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
+vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advancePlan }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
@@ -77,7 +86,10 @@ type GrantInput = Parameters<typeof domainModule.openContainerOutputs>[0];
 let steps: Steps;
 let grantSequence: number;
 // Scripted batch outcomes by job id: which declared outputs the attempt wrote, and whether it failed or still runs.
-let scripted: Map<string, { written: number[]; state: "done" | "failed" } | "running">;
+let scripted: Map<string, { written: number[]; state: "done" | "failed" } | "running" | "throws">;
+// The public record the SQL lifecycle holds; the progress and terminal mocks advance it as the domain owner would.
+let staleProgress = 0;
+let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[] };
 
 // Two outputs per tool, each on a keyframe: frames 0 and 48; segments [0, 1.92) and [1.92, 3.84) (frames 0–47 and 48–95).
 const RECIPES: Record<Tool, ({ kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } })[]> = {
@@ -93,14 +105,14 @@ const RECIPES: Record<Tool, ({ kind: "frame"; frameIndex: number; pts: number } 
  * @returns The plan.
  */
 function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] } = { batches: [[0, 1]], encodes: [] },
-  chunkRetries = 2): Record<string, unknown> {
+  chunkRetries = 2, recipes = RECIPES[tool]): Record<string, unknown> {
   const ledger = LEDGER as unknown as { sourceFingerprint: string; toolInputId: string; planSha256: string };
   return {
-    schemaVersion: 1, tool, taskId: TASK, projectId: PROJECT, spaceId: SPACE, targetNodeIds: NODES,
+    schemaVersion: 1, tool, taskId: TASK, projectId: PROJECT, spaceId: SPACE, targetNodeIds: NODES.slice(0, recipes.length),
     binding: { assetId: SOURCE_ID, contentHash: ledger.sourceFingerprint, canonicalURL: "https://assets.example.test/video/source.mp4", kind: "video",
       mediaInfo: { width: 320, height: 180, duration: 3.84, mimeType: "video/mp4" } },
     sourceKey: SOURCE_KEY, draft: {}, analysisRefs: [],
-    outputs: RECIPES[tool].map((recipe, outputIndex) => ({ outputIndex, nodeId: NODES[outputIndex]!, recipe })),
+    outputs: recipes.map((recipe, outputIndex) => ({ outputIndex, nodeId: NODES[outputIndex]!, recipe })),
     model: tool, credits: 1, requestFingerprint: "c".repeat(64), planFingerprint: "d".repeat(64),
     presentationRef: { source: { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 } },
     ledgerReceipts: { source: { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256, producerVersion: 2,
@@ -108,7 +120,7 @@ function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex:
       sha256: createHash("sha256").update(CFR96).digest("hex"), contentType: "application/json",
       table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.cfr96.json", sha256: "e".repeat(64), size: 81, contentType: "application/json", frameCount: 96 } } },
     versionIds: { source: "f".repeat(64) },
-    layout, outputSeconds: [1, 1],
+    layout, outputSeconds: recipes.map(() => 1),
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 }, limits: LIMITS, startSeconds: 3,
       encode: ENCODE, chunkRetries },
@@ -122,9 +134,9 @@ function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex:
 function serve(execution: Record<string, unknown>): void {
   const task = { id: TASK, userId: USER, projectId: PROJECT, spaceId: SPACE, createdAt: new Date(), status: "running", source: "mini_tool", mode: "append" };
   const outputs = (execution.outputs as { outputIndex: number; nodeId: string; recipe: unknown }[]).map((output) => ({ ...output, result: null, late: false }));
-  const record = { schemaVersion: 1, runId: TASK, status: "running", planFingerprint: execution.planFingerprint, resultVersion: 0,
+  current = { schemaVersion: 1, runId: TASK, status: "running", planFingerprint: execution.planFingerprint, resultVersion: 0,
     sourceBindings: [execution.binding], outputs, usage: [], billingState: "idle", error: null };
-  h.start.mockResolvedValue({ task, execution, record });
+  h.start.mockImplementation(async () => ({ task, execution, record: structuredClone(current) }));
   h.plan.mockResolvedValue({ task, execution });
 }
 
@@ -155,6 +167,7 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniT
   step.output = { ...step.output, miniToolPlanJob: structuredClone(request) };
   const script = scripted.get(request.jobId);
   if (script === "running") throw new StillRunning(Date.now() + 5000);
+  if (script === "throws") throw new UpstreamTaskFailed("container", "tool_failed");
   const declared = request.outputs.map((output) => output.outputIndex);
   const written = script?.written ?? declared;
   const state = script?.state ?? "done";
@@ -169,6 +182,85 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniT
     deadlineAt: request.deadlineAt, requestBody: null, requestFingerprint: null, chargeTo: input.chargeTo, creditMultiplier: 1, attempts: [],
     result: { outcome: state, result: report, error: state === "failed" ? { code: "tool_failed" } : null }, error: null, conflicts: [] } };
   return { request, report, assets: outputs.map((output) => ({ outputIndex: output.outputIndex, asset: asset(output.storageKey, video) })) };
+}
+
+/**
+ * The preparation-path job boundary of a chunk: `openMiniToolPlanJob` keeps the first request on its step.
+ * @param input - The open-job input.
+ * @returns The stored request and its consumption identity.
+ */
+async function openPlan(input: OpenMiniToolPlanJobInput): Promise<{ request: MiniToolPlanJobRequest; consumption: { identity: Record<string, unknown> } }> {
+  const step = steps.find((item) => item.id === input.stepId);
+  if (step === undefined) throw new Error("Fixture open lost its step");
+  if (step.output.miniToolPlanJob === undefined) step.output = { ...step.output, miniToolPlanJob: structuredClone(input.request) };
+  const request = step.output.miniToolPlanJob as MiniToolPlanJobRequest;
+  return { request, consumption: { identity: { kind: "container", containerClass: request.containerClass, jobId: request.jobId, chunkIndex: input.chunkIndex } } };
+}
+
+/**
+ * A chunk job's report: done with its one work output unless scripted to fail or run.
+ * @param request - The chunk request.
+ * @returns The report.
+ */
+async function advancePlan(request: MiniToolPlanJobRequest): Promise<Record<string, unknown>> {
+  const script = scripted.get(request.jobId);
+  if (script === "running") return { schemaVersion: 2, state: "running" };
+  const output = request.outputs[0]!;
+  const written = [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }];
+  return script !== undefined && script !== "throws" && script.state === "failed"
+    ? { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } }
+    : { schemaVersion: 2, state: "done", outputs: written, usage: { wallMs: 1000, cpuUsec: 2000000 } };
+}
+
+/**
+ * `recordMiniToolStepResult`: the step keeps its result as the domain owner leaves it.
+ * @param value - The recorded result.
+ * @param value.stepId - The step.
+ * @param value.outcome - Done or failed.
+ * @param value.result - The report.
+ * @returns The step.
+ */
+async function record(value: { stepId: string; outcome: "done" | "failed"; result: unknown }): Promise<Steps[number]> {
+  const step = steps.find((item) => item.id === value.stepId)!;
+  step.output = { ...step.output, miniToolStep: { schemaVersion: 1, scope: { taskId: TASK, stepId: step.id, kind: "container_job", endpoint: step.endpoint, itemIndex: step.itemIndex },
+    deadlineAt: DEADLINE, requestBody: null, requestFingerprint: null, chargeTo: "user", creditMultiplier: 1, attempts: [],
+    result: { outcome: value.outcome, result: value.result, error: value.outcome === "failed" ? { code: "tool_failed" } : null }, error: null, conflicts: [] } };
+  step.status = value.outcome;
+  return step;
+}
+
+/**
+ * The domain progress commit: resultVersion arbitration, committed results kept, the version moves only on a change.
+ * @param _taskId - The run.
+ * @param input - The commit.
+ * @param input.expectedVersion - The version it read.
+ * @param input.outputs - The complete indexed outputs.
+ * @returns The new record.
+ * @throws {Error} When the version is stale or a committed result would change.
+ */
+async function progress(_taskId: string, input: { expectedVersion: number; outputs: { result: unknown }[] }): Promise<{ record: typeof current }> {
+  if (input.expectedVersion !== current.resultVersion) { staleProgress += 1; throw new Error("Fixture progress commit is stale"); }
+  let changed = false;
+  const outputs = current.outputs.map((held, index) => {
+    const next = input.outputs[index]!.result;
+    if (held.result !== null) {
+      if (next !== null && JSON.stringify(next) !== JSON.stringify(held.result)) throw new Error("Fixture progress would rewrite a committed result");
+      return held;
+    }
+    if (next === null) return held;
+    changed = true;
+    return { ...held, result: next };
+  });
+  if (changed) current = { ...current, outputs, resultVersion: current.resultVersion + 1 };
+  return { record: structuredClone(current) };
+}
+
+/**
+ * The progress commits in order: each output's result status, null while pending.
+ * @returns Their statuses.
+ */
+function progressed(): (string | null)[][] {
+  return h.progress.mock.calls.map((call) => (call[1] as { outputs: { result: { status: string } | null }[] }).outputs.map((output) => output.result?.status ?? null));
 }
 
 /**
@@ -212,7 +304,7 @@ function statuses(completion: MiniToolExecutionCompletion | null): (string | nul
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; grantSequence = 0; scripted = new Map(); ledgerBytes = CFR96; ledgerFault = null;
+  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; ledgerBytes = CFR96; ledgerFault = null;
   h.deadline.mockResolvedValue(DEADLINE);
   h.removal.mockRejectedValue(new Error("A frames or split run must not take the removal runner"));
   h.list.mockImplementation(async () => steps);
@@ -245,6 +337,7 @@ beforeEach(() => {
   });
   h.findCoverOf.mockResolvedValue(null);
   h.advance.mockImplementation(advance);
+  h.openPlan.mockImplementation(openPlan); h.advancePlan.mockImplementation(advancePlan); h.record.mockImplementation(record); h.progress.mockImplementation(progress);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
@@ -299,13 +392,24 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     expect(statuses(completion)).toEqual(["registered", "registered"]);
   });
 
-  it("VT04 a batch pickup that is still running does not hold back the other batch's submission (§5.4 batches run in parallel)", async () => {
+  // §93 D5-11 (design line 622): a poll commits what finished non-terminally; the terminal commit waits for every output.
+  it("VT04 a running batch does not hold back the other: it is submitted, its finished output committed non-terminally, the terminal commit waits", async () => {
     serve(plan("video.extract-frames", { batches: [[0], [1]], encodes: [] }));
     scripted.set(batchId(0, 1), "running");
     const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1), batchId(1, 1)]);
     expect(h.finish).not.toHaveBeenCalled();
+    expect(progressed()).toEqual([[null, "registered"]]);
+    expect(h.progress.mock.calls[0]![1]).toMatchObject({ planFingerprint: "d".repeat(64), expectedVersion: 0 });
+    const committed = structuredClone(current.outputs[1]!.result);
+    scripted.delete(batchId(0, 1));
+    const completion = await drive();
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    expect(statuses(completion)).toEqual(["registered", "registered"]);
+    expect(completion!.outputs[1]!.result).toEqual(committed);
+    // Every progress commit read the version the previous one left (none was refused as stale).
+    expect(staleProgress).toBe(0);
   });
 });
 
@@ -362,5 +466,69 @@ describe("the frozen full ledger of a run (§92 D4-7)", () => {
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toThrow();
     expect(h.removal).not.toHaveBeenCalled();
     expect(h.advance).not.toHaveBeenCalled(); expect(h.finish).not.toHaveBeenCalled();
+  });
+});
+
+// §93 D5-11 (design line 622 「捕获异常时只把尚未提交的产物标失败」).
+describe("progress commits and the caught exception (§93 D5-11)", () => {
+  it("VP01 an exception after one output was committed fails only the output not yet committed", async () => {
+    serve(plan("video.extract-frames", { batches: [[0], [1]], encodes: [] }));
+    scripted.set(batchId(1, 1), "running");
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    expect(progressed()).toEqual([["registered", null]]);
+    const committed = structuredClone(current.outputs[0]!.result);
+    scripted.set(batchId(1, 1), "throws");
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[0]!.result).toEqual(committed);
+  });
+});
+
+// §93 D5-10 (design §5.4 用户运行的两层编码, §7.15 块对象「拼接提交后」, §7.17 「产出都是不登记的中间对象」).
+describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)", () => {
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
+  const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
+  /**
+   * The §5.4 id of a run chunk attempt.
+   * @param chunk - The chunk.
+   * @param attempt - The attempt.
+   * @returns The id.
+   */
+  const chunkId = (chunk: number, attempt = 1): string => videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 0, chunk, attempt });
+  const stitchId = (attempt = 1): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output: 0, attempt });
+
+  it("VC01 each frozen chunk window runs as an unregistered work object; the stitch binds them, registers the output and retires them", async () => {
+    // [0, 3.84) spans both cfr96 keyframes; its frozen windows start on them (0 and 48).
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE]));
+    const completion = await drive();
+    const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput));
+    expect(opened.map((input) => input.request.jobId)).toEqual([chunkId(0), chunkId(1)]);
+    const inputId = opened[0]!.request.inputs[0]!.inputId;
+    const recipes = segmentRecipesOf(LEDGER, { range: WHOLE.range }, inputId, ENCODE, CHUNKS);
+    const keys = [chunkId(0), chunkId(1)].map((id) => videoPresentationWorkKeyFor(SOURCE_KEY, id));
+    expect(opened.map((input) => ({ chargeTo: input.chargeTo, key: input.request.outputs[0]!.storageKey, recipe: input.request.outputs[0]!.recipe, containerClass: input.request.containerClass })))
+      .toEqual([0, 1].map((k) => ({ chargeTo: "user", key: keys[k], recipe: recipes[k], containerClass: "MiniToolContainerStd4" })));
+    // Only the stitch holds a grant: the chunks are intermediate objects, never registered.
+    expect(h.grants).toHaveBeenCalledTimes(1);
+    expect((h.grants.mock.calls[0]![0] as GrantInput).outputs).toEqual([expect.objectContaining({ modality: "video" })]);
+    expect(submitted().map((request) => request.jobId)).toEqual([stitchId()]);
+    const stitch = submitted()[0]!;
+    expect(stitch.outputs[0]!.recipe).toEqual(recipes[2]);
+    expect(stitch.inputs).toEqual(expect.arrayContaining([{ inputId: chunkInputId(0), storageKey: keys[0] }, { inputId: chunkInputId(1), storageKey: keys[1] }]));
+    expect(h.advance.mock.calls[0]![1]).toEqual({ retire: keys });
+    expect(statuses(completion)).toEqual(["registered"]);
+  });
+
+  it("VC02 a chunk whose attempts are exhausted fails only its own segment; another segment is delivered and no stitch runs", async () => {
+    // Output 1 [1.92, 3.84) overlaps output 0 only so that both start on a cfr96 keyframe (48); the runner does not care.
+    serve(plan("video.split", { batches: [[1]], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE, RECIPES["video.split"][1]!]));
+    scripted.set(chunkId(1), { written: [], state: "failed" });
+    const completion = await drive();
+    expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
+    expect(statuses(completion)).toEqual(["failed", "registered"]);
+    // The failed attempt's own output is retired with its result, as on the preparation path.
+    const failedChunk = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { retire?: string[] } }).find((value) => value.outcome === "failed");
+    expect(failedChunk?.presentation?.retire).toEqual([videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))]);
   });
 });
