@@ -10,7 +10,7 @@
 
 import { getMiniToolsConfig } from '@breatic/core';
 import {
-  readVideoPresentationLedger, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanInterval, type MiniToolPlanTarget,
+  BodyTooLarge, EmptyBody, readVideoPresentationLedger, VideoSourceLedgerReadRefused, type MiniToolPlanAudio, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanInterval, type MiniToolPlanTarget,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
 import { videoCarrierGeometry } from '@breatic/shared/mini-tools';
@@ -94,6 +94,21 @@ function cmp(left: Q, right: Q): bigint {
   return a * d - c * b;
 }
 
+/** A full ledger whose bytes or content fail its receipt or plan: a content mismatch, not a transport failure (§91 D3b-9). */
+export class FullLedgerInvalid extends Error {
+  /**
+   * Build one.
+   * @param cause - What refused it.
+   */
+  constructor(cause: unknown) {
+    super('source_ledger_invalid', { cause });
+    this.name = 'FullLedgerInvalid';
+  }
+}
+
+// The read checks that refuse what arrived; `status` and every thrown transport error keep the normal retry.
+const CONTENT_REFUSALS: ReadonlySet<string> = new Set(['content_type', 'size', 'digest', 'content']);
+
 /**
  * Read a job's full ledger and require it to be the plan the DO answered (§5.3 validatedFullLedger, §91 D3b-7): the bytes
  * match the receipt's sha256 and size, and its toolInputId and planSha256 are the plan's.
@@ -103,12 +118,19 @@ function cmp(left: Q, right: Q): bigint {
  * @param plan.planSha256 - Its plan digest.
  * @param deadlineAt - The job deadline.
  * @returns The full ledger.
- * @throws {Error} When the ledger cannot be read or is another plan's.
+ * @throws {FullLedgerInvalid} When what arrived fails the receipt, or the receipt or ledger is another plan's.
+ * @throws {Error} When the read fails in transport (reset, non-2xx before the body, deadline).
  */
 export async function readJobLedger(receipt: VideoPresentationLedgerReceipt, plan: { toolInputId: string; planSha256: string }, deadlineAt: number): Promise<VideoPresentationLedger> {
-  if (receipt.toolInputId !== plan.toolInputId || receipt.planSha256 !== plan.planSha256) throw new Error('The ledger receipt is not the planned tool input');
-  const ledger = await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, { deadlineAt });
-  if (ledger.toolInputId !== plan.toolInputId || ledger.planSha256 !== plan.planSha256) throw new Error('The full ledger is not the planned tool input');
+  if (receipt.toolInputId !== plan.toolInputId || receipt.planSha256 !== plan.planSha256) throw new FullLedgerInvalid(new Error('The ledger receipt is not the planned tool input'));
+  let ledger: VideoPresentationLedger;
+  try {
+    ledger = await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, { deadlineAt });
+  } catch (error) {
+    if (error instanceof BodyTooLarge || error instanceof EmptyBody || (error instanceof VideoSourceLedgerReadRefused && CONTENT_REFUSALS.has(error.reason))) throw new FullLedgerInvalid(error);
+    throw error;
+  }
+  if (ledger.toolInputId !== plan.toolInputId || ledger.planSha256 !== plan.planSha256) throw new FullLedgerInvalid(new Error('The full ledger is not the planned tool input'));
   return ledger;
 }
 
@@ -255,14 +277,16 @@ export function windowDuration(ledger: VideoPresentationLedger, window: FrameWin
 }
 
 /**
- * The whole presentation's audio interval: the plan does not record whether the source has audio, so the container adds
- * it only when there is some (§91 D3b-2).
+ * The audio of a presentation interval (§91 D3b-11): the plan's origin and audio spans, by which the container places the
+ * samples. The plan does not record whether the source has audio, so the container adds it only when there is some (D3b-2).
  * @param ledger - The full ledger.
- * @returns From 0 to the display duration.
+ * @param interval - The presentation interval; the whole display when absent.
+ * @returns The recipe's audio.
  * @throws {never} Never.
  */
-export function wholeAudio(ledger: VideoPresentationLedger): MiniToolPlanInterval {
-  return { start: { numerator: '0', denominator: '1' }, end: ledger.plan.display.duration };
+export function audioOf(ledger: VideoPresentationLedger, interval?: MiniToolPlanInterval): MiniToolPlanAudio {
+  const { start, end } = interval ?? { start: { numerator: '0', denominator: '1' }, end: ledger.plan.display.duration };
+  return { start, end, origin: ledger.plan.originMapping.origin, spans: ledger.plan.audioSpans };
 }
 
 /**

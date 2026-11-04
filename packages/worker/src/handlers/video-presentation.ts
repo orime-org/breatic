@@ -23,7 +23,7 @@ import {
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/providers/still-running.js';
-import { carrierTarget, chunkInputId, readJobLedger, wholeAudio, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
+import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
 /** The one input of every presentation sub-job: the registered source. */
 const SOURCE_INPUT_ID = '00000000-0000-4000-8000-000000000001';
@@ -79,15 +79,25 @@ function attemptJobId(jobId: string, unit: VideoPresentationChunkUnit, attempt: 
 
 /**
  * The job's full ledger, read once per pickup: the candidate's, else the selected version's when it is the planned one.
+ * A ledger that fails its receipt is the DO's to check and repair (§91 D3b-9; design §7.4 `Check`, §7.1 `Lt`): the pickup
+ * asks it to read, which runs Check against R2, and waits for the repaired receipt.
  * @param pickup - The pickup.
  * @returns The validated full ledger.
- * @throws {Error} When there is no plan or receipt, or the ledger is not the planned one (§91 D3b-7).
+ * @throws {StillRunning} When the ledger failed its receipt and the DO was asked to check it.
+ * @throws {Error} When there is no plan or receipt, or the read fails in transport.
  */
 function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
-  const { answer, capability } = pickup;
+  const { answer, capability, identity } = pickup;
   const receipt = answer.candidateLedger?.receipt ?? answer.ledger?.receipt ?? null;
   if (answer.plan === null || receipt === null) return Promise.reject(new Error('The presentation job has no planned full ledger'));
-  pickup.ledger ??= readJobLedger(receipt, answer.plan, capability.deadlineAt);
+  pickup.ledger ??= readJobLedger(receipt, answer.plan, capability.deadlineAt).catch(async (error: unknown) => {
+    if (!(error instanceof FullLedgerInvalid)) throw error;
+    const policy = answer.preparation?.targetPolicyVersion;
+    if (policy !== undefined) {
+      await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'read', storageKey: identity.storageKey, sourceFingerprint: identity.sourceFingerprint, targetPolicyVersion: policy });
+    }
+    throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  });
   return pickup.ledger;
 }
 
@@ -118,7 +128,7 @@ async function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobI
     const ledger = await ledgerOf(pickup);
     inputs.push(...chunks.map((key, chunk) => ({ inputId: chunkInputId(chunk), storageKey: key! })));
     recipe = { kind: 'stitch', inputId: SOURCE_INPUT_ID, chunks: windows.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
-      audio: wholeAudio(ledger), target: carrierTarget(ledger, frozen.carrier) };
+      audio: audioOf(ledger), target: carrierTarget(ledger, frozen.carrier) };
   }
   return {
     schemaVersion: 2, jobId, containerClass: frozen.pricing.standard4.containerClass, deadlineAt: capability.deadlineAt, limits: getMiniToolsConfig().plan_limits,
@@ -260,8 +270,10 @@ async function nextStep(pickup: Pickup): Promise<boolean> {
   const plan = answer.plan;
   const stage = answer.preparation?.stage ?? null;
   if (plan === null || answer.work.kind === 'none') return false;
-  // Sub-jobs read the full ledger; nothing is dispatched until the candidate's own ledger is ready (E2-6).
+  // Sub-jobs read the full ledger; nothing is dispatched until the candidate's own ledger is ready (E2-6) and has been read
+  // against its receipt (§91 D3b-9), before any stage moves.
   if (answer.candidateLedger?.state !== 'ready') return true;
+  await ledgerOf(pickup);
   /**
    * The DO's state of one unit of this job.
    * @param unit - The unit.

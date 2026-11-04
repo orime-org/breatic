@@ -19,7 +19,7 @@ import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
-import { chunkInputId, modelInputTarget, readJobLedger, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
@@ -150,14 +150,19 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
   }
   const taskId = execution.taskId;
   // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
-  const ledger = await readJobLedger(execution.ledgerReceipts.source, execution.presentationRef.source, deadlineAt);
+  // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
+  // new run freezes the repaired ledger). A transport failure keeps the normal retry.
+  const ledger = await readJobLedger(execution.ledgerReceipts.source, execution.presentationRef.source, deadlineAt).catch((error: unknown) => {
+    if (error instanceof FullLedgerInvalid) throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    throw error;
+  });
   const target = modelInputTarget(ledger, execution.preparation.encode);
   const timescale = ledger.plan.presentation.timescale;
   if (single) {
     const window = { start: chunks[0]!.start, end: chunks[0]!.end };
     return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep", taskId, input: 0, attempt }), chunkIndex: 0, final: true,
       recipe: () => ({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale, entries: windowEntries(ledger, window), target,
-        audio: windowInterval(ledger, window) } }) }, deadlineAt);
+        audio: audioOf(ledger, windowInterval(ledger, window)) } }) }, deadlineAt);
   }
   const outputs: (string | null)[] = [];
   let waiting = false;
@@ -176,7 +181,7 @@ export async function prepareModelInput(execution: Removal, deadlineAt: number):
   return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunkIndex: chunks.length, final: true, consumed: outputs as string[],
     recipe: () => ({
       recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
-        audio: windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end }), target },
+        audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },
       inputs: (outputs as string[]).map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
     }) }, deadlineAt);
 }
