@@ -55,7 +55,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & (
     preparation: MiniToolContainerPolicy & { chunks: FrameWindow[]; chunkRetries: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] } } }
   | { tool: "video.extract-frames" | "video.split"; layout: MiniToolExecutionLayout;
     /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
-    container: MiniToolContainerPolicy & { startSeconds: number };
+    container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
 );
@@ -324,7 +324,9 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   const { layout, jobs, works } = runLayout(outputs, table, ledger, config, request.tool);
   assertWithinParallelCap(jobs, config);
   const container = { ...containerPolicy(config.executions[request.tool].container_class, config.executions[request.tool].precheck_seconds, config),
-    startSeconds: config.encoding.encoder.start_seconds };
+    startSeconds: config.encoding.encoder.start_seconds,
+    // §93 D5-2: the run's encode parameters and retry cap, frozen like the removal preparation's (§5.4).
+    encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
   const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), container.startSeconds);
   return { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, ledgerReceipts: { source: receipt },
     versionIds: { source: versionId }, layout, outputSeconds: works, model: request.tool, container, credits: containerCredits(container, seconds) };
