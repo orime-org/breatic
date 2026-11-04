@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { miniToolAnalysisInputSchema, miniToolAnchorSchema } from "@shared/mini-tools/analysis-input.js";
+import { miniToolAnalysisInputSchema } from "@shared/mini-tools/analysis-input.js";
 import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { CONTAINER_FAILURES } from "@shared/mini-tools/types.js";
 import { ingestMeasurements } from "@shared/upload/ingest-client.js";
@@ -19,8 +19,6 @@ export type {
 const inputId = z.uuid();
 const storageKey = z.string().min(1).max(500);
 const index = z.number().int().nonnegative();
-const range = z.strictObject({ start: z.number().nonnegative(), end: z.number().positive() })
-  .refine((value) => value.end > value.start);
 const profile = miniToolAnalysisInputSchema.options[0].shape.profile;
 const pixelRect = z.strictObject({ x: index, y: index, width: z.number().int().positive(), height: z.number().int().positive() });
 const frameCrop = z.strictObject({ sourceWidth: z.number().int().positive(), sourceHeight: z.number().int().positive(), rect: pixelRect })
@@ -108,23 +106,17 @@ const frameTarget = z.strictObject({
 const entryFrame = z.strictObject({ kind: z.literal("frame"), inputId, entry, target: frameTarget, crop: frameCrop.optional() })
   .refine((recipe) => recipe.crop === undefined || (recipe.crop.sourceWidth === recipe.target.width && recipe.crop.sourceHeight === recipe.target.height));
 const analysisTarget = z.strictObject({ width: side, height: side, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
-// §91 D4-4, D4-5: the split segment, the people anchor and the scanned scene window on full-ledger entries.
-const entryRecipes = z.union([
+/**
+ * The versioned per-output media recipes admitted by the planned job lane, every one on full-ledger entries or a stored
+ * carrier (§7.17: the worker's recipe construction is the one place that reads the ledger; the container reads no frame table).
+ */
+export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   entryFrame,
+  // §91 D4-4, D4-5: the split segment, the people anchor and the scanned scene window.
+  z.strictObject({ kind: z.literal("segment"), ...windowRecipe, audio: audio.nullable() }),
   z.strictObject({ kind: z.literal("people"), inputId, entry, target: frameTarget, profile }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, window: ordinals, timescale: z.number().int().positive(), profile, entries: placedEntries, target: analysisTarget })
     .refine((recipe) => recipe.entries[0]!.ordinalOffset === recipe.window.start && recipe.entries.every((value) => value.ordinalOffset < recipe.window.end)),
-  z.strictObject({ kind: z.literal("segment"), ...windowRecipe, audio: audio.nullable() }),
-]);
-
-/** The versioned per-output media recipes admitted by the planned job lane. */
-export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("inspect_video"), inputId }),
-  z.strictObject({ kind: z.literal("frame"), inputId, frameIndex: index, orientation: z.literal("display").optional(), crop: frameCrop.optional() })
-    .refine((recipe) => recipe.crop === undefined || recipe.orientation === "display"),
-  z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
-  z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile, orientation: z.literal("display").optional() }),
-  z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),
   // Presentation carrier jobs (§7.17, §5.4): the worker writes the window's entries and the target from the plan.
   z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1) }),
   z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe }),
@@ -133,7 +125,7 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
     audio: audio.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
   z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
-]).or(entryRecipes) satisfies z.ZodType<MiniToolPlanRecipe>;
+]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */
 export const miniToolPlanJobRequestSchema = z.strictObject({

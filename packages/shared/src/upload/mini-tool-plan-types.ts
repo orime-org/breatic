@@ -75,8 +75,6 @@ export interface MiniToolPlanAnalysisTarget { width: number; height: number; col
 
 /** Media recipes shared with a container that loads no validation libraries. */
 export type MiniToolPlanRecipe =
-  | { kind: "inspect_video"; inputId: string }
-  | { kind: "frame"; inputId: string; frameIndex: number; orientation?: "display"; crop?: MiniToolPlanFrameCrop }
   // The frame one full-ledger entry presents (§7.17 frame row), optionally cropped in its display geometry.
   | { kind: "frame"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop }
   // The split segment, the people anchor and the scanned scene window on full-ledger entries (§91 D4-4, D4-5).
@@ -84,9 +82,6 @@ export type MiniToolPlanRecipe =
   | { kind: "people"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; profile: MiniToolPlanDetectorProfile }
   | { kind: "scene_cuts"; inputId: string; window: { start: number; end: number }; timescale: number; profile: MiniToolPlanDetectorProfile;
     entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
-  | { kind: "segment"; inputId: string; range: { start: number; end: number }; audioEnd?: number }
-  | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile; orientation?: "display" }
-  | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
   | { kind: "copy_carrier"; inputId: string; colorMatrix: string }
   | ({ kind: "chunk_encode" } & MiniToolPlanWindowRecipe)
   | { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
