@@ -8,6 +8,7 @@ import { CONTAINER_FAILURES } from "@shared/mini-tools/types.js";
 import { ingestMeasurements } from "@shared/upload/ingest-client.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import { x264PresetSchema } from "@shared/upload/video-presentation-policy.js";
+import { packedGeometrySchema } from "@shared/upload/video-presentation.js";
 import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
 import type { MiniToolPlanEntry, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
@@ -121,6 +122,8 @@ const usage = z.strictObject({ wallMs: z.number().nonnegative(), cpuUsec: z.numb
 const measuredOutput = ingestMeasurements.extend({
   outputIndex: index,
   storageKey,
+  // An alpha-packed output's planes as the container reported them (§91 D3-3).
+  packing: packedGeometrySchema.optional(),
   cover: z.strictObject({
     storageKey,
     sha256: ingestMeasurements.shape.sha256,

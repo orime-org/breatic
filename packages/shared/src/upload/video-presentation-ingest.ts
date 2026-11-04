@@ -10,10 +10,12 @@ import {
 import { videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
 export { videoPresentationWorkKeyFor } from '@shared/upload/video-presentation-keys.js';
-import { videoPresentationEncodingSchema, videoPresentationOutputReceiptsSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema } from '@shared/upload/video-presentation-policy.js';
+import {
+  videoPresentationDoneReceiptsSchema, videoPresentationEncodingSchema, videoPresentationOutputReceiptsSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema, x264PresetSchema,
+} from '@shared/upload/video-presentation-policy.js';
 export {
   videoPresentationEncodingSchema, videoPresentationIdentityFormatSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema,
-  videoPresentationOutputReceiptSchema, videoPresentationOutputReceiptsSchema,
+  videoPresentationOutputReceiptSchema, videoPresentationOutputReceiptsSchema, videoPresentationDoneReceiptsSchema, x264PresetSchema,
   type VideoPresentationEncoding, type VideoPresentationIdentityFormat, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt,
 } from '@shared/upload/video-presentation-policy.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
@@ -133,7 +135,7 @@ export type VideoPresentationChunkUnit = z.infer<typeof videoPresentationChunkUn
 /** One attempt report of a unit (§7.1.1). */
 export const videoPresentationChunkReportSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('Sub') }),
-  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipts: videoPresentationOutputReceiptsSchema.optional() }),
+  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipts: videoPresentationDoneReceiptsSchema.optional() }),
   z.strictObject({ kind: z.literal('Fail'), attempt: attemptNumber, code: errorCode, usage: z.number().nonnegative().finite().nullable() }),
   z.strictObject({ kind: z.literal('Exp') }),
   z.strictObject({ kind: z.literal('Rec'), attempt: attemptNumber }),
@@ -197,7 +199,9 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
     receipts: videoPresentationOutputReceiptsSchema.optional(),
   })),
   // Null only for a job this DO never admitted.
-  frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable() }).nullable(),
+  // carrier: the encode parameters frozen at admission, so every chunk of the job encodes alike (§5.4, §91 D3b-1).
+  frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable(),
+    carrier: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema, maxShortSide: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }) }).nullable(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx);
   const { plan, work } = value;

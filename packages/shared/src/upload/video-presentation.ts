@@ -37,6 +37,11 @@ const videoPresentationSchema: z.ZodType<VideoPresentation> = z.strictObject({
   }
 });
 
+/** The planes of an alpha-packed carrier, in the alpha manifest's field names (§3.5); checked by checkPackedGeometry. */
+export const packedGeometrySchema = z.strictObject({ packedWidth: pixel, packedHeight: pixel, colorRect: rect, alphaRect: rect }).superRefine((value, ctx) => checkPackedGeometry(value, ctx));
+/** Parsed packed geometry. */
+export type PackedGeometry = z.infer<typeof packedGeometrySchema>;
+
 /**
  * Check packed geometry: both rectangles inside the packed frame, equal in size and not overlapping; alignment padding is allowed.
  * @param value - Structurally valid packed geometry.

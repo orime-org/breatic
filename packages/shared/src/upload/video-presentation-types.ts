@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { VideoSourceLedgerProcessLimits } from '@shared/upload/video-source-ledger-types.js';
+import type { MiniToolPlanTarget } from '@shared/upload/mini-tool-plan-types.js';
 
 /** Known registered constraints remain present while other source facts are unknown. */
 export interface VideoPresentationRegisteredMetadata { width: number | null; height: number | null; duration: number | null }
@@ -34,7 +35,7 @@ export interface VideoPresentationProcessLimits {
   maxSourceBytes: number;
   maxPackedBytes: number;
   crf: number;
-  preset: string;
+  preset: MiniToolPlanTarget['preset'];
   probeStdoutBytes: number;
   analysisStdoutBytes: number;
   stderrTailBytes: number;

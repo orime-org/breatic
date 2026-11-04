@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 import type { MiniToolPlanTarget } from '@shared/upload/mini-tool-plan-types.js';
+import { packedGeometrySchema } from '@shared/upload/video-presentation.js';
 
 const budget = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 /** The libx264 presets a presentation encode may use. */
@@ -61,19 +62,26 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const measuredObject = {
   storageKey, sha256: hash, sizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), contentType: z.string().min(1).max(100),
 };
-/** The job DO's measured receipt of one output a stitch or copy attempt wrote, tagged with its role (§5.1 step 4, §90 E4-15). */
+/**
+ * The measured receipt of one output, tagged with its role (§5.1 step 4, §90 E4-15): the carrier a stitch or copy attempt
+ * wrote, an alpha-packed one with the packed geometry its job reported (§91 D3-3), or the manifest the DO wrote itself.
+ */
 export const videoPresentationOutputReceiptSchema = z.discriminatedUnion('role', [
-  z.strictObject({ role: z.literal('carrier'), packing: z.enum(['native', 'alpha-packed']), ...measuredObject }),
+  z.strictObject({ role: z.literal('carrier'), packing: z.enum(['native', 'alpha-packed']), ...measuredObject, geometry: packedGeometrySchema.optional() })
+    .refine((receipt) => (receipt.packing === 'alpha-packed') === (receipt.geometry !== undefined), 'An alpha-packed carrier, and only one, carries its packed geometry'),
   z.strictObject({ role: z.literal('manifest'), ...measuredObject }),
 ]);
 /** A parsed output receipt. */
 export type VideoPresentationOutputReceipt = z.infer<typeof videoPresentationOutputReceiptSchema>;
-/** Every output of one stitch or copy attempt: exactly one carrier, and a manifest exactly beside an alpha-packed carrier, at another key. */
+/** A unit's stored receipts: exactly one carrier, and at most one manifest, only beside an alpha-packed carrier and at its own key. */
 export const videoPresentationOutputReceiptsSchema = z.array(videoPresentationOutputReceiptSchema).min(1).superRefine((receipts, ctx) => {
   const carriers = receipts.filter((receipt) => receipt.role === 'carrier');
   const manifests = receipts.filter((receipt) => receipt.role === 'manifest');
   const packed = carriers.length === 1 && carriers[0]!.packing === 'alpha-packed';
-  if (carriers.length !== 1 || manifests.length !== (packed ? 1 : 0) || new Set(receipts.map((receipt) => receipt.storageKey)).size !== receipts.length) {
-    ctx.addIssue({ code: 'custom', message: 'Expected one carrier, and one manifest at its own key exactly when the carrier is alpha-packed' });
+  if (carriers.length !== 1 || manifests.length > (packed ? 1 : 0) || new Set(receipts.map((receipt) => receipt.storageKey)).size !== receipts.length) {
+    ctx.addIssue({ code: 'custom', message: 'Expected one carrier, and at most one manifest at its own key beside an alpha-packed carrier' });
   }
 });
+/** What a stitch or copy Done carries: its one carrier; the manifest is the DO's own (§91 D3-3). */
+export const videoPresentationDoneReceiptsSchema = z.array(videoPresentationOutputReceiptSchema).length(1)
+  .refine((receipts) => receipts.length === 1 && receipts[0]!.role === 'carrier', 'A Done carries exactly its carrier');
