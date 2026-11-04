@@ -8,7 +8,10 @@
  * report, answered done at once with its declared output and measured usage.
  */
 
+import { readFileSync } from "node:fs";
 import { vi } from "vitest";
+
+const SOURCE_LEDGER = readFileSync(new URL("../../../worker/src/handlers/__tests__/fixtures/presentation/cfr96-source-a.ledger.json", import.meta.url));
 
 /** The recorded submissions and any scripted reports by job id. */
 export interface IngestJobsFake { submitted: Record<string, unknown>[]; scripted: Map<string, Record<string, unknown>> }
@@ -41,6 +44,8 @@ export function fakeIngestJobs(): IngestJobsFake {
       const request = jobs.submitted.find((candidate) => candidate.jobId === id);
       return request === undefined ? new Response("missing", { status: 404 }) : Response.json(jobs.scripted.get(id) ?? done(request));
     }
+    // S6d D3b (inner#1306 §91): the one full ledger the frozen removal plans name (execution-lifecycle-fixtures.ts receipt).
+    if (url.pathname.includes(".video-source-ledger.")) return new Response(SOURCE_LEDGER, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
   }));
   return jobs;

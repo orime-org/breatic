@@ -14,18 +14,20 @@ const SOURCE_URL = "https://assets.example.test/video/source.mp4";
 const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
 // S6e E3b (inner#1306 §90): the frozen removal plan names its tool input, the selected version's receipts and the
 // prepared model input; the shapes match the domain admission golden (execution-admission.integration.test.ts).
+// S6d D3b (inner#1306 §91 D3b-5): model-input preparation reads the full ledger, so the receipt is that of a real full
+// ledger (worker fixtures/presentation/cfr96-source-a.ledger.json; PROVENANCE.txt there); the integration ingest fake serves it.
 const RECEIPT = {
-  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
-  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
-  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510",
+  planSha256: "4615adfc86906e4cb29165aba35bd4751f87c51822318e4e7fc49dd3c6b2c9ee", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", etag: "full-etag", size: 1206,
+  sha256: "2858d801733195d81ffc09e1883532591115345abf3eaa01035e7f4c81524177", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", sha256: "7948ba2144023683a03b45b7f58d90031e14e7314c1561b48f39a226d20d0ac7", size: 353, contentType: "application/json", frameCount: 96 },
 };
 const PRESENTATION_REF = { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } };
 const PREPARATION = {
   containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
   prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-  limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3,
+  limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 96 }], chunkRetries: 3,
   // §91 D3b-5: the model input's encode parameters frozen at admission.
   encode: { crf: 18, preset: "medium" },
 };
