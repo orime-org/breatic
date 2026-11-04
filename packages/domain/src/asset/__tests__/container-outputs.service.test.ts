@@ -38,4 +38,14 @@ describe("openContainerOutputs", () => {
       { storageKey: "out/abc.mp4", contentType: "video/mp4", coverKey: "out/abc.mp4.cover.png" },
     ]);
   });
+
+  // §93 D5-12 (frames-split design §7.17 segment row 「透明源输出VP9+透明+Opus的WebM」, §4.3): a transparent split output is a WebM,
+  // so its grant names a .webm key and video/webm. This round's choice of the input (may be vetoed): `container: "webm"`.
+  it("opens a WebM video result as a .webm with a cover key", async () => {
+    const outputs = [{ modality: "video", namePrefix: "SPLIT", container: "webm" }] as unknown as Parameters<typeof openContainerOutputs>[0]["outputs"];
+    const opened = await openContainerOutputs({ ...RUN, outputs });
+    expect(issueUploadGrant.mock.calls[0]?.[0]).toMatchObject({ taskType: "video", ext: ".webm" });
+    expect(opened).toEqual([{ storageKey: "out/abc.webm", contentType: "video/webm", coverKey: "out/abc.webm.cover.png" }]);
+  });
 });
+
