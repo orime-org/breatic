@@ -402,3 +402,54 @@ describe('an edited source keeps picture and sound at their plan times (§4.2, �
     expect(Math.abs(await toneAt(output) - (await toneAt(noedit) - 0.25))).toBeLessThanOrEqual(AAC_FRAME);
   });
 });
+
+// S6d D4 (inner#1306 §91 D4; design §4.2 变速音频 rational-relabel, §7.17 timeline row): spans at a rate other than 1 and
+// several audio spans. The recipes are written by hand from the edit they describe, on the media timeline of base.mp4
+// (no edit on its video; its audio's only edit skips the AAC priming), so they do not depend on the probe. Every span
+// starts on frame 0, a keyframe, so the decodeStart choice still open (§91 W7) does not change them.
+describe('spans at a rate other than 1 and several audio spans (§91 D4; design §4.2, §7.17)', () => {
+  const base = (): string => join(dir, 'base.mp4');
+  const q = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
+  const target = { width: 160, height: 96, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
+
+  /**
+   * A model input over a rate-1 video of the whole 2 s source, with the given audio spans.
+   * @param spans - Audio spans on the media timeline.
+   * @returns The output.
+   */
+  function withAudio(spans: Span[]): Promise<string> {
+    return produce({ [SOURCE]: base() }, { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 50 }, timescale: 25,
+      entries: [{ kind: 'source', decodeStart: q(0), clipStart: q(0), displayStart: q(0), displayEnd: q(2), rate: q(1) }], target,
+      audio: { start: q(0), end: q(2), origin: q(0), spans } });
+  }
+
+  it('DR01 a video span at rate 2 presents every source frame for half its time: 50 frames over 1 s, the white frame at 0.5 s', async () => {
+    const output = await produce({ [SOURCE]: base() }, { kind: 'chunk_encode', inputId: SOURCE, window: { start: 0, end: 50 }, timescale: 50,
+      entries: [{ kind: 'source', decodeStart: q(0), clipStart: q(0), displayStart: q(0), displayEnd: q(1), rate: q(2) }], target });
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', output]);
+    expect(stdout.trim().split('\n').map(Number).sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_unused, n) => n / 50));
+    expect(await flashAt(output)).toBeCloseTo(0.5, 6);
+  });
+
+  it('DR02 an audio span at rate 2 (rational relabel) puts the tone burst at half its media time', async () => {
+    const media = await toneAt(base(), true);
+    const spans = [{ sourceStart: q(0), sourceEnd: q(2), presentationStart: q(0), rate: q(2) }];
+    expect(Math.abs(await toneAt(await withAudio(spans)) - media / 2)).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  it('DR03 two rate-1 audio spans are laid end to end: the burst in the second span lands at its presentation time', async () => {
+    const media = await toneAt(base(), true);
+    const spans = [
+      { sourceStart: q(0), sourceEnd: q(1, 2), presentationStart: q(0), rate: q(1) },
+      { sourceStart: q(9, 10), sourceEnd: q(7, 5), presentationStart: q(1, 2), rate: q(1) },
+    ];
+    expect(Math.abs(await toneAt(await withAudio(spans)) - (0.5 + media - 0.9))).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  it('DR04 an audio span at rate 1/2 doubles the time from its start to the burst', async () => {
+    const media = await toneAt(base(), true);
+    const spans = [{ sourceStart: q(3, 5), sourceEnd: q(7, 5), presentationStart: q(0), rate: q(1, 2) }];
+    expect(Math.abs(await toneAt(await withAudio(spans)) - (media - 0.6) * 2)).toBeLessThanOrEqual(AAC_FRAME);
+  });
+});
+
