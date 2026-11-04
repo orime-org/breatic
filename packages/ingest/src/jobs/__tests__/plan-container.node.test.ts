@@ -251,4 +251,20 @@ describe("planned startup facts preserve unknown consumption, with only the cont
     expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
     expect(runtime.starts).toBe(1);
   });
+
+  // S6d D3-3 (inner#1306 §91): the job report hands a packed output's geometry on to the worker.
+  it("PK03 the report carries a packed output's geometry as the container reported it", async () => {
+    const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+    const [source, chunk] = PLAN.inputs;
+    const target = { width: 192, height: 64, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "packed", crf: 18, preset: "medium" };
+    const stitch = { ...PLAN, jobId: "plan-stitch-1", outputs: [{ outputIndex: 0, storageKey: "results/T/stitch.mp4", contentType: "video/mp4",
+      recipe: { kind: "stitch", inputId: source!.inputId, chunks: [{ inputId: chunk!.inputId, duration: { numerator: "2", denominator: "1" } }], audio: null, target } }] } as unknown as MiniToolPlanJobRequest;
+    const { object, storage } = owner();
+    await object.submit(stitch);
+    const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
+    const token = await object.claimOutputWrite("results/T/stitch.mp4", attemptId);
+    await object.noteWritten("results/T/stitch.mp4", { ...WRITTEN, contentType: "video/mp4" }, attemptId, token!);
+    await object.noteReported({ schemaVersion: 2, attemptId, ok: true, cpuUsec: 123, outputs: [{ outputIndex: 0, storageKey: "results/T/stitch.mp4", width: 192, height: 64, durationSeconds: 2, cover: null, packing: GEOMETRY }] } as never);
+    expect(await object.report()).toMatchObject({ outputs: [{ outputIndex: 0, storageKey: "results/T/stitch.mp4", packing: GEOMETRY }] });
+  });
 });

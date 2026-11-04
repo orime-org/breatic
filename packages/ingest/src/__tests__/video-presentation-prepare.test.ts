@@ -28,7 +28,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
-import { videoPresentationVersionId } from '@breatic/shared';
+import { alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationVersionId, videoPresentationVersionSchema } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
 import * as containerModule from '@ingest/media-container.js';
 import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
@@ -59,7 +59,7 @@ interface Answer {
   work: { kind: 'none' } | { kind: 'dispatch_copy' } | { kind: 'encode'; chunks: { start: number; end: number }[] };
   candidateLedger: { state: string; receipt: unknown; failure: string | null } | null;
   units: Record<string, { state: string; attempt: number; attempts: { attempt: number; jobId: string; state: string; usageRecorded: boolean }[]; receipts?: Record<string, unknown>[] }>;
-  frozen: { pricing: unknown; actorUserId: string; projectId: string | null };
+  frozen: { pricing: unknown; actorUserId: string; projectId: string | null; carrier?: unknown };
 }
 type Prepare = (store: MachineStore, identity: { storageKey: string; sourceFingerprint: string; jobId: string }, port: Port, now: number) => Promise<Answer>;
 
@@ -199,7 +199,8 @@ describe('granting the basic execution (inner#1306 §5.1 step 1, §7.1 St)', () 
     await withStore(key, async (store) => {
       const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
       expect(answer.capability).toEqual({ token: expect.any(String), deadlineAt: D });
-      expect(answer.frozen).toEqual({ pricing: PRICING, actorUserId: admission(key, 'job-a').actorUserId, projectId: null });
+      // §91 D3b-1: the carrier encode parameters frozen at admission (limits crf/preset, encoding carrier cap) reach the worker.
+      expect(answer.frozen).toEqual({ pricing: PRICING, actorUserId: admission(key, 'job-a').actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: ENCODING.carrier.maxShortSide } });
     });
   });
 });
@@ -744,29 +745,84 @@ describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1
 // unit and the worker-only prepare answer exposes them per unit; the pin sync takes the candidate's carrier and manifest
 // keys from there. Producing the manifest in the stitch or copy recipe stays S6d.
 describe('E4-15 done receipts stored and answered per unit (§5.1 step 4; §7.15 candidate 行)', () => {
-  it('RD01 an alpha-packed stitch Done stores its carrier and manifest receipts, and prepare answers them on the unit', async () => {
+  // §91 D3-3: the stitch reports the packed carrier and its geometry; the DO writes the manifest itself when it assembles the bundle.
+  const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+
+  /**
+   * A granted encode job with every chunk done and its stitch attempt 1 open, its packed carrier written to R2.
+   * @param store - The store.
+   * @param key - The source key.
+   * @returns The capability and the carrier.
+   */
+  async function packedStitch(store: MachineStore, key: string): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeCarrier>> }> {
+    const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(ENCODE_ROUTE)));
+    const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
+    const chunks = (answer.work as { chunks: { start: number; end: number }[] }).chunks;
+    expect(await store.advanceStage(capability, 'encode')).toBe(true);
+    for (const [index] of chunks.entries()) {
+      expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Sub' })).toBe(true);
+      expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Done', attempt: 1, usage: 1000 })).toBe(true);
+    }
+    expect(await store.advanceStage(capability, 'stitch')).toBe(true);
+    expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Sub' })).toBe(true);
+    const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([2, 7, 1, 8]));
+    return { capability, carrier };
+  }
+
+  it('RD01 an alpha-packed stitch Done stores its carrier receipt with the packed geometry, and prepare answers it on the unit', async () => {
     const key = await source();
     await withStore(key, async (store) => {
-      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(ENCODE_ROUTE)));
-      const capability = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: D, token: answer.capability!.token };
-      const chunks = (answer.work as { chunks: { start: number; end: number }[] }).chunks;
-      expect(await store.advanceStage(capability, 'encode')).toBe(true);
-      for (const [index] of chunks.entries()) {
-        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Sub' })).toBe(true);
-        expect(await reportUnit(store, capability, { kind: 'presentation-chunk', chunk: index }, { kind: 'Done', attempt: 1, usage: 1000 })).toBe(true);
-      }
-      expect(await store.advanceStage(capability, 'stitch')).toBe(true);
-      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Sub' })).toBe(true);
-      const carrier = await writeCarrier(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([2, 7, 1, 8]));
-      const manifestBytes = new TextEncoder().encode('{"manifest":true}');
-      const manifestKey = `${carrier.receipt.storageKey}.manifest.json`;
-      await env.BUCKET.put(manifestKey, manifestBytes, { httpMetadata: { contentType: 'application/json' } });
-      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt },
-        { role: 'manifest', storageKey: manifestKey, sha256: await digest(manifestBytes), sizeBytes: manifestBytes.byteLength, contentType: 'application/json' }];
+      const { capability, carrier } = await packedStitch(store, key);
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry: GEOMETRY }];
       expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
       const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(store, key, planned(ENCODE_ROUTE)), Date.now()));
       expect(again.units['video-presentation:job-a:stitch']!.receipts).toEqual(receipts);
       expect(again.units['video-presentation:job-a:chunk:0']!.receipts).toBeUndefined();
+    });
+  });
+
+  it('RD03 on publish the DO writes the manifest from the measured carrier, the reported geometry and the version identity, and records it as the manifest role', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await packedStitch(store, key);
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry: GEOMETRY }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      const view = await store.read(key, H) as unknown as { selected: { kind: string }; presentation: Record<string, unknown> | null };
+      expect(view.selected.kind).toBe('ready');
+      const version = videoPresentationVersionSchema.parse(view.presentation);
+      const packed = { storageKey: carrier.receipt.storageKey, url: `${PUBLIC_BASE}/${carrier.receipt.storageKey}`, etag: carrier.etag, size: carrier.receipt.sizeBytes, sha256: carrier.receipt.sha256, contentType: 'video/mp4' };
+      expect(version.playback).toMatchObject({ kind: 'alpha-packed', carrier: packed });
+      const manifestReceipt = (version.playback as { manifest: { storageKey: string; url: string; etag: string; size: number; sha256: string; contentType: string } }).manifest;
+      // §91 D3b-3: the manifest key is the carrier key with `.manifest.json`, attempt-scoped like the carrier.
+      expect(manifestReceipt.storageKey).toBe(`${carrier.receipt.storageKey}.manifest.json`);
+      const object = await env.BUCKET.get(manifestReceipt.storageKey);
+      expect(object).not.toBeNull();
+      const bytes = new Uint8Array(await object!.arrayBuffer());
+      expect(manifestReceipt).toEqual({ storageKey: manifestReceipt.storageKey, url: `${PUBLIC_BASE}/${manifestReceipt.storageKey}`, etag: object!.etag, size: bytes.byteLength, sha256: await digest(bytes), contentType: 'application/json' });
+      const manifest = alphaPackedManifestSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+      expect(manifest).toEqual({ schemaVersion: 1, versionId: version.versionId, toolInputId: T, planSha256: PLAN, policyVersion: 1, packed, ...GEOMETRY });
+      expect(alphaPackedManifestMatchesVersion(manifest, version)).toBe(true);
+      // The manifest does not enter its own versionId: the version is the one its carrier alone gives.
+      expect(version.versionId).toBe(await expectedVersionId(1, carrier.receipt));
+      const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(store, key, planned(ENCODE_ROUTE)), Date.now()));
+      expect(again.units['video-presentation:job-a:stitch']!.receipts).toEqual([...receipts, { role: 'manifest', storageKey: manifestReceipt.storageKey, sha256: manifestReceipt.sha256, sizeBytes: manifestReceipt.size, contentType: 'application/json' }]);
+    });
+  });
+
+  it.each([
+    ['an alpha-packed carrier without its geometry', (receipt: Record<string, unknown>) => [{ role: 'carrier', packing: 'alpha-packed', ...receipt }]],
+    ['a manifest the worker claims to have written', (receipt: Record<string, unknown>) => [{ role: 'carrier', packing: 'alpha-packed', ...receipt, geometry: GEOMETRY },
+      { role: 'manifest', storageKey: `${String(receipt.storageKey)}.manifest.json`, sha256: 'b'.repeat(64), sizeBytes: 9, contentType: 'application/json' }]],
+  ])('RD04 a stitch Done with %s is refused: the unit stays open and nothing publishes', async (_name, receiptsOf) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await packedStitch(store, key);
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts: receiptsOf(carrier.receipt) })).toBe(false);
+      const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(store, key, planned(ENCODE_ROUTE)), Date.now()));
+      expect(again.units['video-presentation:job-a:stitch']!.state).toBe('open');
+      await store.advanceStage(capability, 'publish');
+      expect((await store.read(key, H)).selected.kind).not.toBe('ready');
     });
   });
 

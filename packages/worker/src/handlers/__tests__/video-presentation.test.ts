@@ -17,6 +17,8 @@
  * on which shared client the handler uses.
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as shared from '@breatic/shared';
@@ -45,9 +47,18 @@ vi.mock('@breatic/domain', async (original) => ({
   syncPresentationPins,
 }));
 
-const H = 'a'.repeat(64);
-const T = 'c'.repeat(64);
-const PLAN = 'd'.repeat(64);
+// S6d D3b (§91 D3-6): the worker builds each recipe from the candidate's full ledger. The fixtures are full ledgers the
+// container's own probe and ledger actions wrote for generated media (see fixtures/presentation/PROVENANCE.txt).
+const LEDGERS = {
+  cfr96: readFileSync(new URL('./fixtures/presentation/cfr96.ledger.json', import.meta.url)),
+  cut: readFileSync(new URL('./fixtures/presentation/cut.ledger.json', import.meta.url)),
+};
+const CFR96 = JSON.parse(LEDGERS.cfr96.toString('utf8')) as { sourceFingerprint: string; toolInputId: string; planSha256: string };
+const H = CFR96.sourceFingerprint;
+const T = CFR96.toolInputId;
+const PLAN = CFR96.planSha256;
+// The bytes the ledger URL serves, and their identity; a case may serve another full ledger.
+let ledgerBytes: Buffer = LEDGERS.cfr96;
 const KEY = 'video/canonical.webm';
 const JOB = 'video-presentation-a';
 const ACTOR = '6061c056-f758-47c1-9527-8495ecba60e3';
@@ -59,9 +70,12 @@ const price = (containerClass: string, vcpu: number, memory: number, disk: numbe
 const PRICING = { basic: price('MediaContainer', 0.25, 1, 4), standard4: price('MiniToolContainerStd4', 4, 12, 20) };
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN, producerVersion: 2, attempt: { jobId: JOB, deadlineAt: 0 },
-  url: `https://assets.example.test/${KEY}.ledger.json`, etag: '"e"', size: 912, sha256: 'b'.repeat(64), contentType: 'application/json',
+  url: `https://assets.example.test/${KEY}.ledger.json`, etag: '"e"', size: LEDGERS.cfr96.byteLength, sha256: createHash('sha256').update(LEDGERS.cfr96).digest('hex'), contentType: 'application/json',
   table: { url: `https://assets.example.test/${KEY}.table.json`, sha256: 'c'.repeat(64), size: 81, contentType: 'application/json', frameCount: 96 },
 };
+const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+// §91 D-2: the carrier target from the plan (320x180 needs no cap or padding, BT.709, SDR, opaque) and the frozen crf/preset.
+const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
 const STAGES: Record<string, string[]> = { identity: ['plan', 'publish'], copy: ['plan', 'copy', 'publish'], dispatch_copy: ['plan', 'dispatch_copy', 'publish'], encode: ['plan', 'encode', 'stitch', 'publish'] };
 
 interface Sent { path: string; method: string; body: Record<string, unknown> | null }
@@ -88,7 +102,8 @@ function prepareAnswer(fields: Record<string, unknown> = {}): Record<string, unk
     work: route === 'encode' ? { kind: 'encode', chunks: [{ start: 0, end: 48 }, { start: 48, end: 96 }] } : route === 'dispatch_copy' ? { kind: 'dispatch_copy' } : { kind: 'none' },
     candidateLedger: { state: 'ready', receipt: { ...RECEIPT, attempt: { jobId: JOB, deadlineAt: D } }, failure: null },
     units: {},
-    frozen: { pricing: PRICING, actorUserId: ACTOR, projectId: null },
+    // §91 D3b-1: the carrier encode parameters frozen at admission.
+    frozen: { pricing: PRICING, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
     ...rest,
   };
 }
@@ -182,6 +197,7 @@ beforeEach(() => {
   sent = [];
   reports = new Map();
   D = Date.now() + 3_600_000;
+  ledgerBytes = LEDGERS.cfr96;
   answer = prepareAnswer();
   findById.mockResolvedValue(asset);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
@@ -191,6 +207,7 @@ beforeEach(() => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
     const method = init?.method ?? 'GET';
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : null;
+    if (url.href === RECEIPT.url) { sent.push({ path: 'ledger', method, body: null }); return new Response(ledgerBytes, { headers: { 'content-type': 'application/json' } }); }
     const path = url.pathname.startsWith('/jobs/') ? '/jobs/read' : url.pathname;
     sent.push({ path, method, body });
     if (path === '/video-presentation') {
@@ -271,7 +288,8 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(job[0]).toMatchObject({ jobId: id, containerClass: PRICING.standard4.containerClass, deadlineAt: D });
     const inputs = job[0]!.inputs as { inputId: string; storageKey: string }[];
     expect(inputs).toEqual([{ inputId: expect.any(String), storageKey: KEY }]);
-    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId } })]);
+    // §91 D3a: the copy tags the plan's matrix.
+    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId, colorMatrix: 'bt709' } })]);
     expect(actions('report_chunk')).toEqual([expect.objectContaining({ token: 'token-a', unit: { kind: 'presentation-copy' }, report: { kind: 'Sub' } })]);
     expect(indexOf((call) => call.body?.action === 'report_chunk')).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
   });
@@ -281,7 +299,14 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(actions('advance_stage').map((body) => body.stage)).toEqual(['encode']);
     const jobs = submitted();
     expect(jobs.map((job) => job.jobId)).toEqual([subJob('chunk', 1, 0), subJob('chunk', 1, 1)]);
-    expect(jobs.map((job) => (job.outputs as { recipe: { window: unknown } }[])[0]!.recipe.window)).toEqual([{ start: 0, end: 48 }, { start: 48, end: 96 }]);
+    // §7.17, §91 D3-1: each window's clip spans from the full ledger, in presentation time, and the plan's target.
+    const inputId = (jobs[0]!.inputs as { inputId: string }[])[0]!.inputId;
+    expect(jobs.map((job) => (job.outputs as { recipe: unknown }[])[0]!.recipe)).toEqual([
+      { kind: 'chunk_encode', inputId, window: { start: 0, end: 48 }, timescale: 25, target: TARGET,
+        entries: [{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(48, 25), rate: r(1) }] },
+      { kind: 'chunk_encode', inputId, window: { start: 48, end: 96 }, timescale: 25, target: TARGET,
+        entries: [{ kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(96, 25), rate: r(1) }] },
+    ]);
     expect(new Set(jobs.map((job) => (job.outputs as { storageKey: string }[])[0]!.storageKey)).size).toBe(2);
     for (const job of jobs) expect(job).toMatchObject({ containerClass: PRICING.standard4.containerClass, deadlineAt: D });
     expect(actions('report_chunk').map((body) => body.unit)).toEqual([{ kind: 'presentation-chunk', chunk: 0 }, { kind: 'presentation-chunk', chunk: 1 }]);
@@ -304,7 +329,13 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(actions('advance_stage').map((body) => body.stage)).toEqual(['stitch']);
     const jobs = submitted();
     expect(jobs.map((job) => job.jobId)).toEqual([subJob('stitch', 1)]);
-    expect((jobs[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toMatchObject({ kind: 'stitch', chunks: [workKey(subJob('chunk', 1, 0)), workKey(subJob('chunk', 2, 1))] });
+    // §91 D3-2: each chunk is a bound input; the stitch carries each chunk's plan duration and the whole interval's audio.
+    const inputs = jobs[0]!.inputs as { inputId: string; storageKey: string }[];
+    expect(inputs.map((input) => input.storageKey)).toEqual([KEY, workKey(subJob('chunk', 1, 0)), workKey(subJob('chunk', 2, 1))]);
+    expect(new Set(inputs.map((input) => input.inputId)).size).toBe(3);
+    expect((jobs[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toEqual({ kind: 'stitch', inputId: inputs[0]!.inputId,
+      chunks: [{ inputId: inputs[1]!.inputId, duration: r(48, 25) }, { inputId: inputs[2]!.inputId, duration: r(48, 25) }],
+      audio: { start: r(0), end: r(96, 25) }, target: TARGET });
   });
 
   it('DS06 every chunk dispatched, one finishing on this pickup and one still running: no advance to stitch and no stitch job', async () => {
@@ -332,6 +363,86 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     expect(actions('advance_stage')).toEqual([]);
     expect(submitted()).toEqual([]);
+  });
+});
+
+describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.4, §4.3)', () => {
+  const planOf = (shared as Record<string, unknown>).videoPresentationPlanSha256 as (value: unknown) => Promise<string>;
+  const inputOf = (shared as Record<string, unknown>).videoPresentationToolInputId as (value: { sourceFingerprint: string; planSha256: string }) => Promise<string>;
+
+  /**
+   * Serve another full ledger as this job's candidate: rebound to this job's source (its toolInputId recomputed), its
+   * identity in the answer and the receipt.
+   * @param bytes - The ledger bytes.
+   * @param fields - What else differs in the answer.
+   * @param edit - A change to the plan before it is rebound.
+   * @returns Nothing once served.
+   */
+  async function serve(bytes: Buffer, fields: Record<string, unknown> = {}, edit?: (plan: Record<string, Record<string, unknown>>) => void): Promise<void> {
+    const ledger = JSON.parse(bytes.toString('utf8')) as { sourceFingerprint: string; toolInputId: string; planSha256: string; plan: Record<string, Record<string, unknown>> };
+    if (edit !== undefined) { edit(ledger.plan); ledger.planSha256 = await planOf(ledger.plan); }
+    ledger.sourceFingerprint = H;
+    ledger.toolInputId = await inputOf({ sourceFingerprint: H, planSha256: ledger.planSha256 });
+    ledgerBytes = Buffer.from(JSON.stringify(ledger));
+    bytes = ledgerBytes;
+    const base = prepareAnswer(fields);
+    answer = { ...base, sourceBinding: { storageKey: KEY, sourceFingerprint: ledger.sourceFingerprint },
+      plan: { ...(base.plan as Record<string, unknown>), toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 },
+      candidateLedger: { state: 'ready', failure: null, receipt: { ...RECEIPT, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256,
+        attempt: { jobId: JOB, deadlineAt: D }, size: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') } } };
+  }
+
+  it('RB01 an edited source: the first span starts inside its first frame (clipStart at the edit), later chunks at their keyframe', async () => {
+    await serve(LEDGERS.cut, { work: { kind: 'encode', chunks: [{ start: 0, end: 18 }, { start: 18, end: 38 }] } });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    const jobs = submitted();
+    const target = { ...TARGET, width: 160, height: 96 };
+    const inputId = (jobs[0]!.inputs as { inputId: string }[])[0]!.inputId;
+    expect(jobs.map((job) => (job.outputs as { recipe: unknown }[])[0]!.recipe)).toEqual([
+      // Presented frame 0 is source 1024/12800 s; the edit starts at 1/10 s, so it shows from there for 1/50 s (§91 D3b-4).
+      { kind: 'chunk_encode', inputId, window: { start: 0, end: 18 }, timescale: 50, target,
+        entries: [{ kind: 'source', decodeStart: r(2, 25), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) }] },
+      { kind: 'chunk_encode', inputId, window: { start: 18, end: 38 }, timescale: 50, target,
+        entries: [{ kind: 'source', decodeStart: r(4, 5), clipStart: r(4, 5), displayStart: r(7, 10), displayEnd: r(3, 2), rate: r(1) }] },
+    ]);
+  });
+
+  it('RB02 a transparent source is encoded alpha-packed: the target is two even planes side by side', async () => {
+    await serve(LEDGERS.cfr96, {}, (plan) => { plan.policy!.emptyFill = 'transparent'; });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    const recipes = submitted().map((job) => (job.outputs as { recipe: { target: unknown } }[])[0]!.recipe);
+    expect(recipes.map((recipe) => recipe.target)).toEqual([0, 1].map(() => ({ ...TARGET, width: 640, height: 180, alpha: 'packed' })));
+  });
+
+  it.each([
+    ['bytes that are not the receipt\'s', false, (bytes: Buffer): Buffer => Buffer.concat([bytes, Buffer.from(' ')])],
+    ['a ledger of another toolInputId than the plan the DO answered', true, (bytes: Buffer): Buffer => {
+      const ledger = JSON.parse(bytes.toString('utf8')) as { toolInputId: string };
+      return Buffer.from(JSON.stringify({ ...ledger, toolInputId: 'e'.repeat(64) }));
+    }],
+  ] as const)('RB03 a full ledger with %s builds nothing: no chunk is submitted', async (_name, remeasure, change) => {
+    await serve(LEDGERS.cfr96);
+    ledgerBytes = change(ledgerBytes);
+    if (remeasure) {
+      const ready = answer.candidateLedger as { receipt: Record<string, unknown> };
+      ready.receipt = { ...ready.receipt, size: ledgerBytes.byteLength, sha256: createHash('sha256').update(ledgerBytes).digest('hex') };
+    }
+    await advance()(data).catch(() => undefined);
+    expect(submitted()).toEqual([]);
+  });
+
+  it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
+    const id = subJob('stitch', 1);
+    const units: Record<string, Unit> = { [`video-presentation:${JOB}:stitch`]: unit(id, 'open', 'pending'),
+      [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true), [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'done', 'done', 1, true) };
+    answer = prepareAnswer({ units, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'stitch', failure: null } });
+    const geometry = { packedWidth: 640, packedHeight: 180, colorRect: { x: 0, y: 0, width: 320, height: 180 }, alphaRect: { x: 320, y: 0, width: 320, height: 180 } };
+    const report = finished(id, 'done', { wallMs: 5000, cpuUsec: 20_000_000 }) as { outputs: Record<string, unknown>[] };
+    report.outputs[0] = { ...report.outputs[0], packing: geometry };
+    reports.set(id, report);
+    await advance()(data).catch(() => undefined);
+    const done = actions('report_chunk').find((body) => (body.report as { kind: string }).kind === 'Done');
+    expect((done!.report as { receipts: unknown }).receipts).toEqual([{ role: 'carrier', packing: 'alpha-packed', storageKey: workKey(id), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4', geometry }]);
   });
 });
 

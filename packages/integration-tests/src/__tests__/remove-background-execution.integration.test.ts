@@ -23,6 +23,7 @@ import {
 } from "@breatic/domain";
 import { hashMiniToolValue, videoContainerJobId } from "@breatic/shared/mini-tools";
 import * as shared from "@breatic/shared";
+import { readFileSync } from "node:fs";
 import type { StudioAssetEntity } from "@breatic/shared";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import type * as uploadModule from "@worker/handlers/backend-upload.js";
@@ -51,13 +52,19 @@ const PROVIDER_URL = "https://provider.example.test/result.webm";
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
 const SOURCE_URL = "https://assets.example.test/video/source.mp4";
 const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
+// S6d D3b (inner#1306 §91): the worker builds the model-input recipes from the full ledger, so the receipt is that of a real
+// full ledger: the container's ledger of a generated 96-frame 320x180 source, bound to source fingerprint aaaa (worker
+// fixtures/presentation/PROVENANCE.txt). The fetch fake serves its bytes at the receipt URL.
+const LEDGER_BYTES = readFileSync(new URL("../../../worker/src/handlers/__tests__/fixtures/presentation/cfr96-source-a.ledger.json", import.meta.url));
 const RECEIPT = {
-  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
-  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
-  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510",
+  planSha256: "4615adfc86906e4cb29165aba35bd4751f87c51822318e4e7fc49dd3c6b2c9ee", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", etag: "full-etag", size: 1205,
+  sha256: "abf6f7636edd183f42f7c5b9fccca8b60daab697ebd9a36b259dea236653af56", contentType: "application/json",
+  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.fe8a723f3223841d3cde338c64ca95d84ac36789e21616984f9e5d2795465510.json", sha256: "7948ba2144023683a03b45b7f58d90031e14e7314c1561b48f39a226d20d0ac7", size: 353, contentType: "application/json", frameCount: 96 },
 };
+const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+const MODEL_TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium" };
 const GOLDEN = {
   schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
@@ -69,9 +76,11 @@ const GOLDEN = {
   presentationRef: { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } }, ledgerReceipts: { source: RECEIPT }, versionIds: { source: "e".repeat(64) },
   preparation: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3 },
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 96 }], chunkRetries: 3,
+    // §91 D3b-5: the model input's encode parameters are frozen at admission like the presentation's.
+    encode: { crf: 18, preset: "medium" } },
   credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "5d499dfcece191b406cceb1b449151efd5c0b149f27b07fcd45e664dee78ebc9",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -112,6 +121,7 @@ beforeEach(() => {
       if (request === undefined) return new Response("missing", { status: 404 });
       return Response.json(jobs.scripted.get(id) ?? doneReport(request));
     }
+    if (url.href === RECEIPT.url) return new Response(LEDGER_BYTES, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
   }));
 });
@@ -150,7 +160,7 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
   it("PP02 a chunked preparation pins the stitched object; once the stitch is committed its chunk outputs are registered for reclaim", async () => {
     const f = await seed(); completeProvider(); backend(f);
     const plan = structuredClone(f.plan);
-    plan.preparation.chunks = [{ start: 0, end: 500 }, { start: 500, end: 1011 }];
+    plan.preparation.chunks = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
     plan.planFingerprint = await planHash(plan);
     await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
     for (let pickup = 0; pickup < 4 && runPrediction.mock.calls.length === 0; pickup += 1) {
@@ -177,7 +187,7 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
 });
 
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925");
+  expect(await planHash(GOLDEN)).toBe("5d499dfcece191b406cceb1b449151efd5c0b149f27b07fcd45e664dee78ebc9");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
@@ -425,7 +435,10 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     expect(request).toMatchObject({ jobId: id, containerClass: "MiniToolContainerStd4", inputs: [{ storageKey: f.plan.sourceKey }] });
     const output = (request!.outputs as { storageKey: string; recipe: Record<string, unknown> }[])[0]!;
     expect(output.storageKey).toBe(prepared(f, id).key);
-    expect(output.recipe).toMatchObject({ kind: "prepare_model_input", window: { start: 0, end: 1011 } });
+    // §5.3 model-input row, §91 D3-4: the selected interval's spans from the full ledger, the display geometry (even sides, no
+    // carrier cap), the plan matrix, SDR, opaque, the frozen encode parameters and the interval's audio.
+    expect(output.recipe).toEqual({ kind: "prepare_model_input", inputId: (request!.inputs as { inputId: string }[])[0]!.inputId, window: { start: 0, end: 96 }, timescale: 25,
+      entries: [{ kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(96, 25), rate: r(1) }], target: MODEL_TARGET, audio: { start: r(0), end: r(96, 25) } });
     expect(runPrediction).toHaveBeenCalledTimes(1);
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, id));
     const rows = await upstreamStepRepo.listSteps(f.plan.taskId);
@@ -455,7 +468,7 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
   it("WP04 a preparation over one chunk share runs as chunk_encode jobs plus a stitch, and generate uses the stitched object", async () => {
     const f = await seed(); completeProvider(); backend(f);
     const plan = structuredClone(f.plan);
-    plan.preparation.chunks = [{ start: 0, end: 500 }, { start: 500, end: 1011 }];
+    plan.preparation.chunks = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
     plan.planFingerprint = await planHash(plan);
     await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
     for (let pickup = 0; pickup < 4 && runPrediction.mock.calls.length === 0; pickup += 1) {
@@ -465,9 +478,16 @@ describe("model-input preparation before generate (inner#1306 §90 E3b; design �
     const stitch = videoContainerJobId({ kind: "prep-stitch", taskId: f.plan.taskId, input: 0, attempt: 1 });
     expect(preparations(f).map((request) => request.jobId)).toEqual([chunk(0), chunk(1), stitch]);
     const recipes = preparations(f).map((request) => (request.outputs as { recipe: Record<string, unknown> }[])[0]!.recipe);
-    expect(recipes[0]).toMatchObject({ kind: "chunk_encode", window: { start: 0, end: 500 } });
-    expect(recipes[1]).toMatchObject({ kind: "chunk_encode", window: { start: 500, end: 1011 } });
-    expect(recipes[2]).toMatchObject({ kind: "stitch", chunks: [prepared(f, chunk(0)).key, prepared(f, chunk(1)).key] });
+    const source = (preparations(f)[0]!.inputs as { inputId: string }[])[0]!.inputId;
+    expect(recipes[0]).toEqual({ kind: "chunk_encode", inputId: source, window: { start: 0, end: 48 }, timescale: 25, target: MODEL_TARGET,
+      entries: [{ kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(48, 25), rate: r(1) }] });
+    expect(recipes[1]).toEqual({ kind: "chunk_encode", inputId: source, window: { start: 48, end: 96 }, timescale: 25, target: MODEL_TARGET,
+      entries: [{ kind: "source", decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(48, 25), displayEnd: r(96, 25), rate: r(1) }] });
+    // §91 D3-2: the chunks are bound inputs of the stitch, each for its plan duration.
+    const inputs = preparations(f)[2]!.inputs as { inputId: string; storageKey: string }[];
+    expect(inputs.map((input) => input.storageKey)).toEqual([f.plan.sourceKey, prepared(f, chunk(0)).key, prepared(f, chunk(1)).key]);
+    expect(recipes[2]).toEqual({ kind: "stitch", inputId: inputs[0]!.inputId, chunks: [{ inputId: inputs[1]!.inputId, duration: r(48, 25) }, { inputId: inputs[2]!.inputId, duration: r(48, 25) }],
+      audio: { start: r(0), end: r(96, 25) }, target: MODEL_TARGET });
     expect(runPrediction.mock.calls[0]![2]).toEqual(resolvedBody(f, stitch));
   });
 

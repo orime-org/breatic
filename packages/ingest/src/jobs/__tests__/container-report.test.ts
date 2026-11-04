@@ -36,4 +36,24 @@ describe("readContainerReport", () => {
     expect(readContainerReport({ cpuUsec: 1 })).toBeNull();
     expect(readContainerReport(null)).toBeNull();
   });
+
+  // S6d D3-3 (inner#1306 §91): a packed carrier output's geometry travels with the report so the DO can write the manifest.
+  const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+  const planReport = (output: Record<string, unknown>): Record<string, unknown> => ({ schemaVersion: 2, attemptId: "a-1", ok: true, cpuUsec: 5,
+    outputs: [{ outputIndex: 0, storageKey: "video/s.mp4.stitch", width: 192, height: 64, durationSeconds: 2, cover: null, ...output }] });
+
+  it("PK01 keeps a planned output's packed geometry", () => {
+    expect(readContainerReport(planReport({ packing: GEOMETRY }))).toMatchObject({ outputs: [{ outputIndex: 0, packing: GEOMETRY }] });
+    expect(readContainerReport(planReport({}))).toMatchObject({ outputs: [{ outputIndex: 0 }] });
+    expect((readContainerReport(planReport({})) as unknown as { outputs: Record<string, unknown>[] }).outputs[0]).not.toHaveProperty("packing");
+  });
+
+  it.each([
+    ["a width that is not a number", { ...GEOMETRY, packedWidth: "192" }],
+    ["a rectangle without its height", { ...GEOMETRY, alphaRect: { x: 96, y: 0, width: 95 } }],
+    ["a packing that is not an object", "alpha-packed"],
+  ])("PK02 refuses a planned output whose packing has %s", (_name, packing) => {
+    expect(readContainerReport(planReport({ packing: GEOMETRY }))).not.toBeNull();
+    expect(readContainerReport(planReport({ packing }))).toBeNull();
+  });
 });

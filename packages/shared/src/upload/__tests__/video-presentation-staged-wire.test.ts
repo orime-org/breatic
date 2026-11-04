@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import * as shared from '../../index.js';
 import { videoPresentationIngestRequestSchema } from '../video-presentation-ingest.js';
-import { miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from '../mini-tool-plan-job.js';
+import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from '../mini-tool-plan-job.js';
 import { videoContainerJobId } from '../../mini-tools/video-encode-plan.js';
 import { videoPresentationKeyFor } from '../video-presentation.js';
 import { videoSourceLedgerKeyFor } from '../video-source-ledger.js';
@@ -203,22 +203,24 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
   });
 });
 
-// S6e E4-15 (inner#1306 §90): a stitch or copy Done carries the measured receipts of every output its job wrote, each
-// tagged with its role: exactly one carrier, and a manifest exactly when the carrier is alpha-packed. A chunk Done
-// carries none. The DO stores them per attempt and the worker-only prepare answer exposes each unit's done receipts;
-// the pin sync and the release points take object keys from them (no key rule for the manifest).
-describe('E4-15 role-tagged output receipts of a stitch or copy (§5.1 step 4; §7.15 candidate 行)', () => {
+// S6e E4-15 (inner#1306 §90) as revised by S6d D3-3 (§91): a stitch or copy Done carries the measured receipt of the one
+// carrier its job wrote, tagged with its role and packing; an alpha-packed carrier also carries the packed geometry the
+// container reported, and no Done carries a manifest: the presentation DO writes the manifest itself when it assembles the
+// bundle and stores it as the `manifest` role. A chunk Done carries none. The worker-only prepare answer exposes each unit's
+// stored receipts, the DO's manifest among them once written; the pin sync and the release points take object keys from them.
+describe('E4-15 / D3-3 role-tagged output receipts of a stitch or copy (§5.1 step 4; §7.15 candidate 行)', () => {
   const object = (name: string, contentType: string): { storageKey: string; sha256: string; sizeBytes: number; contentType: string } => ({ storageKey: `${KEY}.${name}`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType });
   const native = { role: 'carrier', packing: 'native', ...object('copy', 'video/mp4') };
-  const packedCarrier = { role: 'carrier', packing: 'alpha-packed', ...object('stitch', 'video/mp4') };
+  // A 95x63 picture packed on 96-wide planes: colour left, alpha right (alpha-presentation.ts packing).
+  const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+  const packedCarrier = { role: 'carrier', packing: 'alpha-packed', ...object('stitch', 'video/mp4'), geometry: GEOMETRY };
   const manifest = { role: 'manifest', ...object('stitch.manifest', 'application/json') };
   const done = (unit: Record<string, unknown>, receipts?: unknown): Record<string, unknown> => ({ action: 'report_chunk', ...capability, unit,
     report: { kind: 'Done', attempt: 1, usage: 1, ...(receipts === undefined ? {} : { receipts }) } });
 
   it.each([
     ['a copy with its native carrier', done({ kind: 'presentation-copy' }, [native])],
-    ['a stitch with its alpha-packed carrier and manifest', done({ kind: 'presentation-stitch' }, [packedCarrier, manifest])],
-    ['the same two in the other order', done({ kind: 'presentation-stitch' }, [manifest, packedCarrier])],
+    ['a stitch with its alpha-packed carrier and the packed geometry', done({ kind: 'presentation-stitch' }, [packedCarrier])],
     ['a chunk with no receipts', done({ kind: 'presentation-chunk', chunk: 0 })],
   ])('RR01 accepts %s', (_name, request) => {
     expect(videoPresentationIngestRequestSchema.parse(request)).toEqual(request);
@@ -229,17 +231,19 @@ describe('E4-15 role-tagged output receipts of a stitch or copy (§5.1 step 4; �
     ['a copy Done with an empty list', done({ kind: 'presentation-copy' }, [])],
     ['no carrier, only a manifest', done({ kind: 'presentation-stitch' }, [manifest])],
     ['two carriers', done({ kind: 'presentation-copy' }, [native, { ...native, storageKey: `${KEY}.copy-2` }])],
+    ['a manifest beside an alpha-packed carrier (the DO writes the manifest)', done({ kind: 'presentation-stitch' }, [packedCarrier, manifest])],
     ['a manifest beside a native carrier', done({ kind: 'presentation-copy' }, [native, manifest])],
-    ['an alpha-packed carrier without its manifest', done({ kind: 'presentation-stitch' }, [packedCarrier])],
-    ['two manifests', done({ kind: 'presentation-stitch' }, [packedCarrier, manifest, { ...manifest, storageKey: `${KEY}.m2` }])],
-    ['a manifest stored at the carrier key', done({ kind: 'presentation-stitch' }, [packedCarrier, { ...manifest, storageKey: packedCarrier.storageKey }])],
+    ['an alpha-packed carrier without its geometry', done({ kind: 'presentation-stitch' }, [{ ...packedCarrier, geometry: undefined }])],
+    ['a native carrier with a geometry', done({ kind: 'presentation-copy' }, [{ ...native, geometry: GEOMETRY }])],
+    ['a geometry whose alpha plane overlaps the colour plane', done({ kind: 'presentation-stitch' }, [{ ...packedCarrier, geometry: { ...GEOMETRY, alphaRect: { x: 90, y: 0, width: 95, height: 63 } } }])],
+    ['a geometry whose planes differ in size', done({ kind: 'presentation-stitch' }, [{ ...packedCarrier, geometry: { ...GEOMETRY, alphaRect: { x: 96, y: 0, width: 94, height: 63 } } }])],
     ['an unknown role', done({ kind: 'presentation-copy' }, [native, { role: 'thumbnail', ...object('thumb', 'image/png') }])],
     ['a carrier without its packing', done({ kind: 'presentation-copy' }, [{ role: 'carrier', ...object('copy', 'video/mp4') }])],
     ['receipts on a chunk Done', done({ kind: 'presentation-chunk', chunk: 0 }, [native])],
     ['the single receipt field it replaces', { ...done({ kind: 'presentation-copy' }), report: { kind: 'Done', attempt: 1, usage: 1, receipt: object('copy', 'video/mp4') } }],
   ])('RR02 rejects %s', (_name, request) => {
     expect(admits(done({ kind: 'presentation-copy' }, [native]))).toBe(true);
-    expect(admits(request)).toBe(false);
+    expect(admits(JSON.parse(JSON.stringify(request)) as Record<string, unknown>)).toBe(false);
   });
 
   const answer = {
@@ -250,14 +254,15 @@ describe('E4-15 role-tagged output receipts of a stitch or copy (§5.1 step 4; �
     work: { kind: 'encode', chunks: [{ start: 0, end: 96 }] },
     candidateLedger: { state: 'pending', receipt: null, failure: null },
     units: {},
-    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null },
+    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
   };
   const stitchJob = videoContainerJobId({ kind: 'presentation-stitch', jobId: identity.jobId, attempt: 1 });
   const stitchUnit = (receipts: unknown): Record<string, unknown> => ({ [`video-presentation:${identity.jobId}:stitch`]: {
     state: 'done', attempt: 1, attempts: [{ attempt: 1, jobId: stitchJob, state: 'done', usageRecorded: true }], receipts } });
   const parse = (value: unknown): boolean => exported<{ safeParse: (v: unknown) => { success: boolean } }>('videoPresentationPrepareAnswerSchema').safeParse(value).success;
 
-  it('RR03 the prepare answer exposes a done unit\'s receipts', () => {
+  it('RR03 the prepare answer exposes a done unit\'s stored receipts: the carrier, and the DO\'s manifest once it wrote one', () => {
+    expect(parse({ ...answer, units: stitchUnit([packedCarrier]) })).toBe(true);
     expect(parse({ ...answer, units: stitchUnit([packedCarrier, manifest]) })).toBe(true);
     expect(parse({ ...answer, units: stitchUnit([native]) })).toBe(true);
   });
@@ -265,10 +270,30 @@ describe('E4-15 role-tagged output receipts of a stitch or copy (§5.1 step 4; �
   it.each([
     ['a manifest beside a native carrier', [native, manifest]],
     ['no carrier', [manifest]],
-    ['an alpha-packed carrier without its manifest', [packedCarrier]],
+    ['two manifests', [packedCarrier, manifest, { ...manifest, storageKey: `${KEY}.m2` }]],
+    ['a manifest stored at the carrier key', [packedCarrier, { ...manifest, storageKey: packedCarrier.storageKey }]],
+    ['an alpha-packed carrier without its geometry', [{ ...native, packing: 'alpha-packed' }, manifest]],
   ])('RR04 the prepare answer rejects unit receipts with %s', (_name, receipts) => {
     expect(parse({ ...answer, units: stitchUnit([native]) })).toBe(true);
     expect(parse({ ...answer, units: stitchUnit(receipts) })).toBe(false);
+  });
+
+  // §91 D3-3: the container reports a packed output's geometry; the job report carries it on that output to the worker.
+  const measured = { outputIndex: 0, storageKey: `${KEY}.stitch`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4', width: 192, height: 64, durationSeconds: 2, upright: null, cover: null };
+  const report = (output: Record<string, unknown>): Record<string, unknown> => ({ schemaVersion: 2, state: 'done', outputs: [output], usage: { wallMs: 1, cpuUsec: 1 } });
+
+  it('JR01 a done job report carries a packed output\'s geometry, and an output without one stays as it was', () => {
+    expect(miniToolPlanJobReportSchema.parse(report({ ...measured, packing: GEOMETRY }))).toMatchObject({ outputs: [{ packing: GEOMETRY }] });
+    expect(miniToolPlanJobReportSchema.safeParse(report(measured)).success).toBe(true);
+  });
+
+  it.each([
+    ['a negative packed width', { ...GEOMETRY, packedWidth: -192 }],
+    ['an alpha plane that overlaps the colour plane', { ...GEOMETRY, alphaRect: { x: 90, y: 0, width: 95, height: 63 } }],
+    ['a rectangle without its height', { ...GEOMETRY, colorRect: { x: 0, y: 0, width: 95 } }],
+  ])('JR02 a job report rejects a packing with %s', (_name, packing) => {
+    expect(miniToolPlanJobReportSchema.safeParse(report({ ...measured, packing: GEOMETRY })).success).toBe(true);
+    expect(miniToolPlanJobReportSchema.safeParse(report({ ...measured, packing })).success).toBe(false);
   });
 });
 
@@ -282,7 +307,8 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
     work: { kind: 'encode', chunks: [{ start: 0, end: 48 }, { start: 48, end: 96 }] },
     candidateLedger: ledger,
     units: {},
-    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null },
+    // S6d D3b-1 (§91): the carrier encode parameters frozen at admission, so every chunk of a job encodes alike (§5.4).
+    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
   };
   const parse = (value: unknown): boolean => exported<{ safeParse: (v: unknown) => { success: boolean } }>('videoPresentationPrepareAnswerSchema').safeParse(value).success;
 
@@ -311,6 +337,8 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
       url: 'https://assets.example.test/l.json', etag: '"e"', size: 9, sha256: 'b'.repeat(64), contentType: 'application/json',
       table: { url: 'https://assets.example.test/t.json', sha256: 'c'.repeat(64), size: 8, contentType: 'application/json', frameCount: 3 } } } }],
     ['no frozen standard-4 price', { frozen: { ...answer.frozen, pricing: { basic: PRICING.basic } } }],
+    ['no frozen carrier parameters', { frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null } }],
+    ['a frozen crf out of range', { frozen: { ...answer.frozen, carrier: { crf: 52, preset: 'medium', maxShortSide: 1080 } } }],
     ['a deadline outside the capability', { deadlineAt: D }],
   ])('PA03 rejects an answer with %s', (_name, change) => {
     expect(parse(answer)).toBe(true);
