@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { expect } from 'playwright/test';
+import { randomUUID } from 'node:crypto';
 import type { ProjectVisitLookup } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
@@ -11,6 +12,9 @@ import { inspectVisitDb, readVisit, reconnectProject, saveVisitEvidence, watchVi
 for (const recovery of ['archive-reauth', 'transport-reconnect'] as const) {
   test(`a lost POST answer and unavailable first lookup recover the original visit through actual ${recovery}`, async ({ page }) => {
     const projectId = smokeProjectId();
+    const prior = await readVisit(await page.request.post(`/api/v1/projects/${projectId}/opened`, {
+      data: { visit_id: randomUUID() },
+    }), projectId);
     const traffic = watchVisits(page);
     const postPath = `**/api/v1/projects/${projectId}/opened`;
     const lookupPath = `**/api/v1/projects/${projectId}/opened/*`;
@@ -44,6 +48,13 @@ for (const recovery of ['archive-reauth', 'transport-reconnect'] as const) {
       expect(traffic.posts).toHaveLength(1);
       const original = committed!;
       expect(traffic.posts[0]?.visitId).toBe(original.visit_id);
+      const admitted = await inspectVisitDb(original);
+      expect(admitted.events.filter((event) => event.kind === 'project_access' && event.visit_id === prior.visit_id)).toEqual([
+        { kind: 'project_access', visit_id: prior.visit_id, occurred_at: prior.occurred_at },
+      ]);
+      expect(admitted.events.filter((event) => event.kind === 'project_access' && event.visit_id === original.visit_id)).toEqual([
+        { kind: 'project_access', visit_id: original.visit_id, occurred_at: original.occurred_at },
+      ]);
       const restoredAnswer = page.waitForResponse((response) => response.request().method() === 'GET'
         && new URL(response.url()).pathname === `/api/v1/projects/${projectId}/opened/${original.visit_id}`);
       recoveryAllowed = true;
@@ -58,9 +69,9 @@ for (const recovery of ['archive-reauth', 'transport-reconnect'] as const) {
       expect(recovered).toEqual({ status: 'recorded', ...original });
       expect(traffic.posts).toHaveLength(1);
       const persisted = await inspectVisitDb(original);
-      expect(persisted.events.filter((event) => event.kind === 'project_access')).toEqual([
-        { kind: 'project_access', visit_id: original.visit_id, occurred_at: original.occurred_at },
-      ]);
+      expect(persisted.events.filter((event) => event.kind === 'project_access')).toEqual(
+        admitted.events.filter((event) => event.kind === 'project_access'),
+      );
       if (archived) {
         await dataOf(await page.request.post(`/api/v1/projects/${projectId}/restore`), 'restore the Project after actual reauth');
         archived = false;
@@ -71,7 +82,7 @@ for (const recovery of ['archive-reauth', 'transport-reconnect'] as const) {
       await expect(page.locator(`a[href$="-${projectId}"]`)).toHaveCount(1);
       expect(traffic.posts).toHaveLength(1);
       await saveVisitEvidence(`passive-${recovery}-original-receipt`, {
-        recovery, original, recovered, suppressedLookups, posts: traffic.posts, persisted,
+        recovery, prior, original, recovered, suppressedLookups, posts: traffic.posts, admitted, persisted,
         fault: 'real POST and initial GET execute, browser-bound replies aborted until explicit recovery',
         directHandleRefresh: false, manualReceiptGet: false, crossDayFixture: false,
       });
