@@ -576,6 +576,25 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect([...logger.error.mock.calls, ...logger.warn.mock.calls]).toEqual([]);
   });
 
+  // S6d D4-1 (design §3 line 172): a video edit at rate 2 is processed by its declaration. The ledger is cfr96 with its edit
+  // at rate 2 and a presentation table that matches (96 frames of 1/50 s, display 48/25 s); the entries carry the rate
+  // and their clip starts are the source times the spans map each window start to. Both windows start on a keyframe (0, 48),
+  // so the open decodeStart choice (§91 W7) does not change them.
+  it('RB15 a video edit at rate 2 gives entries at rate 2 whose clip starts are the mapped source times', async () => {
+    await serve(LEDGERS.cfr96, {}, (plan) => {
+      (plan as unknown as { videoSpans: unknown }).videoSpans = [{ sourceStart: r(0), sourceEnd: r(96, 25), presentationStart: r(0), rate: r(2) }];
+      (plan as unknown as { presentation: unknown }).presentation = { schemaVersion: 1, timescale: 50, runs: [{ start: 0, count: 96, step: 1, duration: 1 }] };
+      (plan.display as unknown as { duration: unknown }).duration = r(48, 25);
+      (plan.originMapping as unknown as { lastSource: { supportEnd: unknown } }).lastSource.supportEnd = r(48, 25);
+    });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(entriesSubmitted()).toEqual([
+      [{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(24, 25), rate: r(2) }],
+      [{ kind: 'source', decodeStart: r(48, 25), clipStart: r(48, 25), displayStart: r(24, 25), displayEnd: r(48, 25), rate: r(2) }],
+    ]);
+    expect(submitted().map((job) => (job.outputs as { recipe: { timescale: number } }[])[0]!.recipe.timescale)).toEqual([50, 50]);
+  });
+
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {
     const id = subJob('stitch', 1);
     const units: Record<string, Unit> = { [`video-presentation:${JOB}:stitch`]: unit(id, 'open', 'pending'),

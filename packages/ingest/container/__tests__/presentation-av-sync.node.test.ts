@@ -453,3 +453,138 @@ describe('spans at a rate other than 1 and several audio spans (§91 D4; design 
   });
 });
 
+/**
+ * Rewrite every non-empty edit of every track to play at `rate`: the 16.16 rate field and the segment duration (movie time
+ * shrinks by the rate), leaving the media untouched (§91 D4-1: a hand-patched edit list).
+ * @param from - The source file.
+ * @param to - The patched file.
+ * @param rate - The rate as numerator and denominator.
+ * @returns Nothing once written.
+ */
+async function patchEditRate(from: string, to: string, rate: [number, number]): Promise<void> {
+  const b = Buffer.from(await readFile(from));
+  const walk = (start: number, end: number): void => {
+    let at = start;
+    while (at + 8 <= end) {
+      const size = b.readUInt32BE(at);
+      const type = b.toString('latin1', at + 4, at + 8);
+      if (['moov', 'trak', 'edts'].includes(type)) walk(at + 8, at + size);
+      if (type === 'elst') {
+        const wide = b[at + 8] === 1;
+        let cursor = at + 16;
+        for (let n = b.readUInt32BE(at + 12); n > 0; n -= 1) {
+          const media = wide ? Number(b.readBigInt64BE(cursor + 8)) : b.readInt32BE(cursor + 4);
+          if (media !== -1) {
+            const duration = wide ? Number(b.readBigUInt64BE(cursor)) : b.readUInt32BE(cursor);
+            const scaled = Math.round((duration * rate[1]) / rate[0]);
+            if (wide) b.writeBigUInt64BE(BigInt(scaled), cursor); else b.writeUInt32BE(scaled, cursor);
+            b.writeInt32BE(Math.round((rate[0] / rate[1]) * 65536), cursor + (wide ? 16 : 8));
+          }
+          cursor += wide ? 20 : 12;
+        }
+      }
+      at += size;
+    }
+  };
+  walk(0, b.length);
+  await writeFile(to, b);
+}
+
+// S6d D4-1 (design §3 line 172 「非 1 正速率…按声明…处理」, line 205; §91 D4-1 answer): a positive edit rate other than 1 is
+// processed by its declaration, in QuickTime and ISO files alike. The fixtures patch base's edit lists (QuickTime at 2 and
+// 1/2, and the isom-brand MP4 at 2, the design's diagnostic case); the plan records the rate in both tracks' spans and
+// presents each frame for its media duration divided by the rate.
+describe('the probe plans edits at a rate other than 1 (§91 D4-1; design §3 line 172, §4.2)', () => {
+  const fixtures: Record<string, [number, number]> = { 'rate2.mov': [2, 1], 'rate-half.mov': [1, 2], 'rate2.mp4': [2, 1] };
+  beforeAll(async () => {
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', join(dir, 'base.mp4'), '-c', 'copy', '-f', 'mov', join(dir, 'base.mov')]);
+    await patchEditRate(join(dir, 'base.mov'), join(dir, 'rate2.mov'), [2, 1]);
+    await patchEditRate(join(dir, 'base.mov'), join(dir, 'rate-half.mov'), [1, 2]);
+    await patchEditRate(join(dir, 'base.mp4'), join(dir, 'rate2.mp4'), [2, 1]);
+  });
+
+  it.each(Object.entries(fixtures))('DP01 %s: both tracks\' spans carry the rate and the display lasts the media duration divided by it', async (name, [numerator, denominator]) => {
+    const rate = numerator / denominator;
+    const of = await planOf(join(dir, name));
+    expect(of.videoSpans).not.toBeNull();
+    expect(of.videoSpans!.map(span => value(span.rate))).toEqual([rate]);
+    expect(of.audioSpans).not.toBeNull();
+    expect(of.audioSpans!.map(span => value(span.rate))).toEqual([rate]);
+    expect(value(of.display.duration)).toBeCloseTo(2 / rate, 6);
+    // 50 frames of 1/25 s media each, presented for 1/(25·rate) s.
+    expect(presentationFrameCount(of.presentation)).toBe(50);
+    expect(of.presentation.runs.every(run => run.duration / of.presentation.timescale === 1 / (25 * rate))).toBe(true);
+  });
+});
+
+// S6d D4-2 (design line 858: span bounds by av_rescale round-to-nearest onto the 48 kHz grid): sample-exact placement,
+// measured on single-sample clicks, whose peak AAC keeps exactly (checked: a click at sample 48000 decodes peaking at 48000).
+describe('audio spans land on the 48 kHz sample grid (§91 D4-2; design line 858)', () => {
+  const q = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
+  const target = { width: 160, height: 96, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
+  let clicks: string;
+  beforeAll(async () => {
+    clicks = join(dir, 'clicks.mp4');
+    // Clicks at original samples 24000, 43200 and 72000 (0.5, 0.9 and 1.5 s), on a black 2 s picture.
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=160x96:r=25:d=2',
+      '-f', 'lavfi', '-i', "aevalsrc='if(eq(n\\,24000)+eq(n\\,43200)+eq(n\\,72000)\\,0.9\\,0)':s=48000:d=2",
+      '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clicks]);
+  });
+
+  /**
+   * The sample indices of the clicks: peaks above half scale, one per click.
+   * @param path - The file.
+   * @param ignoreEditList - Read the media timeline instead.
+   * @returns The indices.
+   */
+  async function clicksAt(path: string, ignoreEditList = false): Promise<number[]> {
+    const edit = ignoreEditList ? ['-ignore_editlist', '1'] : [];
+    const { stdout } = await run('ffmpeg', ['-v', 'error', ...edit, '-copyts', '-i', path, '-map', '0:a:0', '-af', 'aresample=async=1:first_pts=0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+    const samples = new Int16Array(new Uint8Array(stdout).buffer.slice(0));
+    const peaks: number[] = [];
+    for (let at = 0; at < samples.length; at += 1) {
+      if (Math.abs(samples[at]!) < 16000) continue;
+      const last = peaks.at(-1);
+      if (last !== undefined && at - last < 200) { if (Math.abs(samples[at]!) > Math.abs(samples[last]!)) peaks[peaks.length - 1] = at; continue; }
+      peaks.push(at);
+    }
+    return peaks;
+  }
+
+  /**
+   * A model input of the clicks source over [0, 2) with the given audio spans.
+   * @param spans - Audio spans on the media timeline.
+   * @returns The output.
+   */
+  function render(spans: Span[]): Promise<string> {
+    return produce({ [SOURCE]: clicks }, { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 50 }, timescale: 25,
+      entries: [{ kind: 'source', decodeStart: q(0), clipStart: q(0), displayStart: q(0), displayEnd: q(2), rate: q(1) }], target,
+      audio: { start: q(0), end: q(2), origin: q(0), spans } });
+  }
+
+  /**
+   * Where a media-time sample lands: presentationStart + (media - sourceStart) / rate, on the 48 kHz grid rounded to nearest.
+   * @param media - The media sample index.
+   * @param span - The span it lies in.
+   * @returns The output sample index.
+   */
+  function landing(media: number, span: { sourceStart: number; presentationStart: number; rate: number }): number {
+    return Math.round(span.presentationStart * 48000 + (media - span.sourceStart * 48000) / span.rate);
+  }
+
+  it.each([
+    ['two rate-1 spans', [[0.4, 0.6, 0, 1], [0.8, 1.0, 0.2, 1]]],
+    ['one span at rate 2', [[0.4, 1.6, 0, 2]]],
+    ['one span at rate 1/2', [[0.8, 1.0, 0, 0.5]]],
+  ] as const)('DS01 %s: each click lands on its sample, within one', async (_name, layout) => {
+    const media = await clicksAt(clicks, true);
+    const spans = layout.map(([from, to, at, rate]) => ({ sourceStart: q(Math.round(from * 48000), 48000), sourceEnd: q(Math.round(to * 48000), 48000),
+      presentationStart: q(Math.round(at * 1000), 1000), rate: rate === 0.5 ? q(1, 2) : q(rate) }));
+    const expected = media.flatMap(sample => layout.filter(([from, to]) => sample >= from * 48000 && sample < to * 48000).map(([from, , at, rate]) => landing(sample, { sourceStart: from, presentationStart: at, rate })));
+    expect(expected.length).toBeGreaterThan(0);
+    const landed = await clicksAt(await render(spans));
+    expect(landed).toHaveLength(expected.length);
+    landed.forEach((sample, index) => expect(Math.abs(sample - expected[index]!)).toBeLessThanOrEqual(1));
+  });
+});
+
