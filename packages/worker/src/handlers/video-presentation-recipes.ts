@@ -11,6 +11,7 @@
 import { getMiniToolsConfig } from '@breatic/core';
 import {
   BodyTooLarge, EmptyBody, readVideoPresentationLedger, VideoSourceLedgerReadRefused, type MiniToolPlanAudio, type MiniToolPlanEntry, type MiniToolPlanExact, type MiniToolPlanInterval, type MiniToolPlanTarget,
+  type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
 import { videoCarrierGeometry } from '@breatic/shared/mini-tools';
@@ -163,6 +164,17 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
  * @throws {RangeError} When the window lies outside the presented frames.
  */
 export function windowEntries(ledger: VideoPresentationLedger, window: FrameWindow): MiniToolPlanEntry[] {
+  return placedEntries(ledger, window).map(({ entry }) => entry);
+}
+
+/**
+ * A window's entries, each with the presentation ordinal of its first frame.
+ * @param ledger - The full ledger.
+ * @param window - The window.
+ * @returns The entries in presentation order with their first ordinals.
+ * @throws {RangeError} When the window lies outside the presented frames.
+ */
+function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { entry: MiniToolPlanEntry; ordinal: number }[] {
   const { plan } = ledger;
   const frames = presentedFrames(ledger);
   if (window.start < 0 || window.end > frames.length || window.end <= window.start) throw new RangeError('The window lies outside the presented frames');
@@ -207,7 +219,7 @@ export function windowEntries(ledger: VideoPresentationLedger, window: FrameWind
     return plus(q(edit.sourceStart), times(minus(at, q(edit.presentationStart)), q(edit.rate)));
   };
   const keyframes = ledger.encoding.keyframeOrdinals;
-  const entries: MiniToolPlanEntry[] = [];
+  const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
   let open: { span: number; first: number; end: number } | null = null;
   /**
    * Close the open source span into an entry.
@@ -224,15 +236,15 @@ export function windowEntries(ledger: VideoPresentationLedger, window: FrameWind
       const pts = ordinal <= open.first ? frames[ordinal]!.pts : null;
       if (pts !== null && cmp(source(pts), firstSource) <= 0n && (decode === firstSource || cmp(source(pts), decode) > 0n)) decode = source(pts);
     }
-    entries.push({ kind: 'source', decodeStart: exact(decode), clipStart: exact(cmp(shown, firstSource) > 0n ? shown : firstSource),
-      displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: open.span < 0 ? { numerator: '1', denominator: '1' } : exact(q(spans![open.span]!.rate)) });
+    entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(cmp(shown, firstSource) > 0n ? shown : firstSource),
+      displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: open.span < 0 ? { numerator: '1', denominator: '1' } : exact(q(spans![open.span]!.rate)) } });
     open = null;
   };
   for (let ordinal = window.start; ordinal < window.end; ordinal += 1) {
     const frame = frames[ordinal]!;
     if (frame.pts === null) {
       close();
-      entries.push({ kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(time(frame.start)), end: exact(time(frame.end)) } });
+      entries.push({ ordinal, entry: { kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(time(frame.start)), end: exact(time(frame.end)) } } });
       continue;
     }
     const span = spanAt(time(frame.start));
@@ -328,4 +340,198 @@ export function modelInputTarget(ledger: VideoPresentationLedger, encode: { crf:
  */
 export function chunkInputId(chunk: number): string {
   return `00000000-0000-4000-8001-${String(chunk).padStart(12, '0')}`;
+}
+
+/** A tool PNG's target (§91 D4-3, §7.17 frame row). */
+type FrameTarget = MiniToolPlanFrameTarget;
+/** A split output's target (§91 D4-4, §4.3 odd-size row): opaque H.264 MP4 at even sides, transparent VP9 WebM at the display size. */
+export type SegmentTarget = Omit<MiniToolPlanTarget, 'alpha'> & { alpha: 'none' | 'straight'; format: 'mp4-h264' | 'webm-vp9' };
+/** An analysis picture's target: the display geometry and the plan's colour conversion. */
+interface AnalysisTarget { width: number; height: number; colorMatrix: string; toneMap: MiniToolPlanTarget['toneMap'] }
+/** A presentation-coordinate frame selection, as the execution and analysis record it (§91 D4-10). */
+export interface FrameSelection { frameIndex: number; pts: number }
+/** A frame recipe on a full-ledger entry. */
+export type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: 'frame'; entry: MiniToolPlanEntry }>;
+/** The job-level recipes a split segment becomes; their shared schemas arrive with the tool runners (§92). */
+export type SegmentRecipe =
+  | { kind: 'segment'; inputId: string; window: FrameWindow; timescale: number; entries: MiniToolPlanEntry[]; target: SegmentTarget; audio: MiniToolPlanAudio }
+  | { kind: 'chunk_encode'; inputId: string; window: FrameWindow; timescale: number; entries: MiniToolPlanEntry[]; target: SegmentTarget }
+  | { kind: 'stitch'; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio; target: SegmentTarget };
+
+/**
+ * The plan's PNG target (§7.17 frame row, §4.3): the upright display geometry, its matrix and tone mapping, the plan's PNG
+ * depth, and alpha kept for a transparent source (the plan's fill is `transparent` exactly when the probe confirmed alpha).
+ * @param ledger - The full ledger.
+ * @returns The target.
+ * @throws {never} Never.
+ */
+function frameTarget(ledger: VideoPresentationLedger): FrameTarget {
+  const { plan } = ledger;
+  return { width: plan.display.width, height: plan.display.height, colorMatrix: plan.colorMatrix, toneMap: plan.output.toneMap,
+    pngBitDepth: plan.output.framePngBitDepth, alpha: plan.policy.emptyFill === 'transparent' ? 'straight' : 'none' };
+}
+
+/**
+ * The one entry presenting a selected frame; the selection must name the frame by its ordinal and its own display time.
+ * @param ledger - The full ledger.
+ * @param selection - The selected frame.
+ * @returns Its entry.
+ * @throws {RangeError} When the ordinal is outside the frames or the pts is not that frame's.
+ */
+function frameEntry(ledger: VideoPresentationLedger, selection: FrameSelection): MiniToolPlanEntry {
+  const frame = presentedFrames(ledger)[selection.frameIndex];
+  if (!Number.isSafeInteger(selection.frameIndex) || frame === undefined || frame.start / ledger.plan.presentation.timescale !== selection.pts) {
+    throw new RangeError('The selection is not a presented frame');
+  }
+  return windowEntries(ledger, { start: selection.frameIndex, end: selection.frameIndex + 1 })[0]!;
+}
+
+/**
+ * The frame recipe of a selected presented frame (§91 D4-3): its entry and the plan's PNG target.
+ * @param ledger - The full ledger.
+ * @param selection - The selected frame.
+ * @param inputId - The source input.
+ * @returns The recipe.
+ * @throws {RangeError} When the selection is not a presented frame.
+ */
+export function frameRecipeOf(ledger: VideoPresentationLedger, selection: FrameSelection, inputId: string): FrameRecipe {
+  return { kind: 'frame', inputId, entry: frameEntry(ledger, selection), target: frameTarget(ledger) };
+}
+
+/**
+ * A people candidate's crop: the anchor's frame recipe cropped in its display geometry.
+ * @param ledger - The full ledger.
+ * @param anchor - The analysis anchor.
+ * @param inputId - The source input.
+ * @param crop - The candidate's display crop.
+ * @returns The recipe.
+ * @throws {RangeError} When the anchor is not a presented frame.
+ */
+export function candidateCropRecipeOf(ledger: VideoPresentationLedger, anchor: FrameSelection, inputId: string, crop: MiniToolPlanFrameCrop): FrameRecipe {
+  return { ...frameRecipeOf(ledger, anchor, inputId), crop };
+}
+
+/**
+ * The people detection recipe (§91 D4-5): the anchor's entry (a derived-empty anchor is composed) and the upright target.
+ * @param ledger - The full ledger.
+ * @param anchor - The analysis anchor.
+ * @param inputId - The source input.
+ * @param profile - The detector profile.
+ * @returns The recipe.
+ * @throws {RangeError} When the anchor is not a presented frame.
+ */
+export function peopleRecipeOf<P>(ledger: VideoPresentationLedger, anchor: FrameSelection, inputId: string, profile: P): { kind: 'people'; inputId: string; entry: MiniToolPlanEntry; target: FrameTarget; profile: P } {
+  return { kind: 'people', inputId, entry: frameEntry(ledger, anchor), target: frameTarget(ledger), profile };
+}
+
+/**
+ * The presented frames a time range in seconds covers; both ends must fall on frame boundaries.
+ * @param ledger - The full ledger.
+ * @param range - The range.
+ * @param range.start - Its start.
+ * @param range.end - Its end.
+ * @returns The frame window.
+ * @throws {RangeError} When an end is not a frame boundary or the range is empty.
+ */
+function rangeWindow(ledger: VideoPresentationLedger, range: { start: number; end: number }): FrameWindow {
+  const frames = presentedFrames(ledger);
+  const scale = ledger.plan.presentation.timescale;
+  const start = frames.findIndex((frame) => frame.start / scale === range.start);
+  const last = frames.findIndex((frame) => frame.end / scale === range.end);
+  if (start < 0 || last < start) throw new RangeError('The range does not fall on frame boundaries');
+  return { start, end: last + 1 };
+}
+
+/**
+ * A split output's target (§91 D4-4, §4.3 odd-size row): opaque sources are H.264 MP4 with odd sides rounded down to even
+ * (a 1-pixel side to 2), transparent ones VP9 WebM with alpha at the display size; the frozen crf and preset.
+ * @param ledger - The full ledger.
+ * @param carrier - The frozen encode parameters.
+ * @param carrier.crf - The crf.
+ * @param carrier.preset - The preset.
+ * @returns The target.
+ * @throws {never} Never.
+ */
+function segmentTarget(ledger: VideoPresentationLedger, carrier: { crf: number; preset: MiniToolPlanTarget['preset'] }): SegmentTarget {
+  const { plan } = ledger;
+  const transparent = plan.policy.emptyFill === 'transparent';
+  /**
+   * An opaque side rounded down to even, at least 2.
+   * @param side - The display side.
+   * @returns The output side.
+   * @throws {never} Never.
+   */
+  const even = (side: number): number => (transparent ? side : Math.max(2, side - (side % 2)));
+  return { width: even(plan.display.width), height: even(plan.display.height), displayRect: null, colorMatrix: plan.colorMatrix, toneMap: plan.output.toneMap,
+    alpha: transparent ? 'straight' : 'none', crf: carrier.crf, preset: carrier.preset, format: transparent ? 'webm-vp9' : 'mp4-h264' };
+}
+
+/**
+ * A split segment's job recipes (§91 D4-4, §5.4): one segment over its window, or, when the shared planner gave several
+ * windows, one chunk_encode per window and a stitch over them with each chunk's plan duration and the range's audio.
+ * @param ledger - The full ledger.
+ * @param selection - The execution's range in presentation seconds.
+ * @param selection.range - The range.
+ * @param selection.range.start - Its start in seconds.
+ * @param selection.range.end - Its end in seconds.
+ * @param inputId - The source input.
+ * @param carrier - The frozen encode parameters.
+ * @param carrier.crf - The crf.
+ * @param carrier.preset - The preset.
+ * @param windows - The chunk windows the shared planner gave for the range.
+ * @returns The recipes.
+ * @throws {RangeError} When the range is not on frame boundaries or the windows do not tile its frames.
+ */
+export function segmentRecipesOf(ledger: VideoPresentationLedger, selection: { range: { start: number; end: number } }, inputId: string,
+  carrier: { crf: number; preset: MiniToolPlanTarget['preset'] }, windows: readonly FrameWindow[]): SegmentRecipe[] {
+  const range = rangeWindow(ledger, selection.range);
+  if (windows.length === 0 || windows[0]!.start !== range.start || windows.at(-1)!.end !== range.end ||
+    windows.some((window, at) => window.end <= window.start || (at > 0 && windows[at - 1]!.end !== window.start))) throw new RangeError('The windows do not tile the range');
+  const target = segmentTarget(ledger, carrier);
+  const timescale = ledger.plan.presentation.timescale;
+  const audio = audioOf(ledger, windowInterval(ledger, range));
+  if (windows.length === 1) return [{ kind: 'segment', inputId, window: { ...range }, timescale, entries: windowEntries(ledger, range), target, audio }];
+  return [
+    ...windows.map((window): SegmentRecipe => ({ kind: 'chunk_encode', inputId, window: { start: window.start, end: window.end }, timescale, entries: windowEntries(ledger, window), target })),
+    { kind: 'stitch', inputId, chunks: windows.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })), audio, target },
+  ];
+}
+
+/**
+ * The scene-cut recipe (§91 D4-5): the scanned range's entries, each with the presentation ordinal of its first frame, so
+ * cuts come back as presentation ordinals; no inspect step.
+ * @param ledger - The full ledger.
+ * @param range - The scanned range in presentation seconds.
+ * @param range.start - Its start.
+ * @param range.end - Its end.
+ * @param inputId - The source input.
+ * @param profile - The detector profile.
+ * @returns The recipe.
+ * @throws {RangeError} When the range is not on frame boundaries.
+ */
+export function sceneCutsRecipeOf<P>(ledger: VideoPresentationLedger, range: { start: number; end: number }, inputId: string, profile: P):
+  { kind: 'scene_cuts'; inputId: string; window: FrameWindow; timescale: number; profile: P; entries: (MiniToolPlanEntry & { ordinalOffset: number })[]; target: AnalysisTarget } {
+  const { plan } = ledger;
+  const window = rangeWindow(ledger, range);
+  return { kind: 'scene_cuts', inputId, window, timescale: plan.presentation.timescale, profile,
+    entries: placedEntries(ledger, window).map(({ entry, ordinal }) => ({ ...entry, ordinalOffset: ordinal })),
+    target: { width: plan.display.width, height: plan.display.height, colorMatrix: plan.colorMatrix, toneMap: plan.output.toneMap } };
+}
+
+/**
+ * Scene cuts reported as presentation ordinals, checked against the scanned window and given their display times from the
+ * table (§91 D4-5: the compact check is in the worker's result assembly).
+ * @param ledger - The full ledger.
+ * @param window - The scanned window.
+ * @param cuts - The reported cut ordinals.
+ * @returns Each cut's ordinal and display time.
+ * @throws {RangeError} When a cut lies outside the window.
+ */
+export function sceneCutsResultOf(ledger: VideoPresentationLedger, window: FrameWindow, cuts: readonly number[]): FrameSelection[] {
+  const frames = presentedFrames(ledger);
+  const scale = ledger.plan.presentation.timescale;
+  return cuts.map((ordinal) => {
+    if (!Number.isSafeInteger(ordinal) || ordinal < window.start || ordinal >= window.end || frames[ordinal] === undefined) throw new RangeError('A scene cut lies outside its window');
+    return { frameIndex: ordinal, pts: frames[ordinal].start / scale };
+  });
 }
