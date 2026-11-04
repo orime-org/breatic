@@ -28,7 +28,13 @@ const plan: MiniToolPlanJobRequest = {
   schemaVersion: 2, jobId: "original-analysis/chunk:0", containerClass: "OriginalClass", deadlineAt: 1792927200000,
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
   inputs: [{ inputId, storageKey: "original/video.mp4" }],
-  outputs: [8, 9].map((outputIndex) => ({ outputIndex, storageKey: `declared/${outputIndex}.txt`, contentType: "text/plain", recipe: { kind: "inspect_video", inputId } })),
+  // §93 D5 (frames-split design §7.17 scene_cuts row 「去掉inspect_video步骤」, people anchor row): the text outputs are people
+  // detections on a full-ledger entry, not the removed inspect_video recipe.
+  outputs: [8, 9].map((outputIndex) => ({ outputIndex, storageKey: `declared/${outputIndex}.txt`, contentType: "text/plain", recipe: { kind: "people", inputId,
+    entry: { kind: "source", decodeStart: { numerator: "0", denominator: "1" }, clipStart: { numerator: "0", denominator: "1" }, displayStart: { numerator: "0", denominator: "1" },
+      displayEnd: { numerator: "1", denominator: "25" }, rate: { numerator: "1", denominator: "1" } },
+    target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" },
+    profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: null, params: {} } } })),
 };
 const input = { taskId, stepId, chunkIndex: 0, chargeTo: "platform", request: plan } as const;
 const identity = { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 0 } as const;
