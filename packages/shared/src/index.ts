@@ -911,6 +911,7 @@ export {
   type MiniToolPlanEntry,
   type MiniToolPlanExact,
   type MiniToolPlanInterval,
+  type MiniToolPlanAudio,
   type MiniToolPlanTarget,
   type MiniToolPlanJobRequest,
   type MiniToolPlanJobReport,

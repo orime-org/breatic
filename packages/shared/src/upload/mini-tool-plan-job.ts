@@ -13,7 +13,7 @@ import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
 import type { MiniToolPlanEntry, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
 export type {
-  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget,
+  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan,
 } from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
@@ -30,6 +30,10 @@ const ZERO = { numerator: "0", denominator: "1" };
 const time = exactTime.refine((value) => compare(value, ZERO) >= 0n, "Expected a non-negative time");
 const positiveTime = exactTime.refine((value) => compare(value, ZERO) > 0n, "Expected a positive time");
 const interval = z.strictObject({ start: time, end: time }).refine((value) => compare(value.end, value.start) > 0n);
+const editSpan = z.strictObject({ sourceStart: time, sourceEnd: time, presentationStart: exactTime, rate: positiveTime })
+  .refine((span) => compare(span.sourceEnd, span.sourceStart) > 0n);
+// §91 D3b-11: the interval in presentation time with the plan's origin and audio spans (null when the track has no edit).
+const audio = z.strictObject({ start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() }).refine((value) => compare(value.end, value.start) > 0n);
 const entry = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime })
     .refine((span) => compare(span.decodeStart, span.clipStart) <= 0n && compare(span.displayEnd, span.displayStart) > 0n),
@@ -76,9 +80,9 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe }),
   // Each chunk is a bound job input carrying its plan duration; the recipe's own input is the source the audio comes from.
   z.strictObject({ kind: z.literal("stitch"), inputId, chunks: z.array(z.strictObject({ inputId, duration: positiveTime })).min(1),
-    audio: interval.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
+    audio: audio.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
-  z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: interval.nullable() }),
+  z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
 ]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */

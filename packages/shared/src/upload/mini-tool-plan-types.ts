@@ -21,6 +21,13 @@ export interface MiniToolPlanFrameCrop { sourceWidth: number; sourceHeight: numb
 export interface MiniToolPlanExact { numerator: string; denominator: string }
 /** An interval of exact times. */
 export interface MiniToolPlanInterval { start: MiniToolPlanExact; end: MiniToolPlanExact }
+/** One edit of the audio track: media [sourceStart, sourceEnd) shown from presentationStart at rate. */
+export interface MiniToolPlanEditSpan { sourceStart: MiniToolPlanExact; sourceEnd: MiniToolPlanExact; presentationStart: MiniToolPlanExact; rate: MiniToolPlanExact }
+/**
+ * The audio a recipe carries (§91 D3b-11): its presentation interval, the plan's origin and audio spans; with spans the
+ * media samples are placed by them, without (no audio edit) presentation time is movie time less the origin.
+ */
+export interface MiniToolPlanAudio extends MiniToolPlanInterval { origin: MiniToolPlanExact; spans: MiniToolPlanEditSpan[] | null }
 /**
  * One presentation entry of a window (§7.17): a source clip span, decoded from its keyframe at `decodeStart` and shown from
  * `clipStart` over its presentation interval at `rate`, the last frame held to `displayEnd`; or a derived-empty frame.
@@ -57,5 +64,5 @@ export type MiniToolPlanRecipe =
   | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
   | { kind: "copy_carrier"; inputId: string; colorMatrix: string }
   | ({ kind: "chunk_encode" } & MiniToolPlanWindowRecipe)
-  | { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanInterval | null; target: MiniToolPlanTarget }
-  | ({ kind: "prepare_model_input"; audio: MiniToolPlanInterval | null } & MiniToolPlanWindowRecipe);
+  | { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
+  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe);
