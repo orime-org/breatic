@@ -78,19 +78,23 @@ function attemptJobId(jobId: string, unit: VideoPresentationChunkUnit, attempt: 
 }
 
 /**
- * The job's full ledger, read once per pickup: the candidate's, else the selected version's when it is the planned one.
- * A ledger that fails its receipt is the DO's to check and repair (§91 D3b-9; design §7.4 `Check`, §7.1 `Lt`): the pickup
- * asks it to read, which runs Check against R2, and waits for the repaired receipt.
+ * The job's full ledger, read once per pickup: only the candidate's own ledger, keyed by the plan's toolInputId, once it is
+ * ready; until then the pickup waits (E2-6). The selected version's ledger is never a stand-in: with the same toolInputId it
+ * is the same ledger, with another it is another plan's. A ready ledger that fails its receipt is the DO's to check and
+ * repair (§91 D3b-9; design §7.4 `Check`, §7.1 `Lt`): the pickup logs it, asks the DO to read, which runs Check against R2,
+ * and waits for the repaired receipt.
  * @param pickup - The pickup.
  * @returns The validated full ledger.
- * @throws {StillRunning} When the ledger failed its receipt and the DO was asked to check it.
- * @throws {Error} When there is no plan or receipt, or the read fails in transport.
+ * @throws {StillRunning} While the candidate's ledger is not ready, or after it failed its receipt and the DO was asked to check it.
+ * @throws {Error} When the read fails in transport.
  */
 function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
   const { answer, capability, identity } = pickup;
-  const receipt = answer.candidateLedger?.receipt ?? answer.ledger?.receipt ?? null;
-  if (answer.plan === null || receipt === null) return Promise.reject(new Error('The presentation job has no planned full ledger'));
-  pickup.ledger ??= readJobLedger(receipt, answer.plan, capability.deadlineAt).catch(async (error: unknown) => {
+  const candidate = answer.candidateLedger;
+  // Wait for the candidate's own ledger: no read, no check request and no log until it is ready.
+  if (candidate?.state !== 'ready') return Promise.reject(new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms));
+  const receipt = candidate.receipt;
+  pickup.ledger ??= readJobLedger(receipt, capability.deadlineAt).catch(async (error: unknown) => {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { ...identity, toolInputId: answer.plan?.toolInputId, receiptSha256: receipt.sha256 } }, 'video_presentation_ledger_invalid');
     const policy = answer.preparation?.targetPolicyVersion;
