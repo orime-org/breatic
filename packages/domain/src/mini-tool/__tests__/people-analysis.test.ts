@@ -14,6 +14,14 @@ import { assembleMiniToolPeopleAnalysis as assembleImpl, readMiniToolDisplayPeop
 type Assemble = (accepted: MiniToolAnalysisRecord, sourceKey: string, observations: unknown, jobs: readonly MiniToolRegisteredAnalysisJob[],
   anchorEntry: unknown) => MiniToolPeopleAnalysisResult;
 const assemble = assembleImpl as unknown as Assemble;
+// §93 D5-8 (design §7.17 人物检测锚帧 row): the people recipe on an entry carries no anchor, so the container's JSON echoes
+// none, and it is measured in the recipe target's display geometry, which the reader checks (this round's choice: a third
+// argument with the people recipe's target size; may be vetoed).
+type ReadDisplay = (accepted: MiniToolAnalysisRecord, observations: unknown, target: { width: number; height: number }) => unknown;
+const readDisplay = readMiniToolDisplayPeople as unknown as ReadDisplay;
+const DISPLAY_TARGET = { width: 400, height: 200 };
+/** Display people as the container now writes them: no anchor. */
+type Display = Omit<MiniToolDisplayPeople, "anchor">;
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
 // The anchor {frameIndex 1, pts 0.25} on a 1/4 s source: its entry and the 400x200 display PNG target.
 const ANCHOR_ENTRY = { kind: "source", decodeStart: r(1, 4), clipStart: r(1, 4), displayStart: r(1, 4), displayEnd: r(1, 2), rate: r(1) } as const;
@@ -35,8 +43,8 @@ const accepted = miniToolAnalysisRecordSchema.parse({
     profile: { id: "people-detector", version: "1", weightsHash: null, params: {} } },
   status: "running", result: null, error: null, usage: [], artifactUnavailable: false,
 });
-const display: MiniToolDisplayPeople = {
-  schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor: { frameIndex: 1, pts: 0.25 }, width: 400, height: 200,
+const display: Display = {
+  schemaVersion: 1, kind: "people", coordinateSpace: "display", width: 400, height: 200,
   candidates: [
     { detectionIndex: 0, faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, pixelCrop: { x: 40, y: 20, width: 80, height: 60 } },
     { detectionIndex: 2, faceBox: { x: 0.5, y: 0.2, width: 0.1, height: 0.25 }, pixelCrop: { x: 200, y: 40, width: 40, height: 50 } },
@@ -44,7 +52,7 @@ const display: MiniToolDisplayPeople = {
   ],
 };
 type DoneReport = Extract<MiniToolRegisteredAnalysisJob["report"], { state: "done" }>;
-type Fixture = { observations: MiniToolDisplayPeople; job: MiniToolRegisteredAnalysisJob & { report: DoneReport }; expected: MiniToolPeopleAnalysisResult };
+type Fixture = { observations: Display; job: MiniToolRegisteredAnalysisJob & { report: DoneReport }; expected: MiniToolPeopleAnalysisResult };
 
 /** Project the canonical row exactly as a thumbnail reference. @returns The owned public reference. */
 function reference(asset: StudioAssetEntity): MiniToolPeopleAnalysisResult["people"][number]["artifactRefs"][number] {
@@ -54,7 +62,7 @@ function reference(asset: StudioAssetEntity): MiniToolPeopleAnalysisResult["peop
 }
 
 /** Build independent original-plan facts from the oracle's declared candidate fixtures. @returns The mutable test fixture. */
-function fixture(observations: MiniToolDisplayPeople = display, original: MiniToolAnalysisRecord = accepted): Fixture {
+function fixture(observations: Display = display, original: MiniToolAnalysisRecord = accepted): Fixture {
   const candidates = structuredClone(observations.candidates);
   const outputs = candidates.map((candidate) => ({ outputIndex: candidate.detectionIndex, storageKey: `declared/thumbnail-${candidate.detectionIndex}.png`,
     // §93 D5-7 (design §7.17 「唯一写点：worker的配方构造」): the anchor's entry and PNG target replace frameIndex with orientation display.
@@ -95,7 +103,7 @@ function frameRecipe(job: MiniToolRegisteredAnalysisJob, index = 1): EntryFrame 
 // P-A1–A3/P-I1–I2: independent oracle fixes noncontiguous indices and three different array orders.
 describe("display people candidates and stable canonical thumbnails", () => {
   it("reads the exact display payload before planning its thumbnail jobs", () => {
-    expect(readMiniToolDisplayPeople(accepted, display)).toEqual(display);
+    expect(readDisplay(accepted, display, DISPLAY_TARGET)).toEqual(display);
   });
 
   it("joins original indices 0/2/5 and preserves every accepted identity and canonical reference", () => {
@@ -149,7 +157,7 @@ describe("display people candidates and stable canonical thumbnails", () => {
 
   it("returns an exact empty result with no zero-output thumbnail job", () => {
     const f = fixture({ ...display, candidates: [] });
-    expect(readMiniToolDisplayPeople(accepted, f.observations)).toEqual(f.observations);
+    expect(readDisplay(accepted, f.observations, DISPLAY_TARGET)).toEqual(f.observations);
     expect(assemble(accepted, KEY, f.observations, [], ANCHOR_ENTRY)).toEqual(f.expected);
   });
 
@@ -237,9 +245,8 @@ describe("display people content boundaries", () => {
     { name: "raw coordinates", patch: { coordinateSpace: "raw" } },
     { name: "unknown coordinate space", patch: { coordinateSpace: "screen" } },
     { name: "wrong version", patch: { schemaVersion: 2 } }, { name: "wrong kind", patch: { kind: "scene_cuts" } },
-    { name: "wrong anchor frame", patch: { anchor: { frameIndex: 2, pts: 0.25 } } },
-    { name: "wrong anchor PTS", patch: { anchor: { frameIndex: 1, pts: 0.26 } } },
-    { name: "missing anchor", patch: { anchor: undefined } },
+    // §93 D5-8: the anchor is the accepted one, never read back from the container.
+    { name: "an anchor echo", patch: { anchor: { frameIndex: 1, pts: 0.25 } } },
     { name: "non-array candidates", patch: { candidates: {} } },
     { name: "missing candidate object", patch: { candidates: [null] } },
     { name: "duplicate detector identity", patch: { candidates: [display.candidates[0], display.candidates[0]] } },
@@ -262,14 +269,19 @@ describe("display people content boundaries", () => {
 
   it.each(invalidPayloads)("refuses $name in both display reading and complete assembly", ({ patch }) => {
     const f = fixture(); const observations = { ...display, ...patch };
-    expect(() => readMiniToolDisplayPeople(accepted, observations)).toThrow();
+    expect(() => readDisplay(accepted, observations, DISPLAY_TARGET)).toThrow();
     expect(() => assemble(accepted, KEY, observations, [f.job], ANCHOR_ENTRY)).toThrow();
+  });
+
+  // §93 D5-8: the detector ran on the recipe target, so other measured geometry is not this job's output.
+  it.each([{ width: 200, height: 400 }, { width: 400, height: 199 }])("refuses display people measured at %j instead of the 400x200 target", (size) => {
+    expect(() => readDisplay(accepted, { ...display, ...size, candidates: [] }, DISPLAY_TARGET)).toThrow();
   });
 
   it("requires the originally accepted analysis to be people", () => {
     const original = miniToolAnalysisRecordSchema.parse({ ...accepted, kind: "scene_cuts", analysisInput: { schemaVersion: 1, kind: "scene_cuts",
       sourceURL: accepted.binding.canonicalURL, profile: accepted.analysisInput.profile, range: { start: 0, end: 1 } } });
-    expect(() => readMiniToolDisplayPeople(original, display)).toThrow();
+    expect(() => readDisplay(original, display, DISPLAY_TARGET)).toThrow();
     expect(() => assemble(original, KEY, display, [fixture().job], ANCHOR_ENTRY)).toThrow();
   });
 });
