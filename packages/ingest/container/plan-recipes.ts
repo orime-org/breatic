@@ -206,6 +206,8 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       await writePlanJson(output, { schemaVersion: 1, kind: "inspect_video", source: facts.source, probe: facts.raw });
       return { ...NO_MEDIA };
     case "frame": {
+      // A frame on a full-ledger entry runs as a presentation recipe and reads no source facts.
+      if ("entry" in recipe) throw new TypeError("The frame recipe on an entry runs as a presentation recipe");
       const anchor = facts.source.frameTable.frames[recipe.frameIndex];
       if (anchor === undefined) throw new Error("Frame recipe is outside the complete source ledger");
       if (recipe.orientation === "display") {

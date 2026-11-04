@@ -107,6 +107,10 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
         for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
         metadata = await executePresentationRecipe({ recipe, inputs, output: file, directory, signal, limits: job.limits });
       } else {
+        // §91 D4-6: a people, scene_cuts or segment recipe on full-ledger entries reads no per-frame probe; its execution
+        // arrives with those tools' runners.
+        const raw = recipe as unknown as Record<string, unknown>;
+        if (raw.entry !== undefined || raw.entries !== undefined) throw new Error(`The ${recipe.kind} recipe on full-ledger entries is not executable yet`);
         const input = await fetchInput(recipe.inputId);
         let source = facts.get(input);
         if (source === undefined) {

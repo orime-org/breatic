@@ -7,7 +7,7 @@
  * durations and adds the interval's audio, and the copy keeps every packet and tags the plan matrix. The recipe carries
  * what the worker wrote from the full ledger; nothing here reads the ledger.
  */
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gcd, rational } from "@shared/mini-tools/video-presentation-projection.js";
 import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
@@ -17,9 +17,12 @@ import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
 import type { PlanLimits } from "@ingest/container/plan-recipes.js";
 import { probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
+import { pngSize } from "@ingest/png-size.js";
 
 /** The recipes this module runs. */
-export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }>;
+export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "copy_carrier" | "chunk_encode" | "stitch" | "prepare_model_input" }> | FrameRecipe;
+/** A still frame on a full-ledger entry (§91 D4-3). */
+type FrameRecipe = Extract<MiniToolPlanRecipe, { kind: "frame"; entry: MiniToolPlanEntry }>;
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
   recipe: PresentationRecipe;
@@ -41,11 +44,11 @@ const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601
 /**
  * Whether a recipe is one of the presentation recipes.
  * @param recipe - A validated recipe.
- * @returns True for copy, chunk, stitch and model input.
+ * @returns True for copy, chunk, stitch, model input and a frame on a full-ledger entry.
  * @throws {never} Never.
  */
 export function isPresentationRecipe(recipe: MiniToolPlanRecipe): recipe is PresentationRecipe {
-  return KINDS.has(recipe.kind);
+  return KINDS.has(recipe.kind) || (recipe.kind === "frame" && "entry" in recipe);
 }
 
 /**
@@ -406,6 +409,44 @@ function local(files: ReadonlyMap<string, string>, inputId: string): string {
 }
 
 /**
+ * Render a still frame (§7.17 frame row and orientation-and-geometry row; §4.3): a source entry decodes from its decodeStart and takes the
+ * frame shown at its clip start, upright, tone mapped when the plan says so, decoded with the plan's matrix and scaled to the
+ * display geometry; a derived-empty entry is composed in its fill. The PNG is 8 or 16 bits per channel, RGBA when alpha is
+ * kept, and cropped to the display crop when there is one.
+ * @param recipe - The frame recipe.
+ * @param source - The downloaded source.
+ * @param output - The PNG to write.
+ * @param run - The lifetime and IO bounds.
+ * @returns The PNG's size.
+ * @throws {RangeError} When the plan matrix has no decode value.
+ * @throws {Error} When FFmpeg fails or the PNG is incomplete.
+ */
+async function renderFrame(recipe: FrameRecipe, source: string, output: string,
+  run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<{ width: number; height: number }> {
+  const { entry, target, crop } = recipe;
+  const keep = target.alpha === "straight";
+  const pixel = keep ? (target.pngBitDepth === 16 ? "rgba64be" : "rgba") : (target.pngBitDepth === 16 ? "rgb48be" : "rgb24");
+  const cropped = crop === undefined ? "" : `,crop=${crop.rect.width}:${crop.rect.height}:${crop.rect.x}:${crop.rect.y}:exact=1`;
+  const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
+  let graph: string;
+  if (entry.kind === "empty") {
+    graph = `color=c=black${keep && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,format=${pixel}${cropped}[v]`;
+  } else {
+    const matrix = SCALE_MATRICES[target.colorMatrix];
+    if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
+    const facts = await sourceFacts(source, run);
+    const first = await frameStartAt(source, facts, entry, run);
+    args.push(...mediaTimeline(facts), "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}` +
+      `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
+  }
+  await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
+  const size = pngSize(new Uint8Array(await readFile(output)));
+  if (size === null) throw new Error("The frame recipe produced no complete PNG");
+  return size;
+}
+
+/**
  * Run one presentation recipe and read back what it wrote.
  * @param request - The recipe, its files and lifetime.
  * @returns The output's media numbers, and for a packed stitch its packing geometry (§91 D3-3; the DO writes the manifest).
@@ -415,6 +456,7 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
   request.signal.throwIfAborted();
   const { recipe, inputs, output, directory, signal, limits } = request;
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
+  if (recipe.kind === "frame") return { ...await renderFrame(recipe, local(inputs, recipe.inputId), output, run), durationSeconds: null, cover: null };
   if (recipe.kind === "copy_carrier") await copyWithMatrixTag(local(inputs, recipe.inputId), output, recipe.colorMatrix, { signal, limits });
   else if (recipe.kind === "stitch") await stitch(recipe, inputs, directory, output, run);
   else await renderWindow(recipe, local(inputs, recipe.inputId), output, run);
