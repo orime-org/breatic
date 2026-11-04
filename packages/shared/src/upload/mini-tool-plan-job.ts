@@ -13,7 +13,7 @@ import { compare, exactTime } from "@shared/upload/video-source-ledger.js";
 import type { MiniToolPlanEntry, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
 export type {
-  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan,
+  MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop, MiniToolPlanFrameTarget, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanInterval, MiniToolPlanTarget, MiniToolPlanAudio, MiniToolPlanEditSpan,
 } from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
@@ -67,6 +67,15 @@ export const miniToolPlanLimitsSchema = z.strictObject({
   stderrTailBytes: z.number().int().positive(),
 });
 
+const frameTarget = z.strictObject({
+  width: z.number().int().positive(), height: z.number().int().positive(), colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]),
+  pngBitDepth: z.union([z.literal(8), z.literal(16)]), alpha: z.enum(["none", "straight"]),
+});
+// §91 D4-3: one full-ledger entry and its PNG target; a crop names the target's display geometry.
+const entryFrame = z.strictObject({ kind: z.literal("frame"), inputId, entry, target: frameTarget, crop: frameCrop.optional(),
+  frameIndex: z.never().optional(), orientation: z.never().optional() })
+  .refine((recipe) => recipe.crop === undefined || (recipe.crop.sourceWidth === recipe.target.width && recipe.crop.sourceHeight === recipe.target.height));
+
 /** The versioned per-output media recipes admitted by the planned job lane. */
 export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspect_video"), inputId }),
@@ -83,7 +92,7 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
     audio: audio.nullable(), target }).refine((recipe) => recipe.chunks.every((chunk) => chunk.inputId !== recipe.inputId)),
   // A model's input over its presentation window (§5.3), written as an intermediate object.
   z.strictObject({ kind: z.literal("prepare_model_input"), ...windowRecipe, audio: audio.nullable() }),
-]) satisfies z.ZodType<MiniToolPlanRecipe>;
+]).or(entryFrame) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */
 export const miniToolPlanJobRequestSchema = z.strictObject({

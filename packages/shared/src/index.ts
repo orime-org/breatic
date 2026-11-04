@@ -913,6 +913,7 @@ export {
   type MiniToolPlanInterval,
   type MiniToolPlanAudio,
   type MiniToolPlanTarget,
+  type MiniToolPlanFrameTarget,
   type MiniToolPlanJobRequest,
   type MiniToolPlanJobReport,
   type MiniToolPlanAccess,

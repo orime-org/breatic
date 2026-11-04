@@ -55,10 +55,22 @@ interface MiniToolPlanWindowRecipe {
   target: MiniToolPlanTarget;
 }
 
+/** A still frame's PNG (§91 D4-3): display geometry, the plan's matrix and conversion, the PNG depth and whether alpha is kept. */
+export interface MiniToolPlanFrameTarget {
+  width: number;
+  height: number;
+  colorMatrix: string;
+  toneMap: "none" | "sdr-bt709";
+  pngBitDepth: 8 | 16;
+  alpha: "none" | "straight";
+}
+
 /** Media recipes shared with a container that loads no validation libraries. */
 export type MiniToolPlanRecipe =
   | { kind: "inspect_video"; inputId: string }
   | { kind: "frame"; inputId: string; frameIndex: number; orientation?: "display"; crop?: MiniToolPlanFrameCrop }
+  // The frame one full-ledger entry presents (§7.17 frame row), optionally cropped in its display geometry.
+  | { kind: "frame"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop; frameIndex?: never; orientation?: never }
   | { kind: "segment"; inputId: string; range: { start: number; end: number }; audioEnd?: number }
   | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile; orientation?: "display" }
   | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile }
