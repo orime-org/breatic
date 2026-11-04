@@ -4,6 +4,7 @@
 import { expect } from 'playwright/test';
 import type { RecentFeedItem } from '@web/data/api/studios';
 import type { ProjectVisitLookup, ProjectVisitOpened } from '@breatic/shared';
+import type * as CurrentUserModule from '@web/stores/current-user';
 import { test } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
@@ -67,7 +68,7 @@ test('passive account refresh, archive reauth and transport reconnect preserve t
     const userUrl = await liveModuleUrl(page, 'stores/current-user.ts');
     const refreshedAccount = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/auth/me' && response.request().method() === 'GET');
     await page.evaluate(async (url) => {
-      const current = await import(/* @vite-ignore */ url) as typeof import('@web/stores/current-user');
+      const current = await import(/* @vite-ignore */ url) as typeof CurrentUserModule;
       if (!current.useCurrentUserStore.getState().user) throw new Error('The live auth singleton is empty');
       await current.refreshCurrentUser();
     }, userUrl);
