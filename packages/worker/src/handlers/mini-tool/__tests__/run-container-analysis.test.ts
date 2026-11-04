@@ -76,7 +76,10 @@ function ledger(): VideoPresentationLedger {
   return JSON.parse(ledgerBytes.toString("utf8")) as VideoPresentationLedger;
 }
 // The anchor is presented frame 48 at 48/25 s, a source keyframe; the crops lie inside the 320x180 display.
-const people: MiniToolDisplayPeople = { schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor: { frameIndex: 48, pts: 1.92 },
+const ANCHOR = { frameIndex: 48, pts: 1.92 };
+/** Display people as the container writes them on an entry: no anchor echo (§93 D5-8). */
+type Display = Omit<MiniToolDisplayPeople, "anchor">;
+const people: Display = { schemaVersion: 1, kind: "people", coordinateSpace: "display",
   width: 320, height: 180, candidates: [
     { detectionIndex: 0, faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, pixelCrop: { x: 40, y: 20, width: 80, height: 60 } },
     { detectionIndex: 2, faceBox: { x: 0.5, y: 0.2, width: 0.1, height: 0.25 }, pixelCrop: { x: 200, y: 40, width: 40, height: 50 } },
@@ -84,13 +87,9 @@ const people: MiniToolDisplayPeople = { schemaVersion: 1, kind: "people", coordi
   ] };
 // The scanned scene range starts on keyframe 48 and ends at the display end (3.84 s).
 const SCENE_RANGE = { start: 1.92, end: 3.84 };
-// Pending §93 D5-8 (the scene_cuts JSON a container writes on entries): the scene cases below that still read an
-// inspect_video output keep the pre-D5 request (`legacySceneRequest`) until that shape is decided.
-const frames = Array.from({ length: 60 }, (_, frameIndex) => ({ frameIndex, pts: (frameIndex * frameIndex + frameIndex) / 100 }));
-const inspection = { schemaVersion: 1, kind: "inspect_video", probe: {}, source: { width: 400, height: 200, rotation: 0, hasAudio: false,
-  timeBase: "1/100", frameTable: { frames, videoEnd: 36 } } };
-const scenes = { schemaVersion: 1, kind: "scene_cuts", timeBase: "1/100", frameCount: 60, sourceFrameMapping: frames.slice(10, 50),
-  cuts: [{ frameIndex: 30, pts: 9.3, detectionScore: 85 }] };
+// §93 D5-8 (design §7.17 scene_cuts row 「切点按呈现序号记录；结果组装按compact核对」): the container records cuts by
+// presentation ordinal; the worker gives each its displayed pts through sceneCutsResultOf on the frozen ledger.
+const scenes = { schemaVersion: 1, kind: "scene_cuts", cuts: [{ ordinal: 60, detectionScore: 85 }] };
 type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
 type Step = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>[number];
 type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
@@ -100,9 +99,9 @@ let payload: unknown;
 let grantSequence: number;
 
 /** Construct a valid SQL-owned execution using the independent people and scene source clocks. @returns The accepted execution. */
-function execution(kind: "people" | "scene_cuts" = "people", range: { start: number; end: number } = { start: 1.1, end: 25 }): Execution {
+function execution(kind: "people" | "scene_cuts" = "people", range: { start: number; end: number } = SCENE_RANGE): Execution {
   const profile = { id: `original-${kind}-profile`, version: "original-version", weightsHash: null, params: { threshold: 27 } };
-  const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, anchor: people.anchor }
+  const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, anchor: ANCHOR }
     : { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, range };
   const presented = frozenPresentation() as { ledgerReceipts: { source: { sourceFingerprint: string } } };
   const record = miniToolAnalysisRecordSchema.parse({ schemaVersion: 1, draftId: "70000000-0000-4000-8000-000000000001",
@@ -141,9 +140,9 @@ function registered(request: MiniToolPlanJobRequest): RegisteredMiniToolPlanJob 
 }
 
 /** Project the independent oracle's canonical thumbnail facts. @returns The exact expected public people result. */
-function expectedPeople(original: Execution, observations: MiniToolDisplayPeople = people): Extract<MiniToolAnalysisResult, { kind: "people" }> {
+function expectedPeople(original: Execution, observations: Display = people): Extract<MiniToolAnalysisResult, { kind: "people" }> {
   const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = original.record;
-  return { ...identity, kind: "people", anchor: people.anchor, people: observations.candidates.map((candidate) => {
+  return { ...identity, kind: "people", anchor: ANCHOR, people: observations.candidates.map((candidate) => {
     const row = asset(candidate.detectionIndex, true, candidate.pixelCrop.width, candidate.pixelCrop.height);
     return { personId: `person:${original.record.analysisRunId}:${candidate.detectionIndex}`, faceBox: candidate.faceBox, artifactRefs: [{ role: "thumbnail", assetId: row.id,
       canonicalURL: row.fileUrl, contentHash: row.contentHash, kind: "image", mimeType: row.mimeType, size: row.sizeBytes, frameMetadata: null }] };
@@ -194,7 +193,7 @@ beforeEach(() => {
   });
   h.read.mockImplementation(async (assetId: string) => {
     const index = assetId === asset(1, false).id ? 1 : 0;
-    return { asset: asset(index, false), json: index === 1 ? structuredClone(scenes) : structuredClone(payload) };
+    return { asset: asset(index, false), json: structuredClone(payload) };
   });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -223,17 +222,6 @@ function initialRequest(original: Execution = execution()): MiniToolPlanJobReque
     limits: structuredClone(LIMITS), inputs: [{ inputId: SOURCE, storageKey: SOURCE_KEY }], outputs };
 }
 
-/** The pre-D5 scene request (inspect0, scenes1), kept for the scene cases pending §93 D5-8. @returns The stored first plan. */
-function legacySceneRequest(original: Execution): MiniToolPlanJobRequest {
-  const input = original.record.analysisInput;
-  if (input.kind !== "scene_cuts") throw new Error("Fixture requires a scene analysis");
-  return { schemaVersion: 2, jobId: `task:${original.context.taskId}/chunk:0`, containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE,
-    limits: structuredClone(LIMITS), inputs: [{ inputId: SOURCE, storageKey: SOURCE_KEY }], outputs: [
-      { outputIndex: 0, storageKey: "persisted/inspect.txt", contentType: "text/plain", recipe: { kind: "inspect_video", inputId: SOURCE } },
-      { outputIndex: 1, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: { kind: "scene_cuts", inputId: SOURCE, range: input.range, profile: input.profile } },
-    ] };
-}
-
 /** Restore one original task step with its first plan and optional initial JSON values. @returns The owned fixture step. */
 function storedStep(request: MiniToolPlanJobRequest, position: number, json: Record<string, unknown> = {}): Step {
   const ended = registered(request);
@@ -245,36 +233,40 @@ function storedStep(request: MiniToolPlanJobRequest, position: number, json: Rec
 }
 
 /** The golden thumbnail request consumes original display pixels without normalized inversion. @returns The stored thumbnail plan. */
-function thumbnailRequest(candidates: MiniToolDisplayPeople["candidates"] = people.candidates, position = 1): MiniToolPlanJobRequest {
+function thumbnailRequest(candidates: Display["candidates"] = people.candidates, position = 1): MiniToolPlanJobRequest {
   // §93 D5 (design §7.17 「唯一写点：worker的配方构造」; D4-5): each crop is the anchor's frame recipe on its full-ledger entry plus
   // the existing display crop, instead of the source frameIndex with orientation display.
   return { ...initialRequest(), jobId: `task:${TASK}/chunk:${position}`, outputs: candidates.map((candidate) => ({
     outputIndex: candidate.detectionIndex, storageKey: `persisted/thumbnail-${candidate.detectionIndex}.png`, contentType: "image/png",
-    recipe: candidateCropRecipeOf(ledger(), people.anchor, SOURCE, { sourceWidth: 320, sourceHeight: 180, rect: candidate.pixelCrop }),
+    recipe: candidateCropRecipeOf(ledger(), ANCHOR, SOURCE, { sourceWidth: 320, sourceHeight: 180, rect: candidate.pixelCrop }),
   })) };
 }
 
 /** Retain the complete original accepted scene identity and nonlinear source clock. @returns The exact scene expected value. */
 function expectedScene(original: Execution): Extract<MiniToolAnalysisResult, { kind: "scene_cuts" }> {
   const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = original.record;
-  return { ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 100 }, frameCount: 60,
-    cuts: [{ frameIndex: 30, pts: 9.3, detectionScore: 85 }] };
+  // §93 D5-8: the presentation clock (1/25, 96 ledger frames); cut ordinal 60 is shown at 60/25 s.
+  return { ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 25 }, frameCount: 96,
+    cuts: [{ frameIndex: 60, pts: 2.4, detectionScore: 85 }] };
 }
 
 // O-A1/A2/A4, O-S1/S3, O-P1 and O-F1/F2: IO is mocked; both domain assemblers stay real.
 describe("accepted container analysis orchestration", () => {
   // §93 D5 (design §7.17 scene_cuts row 「去掉inspect_video步骤」, 「唯一写点：worker的配方构造」): the one job carries a single
-  // scene_cuts output on the range's full-ledger entries. The result assembly is pending §93 D5-8 (the scene JSON on entries),
-  // so this case asserts only what is submitted.
-  it("AR01 submits one user-funded scene_cuts output built from the frozen ledger and no inspect_video", async () => {
-    const original = execution("scene_cuts", SCENE_RANGE);
-    await runMiniToolContainerAnalysis(original, DEADLINE).catch(() => undefined);
+  // scene_cuts output on the range's full-ledger entries; §93 D5-8: its ordinal cuts get their presented pts from the ledger.
+  it("AR01 runs one user-funded scene_cuts output built from the frozen ledger, no inspect_video, cuts on presentation ordinals", async () => {
+    const original = execution("scene_cuts"); payload = structuredClone(scenes);
+    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
     expect(h.grants).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectId: PROJECT, actingUserId: USER, taskId: TASK, deadlineAt: DEADLINE,
       outputs: [expect.objectContaining({ modality: "text" })] }));
     const call: OpenMiniToolPlanJobInput = h.advance.mock.calls[0]![0];
     expect(call).toEqual({ taskId: TASK, stepId: steps[0]!.id, chunkIndex: 0, chargeTo: "user", request: { ...initialRequest(original),
       outputs: initialRequest(original).outputs.map((output, index) => ({ ...output, storageKey: `derived/grant-0/${index}.txt` })) } });
     expect(call.request.outputs.some((output) => output.recipe.kind === "inspect_video")).toBe(false);
+    expect(h.advance).toHaveBeenCalledTimes(1);
+    expect(h.read.mock.calls).toEqual([[asset(0, false).id, DEADLINE]]);
+    expect(steps[0]!.output).toMatchObject({ "miniToolAnalysisJson:0": scenes });
+    expect(h.finish).not.toHaveBeenCalled(); expect(h.charge).not.toHaveBeenCalled();
   });
 
   it("AR02 executes display people0 then exact original pixel thumbnails with platform ownership", async () => {
@@ -341,8 +333,7 @@ describe("accepted container analysis orchestration", () => {
   });
 
   it("retains an empty scene result without creating media or split outputs", async () => {
-    const original = execution("scene_cuts"); payload = structuredClone(inspection);
-    h.read.mockImplementation(async (id: string) => ({ asset: asset(id === asset(1, false).id ? 1 : 0, false), json: id === asset(1, false).id ? { ...scenes, cuts: [] } : inspection }));
+    const original = execution("scene_cuts"); payload = { ...scenes, cuts: [] };
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual({ ...expectedScene(original), cuts: [] });
     expect(h.advance).toHaveBeenCalledTimes(1); expect(h.grants).toHaveBeenCalledTimes(1);
   });
@@ -351,14 +342,13 @@ describe("accepted container analysis orchestration", () => {
 // O-A7/A13, O-C1–C4/C12: caches belong to the complete stored initial step, not the current configuration.
 describe("original request and JSON cache recovery", () => {
   it("replays stored scene requests and caches without reading current configuration or opening grants", async () => {
-    const original = execution("scene_cuts"); const request = legacySceneRequest(original);
-    const step = storedStep(request, 0, { "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes });
-    const before = structuredClone(step.output);
+    const original = execution("scene_cuts"); const request = initialRequest(original);
+    const step = storedStep(request, 0, { "miniToolAnalysisJson:0": scenes });
     h.config.mockReturnValue(replayConfig("Replay must not read changed configuration"));
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
     expect(h.advance).toHaveBeenCalledExactlyOnceWith({ taskId: TASK, stepId: step.id, chunkIndex: 0, chargeTo: "user", request });
     expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
-    expect(step.output).toEqual(before);
+    expect(step.output).toMatchObject({ miniToolPlanJob: request, "miniToolAnalysisJson:0": scenes, miniToolConsumption: { marker: "original-policy-and-usage" } });
   });
 
   it("derives new nine-person thumbnail chunks from the first class and limits while preserving stored descriptors", async () => {
@@ -378,26 +368,25 @@ describe("original request and JSON cache recovery", () => {
     expect(step.output).toMatchObject({ miniToolConsumption: { marker: "original-policy-and-usage" }, sibling: "original-sibling", "miniToolAnalysisJson:0": observations });
   });
 
-  it("reads and stores only the missing scene JSON by its canonical output index", async () => {
-    const original = execution("scene_cuts"); const request = legacySceneRequest(original);
-    const step = storedStep(request, 0, { "miniToolAnalysisJson:0": inspection });
+  it("reads and stores the missing scene JSON of a stored plan by its canonical output index", async () => {
+    const original = execution("scene_cuts"); const request = initialRequest(original); payload = structuredClone(scenes);
+    const step = storedStep(request, 0);
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(1, false).id, DEADLINE);
-    expect(h.inline).toHaveBeenCalledWith(step.id, { "miniToolAnalysisJson:1": scenes }, 0);
-    expect(step.output).toMatchObject({ miniToolPlanJob: request, "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes,
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, DEADLINE);
+    expect(h.inline).toHaveBeenCalledWith(step.id, { "miniToolAnalysisJson:0": scenes }, 0);
+    expect(step.output).toMatchObject({ miniToolPlanJob: request, "miniToolAnalysisJson:0": scenes,
       miniToolConsumption: { marker: "original-policy-and-usage" }, sibling: "original-sibling" });
   });
 
-  it("keeps the inspected JSON after a second read failure and retries only the missing canonical object", async () => {
-    const original = execution("scene_cuts"); payload = structuredClone(inspection);
+  it("keeps the stored scene plan after a read failure and rereads only its canonical object", async () => {
+    const original = execution("scene_cuts"); payload = structuredClone(scenes);
     const normal = h.read.getMockImplementation()!; const error = new TypeError("scene JSON connection dropped");
-    h.read.mockImplementation(async (id: string) => { if (id === asset(1, false).id) throw error; return normal(id); });
+    h.read.mockImplementation(async () => { throw error; });
     await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toBe(error);
-    expect(steps[0]!.output["miniToolAnalysisJson:0"]).toEqual(inspection);
     const request = structuredClone(steps[0]!.output.miniToolPlanJob);
     h.read.mockClear(); h.read.mockImplementation(normal); h.grants.mockClear();
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(1, false).id, DEADLINE);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, DEADLINE);
     expect(h.grants).not.toHaveBeenCalled(); expect(steps[0]!.output.miniToolPlanJob).toEqual(request);
   });
 
@@ -424,7 +413,7 @@ describe("original request and JSON cache recovery", () => {
     expect(steps.map((step) => step.output.miniToolPlanJob)).toEqual(requests);
   });
 
-  it.each([null, false, 0, "", { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 49, pts: 1.96 } }])("validates a present cached JSON value rather than refetching it: %j", async (json) => {
+  it.each([null, false, 0, "", { ...people, coordinateSpace: "raw" }, { ...people, anchor: ANCHOR }])("validates a present cached JSON value rather than refetching it: %j", async (json) => {
       const original = execution(); storedStep(initialRequest(original), 0, { "miniToolAnalysisJson:0": json });
       await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toThrow();
       expect(h.read).not.toHaveBeenCalled(); expect(h.grants).not.toHaveBeenCalled();
@@ -455,18 +444,27 @@ describe("unchanged deadline and late pure assembly", () => {
     expect(h.grants).not.toHaveBeenCalled(); expect(h.advance).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
   });
 
-  it.each(["people", "scene_cuts"] as const)("allows complete cached %s results after the report window without new grants or JSON GET", async (kind) => {
-    const original = execution(kind); storedStep(kind === "people" ? initialRequest(original) : legacySceneRequest(original), 0,
-      kind === "people" ? { "miniToolAnalysisJson:0": people } : { "miniToolAnalysisJson:0": inspection, "miniToolAnalysisJson:1": scenes });
-    if (kind === "people") storedStep(thumbnailRequest(), 1);
+  it("allows complete cached people results after the report window without new grants or JSON GET", async () => {
+    const original = execution(); storedStep(initialRequest(original), 0, { "miniToolAnalysisJson:0": people });
+    storedStep(thumbnailRequest(), 1);
     vi.mocked(Date.now).mockReturnValue(DEADLINE + 10001);
-    const expected = kind === "people" ? expectedPeople(original) : expectedScene(original);
-    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expected);
+    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
   });
 
+  // §93 D5-8: the worker caches the assembled cuts in the step, so a complete run replayed after D needs neither the scene
+  // JSON nor the frozen ledger again (no new read after D).
+  it("AR06 replays a completed scene result after the report window from its cached cuts, reading neither JSON nor ledger", async () => {
+    const original = execution("scene_cuts"); payload = structuredClone(scenes);
+    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
+    h.grants.mockClear(); h.read.mockClear(); vi.mocked(fetch).mockClear();
+    vi.mocked(Date.now).mockReturnValue(DEADLINE + 10001);
+    expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
+    expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
   it.each(["people", "scene_cuts"] as const)("retains a stored %s report but refuses a missing JSON GET after D", async (kind) => {
-    const original = execution(kind); storedStep(kind === "people" ? initialRequest(original) : legacySceneRequest(original), 0, kind === "scene_cuts" ? { "miniToolAnalysisJson:0": inspection } : {});
+    const original = execution(kind); storedStep(initialRequest(original), 0);
     vi.mocked(Date.now).mockReturnValue(DEADLINE + 1);
     await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toBeInstanceOf(DeadlinePassed);
     expect(h.advance).toHaveBeenCalledTimes(1); expect(h.read).not.toHaveBeenCalled(); expect(h.grants).not.toHaveBeenCalled();
@@ -499,22 +497,24 @@ describe("unchanged deadline and late pure assembly", () => {
 // O-P6/P8/P9/P15 and O-S4/S5/S6: real domain parsers observe content and cross-artifact relationships.
 describe("registered content and failure propagation", () => {
   it.each([
-    { ...people, coordinateSpace: "raw" }, { ...people, anchor: { frameIndex: 49, pts: 1.96 } },
+    { ...people, coordinateSpace: "raw" }, { ...people, anchor: ANCHOR },
     { ...people, candidates: [people.candidates[0], people.candidates[0]] },
     { ...people, candidates: [{ ...people.candidates[0], pixelCrop: { x: 319, y: 0, width: 2, height: 1 } }] },
+    // §93 D5-8: an anchor echo, and display people measured at another size than the people recipe's 320x180 target.
+    { ...people, width: 640, height: 360 },
   ])("does not allocate thumbnails for invalid display content %j", async (json) => {
     payload = json;
     await expect(runMiniToolContainerAnalysis(execution(), DEADLINE)).rejects.toThrow();
     expect(h.advance).toHaveBeenCalledTimes(1); expect(h.grants).toHaveBeenCalledTimes(1);
   });
 
+  // §93 D5-8: cuts outside the scanned window (sceneCutsResultOf), repeated ordinals and the pre-D5 fields are refused.
   it.each([
-    { ...scenes, frameCount: 40 }, { ...scenes, timeBase: "1/1000" }, { ...scenes, sourceFrameMapping: frames.slice(11, 50) },
-    { ...scenes, cuts: [{ frameIndex: 30, pts: 9.31, detectionScore: 85 }] },
+    { ...scenes, cuts: [{ ordinal: 40, detectionScore: 85 }] }, { ...scenes, cuts: [{ ordinal: 96, detectionScore: 85 }] },
+    { ...scenes, cuts: [...scenes.cuts, ...scenes.cuts] }, { ...scenes, timeBase: "1/100" },
+    { ...scenes, cuts: [{ frameIndex: 60, pts: 2.4, detectionScore: 85 }] }, { ...scenes, cuts: [{ ordinal: 60, detectionScore: "85" }] },
   ])("does not turn conflicting scene observations into a complete result %j", async (json) => {
-    payload = structuredClone(inspection);
-    const normal = h.read.getMockImplementation()!;
-    h.read.mockImplementation(async (id: string) => id === asset(1, false).id ? { asset: asset(1, false), json } : normal(id));
+    payload = json;
     await expect(runMiniToolContainerAnalysis(execution("scene_cuts"), DEADLINE)).rejects.toThrow();
     expect(h.advance).toHaveBeenCalledTimes(1);
   });
@@ -574,8 +574,8 @@ describe("registered content and failure propagation", () => {
   });
 
   it.each([false, true])("preserves a failed scene report rather than reinterpreting its complete=%s output set", async (complete) => {
-    const original = execution("scene_cuts"); const request = legacySceneRequest(original); storedStep(request, 0);
-    const ended = registered(request); const subset = complete ? ended.report.outputs : ended.report.outputs.slice(0, 1);
+    const original = execution("scene_cuts"); const request = initialRequest(original); storedStep(request, 0);
+    const ended = registered(request); const subset = complete ? ended.report.outputs : [];
     const failed: RegisteredMiniToolPlanJob = { ...ended, report: { ...ended.report, state: "failed", reason: "tool_failed", outputs: subset },
       assets: complete ? ended.assets : ended.assets.filter((entry) => subset.some((output) => output.outputIndex === entry.outputIndex)) };
     const before = structuredClone(failed); h.advance.mockResolvedValue(failed);
@@ -625,7 +625,7 @@ describe("registered content and failure propagation", () => {
   it("does not route a tracked-mask execution through the people or scene branches", async () => {
     const original = execution();
     original.record = miniToolAnalysisRecordSchema.parse({ ...original.record, kind: "tracked_mask", analysisInput: {
-      ...original.record.analysisInput, kind: "tracked_mask", anchor: people.anchor, range: { start: 0, end: 1 },
+      ...original.record.analysisInput, kind: "tracked_mask", anchor: ANCHOR, range: { start: 0, end: 1 },
       region: { box: people.candidates[0]!.faceBox, points: [] }, trackingPrompt: "the selected person",
     } });
     original.params.analysis.kind = "tracked_mask"; original.params.analysis.analysisInput = original.record.analysisInput;
