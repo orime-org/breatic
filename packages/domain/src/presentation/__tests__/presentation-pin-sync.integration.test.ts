@@ -78,7 +78,8 @@ function answer(w: World, fields: Partial<Record<keyof shared.VideoPresentationP
     work: { kind: "encode", chunks: [{ start: 0, end: 1011 }] },
     candidateLedger: { state: "ready", receipt: w.source.receipt, failure: null },
     units: { [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [{ attempt: 1, jobId: w.chunk, state: "done", usageRecorded: true }] } },
-    frozen: { pricing: { basic: { ...price, containerClass: "MediaContainer" }, standard4: price }, actorUserId: ACTOR, projectId: null },
+    // §91 D3b-1: the frozen carrier encode parameters.
+    frozen: { pricing: { basic: { ...price, containerClass: "MediaContainer" }, standard4: price }, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: "medium", maxShortSide: 1080 } },
     ...fields,
   });
 }
@@ -227,7 +228,9 @@ describe("release points of the candidate's own objects and of old versions (des
       [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [attemptOf(w.chunk, 1, "done")] },
       // §90 E4-15: the keys come from the role-tagged receipts the DO stored for the done stitch, not from a key rule.
       [`video-presentation:${w.job}:stitch`]: { state: "done", attempt: 1, attempts: [attemptOf(w.stitch, 1, "done")], receipts: [
-        { role: "carrier", packing: "alpha-packed", storageKey: carrier, sha256: "d".repeat(64), sizeBytes: 100, contentType: "video/mp4" },
+        // §91 D3-3: an alpha-packed carrier receipt carries its packed geometry; the manifest is the DO's own.
+        { role: "carrier", packing: "alpha-packed", storageKey: carrier, sha256: "d".repeat(64), sizeBytes: 100, contentType: "video/mp4",
+          geometry: { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } } },
         { role: "manifest", storageKey: manifest, sha256: "e".repeat(64), sizeBytes: 50, contentType: "application/json" },
       ] },
     } }));
