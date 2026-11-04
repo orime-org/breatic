@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { getMiniToolsConfig } from "@breatic/core";
+import { getMiniToolsConfig, logger } from "@breatic/core";
 import { miniToolPeopleAnalysis, miniToolSceneAnalysis, openContainerOutputs, upstreamStepRepo,
   type miniToolAnalysisService } from "@breatic/domain";
 import { assertBeforeDeadline, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
-  type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
-import { chunkVideoOutputs, miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+  type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
+import { chunkVideoOutputs, miniToolAnalysisRecordSchema, presentationFrameCount, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { FullLedgerInvalid, peopleRecipeOf, readJobLedger, sceneCutsRecipeOf, sceneCutsResultOf } from "@worker/handlers/video-presentation-recipes.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { advanceRegisteredMiniToolPlanJob, type RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { readMiniToolAnalysisJson } from "@worker/handlers/mini-tool/read-analysis-json.js";
@@ -19,19 +21,22 @@ type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 interface AnalysisOutput { outputIndex: number; modality: "text" | "image"; recipe: MiniToolPlanRecipe }
 /** The original step supplies cached JSON while its job supplies live canonical rows. */
 interface AnalysisJob { step: Step; job: RegisteredMiniToolPlanJob }
+/** The scene cuts placed on the presentation, cached in the step so a replay after D needs neither JSON nor ledger. */
+interface ScenePlacement { placed: { frameIndex: number; pts: number }[]; clock: { frameCount: number; timescale: number } }
+const SCENE_PLACEMENT = "miniToolScenePlacement";
 
 /**
  * Restore a saved plan or open one new original job within the unchanged deadline.
  * @param execution - The SQL-owned accepted analysis.
  * @param deadlineAt - The original computation deadline.
  * @param position - The stable step and container chunk position.
- * @param outputs - The complete ordered recipes for this chunk.
+ * @param outputs - The complete ordered recipes for this chunk, built only when the step has no stored request.
  * @param initial - The first job's frozen runtime policy for subsequent chunks.
  * @returns The original owning step and registered terminal job.
  * @throws {Error} When preparation, persistence, progress or registration fails.
  */
 async function advanceAnalysisJob(
-  execution: Execution, deadlineAt: number, position: number, outputs: readonly AnalysisOutput[], initial?: MiniToolPlanJobRequest,
+  execution: Execution, deadlineAt: number, position: number, outputs: () => Promise<readonly AnalysisOutput[]>, initial?: MiniToolPlanJobRequest,
 ): Promise<AnalysisJob> {
   const { context, record, params } = execution;
   const steps = await upstreamStepRepo.listSteps(context.taskId);
@@ -41,6 +46,7 @@ async function advanceAnalysisJob(
     request = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
   } else {
     assertBeforeDeadline(deadlineAt);
+    const planned = await outputs();
     const configuration = initial === undefined ? getMiniToolsConfig() : undefined;
     const containerClass = step?.endpoint ?? initial?.containerClass ?? configuration!.analyses[record.kind].container_class;
     const limits = initial?.limits ?? configuration!.plan_limits;
@@ -55,14 +61,14 @@ async function advanceAnalysisJob(
     assertBeforeDeadline(deadlineAt);
     const grants = await openContainerOutputs({
       projectId: context.projectId, actingUserId: context.userId, taskId: context.taskId, deadlineAt,
-      outputs: outputs.map((output) => ({ modality: output.modality, namePrefix: "ANALYSIS" })),
+      outputs: planned.map((output) => ({ modality: output.modality, namePrefix: "ANALYSIS" })),
     });
     assertBeforeDeadline(deadlineAt);
-    if (grants.length !== outputs.length) throw new Error("Analysis outputs require their complete upload grants");
+    if (grants.length !== planned.length) throw new Error("Analysis outputs require their complete upload grants");
     request = miniToolPlanJobRequestSchema.parse({
       schemaVersion: 2, jobId: `task:${context.taskId}/chunk:${position}`, containerClass, deadlineAt, limits,
       inputs: [{ inputId: record.binding.assetId, storageKey: params.sourceKey }],
-      outputs: outputs.map((output, index) => ({ ...grants[index], outputIndex: output.outputIndex, recipe: output.recipe })),
+      outputs: planned.map((output, index) => ({ ...grants[index], outputIndex: output.outputIndex, recipe: output.recipe })),
     });
   }
   if (step.kind !== "container_job" || step.endpoint !== request.containerClass) throw new Error("Analysis plan differs from its original container step");
@@ -98,10 +104,44 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
 }
 
 /**
- * Advance the accepted people or scene analysis through its original container steps.
+ * Read the full ledger the analysis froze (§93 D5, D4-7): bytes that fail the frozen receipt never recover in this run, so
+ * the analysis ends as `source_ledger_invalid` (a new run freezes the repaired ledger); a transport failure keeps the retry.
+ * @param execution - The accepted analysis.
+ * @param deadlineAt - The task deadline.
+ * @returns The validated full ledger.
+ * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the bytes fail the receipt.
+ * @throws {Error} When the read fails in transport or the deadline passed.
+ */
+async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
+  const { ledgerReceipts, presentationRef } = execution.params.analysis;
+  try {
+    return await readJobLedger(ledgerReceipts.source, deadlineAt);
+  } catch (error) {
+    if (!(error instanceof FullLedgerInvalid)) throw error;
+    logger.error({ err: error, ctx: { taskId: execution.context.taskId, toolInputId: presentationRef.source.toolInputId } }, "mini_tool_analysis_ledger_invalid");
+    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+  }
+}
+
+/**
+ * The people recipe a stored people job carries (the anchor's entry and PNG target).
+ * @param job - The people job.
+ * @returns Its recipe.
+ * @throws {Error} When the job is not a people job on an entry.
+ */
+function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecipe, { kind: "people"; entry: unknown }> {
+  const recipe = job.request.outputs[0]?.recipe;
+  if (recipe?.kind !== "people" || !("entry" in recipe)) throw new Error("People analysis requires its people recipe on the anchor entry");
+  return recipe;
+}
+
+/**
+ * Advance the accepted people or scene analysis through its original container steps, its recipes built from the frozen
+ * full ledger with the D4 builders (§93 D5; design §7.17); scene cuts come back as presentation ordinals (§93 D5-8).
  * @param execution - The original SQL-owned execution identity, source and context.
  * @param deadlineAt - The task's unchanged computation deadline.
  * @returns The complete owned result after its registered dependencies are available.
+ * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the frozen ledger fails its receipt.
  * @throws {Error} When an original step, artifact or analysis cannot be completed.
  */
 export async function runMiniToolContainerAnalysis(
@@ -111,28 +151,50 @@ export async function runMiniToolContainerAnalysis(
   const input = record.analysisInput;
   const inputId = record.binding.assetId;
   if (input.kind === "tracked_mask") throw new Error("Tracked masks require their original provider analysis executor");
+  let ledger: Promise<VideoPresentationLedger> | undefined;
+  /**
+   * The frozen full ledger, read once and only when a recipe or placement needs it.
+   * @returns It.
+   * @throws {Error} When it cannot be read.
+   */
+  const frozen = (): Promise<VideoPresentationLedger> => (ledger ??= frozenLedger(execution, deadlineAt));
   if (input.kind === "scene_cuts") {
-    const initial = await advanceAnalysisJob(execution, deadlineAt, 0, [
-      { outputIndex: 0, modality: "text", recipe: { kind: "inspect_video", inputId } },
-      { outputIndex: 1, modality: "text", recipe: { kind: "scene_cuts", inputId, range: input.range, profile: input.profile } },
+    const initial = await advanceAnalysisJob(execution, deadlineAt, 0, async () => [
+      { outputIndex: 0, modality: "text", recipe: sceneCutsRecipeOf(await frozen(), input.range, inputId, input.profile) },
     ]);
-    return miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, await analysisJson(initial, 0), await analysisJson(initial, 1));
+    const observations = await analysisJson(initial, 0);
+    let placement = initial.step.output[SCENE_PLACEMENT] as ScenePlacement | undefined;
+    const fresh = placement === undefined;
+    if (placement === undefined) {
+      const recipe = initial.job.request.outputs[0]?.recipe;
+      if (recipe?.kind !== "scene_cuts" || !("window" in recipe)) throw new Error("Scene analysis requires its scene_cuts recipe on entries");
+      const full = await frozen();
+      const cuts = (observations as { cuts?: { ordinal?: unknown }[] } | null)?.cuts;
+      if (!Array.isArray(cuts)) throw new Error("Scene observations carry no cuts");
+      placement = { placed: sceneCutsResultOf(full, recipe.window, cuts.map((cut) => Number((cut as { ordinal?: unknown } | null)?.ordinal))),
+        clock: { frameCount: presentationFrameCount(full.plan.presentation), timescale: full.plan.presentation.timescale } };
+    }
+    const result = miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, observations, placement.placed, placement.clock);
+    if (fresh) await upstreamStepRepo.recordInline(initial.step.id, { [SCENE_PLACEMENT]: placement }, 0);
+    return result;
   }
-  const initial = await advanceAnalysisJob(execution, deadlineAt, 0, [
-    { outputIndex: 0, modality: "text", recipe: { kind: "people", inputId, anchor: input.anchor, profile: input.profile, orientation: "display" } },
+  const initial = await advanceAnalysisJob(execution, deadlineAt, 0, async () => [
+    { outputIndex: 0, modality: "text", recipe: peopleRecipeOf(await frozen(), input.anchor, inputId, input.profile) },
   ]);
-  const observations = miniToolPeopleAnalysis.readMiniToolDisplayPeople(record, await analysisJson(initial, 0));
+  const anchor = peopleRecipe(initial.job);
+  const observations = miniToolPeopleAnalysis.readMiniToolDisplayPeople(record, await analysisJson(initial, 0), anchor.target);
   const groups = chunkVideoOutputs(observations.candidates, MINI_TOOL_JOB_MAX_OUTPUTS);
   const jobs: RegisteredMiniToolPlanJob[] = [];
   for (const [index, candidates] of groups.entries()) {
+    // Each crop is the anchor's frame recipe on its entry (candidateCropRecipeOf), cropped in the display geometry.
     const outputs: AnalysisOutput[] = candidates.map((candidate) => ({
       outputIndex: candidate.detectionIndex, modality: "image", recipe: {
-        kind: "frame", inputId, frameIndex: input.anchor.frameIndex, orientation: "display",
+        kind: "frame", inputId, entry: anchor.entry, target: anchor.target,
         crop: { sourceWidth: observations.width, sourceHeight: observations.height, rect: candidate.pixelCrop },
       },
     }));
-    const next = await advanceAnalysisJob(execution, initial.job.request.deadlineAt, index + 1, outputs, initial.job.request);
+    const next = await advanceAnalysisJob(execution, initial.job.request.deadlineAt, index + 1, () => Promise.resolve(outputs), initial.job.request);
     jobs.push(next.job);
   }
-  return miniToolPeopleAnalysis.assembleMiniToolPeopleAnalysis(record, execution.params.sourceKey, observations, jobs);
+  return miniToolPeopleAnalysis.assembleMiniToolPeopleAnalysis(record, execution.params.sourceKey, observations, jobs, anchor.entry);
 }

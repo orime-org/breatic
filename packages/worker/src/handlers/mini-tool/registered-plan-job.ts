@@ -32,10 +32,12 @@ function terminalReport(request: MiniToolPlanJobRequest, value: unknown): EndedM
 /**
  * Advance the original job and register its actual written output set.
  * @param input - The task-owned candidate plan and original expense policy.
+ * @param options - What the job consumed.
+ * @param options.retire - Intermediate keys (a stitch's chunks) retired with a done result, never before (§7.15, §93 D5-10).
  * @returns The persisted report and canonical assets, including a failed job's subset.
  * @throws {Error} When original-plan validation, progress, persistence or registration fails.
  */
-export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniToolPlanJob> {
+export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[] } = {}): Promise<RegisteredMiniToolPlanJob> {
   const { request, consumption } = await openMiniToolPlanJob(input);
   let step = (await upstreamStepRepo.listSteps(input.taskId)).find((item) => item.id === input.stepId);
   if (step === undefined) throw new Error("Planned job lost its owning step");
@@ -48,6 +50,7 @@ export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJo
     step = await recordMiniToolStepResult({
       taskId: input.taskId, stepId: input.stepId, identity: consumption.identity, outcome: report.state, result: report,
       ...(report.state === "failed" ? { error: { code: report.reason } } : {}),
+      ...(report.state === "done" && options.retire !== undefined && options.retire.length > 0 ? { presentation: { retire: [...options.retire] } } : {}),
     }, { kind: "container_job", parse: (value) => terminalReport(request, value) });
   }
   const assets: RegisteredMiniToolPlanJob["assets"] = [];
