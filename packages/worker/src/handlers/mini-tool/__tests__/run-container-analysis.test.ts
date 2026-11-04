@@ -262,7 +262,8 @@ describe("accepted container analysis orchestration", () => {
     const call: OpenMiniToolPlanJobInput = h.advance.mock.calls[0]![0];
     expect(call).toEqual({ taskId: TASK, stepId: steps[0]!.id, chunkIndex: 0, chargeTo: "user", request: { ...initialRequest(original),
       outputs: initialRequest(original).outputs.map((output, index) => ({ ...output, storageKey: `derived/grant-0/${index}.txt` })) } });
-    expect(call.request.outputs.some((output) => output.recipe.kind === "inspect_video")).toBe(false);
+    // The job is the scan alone: one scene_cuts output and no separate inspection output beside it.
+    expect(call.request.outputs.map((output) => output.recipe.kind)).toEqual(["scene_cuts"]);
     expect(h.advance).toHaveBeenCalledTimes(1);
     expect(h.read.mock.calls).toEqual([[asset(0, false).id, DEADLINE]]);
     expect(steps[0]!.output).toMatchObject({ "miniToolAnalysisJson:0": scenes });
