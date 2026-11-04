@@ -392,6 +392,8 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
         attempt: { jobId: JOB, deadlineAt: D }, size: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') } } };
   }
 
+  // §91 D3b-4: decodeStart may name a time that is not a keyframe; the container's `-noaccurate_seek -ss` demuxer seek lands on
+  // the keyframe at or before it, so decoding still starts on a keyframe.
   it('RB01 an edited source: the first span starts inside its first frame (clipStart at the edit), later chunks at their keyframe', async () => {
     await serve(LEDGERS.cut, { work: { kind: 'encode', chunks: [{ start: 0, end: 18 }, { start: 18, end: 38 }] } });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
@@ -407,6 +409,7 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     ]);
   });
 
+  // §91 D3b-6: the plan sets `emptyFill: 'transparent'` exactly when the probe confirmed alpha (presentation-run.ts policy), and it is inside planSha256.
   it('RB02 a transparent source is encoded alpha-packed: the target is two even planes side by side', async () => {
     await serve(LEDGERS.cfr96, {}, (plan) => { plan.policy!.emptyFill = 'transparent'; });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);

@@ -462,6 +462,16 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 50 }, (_unused, n) => (n < 20 ? n : n + 1) / 25));
   });
 
+  // §91 D3b-2: the plan does not record whether the source has audio, so the worker always names the interval and the
+  // container muxes the source's first audio stream only when there is one.
+  it('ST06 a source without audio stitches the interval into a video-only carrier and does not fail', async () => {
+    const [a] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix: 'bt601' })]);
+    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4'), [CHUNKS[0]!]: a! },
+      [{ kind: 'stitch', inputId: SOURCE, target: { ...TARGET, colorMatrix: 'bt601' }, chunks: [{ inputId: CHUNKS[0], duration: r(2, 5) }], audio: { start: r(0), end: r(2, 5) } }]);
+    expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video']);
+    expect(await packets(file!)).toHaveLength(10);
+  });
+
   it('ST04 a packed chunk stitches into a packed carrier of the same geometry and reports that geometry', async () => {
     const packed = { ...TARGET, width: 128, height: 36, alpha: 'packed' };
     const [a] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], packed)]);

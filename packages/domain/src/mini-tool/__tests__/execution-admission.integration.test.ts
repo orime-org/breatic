@@ -123,13 +123,16 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
     limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }],
     // §3.2 item 1: the preparation's retry cap is frozen at admission (encoding.chunk_retries).
     chunkRetries: 3,
+    // §91 D3b-5: the model input's encode parameters, frozen at admission from presentation.crf/preset like the carrier's.
+    encode: { crf: 18, preset: "medium" },
   },
   // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
   credits: 35,
   // The frozen model part of the quote (display.duration), so a retry that reruns only generate can hold it alone.
   modelCredits: 30,
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
-  planFingerprint: "d3a9a6b8bdb9f3f88cc7bb194ae85a97cfb7ac98c73eb6c3db76ce173f89573d",
+  // Recomputed for preparation.encode (§91 D3b-5) with the same canonical hash the plan service uses.
+  planFingerprint: "f546c80c3664add4cf598e33e0d9505e7fd2b7c05fd0a828cdca7eacccd37048",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
@@ -403,6 +406,17 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(accepted.preparation.chunks).toEqual([{ start: 0, end: 1011 }]);
     // §3.2 item 1: the preparation's retry cap is frozen with it.
     expect(accepted.preparation).toMatchObject({ chunkRetries: core.getMiniToolsConfig().encoding.chunk_retries });
+  });
+
+  // §91 D3b-5 (design §5.3 model-input row, §5.4 「编码参数完全一致」): the model input's crf and preset are frozen at
+  // admission from the presentation encode settings, so every preparation chunk of the run encodes alike whatever the
+  // configuration says later.
+  it("RB-A03 freezes the model input's encode parameters from the presentation settings", async () => {
+    const f = await seed(); const start = startRecorder();
+    const { presentation } = core.getMiniToolsConfig();
+    await acceptMiniToolExecution(f.body, f.userId, start);
+    const accepted = start.mock.calls[0]![0] as unknown as { preparation: { encode?: unknown } };
+    expect(accepted.preparation.encode).toEqual({ crf: presentation.crf, preset: presentation.preset });
   });
 
   it("RB-A02 quotes the model from the display duration plus the preparation at max(precheck, planned work)", async () => {

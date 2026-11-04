@@ -26,6 +26,8 @@ const PREPARATION = {
   containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
   prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }], chunkRetries: 3,
+  // §91 D3b-5: the model input's encode parameters frozen at admission.
+  encode: { crf: 18, preset: "medium" },
 };
 
 const GOLDEN = {
