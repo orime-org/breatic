@@ -707,6 +707,8 @@ describe("Tasks routes", () => {
       expect.anything(),
       expect.anything(),
       "understand",
+      undefined,
+      mocks.activityTransaction,
     );
   });
 
@@ -768,6 +770,8 @@ describe("Tasks routes", () => {
         expect.objectContaining({ reading: "transcribe" }),
         UNDERSTAND_PINS.model,
         "understand",
+        undefined,
+        mocks.activityTransaction,
       );
     });
 

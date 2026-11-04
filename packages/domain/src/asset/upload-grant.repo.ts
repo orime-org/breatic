@@ -151,6 +151,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   bytes, when one did.
  * @param input.analyticsConsent - The uploading browser's analytics consent;
  *   absent reads as no consent.
+ * @param tx - Optional enclosing upload admission transaction.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
  */
@@ -172,8 +173,8 @@ export async function issueGrant(input: {
     generationTaskId?: string | null;
   };
   analyticsConsent?: ConsentSnapshot;
-}): Promise<UploadGrant> {
-  const rows = await db
+}, tx?: DbTx): Promise<UploadGrant> {
+  const rows = await (tx ?? db)
     .insert(uploadGrants)
     .values({
       userId: input.userId,

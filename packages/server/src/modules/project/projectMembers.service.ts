@@ -16,7 +16,7 @@
  * `project_members` (core `listenProjectMemberChanges`), not from this file.
  */
 
-import { db, projectMembersRepo } from "@breatic/core";
+import { accountActivityRepo, db, projectMembersRepo } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -99,6 +99,7 @@ export async function changeRole(
     if (!updated) {
       throw new NotFoundError(t("server.error.not_found"));
     }
+    if (actorUserId) await accountActivityRepo.recordActivity({ userId: actorUserId, projectId, kind: "project_action" }, tx);
     return role;
   });
   await recordProjectActivity({
@@ -152,6 +153,7 @@ export async function remove(
     if (!removed) {
       throw new NotFoundError(t("server.error.not_found"));
     }
+    if (actorUserId) await accountActivityRepo.recordActivity({ userId: actorUserId, projectId, kind: "project_action" }, tx);
     return role;
   });
   await recordProjectActivity({

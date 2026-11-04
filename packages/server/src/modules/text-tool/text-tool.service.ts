@@ -10,6 +10,7 @@
  * response arrives, and the run is charged what the record adds up to.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
@@ -162,6 +163,7 @@ export async function* executeTextTool(
 
   try {
     const model = getModelForTool(tool);
+    await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
     const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
     calls = watch;

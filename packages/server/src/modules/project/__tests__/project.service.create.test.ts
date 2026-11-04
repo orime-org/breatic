@@ -59,6 +59,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   const actual = await importActual();
   return {
     ...actual,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     // The account has not claimed its first project yet (inner#1442 §4.8).
     claimFirstMilestone: vi.fn(async () => true),
     // The first-project conversion is queued after the create; nothing to upload here.
@@ -172,5 +173,8 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(vi.mocked(core.db.transaction)).toHaveBeenCalledTimes(1);
     const txArg = vi.mocked(projectRepo.createProject).mock.calls[0]?.[0];
     expect(txArg).toEqual({ TX: true });
+    expect(core.accountActivityRepo.recordActivity).toHaveBeenCalledWith(
+      { userId: "u-1", projectId: "p-1", kind: "project_action" }, txArg,
+    );
   });
 });

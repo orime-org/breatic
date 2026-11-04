@@ -14,7 +14,7 @@
  * request.
  */
 
-import { getStorageAdapter, logger } from "@breatic/core";
+import { accountActivityRepo, getStorageAdapter, logger } from "@breatic/core";
 import type { PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
 import { assetRepo, assetService, ingestReportService, nodeHistoryService } from "@breatic/domain";
 
@@ -98,6 +98,7 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
   }
 
   if (misses.length > 0) await assertStudioStorageAllowance(studioId, "upload");
+  await accountActivityRepo.recordActivity({ userId: input.userId, projectId: input.projectId, kind: "project_action" });
 
   /**
    * File one missed address in the target Studio.

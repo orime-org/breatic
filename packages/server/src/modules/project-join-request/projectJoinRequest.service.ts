@@ -33,6 +33,7 @@
  * the project has a seat.
  */
 
+import { accountActivityRepo } from "@breatic/core";
 import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudio } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
@@ -187,6 +188,7 @@ export async function request(input: {
         tx,
       });
       await requestsRepo.setNotification(created.id, entry.id, tx);
+      await accountActivityRepo.recordActivity({ userId: input.requesterUserId, projectId: project.id, kind: "project_action" }, tx);
       return { shareToken: created.shareToken, ownerUserId };
     });
   } catch (err) {
@@ -230,6 +232,7 @@ export async function cancelMine(projectId: string, requesterUserId: string): Pr
     await projectRepo.lockLiveProject(projectId, tx);
     const row = await requestsRepo.cancelPendingFor(projectId, requesterUserId, tx);
     if (row?.notificationId) await notificationRepo.retire(row.notificationId, tx);
+    if (row) await accountActivityRepo.recordActivity({ userId: requesterUserId, projectId, kind: "project_action" }, tx);
     return row;
   });
   if (!cancelled) throw new NotFoundError(t("server.error.not_found"));
@@ -364,6 +367,7 @@ export async function approve(input: {
         },
         tx,
       });
+      await accountActivityRepo.recordActivity({ userId: input.ownerUserId, projectId: opened.projectId, kind: "project_action" }, tx);
       return { projectId: opened.projectId, requesterUserId: opened.requesterUserId };
     },
   );
@@ -412,6 +416,7 @@ export async function reject(input: { requestId: string; ownerUserId: string }):
       },
       tx,
     });
+    await accountActivityRepo.recordActivity({ userId: input.ownerUserId, projectId: opened.projectId, kind: "project_action" }, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
