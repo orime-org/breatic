@@ -9,7 +9,7 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { gcd, rational } from "@shared/mini-tools/video-presentation-projection.js";
+import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import type { MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanTarget } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
@@ -130,23 +130,23 @@ function picture(target: MiniToolPlanTarget, label: string): string {
     `[${label}a]alphaextract,format=rgb24,${pad}[${label}m];[${label}c][${label}m]hstack,${tail}`;
 }
 
-// The highest intermediate rate the exact relabel resamples to; above it the relabelled rate is rounded to the hertz.
-const MAX_RELABEL_RATE = 384000n;
+// FFmpeg's sample rates are C ints.
+const MAX_SAMPLE_RATE = 2147483647n;
 
 /**
- * Relabel 48 kHz samples to play at a rate (§4.2 rational relabel: no atempo, no pitch preservation): resample to a rate R
- * whose R·rate is whole, declare the samples R·rate, and resample back to 48 kHz, so the duration becomes duration / rate.
+ * Relabel 48 kHz samples to play at a reduced rate a/b (§4.2 rational relabel: no atempo, no pitch preservation; design line
+ * 858): resample to b·m Hz, declare those samples a·m Hz, and resample back to 48 kHz, so every sample's time is divided by
+ * a/b exactly. m = ceil(48000 / b) keeps the intermediate rate at or above 48 kHz, so no bandwidth is lost and the rate stays
+ * below 48000 + b.
  * @param rate - The reduced rate.
  * @returns The filter chain, empty at rate 1.
- * @throws {never} Never.
+ * @throws {RangeError} When the relabelled rate exceeds FFmpeg's sample-rate range.
  */
 function relabel([numerator, denominator]: [bigint, bigint]): string {
   if (numerator === denominator) return "";
-  const base = 48000n * denominator / gcd(48000n, denominator);
-  // ponytail: a rate whose exact intermediate rate exceeds the cap (a 16.16 rate such as 65535/65536) is relabelled at the
-  // rounded hertz, drifting at most 0.5 Hz in 384 kHz; an exact path would need a resampler that takes a rational ratio.
-  if (base > MAX_RELABEL_RATE) return `,aresample=48000,asetrate=${(2n * 48000n * numerator + denominator) / (2n * denominator)},aresample=48000`;
-  return `,aresample=${base},asetrate=${base * numerator / denominator},aresample=48000`;
+  const scale = (48000n + denominator - 1n) / denominator;
+  if (numerator * scale > MAX_SAMPLE_RATE) throw new RangeError("The audio rate is beyond FFmpeg's sample-rate range");
+  return `,aresample=${denominator * scale},asetrate=${numerator * scale},aresample=48000`;
 }
 
 /**
