@@ -287,6 +287,8 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   let videoSpans: VideoPresentationPlanInput['videoSpans'] = null;
   let mediaDuration = frames.at(-1)!.declaredEnd ?? frames.at(-1)!.start;
   let mediaStart = frames[0]!.start;
+  const audio = streams.find((stream) => stream.codec_type === 'audio');
+  let audioSpans: VideoPresentationPlanInput['videoSpans'] = null;
   if (iso) {
     const metadata = await inspectIsoBmffFile(input, { metadataBytes: ledger.metadataBytes, boxCount: ledger.isoBoxCount });
     const trackId = typeof video.id === 'string' && /^0x[0-9a-f]+$/iu.test(video.id) ? Number.parseInt(video.id.slice(2), 16) : Number.NaN;
@@ -304,9 +306,15 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
       videoSpans = editSpans(track.edits, metadata.movieTimescale, track.mediaTimescale);
       if (videoSpans.length === 0) videoSpans = null;
     }
+    // §91 D3b-10: the selected audio track's edit list, derived like the video's (the assembler rebases both by the origin).
+    const audioId = typeof audio?.id === 'string' && /^0x[0-9a-f]+$/iu.test(audio.id) ? Number.parseInt(audio.id.slice(2), 16) : Number.NaN;
+    const audioTrack = metadata.tracks.find((item) => item.trackId === audioId);
+    if (audioTrack?.edits !== null && audioTrack?.edits !== undefined) {
+      audioSpans = editSpans(audioTrack.edits, metadata.movieTimescale, audioTrack.mediaTimescale);
+      if (audioSpans.length === 0) audioSpans = null;
+    }
   }
 
-  const audio = streams.find((stream) => stream.codec_type === 'audio');
   const window = audioWindow(audio);
   const colorSpace = video.color_space;
   const matrixTagged = typeof colorSpace === 'string' && colorSpace !== '' && colorSpace !== 'unknown';
@@ -314,7 +322,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const display = videoDisplayGeometry(video);
   const assembled = assembleVideoPresentationPlan({
     frames, sourceTimeBase, emptyEdits, segmentDuration: null, videoSpans, mediaDuration, mediaStart,
-    audio: window === null ? null : { ...window, spans: null }, display, colorMatrix: resolveVideoColorMatrix(video),
+    audio: window === null ? null : { ...window, spans: audioSpans }, display, colorMatrix: resolveVideoColorMatrix(video),
     source: { transfer, bitDepth: depth.bitDepth },
     policy: { singleFrameDurationMs: body.probe.singleFrameDurationMs, emptyFill: alpha === 'confirmed_alpha' ? 'transparent' : 'black' },
   });
