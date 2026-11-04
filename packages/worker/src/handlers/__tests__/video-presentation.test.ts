@@ -28,14 +28,17 @@ import { containerCostUsd } from '@breatic/domain';
 import * as handler from '@worker/handlers/video-presentation.js';
 import { StillRunning } from '@worker/providers/still-running.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins } = vi.hoisted(() => ({
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
+  // Every application-layer catch logs (root AGENTS.md "Application-layer error logging"); the spy lets the handler do so.
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
   return {
     ...actual,
     env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
+    logger,
     getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
   };
 });
@@ -453,6 +456,9 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     expect(submitted()).toEqual([]);
     expect(actions('read')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, targetPolicyVersion: 1 })]);
+    // The catch that turns the mismatch into a wait logs it with the toolInputId the ledger failed for.
+    const toolInputId = (answer.plan as { toolInputId: string }).toolInputId;
+    expect([...logger.warn.mock.calls, ...logger.error.mock.calls]).toContainEqual([expect.objectContaining({ ctx: expect.objectContaining({ toolInputId }) }), expect.any(String)]);
   });
 
   // §91 D3b-9: a transport failure is not a content mismatch: no Check is asked for and the pickup keeps its normal

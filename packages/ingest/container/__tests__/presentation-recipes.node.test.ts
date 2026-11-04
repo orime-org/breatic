@@ -233,8 +233,10 @@ beforeAll(async () => {
   // 2 s at 25 fps, keyframe every 10 frames, BT.709-tagged, with a 44.1 kHz tone so the stitch's audio is resampled to 48 kHz (§4.2).
   await make('cfr.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
     '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25', '-c:a', 'aac', '-shortest']);
-  await make('untagged.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx264', '-g', '5', '-pix_fmt', 'yuv420p']);
-  await make('pq10.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx264', '-g', '10', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
+  // No B-frames (here and in pq10.mp4): with them libx264's edit list skips the composition delay and media time starts at
+  // 0.08 s, which these cases (copy tags, tone mapping, an audio-less stitch) are not about.
+  await make('untagged.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx264', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p']);
+  await make('pq10.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
   // Odd display size: H.264 High 4:4:4 holds 161x97 natively (§4.3 奇数宽高); the picture is white so the padding stands apart.
   await make('odd.mp4', ['-f', 'lavfi', '-i', 'color=c=white:s=161x97:r=25:d=0.4', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', ...tagged]);
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
@@ -276,6 +278,10 @@ beforeEach(() => {
     return new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } });
   }));
 });
+
+// §91 D3b-11: the audio of cfr.mp4 (and rot90.mp4, its stream copy) as the probe's plan records it: one edit skipping the
+// AAC priming, 2000 of movie timescale 1000 from media time 1024 of 44100.
+const CFR_AUDIO = { origin: r(0), spans: [{ sourceStart: r(256, 11025), sourceEnd: r(22306, 11025), presentationStart: r(0), rate: r(1) }] };
 
 const FIRST = chunk({ start: 0, end: 20 }, [span(r(0), r(0), r(0), r(4, 5))]);
 const SECOND = chunk({ start: 20, end: 50 }, [span(r(4, 5), r(4, 5), r(4, 5), r(2))]);
@@ -423,7 +429,7 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
   }
 
   it('ST01 concatenates the chunks without re-encoding: every frame on the plan clock, keyframes at the chunk starts, tags kept, audio merged at 48 kHz', async () => {
-    const file = await chunkAndStitch(SECOND, { chunks: [{ inputId: CHUNKS[0], duration: r(4, 5) }, { inputId: CHUNKS[1], duration: r(6, 5) }], audio: { start: r(0), end: r(2) } });
+    const file = await chunkAndStitch(SECOND, { chunks: [{ inputId: CHUNKS[0], duration: r(4, 5) }, { inputId: CHUNKS[1], duration: r(6, 5) }], audio: { start: r(0), end: r(2), ...CFR_AUDIO } });
     const { streams, duration } = await probe(file);
     expect(streams.map(stream => stream.codec_type).sort()).toEqual(['audio', 'video']);
     const video = streams.find(stream => stream.codec_type === 'video')!;
@@ -467,7 +473,7 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
   it('ST06 a source without audio stitches the interval into a video-only carrier and does not fail', async () => {
     const [a] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix: 'bt601' })]);
     const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4'), [CHUNKS[0]!]: a! },
-      [{ kind: 'stitch', inputId: SOURCE, target: { ...TARGET, colorMatrix: 'bt601' }, chunks: [{ inputId: CHUNKS[0], duration: r(2, 5) }], audio: { start: r(0), end: r(2, 5) } }]);
+      [{ kind: 'stitch', inputId: SOURCE, target: { ...TARGET, colorMatrix: 'bt601' }, chunks: [{ inputId: CHUNKS[0], duration: r(2, 5) }], audio: { start: r(0), end: r(2, 5), origin: r(0), spans: null } }]);
     expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video']);
     expect(await packets(file!)).toHaveLength(10);
   });
@@ -499,12 +505,12 @@ describe('copy_carrier and prepare_model_input', () => {
    * @param audio - Its audio interval.
    * @returns The recipe.
    */
-  function modelInput(target: Recipe, audio: { start: Exact; end: Exact } | null): Recipe {
+  function modelInput(target: Recipe, audio: Recipe | null): Recipe {
     return { kind: 'prepare_model_input', inputId: SOURCE, window: { start: 0, end: 20 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(4, 5))], target, audio };
   }
 
   it('PM01 renders the selected interval upright in the display geometry with the plan matrix and the interval audio (§5.3 模型输入准备)', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'rot90.mp4') }, [modelInput({ ...TARGET, width: 180, height: 320 }, { start: r(0), end: r(4, 5) })]);
+    const [file] = await produce({ [SOURCE]: join(dir, 'rot90.mp4') }, [modelInput({ ...TARGET, width: 180, height: 320 }, { start: r(0), end: r(4, 5), ...CFR_AUDIO })]);
     const { streams } = await probe(file!);
     const video = streams.find(stream => stream.codec_type === 'video')!;
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 180, 320]);
