@@ -7,8 +7,9 @@
  * shot cannot be added, the reason in its place.
  */
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import type * as React from 'react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { AddShotRow, ShotList } from '@web/spaces/canvas/generate/storyboard-controls';
 
@@ -23,19 +24,74 @@ function row(addBlocked?: string): ReturnType<typeof render> {
   return render(<AddShotRow maxShots={6} addBlocked={addBlocked} onAdd={NOOP} />);
 }
 
+/**
+ * The shot list with two or three shots, one open.
+ * @param over - Props to change.
+ * @returns The render result.
+ */
+function shotList(over: Partial<React.ComponentProps<typeof ShotList>> = {}): ReturnType<typeof render> {
+  return render(
+    <ShotList
+      shots={[{ id: 's0', duration: 2 }, { id: 's1', duration: 3 }, { id: 's2', duration: 1 }]}
+      expanded='s0'
+      onExpand={NOOP}
+      previews={{ s0: 'A rooftop at dawn', s1: 'She turns around', s2: '' }}
+      placeholder='Describe this shot'
+      onStep={NOOP}
+      onRemove={NOOP}
+      renderEditor={(shot) => <textarea data-testid={`box-${shot.id}`} />}
+      {...over}
+    />,
+  );
+}
+
 describe('the shot list', () => {
   it('holds only the shots', () => {
-    render(
-      <ShotList
-        shots={[{ id: 's0', duration: 2 }, { id: 's1', duration: 3 }]}
-        onStep={NOOP}
-        onRemove={NOOP}
-        renderEditor={() => null}
-      />,
-    );
+    shotList();
 
     expect(screen.getByTestId('generate-storyboard-shot-2')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-storyboard-add')).toBeNull();
+  });
+
+  it('shows the open shot\'s box and only a line for each other shot', () => {
+    shotList();
+
+    expect(screen.getByTestId('box-s0')).toBeVisible();
+    expect(screen.getByTestId('box-s1')).not.toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-2')).toHaveTextContent('She turns around');
+    expect(screen.getByTestId('generate-storyboard-shot-3')).toHaveTextContent('Describe this shot');
+  });
+
+  it('opens a collapsed shot when its row is clicked', () => {
+    const onExpand = vi.fn();
+    shotList({ onExpand });
+
+    fireEvent.click(screen.getByRole('button', { name: /Shot 2/ }));
+
+    expect(onExpand).toHaveBeenCalledWith('s1');
+  });
+
+  it('keeps the seconds and the remove button working on a collapsed shot', () => {
+    const onStep = vi.fn();
+    const onRemove = vi.fn();
+    const onExpand = vi.fn();
+    shotList({ onStep, onRemove, onExpand });
+
+    fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-less'));
+    fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-remove'));
+
+    expect(onStep).toHaveBeenCalledWith('s1', -1);
+    expect(onRemove).toHaveBeenCalledWith('s1');
+    expect(onExpand).not.toHaveBeenCalled();
+  });
+
+  it('draws a lone shot with its title row as today, not as a row to click', () => {
+    shotList({ shots: [{ id: 's0', duration: 5 }] });
+
+    expect(screen.getByTestId('generate-storyboard-shot-1')).toHaveTextContent('Shot 1');
+    expect(screen.queryByRole('button', { name: /Shot 1/ })).toBeNull();
+    expect(screen.getByTestId('generate-storyboard-shot-1-remove')).toBeDisabled();
+    expect(screen.getByTestId('box-s0')).toBeVisible();
   });
 });
 

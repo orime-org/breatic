@@ -334,8 +334,14 @@ describe("what the guide says", () => {
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
-    // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
+    // VideoGeneratePanelContainer.tsx: one shot open at a time, and every insert goes into it (#1201).
+    expect(panel).toMatch(/Only one shot is open at a time/);
+    expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
+    expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
+    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    expect(panel).not.toMatch(/clicked into last/);
+    // AudioGeneratePanel.tsx: the style and lyrics boxes, one open at a time.
+    expect(panel).toMatch(/Only one of the two is open at a time/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
