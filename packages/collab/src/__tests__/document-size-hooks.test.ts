@@ -12,9 +12,9 @@
  * `Server` (spec 0.4): its constructor is replaced by one that records the
  * configuration, and each case calls the recorded functions with a real
  * Hocuspocus `Document` carrying fake connections. Nothing re-implements a
- * hook. `checkRateLimit` is a spy; the process token bucket reads a clock the
- * test fakes (`Date` and `performance`), fixed unless a case injects a trial
- * duration. Each case boots a fresh module graph, so size records and the
+ * hook. `checkRateLimit` is a spy; the process token bucket reads global
+ * `performance.now()`, which vitest fake timers control, fixed unless a case
+ * injects a trial duration. Each case boots a fresh module graph, so size records and the
  * token bucket start empty and full.
  */
 
@@ -749,6 +749,60 @@ describe("beforeSync step 5: trial budget (C-98 for 'budget_user' and 'budget_pr
     await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
     expect(rateLimit).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("C-105 the token bucket starts full, refills R per second up to one second's worth, and may go negative", async () => {
+    // The bucket reads global performance.now(), faked here, so a trial's
+    // duration moves the clock and refill accrues during it, as C-90's
+    // min(200, 200 + 300) - 1500 does. Spec C-105's checkpoints on that clock:
+    // 200 -> 150 -> 110 -> 70 after three back-to-back 50 ms trials, then a
+    // 300 ms trial ends at t = 450 with min(200, 70 + 60) - 300 = -170.
+    await boot();
+    const doc = await load(NAME, helloDoc());
+    const c = conn(doc);
+
+    /**
+     * Admit one append that has to be tried, the trial taking `ms`.
+     * @param ms - Injected trial duration; 0 leaves the clock where it is.
+     */
+    const tried = async (ms: number): Promise<void> => {
+      needTrial();
+      const update = appendUpdate(doc, 100);
+      if (ms > 0) injectTrialDuration(ms, doc, update);
+      await admit(doc, c, SYNC.update, update);
+      expect(trial.pending).toBeUndefined();
+    };
+    /** Refuse one append on the token bucket. */
+    const refusedOnBucket = async (): Promise<void> => {
+      needTrial();
+      await refuse(doc, c, SYNC.update, appendUpdate(doc, 100), { step: "budget_process" });
+    };
+
+    for (let i = 0; i < 3; i++) await tried(50);
+    expect(Date.now()).toBe(150);
+    // Balance 70, not negative: a 300 ms trial still runs.
+    await tried(300);
+    expect(Date.now()).toBe(450);
+    expect(rateLimit).toHaveBeenCalledTimes(4);
+
+    // t = 1000: -170 + 110 = -60.
+    vi.advanceTimersByTime(550);
+    await refusedOnBucket();
+    // t = 1299: -0.2.
+    vi.advanceTimersByTime(299);
+    await refusedOnBucket();
+    expect(rateLimit).toHaveBeenCalledTimes(4);
+    // t = 1300: exactly 0, allowed.
+    vi.advanceTimersByTime(1);
+    await tried(0);
+    expect(rateLimit).toHaveBeenCalledTimes(5);
+
+    // 100 s later the balance is capped at 200 (not 0 + 20 000): a 201 ms
+    // trial leaves -1, so the next request at the same moment is refused.
+    vi.advanceTimersByTime(100_000);
+    await tried(201);
+    await refusedOnBucket();
+    expect(rateLimit).toHaveBeenCalledTimes(6);
   });
 
   it("C-106 (a) checks the bucket first: at -1 it refuses without calling checkRateLimit", async () => {

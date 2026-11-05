@@ -508,9 +508,99 @@ describe("C-66 model test: admitted updates, system writes and recomputes keep u
 });
 
 describe("C-67 trial token bucket", () => {
-  // Not written: spec 0.5 and design 8.1 say the bucket "accepts an injected
-  // clock" but name no seam (parameter, export or module) through which a
-  // test injects "now" and the trial duration read at trial start and end.
-  // Guessing one would fail for the wrong reason once implemented.
-  it.todo("INV-13: allowed trial time in [0, T] is at most R x (T + 1) + d_max; negative balance refuses with step 'budget_process' and skips checkRateLimit");
+  // The bucket reads time through the global performance.now(); fake timers
+  // fake it (user decision). A trial's duration is injected on top: the
+  // bucket reads the clock once when the trial starts and once when it ends
+  // (spec 0.4), both after checkRateLimit (step 5 order, answer Q9), so the
+  // second read after checkRateLimit returns start + d.
+  it("INV-13 and the step 5 order over 1000 random arrival and duration sequences", async () => {
+    const request = fc.record({ gap: fc.integer({ min: 0, max: 3000 }), d: fc.integer({ min: 1, max: 2000 }) });
+    await fc.assert(
+      fc.asyncProperty(fc.constantFrom(1, 200, 1000), fc.array(request, { minLength: 1, maxLength: 20 }), async (R, requests) => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
+        const fakeNow = performance.now.bind(performance);
+        let extra = 0;
+        let armed: number | null = null;
+        let readsSinceArm = 0;
+        const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => {
+          if (armed !== null && ++readsSinceArm === 2) {
+            extra += armed;
+            armed = null;
+          }
+          return fakeNow() + extra;
+        });
+        let duration = 0;
+        let calls = 0;
+        h.checkRateLimit.mockImplementation(async () => {
+          calls++;
+          armed = duration;
+          readsSinceArm = 0;
+          return { allowed: true };
+        });
+        try {
+          const t0 = performance.now();
+          const b = await boot({ ...S_CONFIG, document_size_trial_budget_ms_per_second: R });
+          const base = new Y.Doc();
+          base.clientID = 1;
+          base.getText("t").insert(0, "hello");
+          const document = await load(b, Y.encodeStateAsUpdate(base));
+          const c = syncedClient(document, 2);
+          // C-85 (b) shape: an append that needs a trial once upper sits at the ceiling.
+          const u = capture(c, () => c.getText("t").insert(5, "y".repeat(100)));
+          const conn = connection();
+          // The model of design 4.2: full at start, R per second up to R, a
+          // trial charged its duration when it ends.
+          let balance: number = R;
+          let at = t0;
+          const refill = (t: number): void => {
+            balance = Math.min(R, balance + ((t - at) * R) / 1000);
+            at = t;
+          };
+          let allowedMs = 0;
+          let dMax = 0;
+          for (const r of requests) {
+            vi.advanceTimersByTime(r.gap);
+            b.size.recordExact(NAME, S.CEIL);
+            const t = performance.now();
+            refill(t);
+            duration = r.d;
+            const callsBefore = calls;
+            h.logs.warn.mockClear();
+            const admitted = await offer(b, document, conn, u);
+            if (balance < -1e-6) {
+              expect(admitted).toBe(false);
+              expect(calls).toBe(callsBefore);
+              expect(h.logs.warn).toHaveBeenCalledTimes(1);
+              expect(h.logs.warn.mock.calls[0]?.[0]).toMatchObject({ step: "budget_process" });
+              expect(h.logs.warn.mock.calls[0]?.[1]).toBe("document_size_limit_refused");
+            } else if (balance > 1e-6) {
+              expect(calls).toBe(callsBefore + 1);
+              expect(admitted).toBe(true);
+              refill(t + r.d);
+              balance -= r.d;
+              allowedMs += r.d;
+              dMax = Math.max(dMax, r.d);
+            } else {
+              // Within float noise of 0; the outcome is read off the run.
+              if (calls > callsBefore) {
+                refill(t + r.d);
+                balance -= r.d;
+                allowedMs += r.d;
+                dMax = Math.max(dMax, r.d);
+              }
+            }
+            armed = null;
+          }
+          const T = (performance.now() - t0) / 1000;
+          expect(allowedMs).toBeLessThanOrEqual(R * (T + 1) + dMax);
+          b.size.forget(NAME);
+        } finally {
+          nowSpy.mockRestore();
+          h.checkRateLimit.mockImplementation(async () => ({ allowed: true }));
+          vi.useRealTimers();
+        }
+      }),
+      { seed: SEED, numRuns: 1000 },
+    );
+  }, 600_000);
 });
