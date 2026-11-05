@@ -209,6 +209,23 @@ describe('conditional admissions re-checked in the DO\'s serial entry (§93 D6; 
   });
 });
 
+// §93 D6 (design §3.5 web→server row, repair dispatch): with P invalid, readmit false and the current candidate the publisher,
+// a user repair admits a new presentation job instead of handing the publisher an Rt.
+describe('repair of a version that failed again after its readmit (§93 D6; design §3.5)', () => {
+  it('RR01 the repair admits a new presentation job and archives the publisher', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await publish(store, key, 'job-a', V);
+      await bad(store, key);
+      await publish(store, key, 'job-b', V2, 'readmit');
+      await bad(store, key);
+      const view = await store.accept({ ...admission(key, 'job-c'), repair: true });
+      expect(view.candidate).toMatchObject({ jobId: 'job-c', state: 'accepted' });
+      expect(view.archive.map((job) => job.jobId)).toEqual(['job-a', 'job-b']);
+    });
+  });
+});
+
 describe('ready(A) × Bad republishes a verified waiting candidate (§93 D6; design §7.2 ready(A)×Bad)', () => {
   it.each([['removed', false], ['replaced by foreign bytes', true]])('BA01 the descriptor %s: the waiting candidate is swapped in without waiting for its L', async (_name, replace) => {
     const key = await source();
