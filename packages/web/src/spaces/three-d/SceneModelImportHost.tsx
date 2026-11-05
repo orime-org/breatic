@@ -18,7 +18,7 @@ interface SceneModelImportHostProps {
   onPlaced: (id: string) => void;
 }
 
-const importIcon = <Upload className='size-4' />;
+const importIcon = <Upload className='mr-2 size-4' />;
 
 /**
  * Keep an unfinished import reachable while its dialog is tucked away.

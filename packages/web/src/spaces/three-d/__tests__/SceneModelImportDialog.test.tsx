@@ -424,6 +424,16 @@ describe('model import dialog footer during checks and after refusals (inner#169
     expect(document.activeElement).toBe(choice);
   });
 
+  it('asks for a main file as a prompt, not as a failure', async () => {
+    const failing = idleImport();
+    failing.prepare.mockRejectedValueOnce(new ModelImportError('entry', 'Choose a model entry', { detail: '', info: { entries: ['a.glb', 'b.glb'], paths: ['a.glb', 'b.glb'], missing: [] } }));
+    render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={failing.controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
+    await act(async () => { await failing.controller.select([{ path: 'a.glb', file: new File(['a'], 'a.glb') }, { path: 'b.glb', file: new File(['b'], 'b.glb') }]); });
+    const prompt = screen.getByText('Choose a main file to preview.');
+    expect(prompt.closest('.text-status-error')).toBeNull();
+    expect(prompt.parentElement?.querySelector('svg.lucide-triangle-alert')).toBeNull();
+  });
+
   it('keeps focus in the name field when clearing the name disables Import to scene', async () => {
     const { controller } = await readyImport();
     render(<SceneModelImportDialog open onOpenChange={vi.fn()} controller={controller} canEdit maxInputBytes={IMPORT_LIMITS.maxInputBytes} />);
