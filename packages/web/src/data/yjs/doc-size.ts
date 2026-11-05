@@ -317,22 +317,34 @@ export function heldBytes(name: string, reservation: SpaceReservation | undefine
 }
 
 /**
- * Tie room to a write that has landed: the reservation it carried, grown to
- * the write's estimate, or a new one for the estimate.
+ * Tie room to a write: the reservation it carried, grown to the write's
+ * estimate, or a new one for the estimate. With `version` null the write has
+ * not landed yet; no push releases the room until the returned callback
+ * gives the version the write landed at.
  * @param name - Canonical document name.
  * @param bytes - The write's estimate.
- * @param version - The document's local version after the write.
+ * @param version - The document's local version after the write, or null.
  * @param reservation - The reservation the write carried, if it still held room.
+ * @returns Sets the version once the write has landed.
  */
-export function bindWrite(name: string, bytes: number, version: number, reservation: SpaceReservation | undefined): void {
+export function bindWrite(
+  name: string,
+  bytes: number,
+  version: number | null,
+  reservation: SpaceReservation | undefined,
+): (landed: number) => void {
   const entry = entryOf(name);
-  const held = reservation !== undefined && heldBytes(name, reservation) !== null ? (reservation as HeldReservation) : undefined;
+  let held = reservation !== undefined && heldBytes(name, reservation) !== null ? (reservation as HeldReservation) : undefined;
   if (held) {
     held.bytes = Math.max(held.bytes, bytes);
-    held.version = version;
   } else {
-    const fresh: HeldReservation = { bytes, version, release: (): void => undefined };
-    entry.reservations.add(fresh);
+    held = { bytes, version: undefined, release: (): void => undefined };
+    entry.reservations.add(held);
   }
+  const bound = held;
+  bound.version = version ?? Number.POSITIVE_INFINITY;
   changed(name, entry);
+  return (landed: number): void => {
+    bound.version = landed;
+  };
 }

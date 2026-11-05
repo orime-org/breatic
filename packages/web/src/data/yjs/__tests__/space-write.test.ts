@@ -14,7 +14,7 @@ vi.mock('@hocuspocus/provider', async (importOriginal) =>
   (await import('@web/data/yjs/__tests__/helpers/doc-size-driver')).mockProviderModule(await importOriginal()));
 
 import {
-  confirmLatest, flush, handshake, push, refuse, resetProviderSpies, type ProviderSpy,
+  confirmId, confirmLatest, confirmRequests, flush, handshake, push, refuse, resetProviderSpies, type ProviderSpy,
 } from '@web/data/yjs/__tests__/helpers/doc-size-driver';
 import {
   COPY_EN, F_FULL, F_FULL_NEAR, F_NORMAL, F_OVER, F_WARNING, type DocSizePush,
@@ -231,5 +231,37 @@ describe('no read-only gate of its own (W-145)', () => {
     const write = vi.fn();
     expect(writeSpaceDoc(NAME, { kind: 'add', estimate: 100 }, write)).toEqual({ ok: true });
     expect(write).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a write that lands after writeSpaceDoc returns (landsLater)', () => {
+  it('ties its room to the local update that follows, not to the version before it', async () => {
+    const provider = open();
+    await handshake(NAME, provider);
+    push(provider, F_WARNING);
+    const doc = getDoc(NAME);
+    // An earlier write whose receipt is requested first.
+    expect(writeSpaceDoc(NAME, { kind: 'delete' }, () => doc.getMap('nodesMap').set('a', 1))).toEqual({ ok: true });
+    await flush();
+    const earlier = confirmRequests(provider).at(-1)!.id;
+    // The editor's filter allows the add; the sync plugin writes it afterwards.
+    expect(writeSpaceDoc(NAME, { kind: 'add', estimate: 100000, landsLater: true }, () => undefined)).toEqual({ ok: true });
+    doc.getMap('nodesMap').set('b', 2);
+    await flush();
+    // Only the earlier write is confirmed when the next push arrives.
+    await confirmId(provider, earlier);
+    push(provider, F_WARNING);
+    expectAvailable(686432);
+  });
+
+  it('falls back to the current version when no local update follows', async () => {
+    const provider = open();
+    await handshake(NAME, provider);
+    push(provider, F_WARNING);
+    expect(writeSpaceDoc(NAME, { kind: 'add', estimate: 100000, landsLater: true }, () => undefined)).toEqual({ ok: true });
+    await flush();
+    expectAvailable(686432);
+    push(provider, F_WARNING);
+    expectAvailable(786432);
   });
 });

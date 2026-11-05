@@ -17,6 +17,7 @@ import type { Slice } from '@tiptap/pm/model';
 
 import { formatBytes, parseDocName, t } from '@breatic/shared';
 import { readDocVersions } from '@web/data/yjs/collab-socket';
+import { getDoc, hasDoc } from '@web/data/yjs/manager';
 import {
   availableRoom, bindWrite, freeReservation, heldBytes, holdRoom, readDocSize, type SpaceReservation,
 } from '@web/data/yjs/doc-size';
@@ -83,6 +84,12 @@ export interface SpaceWriteOptions {
   reservation?: SpaceReservation;
   /** Show the refusal toast; false for entries that report the outcome themselves. */
   notify?: boolean;
+  /**
+   * The Yjs write happens after this call returns (a ProseMirror sync plugin
+   * applies an allowed transaction on its next view update); the room is
+   * tied to the document's next local update.
+   */
+  landsLater?: boolean;
 }
 
 /**
@@ -140,7 +147,7 @@ export function reserveSpaceRoom(name: string, estimateBytes: number, { notify =
  * @throws {Error} Whatever `write` throws.
  */
 export function writeSpaceDoc(name: string, options: SpaceWriteOptions, write: () => void): SpaceWriteResult {
-  const { kind, estimate, reservation, notify = true } = options;
+  const { kind, estimate, reservation, notify = true, landsLater = false } = options;
   const state = readDocSize(name);
   if (state.phase === 'resyncing') return kind === 'delete' ? { ok: false, reason: 'full' } : refuse(name, kind, { ok: false, reason: 'full' }, notify);
   if (state.phase === 'unknown' || kind === 'delete') {
@@ -158,7 +165,51 @@ export function writeSpaceDoc(name: string, options: SpaceWriteOptions, write: (
   if (estimate !== undefined && estimate - (held ?? 0) > room) return refuse(name, kind, { ok: false, reason: 'no_room', room }, notify);
   write();
   if (estimate !== undefined || held !== null) {
-    bindWrite(name, estimate ?? 0, readDocVersions(name)?.localVersion ?? 0, held !== null ? reservation : undefined);
+    const carried = held !== null ? reservation : undefined;
+    if (landsLater) bindOnNextLocalUpdate(name, bindWrite(name, estimate ?? 0, null, carried));
+    else bindWrite(name, estimate ?? 0, readDocVersions(name)?.localVersion ?? 0, carried);
   }
   return { ok: true };
+}
+
+/**
+ * Give a pending write its version at the document's next local update, or
+ * the current version if none happens before the next microtask (the
+ * allowed transaction changed nothing in Yjs).
+ * @param name - Canonical document name.
+ * @param setVersion - Sets the version the write landed at.
+ */
+function bindOnNextLocalUpdate(name: string, setVersion: (landed: number) => void): void {
+  /**
+   * The document's local version now.
+   * @returns The version, 0 for a document that takes no receipts.
+   */
+  const current = (): number => readDocVersions(name)?.localVersion ?? 0;
+  if (!hasDoc(name)) {
+    setVersion(current());
+    return;
+  }
+  const doc = getDoc(name);
+  let done = false;
+  /**
+   * Bind at the first local update; the sync binding counted it already.
+   * @param _update - The update.
+   * @param _origin - Its origin.
+   * @param _doc - The document.
+   * @param transaction - The transaction.
+   * @param transaction.local - Whether this client made it.
+   */
+  const onUpdate = (_update: Uint8Array, _origin: unknown, _doc: unknown, transaction: { local: boolean }): void => {
+    if (done || !transaction.local) return;
+    done = true;
+    doc.off('update', onUpdate);
+    setVersion(current());
+  };
+  doc.on('update', onUpdate);
+  queueMicrotask(() => {
+    if (done) return;
+    done = true;
+    doc.off('update', onUpdate);
+    setVersion(current());
+  });
 }
