@@ -300,7 +300,9 @@ describe('texture byte budgets (inner#1690)', () => {
     const ktx2 = new Map([[0, { width: 64, height: 64, levels: 2 }]]);
     expect(() => validateModelTextureBytes(declared(1), ktx2, { ...IMPORT_LIMITS, maxTextureBytes: 16 * 16 * 16 + 8 * 8 * 16 })).not.toThrow();
     expect(() => validateModelTextureBytes(declared(1), ktx2, { ...IMPORT_LIMITS, maxTextureBytes: 16 * 16 * 16 + 8 * 8 * 16 - 1 })).toThrow(expect.objectContaining({ code: 'budget' }));
-    expect(() => validateModelTextureBytes(declared(1), new Map([[0, { width: 6, height: 6, levels: 1 }]]), { ...IMPORT_LIMITS, maxTextureBytes: 2 * 2 * 16 })).not.toThrow();
+    const partial = new Map([[0, { width: 6, height: 6, levels: 1 }]]);
+    expect(() => validateModelTextureBytes(declared(1), partial, { ...IMPORT_LIMITS, maxTextureBytes: 2 * 2 * 16 })).not.toThrow();
+    expect(() => validateModelTextureBytes(declared(1), partial, { ...IMPORT_LIMITS, maxTextureBytes: 2 * 2 * 16 - 1 })).toThrow(expect.objectContaining({ code: 'budget' }));
   });
 });
 
