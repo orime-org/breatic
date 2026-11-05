@@ -15,6 +15,8 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 
+const NAME = 'project-p1/3d-s1';
+
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 
 vi.mock('@web/data/api/scene', () => ({
@@ -49,7 +51,7 @@ function BoundEditor({ session }: { session: SceneSession }): React.JSX.Element 
 function renderVersion(version: number): void {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', version);
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true,
     writeAccess: 'granted', refused: false, awareness: null });
   sessions.push(session);

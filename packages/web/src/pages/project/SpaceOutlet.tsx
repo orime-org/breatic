@@ -3,9 +3,11 @@
 
 import * as React from 'react';
 
-import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
 import type { ProjectRole, SpaceType } from '@breatic/shared';
 
+import { DOC_NAME_BUILDERS } from '@web/data/yjs/space-connection';
+import { SpaceReadOnlyNotice } from '@web/pages/project/SpaceReadOnlyNotice';
+import { SpaceSizeNotice } from '@web/pages/project/SpaceSizeNotice';
 import { useFocusReturn, type FocusReturn } from '@web/lib/use-focus-return';
 import { SPACE_TYPES } from '@web/spaces';
 
@@ -75,6 +77,7 @@ export function SpaceOutlet({
     );
   }
   const Body = def.bodyComponent;
+  const contentDocName = DOC_NAME_BUILDERS[type]?.(projectId, spaceId);
   // The read-only notice is anchored INSIDE the Space, so the wrapper owns the
   // positioning context. It sits here rather than in each Space body because
   // whether a connection may write is decided per document and every type has
@@ -82,7 +85,9 @@ export function SpaceOutlet({
   //
   // `readOnly` goes to BOTH: the body uses it to gate editing, and the notice
   // uses it to stay quiet for a viewer, whose read-only is their role rather
-  // than something the server took away.
+  // than something the server took away. The size notice (inner#1790) is not
+  // shown to a viewer either: they cannot add anything, so the cap is not theirs.
+  // Both stack in one top-centre container, read-only first.
   return (
     <div
       className='relative h-full w-full'
@@ -91,7 +96,10 @@ export function SpaceOutlet({
         if (event.target instanceof HTMLElement) lastFocused.current = event.target;
       }}
     >
-      <SpaceReadOnlyNotice readOnly={readOnly} />
+      <div className='pointer-events-none absolute top-2.5 left-1/2 z-10 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-col items-center gap-1.5'>
+        <SpaceReadOnlyNotice readOnly={readOnly} />
+        {!readOnly && contentDocName !== undefined ? <SpaceSizeNotice docName={contentDocName} spaceType={type} /> : null}
+      </div>
       <Body
         projectId={projectId}
         spaceId={spaceId}

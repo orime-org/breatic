@@ -9,6 +9,7 @@ import {
   type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues,
 } from '@breatic/shared';
 
+import { readDocSize } from '@web/data/yjs/doc-size';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
 const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
@@ -22,7 +23,8 @@ export type SceneCommand =
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] };
 
-export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate';
+/** `full`: the Space is at its size cap, or being rebuilt after collab refused an update (inner#1790). */
+export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | 'full';
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 
 export interface SceneDocumentSnapshot {
@@ -139,14 +141,28 @@ export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
 }
 
 /**
+ * Whether the Space's size stops every 3D write. 3D only adds until inner#1875
+ * lands, so a full Space refuses every command, and a rebuilding one too; an
+ * unknown size allows.
+ * @param name - Canonical document name.
+ * @returns True when writes are refused.
+ */
+export function sceneSizeRefuses(name: string): boolean {
+  const { phase } = readDocSize(name);
+  return phase === 'full' || phase === 'resyncing';
+}
+
+/**
  * Plan one command from current committed content and the caller's current permission.
  * @param doc - Live collaborative scene document.
+ * @param name - Its canonical document name, whose size state is read.
  * @param command - User operation to validate against current committed scene data.
  * @param canEdit - Current write permission derived from role and connection facts.
  * @returns Record creations, field overwrites and deletions, or the typed refusal.
  */
-export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boolean): ScenePlan {
+export function planSceneCommand(doc: Y.Doc, name: string, command: SceneCommand, canEdit: boolean): ScenePlan {
   if (!canEdit) return { ok: false, reason: 'readOnly' };
+  if (sceneSizeRefuses(name)) return { ok: false, reason: 'full' };
   const scene = readSceneDocument(doc);
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
@@ -209,10 +225,11 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
  * @param command - User operation to validate against current committed scene data.
  * @param origin - Origin tracked only by this local command history.
  * @param canEdit - Current write permission derived from role and connection facts.
+ * @param name - Its canonical document name, whose size `planSceneCommand` reads.
  * @returns Affected object identities or the command refusal.
  */
-export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean): SceneCommandResult {
-  const plan = planSceneCommand(doc, command, canEdit);
+export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean, name: string): SceneCommandResult {
+  const plan = planSceneCommand(doc, name, command, canEdit);
   if (!plan.ok) return plan;
   const objects = doc.getMap<unknown>('objects');
   doc.transact(() => {

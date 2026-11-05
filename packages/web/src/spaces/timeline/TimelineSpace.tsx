@@ -15,6 +15,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
 import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
+import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -138,10 +139,16 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document }:
     const value = Number(editStart);
     if (editStart.trim() === '' || !Number.isSafeInteger(value) || value < 0) { setEditError(true); return; }
     try {
-      if (applyTimelineEdit(doc, { operation: 'set_start', parameters: { clipId: selected.id, startFrame: value } })) { setEditStart(null); setEditError(false); }
+      let applied = false;
+      const written = writeSpaceDoc(docName.timelineSpace(projectId, spaceId), { kind: 'overwrite' }, () => {
+        applied = applyTimelineEdit(doc, { operation: 'set_start', parameters: { clipId: selected.id, startFrame: value } });
+      });
+      // A full Space only warns (the gateway's toast): the typed value stays, with no error state.
+      if (!written.ok) return;
+      if (applied) { setEditStart(null); setEditError(false); }
       else setEditError(true);
     } catch { setEditError(true); }
-  }, [readOnly, selected, editStart, doc]);
+  }, [readOnly, selected, editStart, doc, projectId, spaceId]);
   const retryPreview = React.useCallback((): void => { void refetchResource(); retryPlayback(); }, [refetchResource, retryPlayback]);
   const previewStyle = React.useMemo(() => ({ aspectRatio: `${document.settings.width} / ${document.settings.height}` }), [document.settings.width, document.settings.height]);
   const playheadStyle = React.useMemo(() => ({ left: `${frame / extent * 100}%` }), [frame, extent]);

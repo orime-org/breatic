@@ -7,10 +7,13 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { readDocSize } from '@web/data/yjs/doc-size';
 import {
-  applySceneCommand, createSceneHistory, readSceneDocument,
+  applySceneCommand, createSceneHistory, readSceneDocument, sceneSizeRefuses,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
+import { spaceRefusalMessage } from '@web/data/yjs/space-write';
+import { toast } from '@web/lib/toast';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
@@ -67,8 +70,9 @@ export class SceneSession {
   /**
    * Attach in-memory editing state to the same live document held by its provider.
    * @param doc - Live collaborative scene document.
+   * @param name - Its canonical document name, whose size gates writes.
    */
-  constructor(readonly doc: Y.Doc) {
+  constructor(readonly doc: Y.Doc, readonly name: string) {
     this.history = createSceneHistory(doc, this.origin);
     doc.on('update', this.refresh);
     this.history.on('stack-item-added', this.refresh);
@@ -265,8 +269,9 @@ export class SceneSession {
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
     this.commandError = result.ok ? null : result;
+    if (!result.ok) this.warnFull(result);
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
     return result;
@@ -275,12 +280,30 @@ export class SceneSession {
   /**
    * Undo or redo one personal operation even when the object has become explicitly locked.
    * @param direction - Personal undo or redo operation to invoke.
+   * @returns The step's outcome; `full` leaves the history untouched.
    */
-  historyStep(direction: 'undo' | 'redo'): void {
-    if (!this.snapshot.canEdit) return;
+  historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
+    if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
+    if (sceneSizeRefuses(this.name)) {
+      const refused = { ok: false, reason: 'full' } as const;
+      this.commandError = refused;
+      this.warnFull(refused);
+      this.refresh();
+      return refused;
+    }
     this.endGesture(false);
     this.history[direction]();
     this.refresh();
+    return { ok: true, ids: [] };
+  }
+
+  /**
+   * Warn once for a refusal of a full Space; a rebuild has shown its own warning.
+   * @param result - The refused outcome.
+   */
+  private warnFull(result: Extract<SceneCommandResult, { ok: false }>): void {
+    if (result.reason !== 'full' || readDocSize(this.name).phase === 'resyncing') return;
+    toast.warning(spaceRefusalMessage(this.name, 'add', { ok: false, reason: 'full' }));
   }
 
   /** Detach all owned listeners once the manager releases this document. */
@@ -298,8 +321,8 @@ export class SceneSession {
 
 }
 
-const sessions = createDocScopedCache<SceneSession>(
-  (doc) => new SceneSession(doc), (session) => session.destroy(),
+const sessions = createDocScopedCache<SceneSession, string>(
+  (doc, name) => new SceneSession(doc, name), (session) => session.destroy(),
 );
 
 /**
@@ -309,7 +332,7 @@ const sessions = createDocScopedCache<SceneSession>(
  * @returns The document's existing session or its new in-memory owner.
  */
 export function getSceneSession(doc: Y.Doc, name: string): SceneSession {
-  return sessions.get(doc, name, undefined);
+  return sessions.get(doc, name, name);
 }
 
 /**

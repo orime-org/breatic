@@ -51,7 +51,8 @@ interface SpaceReadOnlyNoticeProps {
  * ## Which connection
  *
  * The tab's own (`useSpaceConnection`), held by `OpenSpace` from open to close
- * for this Space's document. A Space type with no document has no connection
+ * for this Space's document. `SpaceOutlet` places it, above the size notice,
+ * in the one container that pins both to the top centre of the Space. A Space type with no document has no connection
  * around it, reads write access as unknown, and so shows nothing.
  * @param root0 - Who is looking.
  * @param root0.readOnly - True when this person's role is view-only.
@@ -99,7 +100,7 @@ export function SpaceReadOnlyNotice({
       role='status'
       aria-live='polite'
       data-testid='space-read-only-notice'
-      className='absolute top-2.5 left-1/2 z-10 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-overlay border border-status-warning-border bg-status-warning-bg px-3.5 py-1.5 text-sm text-status-warning-foreground shadow-md backdrop-blur-sm'
+      className='pointer-events-auto flex max-w-full items-center gap-2 rounded-overlay border border-status-warning-border bg-status-warning-bg px-3.5 py-1.5 text-sm text-status-warning-foreground shadow-md backdrop-blur-sm'
     >
       <TriangleAlert className='h-4 w-4 shrink-0' aria-hidden />
       <span className='truncate font-medium'>{t('spaces.readOnlyNotice')}</span>

@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { type ProjectRole, type SpaceType } from '@breatic/shared';
 
+import { useDocGeneration } from '@web/data/yjs/doc-size';
 import { getDoc } from '@web/data/yjs/manager';
 import {
   DOC_NAME_BUILDERS,
@@ -66,7 +67,8 @@ export function SpaceConnection({
  * on screen, so a background tab stays live. Its body mounts the first time
  * the tab is on screen and from then on is hidden rather than unmounted when
  * the reader switches away, so it comes back as it was left; closing the tab
- * unmounts it.
+ * unmounts it. After collab refuses an update the document is rebuilt and
+ * everything here mounts again on the new one.
  *
  * Memoized: its props are all plain values, and the project page re-renders on
  * every zoom step of the canvas on screen; a hidden body would be rendered
@@ -102,9 +104,13 @@ export const OpenSpace = React.memo(function OpenSpace({
     </React.Activity>
   ) : null;
   const buildName = DOC_NAME_BUILDERS[type];
-  if (!buildName) return body;
+  const name = buildName?.(projectId, spaceId);
+  // Collab refused an update and the document was rebuilt (inner#1790): the
+  // whole subtree mounts again, so it opens the new document and provider.
+  const generation = useDocGeneration(name ?? '');
+  if (name === undefined) return body;
   return (
-    <SpaceConnection name={buildName(projectId, spaceId)}>
+    <SpaceConnection key={generation} name={name}>
       {/* A document Space's editor outlives its body's mount, so what shuts it
         down is mounted with the tab — see `DocumentInterceptGuard`. */}
       {type === 'document' ? (
@@ -113,7 +119,7 @@ export const OpenSpace = React.memo(function OpenSpace({
       {/* What this reader is waiting on in a canvas Space stays on the peers'
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
-      {type === '3d' ? <SceneConnectionLifetime name={buildName(projectId, spaceId)} readOnly={readOnly} /> : null}
+      {type === '3d' ? <SceneConnectionLifetime name={name} readOnly={readOnly} /> : null}
       {body}
     </SpaceConnection>
   );

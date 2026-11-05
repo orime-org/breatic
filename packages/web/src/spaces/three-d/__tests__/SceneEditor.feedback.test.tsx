@@ -16,6 +16,8 @@ import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
+const NAME = 'project-p1/3d-s1';
+
 const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', () => ({
@@ -62,10 +64,10 @@ function BoundEditor({ session }: { session: SceneSession }): React.JSX.Element 
 function fixture(): { doc: Y.Doc; session: SceneSession; client: QueryClient } {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const created = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-create'), true);
-  const locked = applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('shared-lock'), true);
+  const created = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-create'), true, NAME);
+  const locked = applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('shared-lock'), true, NAME);
   if (!created.ok || !locked.ok) throw new Error('The scene feedback fixture must contain one locked object');
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true,
     writeAccess: 'granted', refused: false, awareness: null });
   session.select(ID, false);
@@ -107,8 +109,8 @@ describe('scene command failure feedback (inner#1724)', () => {
     await screen.findByTestId('scene-viewport-boundary');
     const initial = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
     act(() => {
-      expect(applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('peer-unlock'), true)).toEqual({ ok: true, ids: [ID] });
-      expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true)).toEqual({ ok: true, ids: [ID] });
+      expect(applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('peer-unlock'), true, NAME)).toEqual({ ok: true, ids: [ID] });
+      expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME)).toEqual({ ok: true, ids: [ID] });
     });
     fireEvent.click(screen.getByTestId('scene-tasks-trigger'));
     await screen.findByTestId('scene-tasks-panel');

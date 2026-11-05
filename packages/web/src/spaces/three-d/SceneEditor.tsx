@@ -117,7 +117,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, [session, userId, projectId, spaceId, t]);
 
   React.useEffect(() => {
-    if (snapshot.commandError && snapshot.commandError !== reportedCommandError.current) {
+    // A full Space is reported by the session's own warning.
+    if (snapshot.commandError && snapshot.commandError.reason !== 'full' && snapshot.commandError !== reportedCommandError.current) {
       toast.error(t('spaces.threeD.commandFailed'));
     }
     reportedCommandError.current = snapshot.commandError;
