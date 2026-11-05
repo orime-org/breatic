@@ -365,16 +365,6 @@ export function wordsIn(content: unknown): string | null {
 }
 
 /**
- * A table cell's inline content: BlockNote writes a cell as the content
- * itself or as a cell object holding it.
- * @param cell - The cell.
- * @returns Its inline content.
- */
-export function cellInline(cell: unknown): Inline[] {
-  return Array.isArray(cell) ? (cell as Inline[]) : ((cell as { content?: Inline[] }).content ?? []);
-}
-
-/**
  * Inline content with white space taken off one end.
  * @param content - The content.
  * @param end - Which end.
@@ -460,8 +450,8 @@ function cleanCut(words: readonly Inline[], code: boolean, after: boolean, befor
 /**
  * Blocks with their markers put back as media: a list item keeps the words
  * before its first marker and takes the media and the rest as its first
- * children; a table's media go under it; any other block of words splits
- * at each marker, its halves keeping its type.
+ * children; any other block of words splits at each marker, its halves
+ * keeping its type.
  * @param blocks - The blocks read.
  * @param media - The media, by marker number.
  * @param found - Collects the marker numbers found.
@@ -470,11 +460,6 @@ function cleanCut(words: readonly Inline[], code: boolean, after: boolean, befor
 function placeMarkers(blocks: readonly ReadBlock[], media: readonly MarkedMedium[], found: Set<number>): ReadBlock[] {
   return blocks.flatMap((block): ReadBlock[] => {
     const children = placeMarkers(block.children ?? [], media, found);
-    if (block.type === 'table') {
-      const indices: number[] = [];
-      const content = cleanTable(block.content, indices);
-      return [{ ...block, content, children }, ...mediaBlocks(indices, media, found)];
-    }
     if (!Array.isArray(block.content)) return [{ ...block, children }];
     const pieces = splitAtMarkers(block.content as Inline[]);
     if (pieces.length === 1) return [{ ...block, children }];
@@ -507,64 +492,6 @@ function placeMarkers(blocks: readonly ReadBlock[], media: readonly MarkedMedium
     }
     return out;
   });
-}
-
-/**
- * A cell's words with its markers taken out, read as they would be without
- * those media: white space at a cut is dropped at the cell's edges and, in
- * the middle, kept as one space when either side had any, as HTML collapses
- * the white space around an element that is not there.
- * @param inline - The cell's words.
- * @param indices - Collects the marker numbers, in order.
- * @returns The words.
- */
-function cellWithoutMarkers(inline: readonly Inline[], indices: number[]): Inline[] {
-  const pieces = splitAtMarkers(inline);
-  const runs: Inline[][] = [];
-  const spaced: boolean[] = [];
-  pieces.forEach((piece, index) => {
-    if ('medium' in piece) {
-      indices.push(piece.medium);
-      return;
-    }
-    const text = textOf(piece.words);
-    const cutAfter = index < pieces.length - 1;
-    const cutBefore = index > 0;
-    if (cutBefore) spaced[runs.length] = (spaced[runs.length] ?? false) || /^\s/.test(text);
-    if (cutAfter) spaced[runs.length + 1] = /\s$/.test(text);
-    runs.push(cleanCut(piece.words, false, cutAfter, cutBefore));
-  });
-  const out: Inline[] = [];
-  let space = false;
-  runs.forEach((run, index) => {
-    space ||= spaced[index] === true;
-    if (textOf(run) === '' && run.every((item) => typeof item.text === 'string')) return;
-    if (out.length > 0 && space) out.push({ type: 'text', text: ' ', styles: {} });
-    space = false;
-    out.push(...run);
-  });
-  return out;
-}
-
-/**
- * A table's content with the markers taken out of its cells.
- * @param content - The table content.
- * @param indices - Collects the marker numbers, in order.
- * @returns The content.
- */
-function cleanTable(content: unknown, indices: number[]): unknown {
-  const table = content as { rows?: { cells: unknown[] }[] } | undefined;
-  if (table?.rows === undefined) return content;
-  return {
-    ...table,
-    rows: table.rows.map((row) => ({
-      ...row,
-      cells: row.cells.map((cell) => {
-        const words = cellWithoutMarkers(cellInline(cell), indices);
-        return Array.isArray(cell) ? words : { ...(cell as object), content: words };
-      }),
-    })),
-  };
 }
 
 /**

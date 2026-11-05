@@ -6,7 +6,7 @@
  * §5.4.3): the target settled from the selection first, then one set of
  * placement rules for web content, the body's own content, canvas nodes and
  * files alike, and the caret after what was put. Content goes in as blocks
- * built here; lines of words alone go in by the paste of their format, and
+ * built here; one line of words alone goes in by the paste of its format, and
  * the words a code block or a stored (legacy) table cell takes by ProseMirror
  * and BlockNote. In a table cell (§5.4.7) one table fills the cells from the
  * target cell and any other content goes into the cell.
@@ -25,10 +25,9 @@ import { toast } from '@web/lib/toast';
 import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { BODY_NODE, OPEN_EDGE, OPEN_NESTED, cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { BODY_NODE, OPEN_EDGE, OPEN_NESTED, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
-import { heldTables, swapHeld, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
+import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -239,16 +238,6 @@ function takeMedia(blocks: readonly ReadBlock[]): { beside: ReadBlock[]; inside:
   return { beside: media, inside: strip(blocks) };
 }
 
-/**
- * The words of a block's own content: its inline content, or a table's
- * cells, a tab between cells and a line each row, as a table copies as text.
- * @param content - The content.
- * @returns The words.
- */
-function contentWords(content: unknown): string {
-  const rows = (content as { rows?: { cells: unknown[] }[] } | undefined)?.rows ?? [];
-  return wordsIn(content) ?? rows.map((row) => row.cells.map((cell) => textOf(cellInline(cell))).join('\t')).join('\n');
-}
 
 /**
  * Whether blocks hold one that is not a line of words (a medium, a table, a
@@ -295,7 +284,7 @@ function wordsOf(blocks: readonly ReadBlock[]): string {
     if (block.type === DOC_TABLE) {
       return (block.children ?? []).map((row) => (row.children ?? []).map((cell) => wordsOf(cell.children ?? [])).join('\t')).join('\n');
     }
-    return [contentWords(block.content), ...(block.children ?? []).map((child) => wordsOf([child]))].join('\n');
+    return [wordsIn(block.content) ?? '', ...(block.children ?? []).map((child) => wordsOf([child]))].join('\n');
   }).join('\n');
 }
 
@@ -455,7 +444,7 @@ function cellsOf(selection: CellSelection): Placed {
 }
 
 /**
- * Pastes lines of words alone at the selection, the way BlockNote pastes their format.
+ * Pastes one line of words alone at the selection, the way BlockNote pastes its format.
  * @param editor - The editor.
  * @param content - The content.
  * @returns Where the words landed.
@@ -578,8 +567,9 @@ function putBlocksInCells(view: EditorView, content: readonly ReadBlock[]): Plac
  * settles the target: in a table cell or over selected cells, one table fills
  * the cells from the target cell and any other content goes into the cell
  * (§5.4.7); a selected block is replaced in place; a text selection outside a table and
- * a code block takes lines of words alone by the paste of their format; any
- * other text selection is deleted and the caret's line judged.
+ * a code block takes one line of words alone by the paste of its format; more
+ * lines, and any other text selection, are put after the selection is deleted
+ * and the caret's line judged.
  * @param editor - The editor.
  * @param content - The content, its media not judged yet.
  * @param options - The placement's options.
@@ -591,10 +581,7 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const { doc, selection } = view.state;
   const $drop = options.dropAt === undefined ? null : doc.resolve(options.dropAt);
   const opened = $drop !== null && !$drop.parent.isTextblock;
-  const probe = view.state.tr;
-  const rest = swapHeld(selection, probe, bodyEdgeBetween);
-  if (rest !== null) probe.setSelection(rest);
-  const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : probe.deleteSelection().selection.$from);
+  const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : view.state.tr.deleteSelection().selection.$from);
   const cell = selection instanceof CellSelection && $drop === null ? selection.$anchorCell : cellAround($at);
   const inCell = cell !== null && ($drop !== null || heldTables(selection) === null);
   /**
@@ -622,7 +609,7 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
   // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
   const plain = content.plain ?? (startsInCode && !(inCell && includesTable(content.blocks)) ? content.codeText ?? null : null);
-  if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
+  if (!opened && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;
       editor.pasteText(plain);

@@ -43,23 +43,19 @@ import {
 } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
-/**
- * Table nodes: ours, the stored (legacy) one documents from before hold, and
- * our rows, which a drag of selected cells carries without their table.
- */
-const TABLES = new Set([DOC_TABLE, 'table', 'docTableRow']);
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+const TABLES = new Set([DOC_TABLE, 'table']);
 
 /**
- * Whether content holds a table of either kind, or rows of one, itself or
- * anywhere inside: a cell holds no table (inner#1312 A14), whichever drag
- * brings it.
- * @param content - A block or a dragged slice's content.
+ * Whether a row, or a block nested under it, is a table of either kind: a row
+ * holding one is refused in a cell (inner#1312 A14).
+ * @param row - The row: a block container, or a table, which holds its own id.
  * @returns True when it does.
  */
-export function carriesTable(content: PMNode | Fragment): boolean {
-  if (!(content instanceof Fragment) && TABLES.has(content.type.name)) return true;
+function carriesTable(row: PMNode): boolean {
+  if (TABLES.has(row.type.name)) return true;
   let found = false;
-  content.descendants((child) => {
+  row.descendants((child) => {
     if (TABLES.has(child.type.name)) found = true;
     return !found;
   });
