@@ -194,7 +194,7 @@ let emitSpy: { mockRestore: () => void } | undefined;
 async function boot(config: Record<string, unknown> = {}): Promise<World> {
   overrides.current = config;
   vi.resetModules();
-  const size = (await import("@collab/services/document-size.js")) as SizeModule;
+  const size = await import("@collab/services/document-size.js");
   const { createCollabServer } = await import("@collab/hocuspocus.js");
   serverSpy.mockClear();
   await createCollabServer({
@@ -1215,11 +1215,13 @@ describe("lifecycle hooks", () => {
     await change(appendUpdate(doc, 50), { source: "connection", connection: c1 });
     expect(upperOf(NAME)).toBe(before);
 
-    w.size.recordExact(NAME, 1_074_000);
+    // Spec C-112 starts at 1 074 000, which a ~400-byte bound cannot carry
+    // past CEIL; 100 bytes under the ceiling keeps what it checks.
+    w.size.recordExact(NAME, CEIL - 100);
     const e = twoStructsThreeRanges();
     expect(updateShape(e)).toEqual({ structs: 2, ranges: 3 });
     await change(e, { source: "redis" });
-    expect(upperOf(NAME)).toBe(1_074_000 + e.byteLength + 11 * C);
+    expect(upperOf(NAME)).toBe(CEIL - 100 + e.byteLength + 11 * C);
     expect(upperOf(NAME)).toBeGreaterThan(CEIL);
     expect(w.size.readDocSizeRecord(NAME)?.phase).toBe("full");
   });

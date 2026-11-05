@@ -21,7 +21,6 @@ import * as Y from "yjs";
 import type * as HocuspocusServerModule from "@hocuspocus/server";
 import type * as CoreModuleShape from "@breatic/core";
 import type * as ConfigModuleShape from "@collab/config.js";
-import type * as SizeModuleShape from "@collab/services/document-size.js";
 import * as core from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -143,7 +142,7 @@ describe("two instances on one Redis", () => {
     coreB.initCore(process.env);
     coreB.loadLocales();
     const { createCollabServer: createB } = (await import("@collab/hocuspocus.js"));
-    const sizeB = (await import("@collab/services/document-size.js")) as typeof SizeModuleShape;
+    const sizeB = await import("@collab/services/document-size.js");
     const b = await createB({ port: 0, collabRedisUrl: inject("REDIS_COLLAB_URL"), redisKeyPrefix: prefix, shutdownDeadline: () => undefined });
     running.push(b);
     await b.server.listen();

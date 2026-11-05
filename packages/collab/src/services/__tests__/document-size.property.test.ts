@@ -277,8 +277,10 @@ describe("C-60 to C-64: analyze against yjs on a full replica", () => {
         }
         // INV-4 (C-63): a precheck miss means yjs cannot pend.
         if (invs.includes(4) && !size.precheckMayPend(s.u, s.d.store)) expect(truth).toBe(false);
-        // INV-5 (C-64).
-        if (invs.includes(5)) expect(a.integratesStored).toBe(o.removed > 0 && !truth);
+        // INV-5 (C-64), for updates that do not pend: an update that pends is
+        // refused at step 2 whatever integratesStored says, and C-82 needs both
+        // flags true on one update (design 4.1 defines it without wouldPend).
+        if (invs.includes(5) && !truth) expect(a.integratesStored).toBe(o.removed > 0);
       }),
       { seed: SEED, numRuns },
     );
@@ -483,9 +485,10 @@ describe("C-66 model test: admitted updates, system writes and recomputes keep u
               // INV-8.
               expect(pendingUnitsNotIn(pendingIntervals(document), pendingBefore)).toBe(0);
             } else {
-              // INV-9, first three parts.
-              expect(Y.encodeStateAsUpdate(document)).toEqual(encodedBefore);
-              expect(Y.encodeStateVector(document)).toEqual(svBefore);
+              // INV-9, first three parts. Compared as bytes: deep equality
+              // walks a megabyte array element by element, seconds per step.
+              expect(Buffer.from(Y.encodeStateAsUpdate(document)).equals(encodedBefore)).toBe(true);
+              expect(Buffer.from(Y.encodeStateVector(document)).equals(svBefore)).toBe(true);
               expect(pendingUnitsNotIn(pendingIntervals(document), pendingBefore)).toBe(0);
               expect(pendingUnitsNotIn(pendingBefore, pendingIntervals(document))).toBe(0);
             }
@@ -515,31 +518,45 @@ describe("C-67 trial token bucket", () => {
   // second read after checkRateLimit returns start + d.
   it("INV-13 and the step 5 order over 1000 random arrival and duration sequences", async () => {
     const request = fc.record({ gap: fc.integer({ min: 0, max: 3000 }), d: fc.integer({ min: 1, max: 2000 }) });
-    await fc.assert(
-      fc.asyncProperty(fc.constantFrom(1, 200, 1000), fc.array(request, { minLength: 1, maxLength: 20 }), async (R, requests) => {
-        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-        const fakeNow = performance.now.bind(performance);
-        let extra = 0;
-        let armed: number | null = null;
-        let readsSinceArm = 0;
-        const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => {
-          if (armed !== null && ++readsSinceArm === 2) {
-            extra += armed;
-            armed = null;
+    // One server per R: every boot of the module graph keeps about 10 MB, so
+    // 1000 boots run the worker out of memory. A run starts the bucket full
+    // the way a fresh boot does: one fake clock and one spy on it for the
+    // whole test (a restored spy no longer follows the fake clock, and
+    // vi.clearAllTimers() sets the clock back), and every run moves the
+    // spied clock 10^9 ms on, more than the deepest balance of 20 trials of
+    // 2000 ms needs to refill at R = 1, without firing the servers' timers.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
+    const fakeNow = performance.now.bind(performance);
+    let extra = 0;
+    let armed: number | null = null;
+    let readsSinceArm = 0;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => {
+      if (armed !== null && ++readsSinceArm === 2) {
+        extra += armed;
+        armed = null;
+      }
+      return fakeNow() + extra;
+    });
+    let duration = 0;
+    let calls = 0;
+    h.checkRateLimit.mockImplementation(async () => {
+      calls++;
+      armed = duration;
+      readsSinceArm = 0;
+      return { allowed: true };
+    });
+    const servers = new Map<number, Booted>();
+    try {
+      await fc.assert(
+        fc.asyncProperty(fc.constantFrom(1, 200, 1000), fc.array(request, { minLength: 1, maxLength: 20 }), async (R, requests) => {
+          extra += 1e9;
+          armed = null;
+          let b = servers.get(R);
+          if (!b) {
+            b = await boot({ ...S_CONFIG, document_size_trial_budget_ms_per_second: R });
+            servers.set(R, b);
           }
-          return fakeNow() + extra;
-        });
-        let duration = 0;
-        let calls = 0;
-        h.checkRateLimit.mockImplementation(async () => {
-          calls++;
-          armed = duration;
-          readsSinceArm = 0;
-          return { allowed: true };
-        });
-        try {
           const t0 = performance.now();
-          const b = await boot({ ...S_CONFIG, document_size_trial_budget_ms_per_second: R });
           const base = new Y.Doc();
           base.clientID = 1;
           base.getText("t").insert(0, "hello");
@@ -594,13 +611,13 @@ describe("C-67 trial token bucket", () => {
           const T = (performance.now() - t0) / 1000;
           expect(allowedMs).toBeLessThanOrEqual(R * (T + 1) + dMax);
           b.size.forget(NAME);
-        } finally {
-          nowSpy.mockRestore();
-          h.checkRateLimit.mockImplementation(async () => ({ allowed: true }));
-          vi.useRealTimers();
-        }
-      }),
-      { seed: SEED, numRuns: 1000 },
-    );
+        }),
+        { seed: SEED, numRuns: 1000 },
+      );
+    } finally {
+      nowSpy.mockRestore();
+      h.checkRateLimit.mockImplementation(async () => ({ allowed: true }));
+      vi.useRealTimers();
+    }
   }, 600_000);
 });

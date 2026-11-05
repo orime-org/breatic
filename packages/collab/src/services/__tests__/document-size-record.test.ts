@@ -150,6 +150,9 @@ async function loadWith(b: Booted, name: string, conns: FakeConnection[]): Promi
   document.clientID = 1;
   document.getText("t").insert(0, "hello world");
   await b.afterLoadDocument({ documentName: name, document, context: {}, instance: { documents: new Map() }, requestHeaders: new Headers(), requestParameters: new URLSearchParams(), socketId: "" });
+  // Hocuspocus broadcasts the insert above on the next immediate; let it go
+  // out before the stand-in connections, which cannot take a sync message.
+  await new Promise((resolve) => setImmediate(resolve));
   for (const c of conns) document.addConnection(c as never);
   return document;
 }

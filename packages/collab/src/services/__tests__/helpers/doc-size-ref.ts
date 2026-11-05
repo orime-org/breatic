@@ -432,7 +432,7 @@ export function stringItem(client: number, clock: number, origin: Y.ID | null, r
  * @param type - A `Y.Text` or `Y.Array`.
  * @returns Its non-deleted items.
  */
-export function liveItems(type: Y.AbstractType<unknown>): Y.Item[] {
+export function liveItems(type: { _start: Y.Item | null }): Y.Item[] {
   const out: Y.Item[] = [];
   for (let it = type._start; it; it = it.right) if (!it.deleted) out.push(it);
   return out;

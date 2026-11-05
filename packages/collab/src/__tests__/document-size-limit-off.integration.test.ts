@@ -17,7 +17,6 @@ import { afterAll, describe, expect, inject, it, vi } from "vitest";
 import * as Y from "yjs";
 import type * as CoreModuleShape from "@breatic/core";
 import type * as ConfigModuleShape from "@collab/config.js";
-import type * as SizeModuleShape from "@collab/services/document-size.js";
 import * as core from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -117,7 +116,7 @@ describe("max_document_bytes changed to 0 and collab restarted", () => {
     coreNext.initCore(process.env);
     coreNext.loadLocales();
     const { createCollabServer: createNext } = (await import("@collab/hocuspocus.js"));
-    const sizeNext = (await import("@collab/services/document-size.js")) as typeof SizeModuleShape;
+    const sizeNext = await import("@collab/services/document-size.js");
     const next = await createNext({ port: 0, collabRedisUrl: inject("REDIS_COLLAB_URL"), redisKeyPrefix: `size-off-${randomUUID()}`, shutdownDeadline: () => undefined });
     running.push(next);
     await next.server.listen();
