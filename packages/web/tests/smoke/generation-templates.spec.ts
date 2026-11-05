@@ -343,7 +343,7 @@ test('picking the carried-object transition places two scene pictures for the fi
   // The anchor, the empty object, the two scenes and the group the three new nodes form.
   await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
   expect(await graph()).toEqual({
-    names: ['Object', 'Scene A', 'Scene B', 'video-template'],
+    names: ['Object', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
     edges: ['Object -> Scene A', 'Object -> Scene B', 'Scene A -> video-template', 'Scene B -> video-template'],
   });
   const prompt = page.getByTestId('generate-prompt-editor');
