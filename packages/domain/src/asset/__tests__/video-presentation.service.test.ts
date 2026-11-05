@@ -427,3 +427,39 @@ describe('conditional admissions from the discovery read (§93 D6; design §3.5)
     expect(acceptSent()).not.toHaveProperty('expect');
   });
 });
+
+// §93 D6-3 (frames-split design §3.5 web→server row 「去重胜出者…按与发现读取相同的两条规则发带expect的受理」): a dedup winner
+// reads the snapshot first and admits only under the first or readmit condition; a new upload's initialization admits as before.
+describe('the dedup winner\'s conditional admission (§93 D6-3; design §3.5)', () => {
+  type Ensure = (input: { assetId: string; dedupWinner?: boolean }) => Promise<unknown>;
+  const ensure = ensureVideoPresentation as unknown as Ensure;
+
+  it('DW01 nothing selected and nothing prepared: read, then admit with expect first', async () => {
+    ingest(snapshot());
+    await ensure({ assetId: asset.id, dedupWinner: true });
+    expect(sent().map((request) => request.action)).toEqual(['read', 'accept']);
+    expect(acceptSent()).toMatchObject({ expect: 'first' });
+  });
+
+  it('DW02 nothing selected and readmit true: read, then admit with expect readmit', async () => {
+    ingest(snapshot({ preparation: prep('video-presentation-a', 'publish'), readmit: true }));
+    await ensure({ assetId: asset.id, dedupWinner: true });
+    expect(sent().map((request) => request.action)).toEqual(['read', 'accept']);
+    expect(acceptSent()).toMatchObject({ expect: 'readmit' });
+  });
+
+  it.each([
+    ['a selected version', { presentation: bundle, ledger: { state: 'ready', receipt, failure: null } }],
+    ['a preparation in progress', { preparation: prep('video-presentation-a', 'encode'), readmit: false }],
+  ])('DW03 %s: the winner reads and admits nothing', async (_name, fields) => {
+    ingest(snapshot(fields));
+    await ensure({ assetId: asset.id, dedupWinner: true });
+    expect(sent().map((request) => request.action)).toEqual(['read']);
+  });
+
+  it('DW04 without the flag (a new upload) the initialization admits at once, without expect', async () => {
+    await ensure({ assetId: asset.id });
+    expect(sent().map((request) => request.action)).toEqual(['accept']);
+    expect(acceptSent()).not.toHaveProperty('expect');
+  });
+});

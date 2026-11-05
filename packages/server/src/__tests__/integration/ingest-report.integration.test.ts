@@ -1697,6 +1697,19 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     expect(rows[0]!.n).toBe("1");
   });
 
+  // §93 D6-3 (frames-split design §3.5 web→server row): a dedup winner is not a new upload: registration marks it, and its
+  // presentation admission reads the snapshot first and admits only under the first or readmit condition. Here the
+  // snapshot already names the first upload's preparation, so the second upload reads and admits nothing.
+  it("a video whose bytes dedup onto a registered row reads its presentation and admits nothing while it is prepared", async () => {
+    const seed = await seedEditor();
+    const sharedHash = crypto.randomBytes(32).toString("hex");
+    for (const _upload of [0, 1]) {
+      const key = await mintTicket(seed, { filename: "clip.mp4", content_type: "video/mp4", node_id: crypto.randomUUID() });
+      await report(completed(key, { content_type: "video/mp4", size_bytes: 200_000, sha256: sharedHash, cover: coverAnswer() }));
+    }
+    expect(presentationBodies.map((request) => request.action)).toEqual(["accept", "read"]);
+  });
+
   // Within a studio the same bytes are one row. The second upload's node has
   // to come back showing the cover the first one already has — the window
   // where it could not was #187.
