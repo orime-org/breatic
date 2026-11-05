@@ -1230,11 +1230,11 @@ export function renderProductGuide(): string {
       `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
       "covers it: the covered part is trimmed away, a clip covered in the middle splits in two, and a deleted clip leaves a gap. " +
       `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip move or are deleted with it. ` +
-      `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges and the playhead. ` +
+      `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges, the playhead and frame 0. ` +
       `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
       "Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with the magnet on they swap it with the clip before or after it; " +
       "with nothing selected they move the playhead; " +
-      "Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
+      "Alt+Up and Alt+Down change its track, and Alt+Up on the top visual track adds a new visual track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
       `Clips marked ${quoted(t("timeline.conflict"))} also appear in a selectable conflict list, each row saying why, for example ` +
       `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
