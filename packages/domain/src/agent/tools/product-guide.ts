@@ -1446,7 +1446,8 @@ export function renderProductGuide(): string {
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
       "block), or pasted at the caret, replacing the selection. Content splits a line at the caret; " +
-      "on an empty line media land above it and leave the line for the caret. Nodes copied on the canvas " +
+      "on an empty line, content ending in a picture, video or audio lands above it and leaves the line for the " +
+      "caret, and content ending in words takes the line. Nodes copied on the canvas " +
       "and a picture copied in this chat paste the same way: each text node's lines become paragraphs with " +
       "their original words, and each picture, video or audio carries the node's name as its caption, in " +
       "reading order from the canvas. Inside a table cell, ordinary content keeps its block types and media " +
