@@ -138,6 +138,26 @@ export function reserveSpaceRoom(name: string, estimateBytes: number, { notify =
   return { ok: true, reservation: holdRoom(name, estimateBytes) };
 }
 
+/** Space documents with an allowed write running, by depth. */
+const openWrites = new Map<string, number>();
+
+/**
+ * Run an allowed write, marking the document while it runs.
+ * @param name - Canonical document name.
+ * @param write - The write.
+ * @throws {Error} Whatever `write` throws.
+ */
+function run(name: string, write: () => void): void {
+  openWrites.set(name, (openWrites.get(name) ?? 0) + 1);
+  try {
+    write();
+  } finally {
+    const depth = (openWrites.get(name) ?? 1) - 1;
+    if (depth === 0) openWrites.delete(name);
+    else openWrites.set(name, depth);
+  }
+}
+
 /**
  * Write a Space document if its size allows the write.
  * @param name - Canonical document name.
@@ -147,23 +167,29 @@ export function reserveSpaceRoom(name: string, estimateBytes: number, { notify =
  * @throws {Error} Whatever `write` throws.
  */
 export function writeSpaceDoc(name: string, options: SpaceWriteOptions, write: () => void): SpaceWriteResult {
+  // A write inside an allowed one is part of it: the outer write stated the
+  // strongest kind and the whole estimate (design 5.2).
+  if ((openWrites.get(name) ?? 0) > 0) {
+    write();
+    return { ok: true };
+  }
   const { kind, estimate, reservation, notify = true, landsLater = false } = options;
   const state = readDocSize(name);
   if (state.phase === 'resyncing') return kind === 'delete' ? { ok: false, reason: 'full' } : refuse(name, kind, { ok: false, reason: 'full' }, notify);
   if (state.phase === 'unknown' || kind === 'delete') {
-    write();
+    run(name, write);
     return { ok: true };
   }
   if (kind === 'overwrite') {
     if (state.overwriteRoom === 0) return refuse(name, kind, { ok: false, reason: 'full' }, notify);
-    write();
+    run(name, write);
     return { ok: true };
   }
   if (state.phase === 'full') return refuse(name, kind, { ok: false, reason: 'full' }, notify);
   const held = heldBytes(name, reservation);
   const room = availableRoom(name) ?? 0;
   if (estimate !== undefined && estimate - (held ?? 0) > room) return refuse(name, kind, { ok: false, reason: 'no_room', room }, notify);
-  write();
+  run(name, write);
   if (estimate !== undefined || held !== null) {
     const carried = held !== null ? reservation : undefined;
     if (landsLater) bindOnNextLocalUpdate(name, bindWrite(name, estimate ?? 0, null, carried));
