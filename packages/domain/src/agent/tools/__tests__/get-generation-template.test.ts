@@ -11,9 +11,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, setLocale, type GenerationTemplate } from "@breatic/shared";
+import { GENERATION_TEMPLATES, formatCredits, setLocale, type GenerationTemplate } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
@@ -155,10 +156,34 @@ describe("a template with a shot list (inner#1816)", () => {
     expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
   });
 
-  it("shows a template without shots its prompts as before, no shot list among them", () => {
+  it("writes no shot list for a template without shots", () => {
     for (const id of ["storyboard-grid-25", "single-view-refs-scene"]) {
       const said = describeTemplate(byId(id));
       expect(said, id).not.toContain("shots: [");
     }
   });
+});
+
+describe("what one apply of a template costs (inner#1816)", () => {
+  /**
+   * Each generate node's estimate at the template's own settings, priced
+   * the way the tool prices it.
+   * @param id - The template id.
+   * @returns One estimate per generate node, or undefined where it has no price.
+   */
+  async function estimates(id: string): Promise<Awaited<ReturnType<typeof estimateModelCredits>>[]> {
+    const generates = byId(id).nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
+    return Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: node.params ?? {} })));
+  }
+
+  for (const [id, count] of [["carried-object-transition", 3], ["vertical-15s-quick-tip", 1]] as const) {
+    it(`gives the sum of every generate node's estimate as the exact cost of ${id}`, async () => {
+      const each = await estimates(id);
+      expect(each).toHaveLength(count);
+      for (const one of each) expect(one?.bound, id).toBe("exact");
+      const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
+      expect(sum).toBeGreaterThan(0);
+      expect(await read(id)).toContain(`One apply of this template costs ${formatCredits(sum, "en-US")} credits at its settings.`);
+    });
+  }
 });
