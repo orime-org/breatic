@@ -6,13 +6,15 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaSurface } from '../use-media-surface';
 import type { VideoPresentationSource, VideoRendererCallbacks, VideoRendererFactory } from '../types';
+import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
 
-// Reviewed resource lifecycle invariants for inner#1306.
-const source: VideoPresentationSource = {
-  canonicalURL: 'https://assets.example/canonical.webm',
-  sourceFingerprint: 'a'.repeat(64),
-  presentation: { schemaVersion: 1, sourceFingerprint: 'a'.repeat(64), original: { width: 160, height: 96, duration: 1 }, state: 'native' },
-};
+// Reviewed resource lifecycle invariants for inner#1306. §97 (D10-1; design §3.3, §7.8): the source carries the selected
+// bundle and its alpha-packed manifest (null for native); the earlier `presentation: VideoPresentation` descriptor with
+// its `state` is gone (fixtures migrated, 4.4.5).
+const CANONICAL = 'https://assets.example/canonical.webm';
+const bundleOf = (versionId: string, fingerprint: string = PRESENTED.fingerprint, url = CANONICAL): VideoPresentationSource['presentation'] =>
+  presentedBundle(url, { sourceFingerprint: fingerprint, versionId, display: { width: 160, height: 96, duration: { numerator: '1', denominator: '1' } } });
+const source = { canonicalURL: CANONICAL, sourceFingerprint: PRESENTED.fingerprint, presentation: bundleOf(PRESENTED.versionId), manifest: null } as unknown as VideoPresentationSource;
 
 let host: HTMLDivElement;
 let hostRef: React.RefObject<HTMLDivElement | null>;
@@ -62,7 +64,7 @@ describe('effect-owned video surface lifecycle', () => {
     const { result, rerender } = mount();
     ready();
     const epoch = result.current.binding!.sourceEpoch;
-    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: { ...source.presentation, sourceFingerprint: 'b'.repeat(64) } }, active: true });
+    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64), 'https://assets.example/b.mp4') }, active: true });
     expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe('loading');
     ready(0);
@@ -112,12 +114,27 @@ describe('effect-owned video surface lifecycle', () => {
     expect(result.current.status).toBe('ready');
   });
 
-  it('does not create a native renderer for unknown, preparing or failed presentation', () => {
+  // §97: a source exists only for a selected bundle, so the earlier unknown/preparing/failed descriptor states are gone;
+  // what remains is that a bundle of another source never reaches a renderer.
+  it('does not create a renderer for a bundle of another source', () => {
     const { rerender } = mount(false);
-    for (const state of ['classifying', 'alpha_pending', 'failed'] as const) {
-      rerender({ source: { ...source, presentation: { ...source.presentation, state, attempt: { jobId: 'accepted', deadlineAt: 7201000 }, ...(state === 'failed' ? { error: 'unsupported-format' } : {}) } }, active: true });
-    }
+    rerender({ source: { ...source, presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64)) }, active: true });
     expect(createRenderer).toHaveBeenCalledTimes(0);
+  });
+
+  // §97 D10-1 (design §3.3 runtimeSourceKey = JSON([canonicalURL, sourceFingerprint, versionId]), §7.8): the key's third
+  // part is the version the surface shows. A new version changes it only once its own resource is ready; until then no
+  // binding reports the new version.
+  it('reports the shown version in the runtime source key and moves it only when the new version is ready', () => {
+    const next = 'b'.repeat(64);
+    const oldKey = JSON.stringify([CANONICAL, PRESENTED.fingerprint, PRESENTED.versionId]);
+    const { result, rerender } = mount();
+    ready();
+    expect(result.current.binding?.sourceKey).toBe(oldKey);
+    rerender({ source: { ...source, presentation: bundleOf(next) }, active: true });
+    expect(result.current.binding?.sourceKey ?? oldKey).toBe(oldKey);
+    ready(1);
+    expect(result.current.binding?.sourceKey).toBe(JSON.stringify([CANONICAL, PRESENTED.fingerprint, next]));
   });
 
   it('loses the current frame on context loss and rebuilds on context restoration', () => {
@@ -173,13 +190,12 @@ describe('effect-owned video surface lifecycle', () => {
   it.each([
     ['native', 2.375], ['alpha_ready', 2.375], ['native', Number.NaN],
   ] as const)('seeks the actual %s clock beyond format duration with actual duration %s', (state, duration) => {
-    const clockSource: VideoPresentationSource = {
-      ...source, presentation: { ...source.presentation, original: { ...source.presentation.original, duration: 2.125 }, state,
-        ...(state === 'alpha_ready' ? { alpha: { manifestURL: 'https://assets.example/packed.alpha.v1.json' } } : {}) },
-      ...(state === 'alpha_ready' ? { manifest: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint,
-        packedURL: 'https://assets.example/packed.alpha.v1.mp4', packedWidth: 320, packedHeight: 96,
-        colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } } : {}),
-    };
+    const packed = { storageKey: 'video/packed.mp4', url: 'https://assets.example/packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+    const clockBundle = presentedBundle(CANONICAL, { display: { width: 160, height: 96, duration: { numerator: '17', denominator: '8' } }, original: { width: 160, height: 96, duration: 2.125 },
+      playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
+      ...(state === 'alpha_ready' ? { playback: { kind: 'alpha-packed' as const, carrier: packed, manifest: { ...packed, storageKey: 'video/packed.json', url: 'https://assets.example/packed.json', contentType: 'application/json' } } } : {}) });
+    const clockSource = { ...source, presentation: clockBundle, manifest: state === 'alpha_ready' ? { schemaVersion: 1, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId,
+      planSha256: PRESENTED.planSha256, policyVersion: 1, packed, packedWidth: 320, packedHeight: 96, colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } : null } as unknown as VideoPresentationSource;
     const { result } = renderHook(() => useMediaSurface({ host: hostRef, source: clockSource, active: true, createRenderer }));
     const session = sessions[0];
     Object.defineProperty(session.element, 'duration', { value: duration });
