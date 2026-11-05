@@ -4,7 +4,7 @@
 import * as Y from 'yjs';
 import { newId as createId } from '@breatic/shared';
 import {
-  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource,
+  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
 } from '@breatic/shared/space-content';
 
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
@@ -34,7 +34,8 @@ export function removeTimelineClip(doc: Y.Doc, id: string, origin: unknown): voi
  * @throws {never} Never.
  */
 export function timelineClipSourceId(record: unknown): string | undefined {
-  const id = record instanceof Y.Map ? record.get('sourceId') : typeof record === 'object' && record !== null ? (record as { sourceId?: unknown }).sourceId : undefined;
+  const json = timelineRecordJson(record);
+  const id = typeof json === 'object' && json !== null ? (json as { sourceId?: unknown }).sourceId : undefined;
   return typeof id === 'string' ? id : undefined;
 }
 
@@ -89,7 +90,7 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
     if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id] as object)));
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
-  for (const id of missingTimelineSourceIds(doc, values)) write(id);
+  for (const id of referenced) if (readTimelineSource(sources.get(id), id) === undefined) write(id);
   return referenced;
 }
 
@@ -149,7 +150,7 @@ function sameRecords(before: Readonly<Record<string, object>>, after: Readonly<R
  * @param parent - The attached collection map.
  * @param before - The records the plan started from.
  * @param after - The planned records.
- * @throws {Error} When an existing record is not an attached map.
+ * @throws {never} Never.
  */
 function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, object>>, after: Readonly<Record<string, object>>): void {
   for (const id of Object.keys(before)) if (after[id] === undefined) parent.delete(id);
@@ -160,7 +161,11 @@ function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, ob
       continue;
     }
     const target = parent.get(id);
-    if (!(target instanceof Y.Map)) throw new Error('Timeline record is not an attached map');
+    // A peer may have stored the record as a plain value; the planned value is the whole record, so attach it.
+    if (!(target instanceof Y.Map)) {
+      attachRecord(parent, id, value);
+      continue;
+    }
     for (const [key, item] of Object.entries(value)) {
       if (JSON.stringify((was as Record<string, unknown>)[key]) !== JSON.stringify(item)) target.set(key, item);
     }

@@ -3,8 +3,8 @@
 
 /**
  * The attribute on the element that holds a Space's content and takes the
- * keyboard from a script or a click, never from Tab: the canvas container, or
- * the document body scroller.
+ * keyboard from a script or a click, never from Tab: the canvas container, the
+ * Timeline root, or the document body scroller.
  */
 export const SPACE_FOCUS_ROOT = 'data-space-focus-root';
 

@@ -61,6 +61,16 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
 export interface TimelineDamagedRecords { clips: string[] }
 
 /**
+ * A stored Timeline value as JSON, the one reading every record, reference and media lookup uses.
+ * @param value - A value stored in a Timeline map; a peer may store any Yjs content.
+ * @returns The JSON of a Y type, or the value itself.
+ * @throws {never} Never.
+ */
+export function timelineRecordJson(value: unknown): unknown {
+  return value instanceof Y.AbstractType ? value.toJSON() : value;
+}
+
+/**
  * Read one stored record: a Y type is read as JSON, and the record counts only when it passes its schema and is
  * stored under its own id. A peer may store any Yjs content under any key.
  * @param schema - The record schema.
@@ -70,7 +80,7 @@ export interface TimelineDamagedRecords { clips: string[] }
  * @throws {never} Never.
  */
 function readRecord<T extends { id: string }>(schema: z.ZodType<T>, value: unknown, id: string): T | undefined {
-  const parsed = schema.safeParse(value instanceof Y.AbstractType ? value.toJSON() : value);
+  const parsed = schema.safeParse(timelineRecordJson(value));
   return parsed.success && parsed.data.id === id ? parsed.data : undefined;
 }
 
