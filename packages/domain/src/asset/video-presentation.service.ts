@@ -246,7 +246,7 @@ export async function repairVideoPresentation(input: RepairVideoPresentationInpu
 export async function ensureVideoPresentation(input: EnsureVideoPresentationInput): Promise<VideoPresentationIngestPreparation | null> {
   const row = await findById(input.assetId);
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return null;
-  // A dedup winner is not a new upload: it admits only as a discovery read would (§3.5 web→server row).
+  // A dedup winner or a replayed terminal is not a new upload's initialization: it admits only as a discovery read would (§3.5).
   const { dedupWinner, ...options } = input;
   return (await (dedupWinner === true ? readThenAdmit(row, options) : accept(row, options))).preparation;
 }
