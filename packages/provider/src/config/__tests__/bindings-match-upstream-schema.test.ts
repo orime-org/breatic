@@ -370,7 +370,8 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
 }
 
 /**
- * A run this binding takes: each param at its default, else at the first of its sample values the binding takes, else left out.
+ * A run this binding takes, as the application sends one: every param at its default, and a param whose
+ * default the binding refuses at the first of its sample values the binding takes, else left out.
  * @param model - The model.
  * @param binding - The binding.
  * @param snapshot - The upstream's schema.
@@ -378,12 +379,15 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
  */
 async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): Promise<Record<string, unknown>> {
   const rules = provider.pricingRules(model);
-  const taken: Record<string, unknown> = {};
-  for (const [name, param] of Object.entries(models.get(model) ?? {})) {
-    for (const value of [defaultOf(name, param, binding, snapshot), ...samplesOf(name, param, binding, snapshot)]) {
-      if (value === undefined) continue;
-      if ((await rejectedInput(rules, binding.upstream, sampleRun({ ...taken, [name]: value }, SAMPLE_TEXT))) === undefined) {
-        taken[name] = value;
+  const params = Object.entries(models.get(model) ?? {});
+  const taken: Record<string, unknown> = Object.fromEntries(params.map(([name, param]) => [name, defaultOf(name, param, binding, snapshot)]).filter(([, v]) => v !== undefined));
+  for (const [name, param] of params) {
+    for (const value of [taken[name], ...samplesOf(name, param, binding, snapshot), undefined]) {
+      const { [name]: _left, ...others } = taken;
+      const trial = value === undefined ? others : { ...others, [name]: value };
+      if ((await rejectedInput(rules, binding.upstream, sampleRun(trial, SAMPLE_TEXT))) === undefined) {
+        Object.keys(taken).forEach((k) => delete taken[k]);
+        Object.assign(taken, trial);
         break;
       }
     }
@@ -471,7 +475,7 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     const rules = provider.pricingRules(model);
     const base = await takenRun(model, binding, snapshot);
     const failures: string[] = [];
-    const runs: Record<string, unknown>[] = [{}, base, ...Object.entries(params).flatMap(([name, param]) => samplesOf(name, param, binding, snapshot).map((value) => ({ ...base, [name]: value })))];
+    const runs: Record<string, unknown>[] = [base, ...Object.entries(params).flatMap(([name, param]) => samplesOf(name, param, binding, snapshot).map((value) => ({ ...base, [name]: value })))];
     for (const values of runs) {
       for (const prompt of ["", SAMPLE_TEXT]) {
         const refused = await rejectedInput(rules, binding.upstream, sampleRun(values, prompt));

@@ -354,6 +354,16 @@ describe("an upstream's own input limits (rejects)", () => {
       expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "upstream", upstream: "fal" })).toBeNull();
     });
 
+    it("is kept out the same way when its formula gives no price for the run, so the route and the estimate agree", async () => {
+      const p = unpriced();
+      const blank = { ...run({}), prompt: "" };
+      expect(await rejectedInput(p.pricingRules("m"), "fal", blank)).toEqual({ reason: expect.any(String), evaluationError: expect.any(String) });
+      expect(await estimateCost(p.pricingRules("m"), p.availability("m"), blank, { mode: "default" })).toBeNull();
+      const runner = createMediaRunner(p, { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
+      const planned = await runner.plan("m", { prompt: "", params: {} }, { mode: "default" }, { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} });
+      expect(planned.state).toBe("failed");
+    });
+
     it("plans every mode on the others and says which upstream could not be checked", async () => {
       const runner = createMediaRunner(unpriced(), { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
       const options = { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} };
