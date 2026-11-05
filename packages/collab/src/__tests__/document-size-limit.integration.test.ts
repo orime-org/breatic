@@ -30,6 +30,7 @@ import * as core from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { storeDocumentNow } from "@collab/services/persistence.js";
+import { armTimedStore, releaseTimedStoreArm } from "@collab/services/store-tracker.js";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import * as size from "@collab/services/document-size.js";
 
@@ -223,7 +224,13 @@ async function seed(name: string, src: Y.Doc): Promise<void> {
  * @returns A document built from the stored bytes.
  */
 async function persisted(instance: Instance, name: string): Promise<Y.Doc> {
-  await storeDocumentNow(instance.hocuspocus, name);
+  // Persistence writes only a store the timed loop or the unload gate armed.
+  const arm = armTimedStore(name);
+  try {
+    await storeDocumentNow(instance.hocuspocus, name);
+  } finally {
+    releaseTimedStoreArm(name, arm);
+  }
   const data = await yjsRepo.fetchDocData(name);
   if (!data) throw new Error(`no stored row for ${name}`);
   const doc = new Y.Doc();

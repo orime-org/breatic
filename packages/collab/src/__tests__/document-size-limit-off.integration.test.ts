@@ -107,6 +107,9 @@ describe("max_document_bytes changed to 0 and collab restarted", () => {
     sockets.push(socket);
     const tab = await openDoc(socket, name);
     await tab.sync();
+    // Hocuspocus answers the handshake before it runs `connected`, so the
+    // push can land after the sync completes.
+    await vi.waitFor(() => expect(tab.sizePushes().length).toBeGreaterThan(0), { timeout: 10_000 });
     expect(tab.sizePushes().at(-1)?.phase).toBe("full");
     await stop(first);
 
@@ -125,6 +128,7 @@ describe("max_document_bytes changed to 0 and collab restarted", () => {
     sockets.push(socketNext);
     const back = await openDoc(socketNext, name, { doc: tab.doc });
     await back.sync();
+    await vi.waitFor(() => expect(back.sizePushes().length).toBeGreaterThan(0), { timeout: 10_000 });
     expect(back.sizePushes()).toEqual([
       { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, room: 0, overwriteRoom: 0, phase: "normal" },
     ]);
