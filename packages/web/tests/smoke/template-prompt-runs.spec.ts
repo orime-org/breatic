@@ -5,7 +5,8 @@
  * Real runs of the generation templates, for judging a prompt by the pictures it gets (inner#1846, inner#1816).
  * Each run applies the template from the panel, fills the braces, checks that the editor shows the
  * prompt the locale file holds, presses Generate and saves the picture with its prompt. It spends
- * credits, so it carries @needs-model and the default smoke run leaves it out.
+ * credits, so it carries @needs-model and the default smoke run leaves it out; each generate node runs at
+ * its model's lowest resolution, keeping the template's duration and ratio.
  *
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
@@ -201,9 +202,27 @@ async function bringIntoView(control: Locator): Promise<void> {
   expect(await overlap()).toBeLessThanOrEqual(0);
 }
 
+/**
+ * Pick the open panel's lowest resolution, the way a reader does. A run judges a template's words against its
+ * duration and ratio, which it keeps; resolution changes neither, so the run pays for the cheapest tier.
+ */
+async function lowestResolution(): Promise<void> {
+  const trigger = page.getByTestId('generate-ratio-trigger');
+  if ((await trigger.count()) === 0) return;
+  await trigger.click();
+  const prefix = 'generate-resolution-option-';
+  const values = (await page.locator(`[data-testid^="${prefix}"]`).evaluateAll((all) => all.map((one) => one.getAttribute('data-testid') ?? '')))
+    .map((id) => id.slice(prefix.length));
+  const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
+  const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
+  if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+  await trigger.click();
+}
+
 /** Press Generate on the open panel and wait until the node holds a new result. */
 async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
+  await lowestResolution();
   const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await bringIntoView(button);
