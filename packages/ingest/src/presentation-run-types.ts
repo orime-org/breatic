@@ -7,6 +7,7 @@
  */
 
 import type { VideoCarrierRouteInput, VideoEncoderRates, VideoJobWork } from '@shared/mini-tools/video-encode-plan.js';
+import type { PresentationRational } from '@shared/mini-tools/video-presentation-projection.js';
 import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 import type { VideoSourceLedgerProcessLimits } from '@shared/upload/video-source-ledger-types.js';
 
@@ -33,9 +34,14 @@ export interface PresentationProbeRequest {
 }
 /** What the ledger and carrier actions add: the capability token the edge authorizes with and the canonical key. */
 export interface PresentationWriterFields { token: string; storageKey: string }
+/** The full ledger's encode facts (§3.2 item 7): keyframe ordinals, coded size, every source keyframe and the first packet dts. */
+export interface PresentationEncodeFacts {
+  keyframeOrdinals: number[]; codedWidth: number; codedHeight: number;
+  sourceKeyframes: { pts: PresentationRational; dts: PresentationRational }[]; firstPacketDts: PresentationRational;
+}
 /** The ledger action: write full and compact for the toolInputId; a null encodeFacts is a ledger-only repair. */
 export type PresentationLedgerRequest = Omit<PresentationProbeRequest, 'action'> & PresentationWriterFields & {
-  action: 'ledger'; toolInputId: string; encodeFacts: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number } | null;
+  action: 'ledger'; toolInputId: string; encodeFacts: PresentationEncodeFacts | null;
 };
 /** The carrier action: identity or the basic copy; the identity receipt takes the registered content type. */
 export type PresentationCarrierRequest = Omit<PresentationProbeRequest, 'action'> & PresentationWriterFields & {
@@ -61,7 +67,7 @@ export type PresentationProbeRoute = Omit<VideoCarrierRouteInput, 'selected' | '
 export type PresentationProbeAnswer =
   | {
     kind: 'planned'; toolInputId: string; planSha256: string; plan: object;
-    encoding: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number };
+    encoding: PresentationEncodeFacts;
     routeInput: PresentationProbeRoute; work: VideoJobWork;
   }
   | { kind: 'failed'; code: string };

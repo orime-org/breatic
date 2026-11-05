@@ -18,7 +18,7 @@ import { hashCanonicalJson, type CanonicalJson } from '@shared/mini-tools/canoni
 import type { PresentationRational } from '@shared/mini-tools/video-presentation-projection.js';
 import { isHdrTransfer, videoCarrierGeometry, videoCarrierTagFilter, videoContainerJobId, videoPlanIsUnaltered, type VideoJobWork } from '@shared/mini-tools/video-encode-plan.js';
 import {
-  PRESENTATION_CARRIER_HOST, PRESENTATION_RUN_PATH, SOURCE_LEDGER_WRITE_HOST, type PresentationCarrierAnswer, type PresentationCarrierRequest, type PresentationIdentityFormat,
+  PRESENTATION_CARRIER_HOST, PRESENTATION_RUN_PATH, SOURCE_LEDGER_WRITE_HOST, type PresentationCarrierAnswer, type PresentationCarrierRequest, type PresentationEncodeFacts, type PresentationIdentityFormat,
   type PresentationLedgerAnswer, type PresentationLedgerRequest, type PresentationProbeAnswer, type PresentationProbeRequest, type PresentationRunBody,
 } from '@ingest/presentation-run-types.js';
 import { objectUrlOn } from '@ingest/object-url.js';
@@ -230,6 +230,22 @@ function keyframeOrdinals(plan: ReturnType<typeof assembleVideoPresentationPlan>
 }
 
 /**
+ * Every source keyframe's pts and dts in pts order and the first packet's dts, on the media timeline (§3.2 item 7).
+ * @param packets - The selected stream's packets in decode order.
+ * @param base - Their time base.
+ * @returns The keyframes and the first packet dts.
+ * @throws {ProbeFailure} When a keyframe or the first packet has no dts.
+ */
+function sourceKeyframesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint]): Pick<PresentationEncodeFacts, 'sourceKeyframes' | 'firstPacketDts'> {
+  const dtsOf = (packet: PhysicalVideoPacket): PresentationRational => {
+    if (packet.dtsTicks === undefined) throw new ProbeFailure('clock_unknown');
+    return at(BigInt(packet.dtsTicks), base);
+  };
+  const keyframes = packets.filter((packet) => packet.keyframe).sort((left, right) => (BigInt(left.ptsTicks) < BigInt(right.ptsTicks) ? -1 : 1));
+  return { sourceKeyframes: keyframes.map((packet) => ({ pts: at(BigInt(packet.ptsTicks), base), dts: dtsOf(packet) })), firstPacketDts: dtsOf(packets[0]!) };
+}
+
+/**
  * The bit depth class whose measured rates the job estimate uses.
  * @param bitDepth - The decoded depth.
  * @returns 8, 10 or 12.
@@ -335,7 +351,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const encodedFrames = assembled.originMapping.entries.reduce((total, entry) => total + (entry.kind === 'source' ? entry.count : 1), 0);
   return {
     kind: 'planned', toolInputId, planSha256, plan: assembled,
-    encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height) },
+    encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
       identityQualified: identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),

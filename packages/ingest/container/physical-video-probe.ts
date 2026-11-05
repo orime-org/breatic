@@ -144,12 +144,12 @@ export function parsePhysicalVideoProbe(metadata: unknown, physicalFrameBytes: B
 }
 
 /** One selected-stream packet in decode order, its numbers kept as the probe wrote them. */
-export interface PhysicalVideoPacket { rawDecodeOrdinal: number; ptsTicks: string; durationTicks: string | null; keyframe: boolean; position: string | null }
+export interface PhysicalVideoPacket { rawDecodeOrdinal: number; ptsTicks: string; dtsTicks?: string; durationTicks: string | null; keyframe: boolean; position: string | null }
 /** The selected video stream's packets and clock. */
 export interface PhysicalVideoPackets { streamIndex: number; sourceTimeBase: PhysicalVideoProbe["sourceTimeBase"]; packets: PhysicalVideoPacket[] }
 
 /**
- * The packet-level demux probe of §5.1 step 2: pts, duration, flags and pos of the selected stream, no decoding.
+ * The packet-level demux probe of §5.1 step 2: pts, dts, duration, flags and pos of the selected stream, no decoding.
  * @param input - The source path.
  * @param input.input - The source path.
  * @param input.streamIndex - The selected video stream index.
@@ -159,12 +159,12 @@ export interface PhysicalVideoPackets { streamIndex: number; sourceTimeBase: Phy
  */
 export function videoPacketProbeArgs(input: { input: string; streamIndex: number; iso: boolean }): string[] {
   return ["-v", "error", "-protocol_whitelist", "file", ...(input.iso ? ["-ignore_editlist", "1"] : []),
-    "-select_streams", String(input.streamIndex), "-show_packets", "-show_entries", "packet=stream_index,pts,duration,flags,pos", "-of", "json", input.input];
+    "-select_streams", String(input.streamIndex), "-show_packets", "-show_entries", "packet=stream_index,pts,dts,duration,flags,pos", "-of", "json", input.input];
 }
 
 /**
  * Read the packet probe without rounding: a packet's decode order is its source ordinal, a zero or missing duration is
- * undeclared, flags starting with `K` mark a keyframe and a missing pos is null.
+ * undeclared, flags starting with `K` mark a keyframe, a missing pos is null and a missing dts is left out.
  * @param metadata - Stream metadata from the same immutable source.
  * @param packetBytes - Complete packet JSON from {@link videoPacketProbeArgs}.
  * @returns The selected stream's packets.
@@ -182,19 +182,20 @@ export function parsePhysicalVideoPackets(metadata: unknown, packetBytes: Buffer
   const sourceTimeBase = probeTimeBase(selected.time_base);
   const parsed: unknown = JSON.parse(packetBytes.toString("utf8"),
     (key: string, value: unknown, context?: { source?: string }): unknown =>
-      (key === "pts" || key === "duration" || key === "pos") && typeof value === "number" ? context?.source : value);
+      (key === "pts" || key === "dts" || key === "duration" || key === "pos") && typeof value === "number" ? context?.source : value);
   const values = probeObject(parsed).packets;
   if (!Array.isArray(values) || values.length === 0) throw new TypeError("Expected complete selected-video packets");
   const packets = values.map((value: unknown, rawDecodeOrdinal: number): PhysicalVideoPacket => {
     const packet = probeObject(value);
-    const { pts, duration, flags, pos } = packet;
+    const { pts, dts, duration, flags, pos } = packet;
     if (packet.stream_index !== streamIndex || typeof pts !== "string" || !/^-?\d+$/u.test(pts) || typeof flags !== "string" ||
+      (dts !== undefined && (typeof dts !== "string" || !/^-?\d+$/u.test(dts))) ||
       (duration !== undefined && (typeof duration !== "string" || !/^\d+$/u.test(duration))) ||
       (pos !== undefined && (typeof pos !== "string" || !/^\d+$/u.test(pos)))) {
-      throw new TypeError("Expected exact selected-video packet pts, duration, flags and position");
+      throw new TypeError("Expected exact selected-video packet pts, dts, duration, flags and position");
     }
     return {
-      rawDecodeOrdinal, ptsTicks: pts, durationTicks: duration === undefined || BigInt(duration) === 0n ? null : duration,
+      rawDecodeOrdinal, ptsTicks: pts, ...(dts === undefined ? {} : { dtsTicks: dts }), durationTicks: duration === undefined || BigInt(duration) === 0n ? null : duration,
       keyframe: flags.startsWith("K"), position: pos ?? null,
     };
   });
