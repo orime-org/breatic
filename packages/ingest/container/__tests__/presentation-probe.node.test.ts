@@ -94,6 +94,11 @@ beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'presentation-probe-'));
   const tagged = ['-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709'];
   await make('cfr.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25']);
+  // §93 D6-1: the decode-start evidence samples (B-frames at the end of a GOP, adjacent IDRs, negative CTS offsets).
+  for (const [name, options] of [['bf2.mp4', ['-g', '10', '-bf', '2']], ['idr.mp4', ['-g', '50', '-bf', '2', '-force_key_frames', 'expr:eq(n,10)+eq(n,11)']],
+    ['neg.mp4', ['-g', '10', '-bf', '2', '-movflags', 'negative_cts_offsets']]] as const) {
+    await make(name, ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', ...options, '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25']);
+  }
   await make('untagged-718.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=1280x718:r=10:d=0.4', '-c:v', 'libx264', '-g', '2', '-pix_fmt', 'yuv420p']);
   await make('untagged-720.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=10:d=0.4', '-c:v', 'libx264', '-g', '2', '-pix_fmt', 'yuv420p']);
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'untagged-718.mp4'), '-c', 'copy']);
@@ -434,6 +439,36 @@ describe('copyable audio is identity_formats\' MP4 audio_codecs (§93 D6; design
 
   it('CA12 ALAC audio, listed in the frozen table: a basic packet copy', async () => {
     expect(await routeOf('alac.mp4', ['aac', 'alac', 'none'])).toBe('copy');
+  });
+});
+
+// §93 D6-1 (frames-split design §5.1 探测行 「-show_packets取pts、dts…」, §3.2 item 7): the probe reads packet dts and the full's
+// encoding records every source keyframe's pts and dts (presented or not) and the stream's first packet dts, as exact times on
+// the media timeline with the edit list ignored. The oracle is ffprobe's own packet list of the same file.
+describe('source keyframes and the first packet dts in the encode facts (§93 D6-1; design §5.1, §3.2 item 7)', () => {
+  /** A time of these 1/25 s samples as a reduced exact rational. */
+  const exact = (seconds: number): { numerator: string; denominator: string } => {
+    const n = Math.round(seconds * 25); let [a, b] = [Math.abs(n), 25]; while (b !== 0) [a, b] = [b, a % b];
+    const g = a === 0 ? 25 : a;
+    return { numerator: String(n / g), denominator: String(25 / g) };
+  };
+  /** ffprobe's keyframes and first packet dts of a sample, edit list ignored. */
+  const oracle = async (file: string): Promise<{ sourceKeyframes: unknown[]; firstPacketDts: unknown }> => {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-ignore_editlist', '1', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,dts_time,flags', '-of', 'csv=p=0', files.get(file)!]);
+    const packets = stdout.trim().split('\n').map((line) => line.split(',')).map(([pts, dts, flags]) => ({ pts: Number(pts), dts: Number(dts), key: flags!.includes('K') }));
+    return { sourceKeyframes: packets.filter((packet) => packet.key).sort((a, b) => a.pts - b.pts).map((packet) => ({ pts: exact(packet.pts), dts: exact(packet.dts) })),
+      firstPacketDts: exact(packets[0]!.dts) };
+  };
+
+  it.each(['cfr.mp4', 'bf2.mp4', 'idr.mp4', 'neg.mp4'])('KP01 %s: every source keyframe\'s pts and dts and the first packet dts', async (file) => {
+    const encoding = planned(await probed(file)).encoding as unknown as Record<string, unknown>;
+    expect({ sourceKeyframes: encoding.sourceKeyframes, firstPacketDts: encoding.firstPacketDts }).toEqual(await oracle(file));
+  });
+
+  it('KP02 the negative-CTS sample\'s first packet dts is negative and its keyframe dts precede their pts', async () => {
+    const encoding = planned(await probed('neg.mp4')).encoding as unknown as { sourceKeyframes?: { pts: { numerator: string }; dts: { numerator: string } }[]; firstPacketDts?: { numerator: string } };
+    expect(Number(encoding.firstPacketDts?.numerator)).toBeLessThan(0);
+    expect(encoding.sourceKeyframes?.[0]).toEqual({ pts: exact(0), dts: exact(-0.04) });
   });
 });
 
