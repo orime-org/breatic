@@ -219,9 +219,14 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     await ensureVideoPresentation({ assetId: asset.id });
     const config = getMiniToolsConfig();
     const encoder = config.encoding.encoder;
+    // §93 D7-1 (design §5.4 上限行): the AAC rate of the dispatched copy's estimate is configured (audio seconds per second)
+    // and frozen with the other encoder rates.
+    const aacRate = (encoder as unknown as Record<string, unknown>).aac_encode_seconds_per_second;
+    expect(aacRate, 'encoding.encoder.aac_encode_seconds_per_second is configured').toBeGreaterThan(0);
     expect((acceptSent() as unknown as Record<string, unknown>).encoding).toEqual({
       chunkShare: config.encoding.chunk_share, maxParallelChunks: config.encoding.max_parallel_chunks,
-      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second },
+      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second,
+        aacEncodeSecondsPerSecond: aacRate },
       copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
       carrier: { maxShortSide: config.presentation.carrier.max_short_side, color: config.presentation.carrier.color },
     });

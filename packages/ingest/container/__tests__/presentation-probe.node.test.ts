@@ -419,6 +419,21 @@ describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §9
 // §93 D6 (frames-split design §4.1 row 2, §4.3 audio row, round 2): a copy keeps the selected audio packets only when its
 // codec is in the MP4 entry's `audio_codecs` of `identity_formats`; any other audio goes to the dispatched copy, whose
 // standard-4 `copy_carrier` copies the video and encodes the audio to AAC. The route is chosen from the probe's own route facts.
+// §93 D7-1 (frames-split design §5.4 上限行, §4.1 row 2): the probe reports the selected audio's duration for the dispatched
+// copy's estimate: `work.audioSeconds`, the first audio stream in ffprobe order, 0 without audio. The oracle is ffprobe's
+// own duration of that stream.
+describe('the selected audio\'s seconds in the probe work (§93 D7-1; design §5.4)', () => {
+  it.each([['cfr-aac.mp4'], ['alac.mp4'], ['two-audio.mov']])('AW01 %s: work.audioSeconds is the first audio stream\'s duration', async (file) => {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', files.get(file)!]);
+    const work = planned(await probed(file)).work as unknown as { audioSeconds?: number };
+    expect(work.audioSeconds).toBeCloseTo(Number(stdout.trim()), 3);
+  });
+
+  it('AW02 a source without audio: work.audioSeconds is 0', async () => {
+    expect((planned(await probed('cfr.mp4')).work as unknown as { audioSeconds?: number }).audioSeconds).toBe(0);
+  });
+});
+
 describe('copyable audio is identity_formats\' MP4 audio_codecs (§93 D6; design §4.1 row 2)', () => {
   const ROOM = { selected: null, copyDiskMarginBytes: 0, basicDiskBytes: 1e12 };
   /** The route of a probed file under a frozen identity table whose H.264 profiles never match, so identity is out. */
