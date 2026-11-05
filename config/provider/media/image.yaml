@@ -41,17 +41,15 @@ models:
             field: image_size
             values:
               1:1: square_hd
-              4:3: landscape_4_3
-              3:4: portrait_4_3
             supported:
               - 1:1
-              - 4:3
-              - 3:4
           quality:
             field: quality
         drops:
           resolution:
-            - 1k
+            values:
+              - 1k
+            equivalent: fal square_hd 1024x1024 equals WaveSpeed 1k at 1:1 (measured 1024x1024; 4:3 is 1184x880)
         rejects:
           - when: $length(prompt) > 32000
             reason: fal prompt maxLength 32000
@@ -610,19 +608,17 @@ models:
             field: image_size
             values:
               1:1: square_hd
-              4:3: landscape_4_3
-              3:4: portrait_4_3
             supported:
               - 1:1
-              - 4:3
-              - 3:4
           images:
             field: image_urls
           quality:
             field: quality
         drops:
           resolution:
-            - 1k
+            values:
+              - 1k
+            equivalent: fal square_hd 1024x1024 equals WaveSpeed 1k at 1:1 (measured 1024x1024; 4:3 is 1184x880)
           style_images: "*"
         mentions:
           images: image {n}

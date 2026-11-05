@@ -1422,9 +1422,6 @@ models:
             field: audio
           voice_id:
             field: voice_id
-        rejects:
-          - when: get_duration(audio) > 300
-            reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes"
         pricing:
           kind: formula
           base_price: 4000
@@ -1461,6 +1458,9 @@ models:
             Lily: Lily
             Bill: Bill
         output_field: audio
+        rejects:
+          - when: get_duration(audio_url) > 300
+            reason: fal states no limit; WaveSpeed trims to the first 5 minutes, so a longer clip is served there
         pricing:
           kind: formula
           base_price: 300000

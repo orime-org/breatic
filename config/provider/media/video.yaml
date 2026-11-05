@@ -126,31 +126,6 @@ models:
           base_price: 50000
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: alibaba/wan/3.0/text-to-video
-        prompt_field: prompt
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          duration:
-            field: duration
-          generate_audio:
-            field: generate_audio
-          resolution:
-            field: resolution
-        drops:
-          shots: "*"
-        fixed:
-          mode: async
-        rejects:
-          - when: $length(prompt) > 5000
-            reason: SandBase prompt maxLength 5000
-        pricing:
-          kind: formula
-          base_price: 100000
-          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1)}'
-          discount_rate: 100
   seedance-2.5-text-to-video:
     upstreams:
       - upstream: wavespeed
@@ -418,39 +393,6 @@ models:
           base_price: 420000
           formula: '{"total_price": base_price * duration}'
           discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: kwaivgi/kling-video/v3/4k/text-to-video
-        prompt_field: prompt
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          duration:
-            field: duration
-          shot_type:
-            field: shot_type
-          auto_shots:
-            field: shot_type
-            values:
-              "true": intelligent
-            absent_value: false
-          generate_audio:
-            field: generate_audio
-        drops:
-          negative_prompt: []
-          multi_prompt: []
-        fixed:
-          mode: async
-        rejects:
-          - when: $length(prompt) > 2500
-            reason: SandBase prompt maxLength 2500
-          - when: $not($exists(prompt))
-            reason: "SandBase prompt: required"
-        pricing:
-          kind: formula
-          base_price: 420000
-          formula: '{"total_price": base_price * duration}'
-          discount_rate: 100
   gemini-omni-1.1-flash-image-to-video:
     upstreams:
       - upstream: wavespeed
@@ -677,36 +619,6 @@ models:
           kind: formula
           base_price: 50000
           formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1)}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: alibaba/wan/3.0/image-to-video
-        prompt_field: prompt
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-            absent_value: auto
-          duration:
-            field: duration
-          generate_audio:
-            field: generate_audio
-          image:
-            field: image
-          end_image:
-            field: end_image
-          resolution:
-            field: resolution
-        drops:
-          shots: "*"
-        fixed:
-          mode: async
-        rejects:
-          - when: $length(prompt) > 5000
-            reason: SandBase prompt maxLength 5000
-        pricing:
-          kind: formula
-          base_price: 100000
-          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1)}'
           discount_rate: 100
   seedance-2.5-image-to-video:
     upstreams:
@@ -980,6 +892,9 @@ models:
             field: video
         fixed:
           mode: async
+        rejects:
+          - when: get_duration(video) > 30
+            reason: SandBase forwards to fal, whose video has Max duration 30 seconds
         pricing:
           kind: formula
           base_price: 50000
@@ -1016,10 +931,6 @@ models:
             reason: WaveSpeed prompt maxLength 7000
           - when: $exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))
             reason: "WaveSpeed reference_audios: Audio cannot be provided alone"
-          - when: get_duration(reference_videos) > 15
-            reason: "WaveSpeed reference_videos: the combined reference-video duration is capped at 15 seconds"
-          - when: get_duration(reference_videos, min=2, max=1000000, total=1000000) > get_duration(reference_videos)
-            reason: "WaveSpeed reference_videos: each clip is normalized to 2-15 seconds"
         pricing:
           kind: formula
           base_price: 700000
@@ -1304,54 +1215,6 @@ models:
           kind: formula
           base_price: 50000
           formula: '{"total_price": base_price * (resolution = "1080p" ? 4 : resolution = "720p" ? 2 : 1) * ($min([duration, 30]) + $min([get_duration(reference_video_urls), 15]))}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: alibaba/wan/3.0/reference-to-video
-        prompt_field: prompt
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          duration:
-            field: duration
-          generate_audio:
-            field: generate_audio
-          audios:
-            field: audios
-          images:
-            field: images
-          videos:
-            field: videos
-          resolution:
-            field: resolution
-        drops:
-          style_images: "*"
-          shots: "*"
-        fixed:
-          mode: async
-        mentions:
-          audios: Audio {n}
-          images: Image {n}
-          videos: Video {n}
-        rejects:
-          - when: $length(prompt) > 5000
-            reason: SandBase prompt maxLength 5000
-          - when: $not($exists(images) or $exists(videos) or $exists(audios))
-            reason: "SandBase images: Provide at least one of images, videos, or audios"
-          - when: get_duration(audios) > 15
-            reason: "SandBase audios: 1-15s each, 15s total"
-          - when: get_duration(audios, min=1, max=1000000, total=1000000) > get_duration(audios)
-            reason: "SandBase audios: 1-15s each, 15s total"
-          - when: get_duration(videos) > 15
-            reason: "SandBase videos: 1-15s each, 15s total"
-          - when: get_duration(videos, min=1, max=1000000, total=1000000) > get_duration(videos)
-            reason: "SandBase videos: 1-15s each, 15s total"
-          - when: "(duration ? duration : 5) + get_duration(videos) > 30"
-            reason: "SandBase videos: Reference video length plus output length must stay within 30 seconds"
-        pricing:
-          kind: formula
-          base_price: 100000
-          formula: '{"total_price": base_price * (resolution = "1080p" ? 2 : resolution = "480p" ? 0.5 : 1) * ((duration ? duration : 5) + $ceil($min([get_duration(videos), 15])))}'
           discount_rate: 100
   happyhorse-1.1-reference-to-video:
     upstreams:

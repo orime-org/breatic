@@ -107,10 +107,17 @@ const bindingSchema = z.strictObject({
   fixed: z.record(z.string(), z.unknown()).optional(),
   /**
    * Our params this upstream has no field for, and when it can still serve a run:
-   * `"*"` whatever the value, a list for those values (or when the run leaves the param out),
-   * `{ all_values }` whatever the value, for the reason given.
+   * `"*"` whatever the value, a list of values that send nothing (`[false]`, `[""]`, `[]`: only when the run leaves
+   * the param out or sets one of them), `{ values, equivalent }` for those values, with why the upstream's default
+   * gives them (the catalog check refuses a bare list of any other value), `{ all_values }` whatever the value, for
+   * the reason given.
    */
-  drops: z.record(z.string(), z.union([z.literal("*"), z.array(choice), z.strictObject({ all_values: z.string().min(1) })])).optional(),
+  drops: z.record(z.string(), z.union([
+    z.literal("*"),
+    z.array(choice),
+    z.strictObject({ values: z.array(choice).min(1), equivalent: z.string().min(1) }),
+    z.strictObject({ all_values: z.string().min(1) }),
+  ])).optional(),
   /** Where a fal result puts its output files, as a dotted path. */
   output_field: z.string().min(1).optional(),
   /**
@@ -452,6 +459,16 @@ export function candidateOf(config: ProviderConfig, upstream: string, weight: nu
 }
 
 /**
+ * The values a drop serves a run at.
+ * @param drop - One entry of a binding's `drops`.
+ * @returns Its listed values; none for a drop of every value.
+ */
+export function droppedValues(drop: NonNullable<MediaBinding["drops"]>[string] | undefined): readonly (string | number | boolean)[] {
+  if (Array.isArray(drop)) return drop;
+  return typeof drop === "object" && "values" in drop ? drop.values : [];
+}
+
+/**
  * The problems with how one binding covers a model's params: each param bound or dropped exactly once, offered values only,
  * item sub-fields the catalog item has, and a voice map wherever a reseller takes our voices.
  * @param model - The model.
@@ -470,11 +487,17 @@ function coverageProblems(model: string, binding: MediaBinding, params: CatalogS
     const bound = binding.params?.[param];
     const dropped = binding.drops?.[param];
     if (bound === undefined && dropped === undefined) problems.push(`${at} neither binds nor drops param "${param}"`);
+    const before = problems.length;
     if (bound !== undefined && dropped !== undefined) problems.push(`${at} both binds and drops param "${param}"`);
     const offered = declared.values === undefined ? undefined : new Set(declared.values.map(String));
-    const listed = [...(bound?.supported ?? []), ...(Array.isArray(dropped) ? dropped : [])];
-    for (const value of listed) {
-      if (offered !== undefined && !offered.has(String(value))) problems.push(`${at} lists value "${String(value)}" of "${param}", which the param does not offer`);
+    const dropValues = droppedValues(dropped);
+    for (const value of [...(bound?.supported ?? []), ...dropValues]) {
+      // "" is a value that sends nothing, not one the param offers.
+      if (offered !== undefined && value !== "" && !offered.has(String(value))) problems.push(`${at} lists value "${String(value)}" of "${param}", which the param does not offer`);
+    }
+    // Each drop is reported once: a bare list of real values only when nothing else is wrong with it.
+    if (Array.isArray(dropped) && dropped.some((v) => v !== false && v !== "") && problems.length === before) {
+      problems.push(`${at} drops "${param}" for ${JSON.stringify(dropped)} without saying why its default gives those values; write { values, equivalent }`);
     }
     if (bound?.item_fields !== undefined) {
       if (declared.type !== "items") problems.push(`${at} gives item_fields to "${param}", which is not a list of items`);

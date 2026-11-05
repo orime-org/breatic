@@ -135,8 +135,7 @@ const WAVESPEED: Readonly<Record<string, {
     rejects: [
       { when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" },
       { when: "$exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))", reason: "WaveSpeed reference_audios: Audio cannot be provided alone" },
-      { when: "get_duration(reference_videos) > 15", reason: "WaveSpeed reference_videos: the combined reference-video duration is capped at 15 seconds" },
-      { when: "get_duration(reference_videos, min=2, max=1000000, total=1000000) > get_duration(reference_videos)", reason: "WaveSpeed reference_videos: each clip is normalized to 2-15 seconds" },
+      // No reference-video length limit: WaveSpeed normalizes each clip and trims the total (measured).
     ],
   },
   "mureka-v9.5-generate-song": {
@@ -149,9 +148,6 @@ const WAVESPEED: Readonly<Record<string, {
   },
   "mureka-v9.5-generate-bgm": { rejects: [{ when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Official limit: up to 1024 characters" }] },
   "krea-v2-large-text-to-image": { rejects: [{ when: "$length(prompt) > 5000", reason: "WaveSpeed prompt: Supports 1-5000 characters" }] },
-  "elevenlabs-voice-changer": {
-    rejects: [{ when: "get_duration(audio) > 300", reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes" }],
-  },
   "seedance-2.5-text-to-video": {
     rejects: [
       { when: "get_duration(reference_audios) > 30", reason: "WaveSpeed reference_audios: total length must not exceed 30 seconds" },

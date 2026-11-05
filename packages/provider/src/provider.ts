@@ -4,6 +4,7 @@
 import {
   assertBindsCatalog,
   candidatesOf,
+  droppedValues,
   parseProviderConfig,
   type CatalogShape,
   type ProviderConfig,
@@ -131,7 +132,7 @@ function limitsOf(binding: MediaBinding): Pick<UpstreamPricing, "limits" | "voic
     if (bound.supported !== undefined) limits[param] = bound.supported;
   }
   for (const [param, drop] of Object.entries(binding.drops ?? {})) {
-    if (Array.isArray(drop)) limits[param] = drop;
+    if (drop !== "*" && !("all_values" in drop)) limits[param] = [...droppedValues(drop)];
   }
   const voices = Object.fromEntries(Object.entries(binding.voice_map ?? {}).map(([param, map]) => [param, Object.keys(map)]));
   return {
