@@ -1521,7 +1521,7 @@
       "bullet-time-mishap": {
         "name": "Bullet-time mishap",
         "description": "A clumsy moment freezes while the camera circles it",
-        "prompt": "{✏️ who and what goes wrong, e.g. a cat knocks a full glass of milk off the kitchen table}. 0–2 s: already happening, the mishap starts. 2–6 s: at the worst instant everything freezes: the subject held still in place, splashes and pieces hanging in the air, while the camera circles 360 degrees around them at the same height and distance, smoothly and at an even speed; the subject does not turn with the camera. The near things sweep past quickly and the background moves slowly. 6–8 s: time snaps back and the mishap finishes. One light source. Sound: a sudden silence at the freeze, a low whoosh while the camera circles, then the crash. No text on screen.",
+        "prompt": "{✏️ who and what goes wrong, e.g. a cat knocks a full glass of milk off the kitchen table}. 0–1 s: already happening, the mishap starts. 1–6 s: at the worst instant time stops completely, like a frozen photograph: the subject, the splashes and the falling pieces hang perfectly still in mid-air and nothing in the scene moves at all; only the camera moves, travelling in a full circle around the frozen moment at the same height and distance, so we see it from the side, from behind, from the other side and back to the front. 6–8 s: time snaps back and the mishap finishes. One light source. Sound: a sudden silence at the freeze, a low whoosh while the camera circles, then the crash. No text on screen.",
         "input": {}
       },
       "beat-sync-outfit-change": {
