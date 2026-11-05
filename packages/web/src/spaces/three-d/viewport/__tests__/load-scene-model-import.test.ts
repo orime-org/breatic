@@ -16,7 +16,9 @@ import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
-import { validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import { validateModelTextureBytes, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import type { ImageSize } from '@web/spaces/three-d/model-texture-metadata';
+import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
 // jsdom has no Worker; the mocked client runs the same package reader the worker runs.
 vi.mock('@web/spaces/three-d/model-import-worker-client', async () => {
@@ -270,17 +272,34 @@ describe('registered model import containers (inner#1690)', () => {
   });
 });
 
-describe('decoded texture budgets (inner#1690)', () => {
+describe('texture byte budgets (inner#1690)', () => {
+  /**
+   * Declare a model whose materials each use their own 64 px image, sampled without mipmaps.
+   * @throws {never} Never.
+   */
+  const declared = (count: number): GltfDocument => ({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: Array.from({ length: count }, (_, material) => ({ attributes: { POSITION: 0 }, material })) }],
+    materials: Array.from({ length: count }, (_, index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })),
+    textures: Array.from({ length: count }, (_, source) => ({ source, sampler: 0 })), samplers: [{ minFilter: 9729 }],
+    images: Array.from({ length: count }, (_, index) => ({ uri: `texture-${index}.png` })) });
+  const sizes = (count: number): Map<number, ImageSize> => new Map(Array.from({ length: count }, (_, index) => [index, { width: 64, height: 64 }]));
+
   it('refuses textures over the cumulative budget as an import limit', () => {
-    const scene = new Group();
-    for (const _ of [0, 1]) {
-      const map = new Texture();
-      map.image = { width: 64, height: 64 };
-      map.generateMipmaps = false;
-      scene.add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map })));
-    }
-    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
-    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 })).toThrow(expect.objectContaining({ code: 'budget' }));
+    expect(() => validateModelTextureBytes(declared(2), sizes(2), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
+    expect(() => validateModelTextureBytes(declared(2), sizes(2), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 }))
+      .toThrow(expect.objectContaining({ code: 'budget' }));
+  });
+
+  it('states the full texture size against its limit', () => {
+    expect(() => validateModelTextureBytes(declared(3), sizes(3), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
+      code: 'budget', budget: { limit: 'textureBytes', allowed: 64 * 64 * 4, actual: 64 * 64 * 4 * 3 },
+    }));
+  });
+
+  it('counts a compressed image by its decoded mip bytes', () => {
+    const measured = new Map([[0, 1000]]);
+    expect(() => validateModelTextureBytes(declared(1), sizes(1), measured, { ...IMPORT_LIMITS, maxTextureBytes: 1000 })).not.toThrow();
+    expect(() => validateModelTextureBytes(declared(1), sizes(1), measured, { ...IMPORT_LIMITS, maxTextureBytes: 999 })).toThrow(expect.objectContaining({ code: 'budget' }));
   });
 });
 
@@ -322,19 +341,6 @@ describe('decoder failures name model resources (inner#1690)', () => {
     await loadRegistered(bytes, 'application/zip');
     expect(readRegisteredModelPackageInWorker).toHaveBeenCalledWith(expect.any(Uint8Array), expect.any(AbortSignal), IMPORT_LIMITS);
   });
-
-  it('states the full decoded texture size against its limit', () => {
-    const scene = new Group();
-    for (const _ of [0, 1, 2]) {
-      const map = new Texture();
-      map.image = { width: 64, height: 64 };
-      map.generateMipmaps = false;
-      scene.add(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ map })));
-    }
-    expect(() => validateModelTextures([scene], { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
-      code: 'budget', budget: { limit: 'textureBytes', allowed: 64 * 64 * 4, actual: 64 * 64 * 4 * 3 },
-    }));
-  });
 });
 
 describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
@@ -352,40 +358,97 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     return inspectModelFiles(new Map([['scene.gltf', json], ...files]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS);
   }
 
-  it.each([[8192, true], [16, false]])('holds the texture bytes another browser decodes (an AVIF of %i px) to the cumulative budget', async (edge, refused) => {
-    const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
-    const png = (size: number): Uint8Array<ArrayBuffer> => {
-      const bytes = Uint8Array.from(PNG);
-      new DataView(bytes.buffer).setUint32(16, size);
-      new DataView(bytes.buffer).setUint32(20, size);
-      return bytes;
-    };
-    const files = new Map<string, Uint8Array<ArrayBuffer>>([['color.png', png(16)], ['color.avif', png(edge)]]);
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 16, height: 16, close: vi.fn() })));
+  const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPf8AAAAASUVORK5CYII='), (value) => value.charCodeAt(0));
+  /**
+   * Declare a PNG of the given edge; the stubbed decoder reads it back from the header.
+   * @throws {never} Never.
+   */
+  const png = (size: number): Uint8Array<ArrayBuffer> => {
+    const bytes = Uint8Array.from(PNG);
+    new DataView(bytes.buffer).setUint32(16, size);
+    new DataView(bytes.buffer).setUint32(20, size);
+    return bytes;
+  };
+  /**
+   * Parse a model with the real GLTFLoader in a browser with or without AVIF, decoding each image at its header size.
+   * @returns Whether the model was accepted, or the refused budget.
+   * @throws {never} Never; a refusal is returned.
+   */
+  async function parseIn(model: ReturnType<typeof inspectModelFiles>, avif: boolean): Promise<unknown> {
+    const blobs = new Map<string, Blob>();
+    const realFetch = globalThis.fetch;
     vi.stubGlobal('URL', class extends URL {
-      static createObjectURL = vi.fn((blob: Blob) => `blob:${(blob as File).name ?? 'image'}`);
+      static createObjectURL = vi.fn((blob: Blob) => {
+        const url = `blob:image-${blobs.size}`;
+        blobs.set(url, blob);
+        return url;
+      });
       static revokeObjectURL = vi.fn();
     });
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(png(16))));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => blobs.has(url) ? new Response(new Uint8Array(await blobs.get(url)!.arrayBuffer())) : realFetch(url)));
+    vi.stubGlobal('createImageBitmap', vi.fn(async (blob: Blob) => {
+      const header = new DataView(await blob.arrayBuffer());
+      return { width: header.getUint32(16), height: header.getUint32(20), close: vi.fn() };
+    }));
     vi.stubGlobal('Image', class {
       height = 0;
       onload: (() => void) | null = null;
       onerror: (() => void) | null = null;
-      /** Decode GLTFLoader's AVIF probe image as a browser without AVIF support does. */
+      /** Decode GLTFLoader's AVIF probe image as the browser under test does. */
       set src(_value: string) {
-        queueMicrotask(() => this.onerror?.());
+        queueMicrotask(() => {
+          if (!avif) return this.onerror?.();
+          this.height = 1;
+          this.onload?.();
+        });
       }
     });
-    const model = triangle({
-      extensionsUsed: ['EXT_texture_avif'],
-      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
-      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
-      textures: [{ source: 0, extensions: { EXT_texture_avif: { source: 1 } } }],
-      images: [{ uri: 'color.png' }, { uri: 'color.avif' }],
-    }, [...files]);
-    const parsed = parseSceneModel({ ...model, support: { webp: true, avif: false } }, new AbortController().signal, IMPORT_LIMITS);
-    if (refused) await expect(parsed).rejects.toThrow(expect.objectContaining({ code: 'budget', budget: expect.objectContaining({ limit: 'textureBytes' }) }));
-    else disposeModelTemplate(await parsed);
+    try {
+      disposeModelTemplate(await parseSceneModel({ ...model, support: { webp: true, avif } }, new AbortController().signal, IMPORT_LIMITS));
+      return 'accepted';
+    } catch (error) {
+      return (error as ModelImportError).budget ?? error;
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }
+  const avifTexture = { source: 0, extensions: { EXT_texture_avif: { source: 1 } } };
+  const avifImages = { extensionsUsed: ['EXT_texture_avif'], images: [{ uri: 'color.png' }, { uri: 'color.avif' }] };
+  const overBudget = expect.objectContaining({ limit: 'textureBytes' });
+
+  it.each([[8192, false, overBudget], [16, false, 'accepted'], [8192, true, overBudget]])('holds the texture bytes every browser decodes (an AVIF of %i px, importer with AVIF: %s) to the cumulative budget', async (edge, avif, expected) => {
+    const model = triangle({ ...avifImages, meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }], textures: [avifTexture] }, [['color.png', png(16)], ['color.avif', png(edge)]]);
+    expect(await parseIn(model, avif)).toEqual(expected);
+  });
+
+  it('counts the image another browser decodes for a texture used through a second UV set', async () => {
+    const model = triangle({ ...avifImages, meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0, texCoord: 1 } } }], textures: [avifTexture] }, [['color.png', png(16)], ['color.avif', png(8192)]]);
+    expect(await parseIn(model, false)).toEqual(overBudget);
+  });
+
+  it.each([[16, 8192, false, overBudget], [6144, 16, true, 'accepted']])('counts each browser\'s own textures when two textures share a fallback image (%i px fallback, %i px AVIF, importer with AVIF: %s)', async (fallback, alternative, avif, expected) => {
+    const model = triangle({ ...avifImages, meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, emissiveTexture: { index: 1 } }], textures: [avifTexture, { source: 0 }] },
+    [['color.png', png(fallback)], ['color.avif', png(alternative)]]);
+    expect(await parseIn(model, avif)).toEqual(expected);
+  });
+
+  it('counts an image once when several materials use it under different texture transforms', async () => {
+    const model = triangle({ extensionsUsed: ['KHR_texture_transform'], images: [{ uri: 'atlas.png' }], textures: [{ source: 0 }],
+      meshes: [{ primitives: [0, 1, 2, 3].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 0.25, 0.5, 0.75].map((x) => ({ pbrMetallicRoughness: { baseColorTexture: { index: 0, extensions: { KHR_texture_transform: { offset: [x, 0] } } } } })) },
+    [['atlas.png', png(4096)]]);
+    expect(await parseIn(model, true)).toBe('accepted');
+  });
+
+  it('counts an image again for a sampler that uploads it with other filters', async () => {
+    const model = triangle({ images: [{ uri: 'atlas.png' }], textures: [{ source: 0 }, { source: 0, sampler: 0 }], samplers: [{ wrapS: 33071 }],
+      meshes: [{ primitives: [0, 1, 2, 3].map((material) => ({ attributes: { POSITION: 0 }, material: material % 2 })) }],
+      materials: [0, 1].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) },
+    [['atlas.png', png(6144)]]);
+    expect(await parseIn(model, true)).toEqual(overBudget);
   });
 
   it('loads a model whose unused texture has no source', async () => {

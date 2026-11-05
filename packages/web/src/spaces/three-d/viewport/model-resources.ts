@@ -11,9 +11,9 @@ import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-view
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
-import { imageLocation, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
-import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import { createModelDecoder, measuredTextureBytes, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { imageLocation, validateModelTextureBytes, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
+import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
@@ -309,12 +309,12 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       const failed = textures.find((_, position) => decoded[position] === null);
       // inspectModelFiles refused every used texture that names no image.
       if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: imageLocation(model, failed.image!) });
-      validateModelTextures(result.scenes, textureLimits, {
-        sourceOf: (texture) => result.parser.associations.get(texture)?.textures,
-        local: new Map(textures.map(({ texture, image }) => [texture, image])),
-        browsers: loadedResourcesInEveryBrowser(model.json).map((resources) => new Map(resources.textures.map(({ texture, image }) => [texture, image]))),
-        sizes,
-      });
+      validateModelTextures(result.scenes, textureLimits);
+      const measured = new Map(textures.flatMap(({ image }, position) => {
+        const bytes = measuredTextureBytes(decoded[position]!);
+        return bytes === undefined ? [] : [[image!, bytes] as const];
+      }));
+      validateModelTextureBytes(model.json, sizes, measured, limits);
       return result.scene;
     } catch (error) {
       disposeModelTemplate(root);

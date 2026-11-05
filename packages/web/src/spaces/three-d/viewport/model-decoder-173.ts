@@ -139,81 +139,39 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
 const imageSizeSchema = z.object({ width: z.number().int().positive(), height: z.number().int().positive() });
 const mipDataSchema = z.object({ data: z.custom<ArrayBufferView>((value) => ArrayBuffer.isView(value)) });
 
-/** What the other browsers that can open the model decode, for holding their texture bytes to the same budget. */
-export interface TextureAlternatives {
-  /** The glTF texture a decoded texture came from, as GLTFLoader's parser associates it. */
-  sourceOf: (texture: Texture) => number | undefined;
-  /** The image this browser decoded for each glTF texture. */
-  local: ReadonlyMap<number, number | undefined>;
-  /** The image each browser that can open the model decodes for each glTF texture. */
-  browsers: readonly ReadonlyMap<number, number | undefined>[];
-  /** The declared dimensions of every image any of those browsers decodes. */
-  sizes: ReadonlyMap<number, { width: number; height: number }>;
-}
-
 /**
- * Count the bytes of an uncompressed RGBA texture and, when it generates them, its mipmaps.
- * @param size - The texture's pixel dimensions.
- * @param size.width - Its width in pixels.
- * @param size.height - Its height in pixels.
- * @param mipmaps - Whether the texture generates mipmaps.
- * @returns The byte count.
+ * Read the decoded mip bytes of a texture that carries its own mip levels, as a transcoded KTX2 texture does.
+ * @param texture - A decoded texture.
+ * @returns The bytes of every level, or undefined when the texture carries no mip data.
  * @throws {never} Never.
  */
-function rgbaBytes(size: { width: number; height: number }, mipmaps: boolean): number {
-  let { width, height } = size;
-  let total = 0;
-  while (true) {
-    total += width * height * 4;
-    if (!mipmaps || (width === 1 && height === 1)) return total;
-    width = Math.max(1, Math.floor(width / 2));
-    height = Math.max(1, Math.floor(height / 2));
-  }
+export function measuredTextureBytes(texture: Texture): number | undefined {
+  const levels = texture.mipmaps?.map((value) => mipDataSchema.safeParse(value)) ?? [];
+  return levels.length && levels.every((value) => value.success)
+    ? levels.reduce((sum, value) => sum + (value.success ? value.data.data.byteLength : 0), 0) : undefined;
 }
 
 /**
  * Check decoded textures before the first GPU upload of a model.
- * The cumulative budget holds in every browser that can open the model: a texture another browser decodes from a different image
- * counts that image's declared size in place of the one decoded here.
  * @param scenes - Parsed glTF scenes sharing the template's resources.
- * @param limits - Configured dimension and cumulative texture budgets.
- * @param alternatives - What the other browsers decode; omitted, only this browser's textures are counted.
- * @throws {ModelImportError} When a decoded texture, or the textures any browser decodes, exceed the configured budget.
+ * @param limits - Configured dimension budget, capped to this device's texture limit.
+ * @throws {ModelImportError} When a decoded texture is not a 2D image or exceeds the dimension budget.
  */
-export function validateModelTextures(scenes: readonly Group[], limits: SceneImportLimits, alternatives?: TextureAlternatives): void {
+export function validateModelTextures(scenes: readonly Group[], limits: SceneImportLimits): void {
   const textures = new Set<Texture>();
   for (const scene of scenes) scene.traverse((object) => {
     if (isDrawable(object)) for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
       for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value);
     }
   });
-  const counted: { texture: Texture; bytes: number }[] = [];
   for (const texture of textures) {
     const image: unknown = texture.image;
     const parsed = imageSizeSchema.safeParse(image);
     if (!parsed.success) throw new ModelImportError('invalid', 'Model texture is not a 2D image', { detail: texture.name });
-    const size = parsed.data;
-    const edge = Math.max(size.width, size.height);
+    const edge = Math.max(parsed.data.width, parsed.data.height);
     if (edge > limits.maxTextureEdge) {
       throw new ModelImportError('budget', 'Model texture exceeds the configured dimension budget', { detail: texture.name,
         budget: { limit: 'textureEdge', allowed: limits.maxTextureEdge, actual: edge } });
     }
-    const mipData = texture.mipmaps?.map((value) => mipDataSchema.safeParse(value)) ?? [];
-    counted.push({ texture, bytes: mipData.length && mipData.every((value) => value.success)
-      ? mipData.reduce((sum, value) => sum + (value.success ? value.data.data.byteLength : 0), 0)
-      : rgbaBytes(size, texture.generateMipmaps) });
-  }
-  const here = counted.reduce((sum, { bytes }) => sum + bytes, 0);
-  const totals = [here, ...(alternatives?.browsers ?? []).map((browser) => counted.reduce((sum, { texture, bytes }) => {
-    const source = alternatives!.sourceOf(texture);
-    const image = source === undefined ? undefined : browser.get(source);
-    const size = image === undefined || image === alternatives!.local.get(source!) ? undefined : alternatives!.sizes.get(image);
-    // Another browser decodes WebP, AVIF or the fallback source, all uncompressed RGBA; KTX2 is the same image everywhere.
-    return sum + (size ? rgbaBytes(size, texture.generateMipmaps) : bytes);
-  }, 0))];
-  const total = Math.max(...totals);
-  if (total > limits.maxTextureBytes) {
-    throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
-      budget: { limit: 'textureBytes', allowed: limits.maxTextureBytes, actual: total } });
   }
 }

@@ -7,6 +7,7 @@ import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { loadedImageUri, readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { loadedResources, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
 const KTX2_IDENTIFIER = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -97,6 +98,65 @@ export function validateModelTextureMetadata(model: ModelPackage, limits: SceneI
     sizes.set(index, checkImage({ model, decoded, location: imageLocation(model, index) }, model.json.images![index], local.has(index) ? deviceLimits : limits));
   }
   return sizes;
+}
+
+/** GLTFLoader's WEBGL_FILTERS and WEBGL_WRAPPINGS keys; any other value takes the loader's default. */
+const MAG_FILTERS: ReadonlySet<unknown> = new Set([9728, 9729]);
+const MIN_FILTERS: ReadonlySet<unknown> = new Set([9728, 9729, 9984, 9985, 9986, 9987]);
+const WRAPPINGS: ReadonlySet<unknown> = new Set([33071, 33648, 10497]);
+
+/**
+ * Count the bytes of an uncompressed RGBA texture and, when it generates them, its mipmaps.
+ * @param size - The texture's pixel dimensions.
+ * @param size.width - Its width in pixels.
+ * @param size.height - Its height in pixels.
+ * @param mipmaps - Whether the texture generates mipmaps.
+ * @returns The byte count.
+ * @throws {never} Never.
+ */
+function rgbaBytes(size: ImageSize, mipmaps: boolean): number {
+  let { width, height } = size;
+  let total = 0;
+  while (true) {
+    total += width * height * 4;
+    if (!mipmaps || (width === 1 && height === 1)) return total;
+    width = Math.max(1, Math.floor(width / 2));
+    height = Math.max(1, Math.floor(height / 2));
+  }
+}
+
+/**
+ * Hold the texture bytes every browser that can open the model uploads to the cumulative budget, from the declarations alone,
+ * so import and every later open reach the same verdict.
+ * GLTFLoader shares one image source per image index, and WebGLRenderer uploads a source once per filter and wrap combination:
+ * texture transforms and second UV sets clone a texture without another upload.
+ * @param json - The checked glTF document.
+ * @param sizes - The declared dimensions of every image any browser decodes, from validateModelTextureMetadata.
+ * @param measured - The decoded mip bytes of the compressed (KTX2) images, which every browser decodes from the same image.
+ * @param limits - Configured cumulative texture budget.
+ * @throws {ModelImportError} When the textures any browser uploads exceed the cumulative budget.
+ */
+export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, measured: ReadonlyMap<number, number>, limits: SceneImportLimits): void {
+  const { textures = [], samplers = [] } = json as { textures?: { sampler?: number }[]; samplers?: Record<string, unknown>[] };
+  // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once;
+  // count per material slot colour space if such models exceed the budget on devices.
+  const total = Math.max(...loadedResourcesInEveryBrowser(json).map((resources) => {
+    const uploads = new Map<string, number>();
+    for (const { texture, image } of resources.textures) {
+      // inspectModelFiles refused every used texture that names no image.
+      if (image === undefined) continue;
+      const sampler = samplers[textures[texture]?.sampler ?? -1] ?? {};
+      const min = MIN_FILTERS.has(sampler.minFilter) ? sampler.minFilter : 9987;
+      const key = [image, MAG_FILTERS.has(sampler.magFilter) ? sampler.magFilter : 9729, min,
+        WRAPPINGS.has(sampler.wrapS) ? sampler.wrapS : 10497, WRAPPINGS.has(sampler.wrapT) ? sampler.wrapT : 10497].join();
+      uploads.set(key, measured.get(image) ?? rgbaBytes(sizes.get(image)!, min !== 9728 && min !== 9729));
+    }
+    return [...uploads.values()].reduce((sum, bytes) => sum + bytes, 0);
+  }));
+  if (total > limits.maxTextureBytes) {
+    throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
+      budget: { limit: 'textureBytes', allowed: limits.maxTextureBytes, actual: total } });
+  }
 }
 
 /**
