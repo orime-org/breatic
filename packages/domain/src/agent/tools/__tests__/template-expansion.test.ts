@@ -166,6 +166,24 @@ describe("expandTemplate", () => {
     expect(reason).toContain("write the shots.");
   });
 
+  it("asks a template node without shots that the agent moved to multi_shot for shots, not a prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" }, mode: "multi_shot" }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).not.toContain("sends no prompt");
+    expect(reason).toContain("write the shots.");
+    expect(reason).not.toContain("write a prompt.");
+  });
+
+  it("asks a template node without shots that keeps its mode for a prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).toContain("write a prompt.");
+  });
+
   it("refuses a template the registry it is given does not have, naming the ones it does", () => {
     const out = expandTemplate(named({ id: "no-such" }), AT, FIXTURES);
     expect(out).toMatchObject({ ok: false, refusal: "template-unknown", reason: 'No template "no-such". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots.' });
