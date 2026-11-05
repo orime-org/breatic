@@ -349,3 +349,57 @@ describe("Timeline records stored under a key other than their id (inner#1708 Q1
     expect(content.damaged).toEqual({ clips: [] });
   });
 });
+
+describe("timelineRecordJson reads one stored Timeline value as JSON (inner#1708 Q1)", () => {
+  /**
+   * The export under test, read from a module namespace so a missing export fails as an assertion.
+   * @param module - The module namespace.
+   * @returns The function.
+   * @throws {Error} When it is not exported.
+   */
+  function exported(module: object): (value: unknown) => unknown {
+    const value: unknown = (module as Record<string, unknown>).timelineRecordJson;
+    if (typeof value !== "function") throw new Error("timelineRecordJson is not exported");
+    return value as (value: unknown) => unknown;
+  }
+
+  it("is exported from the document module and @breatic/shared/space-content as the same function", async () => {
+    const documentModule = await import("../document.js");
+    expect(exported(spaceContent)).toBe(exported(documentModule));
+  });
+
+  it("returns toJSON() for a Y.Map, a Y.Text and a Y.Array, and anything else unchanged", async () => {
+    const read = exported(await import("../document.js"));
+    const doc = trackedDoc();
+    const map = doc.getMap("probe");
+    const record = new Y.Map<unknown>();
+    map.set("record", record);
+    record.set("a", 1);
+    const text = new Y.Text();
+    map.set("text", text);
+    text.insert(0, "hello");
+    const list = new Y.Array<unknown>();
+    map.set("list", list);
+    list.push([1, "two"]);
+    expect(read(record)).toEqual({ a: 1 });
+    expect(read(text)).toBe("hello");
+    expect(read(list)).toEqual([1, "two"]);
+    const plain = { a: 1 };
+    expect(read(plain)).toBe(plain);
+    for (const value of [42, "s", null, undefined, true]) expect(read(value)).toBe(value);
+  });
+
+  it("reads a clip whose sourceId is a Y.Text as a valid clip", () => {
+    const doc = seededDoc();
+    doc.transact(() => {
+      doc.getMap("sources").set(source.id, source);
+      const record = new Y.Map<unknown>();
+      doc.getMap("clips").set(clip.id, record);
+      for (const [key, value] of Object.entries(clip)) if (key !== "sourceId") record.set(key, value);
+      const text = new Y.Text();
+      record.set("sourceId", text);
+      text.insert(0, source.id);
+    }, "peer");
+    expect(readTimelineContent(doc)).toEqual({ document: expect.objectContaining({ clips: { [clip.id]: clip } }), damaged: { clips: [] } });
+  });
+});

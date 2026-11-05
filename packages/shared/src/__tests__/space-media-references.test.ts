@@ -341,3 +341,18 @@ describe("semantic Space media references", () => {
     ));
   });
 });
+
+describe("Timeline media references read every stored source shape (inner#1708 Q1)", () => {
+  it("collects the asset id of a source stored as a Y.Map beside a plain one", () => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    const plainAsset = "20000000-0000-4000-8000-000000000001";
+    const mapAsset = "20000000-0000-4000-8000-000000000002";
+    timelineSource(doc, "10000000-0000-4000-8000-000000000001", plainAsset);
+    const id = "10000000-0000-4000-8000-000000000002";
+    const record = new Y.Map<unknown>();
+    doc.getMap("sources").set(id, record);
+    for (const [key, value] of Object.entries({ ...sourceTemplate, id, assetId: mapAsset })) record.set(key, value);
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [plainAsset, mapAsset], urls: [] });
+  });
+});

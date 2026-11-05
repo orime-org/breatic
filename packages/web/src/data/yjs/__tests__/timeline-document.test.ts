@@ -1204,3 +1204,83 @@ describe('missingTimelineSourceIds counts an unreadable stored value as missing 
     expect(missingTimelineSourceIds(doc, {})).toEqual([]);
   });
 });
+
+/**
+ * Attach a clip record whose `sourceId` is a Y.Text holding the source id, as a peer may write it.
+ * @param doc - The content document.
+ * @param item - The clip.
+ * @throws {Error} When Yjs cannot attach the map.
+ */
+function clipWithTextSource(doc: Y.Doc, item: TimelineVideoClip): void {
+  doc.transact(() => {
+    const record = new Y.Map<unknown>();
+    doc.getMap('clips').set(item.id, record);
+    for (const [name, value] of Object.entries(item)) if (name !== 'sourceId') record.set(name, value);
+    const text = new Y.Text();
+    record.set('sourceId', text);
+    text.insert(0, item.sourceId);
+  }, 'peer');
+}
+
+describe('A clip naming its source through a Y.Text counts as a reference (inner#1708 Q1)', () => {
+  const A = cid(200);
+  const T = cid(201);
+
+  it('reads the clip as valid', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10)]));
+    clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
+    expect(readTimelineDocument(doc).clips[T]).toEqual(fixtureClip(T, V2, 0, 10));
+  });
+
+  it('keeps the source when removeTimelineClip removes the other clip naming it', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10)]));
+    clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
+    removeTimelineClip(doc, A, ORIGIN);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('keeps the source when an applyTimelineEdit delete removes the other clip naming it', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10)]));
+    clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
+    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: A }, placement: OFF }, ORIGIN).ok).toBe(true);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('lists the source as missing once it is swept', () => {
+    const doc = docFrom(timeline([]));
+    clipWithTextSource(doc, fixtureClip(T, V2, 0, 10));
+    doc.transact(() => doc.getMap('sources').delete(SOURCE.id), 'peer');
+    expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([SOURCE.id]);
+  });
+});
+
+describe('A clip record stored as a plain object can be edited (inner#1708 Q2)', () => {
+  const P = cid(210);
+
+  /**
+   * A Timeline whose clip P is stored as a plain object, as a peer may write it.
+   * @returns The document.
+   * @throws {Error} When the fixture is invalid.
+   */
+  function plain(): Y.Doc {
+    const doc = docFrom(timeline([]));
+    doc.transact(() => {
+      doc.getMap('clips').set(P, fixtureClip(P, V2, 10, 20));
+      doc.getMap('sources').set(SOURCE.id, SOURCE);
+    }, 'peer');
+    expect(readTimelineDocument(doc).clips[P]).toEqual(fixtureClip(P, V2, 10, 20));
+    return doc;
+  }
+
+  it.each([
+    ['move', (): TimelineEditCommand => move(P, 40, OFF)],
+    ['set_range', (): TimelineEditCommand => setRange(P, 12, 2, 18, OFF)],
+  ] as const)('applies %s and stores the record as a map holding the planned clip', (_name, command) => {
+    const doc = plain();
+    const plan = accepted(applyTimelineEdit(doc, command(), ORIGIN));
+    const stored = doc.getMap('clips').get(P);
+    expect(stored).toBeInstanceOf(Y.Map);
+    expect((stored as Y.Map<unknown>).toJSON()).toEqual(plan.next.clips[P]);
+    expect(readTimelineDocument(doc).clips[P]).toEqual(plan.next.clips[P]);
+  });
+});

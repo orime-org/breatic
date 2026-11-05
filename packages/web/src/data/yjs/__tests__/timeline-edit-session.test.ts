@@ -1271,3 +1271,60 @@ describe('Timeline edit session restores a source a peer rewrote unreadable (inn
     expect(sent()).toBe(0);
   });
 });
+
+describe('Timeline edit session around peer-written record shapes (inner#1708 Q1, Q2)', () => {
+  const T = cid(220);
+  const P = cid(221);
+
+  /**
+   * Wait for any write-back a session schedules after a transaction.
+   * @returns Once queued tasks ran.
+   * @throws {never} Never.
+   */
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('writes a source back after a peer deletes it while a clip names it through a Y.Text (Q1)', async () => {
+    const { mine, peer, session } = pair([]);
+    session.setCanWrite(true);
+    peer.transact(() => {
+      const record = new Y.Map<unknown>();
+      peer.getMap('clips').set(T, record);
+      for (const [name, value] of Object.entries(clip(T, 'v2', 0, 10))) if (name !== 'sourceId') record.set(name, value);
+      const text = new Y.Text();
+      record.set('sourceId', text);
+      text.insert(0, SOURCE.id);
+      peer.getMap('sources').set(SOURCE.id, SOURCE);
+    }, 'peer');
+    await flush();
+    expect(readTimelineDocument(mine).clips[T]?.sourceId).toBe(SOURCE.id);
+    peer.transact(() => peer.getMap('sources').delete(SOURCE.id), 'peer');
+    await flush();
+    await flush();
+    expect(mine.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+    expect(peer.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+  });
+
+  it.each([
+    ['move', (): TimelineEditCommand => ({ operation: 'move', parameters: { clipId: P, startFrame: 40 }, placement: OFF })],
+    ['set_range', (): TimelineEditCommand => ({ operation: 'set_range', parameters: { clipId: P, startFrame: 12, sourceInFrame: 2, durationFrames: 18 }, placement: OFF })],
+  ] as const)('undoes a %s of a clip a peer stored as a plain object back to its previous values (Q2)', async (_name, command) => {
+    const { mine, peer, session } = pair([]);
+    session.setCanWrite(true);
+    peer.transact(() => {
+      peer.getMap('clips').set(P, clip(P, 'v2', 10, 20));
+      peer.getMap('sources').set(SOURCE.id, SOURCE);
+    }, 'peer');
+    await flush();
+    const before = readTimelineDocument(mine).clips[P];
+    expect(before).toEqual(clip(P, 'v2', 10, 20));
+    let ok = false;
+    act(() => { ok = session.edit(command()).ok; });
+    expect(ok).toBe(true);
+    expect(readTimelineDocument(mine).clips[P]).not.toEqual(before);
+    act(() => session.undo());
+    expect(readTimelineDocument(mine).clips[P]).toEqual(before);
+    expect(readTimelineDocument(peer).clips[P]).toEqual(before);
+  });
+});
