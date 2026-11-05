@@ -53,6 +53,10 @@ export interface VideoPresentationAdmission {
   projectId?: string | null;
   /** Every derived object's public URL is this base joined to its key. */
   publicBaseURL?: string;
+  /** A discovery read's condition, re-checked in the serial entry and never stored (§3.5). */
+  expect?: 'first' | 'readmit';
+  /** The invalid version this candidate was readmitted for; set by the DO on a passed readmit (§7.1). */
+  readmitOf?: string;
 }
 /** One accepted job's identity. */
 export interface PresentationJobIdentity { storageKey?: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
@@ -94,6 +98,8 @@ export interface PresentationView {
   usage: Record<string, PresentationUsage>;
   /** The current job's measured usage while unacknowledged. */
   usageFact?: VideoPresentationUsageFact;
+  /** P is invalid(V) and V's publisher is current: `readmit` when it was admitted without readmitOf, else `presentation_invalid` (§3.5). */
+  invalidPublisher?: 'readmit' | 'presentation_invalid';
 }
 
 /** What a basic execution needs before it plans. */
@@ -218,13 +224,16 @@ export function wireLedger(instance: PresentationLedgerInstance<NonNullable<Vide
 export function presentationSnapshot(view: Partial<PresentationView>, storageKey: string, sourceFingerprint: string): VideoPresentationIngestSnapshot {
   const presentation = view.presentation ?? null;
   const candidate = view.candidate;
+  // presentation_invalid exists only in this projection: the readmitted publisher's version failed again, not the candidate (§10.6).
+  const failure = view.invalidPublisher === 'presentation_invalid' ? 'presentation_invalid' : candidate?.failure ?? null;
   return {
     sourceBinding: { storageKey, sourceFingerprint },
     presentation,
     preparation: candidate?.jobId == null || view.targetPolicyVersion == null ? null : {
-      targetPolicyVersion: view.targetPolicyVersion, jobId: candidate.jobId, stage: candidate.stage as VideoCarrierStage | null, failure: candidate.failure,
+      targetPolicyVersion: view.targetPolicyVersion, jobId: candidate.jobId, stage: candidate.stage as VideoCarrierStage | null, failure,
     },
     ledger: presentation === null ? null : wireLedger(view.ledgers?.[presentation.toolInputId]),
+    readmit: view.invalidPublisher === 'readmit',
     ...(view.usageFact === undefined ? {} : { usageFact: view.usageFact }),
   };
 }
@@ -261,8 +270,17 @@ export class VideoPresentationStore {
       const current = state.current;
       const known = current?.admission.jobId === input.jobId || input.jobId in state.ledgerJobs || state.archive.some((job) => job.admission.jobId === input.jobId);
       if (known) return this.view(state);
-      if (input.repair === true && current !== null && !current.candidate.archived && current.candidate.state !== 'failed') {
-        await this.repair(state, current, input);
+      // A discovery read's condition is re-checked here, in the serial entry: a failed one answers the current view (§3.5).
+      const { expect: condition, ...admitted } = input;
+      const invalidPublisher = this.invalidPublisher(state);
+      if (condition === 'first' && (current !== null || state.selected.kind !== 'unknown')) return this.view(state);
+      if (condition === 'readmit') {
+        if (invalidPublisher !== 'readmit' || state.selected.kind !== 'invalid') return this.view(state);
+        admitted.readmitOf = state.selected.version.versionId;
+      }
+      // A readmitted version that failed again is repaired by a new job, not by its publisher's Rt (§3.5 repair dispatch).
+      if (input.repair === true && current !== null && !current.candidate.archived && current.candidate.state !== 'failed' && invalidPublisher !== 'presentation_invalid') {
+        await this.repair(state, current, admitted);
       } else {
         if (current !== null) {
           await this.candidateEvent(state, current, { kind: 'Ar' });
@@ -273,7 +291,7 @@ export class VideoPresentationStore {
         }
         const requested = input.limits?.sourceLedger !== undefined && input.publicBaseURL !== undefined;
         state.current = {
-          admission: { ...input }, token: crypto.randomUUID(),
+          admission: admitted, token: crypto.randomUUID(),
           candidate: advancePresentationCandidate(NO_PRESENTATION_CANDIDATE, { kind: 'Ad', jobId: input.jobId, deadlineAt: input.deadlineAt }, this.policy(input)).next,
           item: advanceLedgerAdmission({ kind: 'absent', archived: false }, { kind: 'Ask', jobId: input.jobId, ledgerOnly: !requested }).next,
           planSha256: null, bundle: null, chunks: {},
@@ -356,7 +374,8 @@ export class VideoPresentationStore {
     return this.gate(async () => {
       const state = await this.load();
       const found = state === undefined ? undefined : this.findRef(state, identity);
-      const snapshot = presentationSnapshot(this.view(state), identity.storageKey, identity.sourceFingerprint);
+      // The discovery read's readmit fact is not the worker's: the prepare answer carries the snapshot without it.
+      const { readmit: _readmit, ...snapshot } = presentationSnapshot(this.view(state), identity.storageKey, identity.sourceFingerprint);
       const admission = found?.job.admission;
       const capability = found === undefined || now >= admission!.deadlineAt ? null : { token: found.job.token, deadlineAt: admission!.deadlineAt };
       const job = found === undefined || found.kind === 'ledger' ? null : found.job;
@@ -737,7 +756,17 @@ export class VideoPresentationStore {
       if (state?.sourceFingerprint !== sourceFingerprint) return this.view(undefined);
       if (state.selected.kind === 'ready') {
         const head = await this.bucket.head(videoPresentationKeyFor(storageKey));
-        if (head === null || head.etag !== state.descriptorETag) state.selected = advanceSelectedPresentation(state.selected, { kind: 'Bad' }).next;
+        if (head === null || head.etag !== state.descriptorETag) {
+          state.selected = advanceSelectedPresentation(state.selected, { kind: 'Bad' }).next;
+          // The observed object (none when missing) is the base of the next conditional write (§7.2 ready(A)×Bad, §7.3 R0).
+          state.descriptorETag = head?.etag ?? null;
+        }
+      }
+      // A current verified candidate P does not select is published now, without waiting for its L (§7.2 invalid row).
+      const waiting = state.current;
+      if (state.selected.kind === 'invalid' && waiting !== null && !waiting.candidate.archived && waiting.candidate.state === 'verified' &&
+        (waiting.bundle as { versionId?: unknown } | null)?.versionId !== state.selected.version.versionId) {
+        await this.commitPresentationVersion(state, waiting);
       }
       for (const [toolInputId, record] of Object.entries(state.ledgers)) {
         const instance = record.instance;
@@ -1165,6 +1194,19 @@ export class VideoPresentationStore {
   }
 
   /**
+   * Whether P is invalid(V) with V's publisher still the current candidate, and how that candidate was admitted (§3.5).
+   * @param state - The state.
+   * @returns `readmit` without readmitOf, `presentation_invalid` with it, or null when P is not invalid or another candidate is current.
+   * @throws {never} Never.
+   */
+  private invalidPublisher(state: PresentationState): 'readmit' | 'presentation_invalid' | null {
+    const current = state.current;
+    if (state.selected.kind !== 'invalid' || current === null || current.candidate.archived ||
+      (current.bundle as { versionId?: unknown } | null)?.versionId !== state.selected.version.versionId) return null;
+    return current.admission.readmitOf === undefined ? 'readmit' : 'presentation_invalid';
+  }
+
+  /**
    * The view of the state.
    * @param state - The state, or undefined before any admission.
    * @returns The view.
@@ -1175,6 +1217,7 @@ export class VideoPresentationStore {
     const jobs = state === undefined ? [] : [...state.archive, ...(current === null ? [] : [current])];
     const usage = current === null ? undefined : state!.usage[current.admission.jobId];
     const { pricing, actorUserId, projectId } = current?.admission ?? {};
+    const invalidPublisher = state === undefined ? null : this.invalidPublisher(state);
     return {
       candidate: current?.candidate ?? NO_PRESENTATION_CANDIDATE,
       archive: state?.archive.map((job) => job.candidate) ?? [],
@@ -1184,6 +1227,7 @@ export class VideoPresentationStore {
       ledgers: Object.fromEntries(Object.entries(state?.ledgers ?? {}).map(([toolInputId, record]) => [toolInputId, record.instance])),
       chunks: Object.assign({}, ...jobs.map((job) => job.chunks)) as Record<string, PresentationChunk>,
       usage: state?.usage ?? {},
+      ...(invalidPublisher === null ? {} : { invalidPublisher }),
       // Usage is billed at the basic price: the presentation job's own container is basic (§5.1 step 2).
       ...(usage !== undefined && !usage.acknowledged && pricing !== undefined && actorUserId !== undefined ? {
         usageFact: { jobId: current!.admission.jobId, actorUserId, projectId: projectId ?? null, usage: { wallMs: usage.wallMs, cpuUsec: usage.cpuUsec }, pricing: pricing.basic },
