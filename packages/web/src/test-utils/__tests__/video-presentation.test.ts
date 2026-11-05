@@ -17,6 +17,9 @@ describe('presentation wire fixtures', () => {
     ['a failed preparation', presentedResponse(binding, { preparation: presentedPreparation('presentation_invalid') })],
     ['a selected bundle and a pending ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: { state: 'pending', receipt: null, failure: null } })],
     ['a selected bundle and a ready ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: readyLedger(presentedBundle(url)) })],
+    ['a selected alpha-packed bundle', presentedResponse(binding, { presentation: presentedBundle(url, { playback: { kind: 'alpha-packed',
+      carrier: { storageKey: 'video/source.webm.packed.mp4', url: `${url}.packed.mp4`, etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' },
+      manifest: { storageKey: 'video/source.webm.manifest.json', url: `${url}.manifest.json`, etag: '"manifest"', size: 300, sha256: '8'.repeat(64), contentType: 'application/json' } } }), ledger: readyLedger(presentedBundle(url)) })],
     ['a selected bundle and a failed ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: { state: 'failed', receipt: null, failure: 'expired' } })],
   ])('%s parses as a presentation response', (_name, response) => {
     expect(videoPresentationResponseSchema.parse(response)).toEqual(response);
