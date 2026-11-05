@@ -210,6 +210,22 @@ describe('useTimelineDocument content ownership', () => {
     expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
   });
 
+  it.each([
+    ['a number', 42],
+    ['a record missing fields', { id: '10000000-0000-4000-8000-0000000000a9', kind: 'video' }],
+    ['a valid source under another key', { ...SOURCE, id: '10000000-0000-4000-8000-0000000000b9' }],
+  ])('shows the Timeline, leaving out a source stored as %s (inner#1708 F1)', (_name, value) => {
+    const doc = seededDoc();
+    addVideo(doc);
+    doc.transact(() => doc.getMap('sources').set('10000000-0000-4000-8000-0000000000a9', value), 'provider');
+    const { result } = renderHook(() => useTimelineDocument(doc, true));
+    expect(result.current).toEqual({
+      document: { ...EMPTY, sources: { [SOURCE.id]: SOURCE }, clips: { [CLIP.id]: CLIP } },
+      damaged: NONE,
+      error: null,
+    });
+  });
+
   it('projects a peer addition received through the existing Yjs update path', () => {
     const server = seededDoc();
     const seed = Y.encodeStateAsUpdate(server);

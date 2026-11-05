@@ -82,6 +82,17 @@ describe('Timeline source sampling', () => {
   });
 });
 
+describe('validateTimelineRange checks the clip against the source room only (inner#1708 F2)', () => {
+  it('does not compare the clip source id with the source id', () => {
+    expect(validateTimelineRange({ ...clip, sourceId: '10000000-0000-4000-8000-0000000000ff' }, source, fps)).toBe(true);
+  });
+
+  it('does not compare the source extent with its duration', () => {
+    expect(validateTimelineRange(clip, { ...source, extentFrames: 10 }, fps)).toBe(true);
+    expect(validateTimelineRange({ ...clip, durationFrames: 50 }, { ...source, extentFrames: 1000 }, fps)).toBe(false);
+  });
+});
+
 describe('timelineTrimHead (inner#1708 D4)', () => {
   const fps25 = { num: 25, den: 1 };
   /** 4 s at 50 frames per second. */

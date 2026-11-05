@@ -1100,3 +1100,37 @@ describe('Clip records naming an Object.prototype key as their source (inner#170
     expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([]);
   });
 });
+
+describe('Edits around a source that cannot be read (inner#1708 F1)', () => {
+  const X = cid(170);
+  const BAD = cid(171);
+  const BAD_SOURCE = '10000000-0000-4000-8000-0000000000a9';
+  const BAD_VALUES = [
+    ['a number', 42],
+    ['a record missing fields', { id: BAD_SOURCE, kind: 'video' }],
+    ['a valid source stored under another key', { ...SOURCE, id: '10000000-0000-4000-8000-0000000000b9' }],
+  ] as const;
+
+  it.each(BAD_VALUES)('reads, edits and sweeps an unreferenced source stored as %s', (_name, value) => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10)]));
+    doc.transact(() => doc.getMap('sources').set(BAD_SOURCE, value), 'peer');
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    expect(readTimelineDocument(doc).sources).toEqual({ [SOURCE.id]: SOURCE });
+    expect(applyTimelineEdit(doc, move(X, 40, OFF), ORIGIN).ok).toBe(true);
+    expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(40);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it.each(BAD_VALUES)('flags, edits around and sweeps with its clip a referenced source stored as %s', (_name, value) => {
+    const doc = docFrom(timeline([fixtureClip(X, V2, 0, 10), fixtureClip(BAD, V2, 50, 10, { sourceId: BAD_SOURCE })]));
+    doc.transact(() => doc.getMap('sources').set(BAD_SOURCE, value), 'peer');
+    expect(() => readTimelineDocument(doc)).not.toThrow();
+    const conflict = resolveTimelineArrangement(readTimelineDocument(doc)).conflicts.find((item) => item.clipId === BAD);
+    expect(conflict?.reasons.map((reason) => reason.code)).toContain('missing_source');
+    expect(applyTimelineEdit(doc, move(X, 30, OFF), ORIGIN).ok).toBe(true);
+    expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(30);
+    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: BAD }, placement: OFF }, ORIGIN).ok).toBe(true);
+    expect(doc.getMap('clips').has(BAD)).toBe(false);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+});

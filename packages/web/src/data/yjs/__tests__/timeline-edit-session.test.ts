@@ -1200,3 +1200,17 @@ describe('Timeline edit session with a source stored in an unexpected form (inne
     expect(sent()).toBe(0);
   });
 });
+
+describe('Timeline edit session never caches a source stored under another key (inner#1708 F1)', () => {
+  it('writes nothing back for a referenced key whose value names another id', async () => {
+    const KEY = '10000000-0000-4000-8000-0000000000c1';
+    const C = cid(180);
+    const { mine, peer, session } = pair([clip(C, 'v2', 0, 10, { sourceId: KEY })]);
+    session.setCanWrite(true);
+    peer.transact(() => peer.getMap('sources').set(KEY, { ...SOURCE, id: '10000000-0000-4000-8000-0000000000c2' }), 'peer');
+    peer.transact(() => peer.getMap('sources').delete(KEY), 'peer');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mine.getMap('sources').has(KEY)).toBe(false);
+    expect(peer.getMap('sources').has(KEY)).toBe(false);
+  });
+});
