@@ -81,7 +81,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "omnihuman-1.5": { fal: "fal-ai/bytedance/omnihuman/v1.5", sandbase: "bytedance/omnihuman/1.5" },
   "seedance-2.5-talking-avatar": {},
   "sync-lipsync-3": { fal: "fal-ai/sync-lipsync/v3", sandbase: "sync/lipsync/3.0/video-to-video" },
-  "infinitetalk-video-to-video": { fal: "fal-ai/infinitalk/video-to-video", sandbase: "meigen/infinitetalk/video-to-video" },
+  // fal draws its seed from a fixed 42, so the same inputs always give the same video, which WaveSpeed does not.
+  "infinitetalk-video-to-video": { sandbase: "meigen/infinitetalk/video-to-video" },
   "infinitetalk-multi": {},
   "sync-react-1": { fal: "fal-ai/sync-lipsync/react-1" },
   "ltx-2.3-lipsync": {},
@@ -271,12 +272,6 @@ describe("the limits a reseller states beyond its schema", () => {
         expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers(first))).toEqual({ reason: expect.stringContaining("speaker") });
       },
     );
-  });
-
-  it("estimates fal InfiniteTalk at the 1.25x its fixed 241 frames always bill, short audio too", async () => {
-    const input = run({ params: { audio: "https://a/x.mp3", video: "https://a/v.mp4", resolution: "480p" }, durations: { audio: [2], video: [2] } });
-    const estimate = await estimateCost(provider.pricingRules("infinitetalk-video-to-video"), provider.availability("infinitetalk-video-to-video"), input, { mode: "upstream", upstream: "fal" });
-    expect(estimate?.usd).toBeCloseTo(0.3 * 2 * 1.25, 6);
   });
 
   it("prices a Krea run without style images at WaveSpeed's flat price and keeps the tie on WaveSpeed", async () => {
