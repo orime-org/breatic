@@ -315,6 +315,17 @@ export function renderProductGuide(): string {
       "is greyed. While a reply is being written the button becomes a red square, which stops the reply. A " +
       `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a short message at the top ` +
       "of the screen says so, and again for each key the full box turns away.",
+    "Left of that button, the name of the model that answers this conversation shows with a small downward " +
+      `arrow. Clicking it opens a menu headed ${quoted(t("chat.modelPicker.label"))} that lists the models the ` +
+      "reader can pick, the current one marked with a dot; a pick takes effect from the next message, and a reply " +
+      "already being written finishes on the model it started on. Each conversation keeps its own model, the same " +
+      "on every device, and a new conversation starts on the model picked last. Every model is open to every " +
+      "membership. While the list cannot be read the name is greyed and does not open, and a short message at the " +
+      `top of the screen says ${quoted(t("chat.modelPicker.listFailed"))}; when a pick cannot be saved, the ` +
+      `previous model comes back and such a message says ${quoted(t("chat.modelPicker.saveFailed"))}. A message ` +
+      "sent from a page left open after a model was taken off is turned away: the words stay in the box, the name " +
+      "then shows the model the conversation answers on, and a short message says " +
+      `${quoted(t("server.chat.model_unavailable"))}`,
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
