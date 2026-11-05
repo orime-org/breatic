@@ -1,0 +1,24 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import { describe, expect, it } from 'vitest';
+import { videoPresentationResponseSchema } from '@breatic/shared';
+import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
+
+const url = 'https://assets.example.test/video/source.webm';
+const binding = presentedBinding(url, { width: 96, height: 64, duration: 3, mimeType: 'video/webm' });
+
+// The fixtures the web presentation tests share are real wire values: a fixture the schema refuses would let a test pass
+// against a response production never receives (web-unit-testing: a mock has the real return shape).
+describe('presentation wire fixtures', () => {
+  it.each([
+    ['nothing selected or prepared', presentedResponse(binding)],
+    ['a preparation in progress', presentedResponse(binding, { preparation: presentedPreparation(null, 'encode') })],
+    ['a failed preparation', presentedResponse(binding, { preparation: presentedPreparation('presentation_invalid') })],
+    ['a selected bundle and a pending ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: { state: 'pending', receipt: null, failure: null } })],
+    ['a selected bundle and a ready ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: readyLedger(presentedBundle(url)) })],
+    ['a selected bundle and a failed ledger', presentedResponse(binding, { presentation: presentedBundle(url), ledger: { state: 'failed', receipt: null, failure: 'expired' } })],
+  ])('%s parses as a presentation response', (_name, response) => {
+    expect(videoPresentationResponseSchema.parse(response)).toEqual(response);
+  });
+});
