@@ -276,7 +276,7 @@ describe('generation templates', () => {
       },
       'fisheye-clone-pov': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:5' } } },
       'flash-photo-dump-grid': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
-      'game-ui-livestream': t2v(12, '16:9'),
+      'game-ui-livestream': t2v(12, '9:16'),
       'travel-city-walk': t2v(24),
       'twist-comedy-skit': t2v(15),
       'vertical-15s-quick-tip': {
