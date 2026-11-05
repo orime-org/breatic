@@ -708,6 +708,34 @@ describe('no reuse from an invalid selected version (§93 D6; design §7.1 路�
   });
 });
 
+// §93 D6-4 (frames-split design §7.1 路线表 复用行, §3.5 web→server row, §10.6; inner 7d0bbf7c): when the selected version stops
+// being the same ready version before a reuse-route candidate publishes, the candidate fails with the temporary code
+// reuse_source_invalid, and the snapshot's readmit covers it (a reuse candidate from V that failed so, without readmitOf).
+describe('a reuse candidate whose source version turns invalid before it publishes (§93 D6-4; design §7.1)', () => {
+  it('RU04 the candidate fails with reuse_source_invalid and the snapshot readmits', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await admitAndPrepare(store, key, 'job-a', fakePort(store, key, planned(IDENTITY_ROUTE)));
+      await store.accept({ ...admission(key, 'job-b'), targetPolicyVersion: 2 });
+      const port = fakePort(store, key, planned(IDENTITY_ROUTE));
+      // Granted while V is ready (so the route is reuse); V's descriptor disappears before the probe answers.
+      const answered = port.spies.probe.getMockImplementation()!;
+      port.spies.probe.mockImplementation(async (...args: unknown[]) => {
+        await env.BUCKET.delete(shared.videoPresentationKeyFor(key));
+        expect((await store.read(key, H)).selected.kind).toBe('invalid');
+        return (answered as (...values: unknown[]) => Promise<ProbeOutcome>)(...args);
+      });
+      const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, port, Date.now()));
+      expect(answer.plan?.route).toBe('reuse');
+      const view = await store.read(key, H);
+      expect(view.candidate).toMatchObject({ jobId: 'job-b', state: 'failed', failure: 'reuse_source_invalid' });
+      expect(view.selected.kind).toBe('invalid');
+      const snapshot = storeModule.presentationSnapshot(view as unknown as Parameters<typeof storeModule.presentationSnapshot>[0], key, H) as { readmit?: unknown };
+      expect(snapshot.readmit).toBe(true);
+    });
+  });
+});
+
 describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1 「候选或产物按全部块推进」, §5.1 step 2a 「全部块记录后再派stitch」)', () => {
   // 960 frames of 4K 10-bit HDR against a minute of budget: more than one chunk, within the cap of 8.
   const heavy = { ...WORK, sourceWidth: 3840, sourceHeight: 2160, outputWidth: 1920, outputHeight: 1080, bitDepth: 10 as const, hdr: true };
