@@ -33,7 +33,7 @@ const LIMITS = {
 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const PROBE = {
@@ -50,10 +50,10 @@ const PLAN = {
 };
 const PLANNED = {
   kind: 'planned', toolInputId: 'b'.repeat(64), planSha256: 'c'.repeat(64), plan: PLAN,
-  encoding: { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2 },
+  encoding: { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2, sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }], firstPacketDts: { numerator: '0', denominator: '1' } },
   routeInput: { plan: { planSha256: 'c'.repeat(64), producerVersion: 2, profileVersion: 1 }, hdr: false, alpha: 'confirmed_opaque', identityQualified: true,
-    colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: true, sourceBytes: 4096 },
-  work: { encodedFrames: 1, prerollFrames: 0, sourceWidth: 2, sourceHeight: 2, outputWidth: 2, outputHeight: 2, bitDepth: 8, hdr: false },
+    colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: true, audioCopyable: true, sourceBytes: 4096 },
+  work: { encodedFrames: 1, prerollFrames: 0, sourceWidth: 2, sourceHeight: 2, outputWidth: 2, outputHeight: 2, bitDepth: 8, hdr: false, audioSeconds: 0 },
 };
 
 describe('the one path (§91 D-3)', () => {
@@ -119,7 +119,8 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
 // handlers authorize writes with and the canonical storage key the written keys derive from.
 const capabilityFields = { jobId: PROBE.jobId, sourceFingerprint: PROBE.sourceFingerprint, deadlineAt: PROBE.deadlineAt, token: 'token-a', storageKey: 'video/canonical.mp4',
   sourceURL: PROBE.sourceURL, limits: LIMITS, encoding: ENCODING, probe: PROBE.probe };
-const LEDGER = { action: 'ledger', ...capabilityFields, toolInputId: 'b'.repeat(64), encodeFacts: { keyframeOrdinals: [0, 10], codedWidth: 320, codedHeight: 180 } };
+const LEDGER = { action: 'ledger', ...capabilityFields, toolInputId: 'b'.repeat(64), encodeFacts: { keyframeOrdinals: [0, 10], codedWidth: 320, codedHeight: 180,
+  sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }, { pts: { numerator: '2', denominator: '5' }, dts: { numerator: '2', denominator: '5' } }], firstPacketDts: { numerator: '0', denominator: '1' } } };
 // §91 D2-7: the carrier request carries the registered content type, which the identity receipt takes.
 const CARRIER = { action: 'carrier', ...capabilityFields, route: 'copy', contentType: 'video/mp4' };
 const RECEIPT = { role: 'carrier', packing: 'native', storageKey: 'video/canonical.mp4.video-presentation:video-presentation-a:copy:a1', sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' };

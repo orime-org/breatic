@@ -59,7 +59,7 @@ type Answer = Planned | { kind: 'failed'; code: string };
 
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const LIMITS = {
@@ -237,7 +237,11 @@ describe('the plan and the facts of a plain CFR source (design §5.1 step 2, §4
     expect(answer.planSha256).toBe(await videoPresentationPlanSha256(plan));
     expect(answer.toolInputId).toBe(await videoPresentationToolInputId({ sourceFingerprint: await fingerprint('cfr.mp4'), planSha256: answer.planSha256 }));
     // GOP of 10 with no B frames: the keyframe flags of packets 0, 10, 20, 30 and 40 (read back with ffprobe).
-    expect(answer.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180 });
+    // §93 D6-1 (contract change, design §3.2 item 7): the encoding records every source keyframe's pts and dts and the first
+    // packet dts beside the presented keyframe ordinals; cfr.mp4 has no B-frames, so dts equals pts and nothing is shifted.
+    const at = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+    expect(answer.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180,
+      sourceKeyframes: [at(0), at(2, 5), at(4, 5), at(6, 5), at(8, 5)].map((time) => ({ pts: time, dts: time })), firstPacketDts: at(0) });
     expect(answer.routeInput).toMatchObject({ plan: { planSha256: answer.planSha256 }, hdr: false, alpha: 'confirmed_opaque', colorMatrixTagged: true, codec: 'h264',
       sourceBytes: (await stat(files.get('cfr.mp4')!)).size });
     expect(answer.work).toEqual({ encodedFrames: 50, prerollFrames: 0, sourceWidth: 320, sourceHeight: 180, outputWidth: 320, outputHeight: 180, bitDepth: 8, hdr: false });

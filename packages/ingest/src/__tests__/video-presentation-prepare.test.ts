@@ -31,16 +31,16 @@ import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationVersionId, videoPresentationVersionSchema } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
 import * as containerModule from '@ingest/media-container.js';
-import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Admission, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
   kind: 'planned'; toolInputId: string; planSha256: string;
   // S6e E3 (design §3.2 item 7, inner 960d483f): the full ledger's encode facts replace the separate keyframe flags.
-  routeInput: Record<string, unknown>; encoding: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number };
+  routeInput: Record<string, unknown>; encoding: { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number; sourceKeyframes: { pts: { numerator: string; denominator: string }; dts: { numerator: string; denominator: string } }[]; firstPacketDts: { numerator: string; denominator: string } };
   display: { width: number; height: number; duration: { numerator: string; denominator: string } };
   playbackClock: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-  work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean };
+  work: { encodedFrames: number; prerollFrames: number; sourceWidth: number; sourceHeight: number; outputWidth: number; outputHeight: number; bitDepth: 8 | 10; hdr: boolean; audioSeconds: number };
 }
 type ProbeOutcome = ProbeFacts | { kind: 'failed'; code: string };
 // S6d D2-1 (§91): the basic carrier answers the role-tagged receipts it wrote; the store measures them in R2 and assembles the bundle.
@@ -64,14 +64,17 @@ interface Answer {
 type Prepare = (store: MachineStore, identity: { storageKey: string; sourceFingerprint: string; jobId: string }, port: Port, now: number) => Promise<Answer>;
 
 const USAGE = { wallMs: 4200, cpuUsec: 1_000_000 };
-const WORK = { encodedFrames: 96, prerollFrames: 0, sourceWidth: 1920, sourceHeight: 1080, outputWidth: 1920, outputHeight: 1080, bitDepth: 8 as const, hdr: false };
+const WORK = { encodedFrames: 96, prerollFrames: 0, sourceWidth: 1920, sourceHeight: 1080, outputWidth: 1920, outputHeight: 1080, bitDepth: 8 as const, hdr: false, audioSeconds: 0 };
 // The selected identity is not a probe fact: preparePresentation supplies it from the selected bundle (inner 54ce9ea3).
 const PLAN_IDENTITY = { planSha256: PLAN, producerVersion: 2, profileVersion: 1 };
 const DISPLAY = { width: 95, height: 63, duration: { numerator: '12', denominator: '5' } };
 const CLOCK = { schemaVersion: 1 as const, timescale: 25, runs: [{ start: 0, count: 3, step: 1, duration: 1 }] };
+// §93 D6: the source keyframes and first packet dts every encoding now carries (one keyframe at 0, no shift).
+const ZERO = { numerator: '0', denominator: '1' };
+const KEYFRAME_FACTS = { sourceKeyframes: [{ pts: ZERO, dts: ZERO }], firstPacketDts: ZERO };
 const ROUTE = {
   plan: PLAN_IDENTITY, hdr: false, alpha: 'confirmed_opaque',
-  identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, sourceBytes: 4,
+  identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, audioCopyable: true, sourceBytes: 4,
 };
 const IDENTITY_ROUTE = { ...ROUTE, identityQualified: true };
 const COPY_ROUTE = { ...ROUTE, copyPreservesTimeline: true, sourceBytes: 1000 };
@@ -154,7 +157,7 @@ function fakePort(store: MachineStore, key: string, outcome: ProbeOutcome): Port
  */
 function planned(routeInput: Record<string, unknown>, frames = keyframes(96, 24), work: ProbeFacts['work'] = WORK): ProbeFacts {
   const keyframeOrdinals = frames.flatMap((flag, index) => (flag ? [index] : []));
-  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, encoding: { keyframeOrdinals, codedWidth: work.sourceWidth, codedHeight: work.sourceHeight },
+  return { kind: 'planned', toolInputId: T, planSha256: PLAN, routeInput, encoding: { keyframeOrdinals, codedWidth: work.sourceWidth, codedHeight: work.sourceHeight, ...KEYFRAME_FACTS },
     work: { ...work, encodedFrames: frames.length }, display: DISPLAY, playbackClock: CLOCK };
 }
 
@@ -214,7 +217,7 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
       expect(port.spies.writeLedger).toHaveBeenCalledTimes(1);
       // The writer writes the full ledger with the probe's encode facts beside the plan (E3, §3.2 item 7).
       expect(port.spies.writeLedger).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a', token: answer.capability!.token }), T,
-        { keyframeOrdinals: [0, 24, 48, 72], codedWidth: WORK.sourceWidth, codedHeight: WORK.sourceHeight });
+        { keyframeOrdinals: [0, 24, 48, 72], codedWidth: WORK.sourceWidth, codedHeight: WORK.sourceHeight, ...KEYFRAME_FACTS });
       expect(port.spies.carrier).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-a' }), 'identity');
       expect(answer.plan).toEqual({ route: 'identity', stages: ['plan', 'publish'], toolInputId: T, planSha256: PLAN });
       expect(answer.work).toEqual({ kind: 'none' });
@@ -332,9 +335,9 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
     const key = await source();
     await withStore(key, async (store) => {
       const now = Date.now();
-      await store.accept({ ...admission(key, 'job-a', now + 60_000), encoding: { ...ENCODING, encoder: { ...ENCODING.encoder, aacEncodeSecondsPerSecond: rate } } } as Admission);
+      await store.accept({ ...admission(key, 'job-a', now + 60_000), encoding: { ...ENCODING, encoder: { ...ENCODING.encoder, aacEncodeSecondsPerSecond: rate } } });
       // A small source whose audio is not copyable: dispatched so the standard-4 copy_carrier encodes its audio (§4.1 row 2).
-      const port = fakePort(store, key, planned({ ...COPY_ROUTE, audioCopyable: false }, keyframes(96, 24), { ...WORK, audioSeconds } as ProbeFacts['work']));
+      const port = fakePort(store, key, planned({ ...COPY_ROUTE, audioCopyable: false }, keyframes(96, 24), { ...WORK, audioSeconds }));
       const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, port, now));
       expect(answer.plan?.route).toBe('dispatch_copy');
       expect(answer.preparation).toMatchObject({ jobId: 'job-a', failure });

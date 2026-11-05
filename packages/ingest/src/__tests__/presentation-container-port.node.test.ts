@@ -21,7 +21,7 @@ const LIMITS = {
 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const ADMISSION = {
@@ -38,9 +38,9 @@ const PLAN = {
   videoSpans: null, audioSpans: null, segmentDuration: null,
 };
 const ROUTE = { plan: { planSha256: 'c'.repeat(64), producerVersion: 2, profileVersion: 1 }, hdr: false, alpha: 'confirmed_opaque', identityQualified: true,
-  colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: true, sourceBytes: 4096 };
-const WORK = { encodedFrames: 1, prerollFrames: 0, sourceWidth: 2, sourceHeight: 2, outputWidth: 2, outputHeight: 2, bitDepth: 8, hdr: false };
-const PLANNED = { kind: 'planned', toolInputId: 'b'.repeat(64), planSha256: 'c'.repeat(64), plan: PLAN, encoding: { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2 }, routeInput: ROUTE, work: WORK };
+  colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: true, audioCopyable: true, sourceBytes: 4096 };
+const WORK = { encodedFrames: 1, prerollFrames: 0, sourceWidth: 2, sourceHeight: 2, outputWidth: 2, outputHeight: 2, bitDepth: 8, hdr: false, audioSeconds: 0 };
+const PLANNED = { kind: 'planned', toolInputId: 'b'.repeat(64), planSha256: 'c'.repeat(64), plan: PLAN, encoding: { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2, sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }], firstPacketDts: { numerator: '0', denominator: '1' } }, routeInput: ROUTE, work: WORK };
 
 /**
  * The port under test, read at call time.
@@ -90,7 +90,7 @@ type FullPort = Port & {
   writeLedger: (capability: Record<string, unknown>, toolInputId: string, encodeFacts: unknown) => Promise<void>;
   carrier: (capability: Record<string, unknown>, route: 'identity' | 'copy') => Promise<unknown>;
 };
-const FACTS = { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2 };
+const FACTS = { keyframeOrdinals: [0], codedWidth: 2, codedHeight: 2, sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }], firstPacketDts: { numerator: '0', denominator: '1' } };
 const RECEIPTS = [{ role: 'carrier', packing: 'native', storageKey: ADMISSION.storageKey, sha256: 'a'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4' }];
 const COMMON = {
   jobId: ADMISSION.jobId, sourceFingerprint: ADMISSION.sourceFingerprint, deadlineAt: ADMISSION.deadlineAt, token: CAPABILITY.token, storageKey: ADMISSION.storageKey,

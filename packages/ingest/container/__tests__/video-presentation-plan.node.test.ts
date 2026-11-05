@@ -228,7 +228,7 @@ function input(frames: PlanInput['frames'], overrides: Partial<PlanInput> = {}):
 function ledger(plan: unknown): Record<string, unknown> {
   // S6e E3 (design §3.2 item 7): the full ledger carries the physical encode facts beside the plan; frame 0 is always valid.
   return { schemaVersion: 2, sourceFingerprint: 'a'.repeat(64), toolInputId: 'c'.repeat(64), planSha256: 'd'.repeat(64), attempt: { jobId: 'video-presentation:job-1', deadlineAt: 1 }, plan,
-    encoding: { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48 } };
+    encoding: { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }], firstPacketDts: { numerator: '0', denominator: '1' } } };
 }
 
 describe('PA §4.2.1 and §7.16 plan assembly', () => {
