@@ -27,6 +27,7 @@ import {
   type UndoBoundary,
 } from '@web/spaces/document/document-proposal-landing';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { aiEdgeBlocksBeside, type AiEdgeBlocks } from '@web/spaces/document/document-ai-launch';
 
 /** How a write ended. */
 export type AiWriteResult =
@@ -77,16 +78,17 @@ export async function insertAiResult(
 
 /**
  * Swaps the original range for a result, and takes away the blocks with no
- * words that were selected with it (`aiEdgeBlocksBeside`): the result was
- * written from them as well. Blocks are taken away by id, after the paste,
- * since a text selection cannot start on an image.
+ * words that were selected with it and still sit beside it
+ * (`aiEdgeBlocksBeside`): the result was written from them as well. Blocks
+ * are taken away by id, after the paste, since a text selection cannot start
+ * on an image.
  * @param handle - The document, mounted.
  * @param range - The original range, where it is now.
  * @param range.from - Its start.
  * @param range.to - Its end.
  * @param markdown - The result.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
- * @param edgeBlocks - Ids of the blocks with no words to take away with it.
+ * @param edges - The blocks with no words at the selection's edges when it was sent.
  * @returns How it ended.
  * @throws {Error} If the editor is not mounted or the paste fails.
  */
@@ -95,7 +97,7 @@ export async function replaceAiResult(
   range: { from: number; to: number },
   markdown: string,
   readAdmission: () => ProposalAdmission,
-  edgeBlocks: readonly string[] = [],
+  edges: AiEdgeBlocks,
 ): Promise<AiWriteResult> {
   const refusal = writeRefusal(readAdmission(), handle.editor);
   if (refusal !== null) return { outcome: refusal };
@@ -103,8 +105,9 @@ export async function replaceAiResult(
   if (view === null) throw new Error('the document editor is not mounted');
   asOneUndoStep(undoOf(handle), () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)));
+    const beside = aiEdgeBlocksBeside(view.state.doc, range, edges);
     handle.editor.pasteMarkdown(markdown);
-    if (edgeBlocks.length > 0) handle.editor.removeBlocks([...edgeBlocks]);
+    if (beside.length > 0) handle.editor.removeBlocks(beside);
   });
   return { outcome: 'written' };
 }

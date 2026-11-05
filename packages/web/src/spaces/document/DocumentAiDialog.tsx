@@ -68,7 +68,6 @@ import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/sp
 import {
   aiContextOf,
   aiEdgeBlocks,
-  aiEdgeBlocksBeside,
   aiInsertBlockId,
   type AiEdgeBlocks,
 } from '@web/spaces/document/document-ai-launch';
@@ -291,8 +290,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         const range = originalRange(editor);
         const edges = openedRef.current?.edgeBlocks;
         if (range === null || edges === undefined) return;
-        const beside = aiEdgeBlocksBeside(editor.prosemirrorState.doc, range, edges);
-        void replaceAiResult({ editor }, range, effect.result, admission, beside).then(told, failed);
+        void replaceAiResult({ editor }, range, effect.result, admission, edges).then(told, failed);
       }
     }
   };

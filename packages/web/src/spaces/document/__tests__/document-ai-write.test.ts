@@ -16,7 +16,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
-import { aiEdgeBlocks, aiEdgeBlocksBeside } from '@web/spaces/document/document-ai-launch';
+import { aiEdgeBlocks, type AiEdgeBlocks } from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import { insertAiResult, replaceAiResult } from '@web/spaces/document/document-ai-write';
 import {
@@ -42,6 +42,9 @@ afterEach(() => {
 });
 
 const WRITABLE = (): ProposalAdmission => ({ available: true, writeAccess: 'granted' });
+
+/** A selection with no blocks without words at its edges. */
+const NO_EDGES: AiEdgeBlocks = { before: [], after: [] };
 
 /**
  * A mounted document holding some Markdown, as a Space opens it.
@@ -219,7 +222,7 @@ describe('replace', () => {
   it('swaps exactly the original range', async () => {
     const handle = await open('The quick brown fox.');
 
-    const result = await replaceAiResult(handle, rangeOf(handle, 'quick brown'), 'slow red', WRITABLE);
+    const result = await replaceAiResult(handle, rangeOf(handle, 'quick brown'), 'slow red', WRITABLE, NO_EDGES);
 
     expect(result).toMatchObject({ outcome: 'written' });
     expect(texts(handle)).toEqual(['The slow red fox.']);
@@ -233,7 +236,7 @@ describe('replace', () => {
     const tracked = aiRangeIn(handle.editor.prosemirrorState);
     if (tracked === null || tracked.kind !== 'present') throw new Error('the range should still be there');
 
-    await replaceAiResult(handle, { from: tracked.segments[0]!.from, to: tracked.segments.at(-1)!.to }, 'slow red', WRITABLE);
+    await replaceAiResult(handle, { from: tracked.segments[0]!.from, to: tracked.segments.at(-1)!.to }, 'slow red', WRITABLE, NO_EDGES);
 
     expect(texts(handle)).toEqual(['Look: The slow red fox.']);
   });
@@ -242,7 +245,7 @@ describe('replace', () => {
     const handle = await open('The quick brown fox.');
     type(handle, rangeOf(handle, 'fox.').to, ' Jumps.');
 
-    await replaceAiResult(handle, rangeOf(handle, 'quick brown'), 'slow red', WRITABLE);
+    await replaceAiResult(handle, rangeOf(handle, 'quick brown'), 'slow red', WRITABLE, NO_EDGES);
     type(handle, rangeOf(handle, 'Jumps.').to, ' Again.');
     expect(texts(handle)).toEqual(['The slow red fox. Jumps. Again.']);
 
@@ -256,7 +259,7 @@ describe('replace', () => {
   it('writes nothing on a read-only connection', async () => {
     const handle = await open('The quick brown fox.');
 
-    expect(await replaceAiResult(handle, rangeOf(handle, 'quick'), 'slow', () => ({ available: true, writeAccess: 'denied' }))).toEqual({ outcome: 'readOnly' });
+    expect(await replaceAiResult(handle, rangeOf(handle, 'quick'), 'slow', () => ({ available: true, writeAccess: 'denied' }), NO_EDGES)).toEqual({ outcome: 'readOnly' });
     expect(texts(handle)).toEqual(['The quick brown fox.']);
   });
 
@@ -268,7 +271,7 @@ describe('replace', () => {
     let thrown: unknown = null;
     let promise: Promise<unknown> | null = null;
     try {
-      promise = replaceAiResult(unmounted, range, 'slow', WRITABLE);
+      promise = replaceAiResult(unmounted, range, 'slow', WRITABLE, NO_EDGES);
     } catch (error) {
       thrown = error;
     }
@@ -296,9 +299,9 @@ function shown(handle: DocumentEditorHandle): string[] {
  * @param handle - The document.
  * @param from - Where the selection starts.
  * @param to - Where it ends.
- * @returns Reads the original range and the blocks a replace takes away with it.
+ * @returns Reads the original range and the blocks at the selection's edges.
  */
-function openOn(handle: DocumentEditorHandle, from: number, to: number): { span: () => { range: { from: number; to: number }; edges: string[] } } {
+function openOn(handle: DocumentEditorHandle, from: number, to: number): { span: () => { range: { from: number; to: number }; edges: AiEdgeBlocks } } {
   const view = handle.editor.prosemirrorView!;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
   const edges = aiEdgeBlocks(view.state);
@@ -307,8 +310,7 @@ function openOn(handle: DocumentEditorHandle, from: number, to: number): { span:
     span: () => {
       const range = aiRangeIn(view.state);
       if (range === null || range.kind !== 'present') throw new Error('the range should still be there');
-      const letters = { from: range.segments[0]!.from, to: range.segments.at(-1)!.to };
-      return { range: letters, edges: aiEdgeBlocksBeside(view.state.doc, letters, edges) };
+      return { range: { from: range.segments[0]!.from, to: range.segments.at(-1)!.to }, edges };
     },
   };
 }
@@ -345,5 +347,88 @@ describe('replace over a selection whose edge is a block without words', () => {
     await replaceAiResult(handle, range, 'Hello, world.', WRITABLE, edges);
 
     expect(shown(handle)).toEqual(['Hello, world.', 'New', `image ${OURS}a.png`, 'After']);
+  });
+});
+
+/**
+ * A mounted document holding some blocks, nested ones included.
+ * @param blocks - The blocks, as BlockNote takes them.
+ * @returns The handle.
+ */
+async function openBlocks(blocks: unknown[]): Promise<DocumentEditorHandle> {
+  const handle = await open('x');
+  handle.editor.replaceBlocks(handle.editor.document, blocks as never);
+  return handle;
+}
+
+/**
+ * Every block, nested ones included, by its own words.
+ * @param handle - The document.
+ * @returns One entry per block in document order, `(empty)` for one without words.
+ */
+function everyBlock(handle: DocumentEditorHandle): string[] {
+  const out: string[] = [];
+  handle.editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'blockContainer') out.push(node.firstChild?.textContent || '(empty)');
+    return true;
+  });
+  return out;
+}
+
+describe('replace over blocks without words that hold or gain some', () => {
+  it('keeps an empty block whose child holds the selected words, and writes the result into the child', async () => {
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Intro' },
+      { type: 'paragraph', content: '', children: [{ type: 'paragraph', content: 'Hello world' }] },
+    ]);
+    const { span } = openOn(handle, rangeOf(handle, 'Intro').to, rangeOf(handle, 'world').to);
+    const { range, edges } = span();
+
+    await replaceAiResult(handle, range, 'Hi there', WRITABLE, edges);
+
+    expect(everyBlock(handle)).toEqual(['Intro', '(empty)', 'Hi there']);
+  });
+
+  it('keeps an empty line after the words whose child was not selected', async () => {
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Hello' },
+      { type: 'paragraph', content: '', children: [{ type: 'paragraph', content: 'Keep me' }] },
+    ]);
+    const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'Keep').from);
+    const { range, edges } = span();
+
+    await replaceAiResult(handle, range, 'Hi', WRITABLE, edges);
+
+    expect(everyBlock(handle)).toEqual(['Hi', '(empty)', 'Keep me']);
+  });
+
+  it('takes away an empty line and its empty child together', async () => {
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Hello' },
+      { type: 'paragraph', content: '', children: [{ type: 'paragraph', content: '' }] },
+      { type: 'paragraph', content: 'Next' },
+    ]);
+    const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'Next').from);
+    const { range, edges } = span();
+
+    await expect(replaceAiResult(handle, range, 'Hi', WRITABLE, edges)).resolves.toMatchObject({ outcome: 'written' });
+
+    expect(everyBlock(handle)).toEqual(['Hi', 'Next']);
+  });
+
+  it('keeps a selected empty line that was written in after the dialog opened', async () => {
+    const handle = await openBlocks([
+      { type: 'paragraph', content: 'Hello world' },
+      { type: 'paragraph', content: '' },
+      { type: 'paragraph', content: 'After' },
+    ]);
+    const blank = ids(handle)[1]!;
+    const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'After').from);
+    handle.editor.updateBlock(blank, { type: 'paragraph', content: 'my new note' } as never);
+    const { range, edges } = span();
+
+    await replaceAiResult(handle, range, 'Hello, world.', WRITABLE, edges);
+
+    expect(everyBlock(handle)).toEqual(['Hello, world.', 'my new note', 'After']);
   });
 });
