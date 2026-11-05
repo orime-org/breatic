@@ -15,6 +15,7 @@ import { CanonicalTimelineDecoder } from '../CanonicalTimelineDecoder';
 import { createVideoPresentationRecovery } from '../video-presentation-recovery';
 import { videoPresentationQuery } from '../video-presentation-query';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
+import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
 
 const platform = vi.hoisted(() => ({
   apiGet: vi.fn(), apiPost: vi.fn(), toastError: vi.fn(),
@@ -35,19 +36,13 @@ vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (or
 }));
 
 const input = { projectId: 'project', canonicalURL: 'https://assets.example.test/canonical.webm', active: true };
-const sourceBinding: VideoPresentationResponse['sourceBinding'] = {
-  assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', canonicalURL: input.canonicalURL,
-  contentHash: 'a'.repeat(64), kind: 'video', mediaInfo: { width: 160, height: 240, duration: 10, mimeType: 'video/webm' },
-};
-const original = { width: 160, height: 240, duration: 10 };
-const attempt = { jobId: 'failed-preparation', deadlineAt: 1900000000000 };
-const failed: VideoPresentationResponse = {
-  sourceBinding, presentation: { schemaVersion: 1, state: 'failed', sourceFingerprint: sourceBinding.contentHash, original, error: 'preparation-failed' },
-  preparation: { status: 'failed', attempt, error: 'preparation-failed' }, pollAfterMs: null,
-};
-const ready: VideoPresentationResponse = {
-  sourceBinding, presentation: { schemaVersion: 1, state: 'native', sourceFingerprint: sourceBinding.contentHash, original }, preparation: null, pollAfterMs: null,
-};
+// §95 (design §3.5, §7.12 step 2): nothing selected and the candidate failed is the retryable source; a repair answers the
+// read response itself (fixtures migrated from the earlier state/status shapes, 4.4.5).
+const sourceBinding: VideoPresentationResponse['sourceBinding'] = presentedBinding(input.canonicalURL, { width: 160, height: 240, duration: 10, mimeType: 'video/webm' });
+const bundle = presentedBundle(input.canonicalURL, { display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } } });
+const failedWith = (code: string): VideoPresentationResponse => presentedResponse(sourceBinding, { preparation: presentedPreparation(code) });
+const failed = failedWith('container_failed');
+const ready: VideoPresentationResponse = presentedResponse(sourceBinding, { presentation: bundle, ledger: readyLedger(bundle, 250) });
 let client: QueryClient;
 
 function seed(data: VideoPresentationResponse): void {
@@ -71,7 +66,7 @@ function timeline(): React.JSX.Element {
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   platform.apiGet.mockReset().mockResolvedValue(ready);
-  platform.apiPost.mockReset().mockResolvedValue({ ...ready, attempt: null });
+  platform.apiPost.mockReset().mockResolvedValue(ready);
   platform.toastError.mockReset(); platform.sessions = []; platform.frames = [];
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
@@ -79,7 +74,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { platform.frames.push(callback); return platform.frames.length; }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const gl = { createBuffer: vi.fn(() => ({})), bindBuffer: vi.fn(), bufferData: vi.fn(), viewport: vi.fn(), pixelStorei: vi.fn(), createTexture: vi.fn(() => ({})), bindTexture: vi.fn(), texParameteri: vi.fn(), deleteTexture: vi.fn(), deleteBuffer: vi.fn() };
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((kind: string) => kind === 'webgl' ? gl as unknown as WebGLRenderingContext : null);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) => kind === 'webgl' ? gl as unknown as WebGLRenderingContext : null) as unknown as HTMLCanvasElement['getContext']);
   vi.stubGlobal('AudioContext', class {
     state = 'running'; destination = {};
     createGain(): GainNode { return { connect: vi.fn(), disconnect: vi.fn(), gain: { value: 1 } } as unknown as GainNode; }
@@ -102,10 +97,31 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
       canonicalURL: input.canonicalURL, sourceFingerprint: sourceBinding.contentHash,
     }, expect.objectContaining({ headers: { 'Idempotency-Key': expect.any(String) } }));
     expect(platform.apiGet).not.toHaveBeenCalled();
-    finish({ ...ready, attempt: null });
+    finish(ready);
     await first;
     expect(platform.apiGet).toHaveBeenCalledOnce();
     expect(client.getQueryData(videoPresentationQuery(input).queryKey)).toEqual(ready);
+  });
+
+  // §95 (design §7.12 step 2, §3.5 web→server row; §93 D6-4): a re-presented version invalid again reports
+  // presentation_invalid, a reuse whose source turned invalid reports reuse_source_invalid; both are transient, so the
+  // press repairs and then rereads, like any failed candidate.
+  it.each(['presentation_invalid', 'reuse_source_invalid'])('a candidate failed %s is repaired by the Retry press, then reread', async (code) => {
+    seed(failedWith(code));
+    const recovery = createVideoPresentationRecovery(client, input);
+    await recovery.recover('source');
+    expect(platform.apiPost).toHaveBeenCalledExactlyOnceWith('/projects/project/assets/video-presentation/repair', {
+      canonicalURL: input.canonicalURL, sourceFingerprint: sourceBinding.contentHash,
+    }, expect.objectContaining({ headers: { 'Idempotency-Key': expect.any(String) } }));
+    expect(platform.apiGet).toHaveBeenCalledOnce();
+    expect(client.getQueryData(videoPresentationQuery(input).queryKey)).toEqual(ready);
+  });
+
+  it('a candidate still in progress is not repaired: the press only rereads', async () => {
+    seed(presentedResponse(sourceBinding, { preparation: presentedPreparation(null, 'encode') }));
+    await createVideoPresentationRecovery(client, input).recover('source');
+    expect(platform.apiPost).not.toHaveBeenCalled();
+    expect(platform.apiGet).toHaveBeenCalledOnce();
   });
 
   it('rereads source facts after a repair conflict and preserves the same visibly reported error', async () => {
