@@ -162,6 +162,9 @@ export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap
   const { textures, samplers } = json as { textures?: ({ sampler?: unknown } | null)[] | null; samplers?: Record<string, Record<string, unknown> | null> | null };
   // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once;
   // count per material slot colour space if such models exceed the budget on devices.
+  // ponytail: a cached texture whose entries name different images counts as its own upload of the largest, even when GLTFLoader
+  // takes the source of an image another texture already uploads, so such a model can be refused although it fits;
+  // follow GLTFLoader's request order if such models are refused near the budget.
   const total = Math.max(...loadedResourcesInEveryBrowser(json).map((resources) => {
     const cached = new Map<string, { sampler: unknown; images: Set<number> }>();
     for (const { texture, image } of resources.textures) {

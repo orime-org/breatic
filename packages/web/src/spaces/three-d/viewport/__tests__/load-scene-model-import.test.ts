@@ -512,6 +512,13 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     expect(await parseIn(model, true)).toEqual(overBudget);
   });
 
+  it('counts a cached texture whose entries name different images apart from those images, as GLTFLoader takes the source of its first requester', async () => {
+    const model = triangle({ images: [{ uri: 'a.png' }, { uri: 'a.png' }], textures: [{ source: 0 }, { source: 1 }, { source: 0, sampler: 0 }], samplers: [{}],
+      meshes: [{ primitives: [0, 1, 2].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [1, 0, 2].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['a.png', png(6144)]]);
+    expect(await parseIn(model, true)).toEqual(overBudget);
+  });
+
   it('loads a model whose unused texture has no source', async () => {
     const root = await parseSceneModel(triangle({ textures: [{ sampler: 0 }], samplers: [{}] }), new AbortController().signal, IMPORT_LIMITS);
     templates.add(root);
