@@ -692,8 +692,8 @@ export function renderProductGuide(): string {
       "top of the first shot). A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
       "says to generate them first. A picture such a template places for the first or end frame is connected " +
-      "but not @'d, and its note says to pick it into that frame once it has generated. When a template feeds " +
-      "what it needs into those nodes, a picture already " +
+      "but not @'d, and its note says to pick it into that frame once it has generated. When a template places " +
+      "nodes that take what it needs, a picture already " +
       "connected to the node is connected to them as well, also when the node itself does not use it. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
       "after it generates also places a text node listing them. Picking it " +
