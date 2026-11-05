@@ -414,7 +414,10 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
   }
 
   it.each([
-    ['copy_carrier', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601' }, false],
+    // §94 D8 (design §7.17 copy_carrier row): the audio is copied, encoded over the stitch's audioOf entries, or absent.
+    ['copy_carrier copying the audio', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601', audio: { kind: 'copy' } }, false],
+    ['copy_carrier encoding the audio', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601', audio: { kind: 'encode', ...AUDIO } }, false],
+    ['copy_carrier without audio', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601', audio: null }, false],
     ['chunk_encode', chunkEncode, false],
     ['stitch', stitch, true],
     ['stitch without audio', { ...stitch, audio: null }, true],
@@ -450,7 +453,8 @@ describe('E2-5 one key per sub-job and the outer recipe shapes (§5.4 「job id�
     ['a stitch chunk without its duration', { ...stitch, chunks: [{ inputId: CHUNK_A }] }],
     ['a stitch of no chunks', { ...stitch, chunks: [] }],
     ['a stitch whose chunk is the source input', { ...stitch, chunks: [{ inputId: INPUT, duration: r(2) }] }],
-    ['a copy without the plan matrix', { kind: 'copy_carrier', inputId: INPUT }],
+    ['a copy without the plan matrix', { kind: 'copy_carrier', inputId: INPUT, audio: null }],
+    ['a copy without its audio field (§94 D8)', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601' }],
     ['a model input without its window', { kind: 'prepare_model_input', inputId: INPUT, timescale: 25, entries: ENTRIES, target: TARGET, audio: null }],
     ['a stitch audio without its origin', { ...stitch, audio: { start: r(0), end: r(2), spans: null } }],
     ['a stitch audio without its spans field', { ...stitch, audio: { start: r(0), end: r(2), origin: r(0) } }],
