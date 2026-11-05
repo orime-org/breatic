@@ -118,10 +118,38 @@ const collabConfigSchema = z.object({
   // document's stored tables (inner#1619 design 5.8). It is never released,
   // only expires, and has to outlast the store interval by far.
   doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
+  // Document size limit (inner#1790): where the notice turns to warning, how
+  // far below the limit adding stops, how far above it deletes may still go
+  // (the hard ceiling), and the room kept back for overwrites near that ceiling.
+  document_size_warn_ratio: z.number().gt(0).lt(1).default(0.8),
+  document_size_full_margin_bytes: z.number().int().positive().default(262_144),
+  document_size_delete_headroom_bytes: z.number().int().positive().default(262_144),
+  document_size_overwrite_reserve_bytes: z.number().int().min(0).default(65_536),
+  document_size_measure_interval_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(2000),
+  document_size_trials_per_user_per_minute: z.number().int().min(1).default(6),
+  document_size_trial_budget_ms_per_second: z.number().int().min(1).max(1000).default(200),
 }).superRefine((cfg, ctx) => {
+  if (cfg.document_size_overwrite_reserve_bytes >= cfg.document_size_delete_headroom_bytes) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["document_size_overwrite_reserve_bytes"],
+      message: "must be below document_size_delete_headroom_bytes",
+    });
+  }
+  // With no limit the remaining checks compare against nothing.
+  if (cfg.max_document_bytes === 0) return;
+  const limit = cfg.max_document_bytes;
+  if (cfg.document_size_full_margin_bytes >= limit) {
+    ctx.addIssue({ code: "custom", path: ["document_size_full_margin_bytes"], message: "must be below max_document_bytes" });
+  } else if (limit * cfg.document_size_warn_ratio >= limit - cfg.document_size_full_margin_bytes) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["document_size_full_margin_bytes"],
+      message: "the warning line (max_document_bytes × document_size_warn_ratio) must lie below the full line",
+    });
+  }
   // One account may hold one full message; the budget must leave room for
   // another member's full message beside it.
-  if (cfg.max_document_bytes === 0) return;
   const floor = 2 * deriveMaxMessageBytes(cfg);
   if (cfg.reassembly_budget_bytes < floor) {
     ctx.addIssue({

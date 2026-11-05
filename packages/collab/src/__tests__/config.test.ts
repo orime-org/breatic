@@ -272,7 +272,9 @@ describe("the document size knobs (inner#1790)", () => {
   // C-19 is asserted by `refused` itself: the module imports, the first read throws.
   it("C-11 C-19 keeps the warning ratio strictly between 0 and 1", async () => {
     for (const bad of [0, 1, -0.1, 1.2]) await refused({ [KEY.ratio]: bad }, KEY.ratio);
-    for (const good of [0.5, 0.999, 0.0001]) await accepted({ [KEY.ratio]: good });
+    for (const good of [0.5, 0.0001]) await accepted({ [KEY.ratio]: good });
+    // 0.999 passes the cross check only with a margin below 10485760 × 0.001.
+    await accepted({ [KEY.ratio]: 0.999, [KEY.margin]: 10000 });
   });
 
   it("C-12 C-19 keeps the full margin above 0, below the limit and below the gap left by the ratio", async () => {
