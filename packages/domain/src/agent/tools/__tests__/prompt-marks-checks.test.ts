@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, markedSegments, markText, t, templateMarkTargets, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markedSegments, markText, t, templateAnchor, templateMarkTargets, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -590,7 +590,10 @@ describe("the templates as the agent is shown them", () => {
     for (const template of GENERATION_TEMPLATES) {
       const said = describeTemplate(template);
       const targets = templateMarkTargets(template, template.anchor);
-      for (const segment of markedSegments(t(`canvas.template.${template.id}.prompt`))) {
+      // A shot-list anchor's words are its shots' (inner#1816).
+      const shots = templateAnchor(template).shots;
+      const keys = shots === undefined ? ["prompt"] : shots.map((_, n) => `shot.${String(n + 1)}`);
+      for (const segment of keys.flatMap((key) => markedSegments(t(`canvas.template.${template.id}.${key}`)))) {
         if (segment.slot?.kind === "asset") {
           const target = targets.get(segment.slot.label);
           if (target === undefined) throw new Error(`${template.id}: no target for ${segment.slot.label}`);
