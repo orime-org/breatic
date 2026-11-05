@@ -24,7 +24,7 @@ export const VERTICAL_15S_QUICK_TIP: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 15-second vertical how-to in five 3-second shots: the finished result first, three steps, then the same result again so the video loops; the reader writes the tip and its three steps",
+    "a 15-second vertical how-to in five 3-second shots: the finished result first, three steps, then the same result again so the video loops; the reader writes what it looks like when done and the three steps",
   goal: "social-hooks",
   triggers: {
     asks: ["a tutorial short", "a quick tip video", "show how to do something in 15 seconds"],
