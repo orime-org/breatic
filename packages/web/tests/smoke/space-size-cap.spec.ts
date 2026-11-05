@@ -121,6 +121,30 @@ async function toastLog(p: Page): Promise<string[]> {
 }
 
 /**
+ * Wait for every toast on screen to go, and return the toast log's length.
+ * A toast with the text of one still on screen only updates that one, so an
+ * action is told on its own only once the earlier toast has gone.
+ * @param p - The page.
+ * @returns The log length to read the next action's toasts from.
+ */
+async function toastsCleared(p: Page): Promise<number> {
+  await expect(p.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 10_000 });
+  return (await toastLog(p)).length;
+}
+
+/**
+ * Wait until the page has shown a toast saying one thing since a point in its
+ * toast log. A toast goes after 3 s, so a check that follows a wait reads the
+ * log rather than the screen.
+ * @param p - The page.
+ * @param since - The log length before the action, from {@link toastsCleared}.
+ * @param text - What the toast says.
+ */
+async function expectToldSince(p: Page, since: number, text: string): Promise<void> {
+  await expect.poll(async () => (await toastLog(p)).slice(since).some((toast) => toast.includes(text))).toBe(true);
+}
+
+/**
  * The toasts on screen saying one thing.
  * @param p - The page.
  * @param text - What they say.
@@ -378,6 +402,21 @@ async function typeInText(p: Page, id: string, text: string): Promise<void> {
 }
 
 /**
+ * Wait for one node to appear and return its id. A duplicate lands over its
+ * source, so a step that edits after a duplicate edits the copy on top.
+ * @param p - The page.
+ * @param s - The Space.
+ * @param before - The node ids before the write.
+ * @returns The new node's id.
+ */
+async function addedNode(p: Page, s: SpaceRef, before: readonly string[]): Promise<string> {
+  await expect.poll(async () => (await nodeIds(p, s)).length, { timeout: 15_000 }).toBe(before.length + 1);
+  const added = (await nodeIds(p, s)).find((id) => !before.includes(id));
+  if (added === undefined) throw new Error('no node was added');
+  return added;
+}
+
+/**
  * Drag a node sideways with a real pointer, holding it by its top edge.
  * @param p - The page.
  * @param id - The node.
@@ -461,10 +500,10 @@ test('S-01 near the limit, the notice stays up and editing goes on as before', a
     const before = await nodeIds(page, s);
     const shown = (await toastLog(page)).length;
     await nodeMenu(page, t, 'node-menu-duplicate');
-    await expect.poll(async () => (await nodeIds(page, s)).length, { timeout: 15_000 }).toBe(before.length + 1);
-    await typeInText(page, t, '!');
-    await expect.poll(() => words(page, s, t)).toBe('hello!');
-    await expect(nodeOf(page, t).getByTestId('text-node-body')).toHaveText('hello!');
+    const copy = await addedNode(page, s, before);
+    await typeInText(page, copy, '!');
+    await expect.poll(() => words(page, s, copy)).toBe('hello!');
+    await expect(nodeOf(page, copy).getByTestId('text-node-body')).toHaveText('hello!');
     expect((await toastLog(page)).slice(shown)).toEqual([]);
 
     peer = await openPeer(browser, baseURL, s.spaceId);
@@ -488,18 +527,19 @@ test('S-02 at the limit, growth is refused with a toast and nothing forks, while
     await expectPhase(page, s.name, 'full');
     await expectNotice(page, s.name, 'full', fullText);
     const ids = await nodeIds(page, s);
-    const blocked = toastSaying(page, SIZE.addBlocked);
 
+    let shown = await toastsCleared(page);
     await nodeMenu(page, t, 'node-menu-duplicate');
     await page.waitForTimeout(3_000);
     expect(await nodeIds(page, s)).toEqual(ids);
     expect(await nodeIds(peer.page, s)).toEqual(ids);
-    await expect(blocked.first()).toBeVisible();
+    await expectToldSince(page, shown, SIZE.addBlocked);
 
+    shown = await toastsCleared(page);
     await typeInText(page, t, 'X');
     await expect(nodeOf(page, t).getByTestId('text-node-body')).toHaveText('hello');
     expect(await words(page, s, t)).toBe('hello');
-    await expect(blocked.first()).toBeVisible();
+    await expectToldSince(page, shown, SIZE.addBlocked);
 
     let pasted = false;
     page.on('request', (request) => {
@@ -507,11 +547,12 @@ test('S-02 at the limit, growth is refused with a toast and nothing forks, while
     });
     await clickNode(page, t);
     await page.keyboard.press('ControlOrMeta+C');
+    shown = await toastsCleared(page);
     await page.keyboard.press('ControlOrMeta+V');
     await page.waitForTimeout(3_000);
     expect(pasted).toBe(false);
     expect(await nodeIds(page, s)).toEqual(ids);
-    await expect(blocked.first()).toBeVisible();
+    await expectToldSince(page, shown, SIZE.addBlocked);
 
     const before = await docPosition(page, s, t);
     await dragBy(page, t, 120);
@@ -558,13 +599,13 @@ test('S-03 deletes go through at the limit, and dropping back below the full lin
 
     const before = await nodeIds(page, s);
     await nodeMenu(page, t, 'node-menu-duplicate');
-    await expect.poll(async () => (await nodeIds(page, s)).length, { timeout: 15_000 }).toBe(before.length + 1);
-    await typeInText(page, t, '!');
-    await expect.poll(() => words(page, s, t)).toBe('hello!');
+    const copy = await addedNode(page, s, before);
+    await typeInText(page, copy, '!');
+    await expect.poll(() => words(page, s, copy)).toBe('hello!');
     expect((await toastLog(page)).slice(shown)).toEqual([]);
     const after = await nodeIds(page, s);
     await expect.poll(() => nodeIds(peer!.page, s), { timeout: 10_000 }).toEqual(after);
-    await expect.poll(() => words(peer!.page, s, t), { timeout: 10_000 }).toBe('hello!');
+    await expect.poll(() => words(peer!.page, s, copy), { timeout: 10_000 }).toBe('hello!');
   } finally {
     await peer?.context.close();
     await deleteSpace(page, s.spaceId);
@@ -766,8 +807,11 @@ test('S-07 Mod-z on a full canvas: bringing back a deleted node is refused, taki
     const f = `size-f-${run}`;
     const x = `size-x-${run}`;
     const y = `size-y-${run}`;
-    await seedNodes(page, s, [{ id: f, type: 'image', x: 100, y: 520 }]);
-    await seedNodes(page, s, [{ id: x, type: 'text', x: 100, y: 100 }]);
+    // Seeded together, so the canvas frames both and X is on screen to click.
+    await seedNodes(page, s, [
+      { id: f, type: 'image', x: 100, y: 520 },
+      { id: x, type: 'text', x: 100, y: 100 },
+    ]);
     await nodeMenu(page, x, 'node-menu-delete');
     await expect(nodeOf(page, x)).toHaveCount(0, { timeout: 10_000 });
     await seedNodes(page, s, [{ id: y, type: 'text', x: 500, y: 100 }]);
@@ -805,12 +849,18 @@ test('S-07 Mod-z on a full canvas: bringing back a deleted node is refused, taki
 });
 
 /**
- * The paragraphs of the document on screen.
+ * The paragraphs of the document on screen. Another connection's caret is
+ * drawn inside a paragraph with its name label, so it is removed from a copy
+ * before the text is read.
  * @param p - The page.
  * @returns Their texts.
  */
 async function paragraphs(p: Page): Promise<string[]> {
-  return p.locator(`${DOCUMENT_EDITOR} p`).allTextContents();
+  return p.locator(`${DOCUMENT_EDITOR} p`).evaluateAll((rows) => rows.map((row) => {
+    const copy = row.cloneNode(true) as HTMLElement;
+    for (const caret of copy.querySelectorAll('.collaboration-carets__caret')) caret.remove();
+    return copy.textContent ?? '';
+  }));
 }
 
 /**
@@ -972,6 +1022,9 @@ test('S-09 a full 3D Space refuses every edit, in the 3D wording', async ({ page
 
     await scene.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Add figure', exact: true }).click();
+    // The Add menu closed the properties panel, and a refused add focuses
+    // nothing to open it again; the figure added first is still selected.
+    await scene.getByTestId('scene-properties-trigger').click();
     const input = page.getByTestId('scene-properties-panel').getByRole('group', { name: 'Position (m)', exact: true }).getByLabel('X', { exact: true });
     await input.fill(String(x + 2));
     await input.press('Tab');

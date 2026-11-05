@@ -53,6 +53,9 @@ const PUSH_WAIT_MS = 15_000;
  */
 const SETTLE_MS = 2_500;
 
+/** How many fills `fillTo` lets land short of its target before it gives up. */
+const MAX_SHORT_FILLS = 3;
+
 /** Where a fill goes: one canvas node's data, or the root `smoke-fill` map. */
 export type FillTarget = { node: string } | 'smoke-fill';
 
@@ -185,6 +188,7 @@ export async function fillTo(
   targetBytes: number,
   where: FillTarget,
 ): Promise<DocSizeState> {
+  let shortFills = 0;
   for (;;) {
     const now = await readSize(page, docName);
     if (now.bytes === null || now.limit === null) throw new Error(`${docName} has no size yet`);
@@ -198,12 +202,17 @@ export async function fillTo(
     const sizes: number[] = [];
     for (let left = targetBytes - now.bytes; left > 0; left -= CHUNK_BYTES) sizes.push(Math.min(CHUNK_BYTES, left));
     await writeFill(page, docName, where, sizes, false);
-    await expect
-      .poll(async () => (await readSize(page, docName)).bytes ?? 0, {
-        timeout: PUSH_WAIT_MS,
-        message: `the fill of ${docName} never reached ${String(targetBytes)} bytes`,
-      })
-      .toBeGreaterThanOrEqual(targetBytes);
+    // `now.bytes` may be an upper bound above the exact size, so the fill can
+    // land a little short: once the exact re-measure is in, the loop writes
+    // the rest, a few times at most.
+    const reached = await expect
+      .poll(async () => (await readSize(page, docName)).bytes ?? 0, { timeout: PUSH_WAIT_MS })
+      .toBeGreaterThanOrEqual(targetBytes)
+      .then(() => true, () => false);
+    if (reached) continue;
+    shortFills += 1;
+    if (shortFills > MAX_SHORT_FILLS) throw new Error(`the fill of ${docName} never reached ${String(targetBytes)} bytes`);
+    await page.waitForTimeout(SETTLE_MS);
   }
 }
 
