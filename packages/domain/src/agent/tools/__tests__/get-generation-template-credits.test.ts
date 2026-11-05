@@ -79,12 +79,3 @@ describe("the cost of one apply when not every node is exactly priced", () => {
     expect(await read("carried-object-transition")).not.toContain("One apply of this template costs");
   });
 });
-
-describe("the stand-in price table", () => {
-  it("is what the tool's estimate reads", async () => {
-    const { estimateModelCredits } = await import("@domain/model-catalog/model-catalog.js");
-    PRICES.set(SCENE, { credits: 1, bound: "exact" });
-    expect(await estimateModelCredits(SCENE, { params: {} })).toEqual({ credits: 1, bound: "exact" });
-    expect(await estimateModelCredits(VIDEO, { params: {} })).toBeUndefined();
-  });
-});

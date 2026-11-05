@@ -173,7 +173,7 @@ describe("what one apply of a template costs (inner#1816)", () => {
    */
   async function estimates(id: string): Promise<Awaited<ReturnType<typeof estimateModelCredits>>[]> {
     const generates = byId(id).nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
-    return Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: node.params ?? {} })));
+    return Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: node.params })));
   }
 
   for (const [id, count] of [["carried-object-transition", 3], ["vertical-15s-quick-tip", 1]] as const) {
