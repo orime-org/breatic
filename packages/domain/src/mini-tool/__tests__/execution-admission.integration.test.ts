@@ -82,8 +82,8 @@ const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> 
 const GOLDEN_RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
   planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1229,
-  sha256: "84d90aeee56514614aa7116d13568d239e7082bfd05b1c68cf66001d9ffae6b4", contentType: "application/json",
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1734,
+  sha256: "db9041da7a5e7c503ca5bf84281075c46160f638fcb6abc8c5bfcb8ac6f47b14", contentType: "application/json",
   table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
 };
 // The complete server-plan projection was hashed independently with Python's JSON/SHA-256.
@@ -132,7 +132,7 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   modelCredits: 30,
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
   // Recomputed for preparation.encode (§91 D3b-5) with the same canonical hash the plan service uses.
-  planFingerprint: "f546c80c3664add4cf598e33e0d9505e7fd2b7c05fd0a828cdca7eacccd37048",
+  planFingerprint: "cf74d0cc111c8d40597397da945d8a343454a05c02760ed90510b58de015c4c3",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;

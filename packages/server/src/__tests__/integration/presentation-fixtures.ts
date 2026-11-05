@@ -39,7 +39,10 @@ export const REMOVAL_PLAN = {
     firstSource: { supportStart: rational(0), lead: null }, lastSource: { support: "declared", supportEnd: rational(1011, 200), hold: null } },
   videoSpans: null, audioSpans: null, segmentDuration: null,
 };
-export const REMOVAL_ENCODING = { keyframeOrdinals: [0, 250, 500, 750, 1000], codedWidth: 960, codedHeight: 540 };
+// §93 D6-1 (design §3.2 item 7): every source keyframe's pts and dts and the first packet dts; the removal source has no
+// B-frames, so dts equals pts (frame k is at k/200 s) and nothing is shifted.
+export const REMOVAL_ENCODING = { keyframeOrdinals: [0, 250, 500, 750, 1000], codedWidth: 960, codedHeight: 540,
+  sourceKeyframes: [rational(0), rational(5, 4), rational(5, 2), rational(15, 4), rational(5)].map((time) => ({ pts: time, dts: time })), firstPacketDts: rational(0) };
 export const REMOVAL_VERSION_ID = "e".repeat(64);
 export const REMOVAL_ATTEMPT = { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 };
 
@@ -85,7 +88,7 @@ export async function presentedSource(hash: string, sourceKey: string, publicUrl
     original: { width: 960, height: 540, duration: 5.055 }, display: REMOVAL_PLAN.display,
     playback: { kind: "native", carrier: { storageKey: sourceKey, url: publicUrl(sourceKey), etag: "source-etag", size: 4096, sha256: hash, contentType: "video/mp4" }, displayRect: null },
     playbackClock: REMOVAL_TABLE };
-  const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, ledger: { state: "ready", receipt, failure: null } };
+  const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, ledger: { state: "ready", receipt, failure: null }, readmit: false };
   return { presentationRef: { source: { toolInputId, planSha256 } }, versionId: REMOVAL_VERSION_ID, receipt, full, compact, bundle, snapshot,
     bodies: new Map([[receipt.url, fullJSON], [receipt.table.url, compactJSON]]) };
 }

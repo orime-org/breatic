@@ -19,8 +19,8 @@ const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400",
   planSha256: "e7107a03209bc1b3ea4be74b6a6f0e7dd04f0c62431b78560be411c4cda7beb9", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", etag: "full-etag", size: 1409,
-  sha256: "539b98d8b94dc35e0da0be98fdd3e0358a2aa7d4196caf6e61658181abd6db11", contentType: "application/json",
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", etag: "full-etag", size: 1658,
+  sha256: "96a73510df6e3319e51e138c0ca8694f96de0881b453074eddd6906f210204ae", contentType: "application/json",
   table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", sha256: "74c5313481331d9e42c9a8f9b69bff0bed3d0539e36b90020bb1eb5c1a86af74", size: 353, contentType: "application/json", frameCount: 96 },
 };
 const PRESENTATION_REF = { source: { toolInputId: RECEIPT.toolInputId, planSha256: RECEIPT.planSha256 } };

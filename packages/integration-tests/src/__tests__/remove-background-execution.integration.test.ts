@@ -62,8 +62,8 @@ const LEDGER_BYTES = readFileSync(new URL("../../../worker/src/handlers/__tests_
 const RECEIPT = {
   schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400",
   planSha256: "e7107a03209bc1b3ea4be74b6a6f0e7dd04f0c62431b78560be411c4cda7beb9", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", etag: "full-etag", size: 1409,
-  sha256: "539b98d8b94dc35e0da0be98fdd3e0358a2aa7d4196caf6e61658181abd6db11", contentType: "application/json",
+  url: "https://assets.example.test/video/source.mp4.video-source-ledger.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", etag: "full-etag", size: 1658,
+  sha256: "96a73510df6e3319e51e138c0ca8694f96de0881b453074eddd6906f210204ae", contentType: "application/json",
   table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.b47c17c2e0e9c3715cebc026006b16df079b09d13ba26e3469e27f51a765f400.json", sha256: "74c5313481331d9e42c9a8f9b69bff0bed3d0539e36b90020bb1eb5c1a86af74", size: 353, contentType: "application/json", frameCount: 96 },
 };
 const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
@@ -85,7 +85,7 @@ const GOLDEN = {
     // §91 D3b-5: the model input's encode parameters are frozen at admission like the presentation's.
     encode: { crf: 18, preset: "medium" } },
   credits: 35, modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "4b3eceb3f049882131231a7fdbee83cb41081998eb069910f378827055a5403a",
+  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "1b8f9aaad5a162facd8d2fa777e4a99b8eda996cc2d218f9dbd172fc4c95d704",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 interface Fixture extends StudioFixture { plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; deadlineAt: number; sourceId: string; assetId: string; coverId: string; canonicalURL: string; coverURL: string }
 interface TaskRow { status: string; params: { miniToolExecution: AcceptedMiniToolExecution }; result: Record<string, unknown>; billed_at: string | null; billed_credits: number | null }
@@ -202,7 +202,7 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
 });
 
 async function seed(golden = false): Promise<Fixture> {
-  expect(await planHash(GOLDEN)).toBe("4b3eceb3f049882131231a7fdbee83cb41081998eb069910f378827055a5403a");
+  expect(await planHash(GOLDEN)).toBe("1b8f9aaad5a162facd8d2fa777e4a99b8eda996cc2d218f9dbd172fc4c95d704");
   const target = await seedStudioFixture(pg, "rb"); const source = await seedStudioFixture(pg, "rs");
   const plan = structuredClone(GOLDEN);
   if (golden) {
