@@ -405,10 +405,25 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
         attempt: { jobId: JOB, deadlineAt: D }, size: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') } } };
   }
 
-  // §91 D3b-4: decodeStart may name a time that is not a keyframe; the container's `-noaccurate_seek -ss` demuxer seek lands on
-  // the keyframe at or before it, so decoding still starts on a keyframe.
+  /**
+   * A ledger with the §3.2 item 7 source keyframes (every one, presented or not) and the stream's first packet dts.
+   * @param bytes - The ledger bytes.
+   * @param keyframes - Each source keyframe's pts and dts.
+   * @param firstPacketDts - The first packet's dts.
+   * @returns The bytes.
+   */
+  function withKeyframes(bytes: Buffer, keyframes: { pts: ReturnType<typeof r>; dts: ReturnType<typeof r> }[], firstPacketDts: ReturnType<typeof r>): Buffer {
+    const ledger = JSON.parse(bytes.toString('utf8')) as { encoding: Record<string, unknown> };
+    return Buffer.from(JSON.stringify({ ...ledger, encoding: { ...ledger.encoding, sourceKeyframes: keyframes, firstPacketDts } }));
+  }
+
+  // §93 D6-1 (design §7.17 时间线 row; W7 withdrawn, rounds 3–5): a span decodes from the latest source keyframe whose pts is not
+  // after its first frame, presented or not; decodeStart = that keyframe's dts − min(0, firstPacketDts). cut.mp4 (g=10, no
+  // B-frames, first packet dts 0) has source keyframes at 0, 0.4, 0.8 and 1.2 s; the first presented frame is source 0.08 s,
+  // so the first span decodes from the unpresented keyframe at 0 (was its own first frame time, 2/25).
   it('RB01 an edited source: the first span starts inside its first frame (clipStart at the edit), later chunks at their keyframe', async () => {
-    await serve(LEDGERS.cut, { work: { kind: 'encode', chunks: [{ start: 0, end: 18 }, { start: 18, end: 38 }] } });
+    await serve(withKeyframes(LEDGERS.cut, [0, 10, 20, 30].map((n) => ({ pts: r(n, 25), dts: r(n, 25) })), r(0)),
+      { work: { kind: 'encode', chunks: [{ start: 0, end: 18 }, { start: 18, end: 38 }] } });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     const jobs = submitted();
     const target = { ...TARGET, width: 160, height: 96 };
@@ -416,7 +431,7 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(jobs.map((job) => (job.outputs as { recipe: unknown }[])[0]!.recipe)).toEqual([
       // Presented frame 0 is source 1024/12800 s; the edit starts at 1/10 s, so it shows from there for 1/50 s (§91 D3b-4).
       { kind: 'chunk_encode', inputId, window: { start: 0, end: 18 }, timescale: 50, target,
-        entries: [{ kind: 'source', decodeStart: r(2, 25), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) }] },
+        entries: [{ kind: 'source', decodeStart: r(0), clipStart: r(1, 10), displayStart: r(0), displayEnd: r(7, 10), rate: r(1) }] },
       { kind: 'chunk_encode', inputId, window: { start: 18, end: 38 }, timescale: 50, target,
         entries: [{ kind: 'source', decodeStart: r(4, 5), clipStart: r(4, 5), displayStart: r(7, 10), displayEnd: r(3, 2), rate: r(1) }] },
     ]);
@@ -595,13 +610,13 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
     expect(submitted().map((job) => (job.outputs as { recipe: { timescale: number } }[])[0]!.recipe.timescale)).toEqual([50, 50]);
   });
 
-  // §91 W7 (user decision; design §7.17): decodeStart is the span's first frame's own source time; the container's
-  // `-noaccurate_seek -ss` lands on the keyframe at or before it. A window starting mid-GOP names its first frame, not the
-  // keyframe before it.
-  it('RB16 a window starting mid-GOP: decodeStart is its first frame\'s source time, not the preceding keyframe', async () => {
-    answer = prepareAnswer({ work: { kind: 'encode', chunks: [{ start: 0, end: 10 }, { start: 10, end: 96 }] } });
+  // §93 D6-1 (design §7.17 时间线 row; the W7 expectation of 757961b87 is withdrawn): a window starting mid-GOP decodes from the
+  // latest source keyframe not after its first frame. cfr96 (no B-frames, first packet dts 0) has keyframes at 0 and 48/25 s.
+  it('RB16 a window starting mid-GOP: decodeStart is the preceding source keyframe\'s dts, not its first frame\'s source time', async () => {
+    await serve(withKeyframes(LEDGERS.cfr96, [{ pts: r(0), dts: r(0) }, { pts: r(48, 25), dts: r(48, 25) }], r(0)),
+      { work: { kind: 'encode', chunks: [{ start: 0, end: 10 }, { start: 10, end: 96 }] } });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
-    expect(entriesSubmitted()[1]).toEqual([{ kind: 'source', decodeStart: r(2, 5), clipStart: r(2, 5), displayStart: r(2, 5), displayEnd: r(96, 25), rate: r(1) }]);
+    expect(entriesSubmitted()[1]).toEqual([{ kind: 'source', decodeStart: r(0), clipStart: r(2, 5), displayStart: r(2, 5), displayEnd: r(96, 25), rate: r(1) }]);
   });
 
   it('RB04 a done packed stitch is reported Done with its alpha-packed carrier and the geometry the job reported, and no manifest (§91 D3-3)', async () => {

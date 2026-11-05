@@ -165,3 +165,57 @@ describe('people, candidate crops and scene cuts from the full ledger (§92 D4-5
   });
 });
 
+
+// §93 D6-1 (frames-split design §7.17 时间线 row and 抽帧解码 row, §3.2 item 7; evidence
+// engineering/demo/2026-11-05-1306-decode-start-overshoot/overshoot.sh): each span decodes from the latest source keyframe whose
+// pts is not after its first frame (presented or not), and decodeStart = that keyframe's dts − min(0, firstPacketDts). The
+// three ledgers are the evidence samples' timelines as the probe reads them with the edit list ignored: 25 fps frames,
+// presented from the first one. bf2 and idr (B-frames) start at pts 2/25 with dts 0; neg (negative CTS offsets) starts at
+// pts 0 with first packet dts −1/25.
+describe('decodeStart from the selected source keyframe (§93 D6-1; design §7.17)', () => {
+  type Keyframe = { pts: Exact; dts: Exact };
+  /**
+   * A 50-frame ledger of one sample: presentation ticks 1/25, source pts from `first` (in 1/25 s), the keyframes given.
+   * @param first - The first frame's source pts in 1/25 s.
+   * @param ordinals - The presented ordinals of the keyframes.
+   * @param keyframes - Every source keyframe.
+   * @param firstPacketDts - The first packet's dts.
+   * @returns The ledger.
+   */
+  function sample(first: number, ordinals: number[], keyframes: Keyframe[], firstPacketDts: Exact): Record<string, unknown> {
+    const ledger = cfr96((plan) => {
+      plan.display = { ...plan.display, duration: r(2) };
+      plan.presentation = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
+      plan.originMapping = { ...plan.originMapping, timeBase: r(1, 25), origin: r(first, 25), entries: [{ kind: 'source', start: first, count: 50, step: 1 }],
+        firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(2), hold: null } };
+      plan.videoSpans = null as never;
+    });
+    ledger.encoding = { keyframeOrdinals: ordinals, codedWidth: 320, codedHeight: 180, sourceKeyframes: keyframes, firstPacketDts };
+    return ledger;
+  }
+  const at = (n: number): Exact => r(n, 25);
+  const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }) => Record<string, unknown>[] };
+  // bf2.mp4: g=10, bf=2: keyframes at pts 2/25, 12/25, 22/25 with dts 0, 10/25, 20/25.
+  const BF2 = sample(2, [0, 10, 20], [{ pts: at(2), dts: at(0) }, { pts: at(12), dts: at(10) }, { pts: at(22), dts: at(20) }], at(0));
+  // idr.mp4: adjacent IDRs at frames 10 and 11: pts 12/25 and 13/25, dts 10/25 and 11/25.
+  const IDR = sample(2, [0, 10, 11], [{ pts: at(2), dts: at(0) }, { pts: at(12), dts: at(10) }, { pts: at(13), dts: at(11) }], at(0));
+  // neg.mp4: negative CTS offsets: keyframes at pts 0, 10/25, 20/25 with dts −1/25, 9/25, 19/25; first packet dts −1/25.
+  const NEG = sample(0, [0, 10, 20], [{ pts: at(0), dts: at(-1) }, { pts: at(10), dts: at(9) }, { pts: at(20), dts: at(19) }], at(-1));
+
+  it.each([
+    ['bf2: a target at the end of a GOP (source 18/25) decodes from the keyframe at 12/25, dts 10/25', BF2, 16, at(10), at(18)],
+    ['bf2: a target that is itself a keyframe decodes from that keyframe\'s dts, not its pts', BF2, 10, at(10), at(12)],
+    ['idr: the first of two adjacent IDRs (12/25) decodes from its own dts 10/25, before the next IDR', IDR, 10, at(10), at(12)],
+    ['idr: the second IDR (13/25) decodes from its own dts 11/25', IDR, 11, at(11), at(13)],
+    ['neg: a target before the second keyframe (9/25) decodes from the first, dts −1/25 shifted to 0', NEG, 9, r(0), at(9)],
+    ['neg: the second keyframe (10/25) decodes from dts 9/25 + 1/25 = 10/25', NEG, 10, at(10), at(10)],
+  ] as const)('KD01 %s', (_name, ledger, first, decodeStart, clipStart) => {
+    expect(windows.windowEntries(ledger, { start: first, end: first + 2 })).toEqual([
+      { kind: 'source', decodeStart, clipStart, displayStart: at(first), displayEnd: at(first + 2), rate: r(1) },
+    ]);
+  });
+
+  it('KD02 a frame recipe on a mid-GOP frame carries the same decodeStart', () => {
+    expect(builder<FrameBuilder>('frameRecipeOf')(BF2, { frameIndex: 16, pts: 0.64 }, INPUT)).toMatchObject({ entry: { decodeStart: at(10), clipStart: at(18) } });
+  });
+});
