@@ -113,7 +113,7 @@ function openBody(): Body {
  * @returns One string per block.
  */
 function blocks(body: Body): string[] {
-  return body.handle.editor.document.map((block) =>
+  return docBlocks(body).map((block) =>
     ((block.content ?? []) as Array<{ text?: string }>).map((run) => run.text ?? '').join(''));
 }
 
@@ -141,11 +141,21 @@ function pressInEditor(body: Body, key: string, mods: { mod?: boolean; ctrl?: bo
 }
 
 /**
+ * The body's blocks; the handle types its editor with `never` schemas, so the
+ * blocks are read through the shape the cases use.
+ * @param body - The body.
+ * @returns The top-level blocks.
+ */
+function docBlocks(body: Body): Array<{ id: string; content?: unknown }> {
+  return body.handle.editor.document as unknown as Array<{ id: string; content?: unknown }>;
+}
+
+/**
  * Removes the second block (`second`) as one undoable step.
  * @param body - The body.
  */
 function deleteSecond(body: Body): void {
-  act(() => { body.handle.editor.removeBlocks([body.handle.editor.document[1]!.id]); });
+  act(() => { body.handle.editor.removeBlocks([docBlocks(body)[1]!.id]); });
   body.handle.undoManager.stopCapturing();
   expect(blocks(body)).toEqual(['hello world']);
 }
