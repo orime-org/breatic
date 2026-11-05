@@ -522,7 +522,7 @@ describe("the model call", () => {
       await run(bodyFor(tool));
 
       const prompt = promptOf(model.calls[0]);
-      expect(prompt).toMatch(/respond in the language of the selected text, whatever language the surrounding document is in/i);
+      expect(prompt).toMatch(/respond in the language of the selected text\b.*, whatever language the surrounding document is in/i);
       expect(prompt).not.toMatch(/document or selection/i);
     },
   );

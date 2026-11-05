@@ -76,13 +76,17 @@ export async function insertAiResult(
 }
 
 /**
- * Swaps the original range for a result.
+ * Swaps the original range for a result, and takes away the blocks with no
+ * words that were selected with it (`aiEdgeBlocksBeside`): the result was
+ * written from them as well. Blocks are taken away by id, after the paste,
+ * since a text selection cannot start on an image.
  * @param handle - The document, mounted.
  * @param range - The original range, where it is now.
  * @param range.from - Its start.
  * @param range.to - Its end.
  * @param markdown - The result.
  * @param readAdmission - Reads current lifecycle and write admission synchronously.
+ * @param edgeBlocks - Ids of the blocks with no words to take away with it.
  * @returns How it ended.
  * @throws {Error} If the editor is not mounted or the paste fails.
  */
@@ -91,6 +95,7 @@ export async function replaceAiResult(
   range: { from: number; to: number },
   markdown: string,
   readAdmission: () => ProposalAdmission,
+  edgeBlocks: readonly string[] = [],
 ): Promise<AiWriteResult> {
   const refusal = writeRefusal(readAdmission(), handle.editor);
   if (refusal !== null) return { outcome: refusal };
@@ -99,6 +104,7 @@ export async function replaceAiResult(
   asOneUndoStep(undoOf(handle), () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)));
     handle.editor.pasteMarkdown(markdown);
+    if (edgeBlocks.length > 0) handle.editor.removeBlocks([...edgeBlocks]);
   });
   return { outcome: 'written' };
 }

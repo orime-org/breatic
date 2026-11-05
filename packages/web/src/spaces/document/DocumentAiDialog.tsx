@@ -65,7 +65,13 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
-import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
+import {
+  aiContextOf,
+  aiEdgeBlocks,
+  aiEdgeBlocksBeside,
+  aiInsertBlockId,
+  type AiEdgeBlocks,
+} from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape, onAiRangeChange } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
@@ -100,6 +106,8 @@ interface Opened {
   readonly base: { readonly project_id: string; readonly selection: string; readonly document: string };
   /** The block a result is inserted under. */
   readonly insertBlockId: string | null;
+  /** The blocks with no words at the selection's edges, which a replace takes away too. */
+  readonly edgeBlocks: AiEdgeBlocks;
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
   /** How fast the answer is shown, in characters per second. */
@@ -281,8 +289,10 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           return;
         }
         const range = originalRange(editor);
-        if (range === null) return;
-        void replaceAiResult({ editor }, range, effect.result, admission).then(told, failed);
+        const edges = openedRef.current?.edgeBlocks;
+        if (range === null || edges === undefined) return;
+        const beside = aiEdgeBlocksBeside(editor.prosemirrorState.doc, range, edges);
+        void replaceAiResult({ editor }, range, effect.result, admission, beside).then(told, failed);
       }
     }
   };
@@ -308,6 +318,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, config.contextMaxChars) },
         revealCharsPerSecond: config.revealCharsPerSecond,
         insertBlockId: aiInsertBlockId(view.state),
+        edgeBlocks: aiEdgeBlocks(view.state),
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;

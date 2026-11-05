@@ -150,11 +150,12 @@ export function textToolModels(): string[] {
 /**
  * Language instruction appended to the prompts whose output follows the input.
  * The request also carries the document around the selection, which can be in
- * another language; the answer replaces the selection, so it follows that.
+ * another language; the answer replaces the selection, so it follows that. A
+ * tool that takes no selection follows the request.
  */
 const LANGUAGE_INSTRUCTION =
-  "\n\nIMPORTANT: Respond in the language of the selected text, whatever language " +
-  "the surrounding document is in. Match the selected text's language exactly.";
+  "\n\nIMPORTANT: Respond in the language of the selected text (with no selected text, " +
+  "the language of the user's request), whatever language the surrounding document is in.";
 
 /**
  * Get the system prompt for a text tool.

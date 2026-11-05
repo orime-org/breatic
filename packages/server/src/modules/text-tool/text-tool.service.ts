@@ -168,6 +168,9 @@ export async function* executeTextTool(
       if (part.type === "text-delta") {
         yield { type: "text_delta", text: part.text };
       }
+      // The SDK reports a call the provider refused or broke off as a part of
+      // the stream, not by throwing; the catch below turns it into the error event.
+      if (part.type === "error") throw part.error;
     }
 
     const creditsUsed = await chargeRecorded(

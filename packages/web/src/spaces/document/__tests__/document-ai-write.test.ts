@@ -16,7 +16,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
-import { aiEdgeBlocks, aiReplaceSpan } from '@web/spaces/document/document-ai-launch';
+import { aiEdgeBlocks, aiEdgeBlocksBeside } from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import { insertAiResult, replaceAiResult } from '@web/spaces/document/document-ai-write';
 import {
@@ -296,9 +296,9 @@ function shown(handle: DocumentEditorHandle): string[] {
  * @param handle - The document.
  * @param from - Where the selection starts.
  * @param to - Where it ends.
- * @returns The span a replace writes over, and the blocks at its edges.
+ * @returns Reads the original range and the blocks a replace takes away with it.
  */
-function openOn(handle: DocumentEditorHandle, from: number, to: number): { span: () => { from: number; to: number } } {
+function openOn(handle: DocumentEditorHandle, from: number, to: number): { span: () => { range: { from: number; to: number }; edges: string[] } } {
   const view = handle.editor.prosemirrorView!;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
   const edges = aiEdgeBlocks(view.state);
@@ -307,7 +307,8 @@ function openOn(handle: DocumentEditorHandle, from: number, to: number): { span:
     span: () => {
       const range = aiRangeIn(view.state);
       if (range === null || range.kind !== 'present') throw new Error('the range should still be there');
-      return aiReplaceSpan(view.state.doc, { from: range.segments[0]!.from, to: range.segments.at(-1)!.to }, edges);
+      const letters = { from: range.segments[0]!.from, to: range.segments.at(-1)!.to };
+      return { range: letters, edges: aiEdgeBlocksBeside(view.state.doc, letters, edges) };
     },
   };
 }
@@ -319,7 +320,8 @@ describe('replace over a selection whose edge is a block without words', () => {
     const handle = await open(`Hello world\n\n${IMAGE}\n\nAfter`);
     const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'After').from);
 
-    await replaceAiResult(handle, span(), `Hello, world.\n\n${IMAGE}`, WRITABLE);
+    const { range, edges } = span();
+    await replaceAiResult(handle, range, `Hello, world.\n\n${IMAGE}`, WRITABLE, edges);
 
     expect(shown(handle)).toEqual(['Hello, world.', `image ${OURS}a.png`, 'After']);
   });
@@ -328,7 +330,8 @@ describe('replace over a selection whose edge is a block without words', () => {
     const handle = await open(`Before\n\n${IMAGE}\n\nHello world`);
     const { span } = openOn(handle, rangeOf(handle, 'Before').to, rangeOf(handle, 'world').to);
 
-    await replaceAiResult(handle, span(), `${IMAGE}\n\nHello, world.`, WRITABLE);
+    const { range, edges } = span();
+    await replaceAiResult(handle, range, `${IMAGE}\n\nHello, world.`, WRITABLE, edges);
 
     expect(shown(handle)).toEqual(['Before', `image ${OURS}a.png`, 'Hello, world.']);
   });
@@ -338,7 +341,8 @@ describe('replace over a selection whose edge is a block without words', () => {
     const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'After').from);
     handle.editor.insertBlocks([{ type: 'paragraph', content: 'New' }] as never, ids(handle)[0]!, 'after');
 
-    await replaceAiResult(handle, span(), 'Hello, world.', WRITABLE);
+    const { range, edges } = span();
+    await replaceAiResult(handle, range, 'Hello, world.', WRITABLE, edges);
 
     expect(shown(handle)).toEqual(['Hello, world.', 'New', `image ${OURS}a.png`, 'After']);
   });
