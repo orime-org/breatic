@@ -143,3 +143,22 @@ describe("a multi-node template's full text", () => {
     expect(said).toContain('"design": generate image, t2i, gpt-image-2.5-sunburst-text-to-image');
   });
 });
+
+describe("a template with a shot list (inner#1816)", () => {
+  it("shows the quick tip as five shots in multi_shot, each with its seconds and segments, and says to send the shots", async () => {
+    const said = await read("vertical-15s-quick-tip");
+    expect(said).toContain('"result" (anchor): generate video, multi_shot, seedance-2.5-text-to-video, 5 shots');
+    expect(said).toContain("shots: [");
+    expect(said.match(/"duration": 3\b/g)).toHaveLength(5);
+    expect(said).toContain('{"ref": <index of the node wired in for input "subject">}');
+    expect(said).toContain("send its shots");
+    expect(said).toContain(describeTemplate(byId("vertical-15s-quick-tip")));
+  });
+
+  it("shows a template without shots its prompts as before, no shot list among them", () => {
+    for (const id of ["storyboard-grid-25", "single-view-refs-scene"]) {
+      const said = describeTemplate(byId(id));
+      expect(said, id).not.toContain("shots: [");
+    }
+  });
+});
