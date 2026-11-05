@@ -244,7 +244,8 @@ describe('the plan and the facts of a plain CFR source (design §5.1 step 2, §4
       sourceKeyframes: [at(0), at(2, 5), at(4, 5), at(6, 5), at(8, 5)].map((time) => ({ pts: time, dts: time })), firstPacketDts: at(0) });
     expect(answer.routeInput).toMatchObject({ plan: { planSha256: answer.planSha256 }, hdr: false, alpha: 'confirmed_opaque', colorMatrixTagged: true, codec: 'h264',
       sourceBytes: (await stat(files.get('cfr.mp4')!)).size });
-    expect(answer.work).toEqual({ encodedFrames: 50, prerollFrames: 0, sourceWidth: 320, sourceHeight: 180, outputWidth: 320, outputHeight: 180, bitDepth: 8, hdr: false });
+    // Contract change (design §5.4 上限行, §93 D7-1): the work carries the selected audio's seconds; cfr.mp4 has no audio.
+    expect(answer.work).toEqual({ encodedFrames: 50, prerollFrames: 0, sourceWidth: 320, sourceHeight: 180, outputWidth: 320, outputHeight: 180, bitDepth: 8, hdr: false, audioSeconds: 0 });
   });
 
   it('PP02 the same source and frozen policy give the same plan and toolInputId on every run', async () => {

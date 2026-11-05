@@ -200,7 +200,11 @@ describe('the ledger action writes full and compact through the edge PUT of the 
     expect(await action('runPresentationLedger')({ action: 'ledger', ...await common('cfr.mp4'), toolInputId: planned.toolInputId, encodeFacts: null })).toEqual({ kind: 'written' });
     const query = Object.fromEntries(puts[0]!.url.searchParams);
     const full = JSON.parse(new TextDecoder().decode(puts[0]!.body.subarray(Number(query.tableByteLength)))) as VideoPresentationLedger;
-    expect(full.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180 });
+    // Contract change (design §3.2 item 7): the encoding also records every source keyframe's pts and dts and the first packet
+    // dts; cfr.mp4 has no B-frames, so dts equals pts and nothing is shifted.
+    const at = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+    expect(full.encoding).toEqual({ keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 320, codedHeight: 180,
+      sourceKeyframes: [at(0), at(2, 5), at(4, 5), at(6, 5), at(8, 5)].map((time) => ({ pts: time, dts: time })), firstPacketDts: at(0) });
   });
 
   it('LW05 given encode facts are written as given, even where a re-probe derives others: only null derives them again', async () => {
