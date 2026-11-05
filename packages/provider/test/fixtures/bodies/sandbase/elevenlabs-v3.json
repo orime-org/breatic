@@ -1,0 +1,372 @@
+{
+  "model": "elevenlabs-v3",
+  "upstream": "sandbase",
+  "model_id": "elevenlabs/v3",
+  "runs": [
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Alicia"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "Alicia",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0,
+        "voice_id": "Alicia"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0,
+        "voice": "Alicia",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 1,
+        "voice_id": "Alicia"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 1,
+        "voice": "Alicia",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Adam"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "pNInz6obpgDQGcFmaJgB",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Alice"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "Xb7hH8MSUJpSbSDYk0k2",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Aria"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "9BWtsMINqrJLrRacOk9x",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Bella"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "hpp4J3VqNfWAUOO0d1Us",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Bill"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "pqHfZKP75CvOlQylNhV4",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Brian"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "nPczCjzI2devNBz1zQrb",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Callum"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "N2lVS1w4EtoT3dr4eOWO",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Charlie"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "IKne3meq5aSn9XLyUdCD",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Charlotte"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "XB0fDUnXU5powFXDhCwa",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Chris"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "iP95p4xoKVk53GoZ742B",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Daniel"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "onwK4e9ZLuTAKqWW03F9",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Eric"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "cjVigY5qzO86Huf0OWal",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "George"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "JBFqnCBsd6RMkjVDRZzb",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Harry"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "SOYHLrjzK2X1ezoPC6cr",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Jessica"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "cgSgspJ2msm6clMCkdW9",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Laura"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "FGY2WhTYpPnrIDTdsKH5",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Liam"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "TX3LPaxmHKxFdv7VOQHJ",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Lily"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "pFZP5JQG7iQjIQuC4Bku",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Matilda"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "XrExE9yKIg1WjnnlVkGX",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "River"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "SAz9YHcvj6GT2YYXdXww",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Roger"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "CwhRBWXzGAHq8TQ4Fs17",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Sarah"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "EXAVITQu4vr4xnSDxMaL",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "similarity": 1,
+        "stability": 0.5,
+        "voice_id": "Will"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "stability": 0.5,
+        "voice": "bIHbv24MWmeRgasZH58o",
+        "text": "a red fox running through fresh snow at dawn",
+        "mode": "async"
+      }
+    }
+  ],
+  "steps": []
+}

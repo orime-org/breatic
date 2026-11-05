@@ -1,0 +1,98 @@
+{
+  "model": "sfx-1.6-extend-audio",
+  "upstream": "fal",
+  "model_id": "mirelo-ai/sfx1.6/extend-audio",
+  "runs": [
+    {
+      "params": {
+        "ambience": false,
+        "append_duration": 10,
+        "audio": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "append_duration": 10,
+        "audio_url": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "ambience": true,
+        "append_duration": 10,
+        "audio": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": true,
+        "append_duration": 10,
+        "audio_url": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "ambience": false,
+        "append_duration": 1,
+        "audio": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "append_duration": 1,
+        "audio_url": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "ambience": false,
+        "append_duration": 57,
+        "audio": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "append_duration": 57,
+        "audio_url": "https://example.com/sample.png",
+        "double_output": false,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "ambience": false,
+        "append_duration": 10,
+        "audio": "https://example.com/sample.png",
+        "double_output": true,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "append_duration": 10,
+        "audio_url": "https://example.com/sample.png",
+        "double_output": true,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": []
+}

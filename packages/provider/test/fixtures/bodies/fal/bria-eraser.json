@@ -1,0 +1,20 @@
+{
+  "model": "bria-eraser",
+  "upstream": "fal",
+  "model_id": "fal-ai/bria/eraser",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "mask_image": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/sample.png",
+        "mask_url": "https://example.com/sample.png",
+        "preserve_alpha": true
+      }
+    }
+  ],
+  "steps": []
+}

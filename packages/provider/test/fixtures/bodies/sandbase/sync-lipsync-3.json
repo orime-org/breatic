@@ -1,0 +1,20 @@
+{
+  "model": "sync-lipsync-3",
+  "upstream": "sandbase",
+  "model_id": "sync/lipsync/3.0/video-to-video",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png",
+        "mode": "async"
+      }
+    }
+  ],
+  "steps": []
+}

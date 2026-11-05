@@ -1,0 +1,239 @@
+{
+  "model": "elevenlabs-voice-changer",
+  "upstream": "fal",
+  "model_id": "fal-ai/elevenlabs/voice-changer",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Alicia"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Alicia"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Aria"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Aria"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Roger"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Roger"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Sarah"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Sarah"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Laura"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Laura"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Charlie"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Charlie"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "George"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "George"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Callum"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Callum"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "River"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "River"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Liam"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Liam"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Charlotte"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Charlotte"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Alice"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Alice"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Matilda"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Matilda"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Will"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Will"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Jessica"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Jessica"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Eric"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Eric"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Chris"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Chris"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Brian"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Brian"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Daniel"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Daniel"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Lily"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Lily"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/sample.png",
+        "voice_id": "Bill"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/sample.png",
+        "voice": "Bill"
+      }
+    }
+  ],
+  "steps": []
+}

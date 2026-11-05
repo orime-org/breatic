@@ -1,0 +1,71 @@
+{
+  "model": "hunyuan3d-v3-i23d",
+  "upstream": "sandbase",
+  "model_id": "tencent/hunyuan-3d/3.0/image-to-3d",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "LowPoly",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "LowPoly",
+        "enable_pbr": false,
+        "mode": "async"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "mode": "async"
+      }
+    }
+  ],
+  "steps": []
+}

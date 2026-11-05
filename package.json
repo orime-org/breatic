@@ -32,6 +32,7 @@
     "db:repair-space-rows": "tsx scripts/repair-space-rows.ts",
     "analytics:delete-users": "tsx scripts/analytics-delete-users.mjs",
     "provider:prices": "tsx --tsconfig packages/provider/tsconfig.json scripts/provider-prices.ts",
+    "provider:reseller-bodies": "tsx --tsconfig packages/provider/tsconfig.json scripts/provider-reseller-bodies.ts",
     "voice-samples": "pnpm --filter @breatic/worker voice-samples",
     "template-resources": "pnpm --filter @breatic/worker template-resources"
   },

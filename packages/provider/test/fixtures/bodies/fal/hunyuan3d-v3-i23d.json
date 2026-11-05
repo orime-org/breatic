@@ -1,0 +1,68 @@
+{
+  "model": "hunyuan3d-v3-i23d",
+  "upstream": "fal",
+  "model_id": "fal-ai/hunyuan3d-v3/image-to-3d",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Normal",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "input_image_url": "https://example.com/sample.png",
+        "back_image_url": "sample text",
+        "left_image_url": "sample text",
+        "right_image_url": "sample text",
+        "generate_type": "Normal",
+        "enable_pbr": false
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "LowPoly",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "input_image_url": "https://example.com/sample.png",
+        "back_image_url": "sample text",
+        "left_image_url": "sample text",
+        "right_image_url": "sample text",
+        "generate_type": "LowPoly",
+        "enable_pbr": false
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/sample.png",
+        "back_image": "sample text",
+        "left_image": "sample text",
+        "right_image": "sample text",
+        "generate_type": "Geometry",
+        "enable_pbr": false,
+        "face_count": 500000
+      },
+      "prompt": "",
+      "body": {
+        "input_image_url": "https://example.com/sample.png",
+        "back_image_url": "sample text",
+        "left_image_url": "sample text",
+        "right_image_url": "sample text",
+        "generate_type": "Geometry",
+        "enable_pbr": false
+      }
+    }
+  ],
+  "steps": []
+}
