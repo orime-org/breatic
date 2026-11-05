@@ -348,6 +348,17 @@ describe("non-terminal progress commits (§93 D5-11)", () => {
     expect((await executionSnapshot(pg, f)).status).toBe("completed");
   });
 
+  // §93 D6 (frames-split design §7.11 「registered，非终态提交」, §10.8 失败与提交): the progress commit establishes the delivery
+  // slot of each newly registered output in the same transaction, so the worker can deliver it before the run ends.
+  it("NP09 a progress commit opens a pending delivery slot for the newly registered output in its own transaction", async () => {
+    const f = await seedExecution(pg, "running");
+    await rejectWrite(f, "public", async () => { await expect(commit()(f.taskId, progress(f))).rejects.toBeInstanceOf(Error); });
+    expect((await executionSnapshot(pg, f)).result.miniToolDelivery).toBeUndefined();
+    await commit()(f.taskId, progress(f));
+    expect((await executionSnapshot(pg, f)).result.miniToolDelivery).toEqual({ schemaVersion: 1, planFingerprint: f.plan.planFingerprint, version: 1,
+      outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: null });
+  });
+
   it("NP08 a progress commit after the terminal one is refused", async () => {
     const f = await seedExecution(pg); await terminal(f); const before = await executionSnapshot(pg, f);
     await expect(commit()(f.taskId, progress(f, 1))).rejects.toBeInstanceOf(Error);

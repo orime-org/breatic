@@ -40,6 +40,7 @@ import { runMiniToolExecutionTask } from "../run-execution-task.js";
 const h = vi.hoisted(() => ({
   start: vi.fn(), plan: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(),
   advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), removal: vi.fn(), progress: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
+  readDelivery: vi.fn(), deliver: vi.fn(), wake: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/core", async (original) => {
@@ -52,12 +53,15 @@ vi.mock("@breatic/domain", async (original) => {
   return { ...actual, readMiniToolExecutionPlan: h.plan, openContainerOutputs: h.grants, openMiniToolPlanJob: h.openPlan, recordMiniToolStepResult: h.record,
     assetRepo: { ...actual.assetRepo, findById: h.findById, findCoverOf: h.findCoverOf },
     miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, commitMiniToolExecutionProgress: h.progress },
+    miniToolDeliveryService: { ...actual.miniToolDeliveryService, readMiniToolDelivery: h.readDelivery },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
 // Partial, so a progress wrapper added beside the terminal one runs for real over the mocked domain entry.
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advancePlan }));
+// §93 D6 (design §7.11, §10.8): delivery after a progress commit; the delivery workers are mocked, the wrapper is real.
+vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
@@ -341,6 +345,11 @@ beforeEach(() => {
   h.findCoverOf.mockResolvedValue(null);
   h.advance.mockImplementation(advance);
   h.openPlan.mockImplementation(openPlan); h.advancePlan.mockImplementation(advancePlan); h.record.mockImplementation(record); h.progress.mockImplementation(progress);
+  // The delivery context: every registered output's slot is pending until delivered.
+  h.readDelivery.mockImplementation(async () => ({ task: { id: TASK }, execution: {}, record: structuredClone(current),
+    delivery: { schemaVersion: 1, planFingerprint: "d".repeat(64), version: 1, lastErrorCode: null,
+      outputs: current.outputs.flatMap((output, outputIndex) => output.result === null ? [] : [{ outputIndex, state: "pending" }]) } }));
+  h.deliver.mockImplementation(async (value: unknown) => value);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
@@ -404,6 +413,9 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1), batchId(1, 1)]);
     expect(h.finish).not.toHaveBeenCalled();
     expect(progressed()).toEqual([[null, "registered"]]);
+    // §93 D6: the committed output is delivered and pending delivery woken before this pickup ended with StillRunning.
+    expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([1]);
+    expect(h.wake).toHaveBeenCalled();
     expect(h.progress.mock.calls[0]![1]).toMatchObject({ planFingerprint: "d".repeat(64), expectedVersion: 0 });
     const committed = structuredClone(current.outputs[1]!.result);
     scripted.delete(batchId(0, 1));
