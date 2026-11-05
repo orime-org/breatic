@@ -501,7 +501,7 @@ const RUNS: Record<string, Run> = {
     image: 'object.jpg',
     first: [],
     fills: {},
-    shots: [['getting a coffee-stained mug spotless in 10 seconds'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
+    shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
   },
 };
 
