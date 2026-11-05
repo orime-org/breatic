@@ -35,7 +35,8 @@ import {
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
-import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
+import { createFrameAssembler, type FrameMessage, type FramePeer } from "@collab/infra/frame-assembler.js";
+import { filter as filterInbound, forgetSocket as forgetInboundSocket } from "@collab/infra/inbound-filter.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
@@ -308,9 +309,20 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     port: infra.port,
     quiet: cfg.quiet,
     websocketOptions: { maxPayload: limits.frameMaxBytes },
-    receiveFrame: frameAssembler.receiveFrame,
-    onPeerClose: frameAssembler.onPeerClose,
-    onPeerError: frameAssembler.onPeerError,
+    // Every whole message then passes the size cap's inbound filter
+    // (inner#1790), which forgets a socket's marks when the socket goes.
+    receiveFrame: (peer: FramePeer, message: FrameMessage) => {
+      const whole = frameAssembler.receiveFrame(peer, message);
+      return whole && filterInbound(peer, whole);
+    },
+    onPeerClose: (peer: FramePeer, event: unknown) => {
+      frameAssembler.onPeerClose(peer, event);
+      forgetInboundSocket(peer);
+    },
+    onPeerError: (peer: FramePeer, error: unknown) => {
+      frameAssembler.onPeerError(peer, error);
+      forgetInboundSocket(peer);
+    },
 
     // The library installs its own SIGINT / SIGQUIT / SIGTERM handler by
     // default (`stopOnSignals`, hocuspocus-server.esm.js:1675-1682) and it is
