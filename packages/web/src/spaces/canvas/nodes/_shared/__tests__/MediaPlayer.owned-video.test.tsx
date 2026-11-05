@@ -13,7 +13,7 @@ import { QueryClientProvider, queryClient } from '@web/app/providers/QueryClient
 import { videoPresentationQuery } from '../../../video-presentation/video-presentation-query';
 import type { VideoPresentationResponse } from '@breatic/shared';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../../../video-presentation/types';
-import { presentedBundle } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
 
 const driver = vi.hoisted(() => ({ sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[] }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
@@ -29,11 +29,24 @@ vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (im
   }),
 }));
 
-const source: VideoPresentationSource = {
-  canonicalURL: 'https://assets.example.test/canonical.webm', sourceFingerprint: 'a'.repeat(64),
-  presentation: { schemaVersion: 1, sourceFingerprint: 'a'.repeat(64), state: 'alpha_ready', original: { width: 160, height: 240, duration: 10 }, alpha: { manifestURL: 'https://assets.example.test/manifest.json' } },
-  manifest: { schemaVersion: 1, sourceFingerprint: 'a'.repeat(64), packedURL: 'https://assets.example.test/packed.mp4', packedWidth: 320, packedHeight: 240, colorRect: { x: 0, y: 0, width: 160, height: 240 }, alphaRect: { x: 160, y: 0, width: 160, height: 240 } },
-};
+// §97 (D10-1, D10-2; design §3.3, §3.5, §7.8): an alpha-packed source carries its selected bundle and the manifest naming
+// the packed carrier (fixtures migrated from `state`/`packedURL`, 4.4.5).
+const packed = { storageKey: 'packed.mp4', url: 'https://assets.example.test/packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+/**
+ * An alpha-packed source of one version.
+ * @param canonicalURL - The source URL.
+ * @param fingerprint - Its content hash.
+ * @param versionId - The selected version.
+ * @returns The source.
+ */
+function alphaSource(canonicalURL: string, fingerprint: string, versionId: string): VideoPresentationSource {
+  return { canonicalURL, sourceFingerprint: fingerprint, presentation: presentedBundle(canonicalURL, { sourceFingerprint: fingerprint, versionId,
+    display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } },
+    playback: { kind: 'alpha-packed', carrier: packed, manifest: { ...packed, storageKey: 'manifest.json', url: 'https://assets.example.test/manifest.json', contentType: 'application/json' } } }),
+  manifest: { schemaVersion: 1, versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1, packed,
+    packedWidth: 320, packedHeight: 240, colorRect: { x: 0, y: 0, width: 160, height: 240 }, alphaRect: { x: 160, y: 0, width: 160, height: 240 } } };
+}
+const source = alphaSource('https://assets.example.test/canonical.webm', PRESENTED.fingerprint, PRESENTED.versionId);
 
 beforeEach(() => {
   driver.sessions = [];
@@ -75,7 +88,7 @@ describe('canonical owned video in the existing player', () => {
     expect(binding.getPresentedFrame().mediaTime).toBe(0.417);
     act(() => binding.seek(2));
     expect(binding.getPresentedFrame()).toBeNull();
-    const other: VideoPresentationSource = { ...source, canonicalURL: 'https://assets.example.test/other.webm', sourceFingerprint: 'b'.repeat(64), presentation: { ...source.presentation, sourceFingerprint: 'b'.repeat(64) }, manifest: { ...source.manifest!, sourceFingerprint: 'b'.repeat(64) } };
+    const other = alphaSource('https://assets.example.test/other.webm', 'b'.repeat(64), 'c'.repeat(64));
     view.rerender(<MediaPlayer modality='video' src={other.canonicalURL} videoSource={other} onVideoBinding={bindings} onPresentedFrame={frames} />);
     expect(first.dispose).toHaveBeenCalledOnce();
     act(() => first.callbacks.frame(9, 0));
@@ -90,7 +103,7 @@ describe('canonical owned video in the existing player', () => {
     const first = driver.sessions[0]!;
     act(() => first.callbacks.ready(first.element, first.surface));
     act(() => { first.element.volume = 0.3; first.element.muted = true; first.element.dispatchEvent(new Event('volumechange')); });
-    const other: VideoPresentationSource = { ...source, canonicalURL: 'https://assets.example.test/replaced.webm', sourceFingerprint: 'b'.repeat(64), presentation: { ...source.presentation, sourceFingerprint: 'b'.repeat(64) }, manifest: { ...source.manifest!, sourceFingerprint: 'b'.repeat(64) } };
+    const other = alphaSource('https://assets.example.test/replaced.webm', 'b'.repeat(64), 'c'.repeat(64));
     view.rerender(<MediaPlayer modality='video' src={other.canonicalURL} videoSource={other} onVideoBinding={bindings} />);
     expect(driver.sessions).toHaveLength(2);
     const next = driver.sessions[1]!;
