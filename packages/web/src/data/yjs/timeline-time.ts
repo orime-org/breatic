@@ -6,9 +6,6 @@ import {
   type TimelineFraction as Fraction, type TimelineRate, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
 
-/** The source-range validation result at an editing boundary. */
-export type TimelineRangeValidation = { valid: true } | { valid: false; reason: 'invalid_range' };
-
 /**
  * Whether a clip's frame bounds are a stored clip's: safe integers, a non-negative start and in-point, a positive
  * duration and a safe end.
@@ -72,7 +69,7 @@ function sampleFraction(clip: TimelineVideoClip, source: TimelineVideoSource, fp
  * @throws {RangeError} When the clip, source or requested frame is unusable.
  */
 export function timelineSourceSeconds(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate, frame: number): number {
-  if (!validateTimelineRange(clip, source, fps).valid || !Number.isSafeInteger(frame)
+  if (!validateTimelineRange(clip, source, fps) || !Number.isSafeInteger(frame)
     || frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) {
     throw new RangeError('Timeline frame is outside the usable clip interval');
   }
@@ -155,18 +152,14 @@ export function timelineTrimHead(clip: TimelineVideoClip, source: TimelineVideoS
  * @returns Whether the source range is usable.
  * @throws {Error} When an unexpected arithmetic error occurs.
  */
-export function validateTimelineRange(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate): TimelineRangeValidation {
+export function validateTimelineRange(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate): boolean {
   try {
     assertClip(clip);
     assertRate(fps);
-    if (clip.sourceId !== source.id || durationToFrames(source.durationSeconds, source.timebase) !== source.extentFrames) {
-      return { valid: false, reason: 'invalid_range' };
-    }
-    return timelineSourceRoom(clip, source, fps) >= clip.durationFrames
-      ? { valid: true }
-      : { valid: false, reason: 'invalid_range' };
+    return clip.sourceId === source.id && durationToFrames(source.durationSeconds, source.timebase) === source.extentFrames
+      && timelineSourceRoom(clip, source, fps) >= clip.durationFrames;
   } catch (err) {
-    if (err instanceof RangeError) return { valid: false, reason: 'invalid_range' };
+    if (err instanceof RangeError) return false;
     throw err;
   }
 }

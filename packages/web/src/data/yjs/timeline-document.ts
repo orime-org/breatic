@@ -44,7 +44,7 @@ export function timelineClipSourceId(record: unknown): string | undefined {
  * @returns The referenced source ids.
  * @throws {never} Never.
  */
-export function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
+function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
   const referenced = new Set<string>();
   doc.getMap<unknown>('clips').forEach((record) => {
     const id = timelineClipSourceId(record);

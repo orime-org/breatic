@@ -75,7 +75,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1): Timeli
  * @throws {never} Never.
  */
 function outsideSource(clip: TimelineVideoClip, source: TimelineVideoSource | undefined, document: TimelineDocumentV1): boolean {
-  return source !== undefined && !validateTimelineRange(clip, source, document.settings.fps).valid;
+  return source !== undefined && !validateTimelineRange(clip, source, document.settings.fps);
 }
 
 /**
