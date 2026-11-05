@@ -31,7 +31,7 @@ import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationVersionId, videoPresentationVersionSchema } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
 import * as containerModule from '@ingest/media-container.js';
-import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { admission, D, H, PLAN, produceLedger, PUBLIC_BASE, source, T, withStore, type Admission, type Identity, type MachineStore } from './helpers/machine-store.js';
 import { digest, ENCODING, PRICING } from './helpers/source-ledger-fixture.js';
 
 interface ProbeFacts {
@@ -316,6 +316,30 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
       const view = await store.read(key, H);
       expect(view.candidate).toMatchObject({ state: 'failed', failure: 'too_long' });
       expect(view.ledgers[T]!.kind).toBe('ready');
+    });
+  });
+
+  // §93 D7-1 (frames-split design §5.4 上限行, §4.1 row 2): the dispatched copy has no video encode: its estimate is the
+  // start seconds plus the selected audio's seconds (the probe's `work.audioSeconds`, 0 without audio) ÷ the AAC rate frozen
+  // at admission (`encoding.encoder.aacEncodeSecondsPerSecond`); beyond one chunk share it fails too_long. A one-minute
+  // budget gives a 30 s share (chunkShare 0.5); the start is 3 s.
+  it.each([
+    ['fits: 3 + 200 ÷ 10 = 23 s', 10, 200, null],
+    ['no audio: 3 s', 10, 0, null],
+    ['exceeds: 3 + 600 ÷ 10 = 63 s', 10, 600, 'too_long'],
+    ['exceeds at the frozen rate 5: 3 + 200 ÷ 5 = 43 s', 5, 200, 'too_long'],
+  ] as const)('DC01 a dispatched copy that %s', async (_name, rate, audioSeconds, failure) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const now = Date.now();
+      await store.accept({ ...admission(key, 'job-a', now + 60_000), encoding: { ...ENCODING, encoder: { ...ENCODING.encoder, aacEncodeSecondsPerSecond: rate } } } as Admission);
+      // A small source whose audio is not copyable: dispatched so the standard-4 copy_carrier encodes its audio (§4.1 row 2).
+      const port = fakePort(store, key, planned({ ...COPY_ROUTE, audioCopyable: false }, keyframes(96, 24), { ...WORK, audioSeconds } as ProbeFacts['work']));
+      const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, port, now));
+      expect(answer.plan?.route).toBe('dispatch_copy');
+      expect(answer.preparation).toMatchObject({ jobId: 'job-a', failure });
+      expect(answer.work).toEqual(failure === null ? { kind: 'dispatch_copy' } : { kind: 'none' });
+      expect((await store.read(key, H)).candidate).toMatchObject(failure === null ? { state: 'building' } : { state: 'failed', failure });
     });
   });
 
