@@ -44,11 +44,23 @@ export const REFUSED: Readonly<Record<string, Readonly<Record<string, readonly u
 };
 
 /**
- * Whether a run's params hold a value WaveSpeed cannot serve for this model.
- * @param model - The model.
- * @param params - The run's params.
- * @returns True when some param holds such a value.
+ * Clip lengths outside a limit WaveSpeed states for a model, by model: its bindings keep such runs out (`rejects`).
+ * Today's code estimated them on WaveSpeed although WaveSpeed refuses them.
  */
-export function holdsRefused(model: string, params: Readonly<Record<string, unknown>>): boolean {
-  return Object.entries(REFUSED[model] ?? {}).some(([param, values]) => values.includes(params[param]));
+export const OUTSIDE_STATED: Readonly<Record<string, (durations: Readonly<Record<string, readonly number[]>>) => boolean>> = {
+  // "Each video must be no longer than 3 seconds."
+  "gemini-omni-1.1-flash-reference-to-video": (d) => (d.videos ?? []).some((s) => s > 3),
+  // Mureka's upload: reference [30,30] seconds, melody [5,60] seconds.
+  "mureka-v9.5-generate-song": (d) => (d.song ?? []).some((s) => s < 30) || (d.melody ?? []).some((s) => s < 5),
+};
+
+/**
+ * Whether a run holds a value WaveSpeed cannot serve for this model, or a clip length outside a limit it states.
+ * @param model - The model.
+ * @param input - The run's params and known clip lengths.
+ * @returns True when WaveSpeed refuses the run.
+ */
+export function holdsRefused(model: string, input: { params: Readonly<Record<string, unknown>>; durations?: Readonly<Record<string, readonly number[]>> }): boolean {
+  return Object.entries(REFUSED[model] ?? {}).some(([param, values]) => values.includes(input.params[param]))
+    || OUTSIDE_STATED[model]?.(input.durations ?? {}) === true;
 }

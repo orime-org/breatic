@@ -45,11 +45,11 @@ describe("estimate — equal to today's estimate on every case", () => {
 
   const onWavespeed = fixture.cases.map((c, i) => [`${i} ${c.model}`, c] as const).filter(([, c]) => !OFF_WAVESPEED.has(c.model));
 
-  it.each(onWavespeed.filter(([, c]) => holdsRefused(c.model, c.input.params)))("%s is not estimated on WaveSpeed, which cannot serve one of its values", async (_label, c) => {
+  it.each(onWavespeed.filter(([, c]) => holdsRefused(c.model, c.input)))("%s is not estimated on WaveSpeed, which cannot serve one of its values or clip lengths", async (_label, c) => {
     expect((await provider.estimate(c.model, c.input, { mode: "default" }))?.upstream).not.toBe("wavespeed");
   });
 
-  it.each(onWavespeed.filter(([, c]) => !holdsRefused(c.model, c.input.params)))("%s", async (_label, c) => {
+  it.each(onWavespeed.filter(([, c]) => !holdsRefused(c.model, c.input)))("%s", async (_label, c) => {
     const server = await provider.estimate(c.model, c.input, { mode: "default" });
     expect(server).not.toBeNull();
     expect(server!.usd).toBeCloseTo(c.usd, 9);
