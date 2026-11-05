@@ -66,7 +66,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { AddShotRow, ShotList, addBlockedKey } from '@web/spaces/canvas/generate/storyboard-controls';
+import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -294,20 +294,14 @@ function VideoGeneratePanelBody({
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The shot whose box is open (#1201), held by id so a collaborator adding or
-  // bringing back a shot never moves it: the first when the mode opens, then
-  // the one the reader opens or adds. When it is removed, by anyone, the one
-  // that took its place opens, or the one before it when it was the last.
-  // Leaving the mode forgets it, so coming back opens the first shot again.
+  // The shot whose box is open (#1201): the first when the mode opens, then
+  // the one the reader opens or adds, kept by `nextOpenShot` across every
+  // change to the list. Leaving the mode forgets it, so coming back opens the
+  // first shot again.
   const [openedShot, setOpenedShot] = React.useState<string | null>(null);
   const [seenShots, setSeenShots] = React.useState(shots);
   if (shots !== seenShots) setSeenShots(shots);
-  let nextShot = openedShot;
-  if (!spec || !shots) nextShot = null;
-  else if (!shots.some((shot) => shot.id === openedShot)) {
-    const at = seenShots?.findIndex((shot) => shot.id === openedShot) ?? -1;
-    nextShot = (shots[at] ?? shots[at - 1] ?? shots[0])?.id ?? null;
-  }
+  const nextShot = spec && shots ? nextOpenShot(seenShots ?? [], shots, openedShot) : null;
   if (nextShot !== openedShot) setOpenedShot(nextShot);
   const expandedShot = nextShot ?? '';
   const expandedShotRef = React.useRef(expandedShot);

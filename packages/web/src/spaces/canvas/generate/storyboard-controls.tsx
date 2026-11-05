@@ -111,6 +111,33 @@ export function addBlockedKey(
 }
 
 /**
+ * The shot whose box is open after the list changes (#1201), found by id so
+ * shots added or moved in the same change never shift it: the open shot while
+ * it is there; when it was removed, the first shot still there after it in the
+ * old list, else the last one still there before it; else the first shot.
+ * @param seen - The shots before the change.
+ * @param shots - The shots now.
+ * @param opened - The id of the shot that was open, or null when none was.
+ * @returns The id of the shot to open, or null when there are no shots.
+ */
+export function nextOpenShot(
+  seen: readonly { readonly id: string }[],
+  shots: readonly { readonly id: string }[],
+  opened: string | null,
+): string | null {
+  const kept = new Set(shots.map((shot) => shot.id));
+  if (opened !== null && kept.has(opened)) return opened;
+  const at = seen.findIndex((shot) => shot.id === opened);
+  if (at >= 0) {
+    const after = seen.slice(at + 1).find((shot) => kept.has(shot.id));
+    const before = seen.slice(0, at).findLast((shot) => kept.has(shot.id));
+    const next = after ?? before;
+    if (next) return next.id;
+  }
+  return shots[0]?.id ?? null;
+}
+
+/**
  * The multi-shot mode's cards, one per shot, one open at a time (#1201): a
  * closed card is its title row with the first line of its words, and its
  * seconds and remove button work while it is closed.
