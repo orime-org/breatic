@@ -141,7 +141,7 @@ let stamp = 0;
  * @param type - Node type.
  * @param extra - Further data fields, `templateNode` among them.
  */
-function seed(id: string, type: 'image' | 'text', extra: Record<string, unknown> = {}): void {
+function seed(id: string, type: 'image' | 'video' | 'text', extra: Record<string, unknown> = {}): void {
   addNode('p', 's', {
     id,
     type,
@@ -726,6 +726,37 @@ describe('useApplyTemplate', () => {
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       const { proposal, existing } = placed(place);
       expect(proposal.nodes[indexOf(existing, 'target-style')]?.resource).toBe('templates/fixture-flow/style.png');
+    });
+  });
+
+  describe('a template with a shot list (inner#1816)', () => {
+    const SEEDANCE_T2V = {
+      name: 'seedance-2.5-text-to-video',
+      mode: ['t2v', 'multi_shot'],
+      params: {
+        aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
+        duration: { description: '', min: 4, max: 30, default: 5 },
+        generate_audio: { description: '', values: [true, false], default: true },
+      },
+    } as unknown as ModelEntry;
+
+    it('writes the quick tip onto the video node in multi_shot, five shots of three seconds, each with words', () => {
+      const template = GENERATION_TEMPLATES.find((one) => one.id === 'vertical-15s-quick-tip');
+      expect(template).toBeDefined();
+      if (!template) return;
+      seed('target', 'video');
+      const place = vi.fn();
+      apply(template, 'target', [SEEDANCE_T2V], place);
+
+      const { proposal } = placed(place);
+      const anchor = proposal.nodes[0];
+      expect(anchor).toMatchObject({ role: 'generate', type: 'video', mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+      expect(anchor?.prompt).toBeUndefined();
+      const shots = anchor?.shots ?? [];
+      expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);
+      for (const [at, shot] of shots.entries()) {
+        expect(shot.prompt.map((segment) => segment.text ?? '').join('').trim().length, `shot ${String(at + 1)}`).toBeGreaterThan(0);
+      }
     });
   });
 
