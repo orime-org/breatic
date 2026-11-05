@@ -363,6 +363,26 @@ describe('an empty line that is not a paragraph, taking content whose last line 
   });
 });
 
+describe('an empty line that is not a paragraph, taking content whose last block is not words but has words nested under it', () => {
+  it.each([
+    ['heading', { type: 'heading', props: { level: 2 } }, 'heading#2'],
+    ['list item', { type: 'bulletListItem' }, 'bulletListItem'],
+  ])('a %s keeps a picture a picture and a code block a code block, and leaves the line for the caret', async (_name, line, label) => {
+    for (const last of [
+      { type: 'image', props: { url: PIC }, children: [{ type: 'paragraph', content: 'c' }] },
+      { type: 'codeBlock', content: 'code', children: [{ type: 'paragraph', content: 'c' }] },
+    ]) {
+      const editor = open([{ type: 'paragraph', content: 'top' }, line, { type: 'paragraph', content: 'end' }]);
+      caretIn(editor, 1);
+      pasteOwn(editor, [{ type: 'paragraph', content: 'w' }, last]);
+      await settled();
+      const kept = last.type === 'image' ? `image(${PIC})` : 'codeBlock:code';
+      expect(lines(editor)).toEqual(['paragraph:top', `${label}:w`, kept, '  paragraph:c', `${label}:`, 'paragraph:end']);
+      unmountAll();
+    }
+  });
+});
+
 describe('a line the content\'s last words join', () => {
   it('keeps the reader\'s type', async () => {
     const editor = open([{ type: 'heading', content: 'abcd', props: { level: 2 } }]);

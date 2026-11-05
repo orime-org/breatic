@@ -1434,6 +1434,26 @@ describe('a drag within the body, put as its paste at the drop point (design §5
     expect(blocks(copied)[5]!.id).toBe(emptyId);
   });
 
+  it('moves a whole line into an empty heading with that line\'s own row id, the heading keeping its type', async () => {
+    const { editor } = await openReady([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'paragraph', content: 'tail' },
+      { type: 'heading', props: { level: 2 } },
+      { type: 'paragraph', content: 'end' },
+    ] as Parameters<typeof open>[0]);
+    const blocks = (): { id: string; type: string }[] => editor.document as never;
+    const tailId = blocks()[1]!.id;
+    let heading = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (heading < 0 && node.type.name === 'heading') heading = pos + 1;
+      return heading < 0;
+    });
+    dragWithin(editor, positionOf(editor, 'lead', 4), positionOf(editor, 'tail', 4), heading);
+    await settled();
+    const landed = blocks().find((block) => block.id === tailId);
+    expect(landed?.type).toBe('heading');
+  });
+
   it('changes nothing when dropped onto the dragged content itself', async () => {
     const { editor } = await openReady([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
     const before = editor.prosemirrorView.state.doc.toJSON();
