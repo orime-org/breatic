@@ -1279,7 +1279,8 @@ export type PresentationProbe =
     routeInput: Omit<VideoCarrierRouteInput, 'selected' | 'copyDiskMarginBytes' | 'basicDiskBytes'>;
     /** The full ledger's encode facts (§3.2 item 7): source keyframe ordinals and the coded size. */
     encoding: VideoPresentationLedger['encoding'];
-    work: VideoJobWork;
+    /** The encode work and the selected audio's seconds, which a dispatched copy encodes to AAC. */
+    work: VideoJobWork & { audioSeconds: number };
     display: VideoPresentationVersion['display'];
     playbackClock: VideoPresentationVersion['playbackClock'];
   };
@@ -1369,9 +1370,13 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
   if (encoding === undefined || pricing === undefined) { await store.fail(capability, 'admission_invalid'); return; }
   const route = chooseVideoCarrierRoute({ ...probe.routeInput, selected, copyDiskMarginBytes: encoding.copyDiskMarginBytes,
     basicDiskBytes: pricing.basic.size.disk_gb * DISK_BYTES_PER_GB });
-  const chunks = route === 'encode' ? encodeChunks(probe, encoding, (capability.deadlineAt - now) / 1000) : [];
-  const tooLong = route === 'encode' ? presentationEncodeFailure(chunks.length, encoding.maxParallelChunks) : null;
-  const work: PresentationPlanFacts['work'] = route === 'dispatch_copy' ? { kind: 'dispatch_copy' }
+  const remainingSeconds = (capability.deadlineAt - now) / 1000;
+  const chunks = route === 'encode' ? encodeChunks(probe, encoding, remainingSeconds) : [];
+  // A dispatched copy encodes no video: its estimate is the start plus the selected audio at the frozen AAC rate (§5.4 上限行).
+  const copySeconds = encoding.encoder.startSeconds + probe.work.audioSeconds / encoding.encoder.aacEncodeSecondsPerSecond;
+  const tooLong = route === 'encode' ? presentationEncodeFailure(chunks.length, encoding.maxParallelChunks)
+    : route === 'dispatch_copy' && copySeconds > encoding.chunkShare * remainingSeconds ? 'too_long' : null;
+  const work: PresentationPlanFacts['work'] = route === 'dispatch_copy' && tooLong === null ? { kind: 'dispatch_copy' }
     : route === 'encode' && tooLong === null ? { kind: 'encode', chunks } : { kind: 'none' };
   const { planSha256, producerVersion, profileVersion } = probe.routeInput.plan;
   const facts: PresentationPlanFacts = { route, toolInputId: probe.toolInputId, planSha256, producerVersion, profileVersion,

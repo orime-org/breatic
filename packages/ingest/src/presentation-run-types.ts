@@ -68,6 +68,6 @@ export type PresentationProbeAnswer =
   | {
     kind: 'planned'; toolInputId: string; planSha256: string; plan: object;
     encoding: PresentationEncodeFacts;
-    routeInput: PresentationProbeRoute; work: VideoJobWork;
+    routeInput: PresentationProbeRoute; work: VideoJobWork & { audioSeconds: number };
   }
   | { kind: 'failed'; code: string };
