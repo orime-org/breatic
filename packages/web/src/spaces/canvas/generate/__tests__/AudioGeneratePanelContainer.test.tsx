@@ -185,12 +185,15 @@ const BGM: ModelEntry = {
   params: {},
 };
 
-/** Reference to music: three audio slots, and lyrics the gateway insists on. */
+/**
+ * Reference to music: three audio slots, and lyrics the gateway insists on.
+ * It serves text to music as well, as `config/models/audio/models.yaml` has it.
+ */
 const A2M: ModelEntry = {
   ...T2M,
   name: 'mureka-v9.5-generate-song',
   display_name: 'Mureka V9.5 Song',
-  mode: 'a2m',
+  mode: ['t2m', 'a2m'],
   params: {
     lyrics: { description: '', default: null, fill: 'editor' },
     song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
@@ -1111,6 +1114,28 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
       ),
     );
     expect(screen.getByTestId('generate-prompt-group-lyrics-toggle')).not.toHaveTextContent('second line');
+  });
+
+  it('opens the style box when the mode switches to another pair of boxes (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'mureka-v9.5-generate-song' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+
+    view.rerender(panelTree({ mode: 'a2m', model: 'mureka-v9.5-generate-song' }));
+
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor')).toBeVisible());
+    expect(screen.getByTestId('generate-lyrics-editor')).not.toBeVisible();
+  });
+
+  it('keeps the lyrics open when the model switches within the mode (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+
+    view.rerender(panelTree({ mode: 't2m', model: 'mureka-v9.5-generate-song' }));
+
+    await screen.findByTestId('generate-lyrics-editor');
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-prompt-editor')).not.toBeVisible();
   });
 
   it('still inserts once the open box goes away', async () => {

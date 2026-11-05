@@ -441,10 +441,15 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // Which of the two boxes is open while both are there (#1201); the style box
-  // whenever the lyrics box is not, and again each time it comes back.
+  // Which of the two boxes is open while both are there (#1201): the style box
+  // each time the panel shows another pair of boxes, that is, whenever the
+  // lyrics box changes words (each mode keeps its own) or goes away.
   const [expanded, setExpanded] = React.useState<'prompt' | 'lyrics'>('prompt');
-  if (shownLyricsFragment === null && expanded !== 'prompt') setExpanded('prompt');
+  const [seenLyrics, setSeenLyrics] = React.useState(shownLyricsFragment);
+  if (seenLyrics !== shownLyricsFragment) {
+    setSeenLyrics(shownLyricsFragment);
+    setExpanded('prompt');
+  }
   // Set by the reader's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
