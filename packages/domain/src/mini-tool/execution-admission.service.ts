@@ -188,6 +188,13 @@ function prerollFrames(ledger: VideoPresentationLedger, first: number, count: nu
   const later = ticks.filter((tick): tick is bigint => tick !== null && tick > at);
   const end: [bigint, bigint] = later.length > 0 ? [later.reduce((low, tick) => (tick < low ? tick : low)) * baseNumerator, baseDenominator]
     : [BigInt(map.lastSource.supportEnd.numerator), BigInt(map.lastSource.supportEnd.denominator)];
+  /**
+   * Whether one exact time is at or before another.
+   * @param left - One time.
+   * @param right - The other.
+   * @returns True when left is not after right.
+   * @throws {never} Never.
+   */
   const below = (left: [bigint, bigint], right: [bigint, bigint]): boolean => left[0] * right[1] <= right[0] * left[1];
   let keyframe: [bigint, bigint] | null = null;
   for (const { pts } of ledger.encoding.sourceKeyframes) {
