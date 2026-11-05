@@ -89,6 +89,8 @@ interface PlacedBlock {
   readonly to: number;
   readonly contentFrom: number;
   readonly contentTo: number;
+  /** Whether no letter is anywhere in it, its child blocks included. */
+  readonly wordless: boolean;
 }
 
 /**
@@ -108,6 +110,7 @@ function placedBlocks(doc: ProseMirrorNode): PlacedBlock[] {
         to: pos + node.nodeSize,
         contentFrom: pos + 1,
         contentTo: pos + 1 + content.nodeSize,
+        wordless: node.textContent === '',
       });
     }
     return true;
@@ -126,7 +129,10 @@ function blockHolding(blocks: readonly PlacedBlock[], pos: number): number {
 }
 
 /**
- * The blocks with no words at the selection's edges.
+ * The blocks with no words at the selection's edges: those whose whole
+ * container, child blocks included, lies between an end of the selection and
+ * its nearest letter. A block one of whose children holds the selected words,
+ * or words left out of the selection, is not one of them.
  * @param state - The editor state, holding the selection.
  * @returns Them, before its first letter and after its last.
  */
@@ -138,15 +144,17 @@ export function aiEdgeBlocks(state: EditorState): AiEdgeBlocks {
   const last = letters[letters.length - 1]!.to;
   const blocks = placedBlocks(doc);
   return {
-    before: blocks.filter((b) => b.contentFrom >= selection.from && b.contentTo <= first).map((b) => b.id),
-    after: blocks.filter((b) => b.contentFrom >= last && b.contentTo <= selection.to).map((b) => b.id),
+    before: blocks.filter((b) => b.from >= selection.from && b.to <= first).map((b) => b.id),
+    after: blocks.filter((b) => b.from >= last && b.to <= selection.to).map((b) => b.id),
   };
 }
 
 /**
  * The blocks with no words from the selection's edges that a replace takes
- * away with the words: those still right against the original range. One the
- * reader has since put something in front of stays.
+ * away with the words: those still right against the original range and still
+ * without words. One the reader has since put something in front of, or
+ * written in, stays. A block inside another one taken away goes with it, so it
+ * is not named again.
  * @param doc - The body now.
  * @param letters - The original range, first letter to past the last.
  * @param edges - The blocks with no words at the selection's edges.
@@ -154,14 +162,23 @@ export function aiEdgeBlocks(state: EditorState): AiEdgeBlocks {
  */
 export function aiEdgeBlocksBeside(doc: ProseMirrorNode, letters: LocalRange, edges: AiEdgeBlocks): string[] {
   const blocks = placedBlocks(doc);
-  const beside: string[] = [];
-  for (let at = blockHolding(blocks, letters.from) - 1, k = edges.before.length - 1; at >= 0 && k >= 0 && blocks[at]!.id === edges.before[k]; at -= 1, k -= 1) {
-    beside.push(blocks[at]!.id);
+  const beside: PlacedBlock[] = [];
+  /**
+   * Whether a block is the next edge block still to be found.
+   * @param at - The block's index.
+   * @param id - The edge block's id.
+   * @returns True when it is that block and still has no words.
+   */
+  const matches = (at: number, id: string | undefined): boolean => blocks[at]!.id === id && blocks[at]!.wordless;
+  for (let at = blockHolding(blocks, letters.from) - 1, k = edges.before.length - 1; at >= 0 && k >= 0 && matches(at, edges.before[k]); at -= 1, k -= 1) {
+    beside.push(blocks[at]!);
   }
-  for (let at = blockHolding(blocks, letters.to) + 1, k = 0; at < blocks.length && k < edges.after.length && blocks[at]!.id === edges.after[k]; at += 1, k += 1) {
-    beside.push(blocks[at]!.id);
+  for (let at = blockHolding(blocks, letters.to) + 1, k = 0; at < blocks.length && k < edges.after.length && matches(at, edges.after[k]); at += 1, k += 1) {
+    beside.push(blocks[at]!);
   }
-  return beside;
+  return beside
+    .filter((b) => !beside.some((outer) => outer !== b && outer.from <= b.from && b.to <= outer.to))
+    .map((b) => b.id);
 }
 
 /** One top-level block of the context: its Markdown and its place in the body. */
