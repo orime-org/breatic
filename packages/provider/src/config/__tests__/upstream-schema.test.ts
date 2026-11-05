@@ -154,6 +154,12 @@ describe("fieldFits", () => {
     expect(fieldFits(tts(), "speakers", speakers("Al ice"))).toBe(false);
   });
 
+  it("reads \\w in a pattern as Unicode word characters, as the upstream's validator does", () => {
+    const speakers = (first: string): unknown[] => [{ speaker_id: first, voice: "Charon" }, { speaker_id: "Guest", voice: "Kore" }];
+    for (const name of ["主持人", "José", "Jose\u0301", "김민수", "٣"]) expect(fieldFits(tts(), "speakers", speakers(name)), name).toBe(true);
+    for (const name of ["李·明", "张，三", "a\u00a0b", "😀"]) expect(fieldFits(tts(), "speakers", speakers(name)), name).toBe(false);
+  });
+
   it("checks each item's fields and the list's length", () => {
     const two = [{ speaker_id: "Host", voice: "Charon" }, { speaker_id: "Guest", voice: "Kore" }];
     expect(fieldFits(tts(), "speakers", two)).toBe(true);

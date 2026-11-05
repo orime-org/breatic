@@ -3,7 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../../config/schema.js";
-import { NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
+import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
+import { NoAnswer } from "../../../http/errors.js";
 import { createProvider } from "../../../provider.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../../runner.js";
 import { accepted, fakeUpstream, submits, type FakeUpstream, type Reply } from "../../__tests__/fake-upstream.js";
@@ -174,6 +175,17 @@ describe("SandBase runs", () => {
       expect(done.outputs).toEqual([{ kind: "url", url: "https://media.example/r9.png" }]);
     });
 
+    it("hands back a new ticket version only when it first sees the run so", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const { run } = runner();
+      completedRun(() => false);
+      const sentAnswer = expectState(await sent(run), "running");
+      const first = expectState(await run.poll(stored(sentAnswer.ticket), live()), "running");
+      vi.setSystemTime(Date.now() + 1_000);
+      const second = expectState(await run.poll(stored(first.ticket), live()), "running");
+      expect(second.ticket.version).toBe(first.ticket.version);
+    });
+
     it("fails the run, leaving its cost to look up, once the wait has passed since it first answered so", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const { run } = runner();
@@ -185,6 +197,46 @@ describe("SandBase runs", () => {
       expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
       expect((failed.reason as UpstreamTaskFailed).upstreamError).toMatch(/no output/i);
       expect(failed.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
+    });
+  });
+
+  it("asks again, with a warning, when a run's status answers 503", async () => {
+    const { run } = runner();
+    let asks = 0;
+    sb.answer(({ method, path }) => {
+      if (method === "POST" && path === "/v1/run") return { status: 202, body: { id: "r3b", status: "pending" } };
+      if (path === "/v1/run/r3b") return ++asks <= 3 ? { status: 503, body: { error: "busy" } } : { status: 200, body: { id: "r3b", status: "completed", outputs: [{ url: "https://media.example/r3b.png" }] } };
+      if (path === "/v1/tasks/r3b/cost") return taskCost(true, "0.020000");
+      return undefined;
+    });
+    const running = expectState(await sent(run), "running");
+    const again = expectState(await run.poll(stored(running.ticket), live()), "running");
+    expect(again.warnings.map((w) => w.code)).toContain("poll_request_failed");
+    expectState(await run.poll(stored(again.ticket), live()), "done");
+  });
+
+  describe("a submit answered 2xx whose body is cut", () => {
+    it("is followed under the id its response header names, without a second submit, and billed under it", async () => {
+      const { run } = runner();
+      sb.answer(({ method, path }) => {
+        if (method === "POST" && path === "/v1/run") return { status: 202, raw: "{\"id\":\"s9\",\"sta", contentType: "application/json", headers: { "x-request-id": "s9" }, cut: true };
+        if (path === "/v1/run/s9") return { status: 200, body: { id: "s9", status: "completed", outputs: [{ url: "https://media.example/s9.png" }] } };
+        if (path === "/v1/tasks/s9/cost") return { status: 200, body: { id: "s9", status: "completed", settled: true, currency: "USD", cost: "0.030000", estimated_cost: "0.030000" } };
+        return undefined;
+      });
+      const running = expectState(await sent(run), "running");
+      const done = expectState(await run.poll(stored(running.ticket), live()), "done");
+      expect(done.costs).toEqual([{ state: "known", usd: 0.03, source: "billing" }]);
+      expect(submits(sb.seen)).toHaveLength(1);
+    });
+
+    it("throws NoAnswer carrying one missing cost when no response header names the run", async () => {
+      const { run } = runner();
+      sb.answer(({ method, path }) => (method === "POST" && path === "/v1/run" ? { status: 202, raw: "{\"id\":\"s1", contentType: "application/json", cut: true } : undefined));
+      const planned = expectState(await run.plan("flux", { prompt: "a fox", params: { aspect_ratio: "16:9" } }, { mode: "default" }, options), "send");
+      const error = await run.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NoAnswer);
+      expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
     });
   });
 
@@ -299,6 +351,12 @@ describe("SandBase costs", () => {
     const { done, provider } = await finished(taskCost(false, "0.020000"));
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
     expect((await provider.cost.lookup({ upstream: "sandbase", predictionId: "r9" }, { lastAttempt: true })).state).toBe("missing");
+  });
+
+  it("leaves a cost pending, with a warning, when the cost endpoint answers 503", async () => {
+    const { done } = await finished({ status: 503, body: { error: "busy" } });
+    expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "sandbase", predictionId: "r9" } }]);
+    expect(done.warnings.map((w) => w.code)).toContainEqual(expect.stringMatching(/^billing_query_/));
   });
 
   it("leaves a cost pending while the cost endpoint does not know the run", async () => {

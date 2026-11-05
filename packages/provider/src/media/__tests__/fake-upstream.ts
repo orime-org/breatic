@@ -23,7 +23,7 @@ export interface Seen {
  * raw text, left open when `hold` is set or its connection cut after it when `cut` is set;
  * a reset after the request arrived; or no answer.
  */
-export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; hold?: boolean; cut?: boolean } | "reset" | "hang";
+export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; headers?: Record<string, string>; hold?: boolean; cut?: boolean } | "reset" | "hang";
 
 /** Answers a request by its method, path and query string; the default answers 404. */
 export type Route = (req: { method: string; path: string; query: string; body: unknown }) => Reply | undefined;
@@ -69,7 +69,7 @@ function write(req: IncomingMessage, res: ServerResponse, reply: Reply): void {
   }
   if (reply === "hang") return;
   if ("raw" in reply) {
-    res.writeHead(reply.status, { "content-type": reply.contentType });
+    res.writeHead(reply.status, { "content-type": reply.contentType, ...reply.headers });
     if (reply.cut === true) res.write(reply.raw, () => setTimeout(() => req.socket.destroy(), 20));
     else if (reply.hold === true) res.write(reply.raw);
     else res.end(reply.raw);

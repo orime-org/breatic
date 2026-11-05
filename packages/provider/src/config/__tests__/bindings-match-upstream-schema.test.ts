@@ -9,9 +9,10 @@ import { fieldFits, missingRequired, type Leaf, type SchemaSnapshot } from "@pro
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import type { StepContext } from "@provider/media/adapter.js";
-import { rejectedInput } from "@provider/pricing/estimate.js";
+import { rejectedInput, type EstimateInput } from "@provider/pricing/estimate.js";
 import { createProvider } from "@provider/provider.js";
 import { ROOT, catalog, shipped, yaml } from "./shipped.js";
+import { WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
 /** One param of our catalog as its yaml writes it. */
 interface CatalogParam {
@@ -358,6 +359,56 @@ function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapsh
   return out;
 }
 
+/**
+ * A sample run of these params and prompt, with no clip lengths known.
+ * @param params - Our params.
+ * @param prompt - The prompt.
+ * @returns The run.
+ */
+function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInput {
+  return { params, prompt, durations: {}, placeholders: [], durationsMissing: [] };
+}
+
+/**
+ * A run this binding takes: each param at its default, else at the first of its sample values the binding takes, else left out.
+ * @param model - The model.
+ * @param binding - The binding.
+ * @param snapshot - The upstream's schema.
+ * @returns The params.
+ */
+async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): Promise<Record<string, unknown>> {
+  const rules = provider.pricingRules(model);
+  const taken: Record<string, unknown> = {};
+  for (const [name, param] of Object.entries(models.get(model) ?? {})) {
+    for (const value of [defaultOf(name, param, binding, snapshot), ...samplesOf(name, param, binding, snapshot)]) {
+      if (value === undefined) continue;
+      if ((await rejectedInput(rules, binding.upstream, sampleRun({ ...taken, [name]: value }, SAMPLE_TEXT))) === undefined) {
+        taken[name] = value;
+        break;
+      }
+    }
+  }
+  return taken;
+}
+
+describe("the reviewed fields WaveSpeed does not have", () => {
+  it("names only fields some binding leaves at its default", () => {
+    const left = new Set<string>();
+    for (const { model, binding } of cases) {
+      const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+      if (binding.upstream === "wavespeed" || wavespeed === undefined) continue;
+      for (const here of reachedBy(binding)) {
+        const official = sameOn(here, wavespeed);
+        if (official === undefined) continue;
+        for (const path of leftOut(here)) {
+          if (defaultIn(here.snapshot.fields[path]) !== undefined && counterpart(path, official.snapshot) === undefined) left.add(`${here.upstream} ${here.endpoint} ${path}`);
+        }
+      }
+    }
+    expect(Object.keys(WAVESPEED_LACKS).filter((key) => !left.has(key))).toEqual([]);
+  });
+});
+
 describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
   const kind = config.upstreams[binding.upstream]?.kind;
   const snapshot = snapshotFor(binding.upstream, binding.model_id);
@@ -381,21 +432,53 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
     expect(Object.keys(snapshot.outputs ?? {}), binding.output_field).toContain(binding.output_field);
   });
 
+  it("writes every param, and every field of its list items, into a field the upstream has", () => {
+    const unknown: string[] = [];
+    for (const [name, bound] of Object.entries(binding.params ?? {})) {
+      const leaves = snapshot.fields[bound.field];
+      if (leaves === undefined) {
+        unknown.push(`${name} -> ${bound.field}`);
+        continue;
+      }
+      const items = leaves.find((leaf) => leaf.type === "array")?.items;
+      for (const [sub, item] of Object.entries(bound.item_fields ?? {})) {
+        if (items?.fields[item.field] === undefined) unknown.push(`${name}[].${sub} -> ${bound.field}[].${item.field}`);
+      }
+    }
+    expect(unknown, unknown.join("\n")).toEqual([]);
+  });
+
   it("writes every value of every param it sends as the upstream takes it, except a value its rejects keep out", async () => {
+    const rules = provider.pricingRules(model);
+    // Each value is checked on a run that otherwise passes the binding's rejects, so a reject keeps out only the value under test.
+    const base = await takenRun(model, binding, snapshot);
     const bad: string[] = [];
     for (const [name, param] of Object.entries(params)) {
       const field = binding.params?.[name]?.field;
       // A param an extra step serves is sent as what that step made, not as the run's value.
       if (field === undefined || binding.extra_steps?.some((step) => step.for_param === name)) continue;
       for (const value of samplesOf(name, param, binding, snapshot)) {
-        const run = { params: { [name]: value }, prompt: SAMPLE_TEXT, durations: {}, placeholders: [], durationsMissing: [] };
-        if ((await rejectedInput(provider.pricingRules(model), binding.upstream, run)) !== undefined) continue;
+        if ((await rejectedInput(rules, binding.upstream, sampleRun({ ...base, [name]: value }, SAMPLE_TEXT))) !== undefined) continue;
         const written = at(buildBody(binding, { prompt: "", params: { [name]: value } }), field);
         if (written === undefined) continue;
         if (!fieldFits(snapshot, field, written)) bad.push(`${name}=${JSON.stringify(value)} -> ${field}=${JSON.stringify(written)}`);
       }
     }
     expect(bad, bad.join("\n")).toEqual([]);
+  });
+
+  it("evaluates every reject and price it carries on every sample run without an error", async () => {
+    const rules = provider.pricingRules(model);
+    const base = await takenRun(model, binding, snapshot);
+    const failures: string[] = [];
+    const runs: Record<string, unknown>[] = [{}, base, ...Object.entries(params).flatMap(([name, param]) => samplesOf(name, param, binding, snapshot).map((value) => ({ ...base, [name]: value })))];
+    for (const values of runs) {
+      for (const prompt of ["", SAMPLE_TEXT]) {
+        const refused = await rejectedInput(rules, binding.upstream, sampleRun(values, prompt));
+        if (refused !== undefined && "evaluationError" in refused) failures.push(`${JSON.stringify(values)} prompt=${JSON.stringify(prompt)}: ${refused.reason}: ${refused.evaluationError}`);
+      }
+    }
+    expect(failures, failures.join("\n")).toEqual([]);
   });
 
   it("sends every field the upstream requires", () => {
@@ -465,6 +548,22 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
       }
     }
     expect(differ, differ.join("\n")).toEqual([]);
+  });
+
+  it("leaves a field WaveSpeed does not have at its default only where that gives WaveSpeed's result", () => {
+    if (binding.upstream === "wavespeed") return;
+    const wavespeed = (config.media.models[model]?.upstreams ?? []).find((b) => b.upstream === "wavespeed");
+    if (wavespeed === undefined) return;
+    const unreviewed: string[] = [];
+    for (const here of reachedBy(binding)) {
+      const official = sameOn(here, wavespeed);
+      if (official === undefined) continue;
+      for (const path of leftOut(here)) {
+        if (defaultIn(here.snapshot.fields[path]) === undefined || counterpart(path, official.snapshot) !== undefined) continue;
+        if (WAVESPEED_LACKS[`${here.upstream} ${here.endpoint} ${path}`] === undefined) unreviewed.push(`${here.upstream} ${here.endpoint} ${path}=${JSON.stringify(defaultIn(here.snapshot.fields[path]))}`);
+      }
+    }
+    expect(unreviewed, unreviewed.join("\n")).toEqual([]);
   });
 
   it("writes its extra steps into fields their endpoints take", () => {

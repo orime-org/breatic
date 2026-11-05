@@ -3,7 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MediaBinding, ProviderConfigInput } from "../../../config/schema.js";
-import { NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
+import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed } from "../../../errors.js";
+import { NoAnswer } from "../../../http/errors.js";
 import { createProvider } from "../../../provider.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../../runner.js";
 import { accepted, fakeUpstream, submits, type FakeUpstream, type Reply } from "../../__tests__/fake-upstream.js";
@@ -210,6 +211,23 @@ describe("fal submit and queue", () => {
     expectState(await run.poll(stored(again.ticket), live()), "done");
   });
 
+  it("asks again when the result answers 408, and finishes when it answers next", async () => {
+    const { run } = runner();
+    let resultAsks = 0;
+    fal.answer(({ path }) => {
+      if (path === "/bytedance/seedance-2.5/us/text-to-video") return queued("r5t");
+      if (path.endsWith("/r5t/status")) return { status: 200, body: { status: "COMPLETED" } };
+      if (path.endsWith("/r5t")) return ++resultAsks <= 3 ? { status: 408, body: { detail: "timeout" } } : { status: 200, body: { video: { url: "https://v/5t.mp4" } } };
+      if (path === "/v1/models/billing-events") return events([0.1]);
+      return undefined;
+    });
+    const running = expectState(await sent(run, "video"), "running");
+    const again = expectState(await run.poll(stored(running.ticket), live()), "running");
+    expect(again.warnings.map((w) => w.code)).toContain("poll_request_failed");
+    const done = expectState(await run.poll(stored(again.ticket), live()), "done");
+    expect(done.costs).toEqual([{ state: "known", usd: 0.1, source: "billing" }]);
+  });
+
   it("fails the run when the result answers 422, the model's own refusal", async () => {
     const { run } = runner();
     fal.answer(({ path }) => {
@@ -252,6 +270,12 @@ describe("fal costs", () => {
     expect((await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: true })).state).toBe("missing");
   });
 
+  it("leaves a cost pending, with a warning, when billing answers 503", async () => {
+    const { done } = await finished({ status: 503, body: { detail: "busy" } });
+    expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } }]);
+    expect(done.warnings.map((w) => w.code)).toContainEqual(expect.stringMatching(/^billing_query_/));
+  });
+
   it("makes a cost missing at once when billing refuses the key, naming the permission", async () => {
     const { done } = await finished({ status: 403, body: { error: { type: "authorization_error", message: "forbidden" } } });
     expect(done.costs).toHaveLength(1);
@@ -259,6 +283,19 @@ describe("fal costs", () => {
     expect((done.costs[0] as { reason: string }).reason).toContain("FAL_KEY");
     expect((done.costs[0] as { reason: string }).reason).toContain("billing:usage:read");
     expect(done.warnings.map((w) => w.code)).toContain("billing_query_rejected");
+  });
+});
+
+describe("a fal submit answered 2xx whose body is cut", () => {
+  it("throws NoAnswer carrying one missing cost, and moves to no other upstream", async () => {
+    const { run } = runner();
+    fal.answer(({ path }) => (path === "/bytedance/seedance-2.5/us/text-to-video" ? { status: 200, raw: "{\"request_id\":\"r", contentType: "application/json", cut: true } : undefined));
+    ws.answer(() => accepted("w-cut"));
+    const planned = expectState(await run.plan("video", { prompt: "a cat", params: { duration: 5 } }, { mode: "default" }, options), "send");
+    const error = await run.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoAnswer);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
+    expect(submits(ws.seen)).toHaveLength(0);
   });
 });
 

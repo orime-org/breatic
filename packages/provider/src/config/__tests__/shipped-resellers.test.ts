@@ -35,7 +35,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "recraft-v4.1-pro-text-to-vector": { fal: "fal-ai/recraft/v4.1/pro/text-to-vector" },
   "riverflow-2.0-pro-text-to-image": {},
   "krea-v2-large-text-to-image": { fal: "krea/v2/large/text-to-image" },
-  "ideogram-v3-quality": { fal: "fal-ai/ideogram/v3", sandbase: "ideogram-ai/ideogram-v3" },
+  // fal turns MagicPrompt on or off; WaveSpeed and SandBase leave it to Ideogram's AUTO (inner#1859).
+  "ideogram-v3-quality": { sandbase: "ideogram-ai/ideogram-v3" },
   "recraft-v4-style-text-to-image": { fal: "recraft/v4/style/text-to-image" },
   "gpt-image-2.5-sunburst-edit": { fal: "openai/gpt-image-2.5/sunburst/edit", sandbase: "openai/gpt-image-2.5-sunburst/edit" },
   "muse-image-edit": { fal: "meta/muse-image/edit" },
@@ -50,7 +51,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "meshy6-t23d": { fal: "fal-ai/meshy/v6/text-to-3d" },
   "hunyuan3d-v3": { fal: "fal-ai/hunyuan3d-v3/text-to-3d" },
   "hunyuan3d-v3-i23d": { fal: "fal-ai/hunyuan3d-v3/image-to-3d", sandbase: "tencent/hunyuan-3d/3.0/image-to-3d" },
-  "hunyuan3d-v3.1-rapid": { fal: "fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d" },
+  // fal makes this model textured only as OBJ, and our 3D takes GLB.
+  "hunyuan3d-v3.1-rapid": {},
   "realtime-tts-2": {},
   "gemini-3.1-flash-text-to-speech": { fal: "fal-ai/gemini-3.1-flash-tts", sandbase: "google/gemini-3.1-flash-tts" },
   "minimax-speech-2.8-hd": { fal: "fal-ai/minimax/speech-2.8-hd", sandbase: "minimax/speech/2.8/hd" },
@@ -75,7 +77,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "wan-3.0-reference-to-video": { fal: "alibaba/wan-3.0/reference-to-video", sandbase: "alibaba/wan/3.0/reference-to-video" },
   "happyhorse-1.1-reference-to-video": { fal: "alibaba/happy-horse/v1.1/reference-to-video", sandbase: "alibaba/happy-horse/1.1/reference-to-video" },
   "flux-3-start-end-to-video": { fal: "blackforestlabs/flux-3/first-last-frame-to-video" },
-  "seedance-2.5-video-extend": { fal: "bytedance/seedance-2.5/us/reference-to-video", sandbase: "bytedance/seedance/2.5/reference-to-video" },
+  // WaveSpeed returns the source joined to the new segment; fal and SandBase document only the new clip (inner#1859).
+  "seedance-2.5-video-extend": {},
   "wan-3.0-video-edit": {},
   "kling-v3-pro-motion": { fal: "fal-ai/kling-video/v3/pro/motion-control", sandbase: "kwaivgi/kling-video/v3/pro/motion-control" },
   "omnihuman-1.5": { fal: "fal-ai/bytedance/omnihuman/v1.5", sandbase: "bytedance/omnihuman/1.5" },
@@ -86,7 +89,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "infinitetalk-multi": {},
   "sync-react-1": { fal: "fal-ai/sync-lipsync/react-1" },
   "ltx-2.3-lipsync": {},
-  "seedvr2-video": { fal: "fal-ai/seedvr/upscale/video", sandbase: "bytedance/seedvr/upscale/video" },
+  // Both resellers default noise_scale to 0.1, and WaveSpeed states no noise level (inner#1859).
+  "seedvr2-video": {},
   "rife-interpolation": { fal: "fal-ai/rife/video" },
 };
 
@@ -138,26 +142,39 @@ describe("the reseller upstreams", () => {
 });
 
 describe("the reseller bindings that serve only part of a model, or always send a field", () => {
-  it("sends ideogram-v3-quality at QUALITY on both", () => {
-    for (const upstream of ["fal", "sandbase"]) expect(bindingOf("ideogram-v3-quality", upstream)?.fixed).toMatchObject({ rendering_speed: "QUALITY" });
+  it("sends ideogram-v3-quality at QUALITY on SandBase", () => {
+    expect(bindingOf("ideogram-v3-quality", "sandbase")?.fixed).toMatchObject({ rendering_speed: "QUALITY" });
   });
 
-  it("upscales seedvr2-video to the target resolution on both", () => {
-    for (const upstream of ["fal", "sandbase"]) expect(bindingOf("seedvr2-video", upstream)?.fixed).toMatchObject({ upscale_mode: "target" });
+  it("returns a seedream-v4.5 edit on SandBase as JPEG, as WaveSpeed does", () => {
+    expect(bindingOf("seedream-v4.5-edit", "sandbase")?.fixed).toMatchObject({ output_format: "jpeg" });
   });
 
-  it("extends a video through reference-to-video, SandBase without 4k", () => {
-    expect(bindingOf("seedance-2.5-video-extend", "fal")?.fixed).toMatchObject({ task: "extension" });
-    const sandbase = bindingOf("seedance-2.5-video-extend", "sandbase");
-    expect(sandbase?.fixed).toMatchObject({ task_type: "extend" });
-    expect(sandbase?.params?.resolution?.supported).not.toContain("4k");
-    expect(sandbase?.params?.video).toMatchObject({ field: "videos", as: "list" });
+  it("keeps the source's transparency through a Bria erase on fal, as WaveSpeed does", () => {
+    expect(bindingOf("bria-eraser", "fal")?.fixed).toMatchObject({ preserve_alpha: true });
+  });
+
+  it("returns sfx-1.6 text-to-audio on fal as MP3, as WaveSpeed does", () => {
+    expect(bindingOf("sfx-1.6-text-to-audio", "fal")?.fixed).toMatchObject({ upload_audio_format: "mp3" });
+  });
+
+  it("loops a short video under the audio on fal, as WaveSpeed does", () => {
+    expect(bindingOf("sync-react-1", "fal")?.fixed).toMatchObject({ lipsync_mode: "loop" });
+  });
+
+  it.each(["kling-v3.0-4k-text-to-video", "kling-video-o3-4k-image-to-video"])("serves %s on SandBase only as a single shot", (model) => {
+    const sandbase = bindingOf(model, "sandbase");
+    expect(sandbase?.drops?.multi_prompt).toEqual([]);
+    expect(sandbase?.params?.multi_prompt).toBeUndefined();
+    expect((sandbase?.rejects ?? []).filter((r) => r.when.includes("multi_prompt"))).toEqual([]);
   });
 
   it.each(["gpt-image-2.5-sunburst-text-to-image", "gpt-image-2.5-sunburst-edit"])("serves %s on fal only at 1k and the preset ratios at or above the model's least pixel count", (model) => {
     const fal = bindingOf(model, "fal");
     // fal's 16:9 and 9:16 presets are 1024x576, under the model's minimum (inner#1859 probes whether fal takes them).
     expect([...(fal?.params?.aspect_ratio?.supported ?? [])].sort()).toEqual(["1:1", "3:4", "4:3"]);
+    expect(Object.keys(fal?.params?.aspect_ratio?.values ?? {}).sort()).toEqual(["1:1", "3:4", "4:3"]);
+    expect(JSON.stringify(fal?.pricing)).not.toMatch(/16:9|9:16/);
     expect(fal?.drops?.resolution).toEqual(["1k"]);
   });
 
@@ -172,10 +189,12 @@ describe("the reseller bindings that serve only part of a model, or always send 
     }
   });
 
-  it("changes a voice on fal into ElevenLabs' premade voices only, by ElevenLabs' voice id", () => {
-    const premade = premadeVoices("elevenlabs-voice-changer");
-    expect(premade.length).toBeGreaterThan(0);
-    expect(bindingOf("elevenlabs-voice-changer", "fal")?.voice_map?.voice_id).toEqual(Object.fromEntries(premade.map((v) => [v.name, v.id])));
+  it("changes a voice on fal only into the presets fal names, by name", () => {
+    // fal's voice-changer documents these names and no voice ids.
+    const presets = ["Aria", "Roger", "Sarah", "Laura", "Charlie", "George", "Callum", "River", "Liam", "Charlotte", "Alice", "Matilda", "Will", "Jessica", "Eric", "Chris", "Brian", "Daniel", "Lily", "Bill"];
+    const premade = premadeVoices("elevenlabs-voice-changer").map((v) => v.name);
+    expect(premade).toEqual(expect.arrayContaining(presets));
+    expect(bindingOf("elevenlabs-voice-changer", "fal")?.voice_map?.voice_id).toEqual(Object.fromEntries(presets.map((name) => [name, name])));
   });
 
   it("writes the multiple-angles distance as a zoom on SandBase, close-up the highest", () => {
@@ -247,6 +266,17 @@ describe("the limits a reseller states beyond its schema", () => {
     expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: "x".repeat(2501), params: reference })).toEqual({ reason: expect.stringContaining("2500") });
   });
 
+  it.each(["fal", "sandbase"])("counts a HappyHorse prompt on %s as it is sent, each reference written the upstream's way", async (upstream) => {
+    const reference = { images: ["https://a/1.png"] };
+    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: `${"x".repeat(2490)}<<ref:images:1>>`, params: reference })).toBeUndefined();
+  });
+
+  it("prices each GPT Image 2.5 edit reference on fal at fal's figure for a large image", async () => {
+    const input = run({ prompt: "make it blue", params: { images: ["https://a/1.png", "https://a/2.png"], aspect_ratio: "1:1", quality: "high" } });
+    const estimate = await estimateCost(provider.pricingRules("gpt-image-2.5-sunburst-edit"), provider.availability("gpt-image-2.5-sunburst-edit"), input, { mode: "upstream", upstream: "fal" });
+    expect(estimate?.usd).toBeCloseTo(0.05268 + 2 * 0.012, 6);
+  });
+
   it("keeps a Mureka vocal sample outside 15 to 30 seconds off fal's voice clone", async () => {
     const song = (seconds: number): Partial<EstimateInput> => ({ prompt: "a calm song", params: { vocal: "https://a/v.mp3" }, durations: { vocal: [seconds] } });
     expect(await refused("mureka-v9.5-generate-song", "fal", song(20))).toBeUndefined();
@@ -261,11 +291,15 @@ describe("the limits a reseller states beyond its schema", () => {
      */
     const speakers = (first: Record<string, unknown>): Partial<EstimateInput> => ({ prompt: "Host: hi. Guest: hello.", params: { speakers: [first, { speaker: "Guest", voice: "Kore" }] } });
 
-    it("takes ASCII letters, digits and underscores", async () => {
-      expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers({ speaker: "Host_1", voice: "Charon" }))).toBeUndefined();
-    });
+    // The upstream checks ^\w+$ with Unicode word characters: SandBase takes 主持人 and refuses 李·明.
+    it.each([["ASCII", "Host_1"], ["CJK", "主持人"], ["kana", "ミク"], ["Hangul", "김민수"], ["Greek", "Ελένη"], ["accented", "José"], ["combining accent", "Jose\u0301"], ["Arabic-Indic digit", "٣"]])(
+      "takes a %s speaker",
+      async (_label, name) => {
+        expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers({ speaker: name, voice: "Charon" }))).toBeUndefined();
+      },
+    );
 
-    it.each([["empty", ""], ["space", "Al ice"], ["middle dot", "李·明"], ["CJK", "主持人"], ["emoji", "😀"], ["accented", "José"], ["number", 5], ["missing", undefined]])(
+    it.each([["empty", ""], ["space", "Al ice"], ["middle dot", "李·明"], ["full-width comma", "张，三"], ["ideographic space", "张\u3000三"], ["no-break space", "a\u00a0b"], ["hyphen", "A-B"], ["emoji", "😀"], ["number", 5], ["missing", undefined]])(
       "keeps a %s speaker off, without failing the check",
       async (_label, name) => {
         const first = name === undefined ? { voice: "Charon" } : { speaker: name, voice: "Charon" };

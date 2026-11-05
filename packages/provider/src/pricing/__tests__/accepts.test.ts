@@ -301,13 +301,71 @@ describe("an upstream's own input limits (rejects)", () => {
       cleanText: (t) => t,
     });
     const input = { ...run({ tag: 5 }), prompt: "" };
-    expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toEqual({ reason: expect.stringContaining("fal tag pattern") });
+    expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toEqual({ reason: "fal tag pattern", evaluationError: expect.any(String) });
     expect(await rejectedInput(p.pricingRules("m"), "wavespeed", input)).toBeUndefined();
     expect((await orderByPrice(p.pricingRules("m"), p.availability("m"), input)).map((e) => e.upstream)).toEqual(["wavespeed"]);
     expect((await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "default" }))?.upstream).toBe("wavespeed");
     const runner = createMediaRunner(p, { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
     const planned = await runner.plan("m", { prompt: "", params: { tag: 5 } }, { mode: "default" }, { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} });
     expect(planned.state === "send" ? planned.ticket.upstream : planned.state).toBe("wavespeed");
+    expect(planned.warnings).toEqual([{ code: "input_check_failed", detail: { model: "m", upstream: "fal", reason: "fal tag pattern", error: expect.any(String) } }]);
+  });
+
+  describe("an upstream whose price cannot be computed for the run", () => {
+    /**
+     * A provider where fal's formula multiplies by a param that may arrive as a string, and WaveSpeed's coerces it.
+     * @returns The provider.
+     */
+    const unpriced = (): ReturnType<typeof createProvider> => createProvider({
+      config: {
+        upstreams: {
+          wavespeed: { kind: "wavespeed", base_url: "https://w.example", key_env: "WAVESPEED_API_KEY" },
+          fal: { kind: "fal", base_url: "https://f.example", billing_url: "https://f.example/v1", key_env: "FAL_KEY" },
+        },
+        media: {
+          models: {
+            m: {
+              upstreams: [
+                { upstream: "fal", weight: 1, model_id: "m", output_field: "video", params: { duration: { field: "duration" } }, pricing: { kind: "formula", base_price: 100, formula: '{"total_price": base_price * duration}', discount_rate: 100 } },
+                { upstream: "wavespeed", weight: 2, model_id: "m", params: { duration: { field: "duration" } }, pricing: { kind: "formula", base_price: 300, formula: '{"total_price": base_price * $number(duration)}', discount_rate: 100 } },
+              ],
+            },
+          },
+        },
+      },
+      keyOf: () => "k",
+      llmMaxRetries: 0,
+      cleanText: (t) => t,
+    });
+    const input = { ...run({ duration: "5" }), prompt: "" };
+
+    it("is kept out with the evaluation error, and every other upstream keeps its own rules", async () => {
+      const p = unpriced();
+      expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toEqual({ reason: expect.any(String), evaluationError: expect.stringContaining("must evaluate to a number") });
+      expect(await rejectedInput(p.pricingRules("m"), "wavespeed", input)).toBeUndefined();
+    });
+
+    it("leaves the price order and every mode's estimate to the others", async () => {
+      const p = unpriced();
+      expect((await orderByPrice(p.pricingRules("m"), p.availability("m"), input)).map((e) => e.upstream)).toEqual(["wavespeed"]);
+      for (const mode of ["default", "cheapest"] as const) {
+        expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode })).toMatchObject({ upstream: "wavespeed", usd: expect.closeTo(0.0015, 9) });
+      }
+      expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "upstream", upstream: "fal" })).toBeNull();
+    });
+
+    it("plans every mode on the others and says which upstream could not be checked", async () => {
+      const runner = createMediaRunner(unpriced(), { mediaLimits: { maxMediaBytes: 1_000 }, pollIntervalMs: 0 });
+      const options = { idempotencyKey: "t1", sourceKeys: {}, clones: [], durations: {} };
+      for (const mode of ["default", "cheapest"] as const) {
+        const planned = await runner.plan("m", { prompt: "", params: { duration: "5" } }, { mode }, options);
+        expect(planned.state === "send" ? planned.ticket.upstream : planned.state).toBe("wavespeed");
+        expect(planned.warnings).toEqual([{ code: "input_check_failed", detail: { model: "m", upstream: "fal", reason: expect.any(String), error: expect.stringContaining("must evaluate to a number") } }]);
+      }
+      const pinned = await runner.plan("m", { prompt: "", params: { duration: "5" } }, { mode: "upstream", upstream: "fal" }, options);
+      expect(pinned.state).toBe("failed");
+      expect(pinned.warnings).toEqual([{ code: "input_check_failed", detail: { model: "m", upstream: "fal", reason: expect.any(String), error: expect.stringContaining("must evaluate to a number") } }]);
+    });
   });
 
   it("refuses a configuration whose condition is not JSONata, naming model, upstream and the condition", () => {

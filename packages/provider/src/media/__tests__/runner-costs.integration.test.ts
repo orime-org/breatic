@@ -6,7 +6,7 @@ import fc from "fast-check";
 import type { Cost } from "../../cost.js";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { costsOf, DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
-import { NoAnswer } from "../../http/errors.js";
+import { Aborted, NoAnswer } from "../../http/errors.js";
 import { createProvider, type Provider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
@@ -372,13 +372,13 @@ describe("a run's billed predictions reach the caller once, however it ends (cri
 });
 
 describe("a run's billed answers on fal and SandBase reach the caller once, however it ends (critical path)", () => {
-  const FAL_SUBMITS = ["accept", "unreadable", "busy", "locked", "noModel"] as const;
+  const FAL_SUBMITS = ["accept", "unreadable", "cut", "busy", "locked", "noModel"] as const;
   const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
   const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
-  const FAL_BILLINGS = ["events", "none", "forbidden"] as const;
-  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "overLimitNamed", "overLimitUnnamed", "unreadable", "busy", "balance", "noModel"] as const;
-  const SB_ASKS = ["running", "completed", "dataUri", "failed", "overLimit"] as const;
-  const SB_COSTS = ["settled", "unsettled", "unknown"] as const;
+  const FAL_BILLINGS = ["events", "none", "forbidden", "busy"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "busy", "balance", "noModel"] as const;
+  const SB_ASKS = ["running", "completed", "dataUri", "failed", "overLimit", "busy"] as const;
+  const SB_COSTS = ["settled", "unsettled", "unknown", "busy"] as const;
   /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
   const MAX_MEDIA_BYTES = 2_000;
   const smallDataUri = `data:audio/mpeg;base64,${Buffer.from("ID3 tiny").toString("base64")}`;
@@ -436,6 +436,9 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
       sbSubmit: fc.array(fc.constantFrom(...SB_SUBMITS), { maxLength: 5 }),
       sbAsk: fc.array(fc.constantFrom(...SB_ASKS), { maxLength: 4 }),
       sbCost: fc.array(fc.constantFrom(...SB_COSTS), { maxLength: 3 }),
+      // The turn at which the caller's deadline has passed or the caller stopped, if any.
+      endAt: fc.option(fc.nat(8), { nil: undefined }),
+      endBy: fc.constantFrom("deadline", "abort"),
     });
     await fc.assert(
       fc.asyncProperty(scripts, async (s) => {
@@ -470,6 +473,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
           if (path === "/v1/models/billing-events") {
             const id = new URLSearchParams(query).get("request_id") ?? "";
             const next = draw(falBilling, "events");
+            if (next === "busy") return { status: 503, body: { detail: "busy" } };
             if (next === "forbidden") {
               refusedBilling.add(id);
               return { status: 403, body: { error: { type: "authorization_error", message: "forbidden" } } };
@@ -486,6 +490,10 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
             if (next === "unreadable") {
               anonymous++;
               return { status: 200, raw: "<html>ok</html>", contentType: "text/html" };
+            }
+            if (next === "cut") {
+              anonymous++;
+              return { status: 200, raw: "{\"request_id\":\"r", contentType: "application/json", cut: true };
             }
             if (next === "busy") return { status: 503, body: { detail: "busy" } };
             if (next === "locked") return { status: 403, body: { detail: "User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing." } };
@@ -526,6 +534,11 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
               const id = bill("s");
               return { status: 200, headers: { "x-task-id": id }, body: { ...done(bigDataUri), id } };
             }
+            if (next === "cutNamed") return { status: 202, raw: `{"id":"${bill("s")}","sta`, contentType: "application/json", headers: { "x-request-id": `s${n}` }, cut: true };
+            if (next === "cutUnnamed") {
+              anonymous++;
+              return { status: 202, raw: "{\"id\":\"s", contentType: "application/json", cut: true };
+            }
             if (next === "finishNowNoId" || next === "overLimitUnnamed" || next === "unreadable") {
               anonymous++;
               if (next === "unreadable") return { status: 200, raw: "<html>ok</html>", contentType: "text/html" };
@@ -539,6 +552,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
           if (run !== null) {
             const id = run[1]!;
             const next = draw(sbAsk, "completed");
+            if (next === "busy") return { status: 503, body: { error: "busy" } };
             if (next === "running") return { status: 200, body: { id, status: "running" } };
             if (next === "failed") return { status: 200, body: { id, status: "failed", error: "boom" } };
             const url = next === "completed" ? `https://out.example/${id}.mp3` : next === "dataUri" ? smallDataUri : bigDataUri;
@@ -547,6 +561,7 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
           const cost = /^\/v1\/tasks\/([^/]+)\/cost$/.exec(path);
           if (cost === null) return undefined;
           const next = draw(sbCost, "settled");
+          if (next === "busy") return { status: 503, body: { error: "busy" } };
           if (next === "unknown") return { status: 404, body: { error: "task not found" } };
           return { status: 200, body: { id: cost[1], settled: next === "settled", currency: "USD", cost: String(usdOf(cost[1]!)) } };
         });
@@ -555,22 +570,30 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
         const r = createMediaRunner(p, { mediaLimits: { maxMediaBytes: MAX_MEDIA_BYTES }, pollIntervalMs: 0 });
         const reached: Cost[] = [];
         let answer: MediaAnswer = await r.plan("song", song, DEFAULT, options);
+        let givenUp = false;
         for (let turn = 0; turn < 24 && (answer.state === "send" || answer.state === "running"); turn++) {
           const ticket = stored((answer as { ticket: MediaTicket }).ticket);
-          if (answer.state === "running") {
-            answer = await r.poll(ticket, live());
-            continue;
-          }
+          const ended = turn === s.endAt;
+          const bounds = !ended ? live() : s.endBy === "deadline" ? { deadlineAt: Date.now() - 1 } : { deadlineAt: Date.now() + 60_000, signal: AbortSignal.abort() };
           try {
-            answer = await r.send(ticket, live());
+            answer = answer.state === "running" ? await r.poll(ticket, bounds) : await r.send(ticket, bounds);
           } catch (error) {
             reached.push(...costsOf(error));
+            if (error instanceof DeadlinePassed || error instanceof Aborted) {
+              // The caller gives the run up: what the ticket still holds comes from abandon.
+              reached.push(...r.abandon(ticket).costs);
+              givenUp = true;
+              break;
+            }
             if (error instanceof NoAnswer) answer = await r.recover(ticket, live());
             else if (!(error instanceof SendNotAccepted)) throw error;
           }
+          if (ended) break;
         }
-        if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
-        else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+        if (!givenUp) {
+          if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
+          else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+        }
         const identified: string[] = [];
         let missing = 0;
         for (const cost of reached) {
