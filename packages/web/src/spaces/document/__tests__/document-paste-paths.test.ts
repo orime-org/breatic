@@ -56,7 +56,8 @@ function select(editor: Editor, from: number, to = from): void {
  */
 function copyOf(editor: Editor, from: number, to: number): Record<string, string> {
   const view = editor.prosemirrorView;
-  const { dom, text } = view.serializeForClipboard(TextSelection.create(view.state.doc, from, to).content());
+  select(editor, from, to);
+  const { dom, text } = view.serializeForClipboard(view.state.selection.content());
   return { 'blocknote/html': dom.innerHTML, 'text/html': dom.innerHTML, 'text/plain': text };
 }
 

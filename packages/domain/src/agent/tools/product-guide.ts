@@ -50,6 +50,53 @@ function quoted(message: string): string {
 }
 
 /**
+ * Where pasted content lands in the document, one sentence per rule. Each id
+ * has a paste beside the same sentence in the web examples
+ * (`packages/web/src/spaces/document/__tests__/document-paste-guide.test.ts`),
+ * which the guide test holds to these sentences word for word.
+ * @returns Each rule's id and sentence, in the order the guide states them.
+ */
+export function documentPasteRules(): { id: string; sentence: string }[] {
+  return [
+    { id: "document.paste.splitsLine", sentence: "Content splits a line at the caret;" },
+    {
+      id: "document.paste.emptyLine",
+      sentence:
+        "on an empty line, content ending in a picture, video or audio lands above it and leaves the line for the " +
+        "caret, and content ending in words takes the line.",
+    },
+    {
+      id: "document.paste.canvas",
+      sentence:
+        "Nodes copied on the canvas and a picture copied in this chat paste the same way: each text node's lines " +
+        "become paragraphs with their original words, and each picture, video or audio carries the node's name as " +
+        "its caption, in reading order from the canvas.",
+    },
+    {
+      id: "document.paste.cellBlocks",
+      sentence: "Inside a table cell, ordinary content keeps its block types and media stay in the cell.",
+    },
+    {
+      id: "document.paste.cellTable",
+      sentence: "A single pasted table fills cells once from the target cell, growing the table when needed;",
+    },
+    {
+      id: "document.paste.cellRefused",
+      sentence:
+        "a table mixed with other content, or more than one table, is refused with " +
+        `${quoted(t("spaces.document.paste.unsupportedInCell"))}.`,
+    },
+    { id: "document.paste.cellSelection", sentence: "A cell selection receives a copy of ordinary content in each cell." },
+    {
+      id: "document.paste.codeBlock",
+      sentence:
+        "In a code block, plain text is inserted verbatim; web text goes into the code and its media beside the " +
+        "code block, while canvas content carrying media lands together beside it.",
+    },
+  ];
+}
+
+/**
  * The name a node type goes by in the create menus, quoted.
  * @param type - A creatable node type.
  * @returns Its menu label, quoted.
@@ -1446,17 +1493,7 @@ export function renderProductGuide(): string {
       "takes the quote off.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
-      "block), or pasted at the caret, replacing the selection. Content splits a line at the caret; " +
-      "on an empty line, content ending in a picture, video or audio lands above it and leaves the line for the " +
-      "caret, and content ending in words takes the line. Nodes copied on the canvas " +
-      "and a picture copied in this chat paste the same way: each text node's lines become paragraphs with " +
-      "their original words, and each picture, video or audio carries the node's name as its caption, in " +
-      "reading order from the canvas. Inside a table cell, ordinary content keeps its block types and media " +
-      "stay in the cell. A single pasted table fills cells once from the target cell, growing the table " +
-      "when needed; a table mixed with other content, or more than one table, is refused with " +
-      `${quoted(t("spaces.document.paste.unsupportedInCell"))}. A cell selection receives a copy of ordinary ` +
-      "content in each cell. In a code block, plain text is inserted verbatim; web text goes into the code " +
-      "and its media beside the code block, while canvas content carrying media lands together beside it. " +
+      `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +
       "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
       "a web page's content in does the same. Each picture, video or audio that still has to be fetched " +
       "or uploaded first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +

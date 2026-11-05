@@ -9,10 +9,6 @@
  * paste away; the uploads behind the blocks start once it is in.
  */
 
-import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
-import type { Selection } from '@tiptap/pm/state';
-
 import { newId } from '@breatic/shared';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
@@ -31,47 +27,6 @@ export interface CanvasPasteSink {
 }
 
 /**
- * Whether a position is inside a stored (legacy) table cell, which holds one
- * line of words; a new table's cell (`docTableCell`) holds blocks.
- * @param $at - The position.
- * @returns True when one of its ancestors is such a cell.
- */
-function inTableCell($at: ResolvedPos): boolean {
-  for (let depth = $at.depth; depth > 0; depth -= 1) {
-    const name = $at.node(depth).type.name;
-    if (name === 'tableCell' || name === 'tableHeader') return true;
-  }
-  return false;
-}
-
-/**
- * Lines of a text node as the selection takes them, the words as they are,
- * never read as markdown. Text in a stored (legacy) table cell holds no
- * paragraphs, so the lines are joined by line breaks; anywhere else
- * each line is a paragraph in a group, opened at both ends so the first line
- * joins the words before the caret and the last the words after it, as a
- * slice of the body's own lines is: the shape BlockNote's `transformPasted`
- * takes, which gives the first line the type of an empty line it lands on.
- * @param selection - The selection they replace.
- * @param lines - The lines.
- * @returns The slice.
- */
-function textSlice(selection: Selection, lines: readonly string[]): Slice {
-  const { schema } = selection.$from.doc.type;
-  if (inTableCell(selection.$from)) {
-    const inline = lines.flatMap((line, index) => [
-      ...(index > 0 ? [schema.nodes['hardBreak']!.create()] : []),
-      ...(line === '' ? [] : [schema.text(line)]),
-    ]);
-    return new Slice(Fragment.from(inline), 0, 0);
-  }
-  const nodes = lines.map((line) =>
-    blockToNode({ id: newId(), type: 'paragraph', content: line } as never, schema),
-  );
-  return new Slice(Fragment.from(schema.nodes['blockGroup']!.create(null, nodes)), 3, 3);
-}
-
-/**
  * Wraps the next paste hook with the canvas clipboard's.
  * @param sink - Where uploads start and what could not be pasted is told.
  * @param next - The hook a paste of anything else goes to.
@@ -87,20 +42,10 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
     if (view !== undefined && view !== null && items.length > 0) {
       if (items.every((item) => item.kind === 'text')) {
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
-        /**
-         * Pastes the lines as ProseMirror pastes a slice, its `transformPasted`
-         * first; no paste handler sees them, so no link is made of an address
-         * (design §5.4.3).
-         */
-        const paste = (): void => {
-          let slice = textSlice(view.state.selection, lines);
-          view.someProp('transformPasted', (transform) => {
-            slice = transform(slice, view, true);
-          });
-          view.dispatch(view.state.tr.replaceSelection(slice));
-        };
+        // Built here, the words go in by a dispatch of their own: no paste
+        // handler sees them, so no link is made of an address (design §5.4.3).
         const blocks = lines.map((line) => ({ type: 'paragraph', content: line }));
-        putContent(editor, { blocks, lost: 0, plain: lines.join('\n'), paste }, { wordsIntoTarget: true, judge: (props) => props });
+        putContent(editor, { source: { kind: 'blocks', blocks }, lost: 0, plain: lines.join('\n') }, { wordsIntoTarget: true, judge: (props) => props, byPaste: false });
       } else {
         const started: { uploadId: string; source: UploadSource }[] = [];
         const blocks = items.flatMap((item): BlockSpec[] => {

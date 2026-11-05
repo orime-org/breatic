@@ -5,16 +5,16 @@
  * Where pasted or dropped content goes (inner#1351 + inner#1390 design
  * §5.4.3): the target settled from the selection first, then one set of
  * placement rules for web content, the body's own content, canvas nodes and
- * files alike, and the caret after what was put. Content goes in as blocks
- * built here; one line of words alone goes in by the paste of its format, and
- * the words a code block or a stored (legacy) table cell takes by ProseMirror
- * and BlockNote. In a table cell (§5.4.7) one table fills the cells from the
- * target cell and any other content goes into the cell.
+ * files alike, and the caret after what was put. Content arrives as a slice,
+ * is transformed once on its target and read as lines (`rowsOf`); one line of
+ * words goes in by ProseMirror's own paste, everything else by the placement
+ * here. In a table cell (§5.4.7) one table fills the cells from the target
+ * cell and any other content goes into the cell.
  */
 
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
-import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Fragment, Slice, type Node as PMNode, type ResolvedPos, type Schema } from '@tiptap/pm/model';
+import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { __insertCells as insertCells, __pastedCells as pastedCells, cellAround, CellSelection, selectedRect } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -22,19 +22,21 @@ import { newId, t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
-import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
+import { landingSlice, withoutRowIds } from '@web/spaces/document/document-comment-paste';
+import { gapAtDrop, insertAtGapTr, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { BODY_NODE, OPEN_EDGE, OPEN_NESTED, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
-import { DOC_TABLE, isTableCell, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
+import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
+import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
+import { DOC_TABLE, isTableCell, keepTablesWhole, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
 export type JudgeMedium = (props: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>> | null;
 
-/** What is put: blocks, the media left out reading them, the plain text, and how words alone go in. */
-export type Content = Pick<Read, 'blocks' | 'lost' | 'plain' | 'codeText'> & { readonly paste: Read['paste'] | null };
+/** What is put: its source, the media left out reading it, and the plain text a code block takes as it is. */
+export type Content = Read;
 
 /** What a placement needs besides the content. */
 export interface PutOptions {
@@ -54,6 +56,14 @@ export interface PutOptions {
    * words. Nothing moves until something is sure to go in.
    */
   readonly dropAt?: number;
+  /**
+   * Whether one line of words goes in by ProseMirror's own paste, its paste
+   * handlers seeing it (a paste, a drop); content built here (canvas, files)
+   * goes in by a dispatch of its own.
+   */
+  readonly byPaste: boolean;
+  /** Whether a drag within the body already settled the content's comments and row ids at the drop point. */
+  readonly landed?: boolean;
 }
 
 /** Where content landed, for a drop to select. */
@@ -62,131 +72,240 @@ export type Placed =
   | { readonly kind: 'cells'; readonly anchor: number; readonly head: number };
 
 /** The editor the placement works through. */
-type Editor = Pick<BlockNoteEditor<never, never, never>, 'pasteHTML' | 'pasteText' | 'blocksToFullHTML'> & {
+type Editor = Pick<BlockNoteEditor<never, never, never>, 'pasteText'> & {
   readonly prosemirrorView: EditorView | undefined | null;
 };
 
-/** Block types whose content is words, which join a line they are put in. */
-const WORDS = new Set(['paragraph', 'heading', 'bulletListItem', 'numberedListItem', 'checkListItem']);
-
 /**
- * Whether a block is a line of words with nothing nested: what joins the
- * line it is put in at the open ends of the content.
- * @param block - The block.
- * @returns True for such a line.
- */
-function isWordsLine(block: ReadBlock | undefined): block is ReadBlock {
-  return block !== undefined && WORDS.has(block.type) && (block.children ?? []).length === 0;
-}
-
-/**
- * The last block of a block in reading order: itself, or the last of its
- * nested blocks, all the way down. A table is a block of its own: its rows
- * are not nested lines.
- * @param block - The block.
- * @returns The block read last.
- */
-function lastInReading(block: ReadBlock): ReadBlock {
-  const children = block.type === DOC_TABLE ? [] : block.children ?? [];
-  return children.length === 0 ? block : lastInReading(children[children.length - 1]!);
-}
-
-/**
- * Blocks with every medium judged: those left out go, their nested blocks
- * taking their place.
+ * Blocks read or built elsewhere as a closed slice, each with an id of its own.
  * @param blocks - The blocks.
+ * @param schema - The body's schema.
+ * @returns The slice.
+ */
+export function blocksSlice(blocks: readonly ReadBlock[], schema: Schema): Slice {
+  /**
+   * A block with an id, its nested blocks too.
+   * @param block - The block.
+   * @returns The block.
+   */
+  const withIds = (block: ReadBlock): ReadBlock & { id: string } => ({ ...block, id: newId(), children: (block.children ?? []).map(withIds) });
+  return new Slice(Fragment.from(blocks.map((block) => blockToNode(withIds(block) as never, schema))), 0, 0);
+}
+
+/**
+ * A slice transformed on its target (§5.4.3 "the slice transformed once on
+ * the target"): a paste or a drop from outside the body arrives without its
+ * comments and its row ids, as UniqueID gives a paste new ones; a drag within
+ * the body has settled both at the drop point; tables stay whole.
+ * @param view - The view, its selection on the target.
+ * @param slice - The slice.
+ * @param landed - Whether a drag within the body settled comments and row ids.
+ * @returns The slice.
+ */
+function onTarget(view: EditorView, slice: Slice, landed: boolean): Slice {
+  return keepTablesWhole(landed ? slice : withoutRowIds(landingSlice(slice, view, false)), view);
+}
+
+/**
+ * Nodes with every medium judged: those left out go, the lines nested under
+ * them taking their place, and a cell left with nothing gets an empty line.
+ * @param nodes - The nodes.
  * @param judge - The judge.
- * @returns The blocks.
+ * @param schema - The body's schema.
+ * @returns The nodes.
  */
-function judged(blocks: readonly ReadBlock[], judge: JudgeMedium): ReadBlock[] {
-  return blocks.flatMap((block): ReadBlock[] => {
-    const children = judged(block.children ?? [], judge);
-    if (!isMediaBlockType(block.type)) return [{ ...block, children }];
-    const props = judge(block.props ?? {});
-    return props === null ? children : [{ ...block, props, children }];
+function judged(nodes: readonly PMNode[], judge: JudgeMedium, schema: Schema): PMNode[] {
+  return nodes.flatMap((node): PMNode[] => {
+    const own = node.type.name === 'blockContainer' ? node.firstChild! : null;
+    if (own !== null && isMediaBlockType(own.type.name)) {
+      const props = judge(own.attrs);
+      const nested = node.lastChild?.type.name === 'blockGroup' ? judged(node.lastChild.children, judge, schema) : [];
+      if (props === null) return nested;
+      const media = own.type.create({ ...own.attrs, ...props }, own.content, own.marks);
+      return [node.type.create(node.attrs, [media, ...(nested.length > 0 ? [node.lastChild!.copy(Fragment.from(nested))] : [])], node.marks)];
+    }
+    if (node.isTextblock || node.isLeaf) return [node];
+    const children = judged(node.children, judge, schema);
+    // A nested group left with nothing goes with what it held.
+    if (node.type.name === 'blockGroup' && children.length === 0) return [];
+    if (isTableCell(node) && children.length === 0) children.push(schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create()));
+    return [node.copy(Fragment.from(children))];
   });
 }
 
 /**
- * A block with an id, its nested blocks too, so no two blocks put in share one.
- * @param block - The block.
- * @returns The block.
+ * The last line of a top-level block in reading order: itself, or the last of
+ * its nested lines, all the way down. A table is a block of its own.
+ * @param node - The block.
+ * @returns The line read last.
  */
-function withIds(block: ReadBlock): ReadBlock & { id: string } {
-  return { ...block, id: newId(), children: (block.children ?? []).map(withIds) };
+function lastInReading(node: PMNode): PMNode {
+  if (node.type.name !== 'blockContainer' || node.lastChild?.type.name !== 'blockGroup') return node;
+  return lastInReading(node.lastChild.lastChild!);
 }
 
 /**
- * Blocks as block containers.
- * @param blocks - The blocks.
- * @param state - The state they go into.
- * @returns The containers.
+ * The type of a top-level block's own content: its line's type, or the block's.
+ * @param node - The block.
+ * @returns The type's name.
  */
-function containers(blocks: readonly ReadBlock[], state: EditorState): PMNode[] {
-  return blocks.map((block) => {
-    const made = blockToNode(withIds(block) as never, state.schema);
-    const source = block[BODY_NODE];
-    return source === undefined ? made : asBodyNode(made, source);
-  });
+function typeOf(node: PMNode): string {
+  return node.type.name === 'blockContainer' ? node.firstChild!.type.name : node.type.name;
 }
 
 /**
- * A node made from a block read off the body's own content, given back what
- * reading it lost: the source's row ids, and the source's own words wherever
- * they are unchanged, their marks with them (the comments a move keeps).
- * What the placement changed (a quoted attribute, a type) stays as made.
- * @param made - The node made from the block.
- * @param source - The body's own node it was read from.
- * @returns The node.
+ * The row id a block put in carries: a moved line's own; content from
+ * anywhere else arrives with none.
+ * @param node - The block.
+ * @returns The id, or null for none.
  */
-function asBodyNode(made: PMNode, source: PMNode): PMNode {
-  if (made.type !== source.type) return made;
-  if (made.isTextblock || made.type.name === DOC_TABLE) {
-    return made.textContent === source.textContent ? made.type.create(made.attrs, source.content, made.marks) : made;
-  }
-  const children: PMNode[] = [];
-  made.forEach((child, _offset, index) => children.push(index < source.childCount ? asBodyNode(child, source.child(index)) : child));
-  const id = carriedId(source);
-  const attrs = id !== null && 'id' in made.attrs ? { ...made.attrs, id } : made.attrs;
-  return made.type.create(attrs, children, made.marks);
-}
-
-/**
- * The row id a block read off the body's own content carries: a move's.
- * @param source - The body's own node it was read from.
- * @returns The id, or null for none (a copy's).
- */
-function carriedId(source: PMNode | undefined): string | null {
-  const id = source?.attrs['id'] as unknown;
-  // A copy's ids are null, which its clipboard HTML writes as "null".
+function carriedId(node: PMNode): string | null {
+  const id = node.attrs['id'] as unknown;
   return typeof id === 'string' && id !== '' && id !== 'null' ? id : null;
 }
 
 /**
- * Blocks without the open ends of a copy that hold no words (`OPEN_EDGE`),
- * where a placement would put them as lines of their own: such an end joins
- * the line it lands in, and with no line to join it is nothing.
- * @param blocks - The blocks.
- * @param lead - Whether the leading one goes.
- * @param trail - Whether the trailing one goes.
- * @returns The blocks.
+ * A line's words, each line break as one.
+ * @param textblock - The line's own content.
+ * @returns The words.
  */
-function withoutOpenEdges(blocks: readonly ReadBlock[], lead: boolean, trail: boolean): ReadBlock[] {
-  const out = [...blocks];
-  while (lead && out[0]?.[OPEN_EDGE] === true) out.shift();
-  while (trail && out[out.length - 1]?.[OPEN_EDGE] === true) out.pop();
-  return out;
+function wordsIn(textblock: PMNode): string {
+  return textblock.textBetween(0, textblock.content.size, '', (leaf) => (leaf.type.name === 'hardBreak' ? '\n' : ''));
 }
 
 /**
- * Whether content carries a copy's open end as a marked block (an empty open
- * end, or the nested line an end opens into, read out to the top level),
- * which only a placement by blocks handles.
- * @param blocks - The blocks.
- * @returns True when it does.
+ * Blocks quoted, all they hold too (nested lines, a table's cells): the
+ * quote on every block that takes one.
+ * @param nodes - The blocks.
+ * @returns They, quoted.
  */
-function carriesOpenEnd(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => block[OPEN_EDGE] === true || block[OPEN_NESTED] === true);
+function quoted(nodes: readonly PMNode[]): PMNode[] {
+  return nodes.map((node) => {
+    const attrs = QUOTED in node.attrs ? { ...node.attrs, [QUOTED]: true } : node.attrs;
+    if (node.isTextblock || node.isLeaf) return node.type.create(attrs, node.content, node.marks);
+    const children: PMNode[] = [];
+    node.forEach((child) => children.push(child));
+    return node.type.create(attrs, Fragment.from(quoted(children)), node.marks);
+  });
+}
+
+/**
+ * Whether blocks put anything in: a block that is not a line of words, or any
+ * words besides a last line break, nested ones too. Empty lines alone, such as
+ * what is left of a line whose only medium did not land, put nothing.
+ * @param rows - The blocks.
+ * @param parsed - Whether they were parsed from clipboard HTML, which dropped each last line break already.
+ * @returns True when they do.
+ */
+export function holdsContent(rows: readonly PMNode[], parsed: boolean): boolean {
+  return rows.some((node) => {
+    if (node.type.name !== 'blockContainer') return true;
+    const own = node.firstChild!;
+    // A line's last line break pastes as nothing, as ProseMirror's clipboard read drops it.
+    if (!own.isTextblock || (parsed ? wordsIn(own) : wordsIn(own).replace(/\n$/, '')) !== '') return true;
+    return node.lastChild?.type.name === 'blockGroup' && holdsContent(node.lastChild.children, parsed);
+  });
+}
+
+/**
+ * Whether any block, nested ones included, is a table.
+ * @param rows - The blocks.
+ * @returns True when one is.
+ */
+function includesTable(rows: readonly PMNode[]): boolean {
+  let found = false;
+  for (const node of rows) {
+    if (node.type.name === DOC_TABLE) return true;
+    node.descendants((child) => {
+      if (child.type.name === DOC_TABLE) found = true;
+      return !found;
+    });
+  }
+  return found;
+}
+
+/**
+ * The one table alone, ignoring lines around it that show no words: a line
+ * break or a no-break space reads as text but leaves the line blank.
+ * @param rows - The blocks.
+ * @returns Its table, or null for mixed content.
+ */
+function onlyTable(rows: readonly PMNode[]): PMNode | null {
+  const kept = rows.filter((node) => !(node.type.name === 'blockContainer' && typeOf(node) === 'paragraph' && node.childCount === 1 && node.textContent.trim() === ''));
+  return kept.length === 1 && kept[0]!.type.name === DOC_TABLE ? kept[0]! : null;
+}
+
+/**
+ * Whether content is refused in a table cell (A14): it holds a table, and is
+ * not one table alone.
+ * @param inCell - Whether its target is in a table cell.
+ * @param rows - The content's blocks.
+ * @returns True when it is refused there.
+ */
+export function refusedInCell(inCell: boolean, rows: readonly PMNode[]): boolean {
+  return inCell && includesTable(rows) && onlyTable(rows) === null;
+}
+
+/**
+ * Whether content is one line of words alone: one line of words, both ends
+ * joining (§5.4.3 "one line of words"). A copy that starts at a line's end or
+ * ends at one's start carries a line of no words, and goes by the placement.
+ * @param rows - The content's lines.
+ * @returns True for one line of words.
+ */
+function isOneLine(rows: Rows): boolean {
+  return rows.rows.length === 1 && isWordsLine(rows.rows[0]) && rows.start === 'joins' && rows.end === 'joins';
+}
+
+/**
+ * Lines as a slice opened into their first and last line's words, the shape
+ * ProseMirror joins with the words around the caret.
+ * @param schema - The body's schema.
+ * @param rows - The lines.
+ * @returns The slice.
+ */
+function openLines(schema: Schema, rows: readonly PMNode[]): Slice {
+  const group = schema.nodes['blockGroup']!.create(null, rows);
+  return new Slice(Fragment.from(group), isWordsLine(rows[0]) ? 3 : 1, isWordsLine(rows[rows.length - 1]) ? 3 : 1);
+}
+
+/**
+ * Puts a slice in at the selection the way ProseMirror's own paste puts what
+ * it parsed (`doPaste`): its paste transforms run on the target, its paste
+ * handlers see the slice (a web address over selected words becomes a link),
+ * then the selection is replaced. The slice is the content as read, with no
+ * second pass through HTML.
+ * @param view - The view.
+ * @param slice - The slice.
+ * @param handlers - Whether the paste handlers and paste rules see it: a paste
+ *   or a drop. Content built here (canvas, files) is put as it is.
+ */
+function pasteSlice(view: EditorView, slice: Slice, handlers: boolean): void {
+  let pasted = slice;
+  view.someProp('transformPasted', (transform) => {
+    pasted = transform(pasted, view, false);
+  });
+  if (!handlers) {
+    view.dispatch(view.state.tr.replaceSelection(pasted).scrollIntoView());
+    return;
+  }
+  if (view.someProp('handlePaste', (handle) => handle(view, new ClipboardEvent('paste'), pasted))) return;
+  view.dispatch(view.state.tr.replaceSelection(pasted).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
+}
+
+/**
+ * Puts one line of words in at the selection, as words joining the line
+ * there; its paste handlers see it for a paste or a drop, not for content
+ * built here (canvas, files).
+ * @param view - The view.
+ * @param line - The line.
+ * @param byPaste - Whether it came by a paste or a drop.
+ * @returns Where the words landed.
+ */
+function putWords(view: EditorView, line: PMNode, byPaste: boolean): Placed {
+  const from = view.state.selection.from;
+  pasteSlice(view, openLines(view.state.schema, [line]), byPaste);
+  return { kind: 'range', from, to: view.state.selection.head };
 }
 
 /**
@@ -215,76 +334,46 @@ function textOnlyAt($at: ResolvedPos): { node: PMNode; pos: number } | null {
 }
 
 /**
- * Every medium among blocks, nested ones too, and the blocks without them,
- * a medium's nested blocks taking its place: what goes beside a block that
- * takes only words, and what goes inside it.
- * @param blocks - The blocks.
+ * Every medium among blocks in reading order, nested lines and table cells
+ * included, and the blocks without them, a medium's nested lines taking its
+ * place: what goes beside a block that takes only words, and what goes inside it.
+ * @param rows - The blocks.
  * @returns The media and the rest.
  */
-function takeMedia(blocks: readonly ReadBlock[]): { beside: ReadBlock[]; inside: ReadBlock[] } {
-  const media: ReadBlock[] = [];
+function takeMedia(rows: readonly PMNode[]): { beside: PMNode[]; inside: PMNode[] } {
+  const media: PMNode[] = [];
   /**
-   * The blocks without their media.
-   * @param list - The blocks.
+   * The nodes without their media.
+   * @param list - The nodes.
    * @returns The rest.
    */
-  const strip = (list: readonly ReadBlock[]): ReadBlock[] =>
-    list.flatMap((block): ReadBlock[] => {
-      const children = strip(block.children ?? []);
-      if (!isMediaBlockType(block.type)) return [{ ...block, children }];
-      media.push({ type: block.type, props: block.props ?? {} });
-      return children;
+  const strip = (list: readonly PMNode[]): PMNode[] =>
+    list.flatMap((node): PMNode[] => {
+      if (node.isTextblock || node.isLeaf) return [node];
+      const own = node.type.name === 'blockContainer' ? node.firstChild! : null;
+      if (own !== null && isMediaBlockType(own.type.name)) {
+        media.push(node.type.create(node.attrs, own));
+        return node.lastChild?.type.name === 'blockGroup' ? strip(node.lastChild.children) : [];
+      }
+      return [node.copy(Fragment.from(strip(node.children)))];
     });
-  return { beside: media, inside: strip(blocks) };
-}
-
-
-/**
- * Whether blocks hold one that is not a line of words (a medium, a table, a
- * rule), nested ones too: such content never goes in by the default paste,
- * which puts any other block at a line's start under an empty line of its own.
- * @param blocks - The blocks.
- * @returns True when the body puts them in itself.
- */
-function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => wordsIn(block.content) === null || holdsBlocks(block.children ?? []));
+  const inside = strip(rows);
+  return { beside: media, inside };
 }
 
 /**
- * Whether blocks are one line: one block, nothing nested under it.
- * @param blocks - The blocks.
- * @returns True for one line.
- */
-function isOneLine(blocks: readonly ReadBlock[]): boolean {
-  return blocks.length === 1 && (blocks[0]!.children ?? []).length === 0;
-}
-
-/**
- * Whether blocks put anything in: a block that is not words, or any words
- * besides a last line break, nested ones too. Empty lines alone, such as what is
- * left of a paragraph whose only medium did not land, put nothing.
- * @param blocks - The blocks.
- * @returns True when they do.
- */
-export function holdsContent(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => {
-    const words = wordsIn(block.content);
-    // A block's last line break reads as a trailing break and pastes as nothing.
-    return words === null || words.replace(/\n$/, '') !== '' || holdsContent(block.children ?? []);
-  });
-}
-
-/**
- * The words of blocks, one line each, nested ones too.
- * @param blocks - The blocks.
+ * The words of blocks, one line each, nested lines too, a table's cells
+ * split by tabs and its rows by line breaks.
+ * @param rows - The blocks.
  * @returns The text.
  */
-function wordsOf(blocks: readonly ReadBlock[]): string {
-  return blocks.map((block) => {
-    if (block.type === DOC_TABLE) {
-      return (block.children ?? []).map((row) => (row.children ?? []).map((cell) => wordsOf(cell.children ?? [])).join('\t')).join('\n');
+function wordsOf(rows: readonly PMNode[]): string {
+  return rows.map((node) => {
+    if (node.type.name === DOC_TABLE) {
+      return node.children.map((row) => row.children.map((cell) => wordsOf(cell.children)).join('\t')).join('\n');
     }
-    return [wordsIn(block.content) ?? '', ...(block.children ?? []).map((child) => wordsOf([child]))].join('\n');
+    const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
+    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : '', ...nested.map((child) => wordsOf([child]))].join('\n');
   }).join('\n');
 }
 
@@ -312,9 +401,9 @@ function containerById(doc: PMNode, id: string): { node: PMNode; pos: number } |
  * block it puts; ProseMirror has no caret between blocks, so a line holds it).
  * @param tr - The transaction.
  * @param slot - The position right after the last block put.
- * @param quoted - Whether an opened line is quoted.
+ * @param isQuoted - Whether an opened line is quoted.
  */
-function caretFrom(tr: Transaction, slot: number, quoted: boolean): void {
+function caretFrom(tr: Transaction, slot: number, isQuoted: boolean): void {
   let $next = tr.doc.resolve(slot);
   // Past the end of a nested group, the line that follows is the next one after its parent.
   while ($next.nodeAfter === null && $next.depth > 1 && !isTableCell($next.parent)) $next = tr.doc.resolve($next.after($next.depth - 1));
@@ -323,7 +412,7 @@ function caretFrom(tr: Transaction, slot: number, quoted: boolean): void {
     tr.setSelection(TextSelection.create(tr.doc, $next.pos + 2));
     return;
   }
-  tr.insert(slot, blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: quoted } } as never, tr.doc.type.schema));
+  tr.insert(slot, blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: isQuoted } } as never, tr.doc.type.schema));
   tr.setSelection(TextSelection.create(tr.doc, slot + 2));
 }
 
@@ -386,7 +475,7 @@ function retyped(container: PMNode, line: PMNode): PMNode {
 function nestLast(nodes: PMNode[], line: PMNode): PMNode[] {
   if (line.childCount < 2 || nodes.length === 0) return nodes;
   const last = nodes[nodes.length - 1]!;
-  if (last.type.name === DOC_TABLE) return [...nodes, ...Array.from({ length: line.lastChild!.childCount }, (_, i) => line.lastChild!.child(i))];
+  if (last.type.name !== 'blockContainer') return [...nodes, ...line.lastChild!.children];
   const group = last.childCount > 1 ? last.lastChild!.content.append(line.lastChild!.content) : line.lastChild!.content;
   const content = Fragment.from([last.firstChild!, line.lastChild!.type.create(null, group)]);
   return [...nodes.slice(0, -1), last.type.create(last.attrs, content)];
@@ -394,35 +483,37 @@ function nestLast(nodes: PMNode[], line: PMNode): PMNode[] {
 
 /**
  * Puts content in a block that takes only words, a code block or a stored
- * (legacy) table: the words go in first, by ProseMirror or BlockNote's plain
- * text paste, and the media beside the block afterwards, found again by its
- * id. An empty code block counts as an empty line: the media go above it and
- * the caret stays in it.
+ * (legacy) table, line by line (§5.4.3 "a code block taking content"): the
+ * words go in first (a code block takes each line's words as plain text, a
+ * stored table's cell takes the lines by ProseMirror's own paste, whose
+ * transforms read them into its words), the media beside the block afterwards, found again by
+ * its id. An empty code block counts as an empty line: the media go above it
+ * and the caret stays in it.
  * @param editor - The editor.
- * @param content - The content, its media judged.
+ * @param rows - The content's lines, their media judged.
  * @param target - The table's or the code block's container.
  * @param target.node - The container.
  * @param target.pos - Where it starts.
- * @param wordsIntoTarget - Whether the words go into the block, or the whole content beside it.
+ * @param options - The placement's options: whether the words go into the
+ *   block or the whole content beside it, and whether the paste handlers see them.
  * @returns The words put in the block, else the last block put beside it.
  */
-function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode; pos: number }, wordsIntoTarget: boolean): Placed {
+function putInTextOnly(editor: Editor, rows: readonly PMNode[], target: { node: PMNode; pos: number }, options: PutOptions): Placed {
   const view = editor.prosemirrorView!;
   const id = target.node.attrs['id'] as string;
   const code = target.node.firstChild!.type.name === 'codeBlock';
-  const blocks = withoutOpenEdges(content.blocks, true, true);
-  const { beside, inside } = wordsIntoTarget ? takeMedia(blocks) : { beside: blocks, inside: [] };
+  const { beside, inside } = options.wordsIntoTarget ? takeMedia(rows) : { beside: [...rows], inside: [] };
   const from = view.state.selection.from;
   if (inside.length > 0) {
     if (code) editor.pasteText(wordsOf(inside));
-    else pasteWordsOf(editor, carriesOpenEnd(content.blocks) ? { ...content, paste: null } : content, inside);
+    else pasteSlice(view, openLines(view.state.schema, inside), options.byPaste);
   }
   const after = view.state.selection;
   const words: Placed | null = inside.length > 0 ? { kind: 'range', from: Math.min(from, after.head), to: after.head } : null;
   const found = beside.length === 0 ? null : containerById(view.state.doc, id);
   if (found === null) return words ?? { kind: 'range', from, to: from };
   const blockContent = found.node.firstChild!;
-  const nodes = containers(quotedAs(beside, blockContent.attrs[QUOTED] === true), view.state);
+  const nodes = blockContent.attrs[QUOTED] === true ? quoted(beside) : beside;
   const emptyCode = blockContent.type.name === 'codeBlock' && blockContent.content.size === 0;
   const at = emptyCode ? found.pos : found.pos + found.node.nodeSize;
   const tr = view.state.tr.insert(at, nodes);
@@ -441,31 +532,6 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
  */
 function cellsOf(selection: CellSelection): Placed {
   return { kind: 'cells', anchor: selection.$anchorCell.pos, head: selection.$headCell.pos };
-}
-
-/**
- * Pastes one line of words alone at the selection, the way BlockNote pastes its format.
- * @param editor - The editor.
- * @param content - The content.
- * @returns Where the words landed.
- */
-function pasteWords(editor: Editor, content: Content): Placed {
-  const view = editor.prosemirrorView!;
-  const from = view.state.selection.from;
-  pasteWordsOf(editor, content, content.blocks);
-  return { kind: 'range', from, to: view.state.selection.head };
-}
-
-/**
- * Pastes lines of words at the selection: by the content's own paste when it
- * has one, else as the blocks' HTML.
- * @param editor - The editor.
- * @param content - The content.
- * @param blocks - The lines, the content's or the words taken out of it.
- */
-function pasteWordsOf(editor: Editor, content: Content, blocks: readonly ReadBlock[]): void {
-  if (content.paste !== null) content.paste(editor as never);
-  else editor.pasteHTML(editor.blocksToFullHTML(blocks as never), true);
 }
 
 /**
@@ -488,46 +554,15 @@ function aim(view: EditorView, $drop: ResolvedPos, opened: boolean): void {
 }
 
 /**
- * Whether any block, including a nested one, is a table.
- * @param blocks - The content read.
- * @returns True when it includes a table.
- */
-function includesTable(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => block.type === DOC_TABLE || includesTable(block.children ?? []));
-}
-
-/**
- * The one table alone, ignoring paragraphs around it that show no words: a
- * line break or a no-break space reads as text but leaves the line blank.
- * @param blocks - The content read.
- * @returns Its table, or null for mixed content.
- */
-function onlyTable(blocks: readonly ReadBlock[]): ReadBlock | null {
-  const kept = blocks.filter((block) => !(block.type === 'paragraph' && wordsIn(block.content)?.trim() === '' && (block.children ?? []).length === 0));
-  return kept.length === 1 && kept[0]!.type === DOC_TABLE ? kept[0]! : null;
-}
-
-/**
- * Whether content is refused in a table cell (A14): it holds a table, and is
- * not one table alone.
- * @param inCell - Whether its target is in a table cell.
- * @param blocks - The content read.
- * @returns True when it is refused there.
- */
-export function refusedInCell(inCell: boolean, blocks: readonly ReadBlock[]): boolean {
-  return inCell && includesTable(blocks) && onlyTable(blocks) === null;
-}
-
-/**
  * Puts one source grid once from the target cell, growing the table as needed.
  * @param view - The editor view, with its target cell selected.
  * @param table - The source table.
  * @returns The rectangle written.
  */
-function putTableInCells(view: EditorView, table: ReadBlock): Placed | null {
+function putTableInCells(view: EditorView, table: PMNode): Placed | null {
   squareSelectedTable(view);
   const rect = selectedRect(view.state);
-  const cells = pastedCells(new Slice(Fragment.from(containers([table], view.state)), 0, 0));
+  const cells = pastedCells(new Slice(Fragment.from(table), 0, 0));
   if (cells === null) return null;
   insertCells(view.state, (tr) => view.dispatch(tr.scrollIntoView()), rect.tableStart, rect, cells);
   return cellsOf(view.state.selection as CellSelection);
@@ -537,39 +572,36 @@ function putTableInCells(view: EditorView, table: ReadBlock): Placed | null {
  * Repeats ordinary blocks through a cell selection, retaining the cells' own
  * types and attributes. Each copy has its own block ids and the same upload ids.
  * @param view - The view with a cell selection.
- * @param content - The content to put in each selected cell.
+ * @param rows - The content to put in each selected cell.
  * @returns The content written to the top-left cell.
  */
-function putBlocksInCells(view: EditorView, content: readonly ReadBlock[]): Placed {
-  const blocks = withoutOpenEdges(content, true, true);
+function putBlocksInCells(view: EditorView, rows: readonly PMNode[]): Placed {
   squareSelectedTable(view);
   const selection = view.state.selection as CellSelection;
   const rect = selectedRect(view.state);
   const top = rect.tableStart + rect.map.positionAt(rect.top, rect.left, rect.table);
   const cells: { node: PMNode; pos: number }[] = [];
   selection.forEachCell((node, pos) => cells.push({ node, pos }));
+  // Without ids, the editor gives every copy ids of its own.
+  const blocks: PMNode[] = [];
+  withoutRowIds(new Slice(Fragment.from(rows), 0, 0)).content.forEach((node) => blocks.push(node));
   const tr = view.state.tr;
-  let first: PMNode[] = [];
-  for (const { node, pos } of cells.sort((a, b) => b.pos - a.pos)) {
-    const made = containers(blocks, view.state);
-    tr.replaceWith(pos + 1, pos + node.nodeSize - 1, made);
-    if (pos === top) first = made;
-  }
-  finishCaret(tr, first, top + 1);
+  for (const { node, pos } of cells.sort((a, b) => b.pos - a.pos)) tr.replaceWith(pos + 1, pos + node.nodeSize - 1, blocks);
+  finishCaret(tr, blocks, top + 1);
   view.dispatch(tr.scrollIntoView());
-  return { kind: 'range', from: top + 1, to: top + 1 + first.reduce((size, node) => size + node.nodeSize, 0) };
+  return { kind: 'range', from: top + 1, to: top + 1 + blocks.reduce((size, node) => size + node.nodeSize, 0) };
 }
 
 /**
  * Puts content at the selection, or at a drop's point (§5.4.3). In a code
- * block plain text goes in as it is; otherwise every medium is judged once,
- * and content that puts nothing in changes nothing. Then the selection
- * settles the target: in a table cell or over selected cells, one table fills
- * the cells from the target cell and any other content goes into the cell
- * (§5.4.7); a selected block is replaced in place; a text selection outside a table and
- * a code block takes one line of words alone by the paste of its format; more
- * lines, and any other text selection, are put after the selection is deleted
- * and the caret's line judged.
+ * block plain text goes in as it is; otherwise the content is transformed on
+ * its target, read as lines, every medium judged once, and content that puts
+ * nothing in changes nothing. Then the selection settles the target: in a
+ * table cell or over selected cells, one table fills the cells from the
+ * target cell and any other content goes into the cell (§5.4.7); one line of
+ * words goes in as words at the selection; a selected block is replaced in
+ * place; any other content is put after a text selection is deleted and the
+ * caret's line judged.
  * @param editor - The editor.
  * @param content - The content, its media not judged yet.
  * @param options - The placement's options.
@@ -578,12 +610,20 @@ function putBlocksInCells(view: EditorView, content: readonly ReadBlock[]): Plac
 export function putContent(editor: Editor, content: Content, options: PutOptions): Placed | null {
   const view = editor.prosemirrorView;
   if (view === undefined || view === null) return null;
-  const { doc, selection } = view.state;
+  const { doc, selection, schema } = view.state;
   const $drop = options.dropAt === undefined ? null : doc.resolve(options.dropAt);
   const opened = $drop !== null && !$drop.parent.isTextblock;
   const $at = $drop ?? (selection instanceof CellSelection ? selection.$anchorCell : view.state.tr.deleteSelection().selection.$from);
   const cell = selection instanceof CellSelection && $drop === null ? selection.$anchorCell : cellAround($at);
   const inCell = cell !== null && ($drop !== null || heldTables(selection) === null);
+  // HTML with no media takes a code block's plain-text paste where the paste
+  // stands in one code block, as BlockNote's default paste puts it there
+  // (`pasteExtension.ts`).
+  const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
+  const source = content.source.kind === 'slice' ? content.source.slice : blocksSlice(content.source.blocks, schema);
+  const read = rowsOf(source);
+  // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
+  const plain = content.plain ?? (startsInCode && !(inCell && includesTable(read.rows)) ? content.codeText ?? null : null);
   /**
    * Places content at its target. A drop's point is aimed first and its hold
    * on the selection from before the drop let go once the content is in. A
@@ -603,12 +643,6 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
     view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
     return placed;
   };
-  // HTML with no media takes a code block's plain-text paste where the paste
-  // stands in one code block, as BlockNote's default paste puts it there
-  // (`pasteExtension.ts`).
-  const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
-  // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
-  const plain = content.plain ?? (startsInCode && !(inCell && includesTable(content.blocks)) ? content.codeText ?? null : null);
   if (!opened && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;
@@ -616,47 +650,50 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
       return { kind: 'range', from, to: view.state.selection.head };
     });
   }
-  if (refusedInCell(inCell, content.blocks)) {
+  if (refusedInCell(inCell, read.rows)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return null;
   }
   options.leaveOut?.(content.lost);
-  const blocks = judged(content.blocks, options.judge);
-  if (!holdsContent(blocks)) return null;
-  // The read's own paste carries the media too, so it puts content holding none.
-  const put: Content = { ...content, blocks, paste: takeMedia(content.blocks).beside.length === 0 ? content.paste : null };
-  return atTarget(() => putAtSelection(editor, put, options.wordsIntoTarget, opened));
+  // Every medium is judged once, before anything moves: a medium left out at
+  // an end of the slice leaves that end at the line after it.
+  const top: PMNode[] = [];
+  source.content.forEach((node) => top.push(node));
+  const kept = new Slice(Fragment.from(judged(top, options.judge, schema)), source.openStart, source.openEnd);
+  if (kept.content.size === 0 || !holdsContent(rowsOf(kept).rows, content.source.kind === 'slice' && content.source.parsed)) return null;
+  return atTarget(() => putAtSelection(editor, rowsOf(onTarget(view, kept, options.landed === true)), options, opened));
 }
 
 /**
  * Puts judged content at the selection, by what the selection is (§5.4.3).
  * @param editor - The editor.
- * @param content - The content, its media judged.
- * @param wordsIntoTarget - Whether a code block or a stored (legacy) table cell takes the words.
+ * @param content - The content's lines, their media judged.
+ * @param options - The placement's options.
  * @param opened - Whether the caret's line was opened by a drop, to be replaced rather than kept.
  * @returns Where the content landed.
  */
-function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boolean, opened: boolean): Placed | null {
+function putAtSelection(editor: Editor, content: Rows, options: PutOptions, opened: boolean): Placed | null {
   const view = editor.prosemirrorView!;
   const { selection } = view.state;
-  const table = onlyTable(content.blocks);
+  const table = onlyTable(content.rows);
   const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$from);
   if ($cell !== null && heldTables(selection) === null) {
     if (table !== null) return putTableInCells(view, table);
-    if (selection instanceof CellSelection) return putBlocksInCells(view, content.blocks);
+    if (selection instanceof CellSelection) return putBlocksInCells(view, content.rows);
   }
-  // One line of words goes into the line as its words; more lines go by the
-  // placement, which keeps the reader's line its own type (§5.4.3).
-  const words = isOneLine(content.blocks) && !holdsBlocks(content.blocks) && !carriesOpenEnd(content.blocks);
-  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? pasteWords(editor, content) : replaceBlock(view, content.blocks, selection);
-  if (words && textOnlyAt(selection.$from) === null) return pasteWords(editor, content);
+  // One line of words goes into the line as its words, on the selection as
+  // the reader made it; more lines go by the placement, which keeps the
+  // reader's line its own type (§5.4.3).
+  const words = isOneLine(content);
+  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, content.rows[0]!, options.byPaste) : replaceBlock(view, content.rows, selection);
+  if (words && textOnlyAt(selection.$from) === null) return putWords(view, content.rows[0]!, options.byPaste);
   const replaced = !selection.empty || opened;
   if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
   const $caret = view.state.selection.$from;
   const target = textOnlyAt($caret);
-  if (target !== null) return putInTextOnly(editor, content, target, wordsIntoTarget);
-  if (!$caret.parent.isTextblock) return putInGap(view, content.blocks, $caret.parent.type.name === 'blockContainer' ? $caret.before() : $caret.pos);
-  return putInLine(view, content.blocks, $caret, replaced);
+  if (target !== null) return putInTextOnly(editor, content.rows, target, options);
+  if (!$caret.parent.isTextblock) return putInGap(view, content.rows, $caret.parent.type.name === 'blockContainer' ? $caret.before() : $caret.pos);
+  return putInLine(view, content, $caret, replaced);
 }
 
 /**
@@ -664,13 +701,12 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
  * cursor's), every piece a block of its own, quoted when the line beside the
  * gap is, as ProseMirror's own paste there puts its blocks.
  * @param view - The view.
- * @param blocks - The content.
+ * @param rows - The content.
  * @param gap - The gap.
  * @returns Where the content landed.
  */
-function putInGap(view: EditorView, blocks: readonly ReadBlock[], gap: number): Placed {
-  const own = withoutOpenEdges(blocks, true, true);
-  const nodes = containers(quotedBeside(view.state.doc, gap) ? quotedAs(own, true) : own, view.state);
+function putInGap(view: EditorView, rows: readonly PMNode[], gap: number): Placed {
+  const nodes = quotedBeside(view.state.doc, gap) ? quoted(rows) : [...rows];
   const tr = view.state.tr.insert(gap, nodes);
   finishCaret(tr, nodes, gap);
   view.dispatch(tr.scrollIntoView());
@@ -686,22 +722,24 @@ function putInGap(view: EditorView, blocks: readonly ReadBlock[], gap: number): 
  * @returns Where they landed, or null when nothing went in.
  */
 export function putBlocks(editor: Editor, blocks: readonly ReadBlock[], dropAt?: number): Placed | null {
-  return putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props, ...(dropAt !== undefined && { dropAt }) });
+  return putContent(
+    editor,
+    { source: { kind: 'blocks', blocks }, lost: 0, plain: null },
+    { wordsIntoTarget: false, judge: (props) => props, byPaste: false, ...(dropAt !== undefined && { dropAt }) },
+  );
 }
 
 /**
  * Replaces a selected block with content, every piece a block of its own.
  * @param view - The view.
- * @param blocks - The content.
+ * @param rows - The content.
  * @param selection - The block selected.
  * @returns Where the content landed.
  */
-function replaceBlock(view: EditorView, blocks: readonly ReadBlock[], selection: NodeSelection): Placed | null {
+function replaceBlock(view: EditorView, rows: readonly PMNode[], selection: NodeSelection): Placed | null {
   const line = selection.node.type.name === 'blockContainer' ? { node: selection.node, pos: selection.from } : lineAt(selection.$from);
   if (line === null) return null;
-  const isQuoted = line.node.firstChild?.attrs[QUOTED] === true;
-  const put = withoutOpenEdges(blocks, true, true);
-  const own = containers(isQuoted ? quotedAs(put, true) : put, view.state);
+  const own = line.node.firstChild?.attrs[QUOTED] === true ? quoted(rows) : [...rows];
   const nodes = nestLast(own, line.node);
   const tr = view.state.tr.replaceWith(line.pos, line.pos + line.node.nodeSize, nodes);
   const size = nodes.reduce((sum, node) => sum + node.nodeSize, 0);
@@ -711,34 +749,30 @@ function replaceBlock(view: EditorView, blocks: readonly ReadBlock[], selection:
 }
 
 /**
- * Puts content in the caret's line by the placement table (§5.4.3).
+ * Puts content in the caret's line by one flow (§5.4.3 "placement has one
+ * flow"): the line split at the caret into a front and a back, the content's
+ * lines between them, its first line's words joining the front and its last
+ * line's the back where they join, the rules of the placement table settling
+ * the empty halves, the quote, the caret and the range once.
  * @param view - The view.
- * @param blocks - The content.
+ * @param content - The content's lines.
  * @param $caret - The caret.
  * @param replaced - Whether the line, if empty, is one a deletion or a drop
  *   emptied, which the content replaces.
  * @returns Where the content landed.
  */
-function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: ResolvedPos, replaced: boolean): Placed | null {
+function putInLine(view: EditorView, content: Rows, $caret: ResolvedPos, replaced: boolean): Placed | null {
   const line = lineAt($caret);
   const own = line?.node.firstChild;
   if (line === null || own === undefined || own === null || !own.isTextblock) return null;
   const offset = $caret.parentOffset;
   const size = own.content.size;
-  // An empty line joins neither open end of a copy, a line's start only the
-  // trailing one, a line's end only the leading one.
-  const put = withoutOpenEdges(blocks, offset === 0, offset === size);
-  const content = own.attrs[QUOTED] === true ? quotedAs(put, true) : put;
-  const { state } = view;
-  const nodes = containers(content, state);
-  // A line of words joins the line it lands in where it has company, or
-  // where an open end it came with was left out (a whole line copied).
-  const joins = nodes.length > 1 || put.length < blocks.length;
-  const firstWords = joins && isWordsLine(content[0]);
-  const lastWords = joins && isWordsLine(content[content.length - 1]);
+  const nodes = own.attrs[QUOTED] === true ? quoted(content.rows) : [...content.rows];
+  const firstWords = content.start === 'joins' && isWordsLine(nodes[0]);
+  const lastWords = content.end === 'joins' && isWordsLine(nodes[nodes.length - 1]);
   const start = line.pos;
   const end = line.pos + line.node.nodeSize;
-  const tr = state.tr;
+  const tr = view.state.tr;
   let laid: PMNode[];
   let caret: number | null = null;
   let from = start;
@@ -754,12 +788,13 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
   if (size === 0) {
     const nonParagraph = own.type.name !== 'paragraph';
     if (firstWords && nonParagraph) nodes[0] = retyped(nodes[0]!, line.node);
+    const last = nodes[nodes.length - 1]!;
     if (replaced) {
       laid = nestLast(nodes, line.node);
       tr.replaceWith(start, end, laid);
       finishCaret(tr, nodes, start);
       to = startOf(laid, laid.length);
-    } else if (WORDS.has(lastInReading(content[content.length - 1]!).type) && (!nonParagraph || WORDS.has(content[content.length - 1]!.type))) {
+    } else if (WORDS.has(typeOf(lastInReading(last))) && (!nonParagraph || WORDS.has(typeOf(last)))) {
       // An empty line becomes the last pasted block when the content ends in
       // words, keeping the line's id and nested blocks (§5.4.3), and a moved
       // line keeping its own id (A19): an empty plain line takes the block's
@@ -767,8 +802,8 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
       // own and takes the words and nested lines of a last block of words.
       // Content ending in a medium, or in a block that is not words with words
       // nested under it, leaves the line for the caret.
-      const tail = nonParagraph ? retyped(nodes[nodes.length - 1]!, line.node) : nodes[nodes.length - 1]!;
-      const id = carriedId(content[content.length - 1]![BODY_NODE]) ?? line.node.attrs['id'];
+      const tail = nonParagraph ? retyped(last, line.node) : last;
+      const id = carriedId(last) ?? line.node.attrs['id'];
       const put = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id }, tail.content)];
       laid = nestLast(put, line.node);
       tr.replaceWith(start, end, laid);
@@ -808,7 +843,9 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
     tr.replaceWith(start, end, laid);
     const backStart = startOf(laid, laid.length - 1);
     if (lastWords) caret = backStart + 2 + backWords.size;
-    else finishCaret(tr, middle, startOf(laid, front === null ? 0 : 1));
+    else if (middle.length > 0) finishCaret(tr, middle, startOf(laid, front === null ? 0 : 1));
+    // The content's last line joined the front and its end only bounded it: the caret starts the back.
+    else caret = backStart + 2;
     // A split line's own halves bound what went in: the front's end and the
     // back's start, so a range over it takes leading and trailing media. At
     // the line's start nothing is split and both ends stay at block bounds.

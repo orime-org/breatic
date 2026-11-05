@@ -37,11 +37,9 @@ function between(editor: Editor, a: [string, number], b: [string, number]): Sele
  */
 function copyAndRead(editor: Editor, selection: Selection): { original: Slice; read: Slice } {
   const view = editor.prosemirrorView;
-  const original = selection.content();
-  const { dom, text } = view.serializeForClipboard(original);
-  const { editor: target } = open([{ type: 'paragraph', content: 'abcd' }]);
-  const { state } = target.prosemirrorView;
-  return { original, read: readClipboardSlice(state.schema, dom.innerHTML, text, state.doc.resolve(3)) };
+  view.dispatch(view.state.tr.setSelection(selection));
+  const { dom, text, slice: original } = view.serializeForClipboard(view.state.selection.content());
+  return { original, read: readClipboardSlice(view.state.schema, dom.innerHTML, text) };
 }
 
 /**

@@ -10,20 +10,19 @@
  * paste: words in an empty heading turn it into a paragraph, lines in a code
  * block split it, a table in a cell splits that table.
  *
- * What is put is the drag's own content as ProseMirror took it at dragstart,
- * what its copy would carry, read as its paste reads the body's own copy, each block keeping the node it
- * came from, so the placement puts the body's own words back with their
- * marks: a move keeps its comments and row ids, a copy drops both
- * (`document-comment-paste.ts`, `landingSlice`, `landingAsDrop`). A line the
- * move takes only part of keeps its row id where it stays, and the part that
- * moved gets a new one.
+ * What is put is the drag's own slice as ProseMirror took it at dragstart,
+ * what its copy would carry (`transformCopied`), placed as it is: its nodes
+ * are the body's own, so a move keeps its comments and row ids and a copy
+ * drops both (`document-comment-paste.ts`, `landingSlice`, `landingAsDrop`),
+ * settled at the drop point. A line the move takes only part of keeps its row
+ * id where it stays, and the part that moved gets a new one.
  *
  * A drop onto the dragged content itself changes nothing, as in CKEditor 5
  * and Lexical, and so does a drag its paste would put nothing of (line breaks
  * alone, empty lines): nothing is taken away for it.
  */
 
-import type { Slice } from '@tiptap/pm/model';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
@@ -31,12 +30,26 @@ import type { EditorView } from '@tiptap/pm/view';
 import { t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
-import { readBodyContent, type BlockReader } from '@web/spaces/document/document-paste-read';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
+import { readClipboardSlice, rowsOf } from '@web/spaces/document/document-paste-slice';
 import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
 /** The editor a drop is put by. */
-type Editor = Parameters<typeof putContent>[0] & BlockReader;
+type Editor = Parameters<typeof putContent>[0];
+
+/**
+ * Whether a slice holds a stored (legacy) table.
+ * @param slice - The slice.
+ * @returns True when one is in it.
+ */
+function holdsStoredTable(slice: Slice): boolean {
+  let found = false;
+  slice.content.descendants((node: PMNode) => {
+    if (node.type.name === 'table') found = true;
+    return !found;
+  });
+  return found;
+}
 
 /**
  * Puts a drag within the body as its paste at the drop point.
@@ -63,14 +76,18 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   if (removes && node === undefined) tr.deleteSelection();
   else if (removes) node!.replace(tr);
   // The drag's own content as ProseMirror took it at dragstart, through the
-  // copy transforms (`document-table-copy.ts`): the slice it hands over has
+  // copy transforms (`document-table-copy.ts`); the slice it hands over has
   // also been through the paste transforms against the selection the drag
-  // began from, and the paste below runs them against the drop point.
+  // began from. Its comments and row ids are settled here at the drop point.
   const dragged = view.dragging?.slice ?? slice;
-  const content = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
-  const read = readBodyContent(editor, view.serializeForClipboard(content).dom.innerHTML, view.state.schema);
-  if (!holdsContent(read.blocks)) return true;
-  if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, read.blocks)) {
+  const landed = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
+  // A stored table, whole or left, is read as its copy is, as a table whose
+  // cells hold blocks (temporary, with #1362's stored tables).
+  const parsed = holdsStoredTable(landed);
+  const content = parsed ? readClipboardSlice(view.state.schema, view.serializeForClipboard(landed).dom.innerHTML, '') : landed;
+  const { rows } = rowsOf(content);
+  if (!holdsContent(rows, parsed)) return true;
+  if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, rows)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return true;
   }
@@ -85,7 +102,9 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   view.dragging = null;
   let placed: Placed | null;
   try {
-    placed = landingAsDrop(removes, () => putContent(editor, read, { wordsIntoTarget: true, judge: (props) => props, dropAt: point }));
+    placed = landingAsDrop(removes, () =>
+      putContent(editor, { source: { kind: 'slice', slice: content, parsed }, lost: 0, plain: null }, { wordsIntoTarget: true, judge: (props) => props, dropAt: point, byPaste: true, landed: true }),
+    );
   } finally {
     view.dragging = dragging;
   }

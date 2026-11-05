@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a paste or a drop carries, read into blocks (inner#1351 + inner#1390
- * design §5.4.1, §5.4.2). Reading looks only at the clipboard or the drag;
- * where the blocks go is `document-put.ts`.
+ * What a paste or a drop carries (inner#1351 + inner#1390 design §5.4.1,
+ * §5.4.2): the body's own copy as the slice it was copied as
+ * (`document-paste-slice.ts`), anything else read into blocks. Reading looks
+ * only at the clipboard or the drag; where the content goes is
+ * `document-put.ts`.
  *
  * Outside HTML with media is read by markers: each medium BlockNote would
  * read is swapped for a text marker, BlockNote reads the rest as it reads
@@ -14,10 +16,11 @@
  */
 
 import { audioParse, imageParse, isMarkdown, markdownToHTML, videoParse } from '@blocknote/core';
-import { DOMParser as SchemaParser, type Node as PMNode, type Schema } from '@tiptap/pm/model';
+import type { Schema, Slice } from '@tiptap/pm/model';
 
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
+import { readClipboardSlice } from '@web/spaces/document/document-paste-slice';
 import { evenPastedTables, evenTables } from '@web/spaces/document/document-table-paste';
 
 /** A block as BlockNote's JSON writes one. */
@@ -26,45 +29,27 @@ export interface ReadBlock {
   readonly props?: Readonly<Record<string, unknown>>;
   readonly content?: unknown;
   readonly children?: readonly ReadBlock[];
-  /** The body's own node the block was read from, when a drag within the body brings it. */
-  readonly [BODY_NODE]?: PMNode;
-  /** Whether the block is an open end of the body's own copy with no words. */
-  readonly [OPEN_EDGE]?: true;
-  /** Whether the block is the nested line of words an end of the copy opens into, read out to the top level. */
-  readonly [OPEN_NESTED]?: true;
 }
-
-/**
- * Marks a block read off an open end of the body's own copy that holds no
- * words: a placement that would put it as a line of its own leaves it out.
- */
-export const OPEN_EDGE: unique symbol = Symbol('open edge');
-
-/**
- * Marks the line of words an end of a copy opens into when that line is
- * nested: it is read out to the top level as the copy's first or last line,
- * where it joins the line it lands in, which only a placement by blocks does.
- */
-export const OPEN_NESTED: unique symbol = Symbol('open nested end');
-
-/**
- * Where a block read off the body's own content keeps the node it came from.
- * A symbol key, so the copies a placement makes of a block (`{ ...block }`)
- * keep it too.
- */
-export const BODY_NODE: unique symbol = Symbol('body node');
 
 /** What reads HTML into blocks and writes blocks out as HTML: the editor. */
 export interface BlockReader {
+  readonly pmSchema: Schema;
   tryParseHTMLToBlocks(html: string): unknown;
   blocksToFullHTML(blocks: never): string;
-  pasteHTML(html: string, raw?: boolean): void;
 }
+
+/**
+ * What content is made of: the body's own slice, or blocks read or built
+ * elsewhere. A slice parsed from clipboard HTML has lost each block's last line
+ * break already, as ProseMirror's clipboard read drops it.
+ */
+export type Source =
+  | { readonly kind: 'slice'; readonly slice: Slice; readonly parsed: boolean }
+  | { readonly kind: 'blocks'; readonly blocks: readonly ReadBlock[] };
 
 /** What a paste or a drop carries. */
 export interface Read {
-  /** The blocks read, none when nothing lands. */
-  readonly blocks: readonly ReadBlock[];
+  readonly source: Source;
   /** Media left out on the way. */
   readonly lost: number;
   /** The plain text, when the clipboard holds no HTML: what a code block takes as it is. */
@@ -74,8 +59,6 @@ export interface Read {
    * the paste starts in takes, as BlockNote's default paste puts it there.
    */
   readonly codeText?: string | null;
-  /** How the content goes into a line when it is lines of words alone: the way BlockNote pastes this format. */
-  readonly paste: (reader: BlockReader) => void;
 }
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
@@ -349,19 +332,8 @@ function splitAtMarkers(content: readonly Inline[]): Piece[] {
  * @param content - The content.
  * @returns Its words.
  */
-export function textOf(content: readonly Inline[]): string {
+function textOf(content: readonly Inline[]): string {
   return content.map((item) => (typeof item.text === 'string' ? item.text : textOf(item.content ?? []))).join('');
-}
-
-/**
- * The words of a block's content when it is words: inline content, or the
- * string BlockNote takes as one run of text.
- * @param content - The content.
- * @returns The words, or null for content that is not words (a table, none).
- */
-export function wordsIn(content: unknown): string | null {
-  if (typeof content === 'string') return content;
-  return Array.isArray(content) ? textOf(content as Inline[]) : null;
 }
 
 /**
@@ -586,173 +558,44 @@ function escapeHTML(text: string): string {
 export type Transfer = Pick<DataTransfer, 'types' | 'getData'>;
 
 /**
- * Reads what a paste or a drop carries (§5.4.1): the body's own copy as it
- * is, an editor's code as one code block, Markdown, HTML with media and
- * plain text by markers, and any other HTML with its tables evened. Where
- * it goes is `putContent`'s to settle.
+ * Blocks as content.
+ * @param blocks - The blocks.
+ * @returns The source.
+ */
+function blocksOf(blocks: readonly ReadBlock[]): Source {
+  return { kind: 'blocks', blocks };
+}
+
+/**
+ * Reads what a paste or a drop carries (§5.4.1): the body's own copy as the
+ * slice it was copied as, an editor's code as one code block, Markdown, HTML
+ * with media and plain text by markers, and any other HTML with its tables
+ * evened. Where it goes is `putContent`'s to settle.
  * @param reader - The editor.
  * @param data - The clipboard or the drag.
  * @param lands - Whether a medium at an address lands.
- * @returns The blocks read, the media left out reading them, the plain text a code block takes as it is, and the paste that puts words alone in.
+ * @returns The content, the media left out reading it and the plain text a code block takes as it is.
  */
 export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: string) => boolean): Read {
   const plain = data.getData('text/plain');
   const html = data.types.includes('text/html') ? data.getData('text/html') : '';
   if (data.types.includes('blocknote/html')) {
-    const own = data.getData('blocknote/html');
-    return { blocks: withOpenEdges(reader.tryParseHTMLToBlocks(own) as ReadBlock[], own), lost: 0, plain: null, paste: (r) => r.pasteHTML(own, true) };
+    return { source: { kind: 'slice', slice: readClipboardSlice(reader.pmSchema, data.getData('blocknote/html'), plain), parsed: true }, lost: 0, plain: null };
   }
   const plainOnly = html === '' && plain !== '' ? plain : null;
   const mode = data.types.includes('vscode-editor-data') ? editorLanguage(data.getData('vscode-editor-data')) : null;
   if (mode !== null && plain !== '') {
     const code = `<pre><code class="language-${escapeHTML(mode)}">${escapeHTML(plain.replace(/\r\n?/g, '\n'))}</code></pre>`;
-    return { blocks: reader.tryParseHTMLToBlocks(code) as ReadBlock[], lost: 0, plain: plainOnly, paste: (r) => r.pasteHTML(code) };
+    return { source: blocksOf(reader.tryParseHTMLToBlocks(code) as ReadBlock[]), lost: 0, plain: plainOnly };
   }
   const markdown = data.types.includes('text/markdown');
   const withMedia = HTML_MEDIA.test(html);
   const codeText = !withMedia && plain !== '' ? plain : null;
   if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
-    const even = evenPastedTables(html);
-    return { blocks: pastedBlocks(reader, even), lost: 0, plain: null, codeText, paste: (r) => r.pasteHTML(even) };
+    return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText };
   }
-  if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: null, paste: () => undefined };
+  if (!markdown && plain === '' && html === '') return { source: blocksOf([]), lost: 0, plain: null };
   const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);
   const { blocks, lost } = readByMarkers(reader, source, lands);
-  return { blocks, lost, plain: plainOnly, codeText, paste: (r) => r.pasteHTML(r.blocksToFullHTML(blocks as never), true) };
-}
-
-/**
- * Reads the body's own content, as a drag within the body carries it: the
- * blocks a paste of the same clipboard HTML reads, each keeping the body's
- * own node it came from (its comments and its row id), read from the same
- * HTML the same way BlockNote reads it, a block group of containers.
- * @param reader - The editor.
- * @param html - The content's clipboard HTML.
- * @param schema - The body's schema.
- * @returns The content read.
- */
-export function readBodyContent(reader: BlockReader, html: string, schema: Schema): Read {
-  const blocks = reader.tryParseHTMLToBlocks(html) as ReadBlock[];
-  const group = SchemaParser.fromSchema(schema).parse(inertBody(html), { topNode: schema.nodes['blockGroup']!.create() });
-  /**
-   * Keeps on each block the node it was read from, its nested ones too.
-   * @param list - The blocks.
-   * @param nodes - The nodes they were read from, in order.
-   * @returns The blocks.
-   */
-  const sourced = (list: readonly ReadBlock[], nodes: readonly PMNode[]): ReadBlock[] =>
-    list.length !== nodes.length
-      ? [...list]
-      : list.map((block, i) => {
-        const node = nodes[i]!;
-        const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
-        return { ...block, children: sourced(block.children ?? [], nested), [BODY_NODE]: node };
-      });
-  return { blocks: withOpenEdges(sourced(blocks, group.children), html), lost: 0, plain: null, paste: (r) => r.pasteHTML(html, true) };
-}
-
-/**
- * The body's own copy with its open ends read the same at any depth.
- * ProseMirror records how deep each end of a copied slice is open
- * (`data-pm-slice`, plus one level per node of the context it wraps the
- * slice in). Each end opens into one line, which this reads as a top-level
- * block: the nested line the end opens into is read out of its parent, and
- * the parents the start opens through, whose own lines lie before the copy
- * and which BlockNote reads as empty paragraphs, are left out; a line read
- * out this way is marked (`OPEN_NESTED`). An open end with no words is the
- * boundary of a line the copy only touched, which joins the line it lands in
- * and is no line of its own (`OPEN_EDGE`); it has no type of its own and
- * reads as an empty paragraph, the lines nested under it following it.
- * @param blocks - The blocks read.
- * @param html - The copy's clipboard HTML.
- * @returns The blocks.
- */
-function withOpenEdges(blocks: readonly ReadBlock[], html: string): ReadBlock[] {
-  const marker = /data-pm-slice="(\d+) (\d+) ([^"]*)"/.exec(html);
-  if (marker === null) return [...blocks];
-  /**
-   * How many lines an end opens through: each block group and block container
-   * it opens is one level, the slice's context included.
-   * @param open - The end's open depth, as `data-pm-slice` records it.
-   * @returns The lines.
-   */
-  const levels = (open: string): number => Math.floor((Number(open) + contextDepth(marker[3]!) - 1) / 2);
-  /**
-   * Whether a block is a line with no words.
-   * @param block - The block.
-   * @returns True for such a line.
-   */
-  const wordless = (block: ReadBlock | undefined): boolean => block !== undefined && wordsIn(block.content) === '';
-  /**
-   * An open end with no words, as the empty paragraph it reads as.
-   * @param block - The block.
-   * @returns The marked block.
-   */
-  const edge = (block: ReadBlock): ReadBlock => ({ type: 'paragraph', content: [], children: [], [OPEN_EDGE]: true, ...(block[BODY_NODE] === undefined ? {} : { [BODY_NODE]: block[BODY_NODE] }) });
-  const out = [...blocks];
-  const start = levels(marker[1]!);
-  const parents = openParents(html, start - 1);
-  if (parents > 0 && parents < out.length) {
-    out.splice(0, parents);
-    if (!wordless(out[0])) out[0] = { ...out[0]!, [OPEN_NESTED]: true };
-  }
-  const end = levels(marker[2]!);
-  /**
-   * A block without the nested line its end opens into, and that line.
-   * @param block - The block.
-   * @param depth - How many levels of nested lines the end still opens through.
-   * @returns The block and the line, or no line when the end opens no deeper.
-   */
-  const openLine = (block: ReadBlock, depth: number): [ReadBlock, ReadBlock | null] => {
-    const children = block.children ?? [];
-    const last = children[children.length - 1];
-    if (depth === 0 || last === undefined) return [block, null];
-    const [kept, line] = openLine(last, depth - 1);
-    if (line === null) return [{ ...block, children: children.slice(0, -1) }, last];
-    return [{ ...block, children: [...children.slice(0, -1), kept] }, line];
-  };
-  if (end > 1 && out.length > 0) {
-    const [kept, line] = openLine(out[out.length - 1]!, end - 1);
-    if (line !== null) out.splice(out.length - 1, 1, kept, wordless(line) ? line : { ...line, [OPEN_NESTED]: true });
-  }
-  // After the end's line is lifted: a copy from a parent's empty end into its
-  // nested line reads as one block until then.
-  if (start > 0 && out.length > 1 && wordless(out[0])) out.splice(0, 1, edge(out[0]!), ...(out[0]!.children ?? []));
-  const last = out[out.length - 1];
-  if (end > 0 && out.length > 1 && wordless(last) && (last!.children ?? []).length === 0) out[out.length - 1] = edge(last!);
-  return out;
-}
-
-/**
- * How many parents the start of a copied slice opens through before its first
- * line: block containers in its HTML that hold a nested block group and no
- * content of their own.
- * @param html - The copy's clipboard HTML.
- * @param most - The most there can be: one fewer than the lines the start opens through.
- * @returns The count.
- */
-function openParents(html: string, most: number): number {
-  let group = inertBody(html).querySelector('[data-pm-slice]');
-  let count = 0;
-  while (count < most && group?.getAttribute('data-node-type') === 'blockGroup') {
-    const first = group.firstElementChild?.querySelector(':scope > [data-node-type="blockContainer"]')?.firstElementChild;
-    if (first?.getAttribute('data-node-type') !== 'blockGroup') break;
-    count += 1;
-    group = first;
-  }
-  return count;
-}
-
-/**
- * How many nodes the context of a copied slice wraps it in.
- * @param context - The context ProseMirror writes into `data-pm-slice`, HTML-escaped or not.
- * @returns The count; none when it cannot be read.
- */
-function contextDepth(context: string): number {
-  try {
-    const nodes: unknown = JSON.parse(context.replaceAll('&quot;', '"'));
-    return Array.isArray(nodes) ? Math.floor(nodes.length / 2) : 0;
-  } catch {
-    return 0;
-  }
+  return { source: blocksOf(blocks), lost, plain: plainOnly, codeText };
 }

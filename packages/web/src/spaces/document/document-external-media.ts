@@ -234,7 +234,7 @@ export function documentPastedMediaExtension(
                   media.leaveOut(read.lost);
                   return true;
                 }
-                const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, dropAt: at });
+                const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, dropAt: at, byPaste: true });
                 if (placed !== null) selectPlaced(view, placed);
                 return true;
               },

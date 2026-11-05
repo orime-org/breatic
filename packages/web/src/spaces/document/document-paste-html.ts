@@ -4,8 +4,7 @@
 /**
  * The paste of anything that is not files or a canvas clipboard (inner#1351 +
  * inner#1390 design §5.1, §5.4): read first (`document-paste-read.ts`), then
- * put at the selection (`document-put.ts`), lines of words alone by the
- * paste of their format, as BlockNote pastes them.
+ * put at the selection (`document-put.ts`).
  */
 
 import type { PasteHandler } from '@web/spaces/document/document-file-input';
@@ -29,6 +28,7 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
     wordsIntoTarget: true,
     judge: pasted.judge,
     leaveOut: pasted.leaveOut,
+    byPaste: true,
   });
   return true;
 };

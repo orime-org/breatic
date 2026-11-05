@@ -19,6 +19,11 @@
  * - any other selection that holds a table copies as BlockNote copies it,
  *   with the plain text the Agent reads (`blocksMarkdown`).
  *
+ * A stored (legacy) table copies by the same rules (inner#1351 design §5.4.3
+ * "stored tables"): words in one of its cells as those words, a selection
+ * across its cells as the whole table. Temporary, with #1362's conversion of
+ * stored tables: it goes once no stored document holds a `table` node.
+ *
  * Every other selection is BlockNote's.
  */
 
@@ -134,6 +139,29 @@ function inCellBlocks(view: EditorView, depth: number): ClippedBlocks {
 }
 
 /**
+ * A selection inside one stored (legacy) table: the words of one of its cells
+ * as a line of those words, opened into the line at both ends, or the table
+ * whole when the selection crosses its cells.
+ * @param view - The editor view.
+ * @returns The blocks and the slice, or null when the selection is not inside one stored table.
+ */
+function inStoredTable(view: EditorView): ClippedBlocks | null {
+  const { $from, $to } = view.state.selection;
+  let depth = -1;
+  for (let d = $from.depth; d > 0; d -= 1) if ($from.node(d).type.name === 'table') depth = d;
+  if (depth < 1 || $to.depth < depth || $to.node(depth) !== $from.node(depth)) return null;
+  const { schema } = view.state;
+  if ($from.sameParent($to)) {
+    const words = $from.parent.content.cut($from.parentOffset, $to.parentOffset);
+    const line = schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create(null, words));
+    const group = schema.nodes['blockGroup']!.create(null, line);
+    return { blocks: fragmentToBlocks(group.content as never) as never[], slice: new Slice(Fragment.from(group), 3, 3) };
+  }
+  const table = $from.node(depth - 1);
+  return { blocks: fragmentToBlocks(Fragment.from(table) as never) as never[], slice: new Slice(Fragment.from(table), 0, 0) };
+}
+
+/**
  * The blocks a copy of the selection carries, where it is not BlockNote's to
  * write: selected cells, words in one cell, or a range holding a table.
  * @param view - The editor view.
@@ -146,6 +174,8 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
   // A node selected in a cell (a picture, a video) is BlockNote's to copy, as
   // in the body: its content carries the node alone, not the levels above.
   if (selection instanceof NodeSelection) return null;
+  const stored = inStoredTable(view);
+  if (stored !== null) return stored;
   const depth = oneCellDepth(selection);
   if (depth > 0) return inCellBlocks(view, depth);
   // A selection leaving a table carries the whole table (inner#1619 T14).

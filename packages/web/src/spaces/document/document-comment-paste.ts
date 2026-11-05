@@ -140,7 +140,7 @@ interface LandingView {
  * @param drops - Which ids go; every one when left out.
  * @returns The same content and open depths, those rows' ids null.
  */
-function withoutRowIds(slice: Slice, drops: (id: unknown) => boolean = () => true): Slice {
+export function withoutRowIds(slice: Slice, drops: (id: unknown) => boolean = () => true): Slice {
   /**
    * Rebuilds one fragment, clearing the picked ids at every depth.
    * @param fragment - The fragment to rebuild.
