@@ -365,6 +365,48 @@ export default [
     },
   },
   {
+    // Every Space document write sits inside a writeSpaceDoc or
+    // runCanvasUndoBatch callback, where the size cap is checked (inner#1790).
+    // The functions below check it another way; each says how.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/space-doc-write-gateway': [
+        'error',
+        {
+          exceptions: [
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'writeSnapshotNodes',
+              reason: 'Takes a Y.Doc and writes both scratch documents and real Spaces; the real caller checks in its runCanvasUndoBatch.',
+            },
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'landHandlingContent',
+              reason: 'Only called inside the already-checked writes of setNodeExtractedText and restoreNodeMedia.',
+            },
+            {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeProposalPrompt',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
+              file: 'src/data/yjs/scene-document.ts',
+              function: 'applySceneCommand',
+              reason: '3D checks the size state in planSceneCommand and returns full.',
+            },
+            {
+              file: 'src/data/yjs/scene-session.ts',
+              function: 'historyStep',
+              reason: 'historyStep reads the size state and returns SceneCommandFailure full before stepping.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // The app-level provider lives in App.tsx; the dev gallery is a separate
     // page tree and legitimately mounts its own. The vendor primitive file
     // needed an exemption from the text guard because its JSDoc examples read

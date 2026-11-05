@@ -44,6 +44,7 @@ import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 import { testFileLocation } from "#rules/rules/test-file-location";
 import { noHelperModuleHooks } from "#rules/rules/no-helper-module-hooks";
+import { spaceDocWriteGateway } from "#rules/rules/space-doc-write-gateway";
 
 /**
  * The repository's own ESLint plugin.
@@ -102,5 +103,6 @@ export const breaticPlugin = {
     "single-tooltip-provider": singleTooltipProvider,
     "test-file-location": testFileLocation,
     "no-helper-module-hooks": noHelperModuleHooks,
+    "space-doc-write-gateway": spaceDocWriteGateway,
   },
 } as const;
