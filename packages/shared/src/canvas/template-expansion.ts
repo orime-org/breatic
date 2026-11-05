@@ -326,6 +326,14 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
       if (chosen !== undefined) give(input.key, fed, chosen);
     }
   }
+  // An input fed only into nodes this apply places new has nowhere to be
+  // wired yet but the anchor: it takes the first free node wired in there.
+  for (const input of skeleton.inputs) {
+    if (inputs.has(input.key) || input.feeds.includes(skeleton.anchor)) continue;
+    if (!input.feeds.every((fed) => keys.get(fed)?.kind === "missing")) continue;
+    const chosen = incoming(anchor).map((wire) => wire.from).find((from) => free(from, input));
+    if (chosen !== undefined) for (const fed of input.feeds) give(input.key, fed, chosen);
+  }
   const unassigned = skeleton.inputs.flatMap((input) =>
     fedNodes(input).flatMap(([fed]) => (inputs.get(input.key)?.has(fed) ? [] : [{ input: input.key, fed }])),
   );
