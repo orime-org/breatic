@@ -1780,29 +1780,6 @@ models:
           base_price: 150000
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(audio)), 600])]) / 5 * base_price * (resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/infinitalk/video-to-video
-        prompt_field: prompt
-        send_empty: true
-        output_field: video
-        params:
-          audio:
-            field: audio_url
-          resolution:
-            field: resolution
-          video:
-            field: video_url
-        fixed:
-          num_frames: 241
-        rejects:
-          - when: get_duration(audio_url) > 9.64
-            reason: "fal num_frames maximum 241 at InfiniteTalk's 25 fps: audio past 9.64 s is cut"
-        pricing:
-          kind: formula
-          base_price: 300000
-          formula: '{"total_price": base_price * $min([get_duration(audio_url), 241 / 25]) * 1.25 * (resolution = "720p" ? 2 : 1)}'
-          discount_rate: 100
       - upstream: sandbase
         weight: 3
         model_id: meigen/infinitetalk/video-to-video
