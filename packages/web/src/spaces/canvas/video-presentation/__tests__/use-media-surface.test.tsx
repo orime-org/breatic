@@ -12,7 +12,7 @@ import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
 // bundle and its alpha-packed manifest (null for native); the earlier `presentation: VideoPresentation` descriptor with
 // its `state` is gone (fixtures migrated, 4.4.5).
 const CANONICAL = 'https://assets.example/canonical.webm';
-const bundleOf = (versionId: string, fingerprint: string = PRESENTED.fingerprint, url = CANONICAL): VideoPresentationSource['presentation'] =>
+const bundleOf = (versionId: string, fingerprint: string = PRESENTED.fingerprint, url = CANONICAL): ReturnType<typeof presentedBundle> =>
   presentedBundle(url, { sourceFingerprint: fingerprint, versionId, display: { width: 160, height: 96, duration: { numerator: '1', denominator: '1' } } });
 const source = { canonicalURL: CANONICAL, sourceFingerprint: PRESENTED.fingerprint, presentation: bundleOf(PRESENTED.versionId), manifest: null } as unknown as VideoPresentationSource;
 
@@ -64,7 +64,7 @@ describe('effect-owned video surface lifecycle', () => {
     const { result, rerender } = mount();
     ready();
     const epoch = result.current.binding!.sourceEpoch;
-    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64), 'https://assets.example/b.mp4') }, active: true });
+    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64), 'https://assets.example/b.mp4') } as unknown as VideoPresentationSource, active: true });
     expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe('loading');
     ready(0);
@@ -118,7 +118,7 @@ describe('effect-owned video surface lifecycle', () => {
   // what remains is that a bundle of another source never reaches a renderer.
   it('does not create a renderer for a bundle of another source', () => {
     const { rerender } = mount(false);
-    rerender({ source: { ...source, presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64)) }, active: true });
+    rerender({ source: { ...source, presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64)) } as unknown as VideoPresentationSource, active: true });
     expect(createRenderer).toHaveBeenCalledTimes(0);
   });
 
@@ -131,7 +131,7 @@ describe('effect-owned video surface lifecycle', () => {
     const { result, rerender } = mount();
     ready();
     expect(result.current.binding?.sourceKey).toBe(oldKey);
-    rerender({ source: { ...source, presentation: bundleOf(next) }, active: true });
+    rerender({ source: { ...source, presentation: bundleOf(next) } as unknown as VideoPresentationSource, active: true });
     expect(result.current.binding?.sourceKey ?? oldKey).toBe(oldKey);
     ready(1);
     expect(result.current.binding?.sourceKey).toBe(JSON.stringify([CANONICAL, PRESENTED.fingerprint, next]));
