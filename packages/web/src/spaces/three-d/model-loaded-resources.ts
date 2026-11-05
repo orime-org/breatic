@@ -22,7 +22,6 @@ const TRIANGLE_MODES: ReadonlySet<unknown> = new Set([undefined, 4, 5, 6]);
 /** Morph target attributes GLTFLoader r173 reads (addMorphTargets). */
 const MORPH_ATTRIBUTES = ['POSITION', 'NORMAL', 'COLOR_0'] as const;
 
-/** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names no existing image. */
 /** Capabilities registered by the installed r173 GLTFLoader and its decoders. */
 const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
   'KHR_binary_glTF', 'KHR_draco_mesh_compression', 'KHR_lights_punctual',
@@ -35,6 +34,17 @@ const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Whether a browser cannot decode the texture format an extension names, as GLTFLoader's WebP and AVIF probes decide.
+ * @param name - An extension identifier.
+ * @param support - The browser's WebP and AVIF support.
+ * @returns True for WebP or AVIF the browser cannot decode.
+ * @throws {never} Never.
+ */
+function undecodable(name: string, support: TextureFormatSupport): boolean {
+  return (name === 'EXT_texture_webp' && !support.webp) || (name === 'EXT_texture_avif' && !support.avif);
+}
+
+/**
  * Report extensions outside the capabilities registered by this exact loader, and required WebP or AVIF textures this browser cannot decode.
  * @param json - The glTF document with its original extension declarations.
  * @param support - This browser's WebP and AVIF support.
@@ -42,19 +52,13 @@ const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
  * @throws {never} Never.
  */
 export function getUnsupportedModelExtensions(json: GltfDocument, support: TextureFormatSupport): { required: string[]; optional: string[] } {
-  /**
-   * Whether this browser cannot decode the texture format an extension names.
-   * @param value - An extension identifier.
-   * @returns True for WebP or AVIF this browser cannot decode.
-   * @throws {never} Never.
-   */
-  const undecodable = (value: string): boolean => (value === 'EXT_texture_webp' && !support.webp) || (value === 'EXT_texture_avif' && !support.avif);
-  const required = json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) || undecodable(value)) ?? [];
+  const required = json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) || undecodable(value, support)) ?? [];
   const requiredSet = new Set(json.extensionsRequired ?? []);
   const optional = json.extensionsUsed?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) && !requiredSet.has(value)) ?? [];
   return { required, optional };
 }
 
+/** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names no existing image. */
 interface LoadedTexture {
   texture: number;
   image: number | undefined;
@@ -140,7 +144,7 @@ function textureImage(texture: JsonObject | undefined, support: TextureFormatSup
   for (const name of TEXTURE_SOURCE_EXTENSIONS) {
     const source = index(object(extensions?.[name])?.source);
     if (source === undefined) continue;
-    if ((name === 'EXT_texture_webp' && !support.webp) || (name === 'EXT_texture_avif' && !support.avif)) break;
+    if (undecodable(name, support)) break;
     return { image: source, extension: name };
   }
   return { image: index(texture?.source), extension: undefined };
@@ -272,7 +276,7 @@ export function loadedResources(json: GltfDocument, support: TextureFormatSuppor
 export function loadedResourcesInEveryBrowser(json: GltfDocument): LoadedResources[] {
   const required = new Set(json.extensionsRequired ?? []);
   return [false, true].flatMap((webp) => [false, true].map((avif) => ({ webp, avif })))
-    .filter((support) => (support.webp || !required.has('EXT_texture_webp')) && (support.avif || !required.has('EXT_texture_avif')))
+    .filter((support) => ![...required].some((name) => undecodable(name, support)))
     .map((support) => loadedResources(json, support));
 }
 
