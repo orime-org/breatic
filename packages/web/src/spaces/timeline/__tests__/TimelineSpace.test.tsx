@@ -2268,3 +2268,115 @@ describe('TimelineSpace ignores edit shortcuts during a drag (inner#1708 R1)', (
     await waitFor(() => expect(layout().clips[X]).toBe(undefined));
   });
 });
+
+describe('TimelineSpace keeps keyboard focus on the moved clip (inner#1708 G1)', () => {
+  /**
+   * The clip button with this id.
+   * @param id - The clip.
+   * @returns Its button.
+   * @throws {Error} When it is absent.
+   */
+  function clipButton(id: string): HTMLElement {
+    return screen.getByTestId('timeline-clip-' + id);
+  }
+
+  /**
+   * Focus a clip and press a key on whatever then holds focus.
+   * @param key - The key.
+   * @param modifiers - Modifier flags.
+   * @throws {Error} When a handler throws.
+   */
+  function pressFocused(key: string, modifiers: Partial<Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'>> = {}): void {
+    fireEvent.keyDown(document.activeElement ?? document.body, { key, ...modifiers });
+  }
+
+  it('returns focus to a clip Alt+Up moved to the track above and to a new top track (a)', async () => {
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    act(() => clipButton(X).focus());
+    pressFocused('ArrowUp', { altKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+    pressFocused('ArrowUp', { altKey: true });
+    await waitFor(() => expect(Object.keys(layout().tracks)).toHaveLength(3));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+  });
+
+  it('returns focus to a clip that undo and redo move to another track (b)', async () => {
+    seedLayout([clipAt(X, MAIN, 0, 24)]);
+    showTimeline();
+    act(() => clipButton(X).focus());
+    pressFocused('ArrowUp', { altKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+    pressFocused('z', { metaKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe(MAIN));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+    pressFocused('z', { metaKey: true, shiftKey: true });
+    await waitFor(() => expect(layout().clips[X]?.trackId).toBe('v2'));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+  });
+
+  it('returns focus to a clip a peer moves to another track (c)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    act(() => clipButton(X).focus());
+    act(() => { write(doc, { operation: 'move', parameters: { clipId: X, startFrame: 10, trackId: MAIN }, placement: OFF }); });
+    await waitFor(() => expect(clipButton(X)).toHaveAttribute('data-track-id', MAIN));
+    await waitFor(() => expect(document.activeElement).toBe(clipButton(X)));
+  });
+
+  it('moves focus to the Timeline root when the focused clip is deleted, and undo works from there (d)', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    act(() => clipButton(X).focus());
+    pressFocused('Delete');
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+    const root = screen.getByTestId('timeline-space');
+    await waitFor(() => expect(document.activeElement).toBe(root));
+    expect(root).toHaveAttribute('tabindex', '-1');
+    pressFocused('z', { metaKey: true });
+    await waitFor(() => expect(layout().clips[X]).toMatchObject({ trackId: 'v2', startFrame: 10 }));
+  });
+
+  it('leaves focus in a properties field when the selected clip moves (e)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const field = screen.getByTestId('timeline-clip-duration');
+    act(() => field.focus());
+    act(() => { write(doc, { operation: 'move', parameters: { clipId: X, startFrame: 10, trackId: MAIN }, placement: OFF }); });
+    await waitFor(() => expect(clipButton(X)).toHaveAttribute('data-track-id', MAIN));
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('timeline-clip-duration');
+  });
+
+  it('leaves focus outside the Timeline when a clip is deleted (e)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    act(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+    expect(document.activeElement).toBe(document.body);
+    act(() => { write(doc, { operation: 'delete', parameters: { clipId: X }, placement: OFF }); });
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('TimelineSpace lists a clip record stored under another key as damaged (inner#1708 Q1)', () => {
+  it('shows it with a delete control that removes the record', async () => {
+    const KEY = '30000000-0000-4000-8000-0000000000e1';
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(KEY, record);
+      for (const [name, value] of Object.entries(clipAt(Y2, 'v2', 60, 10))) record.set(name, value);
+    }, 'provider');
+    showTimeline();
+    const row = await screen.findByTestId('timeline-conflict-' + KEY);
+    expect(row).toHaveTextContent(t('timeline.conflictReason.damaged'));
+    expect(screen.queryByTestId('timeline-clip-' + Y2)).toBe(null);
+    fireEvent.click(screen.getByTestId('timeline-damaged-delete-' + KEY));
+    await waitFor(() => expect(currentDoc().getMap('clips').has(KEY)).toBe(false));
+    expect(layout().clips[X]).toMatchObject({ startFrame: 10 });
+  });
+});
