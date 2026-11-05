@@ -5,14 +5,16 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { videoPresentationQuery, repairVideoPresentation } from '../video-presentation-query';
 import { ApiException } from '@web/data/api/types';
+import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
 const { apiGet, apiPost, toastError } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn(), toastError: vi.fn() }));
 vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet, apiPost }));
 vi.mock('@web/lib/toast', async (original) => ({ ...await original<Record<string, unknown>>(), toast: { error: toastError } }));
 const input = { projectId: 'project-a', canonicalURL: 'https://assets.example.test/canonical.webm', active: true };
-const binding = { assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: 'a'.repeat(64), canonicalURL: input.canonicalURL,
-  kind: 'video', mediaInfo: { width: null, height: null, duration: null, mimeType: 'video/webm' } };
-const unknown = { sourceBinding: binding, presentation: null, preparation: null, pollAfterMs: null };
+// §95 (design §3.5 web→server row): the read answers the selected bundle, the target policy's preparation and the selected
+// version's ledger; a repair answers the same response (fixtures migrated from the earlier state/status shapes, 4.4.5).
+const binding = presentedBinding(input.canonicalURL);
+const unknown = presentedResponse(binding);
 let client: QueryClient;
 
 beforeEach(() => {
@@ -39,14 +41,13 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
   });
 
   it('rejects a descriptor for a different registered source', async () => {
-    apiGet.mockResolvedValue({ ...unknown, presentation: { schemaVersion: 1, sourceFingerprint: 'b'.repeat(64),
-      original: { width: 95, height: 63, duration: 2.4 }, state: 'native' } });
+    apiGet.mockResolvedValue({ ...unknown, presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: 'b'.repeat(64) }) });
     await expect(client.fetchQuery(videoPresentationQuery(input))).rejects.toThrow();
   });
 
   it('polls only while accepted work is pending using the returned interval', async () => {
     vi.useFakeTimers();
-    const pending = { ...unknown, preparation: { status: 'running', attempt: { jobId: 'fixed', deadlineAt: 1900000000000 } }, pollAfterMs: 1234 };
+    const pending = presentedResponse(binding, { preparation: presentedPreparation(null, 'encode') }, 1234);
     apiGet.mockResolvedValueOnce(pending).mockResolvedValue(unknown);
     const observer = new QueryObserver(client, videoPresentationQuery(input));
     const unsubscribe = observer.subscribe(() => undefined);
@@ -73,13 +74,22 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
   });
 
   it('repairs the registered canonical source with the same idempotent press identity', async () => {
-    const attempt = { jobId: 'accepted-repair', deadlineAt: 1900000000000 };
-    const answer = { ...unknown, attempt, preparation: { status: 'accepted', attempt }, pollAfterMs: 5000 };
+    const answer = presentedResponse(binding, { preparation: presentedPreparation(null) });
     apiPost.mockResolvedValue(answer);
     expect(await repairVideoPresentation({ ...input, sourceFingerprint: binding.contentHash }, 'repair-press')).toEqual(answer);
     expect(apiPost).toHaveBeenCalledWith(`/projects/${input.projectId}/assets/video-presentation/repair`, {
       canonicalURL: input.canonicalURL, sourceFingerprint: binding.contentHash,
     }, expect.objectContaining({ headers: { 'Idempotency-Key': 'repair-press' }, timeout: 0 }));
+  });
+
+  // §95 (design §3.5 web→server row, §7.12): the repair's answer is the read response itself, parsed by the same strict
+  // schema; the earlier repair shape (an `attempt` beside a status preparation) is refused, as is a bundle of another source.
+  it.each([
+    ['the earlier repair attempt field', { attempt: { jobId: 'accepted-repair', deadlineAt: 1900000000000 } }],
+    ['a bundle of another source', { presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: 'b'.repeat(64) }), preparation: null, pollAfterMs: null }],
+  ])('refuses a repair answer with %s', async (_name, change) => {
+    apiPost.mockResolvedValue({ ...presentedResponse(binding, { preparation: presentedPreparation(null) }), ...change });
+    await expect(repairVideoPresentation({ ...input, sourceFingerprint: binding.contentHash }, 'repair-press')).rejects.toThrow();
   });
 
   it('reports a source conflict before propagating the same repair failure', async () => {
