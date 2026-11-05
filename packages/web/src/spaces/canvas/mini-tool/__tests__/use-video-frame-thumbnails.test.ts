@@ -8,14 +8,30 @@ import { createVideoToolDraft } from '../video/video-tool-edit';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import * as thumbnails from '../video/use-video-frame-thumbnails';
+import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
 
 // No hook, createVideoRenderer or VAP mock: only native media/canvas/WebGL.
 interface Frame { frameIndex: number; pts: number; displayEnd: number }
 type Hook = (source: VideoPresentationSource, frames: readonly Frame[], retry?: number) => thumbnails.VideoThumbnailState;
 const useThumbnails = thumbnails.useVideoFrameThumbnails as unknown as Hook;
-const hash = 'a'.repeat(64);
-const native: VideoPresentationSource = { canonicalURL: 'https://assets.example.test/flattened.mp4', sourceFingerprint: hash, presentation: { schemaVersion: 1, state: 'native', sourceFingerprint: hash, original: { width: 96, height: 64, duration: 12 } } };
-const alpha: VideoPresentationSource = { ...native, canonicalURL: 'https://assets.example.test/original.webm', presentation: { ...native.presentation, state: 'alpha_ready', alpha: { manifestURL: 'https://assets.example.test/alpha.json' } }, manifest: { schemaVersion: 1, sourceFingerprint: hash, packedURL: 'https://assets.example.test/packed.mp4', packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } } };
+// §97 (D10-1, D10-2; design §3.3, §3.5, §7.8): the source carries the selected bundle and, for alpha-packed, its manifest,
+// whose packed receipt is the playable carrier (fixtures migrated from `state`/`packedURL`, 4.4.5). The native bundle's
+// carrier is the source URL itself, so its playback URL stays the canonical URL.
+const hash = PRESENTED.fingerprint;
+const display = { width: 96, height: 64, duration: { numerator: '12', denominator: '1' } };
+/**
+ * A native source on its own carrier.
+ * @param canonicalURL - The source URL, also the carrier.
+ * @returns The source.
+ */
+const nativeAt = (canonicalURL: string): VideoPresentationSource => ({ canonicalURL, sourceFingerprint: hash, presentation: presentedBundle(canonicalURL, { display }), manifest: null });
+const native: VideoPresentationSource = nativeAt('https://assets.example.test/flattened.mp4');
+const packed = { storageKey: 'packed.mp4', url: 'https://assets.example.test/packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+const alpha: VideoPresentationSource = { canonicalURL: 'https://assets.example.test/original.webm', sourceFingerprint: hash,
+  presentation: presentedBundle('https://assets.example.test/original.webm', { display, playback: { kind: 'alpha-packed', carrier: packed,
+    manifest: { ...packed, storageKey: 'alpha.json', url: 'https://assets.example.test/alpha.json', contentType: 'application/json' } } }),
+  manifest: { schemaVersion: 1, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1, packed,
+    packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } } };
 const selected = [{ frameIndex: 7, pts: 9, displayEnd: 9.4 }, { frameIndex: 0, pts: 2, displayEnd: 2.2 }];
 let seeks: number[];
 let sources: string[];
@@ -68,7 +84,7 @@ describe('S4 frame preview cards use the panel presentation clock', () => {
   it('T02 uses packed playback and captures the real alpha renderer canvas, never the opaque packed video', async () => {
     const { result } = renderHook(() => useThumbnails(alpha, selected));
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(sources).toEqual([alpha.manifest!.packedURL]); expect(seeks).toEqual([9.2, 2.1]);
+    expect(sources).toEqual([alpha.manifest!.packed.url]); expect(seeks).toEqual([9.2, 2.1]);
     expect(glDraw).toHaveBeenCalled(); expect(drawn).toHaveLength(2);
     expect(drawn.every((surface) => surface instanceof HTMLCanvasElement)).toBe(true);
     expect(result.current.frames.map((frame) => frame.frameIndex)).toEqual([7, 0]);
@@ -78,13 +94,13 @@ describe('S4 frame preview cards use the panel presentation clock', () => {
     const props = { toolId: 'video.extract-frames' as const, draft, onChange: vi.fn(), analyses: [], frameTable: { schemaVersion: 1 as const, timescale: 10, runs: [{ start: 20, count: 1, step: 2, duration: 2 }, { start: 90, count: 1, step: 4, duration: 4 }] }, presentedTime: 2, disabled: false, pickingSlot: null, inputNames: new Map<string, string>(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), previewSource: alpha };
     render(createElement(VideoToolControls, props));
     await waitFor(() => expect(screen.getByTestId('video-frame-previews').querySelectorAll('img')).toHaveLength(1));
-    expect(seeks).toEqual([2.1]); expect(sources).toEqual([alpha.manifest!.packedURL]);
+    expect(seeks).toEqual([2.1]); expect(sources).toEqual([alpha.manifest!.packed.url]);
     expect(drawn).toHaveLength(1); expect(drawn[0]).toBeInstanceOf(HTMLCanvasElement);
   });
   it('T03 replaces source ownership with no old thumbnail visible and disposes native resources', async () => {
     const { result, rerender, unmount } = renderHook(({ source }) => useThumbnails(source, selected), { initialProps: { source: native } });
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    rerender({ source: { ...native, canonicalURL: 'https://assets.example.test/new.mp4' } });
+    rerender({ source: nativeAt('https://assets.example.test/new.mp4') });
     expect(result.current.frames).toEqual([]);
     await waitFor(() => expect(result.current.status).toBe('ready'));
     unmount(); expect(document.querySelectorAll('video[src],canvas')).toHaveLength(0);
