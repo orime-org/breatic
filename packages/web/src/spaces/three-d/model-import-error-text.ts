@@ -8,7 +8,7 @@ import type { ModelImportBudget, ModelImportErrorCode, ModelImportLimit } from '
 const BYTE_LIMITS: ReadonlySet<ModelImportLimit> = new Set(['input', 'expanded', 'entryJson', 'artifact', 'textureBytes']);
 
 /**
- * State an exceeded import limit with the measured value, sizes in megabytes rounded up to one decimal.
+ * State an exceeded import limit with the measured value, sizes in megabytes to one decimal: the measured size rounded up and the allowed size rounded down.
  * @param t - The current translator.
  * @param budget - The exceeded limit and both values.
  * @returns The localized sentence.

@@ -311,7 +311,7 @@ async function prepareUpload(
         spaceId: item.space_id ?? null,
         source: item.source ?? null,
         toolName: item.tool_name ?? null,
-        // Node-free models and covers stay off the canvas upload feed.
+        // Node-free models and covers write no row on the project activity feed.
         derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
         filename: item.filename,
         assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),

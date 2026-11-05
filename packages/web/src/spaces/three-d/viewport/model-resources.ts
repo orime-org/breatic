@@ -35,7 +35,7 @@ interface ResourceEntry {
 }
 
 /**
- * Release an instance's mutable materials and independent skeleton only.
+ * Release an instance's mutable materials, independent skeletons and per-copy instance buffers only.
  * @param root - The independent model instance being detached; its shared geometry and textures remain cached.
  * @throws {never} Never directly.
  */

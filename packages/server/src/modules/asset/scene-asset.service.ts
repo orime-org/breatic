@@ -24,7 +24,7 @@ export interface SceneAssetDescriptor {
  * @param projectId - Project whose scene references the asset.
  * @param userId - Caller who must be able to view that Project.
  * @param assetId - Registered asset id stored in the scene model reference.
- * @returns The registered URL and its model MIME type.
+ * @returns The registered URL, its model MIME type and its registered size.
  * @throws {NotFoundError} When the caller cannot view the Project or no live supported model matches.
  */
 export async function resolveSceneAsset(

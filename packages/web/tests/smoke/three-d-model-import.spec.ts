@@ -66,7 +66,7 @@ async function sceneView(page: Page): Promise<SceneView> {
 /**
  * Open the import through the keyboard-operated Add menu and its focus handoff.
  * @param page - The active editable scene page.
- * @returns The visible native application dialog.
+ * @returns The visible model import dialog.
  * @throws {Error} When the scene or dialog cannot be opened.
  */
 async function openImport(page: Page): Promise<Locator> {

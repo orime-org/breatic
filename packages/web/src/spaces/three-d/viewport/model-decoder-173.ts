@@ -20,7 +20,7 @@ import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
 export interface ModelDecoder {
   loader: GLTFLoader;
-  /** Download the decoders the model declares, so a failed download surfaces before parsing as a plain, retryable error. */
+  /** Download the decoders the loaded resources need, so a failed download surfaces before parsing as a plain, retryable error. */
   prepare: () => Promise<void>;
   dispose: () => void;
 }

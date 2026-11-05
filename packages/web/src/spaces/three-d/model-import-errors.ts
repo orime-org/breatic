@@ -34,7 +34,7 @@ export class ModelImportError extends Error {
   /**
    * Describe a local inspection or upload failure without embedding UI copy.
    * Every failure states its location, and every budget failure states the limit it exceeded.
-   * @param code - Locale-key suffix for the failed operation.
+   * @param code - The failure's cause, which importErrorKey maps to its locale key.
    * @param message - Internal diagnostic used by logs and tests.
    * @param facts - Where the failure is, the selection's paths and entries, and the exceeded limit.
    * @throws {never} Never.

@@ -645,8 +645,8 @@ only, no zip64) and parses it the same way. Texture edges are held to
 texture size. A KTX2 image must be a Basis Universal (vkFormat 0) 2D texture.
 `max_texture_bytes` bounds the cumulative texture upload, computed from the
 declarations alone for every browser that can open the model, so every device
-reaches the same verdict: one upload per GLTFLoader texture cache entry and
-filter and wrap values, RGBA images at 4 bytes per pixel with their mip chain
+reaches the same verdict: one upload per image and per distinct filter and wrap
+values (GLTFLoader shares one source per image), RGBA images at 4 bytes per pixel with their mip chain
 when the min filter uses one, and KTX2 at its declared levels and 16 bytes per
 4x4 block. A device with no compressed texture format decodes KTX2 to RGBA and
 can exceed that estimate; colour space is not part of the count, and a cached

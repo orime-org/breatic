@@ -86,7 +86,7 @@ export const SceneModelImportDialog = React.memo(function SceneModelImportDialog
   const content = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     // A focused button that turns natively disabled drops keyboard focus to the body, and one that unmounts drops it to the dialog;
-    // hand it to the next step: Import to scene when it is available, otherwise the control that remedies the refusal.
+    // hand it to the next step: the primary footer button (Import to scene or Retry) when it is available, otherwise the control that remedies the refusal.
     const active = document.activeElement;
     if (checking || (active !== document.body && active !== content.current && !(primaryUnavailable && active === primaryButton.current))) return;
     (primaryUnavailable ? addResourcesButton.current ?? chooseFilesButton.current : primaryButton.current)?.focus();

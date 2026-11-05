@@ -59,7 +59,7 @@ export interface SceneImportLimits {
   maxTextureBytes: number;
 }
 
-/** Scene controls and import configuration from the owning Project. */
+/** Configured scene controls and import budgets, served through the readable Project API. */
 export interface SceneControlsConfig {
   scaleSensitivity: number;
   import: SceneImportLimits;

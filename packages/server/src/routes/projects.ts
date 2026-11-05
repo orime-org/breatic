@@ -45,7 +45,7 @@ projects.use(requireAuth);
 
 /**
  * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
- * @returns Scene controls and model import budgets for this Project.
+ * @returns The configured scene controls and model import budgets, the same for every Project.
  */
 projects.get(
   "/:id/three-d/config",
@@ -73,7 +73,7 @@ projects.get(
 
 /**
  * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL and MIME type in the standard data envelope.
+ * @returns The registered model URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",
