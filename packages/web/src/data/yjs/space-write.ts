@@ -13,6 +13,8 @@
  * result.
  */
 
+import type { Slice } from '@tiptap/pm/model';
+
 import { formatBytes, parseDocName, t } from '@breatic/shared';
 import { readDocVersions } from '@web/data/yjs/collab-socket';
 import {
@@ -21,6 +23,44 @@ import {
 import { toast } from '@web/lib/toast';
 
 export type { SpaceReservation } from '@web/data/yjs/doc-size';
+
+/** Bytes counted for each node a write creates, over its own content. */
+const NODE_BYTES = 64;
+
+/**
+ * UTF-8 bytes of a string.
+ * @param text - The string.
+ * @returns Its encoded length.
+ */
+function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+/**
+ * What adding one canvas node can grow its document by.
+ * @param node - The node's fields as they are written.
+ * @returns Bytes.
+ */
+export function estimateNodeBytes(node: unknown): number {
+  return utf8Bytes(JSON.stringify(node) ?? '') + NODE_BYTES;
+}
+
+/**
+ * What inserting a ProseMirror slice can grow its document by: its text, a
+ * fixed count per node, and the attributes and marks it carries.
+ * @param slice - The slice.
+ * @returns Bytes.
+ */
+export function estimateSliceBytes(slice: Slice): number {
+  let bytes = 0;
+  slice.content.descendants((node) => {
+    bytes += NODE_BYTES + utf8Bytes(JSON.stringify(node.attrs));
+    if (node.isText) bytes += utf8Bytes(node.text ?? '');
+    for (const mark of node.marks) bytes += utf8Bytes(JSON.stringify(mark.toJSON()));
+    return true;
+  });
+  return bytes;
+}
 
 /** What a write does to the document's size. */
 export type SpaceWriteKind = 'add' | 'overwrite' | 'delete';
