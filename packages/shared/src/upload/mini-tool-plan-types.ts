@@ -82,7 +82,8 @@ export type MiniToolPlanRecipe =
   | { kind: "people"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; profile: MiniToolPlanDetectorProfile }
   | { kind: "scene_cuts"; inputId: string; window: { start: number; end: number }; timescale: number; profile: MiniToolPlanDetectorProfile;
     entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
-  | { kind: "copy_carrier"; inputId: string; colorMatrix: string }
+  /** The video is packet-copied; the audio is copied, encoded to AAC over the stitch's audio entries, or absent (§7.17). */
+  | { kind: "copy_carrier"; inputId: string; colorMatrix: string; audio: { kind: "copy" } | ({ kind: "encode" } & MiniToolPlanAudio) | null }
   | ({ kind: "chunk_encode" } & MiniToolPlanWindowRecipe)
   | { kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | null; target: MiniToolPlanTarget }
   | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe);
