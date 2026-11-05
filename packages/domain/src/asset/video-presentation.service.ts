@@ -14,7 +14,7 @@ export interface ResolveVideoPresentationInput { projectId: string; userId: stri
 /** An explicit repair retains the press identity across delivery retries. */
 export interface RepairVideoPresentationInput extends ResolveVideoPresentationInput { sourceFingerprint: string; requestId: string }
 /** An automatic registration or first-read metadata preparation. */
-export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean; dedupWinner?: boolean }
+export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean; conditional?: boolean }
 /** The queue retains the accepted source and job identity; the deadline lives in the DO admission record (design §5.1 step 1). */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string }
 export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
@@ -247,6 +247,6 @@ export async function ensureVideoPresentation(input: EnsureVideoPresentationInpu
   const row = await findById(input.assetId);
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return null;
   // A dedup winner or a replayed terminal is not a new upload's initialization: it admits only as a discovery read would (§3.5).
-  const { dedupWinner, ...options } = input;
-  return (await (dedupWinner === true ? readThenAdmit(row, options) : accept(row, options))).preparation;
+  const { conditional, ...options } = input;
+  return (await (conditional === true ? readThenAdmit(row, options) : accept(row, options))).preparation;
 }
