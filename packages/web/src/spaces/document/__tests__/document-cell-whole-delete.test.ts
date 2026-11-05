@@ -12,7 +12,7 @@ import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { open, positionOf, settled } from './paste-harness';
+import { OURS, open, paste, positionOf, settled } from './paste-harness';
 import { tableBlock } from './table-fixtures';
 
 type Editor = ReturnType<typeof open>['editor'];
@@ -22,12 +22,13 @@ type Editor = ReturnType<typeof open>['editor'];
  * those two selected whole.
  * @returns The editor.
  */
-async function wholeCellSelected(): Promise<Editor> {
+async function wholeCellSelected(header = false): Promise<Editor> {
   const table = tableBlock({
     rows: [
       { cells: [{ blocks: [{ type: 'heading', content: 'Head' }, { type: 'paragraph', content: 'line' }] }, 'c2'] },
       { cells: ['d1', 'd2'] },
     ],
+    headerRows: header ? 1 : 0,
   });
   const { editor } = open([{ type: 'paragraph', content: 'lead' }, table, { type: 'paragraph', content: 'tail' }] as never);
   await act(async () => { await settled(); });
@@ -65,7 +66,7 @@ function expectEmptiedCell(editor: Editor): void {
   expect($head.parent.content.size).toBe(0);
   let cell = '';
   for (let depth = $head.depth; depth > 0; depth -= 1) {
-    if ($head.node(depth).type.name === 'docTableCell') cell = $head.node(depth).textContent;
+    if (['docTableCell', 'docTableHeader'].includes($head.node(depth).type.name)) cell = $head.node(depth).textContent;
   }
   expect(cell).toBe('');
 }
@@ -130,5 +131,63 @@ describe('a selection covering one whole cell, taken away', () => {
     expect(rows(editor)).toEqual([['', 'c2'], ['d1', 'd2']]);
     expect(view.state.doc.textContent).toContain('Head');
     expect(view.state.doc.textContent).toContain('line');
+  });
+});
+
+describe('a selection covering one whole cell, replaced', () => {
+  it('by Backspace in a header cell keeps the cell', async () => {
+    const editor = await wholeCellSelected(true);
+    press(editor, 'Backspace');
+    expectEmptiedCell(editor);
+  });
+
+  it('by a paste of several lines puts them in the cell, which stays', async () => {
+    const editor = await wholeCellSelected();
+    paste(editor, '<p>zz</p><p>yy</p>', 'zz\nyy');
+    await settled();
+    expect(rows(editor)).toEqual([['zzyy', 'c2'], ['d1', 'd2']]);
+  });
+
+  it('by Enter leaves the cell in its row', async () => {
+    const editor = await wholeCellSelected();
+    press(editor, 'Enter');
+    expect(rows(editor)).toEqual([['', 'c2'], ['d1', 'd2']]);
+  });
+
+  it('by a typed letter puts the letter in the cell, which stays', async () => {
+    const editor = await wholeCellSelected();
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.insertText('q'));
+    expect(rows(editor)).toEqual([['q', 'c2'], ['d1', 'd2']]);
+  });
+});
+
+describe('a selection that does not cover a whole cell, taken away', () => {
+  it.each([
+    ['picture after the selected lines', [{ type: 'paragraph', content: 'aaa' }, { type: 'paragraph', content: 'bbb' }, { type: 'image', props: { url: `${OURS}p.png` } }]],
+    ['picture before the selected lines', [{ type: 'image', props: { url: `${OURS}p.png` } }, { type: 'paragraph', content: 'aaa' }, { type: 'paragraph', content: 'bbb' }]],
+    ['picture beside one selected line', [{ type: 'paragraph', content: 'aaa' }, { type: 'image', props: { url: `${OURS}p.png` } }]],
+  ])('keeps the %s', async (_name, blocks) => {
+    const table = tableBlock({ rows: [{ cells: [{ blocks }, 'c2'] }] });
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, table] as never);
+    await act(async () => { await settled(); });
+    const view = editor.prosemirrorView;
+    const last = blocks.some((block) => (block as { content?: string }).content === 'bbb') ? 'bbb' : 'aaa';
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'aaa', 0), positionOf(editor, last, 3))));
+    press(editor, 'Backspace');
+    const kinds: string[] = [];
+    view.state.doc.descendants((node) => { if (node.type.name === 'image') kinds.push('image'); return true; });
+    expect(kinds).toEqual(['image']);
+    expect(rows(editor)).toEqual([['', 'c2']]);
+  });
+
+  it('keeps a lone heading a heading, as in the body', async () => {
+    const table = tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'heading', props: { level: 2 }, content: 'Head' }] }, 'c2'] }] });
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, table] as never);
+    await act(async () => { await settled(); });
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'Head', 0), positionOf(editor, 'Head', 4))));
+    press(editor, 'Backspace');
+    expect(view.state.selection.$head.parent.type.name).toBe('heading');
   });
 });

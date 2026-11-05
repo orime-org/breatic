@@ -33,6 +33,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
+import { takeAwayCellContent } from '@web/spaces/document/document-cell-content-selection';
 import { squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
@@ -43,7 +44,7 @@ import {
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
-import { cellDepthOf, deleteSelectionKeepingCell, isTableCell, tableAround, wholeCellContent } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/document-table-nodes';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
@@ -235,18 +236,6 @@ function deleteSelectedCells(editor: KeysEditor): boolean {
   const blockId = wholeEmptyTableSelected(view.state);
   if (blockId === null) return deleteCellSelection(view.state, view.dispatch);
   editor.removeBlocks([blockId]);
-  return true;
-}
-
-/**
- * Takes away a text selection covering every block of one cell, leaving the
- * cell one empty paragraph; any other selection is the body's keys' to take.
- * @param view - The editor view.
- * @returns True when the selection was one cell's whole content.
- */
-function emptyWholeCell(view: EditorView): boolean {
-  if (wholeCellContent(view.state.selection) === null) return false;
-  view.dispatch(deleteSelectionKeepingCell(view.state.tr).scrollIntoView());
   return true;
 }
 
@@ -459,9 +448,9 @@ export const documentTableKeysExtension = createExtension(() => ({
     // Over a selection holding a whole table, through the selection's own
     // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || emptyWholeCell(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || emptyWholeCell(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
     // The word and line deletes the body binds (Tiptap `keymap.ts:73-91`,
     // macOS ones included) delete the range by position as well.
     ...Object.fromEntries(
@@ -475,7 +464,7 @@ export const documentTableKeysExtension = createExtension(() => ({
         'Ctrl-Alt-Backspace',
         'Alt-Delete',
         'Alt-d',
-      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView) || emptyWholeCell(editor.prosemirrorView)]),
+      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView)]),
     ),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),

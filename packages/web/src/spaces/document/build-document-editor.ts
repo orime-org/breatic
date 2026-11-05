@@ -58,6 +58,7 @@ import { documentTableHandlesExtension } from '@web/spaces/document/document-tab
 import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
 import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
 import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
+import { documentCellContentSelectionExtension } from '@web/spaces/document/document-cell-content-selection';
 import { STRIP_SIZE, TABLE_STRIP_OUTSET } from '@web/spaces/document/document-strip-alignment';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-paste-html';
@@ -180,6 +181,7 @@ export function buildDocumentEditor(
       documentTableCopyExtension(),
       documentTableSideMenuExtension(),
       documentTableLeaveSelectionExtension(),
+      documentCellContentSelectionExtension(),
       documentTableColumnWidthsExtension(),
       documentTableDragExtension(),
       documentKeyboardMoveExtension(),
