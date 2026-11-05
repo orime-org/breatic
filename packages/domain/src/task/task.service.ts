@@ -10,7 +10,7 @@
 
 import * as taskRepo from "@domain/task/task.repo.js";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError } from "@breatic/core";
+import { NotFoundError, ForbiddenError, type DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
 
 /**
@@ -27,6 +27,7 @@ import type { GenerationSource, TaskEntity } from "@breatic/shared";
  * @param model - Optional model name
  * @param source - Which lane opened this task; defaults to `"task"`
  * @param id - The row's id, when the caller held credits under it first
+ * @param tx - Optional business admission transaction.
  * @returns The newly created task entity
  */
 export async function create(
@@ -39,6 +40,7 @@ export async function create(
   model?: string,
   source?: GenerationSource,
   id?: string,
+  tx?: DbTx,
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
     userId,
@@ -50,7 +52,7 @@ export async function create(
     model,
     source,
     id,
-  });
+  }, tx);
 }
 
 /**

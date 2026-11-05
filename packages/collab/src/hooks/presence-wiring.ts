@@ -69,7 +69,7 @@ interface InstanceLike {
 }
 
 /**
- * Read the authenticated user id off whatever the payload carries it in.
+ * Read the authenticated user id from a native hook payload.
  *
  * `connected` and `onDisconnect` hand over a bare `context`; the awareness hook
  * hands over the `connection` and leaves `context` undefined when the update
@@ -78,8 +78,9 @@ interface InstanceLike {
  * @param payload.context - Connection context, when the hook provides one directly.
  * @param payload.connection - The originating connection, when the hook provides that instead.
  * @returns The user id, or undefined when there is no client behind this call.
+ * @throws {TypeError} When called without a hook payload.
  */
-function userIdOf(payload: {
+export function userIdOf(payload: {
   context?: PresenceContext;
   connection?: ConnectionLike;
 }): string | undefined {

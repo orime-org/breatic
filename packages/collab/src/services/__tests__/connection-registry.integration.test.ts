@@ -1076,6 +1076,8 @@ class World {
   readonly replies: (() => void)[] = [];
   /** Rule breaks seen inside reply callbacks, asserted after every step. */
   readonly problems: string[] = [];
+  /** Arrivals and pongs started without waiting, until each has been acted on. */
+  readonly inFlight = new Set<Promise<void>>();
   readonly regs: [ConnectionRegistry, ConnectionRegistry];
   readonly ws: [WrappedRedis, WrappedRedis];
   readonly key: string;
@@ -1158,13 +1160,28 @@ class World {
     }
   }
 
-  /** @returns Once every reply already delivered has been acted on. */
+  /**
+   * Keep an operation started without waiting in flight until it is done.
+   * @param op - The operation, including acting on its answer.
+   */
+  track(op: Promise<void>): void {
+    const tracked = op
+      .catch((err: unknown) => {
+        this.problems.push(`operation threw ${String(err)}`);
+      })
+      .finally(() => this.inFlight.delete(tracked));
+    this.inFlight.add(tracked);
+  }
+
+  /**
+   * Each operation in flight has at most one script reply held at a time (one
+   * document per socket, and a seat never runs two scripts at once), so once
+   * there are as many held replies as operations in flight, every one of them
+   * is waiting on a reply the run has not delivered yet.
+   * @returns Once every reply already delivered has been acted on.
+   */
   async settle(): Promise<void> {
-    await this.ws[0].flush();
-    await this.ws[1].flush();
-    for (let i = 0; i < 3; i++) await new Promise<void>((resolve) => setImmediate(resolve));
-    await this.ws[0].flush();
-    await this.ws[1].flush();
+    await vi.waitFor(() => expect(this.inFlight.size).toBe(this.replies.length), { interval: 1 });
   }
 
   /** @returns Once ZCARD has been checked against the cap (invariant 1). */
@@ -1191,7 +1208,7 @@ class World {
       closed: false,
     };
     this.conns.push(conn);
-    void this.regs[inst].takeSeat(DOC, H(socketId, user, at), this.cap).then((r) => this.onTake(conn, r));
+    this.track(this.regs[inst].takeSeat(DOC, H(socketId, user, at), this.cap).then((r) => this.onTake(conn, r)));
   }
 
   /**
@@ -1199,7 +1216,7 @@ class World {
    * @param conn - The connection.
    */
   alive(conn: ModelConn): void {
-    void this.regs[conn.inst].refreshSocket(conn.socketId, clock).then((items) => this.onAlive(conn, items));
+    this.track(this.regs[conn.inst].refreshSocket(conn.socketId, clock).then((items) => this.onAlive(conn, items)));
   }
 
   /**

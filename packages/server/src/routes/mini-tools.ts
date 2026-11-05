@@ -9,10 +9,11 @@
  * export uploads like any other file.
  */
 
+import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { ConflictError, currentConsent, logger } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { acceptMiniToolExecution, taskService } from "@breatic/domain";
+import { acceptMiniToolExecution } from "@breatic/domain";
 import { miniToolById, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
@@ -64,7 +65,7 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  const task = await taskService.create(
+  const task = await admitGeneration(
     user.id,
     body.project_id,
     body.space_id,

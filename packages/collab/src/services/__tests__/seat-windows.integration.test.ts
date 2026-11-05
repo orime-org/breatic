@@ -134,10 +134,7 @@ async function rig(real = false): Promise<Rig> {
     sockets,
     async alive(socketId: string): Promise<void> {
       const carried: ReadonlyMap<string, unknown> = sockets.get(socketId) ?? new Map();
-      onAlive(socketId, carried as LiveSocketConnections, clock);
-      await w.flush();
-      for (let i = 0; i < 3; i++) await new Promise<void>((resolve) => setImmediate(resolve));
-      await w.flush();
+      await onAlive(socketId, carried as LiveSocketConnections, clock);
     },
     hold(socketId: string, c: FakeConn): FakeConn {
       const docs = sockets.get(socketId) ?? new Map<string, FakeConn>();

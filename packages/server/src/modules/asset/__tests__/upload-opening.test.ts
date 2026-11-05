@@ -24,6 +24,9 @@ const open = vi.fn(async () => ({
   counts: { running: 1, done: 0, failed: 0, expired: 0 },
 }));
 const emit = vi.fn();
+const FAKE_TX = { uploadTransaction: true };
+const committed = vi.fn();
+const recordActivity = vi.fn(async () => undefined);
 
 vi.mock("@breatic/domain", () => ({
   uploadGrantService: { issueUploadGrant },
@@ -33,6 +36,12 @@ vi.mock("@breatic/domain", () => ({
 
 vi.mock("@breatic/core", () => ({
   getStreamRedis: () => ({}),
+  db: { transaction: vi.fn(async (callback: (tx: typeof FAKE_TX) => Promise<unknown>) => {
+    const result = await callback(FAKE_TX);
+    committed();
+    return result;
+  }) },
+  accountActivityRepo: { recordActivity },
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
@@ -70,6 +79,7 @@ describe("opening an upload that lands on a node", () => {
 
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({ storageKey: "image/2026-09-14/1_abc.png" }),
+      FAKE_TX,
     );
   });
 
@@ -94,13 +104,14 @@ describe("opening an upload that lands on a node", () => {
       budgetMs: 60_000,
       label: "cat.png",
       storageKey: "image/2026-09-14/1_abc.png",
-    });
+    }, FAKE_TX);
   });
 
   it("publishes the node's counts, and hands the row's id back", async () => {
     const opened = await openUpload(grantFor(), TASK);
 
     expect(emit).toHaveBeenCalledTimes(1);
+    expect(committed.mock.invocationCallOrder[0]).toBeLessThan(emit.mock.invocationCallOrder[0]!);
     expect(opened).toEqual({
       key: "image/2026-09-14/1_abc.png",
       studioId: "studio-1",
@@ -116,6 +127,7 @@ describe("opening an upload that lands on no node", () => {
     const opened = await openUpload(grantFor({ nodeId: null, spaceId: null }), TASK);
 
     expect(issueUploadGrant).toHaveBeenCalledTimes(1);
+    expect(issueUploadGrant).toHaveBeenCalledWith(grantFor({ nodeId: null, spaceId: null }), FAKE_TX);
     expect(open).not.toHaveBeenCalled();
     expect(emit).not.toHaveBeenCalled();
     expect(opened.taskId).toBeUndefined();
@@ -128,5 +140,19 @@ describe("opening an upload that lands on no node", () => {
     await openUpload(grantFor({ nodeId: null, spaceId: SPACE }), TASK);
 
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("explicit user admission dependency wiring", () => {
+  it("shares the grant and node transaction with the activity append", async () => {
+    await openUpload(grantFor(), TASK, true);
+    expect(recordActivity).toHaveBeenCalledWith({ userId: USER, projectId: PROJECT, kind: "project_action" }, FAKE_TX);
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ storageKey: "image/2026-09-14/1_abc.png" }), FAKE_TX);
+  });
+
+  it("does not append user activity for a transport-only upload", async () => {
+    await openUpload(grantFor(), TASK);
+    expect(recordActivity).not.toHaveBeenCalled();
   });
 });

@@ -5,13 +5,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as ProjectApiModule from '@web/data/api/projects';
 
 vi.mock('@web/data/api/projects', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@web/data/api/projects')>()),
-  projectsApi: { recordOpen: vi.fn() },
+  ...(await importOriginal<typeof ProjectApiModule>()),
+  projectsApi: { recordOpen: vi.fn(), getOpenReceipt: vi.fn() },
 }));
 import { projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
+
+const ACCOUNT_ID = '00000000-0000-4000-8000-000000000001';
+const scope = { accountId: ACCOUNT_ID, navigationKey: 'entry-a' };
 
 function Harness({
   projectId,
@@ -20,7 +24,7 @@ function Harness({
   projectId: string;
   enabled: boolean;
 }): null {
-  useRecordProjectOpen(projectId, enabled);
+  useRecordProjectOpen(projectId, enabled, scope);
   return null;
 }
 
@@ -44,20 +48,25 @@ function setup(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(projectsApi.recordOpen).mockImplementation(async (projectId, visitId) => ({
+    ok: true, account_id: ACCOUNT_ID, project_id: projectId, visit_id: visitId, occurred_at: '2026-11-02T10:00:00.000Z',
+  }));
+  vi.mocked(projectsApi.getOpenReceipt).mockImplementation(async (projectId, visitId) => ({
+    status: 'unconfirmed', account_id: ACCOUNT_ID, project_id: projectId, visit_id: visitId,
+  }));
 });
 
 describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () => {
   it('fires recordOpen EXACTLY ONCE under StrictMode double-invoke', async () => {
-    vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
-    setup('proj-1', true);
+    setup('00000000-0000-4000-8000-000000000011', true);
     await waitFor(() =>
       expect(projectsApi.recordOpen).toHaveBeenCalledTimes(1),
     );
-    expect(projectsApi.recordOpen).toHaveBeenCalledWith('proj-1');
+    expect(projectsApi.recordOpen).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000011', expect.any(String), expect.any(AbortSignal));
   });
 
   it('does not record while disabled (project not loaded yet)', () => {
-    setup('proj-1', false);
+    setup('00000000-0000-4000-8000-000000000011', false);
     expect(projectsApi.recordOpen).not.toHaveBeenCalled();
   });
 
@@ -67,10 +76,9 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
   });
 
   it('invalidates the recent feed query after a successful record', async () => {
-    vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
     const client = new QueryClient();
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
-    setup('proj-2', true, client);
+    setup('00000000-0000-4000-8000-000000000012', true, client);
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ['studios', 'recent'],
@@ -79,14 +87,13 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
   });
 
   it('refreshes every studio projects list after a successful record, so last-opened order is current', async () => {
-    vi.mocked(projectsApi.recordOpen).mockResolvedValue({ ok: true });
     const client = new QueryClient();
     client.setQueryData(studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' }), {
       pages: [],
       pageParams: [],
     });
-    client.setQueryData(['project', 'proj-4'], { id: 'proj-4' });
-    setup('proj-4', true, client);
+    client.setQueryData(['project', '00000000-0000-4000-8000-000000000014'], { id: '00000000-0000-4000-8000-000000000014' });
+    setup('00000000-0000-4000-8000-000000000014', true, client);
 
     await waitFor(() =>
       expect(
@@ -94,12 +101,12 @@ describe('useRecordProjectOpen (critical path: StrictMode-safe one-shot)', () =>
           ?.isInvalidated,
       ).toBe(true),
     );
-    expect(client.getQueryState(['project', 'proj-4'])?.isInvalidated).toBe(false);
+    expect(client.getQueryState(['project', '00000000-0000-4000-8000-000000000014'])?.isInvalidated).toBe(false);
   });
 
   it('swallows a failed record (best-effort, render never throws)', async () => {
     vi.mocked(projectsApi.recordOpen).mockRejectedValue(new Error('nope'));
-    setup('proj-3', true);
+    setup('00000000-0000-4000-8000-000000000013', true);
     await waitFor(() =>
       expect(projectsApi.recordOpen).toHaveBeenCalledTimes(1),
     );

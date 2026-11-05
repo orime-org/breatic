@@ -46,6 +46,7 @@ vi.mock("@breatic/core", () => {
         async (fn: (tx: typeof FAKE_TX) => Promise<unknown>) => fn(FAKE_TX),
       ),
     },
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     projectMembersRepo: {
       getRole: vi.fn(),
       getAccess: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock("@breatic/core", () => {
 
 import {
   projectMembersRepo,
+  accountActivityRepo,
   ConflictError,
   NotFoundError,
 } from "@breatic/core";
@@ -174,6 +176,9 @@ describe("leave", () => {
     vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("viewer");
     vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
     await leave(PID, "u-me");
+    expect(accountActivityRepo.recordActivity).toHaveBeenCalledWith(
+      { userId: "u-me", projectId: PID, kind: "project_action" }, FAKE_TX,
+    );
     expect(projectMembersRepo.lockMemberRole).toHaveBeenCalledWith(PID, "u-me", FAKE_TX);
     expect(projectMembersRepo.softDelete).toHaveBeenCalledWith(PID, "u-me", FAKE_TX);
     expect(recordProjectActivity).toHaveBeenCalledWith(

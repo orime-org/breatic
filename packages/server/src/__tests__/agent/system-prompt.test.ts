@@ -122,6 +122,58 @@ describe("what the prompt says the model can do", () => {
   });
 });
 
+describe("what the prompt says the model's job is", () => {
+  // Without a stated job the model answered as a general assistant: asked to
+  // scale a canvas picture, it gave a command line, another app and a website,
+  // then wrote a web page for the reader to screenshot (#1366).
+  const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
+
+  it("says the job is to help the reader make what they set out to make, with what Breatic can do", () => {
+    expect(wording()).toMatch(/Your job is to help the reader make what they set out to make, with what Breatic can do/);
+  });
+
+  it("keeps work Breatic does inside Breatic", () => {
+    expect(wording()).toMatch(/Never send them to another program, a command line or a website for work Breatic does/);
+  });
+
+  it("says the model does not write programs, scripts or web pages for the reader", () => {
+    expect(wording()).toMatch(/You do not write programs, scripts or web pages for the reader/);
+  });
+
+  it("says to find out before answering, not to answer from memory", () => {
+    expect(wording()).toMatch(/Find out before you answer/);
+    expect(wording()).toMatch(/do not answer from memory/);
+  });
+
+  it("says to find the cause before suggesting a fix", () => {
+    expect(wording()).toMatch(/find out why before you suggest a fix/);
+    expect(wording()).toMatch(/Do not guess a cause and have the reader try one thing after another/);
+  });
+
+  it("keeps what was checked apart from what was not", () => {
+    expect(wording()).toMatch(/Keep what you checked apart from what you did not/);
+    expect(wording()).toMatch(/never present something that might work as something that will/);
+  });
+
+  it("asks for steps naming the node, menu row, button, value and what the reader will see", () => {
+    expect(wording()).toMatch(/which node, which menu row, which button, what value, and what they will see when it worked/);
+  });
+
+  it("asks to carry the work through and name where Breatic falls short, with the nearest result", () => {
+    expect(wording()).toMatch(/Carry it through to the result they want/);
+    expect(wording()).toMatch(/Where Breatic falls short of what they asked, say so plainly and give the nearest result it can give/);
+  });
+
+  it("asks only for what only the reader can tell, and why", () => {
+    expect(wording()).toMatch(/Do not hand your own legwork to the reader/);
+    expect(wording()).toMatch(/Ask only for what only they can tell you/);
+  });
+
+  it("asks for the result, not the reasons it might fail", () => {
+    expect(wording()).toMatch(/Answer with the result, not with reasons it might fail/);
+  });
+});
+
 describe("how the prompt says to write a reply", () => {
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 

@@ -106,6 +106,10 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /** The real collector is exercised by PG suites; unit callers observe its inputs. */
+  accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
+  /** Transaction identity shared by task/grant/node unit doubles. */
+  activityTransaction: { unitActivityTransaction: true },
   /** The later-lookup hand-off; tests read what a turn handed off. */
   handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   /**
@@ -474,7 +478,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
       (_s: TemplateStringsArray) => Promise.resolve([]),
       { end: () => Promise.resolve() },
     ),
-    db: {},
+    db: { transaction: vi.fn(async (callback: (tx: typeof mocks.activityTransaction) => Promise<unknown>) => callback(mocks.activityTransaction)) },
+    accountActivityRepo: mocks.accountActivityRepo,
     closeDb: () => Promise.resolve(),
     getRedis: () => mockRedis,
     // The stream client is only ever handed to an emitter, which these

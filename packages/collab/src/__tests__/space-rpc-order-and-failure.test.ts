@@ -99,6 +99,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
     createLogger: () => ({
       info: loggerInfoMock,
       warn: loggerWarnMock,

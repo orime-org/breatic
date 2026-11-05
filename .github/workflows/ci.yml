@@ -179,7 +179,7 @@ jobs:
           REDIS_STREAM_URL: redis://localhost/2
 
       - name: Test maintenance command arguments
-        run: node --test scripts/__tests__/backfill-project-media-options.test.ts
+        run: node --import tsx --test scripts/__tests__/backfill-project-media-options.test.ts scripts/__tests__/activity-coverage-options.test.ts
 
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)
