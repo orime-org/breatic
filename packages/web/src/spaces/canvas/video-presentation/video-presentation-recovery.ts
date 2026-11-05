@@ -40,14 +40,16 @@ export function createVideoPresentationRecovery(client: QueryClient, input: Vide
   const { queryKey } = options;
   let pending: Promise<void> | null = null;
   /**
-   * Repairs only failed registered source work and then rereads authorized facts.
+   * Repairs only failed source work and then rereads authorized facts (§7.12 step 2 and the retry column): a failed
+   * candidate with nothing selected, a failed ledger of the selected version, or a failed table read; a candidate
+   * still in progress is only reread.
    * @param reason - Whether the failure came from source preparation or the local renderer.
    * @throws {Error} The original repair failure or the source query failure.
    */
   async function execute(reason: VideoPresentationRecoveryReason): Promise<void> {
     if (reason === 'renderer') return;
     const data = client.getQueryData<VideoPresentationResponse>(queryKey);
-    if (data !== undefined && (reason === 'table' || data.preparation?.status === 'failed' || data.presentation?.state === 'failed')) {
+    if (data !== undefined && (reason === 'table' || (data.presentation === null ? data.preparation?.failure != null : data.ledger?.state === 'failed'))) {
       try {
         await repairVideoPresentation({ projectId: input.projectId, canonicalURL: input.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash }, newId());
       } catch (error) {

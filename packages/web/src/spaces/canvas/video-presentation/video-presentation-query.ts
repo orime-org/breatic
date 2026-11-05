@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { queryOptions, type UseQueryOptions } from '@tanstack/react-query';
-import { t, videoPresentationRepairResponseSchema, videoPresentationResponseSchema, type VideoPresentationResponse, type VideoPresentationRepairResponse } from '@breatic/shared';
+import { t, videoPresentationResponseSchema, type VideoPresentationResponse } from '@breatic/shared';
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
@@ -43,10 +43,8 @@ function presentationOptions(input: VideoPresentationQueryInput): VideoPresentat
       signal.throwIfAborted();
       return videoPresentationResponseSchema.parse(answered);
     },
-    refetchInterval: (query): number | false => {
-      const data = query.state.data;
-      return data?.preparation?.status === 'accepted' || data?.preparation?.status === 'running' ? data.pollAfterMs ?? false : false;
-    },
+    // The server sets pollAfterMs exactly while a later read can change what the reader sees (§7.12).
+    refetchInterval: (query): number | false => query.state.data?.pollAfterMs ?? false,
   });
 }
 
@@ -54,15 +52,15 @@ function presentationOptions(input: VideoPresentationQueryInput): VideoPresentat
  * Request a platform-funded repair of this exact registered source.
  * @param input - Current project and canonical registered identity.
  * @param requestId - Stable idempotency identity retained for this press.
- * @returns Current source facts and the accepted repair work.
+ * @returns The read response after the repair was accepted (§3.5).
  * @throws {Error} When the server refuses, transport fails or the response is invalid.
  */
-export async function repairVideoPresentation(input: VideoPresentationRepairInput, requestId: string): Promise<VideoPresentationRepairResponse> {
+export async function repairVideoPresentation(input: VideoPresentationRepairInput, requestId: string): Promise<VideoPresentationResponse> {
   try {
     const answer = await apiPost<unknown>(`/projects/${input.projectId}/assets/video-presentation/repair`, {
       canonicalURL: input.canonicalURL, sourceFingerprint: input.sourceFingerprint,
     }, runOnceRequest(requestId));
-    return videoPresentationRepairResponseSchema.parse(answer);
+    return videoPresentationResponseSchema.parse(answer);
   } catch (error) {
     toast.error(error instanceof ApiException && error.fromServer ? error.message : t('canvas.task.couldNotStart'));
     throw error;
