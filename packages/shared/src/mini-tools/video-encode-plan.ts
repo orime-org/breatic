@@ -31,6 +31,8 @@ export interface VideoCarrierRouteInput {
   codec: string;
   /** A stream copy keeps the plan's timeline. */
   copyPreservesTimeline: boolean;
+  /** The selected audio (or its absence) is in the MP4 audio codecs of the frozen identity table; absent means it is. */
+  audioCopyable?: boolean;
   sourceBytes: number;
   copyDiskMarginBytes: number;
   basicDiskBytes: number;
@@ -128,7 +130,8 @@ export function videoCarrierTagFilter(codec: string): string | null {
 /**
  * Choose the carrier route (§7.1, §5.1 step 2): reuse an identical selected version; HDR and confirmed alpha encode;
  * a qualified, matrix-tagged source plays as identity; a timeline-preserving copy that can carry the matrix tag runs
- * in basic when twice the source plus the margin fits its disk and is dispatched otherwise; everything else encodes.
+ * in basic when twice the source plus the margin fits its disk and its audio may be packet-copied, and is dispatched
+ * otherwise (the dispatched copy encodes audio outside the table to AAC); everything else encodes.
  * @param input - The plan, the selected version and the source facts.
  * @returns The route.
  * @throws {never} Never.
@@ -139,7 +142,8 @@ export function chooseVideoCarrierRoute(input: VideoCarrierRouteInput): VideoCar
   if (input.hdr || input.alpha === "confirmed_alpha") return "encode";
   if (input.identityQualified && input.colorMatrixTagged) return "identity";
   if (input.copyPreservesTimeline && (input.colorMatrixTagged || videoCarrierTagFilter(input.codec) !== null)) {
-    return 2 * input.sourceBytes + input.copyDiskMarginBytes <= input.basicDiskBytes ? "copy" : "dispatch_copy";
+    const fits = 2 * input.sourceBytes + input.copyDiskMarginBytes <= input.basicDiskBytes;
+    return fits && input.audioCopyable !== false ? "copy" : "dispatch_copy";
   }
   return "encode";
 }

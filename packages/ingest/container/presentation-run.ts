@@ -329,6 +329,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const planSha256 = await hashCanonicalJson(assembled as unknown as CanonicalJson);
   const toolInputId = await hashCanonicalJson({ sourceFingerprint: body.sourceFingerprint, planSha256 });
   const codec = String(video.codec_name);
+  const audioCodec = audio === undefined ? 'none' : String(audio.codec_name);
   const hdr = isHdrTransfer(transfer);
   const output = videoCarrierGeometry(assembled.display, body.encoding.carrier.maxShortSide);
   const encodedFrames = assembled.originMapping.entries.reduce((total, entry) => total + (entry.kind === 'source' ? entry.count : 1), 0);
@@ -337,11 +338,12 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
-      identityQualified: identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged,
-        audioCodec: audio === undefined ? 'none' : String(audio.codec_name) }, body.probe.identityFormats),
+      identityQualified: identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
       colorMatrixTagged: matrixTagged, codec,
       // §4.1 row 2: a copy keeps the plan when the plan presents the source unaltered and the MP4 carrier can hold the codec.
       copyPreservesTimeline: videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),
+      // §4.1 row 2: only audio in the MP4 audio codecs of the frozen identity table is packet-copied; other audio is dispatched.
+      audioCopyable: body.probe.identityFormats.some((entry) => entry.container === 'mp4' && entry.audioCodecs.includes(audioCodec)),
       sourceBytes: (await stat(input)).size,
     },
     work: { encodedFrames, prerollFrames: 0, sourceWidth: Number(video.width), sourceHeight: Number(video.height), outputWidth: output.width, outputHeight: output.height,
