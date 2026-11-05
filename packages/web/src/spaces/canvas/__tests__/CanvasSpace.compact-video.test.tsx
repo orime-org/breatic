@@ -28,6 +28,9 @@ import { PRESENTED, presentedBinding, presentedBundle, presentedResponse, readyL
 
 const PRESENTATION_REF = { source: { toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256 } };
 
+// §96 (design §3.3 runtimeSourceKey = JSON([canonicalURL, sourceFingerprint, versionId]), §7.12 step 3): the page stub
+// reports the version it shows in its runtime source key; a test may show another version and report again.
+const page = vi.hoisted(() => ({ shown: 'e'.repeat(64), renotify: null as (() => void) | null }));
 vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<typeof CanvasModule>()), useCanvasSpace: vi.fn() }));
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
 vi.mock('@web/spaces/canvas/_shared/NodePanelMount', () => ({ NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -38,9 +41,13 @@ vi.mock('@web/spaces/canvas/nodes/VideoNode', () => ({
     const actions = useCanvasActions();
     const notify = actions.onVideoBinding;
     React.useEffect(() => {
-      const element = document.createElement('video');
-      const binding = { sourceKey: JSON.stringify([data.content, HASH]), sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: { width: 400, height: 200, duration: 4 }, getSeekEpoch: () => 0, getPresentedFrame: () => ({ sourceKey: JSON.stringify([data.content, HASH]), sourceEpoch: 1, seekEpoch: 0, mediaTime: 2.62, surface: element }), seek: vi.fn(), play: async () => undefined, pause: () => undefined };
-      notify?.(SOURCE, data.content, { binding, status: 'ready', error: null, overlayTarget: null, sourceBinding: sourceResponse().sourceBinding });
+      const send = (): void => {
+        const element = document.createElement('video');
+        const binding = { sourceKey: JSON.stringify([data.content, HASH, page.shown]), sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: { width: 400, height: 200, duration: 4 }, getSeekEpoch: () => 0, getPresentedFrame: () => ({ sourceKey: JSON.stringify([data.content, HASH, page.shown]), sourceEpoch: 1, seekEpoch: 0, mediaTime: 2.62, surface: element }), seek: vi.fn(), play: async () => undefined, pause: () => undefined };
+        notify?.(SOURCE, data.content, { binding, status: 'ready', error: null, overlayTarget: null, sourceBinding: sourceResponse().sourceBinding });
+      };
+      send();
+      page.renotify = send;
       return () => notify?.(SOURCE, data.content, { binding: null, status: 'detached', error: null, overlayTarget: null });
     }, [notify, data.content]);
     return <div data-testid='renderer-boundary' />;
@@ -85,6 +92,7 @@ function failure(errorCode: string): VideoPresentationResponse {
 }
 
 beforeEach(async () => {
+  page.shown = PRESENTED.versionId; page.renotify = null;
   vi.clearAllMocks(); useCanvasStore.getState().reset(); canvasSessions.of(SPACE).getState().closeActivePanel();
   useCurrentUserStore.getState().setUser({ id: 'author', name: 'Author', email: 'author@example.test', personalStudio: null, membershipTier: 'base' });
   vi.spyOn(modelsApi, 'list').mockResolvedValue(sanitizeModelCatalog({}));
@@ -166,6 +174,18 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     // §95 D9-4 (design §7.11 analysis admission): every analysis request names the selected bundle's tool input.
     expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: 2, pts: 2.5 } }, presentationRef: PRESENTATION_REF });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(tableURL);
+  });
+  // §96 (design §7.12 step 3, §7.8, §3.3): while the page still shows the earlier version the panel waits for the
+  // presentation, even with the new version's table ready; it moves on only once the page reports the new version.
+  it('C12 the panel waits while the page shows another version, and becomes usable once the page shows the selected one', async () => {
+    page.shown = 'b'.repeat(64);
+    mount();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    page.shown = PRESENTED.versionId;
+    act(() => page.renotify?.());
+    await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
   });
   it('C10 scene detection requests the analysis against the selected bundle\'s tool input (§95 D9-4)', async () => {
     const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
