@@ -823,7 +823,7 @@ async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant,
   if ((outcome.status !== 'registered' && outcome.status !== 'already_registered') || outcome.kind !== 'video') return result;
   const presentationQueued = await Promise.resolve().then(async () => ensureVideoPresentation({
     assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant),
-    knownAlpha: options.presentation?.knownAlpha === true,
+    knownAlpha: options.presentation?.knownAlpha === true, dedupWinner: outcome.status === 'already_registered',
   })).then(() => true, () => false);
   return presentationQueued ? result : { ...result, presentationQueueFailed: true };
 }

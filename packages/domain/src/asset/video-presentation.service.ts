@@ -14,7 +14,7 @@ export interface ResolveVideoPresentationInput { projectId: string; userId: stri
 /** An explicit repair retains the press identity across delivery retries. */
 export interface RepairVideoPresentationInput extends ResolveVideoPresentationInput { sourceFingerprint: string; requestId: string }
 /** An automatic registration or first-read metadata preparation. */
-export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean }
+export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean; dedupWinner?: boolean }
 /** The queue retains the accepted source and job identity; the deadline lives in the DO admission record (design §5.1 step 1). */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string }
 export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
@@ -199,15 +199,25 @@ function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresen
 export async function resolveVideoPresentation(input: ResolveVideoPresentationInput): Promise<VideoPresentationResponse> {
   await assertAccess(input);
   const { row, binding } = await registeredSource(input.canonicalURL);
-  let snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+  return response(binding, await readThenAdmit(row, {}));
+}
+
+/**
+ * Read the snapshot and admit only under a condition the DO re-checks (§3.5): nothing selected and nothing prepared, or
+ * the DO's readmit fact; anything else, a failure included, is answered as it is.
+ * @param row - The registered source.
+ * @param options - Admission context for an admission the read allows.
+ * @returns The snapshot after any admission.
+ * @throws {Error} When ingest or queueing fails.
+ */
+async function readThenAdmit(row: StudioAssetEntity, options: AdmissionOptions): Promise<VideoPresentationIngestSnapshot> {
+  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
     action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash, targetPolicyVersion: getMiniToolsConfig().presentation.policy_version,
   });
-  // A read admits on its own only under a condition the DO re-checks (§3.5): nothing selected and nothing prepared, or the
-  // DO's readmit fact; anything else, a failure included, is answered as it is.
-  if (snapshot.presentation === null && snapshot.preparation === null) snapshot = await accept(row, { expect: 'first' });
-  else if (snapshot.presentation === null && snapshot.readmit === true) snapshot = await accept(row, { expect: 'readmit' });
-  else await enqueue(row, snapshot);
-  return response(binding, snapshot);
+  if (snapshot.presentation === null && snapshot.preparation === null) return accept(row, { ...options, expect: 'first' });
+  if (snapshot.presentation === null && snapshot.readmit) return accept(row, { ...options, expect: 'readmit' });
+  await enqueue(row, snapshot);
+  return snapshot;
 }
 
 /**
@@ -235,5 +245,7 @@ export async function repairVideoPresentation(input: RepairVideoPresentationInpu
 export async function ensureVideoPresentation(input: EnsureVideoPresentationInput): Promise<VideoPresentationIngestPreparation | null> {
   const row = await findById(input.assetId);
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return null;
-  return (await accept(row, input)).preparation;
+  // A dedup winner is not a new upload: it admits only as a discovery read would (§3.5 web→server row).
+  const { dedupWinner, ...options } = input;
+  return (await (dedupWinner === true ? readThenAdmit(row, options) : accept(row, options))).preparation;
 }
