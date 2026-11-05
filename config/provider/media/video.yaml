@@ -1583,7 +1583,7 @@ models:
         pricing:
           kind: formula
           base_price: 135000
-          formula: '{"total_price": base_price * get_duration(video)}'
+          formula: '{"total_price": base_price * $min([get_duration(video), get_duration(audio)])}'
           discount_rate: 100
   infinitetalk-video-to-video:
     upstreams:

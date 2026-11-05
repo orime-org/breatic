@@ -56,7 +56,7 @@ models:
         pricing:
           kind: formula
           base_price: 1000000
-          formula: '{"total_price": base_price * $lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, $exists(quality) ? quality : "high")}'
+          formula: '{"total_price": base_price * $lookup({"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, quality)}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
@@ -628,7 +628,7 @@ models:
         pricing:
           kind: formula
           base_price: 1000000
-          formula: '{"total_price": base_price * ($lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, $exists(quality) ? quality : "high") + 0.012 * $count(image_urls))}'
+          formula: '{"total_price": base_price * ($lookup({"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, quality) + 0.012 * $count(image_urls))}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
