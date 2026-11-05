@@ -1832,7 +1832,9 @@
         "instruction": "要求：{text}",
         "rangeGone": "原本選取的文字已被刪除",
         "blockGone": "原本所在的段落已被刪除",
-        "notWritable": "你目前沒有編輯權限"
+        "notWritable": "你目前沒有編輯權限",
+        "selectionTooLong": "選取的內容太多，請少選一些再試",
+        "formatFailed": "結果格式不對，請重試"
       },
       "comment": {
         "placeholder": "寫一條批註…",

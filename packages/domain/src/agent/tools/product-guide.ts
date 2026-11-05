@@ -1368,8 +1368,12 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.ai.replace"))}. ${quoted(t("spaces.document.ai.insert"))} adds the result as ` +
       "new blocks under the block the selection ends in (under the whole table when the selection runs into a " +
       "table from outside or across cells) and keeps the selected words; " +
-      `${quoted(t("spaces.document.ai.replace"))} swaps the selection for it, images and empty lines selected at its ` +
-      "start or end included. Either is one step Cmd+Z takes " +
+      `${quoted(t("spaces.document.ai.replace"))} writes it over the selected words block by block, exactly as the ` +
+      "panel shows it. The fixed commands change only the selected words of each block and keep it what it was " +
+      "(a heading stays a heading, a list item stays in its list, a code block keeps its code); expand may turn a " +
+      "paragraph into several. A custom instruction can change the structure, such as turning the words into a " +
+      "list or merging paragraphs into one. Images and empty lines in the selection and words left out of it stay " +
+      "as they are. Either is one step Cmd+Z takes " +
       "back. If the selected words are deleted while the panel is open, " +
       `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
       `${quoted(t("spaces.document.ai.rangeGone"))}; if their block is deleted too, both are greyed with ` +

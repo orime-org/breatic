@@ -1832,7 +1832,9 @@
         "instruction": "要求：{text}",
         "rangeGone": "原来选中的文字已被删掉",
         "blockGone": "原来所在的段落已被删掉",
-        "notWritable": "你现在没有编辑权限"
+        "notWritable": "你现在没有编辑权限",
+        "selectionTooLong": "选中的内容太多，请少选一些再试",
+        "formatFailed": "结果格式不对，请重试"
       },
       "comment": {
         "placeholder": "写一条批注…",

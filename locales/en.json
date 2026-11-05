@@ -1832,7 +1832,9 @@
         "instruction": "Instruction: {text}",
         "rangeGone": "The selected text has been deleted",
         "blockGone": "The paragraph it was in has been deleted",
-        "notWritable": "You can't edit right now"
+        "notWritable": "You can't edit right now",
+        "selectionTooLong": "Too much text is selected. Select less and try again.",
+        "formatFailed": "The result came back in the wrong format. Try again."
       },
       "comment": {
         "placeholder": "Write a comment…",

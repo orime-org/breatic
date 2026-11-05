@@ -481,9 +481,9 @@ describe('the escape pair', () => {
 
 describe('replace with a fixed command', () => {
   it('keeps the kind, level and props of whole blocks, and list items in their list', async () => {
-    const h = await open('## Head\n\n- [x] done item\n\n- one\n- two');
+    const h = await open('## Head\n\n- [x] done item\n\n- alpha\n- two');
     style(h, 'Head', { textColor: 'red' });
-    replaceWith(h, { from: rangeOf(h, 'Head').from, to: rangeOf(h, 'one').to }, 'refine', () => tagged({ 1: 'New head', 2: 'Done thing', 3: 'First' }));
+    replaceWith(h, { from: rangeOf(h, 'Head').from, to: rangeOf(h, 'alpha').to }, 'refine', () => tagged({ 1: 'New head', 2: 'Done thing', 3: 'First' }));
     expect(blocks(h).map((b) => [b.type, b.props['level'] ?? b.props['checked'] ?? null, textOf(b)])).toEqual([
       ['heading', 2, 'New head'], ['checkListItem', true, 'Done thing'], ['bulletListItem', null, 'First'], ['bulletListItem', null, 'two'],
     ]);
@@ -497,11 +497,18 @@ describe('replace with a fixed command', () => {
   });
 
   it('leaves images, empty lines and empty blocks with children in the selection where they are, once', async () => {
-    const h = await open(`first\n\n![a](${OURS}a.png)\n\n\n\nsecond`);
-    const before = blocks(h).map((b) => [b.id, b.type]);
-    replaceWith(h, { from: rangeOf(h, 'first').from, to: rangeOf(h, 'second').to }, 'refine', () => tagged({ 1: 'FIRST', 2: 'SECOND' }));
-    expect(blocks(h).map((b) => [b.id, b.type])).toEqual(before);
-    expect(blocks(h).map(textOf)).toEqual(['FIRST', '', '', 'SECOND']);
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [
+      { type: 'paragraph', content: 'first' },
+      { type: 'image', props: { url: `${OURS}a.png` } },
+      { type: 'paragraph' },
+      { type: 'bulletListItem', children: [{ type: 'paragraph', content: 'kid' }] },
+      { type: 'paragraph', content: 'second' },
+    ] as never);
+    const before = flat(h).map((b) => [b.id, b.type]);
+    replaceWith(h, { from: rangeOf(h, 'first').from, to: rangeOf(h, 'second').to }, 'refine', () => tagged({ 1: 'FIRST', 2: 'KID', 3: 'SECOND' }));
+    expect(flat(h).map((b) => [b.id, b.type])).toEqual(before);
+    expect(flat(h).map(textOf)).toEqual(['FIRST', '', '', '', 'KID', 'SECOND']);
   });
 
   it('writes a translated "2. Methoden" with its number', async () => {
@@ -748,6 +755,92 @@ describe('insert', () => {
     expect(answer.preview.map((b) => (b as Seen).type)).toEqual(['docTable']);
     insertAiAnswer(h, 'legacy-table', answer, WRITABLE);
     expect(blocks(h).map((b) => b.type).slice(0, 2)).toEqual(['table', 'docTable']);
+  });
+});
+
+/**
+ * Types at a position, the way a keystroke lands, as its own undo step.
+ * @param handle - The document.
+ * @param pos - Where.
+ * @param words - What.
+ */
+function type(handle: DocumentEditorHandle, pos: number, words: string): void {
+  const view = handle.editor.prosemirrorView!;
+  view.dispatch(view.state.tr.insertText(words, pos));
+}
+
+describe('writing as an ordinary edit', () => {
+  it('replaces as one undo step, apart from the typing just before and just after', async () => {
+    const h = await open('The quick brown fox.');
+    type(h, rangeOf(h, 'fox.').to, ' Jumps.');
+    replaceWith(h, rangeOf(h, 'quick brown'), 'refine', () => tagged({ 1: 'slow red' }));
+    type(h, rangeOf(h, 'Jumps.').to, ' Again.');
+    expect(blocks(h).map(textOf)).toEqual(['The slow red fox. Jumps. Again.']);
+    h.undoManager.undo();
+    expect(blocks(h).map(textOf)).toEqual(['The slow red fox. Jumps.']);
+    h.undoManager.undo();
+    expect(blocks(h).map(textOf)).toEqual(['The quick brown fox. Jumps.']);
+  });
+
+  it('inserts as one undo step, apart from the typing just before and just after', async () => {
+    const h = await open('Typed here.\n\nTarget.');
+    type(h, rangeOf(h, 'Typed here.').to, ' More');
+    const o = opening(h, rangeOf(h, 'Target.'), 'refine');
+    insertAiAnswer(h, blocks(h)[1]!.id, read(h, o, tagged({ 1: 'Inserted.' }), 'refine'), WRITABLE);
+    type(h, rangeOf(h, 'Target.').to, ' Later');
+    expect(blocks(h).map(textOf)).toEqual(['Typed here. More', 'Target. Later', 'Inserted.']);
+    h.undoManager.undo();
+    expect(blocks(h).map(textOf)).toEqual(['Typed here. More', 'Target.', 'Inserted.']);
+    h.undoManager.undo();
+    expect(blocks(h).map(textOf)).toEqual(['Typed here. More', 'Target.']);
+  });
+
+  it('replaces the words the dialog tracked after the body moved under them', async () => {
+    const h = await open('The quick brown fox.');
+    const o = opening(h, rangeOf(h, 'quick brown'), 'refine');
+    type(h, rangeOf(h, 'The').from, 'Look: ');
+    replaceAiAnswer(h, read(h, o, tagged({ 1: 'slow red' }), 'refine'), segments(h), WRITABLE);
+    expect(blocks(h).map(textOf)).toEqual(['Look: The slow red fox.']);
+  });
+
+  it.each([
+    ['denied', 'readOnly'],
+    ['unknown', 'failed'],
+  ] as const)('writes nothing while the connection says %s', async (writeAccess, outcome) => {
+    const h = await open('One.');
+    const o = opening(h, rangeOf(h, 'One.'), 'refine');
+    const answer = read(h, o, tagged({ 1: 'Two.' }), 'refine');
+    const admission = (): ProposalAdmission => ({ available: true, writeAccess });
+    expect(replaceAiAnswer(h, answer, segments(h), admission)).toEqual({ outcome });
+    expect(insertAiAnswer(h, blocks(h)[0]!.id, answer, admission)).toEqual({ outcome });
+    expect(blocks(h).map(textOf)).toEqual(['One.']);
+  });
+
+  it('inserts nothing once the insert block is gone', async () => {
+    const h = await open('One.\n\nTwo.');
+    const o = opening(h, rangeOf(h, 'Two.'), 'refine');
+    const target = blocks(h)[1]!.id;
+    h.editor.removeBlocks([target]);
+    expect(insertAiAnswer(h, target, read(h, o, tagged({ 1: 'Three.' }), 'refine'), WRITABLE)).toEqual({ outcome: 'targetGone' });
+    expect(blocks(h).map(textOf)).toEqual(['One.']);
+  });
+
+  it('inserts nothing for an answer of only outside media, and says how many', async () => {
+    const h = await open('One.');
+    const o = opening(h, rangeOf(h, 'One.'), 'custom');
+    const answer = read(h, o, tagged({ 1: '![x](https://elsewhere.example/a.png)' }), 'custom');
+    expect(insertAiAnswer(h, blocks(h)[0]!.id, answer, WRITABLE)).toEqual({ outcome: 'mediaOnly', leftOut: 1 });
+    expect(blocks(h).map(textOf)).toEqual(['One.']);
+  });
+
+  it('inserts under the block in the cell when the selection stays in one docTable cell', async () => {
+    const h = await open('Intro.\n\n| Shot | Action |\n| --- | --- |\n| Close | She turns |');
+    const o = opening(h, rangeOf(h, 'She turns'), 'refine');
+    const inCell = flat(h).find((b) => textOf(b) === 'She turns')!.id;
+    insertAiAnswer(h, inCell, read(h, o, tagged({ 1: 'Added line.' }), 'refine'), WRITABLE);
+    const table = blocks(h).find((b) => b.type === 'docTable')!;
+    expect(table.children[1]!.children[1]!.children.map(textOf)).toEqual(['She turns', 'Added line.']);
+    expect(blocks(h)).toHaveLength(2);
   });
 });
 

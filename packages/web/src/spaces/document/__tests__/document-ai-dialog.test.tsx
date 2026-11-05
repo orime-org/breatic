@@ -806,9 +806,13 @@ describe('the preview', () => {
   });
 
   it('draws the result as the body draws blocks, inside copies of the body\'s own elements', async () => {
-    const { call } = await polishing();
+    await selected('<p>hello</p><p>world</p>', 0, 10);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
 
-    await streams(call, ['**Bold** words\n\n- item one'], true);
+    await streams(calls[0]!, ['<u id="1">**Bold** words</u>\n<u id="2">item one</u>'], true);
 
     const preview = screen.getByTestId('doc-ai-preview');
     await waitFor(() => {

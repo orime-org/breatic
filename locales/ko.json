@@ -1832,7 +1832,9 @@
         "instruction": "지시: {text}",
         "rangeGone": "선택한 텍스트가 삭제되었습니다",
         "blockGone": "원래 단락이 삭제되었습니다",
-        "notWritable": "지금은 편집할 수 없습니다"
+        "notWritable": "지금은 편집할 수 없습니다",
+        "selectionTooLong": "선택한 내용이 너무 많습니다. 범위를 줄여 다시 시도하세요",
+        "formatFailed": "결과 형식이 올바르지 않습니다. 다시 시도하세요"
       },
       "comment": {
         "placeholder": "댓글 작성",

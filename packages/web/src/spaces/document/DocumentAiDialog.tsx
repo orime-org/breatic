@@ -65,12 +65,7 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
-import {
-  aiContextOf,
-  aiEdgeBlocks,
-  aiInsertBlockId,
-  type AiEdgeBlocks,
-} from '@web/spaces/document/document-ai-launch';
+import { aiContextOf, aiInsertBlockId } from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE, onAiEscape, onAiRangeChange } from '@web/spaces/document/document-ai-range';
 import {
   aiDialogButtons,
@@ -82,12 +77,24 @@ import {
   type AiSessionEvent,
   type AiWriteButton,
 } from '@web/spaces/document/document-ai-session';
-import { insertAiResult, replaceAiResult, type AiWriteResult } from '@web/spaces/document/document-ai-write';
-import { selectionMarkdown } from '@web/spaces/document/document-blocks-read';
+import {
+  aiAnswer,
+  aiAnswerEmpty,
+  aiFormatFailed,
+  aiReplaceAvailable,
+  aiTextUnits,
+  aiUnitsRequest,
+  insertAiAnswer,
+  replaceAiAnswer,
+  type AiAnswer,
+  type AiTextUnit,
+  type AiWriteResult,
+} from '@web/spaces/document/document-ai-units';
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockById, keepWritable, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
-import { ourMediaPrefixReady, type WrittenBlock } from '@web/spaces/document/document-external-media';
+import { aimAt, type LocalRange } from '@web/spaces/document/document-local-range';
+import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -105,8 +112,8 @@ interface Opened {
   readonly base: { readonly project_id: string; readonly selection: string; readonly document: string };
   /** The block a result is inserted under. */
   readonly insertBlockId: string | null;
-  /** The blocks with no words at the selection's edges, which a replace takes away too. */
-  readonly edgeBlocks: AiEdgeBlocks;
+  /** The text units sent, which the answer is read back into (design §4.6). */
+  readonly units: readonly AiTextUnit[];
   /** The point a select-all pinned the panel to, in viewport coordinates. */
   readonly frozen: { readonly x: number; readonly y: number } | null;
   /** How fast the answer is shown, in characters per second. */
@@ -162,14 +169,13 @@ function titleOf(command: AiCommand, t: (key: string) => string): string {
 }
 
 /**
- * The original range as one span, while it is on its words.
+ * The original range where it is now.
  * @param editor - The document editor.
- * @returns From its first letter to past its last, or null once gone.
+ * @returns Its segments; none once gone.
  */
-function originalRange(editor: ViewedEditor): { from: number; to: number } | null {
+function originalSegments(editor: ViewedEditor): readonly LocalRange[] {
   const range = aiRangeIn(editor.prosemirrorState);
-  if (range?.kind !== 'present') return null;
-  return { from: range.segments[0]!.from, to: range.segments[range.segments.length - 1]!.to };
+  return range?.kind === 'present' ? range.segments : [];
 }
 
 interface DocumentAiDialogProps {
@@ -245,7 +251,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         void textToolsApi.stream(requestFor(at.base, now.command, now.instructions), {
           onEvent: (event) => {
             if (event.type === 'text_delta') send({ type: 'delta', seq, text: event.text });
-            else if (event.type === 'done') send({ type: 'done', seq });
+            else if (event.type === 'done') send({ type: 'done', seq, formatFailed: aiFormatFailed(sessionRef.current?.result ?? '', at.units) });
             else if (event.type === 'error') {
               failure.current = event.message === '' ? null : event.message;
               send({ type: 'error', seq });
@@ -268,6 +274,9 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         toast.error(failure.current ?? t('server.text_tool.failed'));
         failure.current = null;
         return;
+      case 'toastFormat':
+        toast.error(t('spaces.document.ai.formatFailed'));
+        return;
       case 'toastNotWritable':
         toast.error(t('spaces.document.ai.notWritable'));
         return;
@@ -281,16 +290,19 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         const failed = (): void => {
           toast.error(t('server.text_tool.failed'));
         };
-        if (effect.how === 'insert') {
-          const blockId = openedRef.current?.insertBlockId;
-          if (blockId === null || blockId === undefined) return;
-          void insertAiResult({ editor }, blockId, effect.result, admission).then(told, failed);
-          return;
-        }
-        const range = originalRange(editor);
-        const edges = openedRef.current?.edgeBlocks;
-        if (range === null || edges === undefined) return;
-        void replaceAiResult({ editor }, range, effect.result, admission, edges).then(told, failed);
+        const at = openedRef.current;
+        const command = sessionRef.current?.command.id;
+        if (at === null || command === undefined) return;
+        const { how, result } = effect;
+        void ourMediaPrefixReady().then((ourPrefix) => {
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, result, command, ourPrefix);
+          if (how === 'insert') {
+            return at.insertBlockId === null ? null : insertAiAnswer({ editor }, at.insertBlockId, answer, admission);
+          }
+          return replaceAiAnswer({ editor }, answer, originalSegments(editor), admission);
+        }).then((outcome) => {
+          if (outcome !== null) told(outcome);
+        }, failed);
       }
     }
   };
@@ -303,20 +315,23 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
       if (view === null) return;
       const { selection } = view.state;
       if (selection.empty || selection instanceof CellSelection) return;
-      const markdown = selectionMarkdown(editor, view);
-      if (markdown.trim() === '') return;
-      if (markdown.length > config.selectionMaxChars) {
-        toast.error(t('server.text_tool.selection_too_long', { actual: markdown.length, limit: config.selectionMaxChars }));
+      const segments = aimAt(view.state.doc, selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos })));
+      const units = aiTextUnits(view.state.doc, segments);
+      if (units.length === 0) return;
+      // The budget is measured on what is sent, tags included (§5.2).
+      const tagged = aiUnitsRequest(editor, view.state.doc, units, segments, command.id);
+      if (tagged.length > config.selectionMaxChars) {
+        toast.error(t('spaces.document.ai.selectionTooLong'));
         return;
       }
       const bar = selection instanceof AllSelection ? opener?.getBoundingClientRect() ?? null : null;
       openings.current += 1;
       const next: Opened = {
         key: openings.current,
-        base: { project_id: projectId, selection: markdown, document: aiContextOf(editor, config.contextMaxChars) },
+        base: { project_id: projectId, selection: tagged, document: aiContextOf(editor, config.contextMaxChars) },
         revealCharsPerSecond: config.revealCharsPerSecond,
         insertBlockId: aiInsertBlockId(view.state),
-        edgeBlocks: aiEdgeBlocks(view.state),
+        units,
         frozen: bar === null ? null : { x: bar.left, y: bar.bottom },
       };
       openedRef.current = next;
@@ -450,10 +465,26 @@ function AiPanel({
   React.useEffect(() => {
     if (session.state === 'stopped') flush();
   }, [session.state, flush]);
-  const resultEmpty = session.result.trim() === '';
+  // Outside media never land in the body, so they are not counted, drawn or
+  // fetched here either.
+  const ourPrefix = useOurMediaPrefix();
+  // The answer as insert and replace would write it, once all of it is on screen.
+  const finished = (session.state === 'stopped' || session.state === 'done') && isComplete;
+  const answer = React.useMemo<AiAnswer | null>(
+    () => (finished ? aiAnswer(editor, editor.prosemirrorState.doc, opened.units, session.result, session.command.id, ourPrefix) : null),
+    [finished, editor, opened.units, session.result, session.command.id, ourPrefix],
+  );
+  // Blank answers leave nothing to write (§5.3).
+  const resultEmpty = aiAnswerEmpty(session.result, opened.units);
+  const readReplaceable = React.useCallback(
+    (current: ViewedEditor): boolean => answer !== null && aiReplaceAvailable(current.prosemirrorState.doc, answer, originalSegments(current)),
+    [answer],
+  );
+  // Replace and its button decide by the same function (§5.3).
+  const replaceable = useEditorSnapshot(editor, readReplaceable) && rangePresent;
   const buttons = React.useMemo(
-    () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, rangePresent, insertBlockPresent }),
-    [session.state, resultEmpty, isComplete, rangePresent, insertBlockPresent],
+    () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, rangePresent: replaceable, insertBlockPresent }),
+    [session.state, resultEmpty, isComplete, replaceable, insertBlockPresent],
   );
 
   // The place the panel stood last, for when neither the words nor their
@@ -602,6 +633,9 @@ function AiPanel({
             {session.instructions !== null && <InstructionLine text={session.instructions} />}
             <Preview
               editor={editor}
+              units={opened.units}
+              command={session.command.id}
+              ourPrefix={ourPrefix}
               text={shown}
               streaming={session.state === 'streaming' || !isComplete}
               waiting={session.state === 'streaming' && shown.trim() === ''}
@@ -814,9 +848,31 @@ function InstructionLine({ text }: { text: string }): React.JSX.Element {
 }
 
 /**
- * The result, drawn the way the body draws blocks.
+ * Where our own media live, once known.
+ * @returns The prefix, or null until it is known.
+ */
+function useOurMediaPrefix(): string | null {
+  const [ourPrefix, setOurPrefix] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    void ourMediaPrefixReady().then((prefix) => {
+      if (live) setOurPrefix(prefix);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return ourPrefix;
+}
+
+/**
+ * The result, drawn the way the body draws blocks: each answered unit as the
+ * blocks insert and replace write for it (design §5.3).
  * @param props - The preview.
  * @param props.editor - The document editor, whose surroundings the preview copies.
+ * @param props.units - The units sent.
+ * @param props.command - The command.
+ * @param props.ourPrefix - Where our own media live.
  * @param props.text - The result as far as it is shown yet.
  * @param props.streaming - Whether the text is still growing.
  * @param props.waiting - Whether no words have come yet.
@@ -824,11 +880,17 @@ function InstructionLine({ text }: { text: string }): React.JSX.Element {
  */
 function Preview({
   editor,
+  units,
+  command,
+  ourPrefix,
   text,
   streaming,
   waiting,
 }: {
   editor: ViewedEditor;
+  units: readonly AiTextUnit[];
+  command: AiCommand['id'];
+  ourPrefix: string | null;
   text: string;
   streaming: boolean;
   waiting: boolean;
@@ -841,19 +903,6 @@ function Preview({
     return () => {
       setParser(null);
       doc.destroy();
-    };
-  }, []);
-
-  // Outside media never land in the body (insert and replace leave them
-  // out), so they are not drawn or fetched here either.
-  const [ourPrefix, setOurPrefix] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    void ourMediaPrefixReady().then((prefix) => {
-      if (live) setOurPrefix(prefix);
-    });
-    return () => {
-      live = false;
     };
   }, []);
 
@@ -871,9 +920,9 @@ function Preview({
      */
     const parse = (): void => {
       timer.current = null;
-      const markdown = latest.current;
-      const kept = markdown.trim() === '' ? [] : keepWritable(parser.tryParseMarkdownToBlocks(markdown) as WrittenBlock[], ourPrefix).blocks;
-      setHtml(kept.length === 0 ? '' : parser.blocksToFullHTML(kept as never));
+      const shown = latest.current;
+      const blocks = shown.trim() === '' ? [] : aiAnswer(parser, editor.prosemirrorState.doc, units, shown, command, ourPrefix).preview;
+      setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
     };
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
@@ -883,7 +932,7 @@ function Preview({
     // While it streams, at most one parse per interval, of whatever has
     // arrived by then.
     timer.current ??= window.setTimeout(parse, PREVIEW_THROTTLE_MS);
-  }, [parser, text, streaming, ourPrefix]);
+  }, [parser, text, streaming, ourPrefix, editor, units, command]);
 
   const host = React.useRef<HTMLDivElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);

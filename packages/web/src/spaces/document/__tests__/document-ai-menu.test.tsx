@@ -137,7 +137,7 @@ describe('the AI menu over a text selection', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool, project_id: 'project-1', selection: 'hello', document: 'hello world' });
+    expect(calls[0]!.body).toEqual({ tool, project_id: 'project-1', selection: '<u id="1" kind="paragraph">hello</u>', document: 'hello world' });
     expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
     expect(screen.queryByTestId('doc-bubble-ai-menu')).toBeNull();
     expect(sharedBodyMarkup()).toBe(before);
@@ -151,7 +151,7 @@ describe('the AI menu over a text selection', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'translate', project_id: 'project-1', selection: 'hello', document: 'hello world', language: 'ja' });
+    expect(calls[0]!.body).toEqual({ tool: 'translate', project_id: 'project-1', selection: '<u id="1" kind="paragraph">hello</u>', document: 'hello world', language: 'ja' });
     expect(screen.getByTestId('doc-ai-title').textContent).toContain(t('spaces.document.commands.ai_translate'));
     expect(screen.getByTestId('doc-ai-title').textContent).toContain('日本語');
   });
@@ -195,7 +195,7 @@ describe('the AI menu over a text selection', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'rewrite', project_id: 'project-1', selection: 'hello', document: 'hello world', style: 'professional' });
+    expect(calls[0]!.body).toEqual({ tool: 'rewrite', project_id: 'project-1', selection: '<u id="1" kind="paragraph">hello</u>', document: 'hello world', style: 'professional' });
   });
 
   it.each(['translate', 'tone'])('pressing %s opens its second level and leaves the menu open', async (row) => {
