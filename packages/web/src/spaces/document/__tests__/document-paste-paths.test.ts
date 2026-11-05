@@ -17,7 +17,17 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { canvasClipboardOf } from './canvas-clipboard-fixture';
 import { OURS, open, pasteFormats, positionOf, settled, shape, unmountAll, type Editor } from './paste-harness';
 import { nodeAt } from './paste-matrix';
+import { putContent } from '@web/spaces/document/document-put';
+import { readClipboardSlice } from '@web/spaces/document/document-paste-slice';
+import { keepTablesWhole } from '@web/spaces/document/document-table-nodes';
+import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
+import type { Transaction } from '@tiptap/pm/state';
 import { tableBlock } from './table-fixtures';
+
+vi.mock('@web/spaces/document/document-table-nodes', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@web/spaces/document/document-table-nodes')>();
+  return { ...real, keepTablesWhole: vi.fn(real.keepTablesWhole) };
+});
 
 afterEach(unmountAll);
 
@@ -394,6 +404,13 @@ describe('copies of every shape the body makes paste in', () => {
     expect(editor.prosemirrorView.state.doc.textContent).toContain('qq');
   });
 
+  it('a copy ending in a table nested under a line', async () => {
+    const source = await openReady([{ type: 'paragraph', content: 'aaaa' }, { type: 'paragraph', content: 'pppp', children: [tableBlock({ rows: [{ cells: ['c1', 'c2'] }] })] }]);
+    const editor = await pasteMid(copySelection(source, TextSelection.create(source.prosemirrorView.state.doc, positionOf(source, 'aaaa', 2), positionOf(source, 'c1', 1))));
+    expect(shape(editor)).toContain('table');
+    expect(editor.prosemirrorView.state.doc.textContent).toContain('pppp');
+  });
+
   it.each([
     ['from a stored cell out of the table', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'l2', 1), positionOf(s, 'twox', 3))],
     ['from outside into a stored cell', (s: Editor) => TextSelection.create(s.prosemirrorView.state.doc, positionOf(s, 'xone', 1), positionOf(s, 'l1', 1))],
@@ -432,5 +449,82 @@ describe('a stored table dragged inside the body', () => {
     await settled();
     expect(shape(editor).filter((line) => line === 'table')).toHaveLength(1);
     expect(editor.prosemirrorView.state.doc.textContent.match(/l1l2/g)).toHaveLength(1);
+  });
+});
+
+describe('a placement that fails part way', () => {
+  it.each([
+    ['a paste over selected words', false],
+    ['a drop between two blocks', true],
+  ] as const)('%s leaves the body as it was and lets the selection go', async (_name, drop) => {
+    const editor = await openReady(LINE);
+    const view = editor.prosemirrorView;
+    select(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'abcd', 3));
+    const before = view.state.doc;
+    const formats = copyOf(await openReady([{ type: 'heading', content: 'hhhh' }, { type: 'paragraph', content: 'pppp' }]), 1, 12);
+    const slice = readClipboardSlice(view.state.schema, formats['blocknote/html']!, formats['text/plain']!);
+    const dispatch = view.dispatch.bind(view);
+    const sent: Transaction[] = [];
+    let failed = false;
+    let writes = 0;
+    // The second write fails, after the selection's deletion or the drop's
+    // opened line went in.
+    vi.spyOn(view, 'dispatch').mockImplementation((tr: Transaction) => {
+      sent.push(tr);
+      if (tr.docChanged) writes += 1;
+      if (!failed && writes === 2) {
+        failed = true;
+        throw new Error('placement failed');
+      }
+      dispatch(tr);
+    });
+    // Inside the line's container, before its words: off a line of words.
+    const options = { wordsIntoTarget: true, judge: (props: Readonly<Record<string, unknown>>) => props, byPaste: true, ...(drop && { dropAt: positionOf(editor, 'tail', 0) - 1 }) };
+    expect(() => putContent(editor, { source: { kind: 'slice', slice, parsed: true }, lost: 0, plain: null }, options)).toThrow('placement failed');
+    expect(failed).toBe(true);
+    expect(view.state.doc.eq(before)).toBe(true);
+    if (drop) expect(sent.some((tr) => tr.getMeta(HOLD_PRE_EDIT_SELECTION) === false)).toBe(true);
+  });
+
+  it('a move within the body gives the dragged words back', async () => {
+    const editor = await openReady(LINE);
+    const view = editor.prosemirrorView;
+    const before = view.state.doc;
+    const dispatch = view.dispatch.bind(view);
+    let writes = 0;
+    // The move's deletion goes in; the placement's write after it fails.
+    vi.spyOn(view, 'dispatch').mockImplementation((tr: Transaction) => {
+      if (tr.docChanged) writes += 1;
+      if (writes === 2) throw new Error('placement failed');
+      dispatch(tr);
+    });
+    /**
+     * Keeps the error the drop handler throws out of the run's report.
+     * @param event - The error the page reports.
+     */
+    const swallow = (event: ErrorEvent): void => event.preventDefault();
+    window.addEventListener('error', swallow);
+    try {
+      dragWithin(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'abcd', 3), positionOf(editor, 'tail', 2));
+    } finally {
+      window.removeEventListener('error', swallow);
+    }
+    expect(writes).toBeGreaterThanOrEqual(2);
+    expect(view.state.doc.eq(before)).toBe(true);
+  });
+});
+
+describe('the transforms our placement runs on the target', () => {
+  it.each([
+    ['one line of words, which ProseMirror\'s own paste transforms', '<p>hello</p>', 'hello', 0],
+    ['two lines, which our placement lays out', '<p>he</p><p>lo</p>', 'he\nlo', 1],
+  ] as const)('run for %s %i times', async (_name, html, text, times) => {
+    const editor = await openReady(LINE);
+    select(editor, positionOf(editor, 'abcd', 2));
+    vi.mocked(keepTablesWhole).mockClear();
+    pasteFormats(editor, { 'text/html': html, 'text/plain': text });
+    await settled();
+    expect(editor.prosemirrorView.state.doc.textContent).toContain(text.replace('\n', ''));
+    expect(vi.mocked(keepTablesWhole)).toHaveBeenCalledTimes(times);
   });
 });
