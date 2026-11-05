@@ -497,7 +497,7 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
 
 describe('copy_carrier and prepare_model_input', () => {
   it('CC01 copies the stream and tags the plan matrix (§4.1 简单稳定输入, §91 D2 copy rule on standard-4)', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt601' }]);
+    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt601', audio: null }]);
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.width, video.height, video.color_space]).toEqual(['h264', 320, 180, 'smpte170m']);
     expect((await packets(file!)).map(packet => packet.pts_time)).toEqual((await packets(join(dir, 'untagged.mp4'))).map(packet => packet.pts_time));
@@ -529,12 +529,13 @@ describe('copy_carrier and prepare_model_input', () => {
   // §93 D8 (frames-split design §4.1 row 2, §4.2 sample grid, §4.3 audio row, §5.1 step 2; round 2, user 2026-11-04): the
   // dispatched copy keeps every video packet as it is and encodes the selected audio, over the plan's audio window, to AAC
   // at 48 kHz in the same MP4. The audio's declared support lies on the 48 kHz grid, at most half a sample from the
-  // source's exact end (§4.2: av_rescale rounding), and both streams keep the source's start. The recipe's `audio` is the
-  // stitch's (`audioOf(ledger)`: the display interval with the plan's origin and audio spans); its shape is question D8-1.
+  // source's exact end (§4.2: av_rescale rounding), and both streams keep the source's start. §94 D8 (design §7.17
+  // copy_carrier row): audio outside identity_formats is `{ kind: 'encode', ...audioOf entries }`, the stitch's interval
+  // with the plan's origin and audio spans.
   it('CC02 an ALAC source: every video packet kept byte for byte, the audio encoded to AAC 48 kHz over the same timeline', async () => {
     const source = join(dir, 'alac.mp4');
     const audio = { start: r(0), end: r(2), origin: r(0), spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }] };
-    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio }]);
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio: { kind: 'encode', ...audio } }]);
     expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video', 'audio']);
     expect(await packetList(file!, 'v:0')).toEqual(await packetList(source, 'v:0'));
     const [sourceVideo, sourceAudio, video, carried] = await Promise.all([streamClock(source, 'v:0'), streamClock(source, 'a:0'), streamClock(file!, 'v:0'), streamClock(file!, 'a:0')]);
@@ -542,6 +543,19 @@ describe('copy_carrier and prepare_model_input', () => {
     expect([video.start_time, carried.start_time]).toEqual([sourceVideo.start_time, sourceAudio.start_time]);
     const sourceSeconds = sourceAudio.duration_ts / Number(sourceAudio.sample_rate);
     expect(Math.abs(carried.duration_ts / 48000 - sourceSeconds)).toBeLessThanOrEqual(1 / 96000);
+  });
+
+  // §94 D8 (design §7.17 copy_carrier row, §4.3 audio row): audio inside identity_formats, here an AAC source dispatched
+  // only because twice its size outgrows the basic disk, is `{ kind: 'copy' }`: every packet of both streams kept.
+  it('CC03 an AAC source dispatched for its size: every video and audio packet kept byte for byte', async () => {
+    const source = join(dir, 'cfr.mp4');
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio: { kind: 'copy' } }]);
+    expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video', 'audio']);
+    expect(await packetList(file!, 'v:0')).toEqual(await packetList(source, 'v:0'));
+    expect(await packetList(file!, 'a:0')).toEqual(await packetList(source, 'a:0'));
+    const [sourceVideo, sourceAudio, video, carried] = await Promise.all([streamClock(source, 'v:0'), streamClock(source, 'a:0'), streamClock(file!, 'v:0'), streamClock(file!, 'a:0')]);
+    expect([carried.codec_name, carried.sample_rate]).toEqual(['aac', '44100']);
+    expect([video.start_time, carried.start_time]).toEqual([sourceVideo.start_time, sourceAudio.start_time]);
   });
 
   /**
