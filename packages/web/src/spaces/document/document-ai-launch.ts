@@ -170,7 +170,11 @@ export function aiEdgeBlocksBeside(doc: ProseMirrorNode, letters: LocalRange, ed
    * @returns True when it is that block and still has no words.
    */
   const matches = (at: number, id: string | undefined): boolean => blocks[at]!.id === id && blocks[at]!.wordless;
-  for (let at = blockHolding(blocks, letters.from) - 1, k = edges.before.length - 1; at >= 0 && k >= 0 && matches(at, edges.before[k]); at -= 1, k -= 1) {
+  // Document order puts the blocks the words sit inside just before them;
+  // those are not beside the words, so the walk back starts past them.
+  let start = blockHolding(blocks, letters.from) - 1;
+  while (start >= 0 && blocks[start]!.to > letters.from) start -= 1;
+  for (let at = start, k = edges.before.length - 1; at >= 0 && k >= 0 && matches(at, edges.before[k]); at -= 1, k -= 1) {
     beside.push(blocks[at]!);
   }
   for (let at = blockHolding(blocks, letters.to) + 1, k = 0; at < blocks.length && k < edges.after.length && matches(at, edges.after[k]); at += 1, k += 1) {

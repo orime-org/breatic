@@ -450,13 +450,11 @@ function AiPanel({
   React.useEffect(() => {
     if (session.state === 'stopped') flush();
   }, [session.state, flush]);
-  const buttons = aiDialogButtons({
-    state: session.state,
-    resultEmpty: session.result.trim() === '',
-    revealed: isComplete,
-    rangePresent,
-    insertBlockPresent,
-  });
+  const resultEmpty = session.result.trim() === '';
+  const buttons = React.useMemo(
+    () => aiDialogButtons({ state: session.state, resultEmpty, revealed: isComplete, rangePresent, insertBlockPresent }),
+    [session.state, resultEmpty, isComplete, rangePresent, insertBlockPresent],
+  );
 
   // The place the panel stood last, for when neither the words nor their
   // block is left to follow.
@@ -547,13 +545,13 @@ function AiPanel({
    * @param how - Which.
    * @param button - Its state.
    */
-  const press = (how: 'insert' | 'replace', button: AiWriteButton): void => {
+  const press = React.useCallback((how: 'insert' | 'replace', button: AiWriteButton): void => {
     if (button.disabled) {
       toast.warning(t(reasonKey(button.reason)));
       return;
     }
     dispatch({ type: how, writable: writable && editor.isEditable });
-  };
+  }, [dispatch, editor, t, writable]);
 
   return (
     <FloatingPortal root={opened.frozen === null ? viewport : undefined}>
@@ -647,24 +645,22 @@ function AiPanel({
             <div className='flex items-center gap-2'>
               {buttons.insert !== null && (
                 <WriteButton
+                  how='insert'
                   testId='doc-ai-insert'
                   label={t('spaces.document.ai.insert')}
                   variant='outline'
                   button={buttons.insert}
-                  onPress={(button) => {
-                    press('insert', button);
-                  }}
+                  onPress={press}
                 />
               )}
               {buttons.replace !== null && (
                 <WriteButton
+                  how='replace'
                   testId='doc-ai-replace'
                   label={t('spaces.document.ai.replace')}
                   variant='default'
                   button={buttons.replace}
-                  onPress={(button) => {
-                    press('replace', button);
-                  }}
+                  onPress={press}
                 />
               )}
             </div>
@@ -688,6 +684,7 @@ function reasonKey(reason: AiButtonReason | null): string {
  * Insert or replace: pressable, or dimmed with the reason on hover and on a
  * press (a condition that is not met, `packages/web/AGENTS.md#disabled-controls`).
  * @param props - The button.
+ * @param props.how - Which write it is.
  * @param props.testId - Its test id.
  * @param props.label - Its label.
  * @param props.variant - Its look.
@@ -695,18 +692,20 @@ function reasonKey(reason: AiButtonReason | null): string {
  * @param props.onPress - What a press does.
  * @returns The button.
  */
-function WriteButton({
+const WriteButton = React.memo(function WriteButton({
+  how,
   testId,
   label,
   variant,
   button,
   onPress,
 }: {
+  how: 'insert' | 'replace';
   testId: string;
   label: string;
   variant: 'outline' | 'default';
   button: AiWriteButton;
-  onPress: (button: AiWriteButton) => void;
+  onPress: (how: 'insert' | 'replace', button: AiWriteButton) => void;
 }): React.JSX.Element {
   const t = useTranslation();
   const control = (
@@ -717,7 +716,7 @@ function WriteButton({
       aria-disabled={button.disabled ? 'true' : undefined}
       className={cn(button.disabled && 'opacity-50')}
       onClick={() => {
-        onPress(button);
+        onPress(how, button);
       }}
     >
       {label}
@@ -731,7 +730,7 @@ function WriteButton({
       <TooltipContent portal>{t(reasonKey(button.reason))}</TooltipContent>
     </Tooltip>
   );
-}
+});
 
 /**
  * The custom instruction box: Enter starts, Shift+Enter makes a new line, and
