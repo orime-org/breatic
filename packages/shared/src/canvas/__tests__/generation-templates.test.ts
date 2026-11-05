@@ -411,13 +411,6 @@ describe('creative goals and triggers', () => {
     }
   });
 
-  it('names the social hook goal in all five languages', () => {
-    for (const locale of LOCALES) {
-      const name = raw(locale, 'canvas.template.goal.social-hooks');
-      expect(typeof name === 'string' && name.length > 0, locale).toBe(true);
-    }
-  });
-
   it('names every goal in all five languages', () => {
     for (const goal of TEMPLATE_GOALS) {
       for (const locale of LOCALES) {
@@ -718,8 +711,8 @@ describe('character template layouts (inner#1846)', () => {
     expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
   });
 
-  it('carries the same marks in the same order in every language, for every character template prompt', () => {
-    for (const template of GENERATION_TEMPLATES.filter((one) => one.goal === 'character')) {
+  it('carries the same marks in the same order in every language, for every template prompt', () => {
+    for (const template of GENERATION_TEMPLATES) {
       for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
         const reference = marksOf(raw('en', key) ?? '');
         for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
