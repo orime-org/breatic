@@ -488,6 +488,25 @@ describe('M §3.5 alpha-packed manifest', () => {
     expect(schema.safeParse(manifest()).success).toBe(true);
     expect(schema.safeParse(value).success).toBe(false);
   });
+
+  // §97 (coverage moved off the earlier `alphaManifestSchema`, which is deleted with its tests): the geometry checks the
+  // new manifest still runs through `pixel`, `rect` and `checkPackedGeometry` (design §3.5 alpha manifest row). Each case
+  // changes both rectangles alike where one alone would also trip the equal-size check, so only the named check refuses it.
+  it.each([
+    ['an alpha rectangle beyond the packed width', patched(manifest(), ['alphaRect', 'x'], 97)],
+    ['a negative rectangle coordinate', patched(manifest(), ['colorRect', 'x'], -1)],
+    ['a zero-width picture', patched(patched(manifest(), ['colorRect', 'width'], 0), ['alphaRect', 'width'], 0)],
+    ['a fractional picture height', patched(patched(manifest(), ['colorRect', 'height'], 1.5), ['alphaRect', 'height'], 1.5)],
+  ])('M04 rejects %s', (_, value) => {
+    const schema = required('alphaPackedManifestSchema');
+    expect(schema.safeParse(manifest()).success).toBe(true);
+    expect(schema.safeParse(value).success).toBe(false);
+  });
+
+  it('M05 accepts an odd 95x63 picture padded inside a 192x64 packed frame (encoder alignment)', () => {
+    const padded = { ...manifest(), colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+    expect(required('alphaPackedManifestSchema').safeParse(padded).success).toBe(true);
+  });
 });
 
 describe('L §3.5 full ledger: the plan with its origin mapping', () => {
