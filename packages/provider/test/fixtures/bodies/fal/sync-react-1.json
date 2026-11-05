@@ -6,123 +6,127 @@
     {
       "params": {
         "emotion": "neutral",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "neutral",
         "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "neutral",
-        "model_mode": "face",
-        "audio": "https://example.com/sample.png"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "neutral",
-        "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "happy",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "happy",
-        "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "sad",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "sad",
-        "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "angry",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "angry",
-        "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "disgusted",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "disgusted",
-        "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "surprised",
-        "model_mode": "face"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "surprised",
-        "model_mode": "face",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "neutral",
-        "model_mode": "lips"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "neutral",
-        "model_mode": "lips",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "neutral",
-        "model_mode": "head"
-      },
-      "prompt": "",
-      "body": {
-        "emotion": "neutral",
-        "model_mode": "head",
-        "lipsync_mode": "loop"
-      }
-    },
-    {
-      "params": {
-        "emotion": "neutral",
-        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
         "video": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "emotion": "neutral",
         "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "happy",
+        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "happy",
+        "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "sad",
+        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "sad",
+        "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "angry",
+        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "angry",
+        "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "disgusted",
+        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "disgusted",
+        "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "surprised",
+        "model_mode": "face",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "surprised",
+        "model_mode": "face",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "neutral",
+        "model_mode": "lips",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "neutral",
+        "model_mode": "lips",
+        "audio_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.png",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "emotion": "neutral",
+        "model_mode": "head",
+        "audio": "https://example.com/sample.png",
+        "video": "https://example.com/sample.png"
+      },
+      "prompt": "",
+      "body": {
+        "emotion": "neutral",
+        "model_mode": "head",
+        "audio_url": "https://example.com/sample.png",
         "video_url": "https://example.com/sample.png",
         "lipsync_mode": "loop"
       }

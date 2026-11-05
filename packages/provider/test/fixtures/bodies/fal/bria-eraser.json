@@ -4,28 +4,13 @@
   "model_id": "fal-ai/bria/eraser",
   "runs": [
     {
-      "params": {},
-      "prompt": "",
-      "body": {
-        "preserve_alpha": true
-      }
-    },
-    {
       "params": {
-        "image": "https://example.com/sample.png"
-      },
-      "prompt": "",
-      "body": {
-        "image_url": "https://example.com/sample.png",
-        "preserve_alpha": true
-      }
-    },
-    {
-      "params": {
+        "image": "https://example.com/sample.png",
         "mask_image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
+        "image_url": "https://example.com/sample.png",
         "mask_url": "https://example.com/sample.png",
         "preserve_alpha": true
       }

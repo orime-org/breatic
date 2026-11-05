@@ -8,7 +8,8 @@
  *
  * One file per binding, `packages/provider/test/fixtures/bodies/<upstream>/<model>.json`, holding
  * only runs the binding takes (`rejectedInput`): first the run with every param at its catalog
- * default (a null default left unset), then one run per value a param's sample covers
+ * default (a null default left unset), every source the catalog requires (an `accepts` param not
+ * marked optional) at a sample url and a voice the panel fills from the upstream's list at its first voice, its prompt mentioning only the references that run carries, then one run per value a param's sample covers
  * (`coveredValues`) and one per bound param without a default at a sample value (a list one url,
  * items two items, sent without a prompt when they carry the shots, a text "sample text"). A covered
  * value the default run's variants miss is tried on each run taken, and listed in `untaken` when none takes it. A param an extra step serves carries the id that step
@@ -23,12 +24,13 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import { adapterOf } from "../packages/provider/src/media/adapters.js";
-import { buildBody } from "../packages/provider/src/media/body.js";
-import { rejectedInput } from "../packages/provider/src/pricing/estimate.js";
-import { createProvider } from "../packages/provider/src/provider.js";
+import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
+import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
-const { catalog, coveredValues, shipped } = createRequire(import.meta.url)("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
+const load = createRequire(import.meta.url);
+const { catalog, coveredValues, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
+const { SAMPLE_VOICE_ID, firstBody, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
 interface CatalogParam {
@@ -39,14 +41,13 @@ interface CatalogParam {
   type?: string;
   fields?: Record<string, { values?: (string | number | boolean)[] }>;
   accepts?: string;
+  optional?: boolean;
+  remote_source?: string;
   description?: string;
 }
 
-/** One sample run. */
-interface Run {
-  params: Record<string, unknown>;
-  prompt: string;
-}
+/** One sample run, before its body is built. */
+type Run = Pick<SampleRun, "params" | "prompt">;
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BODIES = resolve(ROOT, "packages/provider/test/fixtures/bodies");
@@ -55,8 +56,6 @@ const SAMPLE_URL = "https://example.com/sample.png";
 const SAMPLE_TEXT = "sample text";
 const SAMPLE_WORD = "sample";
 const SAMPLE_PROMPT = "a red fox running through fresh snow at dawn";
-/** The clone id a voice step registers in the samples. */
-const SAMPLE_VOICE_ID = "BreaticSample";
 
 /**
  * One sample item of an `items` param from its fields.
@@ -89,13 +88,16 @@ function sampleOf(param: CatalogParam): unknown {
 }
 
 /**
- * The prompt the samples send: a sentence, and one reference to each param the binding has a mention template for.
+ * The prompt the samples send: a sentence, and one reference to each param the binding has a mention template for
+ * that the run carries.
  * @param binding - The binding.
+ * @param params - The run's params.
  * @returns The prompt, empty for a binding that takes none.
  */
-function promptOf(binding: MediaBinding): string {
+function promptOf(binding: MediaBinding, params: Record<string, unknown>): string {
   if (binding.prompt_field === undefined) return "";
-  return [SAMPLE_PROMPT, ...Object.keys(binding.mentions ?? {}).map((param) => `<<ref:${param}:1>>`)].join(" ");
+  const carried = Object.keys(binding.mentions ?? {}).filter((param) => isPresent(params[param]));
+  return [SAMPLE_PROMPT, ...carried.map((param) => `<<ref:${param}:1>>`)].join(" ");
 }
 
 /**
@@ -109,19 +111,7 @@ function writeJson(path: string, content: unknown): void {
 }
 
 const config = shipped();
-const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
-
-/**
- * Whether the binding takes a run.
- * @param model - Our model.
- * @param binding - The binding.
- * @param run - The run.
- * @returns True when no limit, voice map or reject of the binding refuses it.
- */
-async function takes(model: string, binding: MediaBinding, run: Run): Promise<boolean> {
-  return (await rejectedInput(provider.pricingRules(model), binding.upstream, { ...run, durations: {}, placeholders: [], durationsMissing: [] })) === undefined;
-}
 
 /**
  * The run with one param set: without a prompt when the param's items carry the shots.
@@ -135,39 +125,29 @@ function withParam(base: Run, name: string, value: unknown, param: CatalogParam 
   return { params: { ...base.params, [name]: value }, prompt: carriesShots(param) ? "" : base.prompt };
 }
 
-/**
- * The body of a run's first call as the runner sends it: the voice step's when the call clones a source, else the binding's.
- * @param binding - The binding.
- * @param run - The run.
- * @param ids - The ids its extra steps answered, by the param they serve.
- * @param kind - The upstream's kind.
- * @returns The body.
- * @throws {Error} When the upstream has no voice step for a binding that clones.
- */
-function firstBody(binding: MediaBinding, run: Run, ids: Record<string, string>, kind: string): Record<string, unknown> {
-  const params = { ...run.params, ...ids };
-  if (binding.reused_by === undefined) return buildBody(binding, { params, prompt: run.prompt });
-  const voice = adapterOf(kind).steps.voice;
-  if (voice === undefined) throw new Error(`${binding.upstream} has no voice step`);
-  return voice.body({ source: () => String(run.params[binding.reused_by!]), params, prompt: run.prompt, binding, customVoiceId: SAMPLE_VOICE_ID, voiceId: undefined, description: undefined, itemIndex: null, param: undefined });
-}
-
 const written = new Set<string>();
 for (const [model, { upstreams: bindings }] of Object.entries(config.media.models)) {
   for (const binding of bindings.filter((b) => (RESELLERS as readonly string[]).includes(b.upstream))) {
     const params = offered.get(model) ?? {};
-    const prompt = promptOf(binding);
     const bound = Object.keys(binding.params ?? {});
     const defaults = Object.fromEntries(Object.entries(params).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));
-    const first: Run = { params: defaults, prompt };
+    // A source the catalog requires, and a voice the panel fills from the upstream's list, are in every run the application sends.
+    const required: Record<string, unknown> = {};
+    for (const [name, p] of Object.entries(params)) {
+      if (defaults[name] !== undefined || p.optional === true) continue;
+      if (p.accepts !== undefined) required[name] = sampleOf(p);
+      else if (p.remote_source !== undefined && coveredValues(name, p, binding)[0] !== undefined) required[name] = coveredValues(name, p, binding)[0];
+    }
+    const firstParams = { ...defaults, ...required };
+    const first: Run = { params: firstParams, prompt: promptOf(binding, firstParams) };
     const candidates: Run[] = [first];
     for (const name of bound) {
       const values = coveredValues(name, params[name], binding);
-      for (const value of values) if (String(value) !== String(defaults[name])) candidates.push(withParam(first, name, value, params[name]));
-      if (values.length === 0 && defaults[name] === undefined && params[name] !== undefined) candidates.push(withParam(first, name, sampleOf(params[name]), params[name]));
+      for (const value of values) if (String(value) !== String(firstParams[name])) candidates.push(withParam(first, name, value, params[name]));
+      if (values.length === 0 && firstParams[name] === undefined && params[name] !== undefined) candidates.push(withParam(first, name, sampleOf(params[name]), params[name]));
     }
     const runs: Run[] = [];
-    for (const run of candidates) if (await takes(model, binding, run)) runs.push(run);
+    for (const run of candidates) if (await takes(model, binding, run.params, run.prompt)) runs.push(run);
     if (runs.length === 0) throw new Error(`${model} on ${binding.upstream}: the binding takes none of the sample runs`);
     // A value no run above carries is tried on each run taken, and listed as untaken when every one refuses it.
     const base = runs[0]!;
@@ -180,7 +160,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
         let taken: Run | undefined;
         for (const run of [...runs]) {
           const trial = withParam(run, name, value, params[name]);
-          if (await takes(model, binding, trial)) {
+          if (await takes(model, binding, trial.params, trial.prompt)) {
             taken = trial;
             break;
           }
@@ -214,7 +194,8 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       model_id: binding.model_id,
       runs: runs.map((run) => {
         const ids = Object.fromEntries(served.filter((s) => run.params[s.for_param!] !== undefined && run.params[s.for_param!] !== null).map((s) => [s.for_param!, `${s.kind}-id`]));
-        return { params: run.params, prompt: run.prompt, ...(Object.keys(ids).length === 0 ? {} : { ids }), body: firstBody(binding, run, ids, kind) };
+        const sample = { params: run.params, prompt: run.prompt, ...(Object.keys(ids).length === 0 ? {} : { ids }) };
+        return { ...sample, body: firstBody(binding, { ...sample, body: {} }) };
       }),
       ...(untaken.length === 0 ? {} : { untaken }),
       steps,

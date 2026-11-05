@@ -6,18 +6,6 @@
     {
       "params": {
         "model": "speech-2.8-hd",
-        "need_noise_reduction": true
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "noise_reduction": true,
-        "mode": "async",
-        "accuracy": 0.7
-      }
-    },
-    {
-      "params": {
-        "model": "speech-2.8-hd",
         "need_noise_reduction": true,
         "audio": "https://example.com/sample.png"
       },
@@ -38,7 +26,8 @@
         "source": "https://example.com/sample.png",
         "params": {
           "model": "speech-2.8-hd",
-          "need_noise_reduction": true
+          "need_noise_reduction": true,
+          "audio": "https://example.com/sample.png"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "customVoiceId": "BreaticSample",

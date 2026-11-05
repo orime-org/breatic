@@ -9,12 +9,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -23,12 +23,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "21:9",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -37,12 +37,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "4:3",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -51,12 +51,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "1:1",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -65,12 +65,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "3:4",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -79,12 +79,12 @@
         "duration": 5,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "9:16",
         "duration": 5,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -93,12 +93,12 @@
         "duration": 6,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 6,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -107,12 +107,12 @@
         "duration": 7,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 7,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -121,12 +121,12 @@
         "duration": 8,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 8,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -135,12 +135,12 @@
         "duration": 9,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 9,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -149,12 +149,12 @@
         "duration": 10,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 10,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -163,12 +163,12 @@
         "duration": 11,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 11,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -177,12 +177,12 @@
         "duration": 12,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 12,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -191,12 +191,12 @@
         "duration": 13,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 13,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -205,12 +205,12 @@
         "duration": 14,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 14,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -219,12 +219,12 @@
         "duration": 15,
         "resolution": "768p"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 15,
         "resolution": "768P",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -236,7 +236,7 @@
           "https://example.com/sample.png"
         ]
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 5,
@@ -244,7 +244,7 @@
         "reference_audio_urls": [
           "https://example.com/sample.png"
         ],
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -256,7 +256,7 @@
           "https://example.com/sample.png"
         ]
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 5,
@@ -264,7 +264,7 @@
         "reference_image_urls": [
           "https://example.com/sample.png"
         ],
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -276,7 +276,7 @@
           "https://example.com/sample.png"
         ]
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 5,
@@ -284,7 +284,7 @@
         "reference_video_urls": [
           "https://example.com/sample.png"
         ],
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     },
     {
@@ -293,12 +293,12 @@
         "duration": 5,
         "resolution": "2k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:audios:1>> <<ref:images:1>> <<ref:videos:1>>",
+      "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
         "duration": 5,
         "resolution": "2K",
-        "prompt": "a red fox running through fresh snow at dawn Audio 1 Image 1 Video 1"
+        "prompt": "a red fox running through fresh snow at dawn"
       }
     }
   ],

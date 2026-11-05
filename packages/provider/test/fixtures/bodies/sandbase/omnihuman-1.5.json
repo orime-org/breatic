@@ -4,32 +4,13 @@
   "model_id": "bytedance/omnihuman/1.5",
   "runs": [
     {
-      "params": {},
-      "prompt": "",
-      "body": {
-        "prompt": "",
-        "mode": "async",
-        "resolution": "720p"
-      }
-    },
-    {
       "params": {
-        "audio": "https://example.com/sample.png"
-      },
-      "prompt": "",
-      "body": {
         "audio": "https://example.com/sample.png",
-        "prompt": "",
-        "mode": "async",
-        "resolution": "720p"
-      }
-    },
-    {
-      "params": {
         "image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
+        "audio": "https://example.com/sample.png",
         "image": "https://example.com/sample.png",
         "prompt": "",
         "mode": "async",

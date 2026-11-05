@@ -1,4 +1,0 @@
-{
-  "source": "https://api.sandbase.ai/v1/models/bytedance/seedance/2.5/reference-to-video",
-  "price_formula": "(params.draft_id ?? '') != '' ? Math.round(usage.duration ?? 30.0) * 0.90 : (params.has_input_videos ? (((params.duration ?? 5) == 'auto' || (params.task_type ?? '') == 'edit' ? Math.round(usage.duration ?? 30.0) : (params.duration ?? 5)) + Math.max(2.0, Math.min(Math.ceil(usage.input_video_seconds), 30.0))) * ((params.draft ?? false) || (params.resolution ?? '720p') == '480p' ? 0.11 : (params.resolution ?? '720p') == '720p' ? 0.22 : (params.resolution ?? '720p') == '1080p' ? 0.55 : (0 / 0)) : ((params.duration ?? 5) == 'auto' || (params.task_type ?? '') == 'edit' ? Math.round(usage.duration ?? 30.0) : (params.duration ?? 5)) * ((params.draft ?? false) || (params.resolution ?? '720p') == '480p' ? 0.18 : (params.resolution ?? '720p') == '720p' ? 0.36 : (params.resolution ?? '720p') == '1080p' ? 0.9 : (0 / 0)))"
-}

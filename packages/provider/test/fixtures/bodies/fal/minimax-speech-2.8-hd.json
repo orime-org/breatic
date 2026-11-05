@@ -7,14 +7,16 @@
       "params": {
         "emotion": "happy",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "happy",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -26,14 +28,16 @@
       "params": {
         "emotion": "sad",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "sad",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -45,14 +49,16 @@
       "params": {
         "emotion": "angry",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "angry",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -64,14 +70,16 @@
       "params": {
         "emotion": "fearful",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "fearful",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -83,14 +91,16 @@
       "params": {
         "emotion": "disgusted",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "disgusted",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -102,14 +112,16 @@
       "params": {
         "emotion": "surprised",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "surprised",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -121,14 +133,16 @@
       "params": {
         "emotion": "neutral",
         "speed": 1,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "neutral",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -141,6 +155,7 @@
         "emotion": "happy",
         "speed": 1,
         "volume": 1,
+        "voice_id": "Wise_Woman",
         "pronunciation_dict": [
           {
             "text": "sample",
@@ -157,7 +172,8 @@
         "voice_setting": {
           "emotion": "happy",
           "speed": 1,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "pronunciation_dict": {
           "tone_list": [
@@ -175,14 +191,16 @@
       "params": {
         "emotion": "happy",
         "speed": 0.5,
-        "volume": 1
+        "volume": 1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "happy",
           "speed": 0.5,
-          "vol": 1
+          "vol": 1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -194,25 +212,6 @@
       "params": {
         "emotion": "happy",
         "speed": 2,
-        "volume": 1
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "voice_setting": {
-          "emotion": "happy",
-          "speed": 2,
-          "vol": 1
-        },
-        "prompt": "a red fox running through fresh snow at dawn",
-        "normalization_setting": {
-          "enabled": false
-        }
-      }
-    },
-    {
-      "params": {
-        "emotion": "happy",
-        "speed": 1,
         "volume": 1,
         "voice_id": "Wise_Woman"
       },
@@ -220,7 +219,7 @@
       "body": {
         "voice_setting": {
           "emotion": "happy",
-          "speed": 1,
+          "speed": 2,
           "vol": 1,
           "voice_id": "Wise_Woman"
         },
@@ -10125,14 +10124,16 @@
       "params": {
         "emotion": "happy",
         "speed": 1,
-        "volume": 0.1
+        "volume": 0.1,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "happy",
           "speed": 1,
-          "vol": 0.1
+          "vol": 0.1,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {
@@ -10144,14 +10145,16 @@
       "params": {
         "emotion": "happy",
         "speed": 1,
-        "volume": 10
+        "volume": 10,
+        "voice_id": "Wise_Woman"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "voice_setting": {
           "emotion": "happy",
           "speed": 1,
-          "vol": 10
+          "vol": 10,
+          "voice_id": "Wise_Woman"
         },
         "prompt": "a red fox running through fresh snow at dawn",
         "normalization_setting": {

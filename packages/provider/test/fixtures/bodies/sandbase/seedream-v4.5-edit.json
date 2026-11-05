@@ -4,15 +4,6 @@
   "model_id": "bytedance/seedream/4.5/edit",
   "runs": [
     {
-      "params": {},
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "prompt": "a red fox running through fresh snow at dawn",
-        "output_format": "jpeg",
-        "mode": "async"
-      }
-    },
-    {
       "params": {
         "images": [
           "https://example.com/sample.png"

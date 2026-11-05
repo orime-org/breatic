@@ -1,4 +1,0 @@
-{
-  "source": "https://api.sandbase.ai/v1/models/bytedance/seedvr/upscale/video",
-  "price_formula": "(usage.width ?? 1920.0) * (usage.height ?? 1080.0) * (usage.fps ?? 30.0) * (usage.duration ?? 5.0) / 1000000.0 * 0.001"
-}

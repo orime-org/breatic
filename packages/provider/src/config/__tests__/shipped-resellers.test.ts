@@ -101,15 +101,15 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
 const config = shipped();
 const models = config.media.models;
 
+/** A sample source url. */
+const URL_A = "https://a/x.mp4";
+
 /**
  * One model's binding on one upstream.
  * @param model - Our model.
  * @param upstream - The upstream.
  * @returns The binding, if any.
  */
-/** A sample source url. */
-const URL_A = "https://a/x.mp4";
-
 const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
   models[model]?.upstreams.find((b) => b.upstream === upstream);
 

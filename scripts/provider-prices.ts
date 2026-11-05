@@ -262,7 +262,10 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
     let live: number | string;
     try {
       const answer = await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) });
-      live = Number(at(answer, "data", "discounted_price") ?? at(answer, "data", "price"));
+      const price = at(answer, "data", "discounted_price");
+      // An answer without a price is a difference to look at, not a match.
+      const usd = typeof price === "number" || (typeof price === "string" && price.trim() !== "") ? Number(price) : Number.NaN;
+      live = Number.isFinite(usd) ? usd : `no discounted_price (${JSON.stringify(at(answer, "data")).slice(0, 120)})`;
     } catch (error) {
       live = `not priced (${(error as Error).message.slice(0, 120)})`;
     }

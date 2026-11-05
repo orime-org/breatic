@@ -7,19 +7,6 @@
       "params": {
         "generate_type": "Normal",
         "enable_pbr": false,
-        "face_count": 500000
-      },
-      "prompt": "",
-      "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
-        "mode": "async"
-      }
-    },
-    {
-      "params": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "face_count": 500000,
         "image": "https://example.com/sample.png"
       },
@@ -36,12 +23,14 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
+        "image": "https://example.com/sample.png",
         "back_image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "generate_type": "Normal",
         "enable_pbr": false,
+        "image": "https://example.com/sample.png",
         "back_image": "https://example.com/sample.png",
         "mode": "async"
       }
@@ -51,12 +40,14 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
+        "image": "https://example.com/sample.png",
         "left_image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "generate_type": "Normal",
         "enable_pbr": false,
+        "image": "https://example.com/sample.png",
         "left_image": "https://example.com/sample.png",
         "mode": "async"
       }
@@ -66,12 +57,14 @@
         "generate_type": "Normal",
         "enable_pbr": false,
         "face_count": 500000,
+        "image": "https://example.com/sample.png",
         "right_image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "generate_type": "Normal",
         "enable_pbr": false,
+        "image": "https://example.com/sample.png",
         "right_image": "https://example.com/sample.png",
         "mode": "async"
       }
@@ -80,12 +73,14 @@
       "params": {
         "generate_type": "LowPoly",
         "enable_pbr": false,
-        "face_count": 500000
+        "face_count": 500000,
+        "image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "generate_type": "LowPoly",
         "enable_pbr": false,
+        "image": "https://example.com/sample.png",
         "mode": "async"
       }
     },
@@ -93,12 +88,14 @@
       "params": {
         "generate_type": "Geometry",
         "enable_pbr": false,
-        "face_count": 500000
+        "face_count": 500000,
+        "image": "https://example.com/sample.png"
       },
       "prompt": "",
       "body": {
         "generate_type": "Geometry",
         "enable_pbr": false,
+        "image": "https://example.com/sample.png",
         "mode": "async"
       }
     }

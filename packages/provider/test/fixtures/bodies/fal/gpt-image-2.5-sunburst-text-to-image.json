@@ -18,32 +18,6 @@
     },
     {
       "params": {
-        "aspect_ratio": "3:4",
-        "quality": "medium",
-        "resolution": "1k"
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "image_size": "portrait_4_3",
-        "quality": "medium",
-        "prompt": "a red fox running through fresh snow at dawn"
-      }
-    },
-    {
-      "params": {
-        "aspect_ratio": "4:3",
-        "quality": "medium",
-        "resolution": "1k"
-      },
-      "prompt": "a red fox running through fresh snow at dawn",
-      "body": {
-        "image_size": "landscape_4_3",
-        "quality": "medium",
-        "prompt": "a red fox running through fresh snow at dawn"
-      }
-    },
-    {
-      "params": {
         "aspect_ratio": "1:1",
         "quality": "low",
         "resolution": "1k"
