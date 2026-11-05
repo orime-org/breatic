@@ -103,19 +103,6 @@ export function createModelDecoder(model: ModelPackage, limits: SceneImportLimit
 }
 
 const imageSizeSchema = z.object({ width: z.number().int().positive(), height: z.number().int().positive() });
-const mipDataSchema = z.object({ data: z.custom<ArrayBufferView>((value) => ArrayBuffer.isView(value)) });
-
-/**
- * Read the decoded mip bytes of a texture that carries its own mip levels, as a transcoded KTX2 texture does.
- * @param texture - A decoded texture.
- * @returns The bytes of every level, or undefined when the texture carries no mip data.
- * @throws {never} Never.
- */
-export function measuredTextureBytes(texture: Texture): number | undefined {
-  const levels = texture.mipmaps?.map((value) => mipDataSchema.safeParse(value)) ?? [];
-  return levels.length && levels.every((value) => value.success)
-    ? levels.reduce((sum, value) => sum + (value.success ? value.data.data.byteLength : 0), 0) : undefined;
-}
 
 /**
  * Check decoded textures before the first GPU upload of a model.

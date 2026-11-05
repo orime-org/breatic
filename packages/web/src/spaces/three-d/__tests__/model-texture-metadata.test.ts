@@ -32,10 +32,11 @@ function png(width: number, height: number): Uint8Array<ArrayBuffer> {
  * Build a KTX2 header whose GPU payload is deliberately outside this API.
  * @param width - The container's pixel width.
  * @param height - The container's pixel height.
+ * @param levels - The container's declared mip level count.
  * @returns The fixed metadata header.
  * @throws {never} Never directly.
  */
-function ktx2(width: number, height: number): Uint8Array<ArrayBuffer> {
+function ktx2(width: number, height: number, levels = 1): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(80);
   bytes.set([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
   const view = new DataView(bytes.buffer);
@@ -44,7 +45,7 @@ function ktx2(width: number, height: number): Uint8Array<ArrayBuffer> {
   view.setUint32(20, width, true);
   view.setUint32(24, height, true);
   view.setUint32(36, 1, true);
-  view.setUint32(40, 1, true);
+  view.setUint32(40, levels, true);
   return bytes;
 }
 
@@ -233,6 +234,10 @@ describe('model texture metadata dimensions before decoding', () => {
 
     expect(() => validateModelTextureMetadata(source, limits)).not.toThrow();
     expect(() => validateModelTextureMetadata(source, { ...limits, maxTextureEdge: 31 })).toThrow(Error);
+  });
+
+  it.each([[3, 3], [99, 6]])('reads a KTX2 image\'s declared mip levels (%i declared), bounded by its full chain', (declared, levels) => {
+    expect(validateModelTextureMetadata(externalImage(ktx2(32, 16, declared), 'image/ktx2'), IMPORT_LIMITS).get(0)).toEqual({ width: 32, height: 16, levels });
   });
 
   it('checks every image a material uses through a texture', () => {

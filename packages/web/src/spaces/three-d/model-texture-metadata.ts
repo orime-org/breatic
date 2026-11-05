@@ -47,6 +47,8 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
 export interface ImageSize {
   width: number;
   height: number;
+  /** A KTX2 image's declared mip levels, bounded by its full chain; absent for other images. */
+  levels?: number;
 }
 
 /**
@@ -63,11 +65,14 @@ function checkImage(read: ImageRead, image: NonNullable<ModelPackage['json']['im
   const bytes = uri !== undefined ? readModelResource(read.model, uri, read.location, read.decoded)
     : image.bufferView !== undefined ? readImageView(read, image.bufferView) : undefined;
   if (!bytes) throw new ModelImportError('invalid', 'Model image has no source', { detail: location });
-  let dimensions: { width: number; height: number } | undefined;
+  let dimensions: ImageSize | undefined;
   if (KTX2_IDENTIFIER.every((value, index) => bytes[index] === value)) {
     if (bytes.byteLength < 80) throw new ModelImportError('invalid', 'Truncated KTX2 image header', { detail: location });
     const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    dimensions = { width: header.getUint32(20, true), height: header.getUint32(24, true) };
+    const width = header.getUint32(20, true);
+    const height = header.getUint32(24, true);
+    const chain = Math.floor(Math.log2(Math.max(width, height, 1))) + 1;
+    dimensions = { width, height, levels: Math.min(Math.max(header.getUint32(40, true), 1), chain) };
   } else dimensions = imageDimensionsFromData(bytes);
   if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) throw new ModelImportError('invalid', 'Invalid model image metadata', { detail: location });
   const edge = Math.max(dimensions.width, dimensions.height);
@@ -100,56 +105,69 @@ export function validateModelTextureMetadata(model: ModelPackage, limits: SceneI
   return sizes;
 }
 
-/** GLTFLoader's WEBGL_FILTERS and WEBGL_WRAPPINGS keys; any other value takes the loader's default. */
-const MAG_FILTERS: ReadonlySet<unknown> = new Set([9728, 9729]);
-const MIN_FILTERS: ReadonlySet<unknown> = new Set([9728, 9729, 9984, 9985, 9986, 9987]);
-const WRAPPINGS: ReadonlySet<unknown> = new Set([33071, 33648, 10497]);
+/** GLTFLoader's WEBGL_FILTERS and WEBGL_WRAPPINGS keys, read as it reads them: by property name, for both filters. */
+const FILTERS: ReadonlySet<string> = new Set(['9728', '9729', '9984', '9985', '9986', '9987']);
+const WRAPPINGS: ReadonlySet<string> = new Set(['33071', '33648', '10497']);
 
 /**
- * Count the bytes of an uncompressed RGBA texture and, when it generates them, its mipmaps.
- * @param size - The texture's pixel dimensions.
- * @param size.width - Its width in pixels.
- * @param size.height - Its height in pixels.
- * @param mipmaps - Whether the texture generates mipmaps.
+ * Resolve a sampler value the way GLTFLoader looks it up in its filter or wrap table.
+ * @param value - The declared sampler value.
+ * @param keys - The table's keys.
+ * @param fallback - GLTFLoader's default when the table has no such key.
+ * @returns The resolved table key.
+ * @throws {never} Never.
+ */
+function lookup(value: unknown, keys: ReadonlySet<string>, fallback: string): string {
+  return keys.has(String(value)) ? String(value) : fallback;
+}
+
+/**
+ * Count the bytes a texture uploads with every mip level it carries or generates.
+ * Uncompressed images upload RGBA; KTX2 images count the largest desktop Basis transcode (ASTC 4x4, BC7, ETC2 RGBA and BC3 all take
+ * 16 bytes per 4x4 block), so every device reaches the same verdict.
+ * @param size - The texture's declared dimensions and, for KTX2, its declared levels.
+ * @param mipmaps - Whether an uncompressed texture generates mipmaps.
  * @returns The byte count.
  * @throws {never} Never.
  */
-function rgbaBytes(size: ImageSize, mipmaps: boolean): number {
+function uploadBytes(size: ImageSize, mipmaps: boolean): number {
   let { width, height } = size;
+  const levels = size.levels ?? (mipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1);
   let total = 0;
-  while (true) {
-    total += width * height * 4;
-    if (!mipmaps || (width === 1 && height === 1)) return total;
+  for (let level = 0; level < levels; level++) {
+    total += size.levels === undefined ? width * height * 4 : Math.ceil(width / 4) * Math.ceil(height / 4) * 16;
     width = Math.max(1, Math.floor(width / 2));
     height = Math.max(1, Math.floor(height / 2));
   }
+  return total;
 }
 
 /**
  * Hold the texture bytes every browser that can open the model uploads to the cumulative budget, from the declarations alone,
- * so import and every later open reach the same verdict.
- * GLTFLoader shares one image source per image index, and WebGLRenderer uploads a source once per filter and wrap combination:
+ * so import and every later open reach the same verdict on every device.
+ * GLTFLoader shares one texture per image file and sampler, and WebGLRenderer uploads a source once per filter and wrap combination:
  * texture transforms and second UV sets clone a texture without another upload.
  * @param json - The checked glTF document.
  * @param sizes - The declared dimensions of every image any browser decodes, from validateModelTextureMetadata.
- * @param measured - The decoded mip bytes of the compressed (KTX2) images, which every browser decodes from the same image.
  * @param limits - Configured cumulative texture budget.
  * @throws {ModelImportError} When the textures any browser uploads exceed the cumulative budget.
  */
-export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, measured: ReadonlyMap<number, number>, limits: SceneImportLimits): void {
-  const { textures = [], samplers = [] } = json as { textures?: { sampler?: number }[]; samplers?: Record<string, unknown>[] };
-  // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once;
-  // count per material slot colour space if such models exceed the budget on devices.
+export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, limits: SceneImportLimits): void {
+  const { textures, samplers } = json as { textures?: ({ sampler?: unknown } | null)[] | null; samplers?: Record<string, Record<string, unknown> | null> | null };
+  // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once,
+  // and image entries naming one file under samplers with equal values upload once or twice by load order and are counted once;
+  // count per material slot colour space and per image entry if such models exceed the budget on devices.
   const total = Math.max(...loadedResourcesInEveryBrowser(json).map((resources) => {
     const uploads = new Map<string, number>();
     for (const { texture, image } of resources.textures) {
       // inspectModelFiles refused every used texture that names no image.
       if (image === undefined) continue;
-      const sampler = samplers[textures[texture]?.sampler ?? -1] ?? {};
-      const min = MIN_FILTERS.has(sampler.minFilter) ? sampler.minFilter : 9987;
-      const key = [image, MAG_FILTERS.has(sampler.magFilter) ? sampler.magFilter : 9729, min,
-        WRAPPINGS.has(sampler.wrapS) ? sampler.wrapS : 10497, WRAPPINGS.has(sampler.wrapT) ? sampler.wrapT : 10497].join();
-      uploads.set(key, measured.get(image) ?? rgbaBytes(sizes.get(image)!, min !== 9728 && min !== 9729));
+      const declared = json.images![image]!;
+      const sampler = (samplers || {})[String(textures?.[texture]?.sampler)] || {};
+      const min = lookup(sampler.minFilter, FILTERS, '9987');
+      const key = [declared.uri || declared.bufferView, lookup(sampler.magFilter, FILTERS, '9729'), min,
+        lookup(sampler.wrapS, WRAPPINGS, '10497'), lookup(sampler.wrapT, WRAPPINGS, '10497')].join();
+      uploads.set(key, uploadBytes(sizes.get(image)!, min !== '9728' && min !== '9729'));
     }
     return [...uploads.values()].reduce((sum, bytes) => sum + bytes, 0);
   }));

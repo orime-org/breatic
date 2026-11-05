@@ -285,21 +285,22 @@ describe('texture byte budgets (inner#1690)', () => {
   const sizes = (count: number): Map<number, ImageSize> => new Map(Array.from({ length: count }, (_, index) => [index, { width: 64, height: 64 }]));
 
   it('refuses textures over the cumulative budget as an import limit', () => {
-    expect(() => validateModelTextureBytes(declared(2), sizes(2), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
-    expect(() => validateModelTextureBytes(declared(2), sizes(2), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 }))
+    expect(() => validateModelTextureBytes(declared(2), sizes(2), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
+    expect(() => validateModelTextureBytes(declared(2), sizes(2), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 }))
       .toThrow(expect.objectContaining({ code: 'budget' }));
   });
 
   it('states the full texture size against its limit', () => {
-    expect(() => validateModelTextureBytes(declared(3), sizes(3), new Map(), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
+    expect(() => validateModelTextureBytes(declared(3), sizes(3), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 })).toThrow(expect.objectContaining({
       code: 'budget', budget: { limit: 'textureBytes', allowed: 64 * 64 * 4, actual: 64 * 64 * 4 * 3 },
     }));
   });
 
-  it('counts a compressed image by its decoded mip bytes', () => {
-    const measured = new Map([[0, 1000]]);
-    expect(() => validateModelTextureBytes(declared(1), sizes(1), measured, { ...IMPORT_LIMITS, maxTextureBytes: 1000 })).not.toThrow();
-    expect(() => validateModelTextureBytes(declared(1), sizes(1), measured, { ...IMPORT_LIMITS, maxTextureBytes: 999 })).toThrow(expect.objectContaining({ code: 'budget' }));
+  it('counts a KTX2 image at the largest desktop transcode, 16 bytes per 4x4 block over its declared levels', () => {
+    const ktx2 = new Map([[0, { width: 64, height: 64, levels: 2 }]]);
+    expect(() => validateModelTextureBytes(declared(1), ktx2, { ...IMPORT_LIMITS, maxTextureBytes: 16 * 16 * 16 + 8 * 8 * 16 })).not.toThrow();
+    expect(() => validateModelTextureBytes(declared(1), ktx2, { ...IMPORT_LIMITS, maxTextureBytes: 16 * 16 * 16 + 8 * 8 * 16 - 1 })).toThrow(expect.objectContaining({ code: 'budget' }));
+    expect(() => validateModelTextureBytes(declared(1), new Map([[0, { width: 6, height: 6, levels: 1 }]]), { ...IMPORT_LIMITS, maxTextureBytes: 2 * 2 * 16 })).not.toThrow();
   });
 });
 
@@ -449,6 +450,33 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
       materials: [0, 1].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) },
     [['atlas.png', png(6144)]]);
     expect(await parseIn(model, true)).toEqual(overBudget);
+  });
+
+  /**
+   * Declare one 6144 px atlas used by two textures, the second through the given sampler.
+   * @throws {never} Never.
+   */
+  const sharedAtlas = (sampler: Record<string, unknown>): ReturnType<typeof inspectModelFiles> => triangle({ images: [{ uri: 'atlas.png' }],
+    textures: [{ source: 0 }, { source: 0, sampler: 0 }], samplers: [sampler],
+    meshes: [{ primitives: [0, 1].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+    materials: [0, 1].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['atlas.png', png(6144)]]);
+
+  it.each([['a mipmap magFilter', { magFilter: 9987 }], ['a wrap written as a string', { wrapS: '33071' }]])('counts an image again for a sampler whose filters GLTFLoader reads from %s', async (_label, sampler) => {
+    expect(await parseIn(sharedAtlas(sampler), true)).toEqual(overBudget);
+  });
+
+  it('counts an image once when several image entries name the same file', async () => {
+    const model = triangle({ images: [0, 1, 2, 3].map(() => ({ uri: 'atlas.png' })), textures: [0, 1, 2, 3].map((source) => ({ source })),
+      meshes: [{ primitives: [0, 1, 2, 3].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 1, 2, 3].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['atlas.png', png(4096)]]);
+    expect(await parseIn(model, true)).toBe('accepted');
+  });
+
+  it('loads a texture whose sampler list is null, as GLTFLoader does', async () => {
+    const model = triangle({ images: [{ uri: 'atlas.png' }], textures: [{ source: 0, sampler: 0 }], samplers: null,
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }], materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }] },
+    [['atlas.png', png(16)]]);
+    expect(await parseIn(model, true)).toBe('accepted');
   });
 
   it('loads a model whose unused texture has no source', async () => {

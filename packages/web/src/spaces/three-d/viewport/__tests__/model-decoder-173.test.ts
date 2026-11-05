@@ -4,8 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { CompressedTexture, Texture } from 'three';
-import { createModelDecoder, measuredTextureBytes } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { createModelDecoder } from '@web/spaces/three-d/viewport/model-decoder-173';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,13 +32,5 @@ describe('Draco decoder preload that no loaded primitive needs', () => {
     gate.resolve();
     await vi.waitFor(() => expect(created).toHaveLength(1));
     await vi.waitFor(() => expect(revoked).toEqual(created));
-  });
-});
-
-describe('measured texture bytes', () => {
-  it('sums the mip levels a transcoded texture carries, and measures nothing for an image texture', () => {
-    const compressed = new CompressedTexture([{ data: new Uint8Array(100), width: 4, height: 4 }, { data: new Uint8Array(25), width: 2, height: 2 }], 4, 4);
-    expect(measuredTextureBytes(compressed)).toBe(125);
-    expect(measuredTextureBytes(new Texture())).toBeUndefined();
   });
 });

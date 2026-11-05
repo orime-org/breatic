@@ -11,7 +11,7 @@ import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-view
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
-import { createModelDecoder, measuredTextureBytes, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { createModelDecoder, validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { imageLocation, validateModelTextureBytes, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
 import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
@@ -310,11 +310,7 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       // inspectModelFiles refused every used texture that names no image.
       if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: imageLocation(model, failed.image!) });
       validateModelTextures(result.scenes, textureLimits);
-      const measured = new Map(textures.flatMap(({ image }, position) => {
-        const bytes = measuredTextureBytes(decoded[position]!);
-        return bytes === undefined ? [] : [[image!, bytes] as const];
-      }));
-      validateModelTextureBytes(model.json, sizes, measured, limits);
+      validateModelTextureBytes(model.json, sizes, limits);
       return result.scene;
     } catch (error) {
       disposeModelTemplate(root);
