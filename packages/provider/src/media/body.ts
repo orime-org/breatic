@@ -99,15 +99,15 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
  */
 export function buildBody(binding: MediaBinding, input: MediaInput): Record<string, unknown> {
   const body: Record<string, unknown> = {};
-  for (const [param, value] of Object.entries(input.params)) {
-    const bound = binding.params?.[param];
-    if (bound === undefined) continue;
+  for (const [param, bound] of Object.entries(binding.params ?? {})) {
+    const value = input.params[param];
+    if (bound.unset !== undefined && !isPresent(value)) {
+      writeAt(body, bound.field, bound.unset);
+      continue;
+    }
     const voices = binding.voice_map?.[param];
     const out = written(bound, voices !== undefined && typeof value === "string" ? (voices[value] ?? value) : value, binding.send_empty === true);
     if (out !== undefined) writeAt(body, bound.field, out);
-  }
-  for (const [param, bound] of Object.entries(binding.params ?? {})) {
-    if (bound.unset !== undefined && !isPresent(input.params[param])) writeAt(body, bound.field, bound.unset);
   }
   if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);
   for (const [path, value] of Object.entries(binding.fixed ?? {})) writeAt(body, path, value);

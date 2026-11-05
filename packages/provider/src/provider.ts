@@ -109,6 +109,7 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
     fields: Object.fromEntries(Object.entries(binding.params ?? {}).map(([param, bound]) => [param, bound.field])),
     pricing: binding.pricing as PricingRule,
     steps: (binding.extra_steps ?? []).map((step) => ({
+      kind: step.kind,
       ...(step.for_param === undefined ? {} : { for_param: step.for_param }),
       ...(step.per_item === undefined ? {} : { per_item: step.per_item }),
       ...(step.reused === undefined ? {} : { reused: step.reused }),
@@ -132,7 +133,8 @@ function limitsOf(binding: MediaBinding): Pick<UpstreamPricing, "limits" | "voic
     if (bound.supported !== undefined) limits[param] = bound.supported;
   }
   for (const [param, drop] of Object.entries(binding.drops ?? {})) {
-    if (drop !== "*" && !("all_values" in drop)) limits[param] = [...droppedValues(drop)];
+    const values = droppedValues(drop);
+    if (values !== undefined) limits[param] = [...values];
   }
   const voices = Object.fromEntries(Object.entries(binding.voice_map ?? {}).map(([param, map]) => [param, Object.keys(map)]));
   return {

@@ -460,12 +460,12 @@ export function candidateOf(config: ProviderConfig, upstream: string, weight: nu
 
 /**
  * The values a drop serves a run at.
- * @param drop - One entry of a binding's `drops`.
- * @returns Its listed values; none for a drop of every value.
+ * @param drop - One entry of a binding's `drops`, or none.
+ * @returns Its listed values; undefined for a drop of every value (`"*"`, `{ all_values }`) and for no drop.
  */
-export function droppedValues(drop: NonNullable<MediaBinding["drops"]>[string] | undefined): readonly (string | number | boolean)[] {
+export function droppedValues(drop: NonNullable<MediaBinding["drops"]>[string] | undefined): readonly (string | number | boolean)[] | undefined {
   if (Array.isArray(drop)) return drop;
-  return typeof drop === "object" && "values" in drop ? drop.values : [];
+  return typeof drop === "object" && "values" in drop ? drop.values : undefined;
 }
 
 /**
@@ -487,16 +487,13 @@ function coverageProblems(model: string, binding: MediaBinding, params: CatalogS
     const bound = binding.params?.[param];
     const dropped = binding.drops?.[param];
     if (bound === undefined && dropped === undefined) problems.push(`${at} neither binds nor drops param "${param}"`);
-    const before = problems.length;
     if (bound !== undefined && dropped !== undefined) problems.push(`${at} both binds and drops param "${param}"`);
     const offered = declared.values === undefined ? undefined : new Set(declared.values.map(String));
-    const dropValues = droppedValues(dropped);
-    for (const value of [...(bound?.supported ?? []), ...dropValues]) {
+    for (const value of [...(bound?.supported ?? []), ...(droppedValues(dropped) ?? [])]) {
       // "" is a value that sends nothing, not one the param offers.
       if (offered !== undefined && value !== "" && !offered.has(String(value))) problems.push(`${at} lists value "${String(value)}" of "${param}", which the param does not offer`);
     }
-    // Each drop is reported once: a bare list of real values only when nothing else is wrong with it.
-    if (Array.isArray(dropped) && dropped.some((v) => v !== false && v !== "") && problems.length === before) {
+    if (Array.isArray(dropped) && dropped.some((v) => v !== false && v !== "")) {
       problems.push(`${at} drops "${param}" for ${JSON.stringify(dropped)} without saying why its default gives those values; write { values, equivalent }`);
     }
     if (bound?.item_fields !== undefined) {
