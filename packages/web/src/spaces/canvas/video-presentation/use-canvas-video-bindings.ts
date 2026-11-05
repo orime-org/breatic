@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { classifyVideoSourceLedgerFailure, type VideoPresentationResponse } from '@breatic/shared';
-import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
+import { shownVersionOf, type VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
 import type { VideoToolPresentation } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -173,9 +173,8 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         return frame && frame.sourceKey === binding!.sourceKey && frame.sourceEpoch === binding!.sourceEpoch && frame.seekEpoch === binding!.getSeekEpoch() ? frame : null;
       }
       const frame = actualFrame();
-      // ponytail: the ready surface is taken to show the read's selected version, as the node renders that same read;
-      // the resource's own versionId replaces this once the binding reports it (question D9-1).
-      const resourceVersionId = snapshot?.status === 'ready' ? facts?.response?.presentation?.versionId ?? null : null;
+      // The version the page shows is its runtime source key's third part (§3.3, §7.12 step 3).
+      const resourceVersionId = snapshot?.status === 'ready' ? shownVersionOf(binding.sourceKey) : null;
       const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, resourceVersionId, table: frameTable, tableStatus: facts.tableStatus, retrying: facts.retrying });
       presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable !== null && panelState === 'usable' ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
         ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
