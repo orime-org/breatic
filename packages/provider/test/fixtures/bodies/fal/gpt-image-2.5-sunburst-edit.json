@@ -15,10 +15,10 @@
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_size": "square_hd",
+        "image_urls": [
+          "https://example.com/sample.png"
+        ],
         "quality": "medium",
-        "image_urls": [
-          "https://example.com/sample.png"
-        ],
         "prompt": "a red fox running through fresh snow at dawn image 1"
       }
     },
@@ -34,10 +34,10 @@
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_size": "square_hd",
+        "image_urls": [
+          "https://example.com/sample.png"
+        ],
         "quality": "low",
-        "image_urls": [
-          "https://example.com/sample.png"
-        ],
         "prompt": "a red fox running through fresh snow at dawn image 1"
       }
     },
@@ -53,10 +53,10 @@
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_size": "square_hd",
+        "image_urls": [
+          "https://example.com/sample.png"
+        ],
         "quality": "high",
-        "image_urls": [
-          "https://example.com/sample.png"
-        ],
         "prompt": "a red fox running through fresh snow at dawn image 1"
       }
     },
@@ -72,10 +72,10 @@
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_size": "square_hd",
-        "quality": "xhigh",
         "image_urls": [
           "https://example.com/sample.png"
         ],
+        "quality": "xhigh",
         "prompt": "a red fox running through fresh snow at dawn image 1"
       }
     },
@@ -91,10 +91,10 @@
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
         "image_size": "square_hd",
-        "quality": "max",
         "image_urls": [
           "https://example.com/sample.png"
         ],
+        "quality": "max",
         "prompt": "a red fox running through fresh snow at dawn image 1"
       }
     }

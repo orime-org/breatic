@@ -13,9 +13,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 5,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -29,9 +29,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 6,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -45,9 +45,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 7,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -61,9 +61,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 8,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -77,9 +77,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 9,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -93,9 +93,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 10,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -109,9 +109,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 11,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -125,9 +125,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 12,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -141,9 +141,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 13,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -157,9 +157,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 14,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -173,9 +173,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 15,
-        "resolution": "768P",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "768P",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     },
@@ -189,9 +189,9 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "duration": 5,
-        "resolution": "2K",
         "image_url": "https://example.com/sample.png",
         "end_image_url": "https://example.com/sample.png",
+        "resolution": "2K",
         "prompt": "a red fox running through fresh snow at dawn"
       }
     }

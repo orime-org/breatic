@@ -7,15 +7,15 @@
       "params": {
         "emotion": "neutral",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "neutral",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -23,15 +23,15 @@
       "params": {
         "emotion": "happy",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "happy",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -39,15 +39,15 @@
       "params": {
         "emotion": "sad",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "sad",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -55,15 +55,15 @@
       "params": {
         "emotion": "angry",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "angry",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -71,15 +71,15 @@
       "params": {
         "emotion": "disgusted",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "disgusted",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -87,15 +87,15 @@
       "params": {
         "emotion": "surprised",
         "model_mode": "face",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "surprised",
         "model_mode": "face",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -103,15 +103,15 @@
       "params": {
         "emotion": "neutral",
         "model_mode": "lips",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "neutral",
         "model_mode": "lips",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     },
@@ -119,15 +119,15 @@
       "params": {
         "emotion": "neutral",
         "model_mode": "head",
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
+        "audio_url": "https://example.com/sample.mp3",
         "emotion": "neutral",
         "model_mode": "head",
-        "audio_url": "https://example.com/sample.png",
-        "video_url": "https://example.com/sample.png",
+        "video_url": "https://example.com/sample.mp4",
         "lipsync_mode": "loop"
       }
     }

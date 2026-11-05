@@ -12,9 +12,9 @@
       },
       "prompt": "",
       "body": {
+        "image": "https://example.com/sample.png",
         "generate_type": "Normal",
         "enable_pbr": false,
-        "image": "https://example.com/sample.png",
         "mode": "async"
       }
     },
@@ -28,10 +28,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "image": "https://example.com/sample.png",
         "back_image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
         "mode": "async"
       }
     },
@@ -45,10 +45,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "image": "https://example.com/sample.png",
         "left_image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
         "mode": "async"
       }
     },
@@ -62,10 +62,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "image": "https://example.com/sample.png",
         "right_image": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false,
         "mode": "async"
       }
     },
@@ -78,9 +78,9 @@
       },
       "prompt": "",
       "body": {
+        "image": "https://example.com/sample.png",
         "generate_type": "LowPoly",
         "enable_pbr": false,
-        "image": "https://example.com/sample.png",
         "mode": "async"
       }
     },
@@ -93,9 +93,9 @@
       },
       "prompt": "",
       "body": {
+        "image": "https://example.com/sample.png",
         "generate_type": "Geometry",
         "enable_pbr": false,
-        "image": "https://example.com/sample.png",
         "mode": "async"
       }
     }

@@ -9,14 +9,14 @@
         "keep_original_sound": true,
         "negative_prompt": "",
         "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
+        "image": "https://example.com/sample.png",
+        "video": "https://example.com/sample.mp4",
         "character_orientation": "video",
         "keep_original_sound": true,
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -27,14 +27,14 @@
         "keep_original_sound": true,
         "negative_prompt": "",
         "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
+        "image": "https://example.com/sample.png",
+        "video": "https://example.com/sample.mp4",
         "character_orientation": "image",
         "keep_original_sound": true,
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -45,14 +45,14 @@
         "keep_original_sound": false,
         "negative_prompt": "",
         "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
+        "image": "https://example.com/sample.png",
+        "video": "https://example.com/sample.mp4",
         "character_orientation": "video",
         "keep_original_sound": false,
-        "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }

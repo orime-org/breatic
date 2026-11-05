@@ -6,12 +6,12 @@
     {
       "params": {
         "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
         "image": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
+        "video": "https://example.com/sample.mp4",
         "mode": "async"
       }
     }

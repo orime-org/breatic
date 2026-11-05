@@ -333,7 +333,6 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "language_code": "English (US)",
-        "voice": "Kore",
         "speakers": [
           {
             "speaker_id": "sample",
@@ -344,6 +343,7 @@
             "voice": "Achernar"
           }
         ],
+        "voice": "Kore",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }

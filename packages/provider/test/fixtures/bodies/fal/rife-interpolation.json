@@ -5,11 +5,11 @@
   "runs": [
     {
       "params": {
-        "video": "https://example.com/sample.png"
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
-        "video_url": "https://example.com/sample.png"
+        "video_url": "https://example.com/sample.mp4"
       }
     }
   ],

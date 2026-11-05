@@ -12,9 +12,9 @@
       },
       "prompt": "",
       "body": {
+        "input_image_url": "https://example.com/sample.png",
         "generate_type": "Normal",
-        "enable_pbr": false,
-        "input_image_url": "https://example.com/sample.png"
+        "enable_pbr": false
       }
     },
     {
@@ -27,10 +27,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "input_image_url": "https://example.com/sample.png",
-        "back_image_url": "https://example.com/sample.png"
+        "back_image_url": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false
       }
     },
     {
@@ -43,10 +43,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "input_image_url": "https://example.com/sample.png",
-        "left_image_url": "https://example.com/sample.png"
+        "left_image_url": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false
       }
     },
     {
@@ -59,10 +59,10 @@
       },
       "prompt": "",
       "body": {
-        "generate_type": "Normal",
-        "enable_pbr": false,
         "input_image_url": "https://example.com/sample.png",
-        "right_image_url": "https://example.com/sample.png"
+        "right_image_url": "https://example.com/sample.png",
+        "generate_type": "Normal",
+        "enable_pbr": false
       }
     },
     {
@@ -74,9 +74,9 @@
       },
       "prompt": "",
       "body": {
+        "input_image_url": "https://example.com/sample.png",
         "generate_type": "LowPoly",
-        "enable_pbr": false,
-        "input_image_url": "https://example.com/sample.png"
+        "enable_pbr": false
       }
     },
     {
@@ -88,9 +88,9 @@
       },
       "prompt": "",
       "body": {
+        "input_image_url": "https://example.com/sample.png",
         "generate_type": "Geometry",
-        "enable_pbr": false,
-        "input_image_url": "https://example.com/sample.png"
+        "enable_pbr": false
       }
     }
   ],

@@ -5,13 +5,13 @@
   "runs": [
     {
       "params": {
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png"
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4"
       },
       "prompt": "",
       "body": {
-        "audio": "https://example.com/sample.png",
-        "video": "https://example.com/sample.png",
+        "audio": "https://example.com/sample.mp3",
+        "video": "https://example.com/sample.mp4",
         "mode": "async"
       }
     }

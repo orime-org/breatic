@@ -19,11 +19,11 @@
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -45,11 +45,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "1:1",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -71,11 +71,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "3:2",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -97,11 +97,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "2:3",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -123,11 +123,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "3:4",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -149,11 +149,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "4:3",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -175,11 +175,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "4:5",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -201,11 +201,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "5:4",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -227,11 +227,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "9:16",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -253,11 +253,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "16:9",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -279,11 +279,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "21:9",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -305,11 +305,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "1:4",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -331,11 +331,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "4:1",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -357,11 +357,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "1:8",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -383,11 +383,11 @@
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
         "aspect_ratio": "8:1",
-        "output_format": "png",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -408,11 +408,11 @@
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "output_format": "jpeg",
-        "resolution": "1K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "jpeg",
+        "resolution": "1K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -433,11 +433,11 @@
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "output_format": "png",
-        "resolution": "0.5K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "0.5K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -458,11 +458,11 @@
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "output_format": "png",
-        "resolution": "2K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "2K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
@@ -483,11 +483,11 @@
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
-        "output_format": "png",
-        "resolution": "4K",
         "images": [
           "https://example.com/sample.png"
         ],
+        "output_format": "png",
+        "resolution": "4K",
         "prompt": "a red fox running through fresh snow at dawn",
         "mode": "async"
       }
