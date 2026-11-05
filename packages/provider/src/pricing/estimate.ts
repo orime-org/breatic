@@ -21,6 +21,57 @@ export interface EstimateInput {
   placeholders: string[];
   /** The sources sent without every clip length known. */
   durationsMissing: string[];
+  /** Source url to the sha256 key of the asset behind it; read with `clones`. */
+  sourceKeys?: Readonly<Record<string, string>>;
+  /**
+   * The caller's live clones on every upstream, the whole truth when present: a reused call an upstream holds is left
+   * out, one it does not hold is priced. Absent when the caller does not know them (the browser): a reused call is then
+   * priced and the estimate is an upper bound.
+   */
+  clones?: readonly HeldClone[];
+}
+
+/** What a clone is of. */
+export type CloneKind = "voice" | "vocal" | "element";
+
+/** One live clone the caller holds; other fields, such as the upstream's id for it, may come along. */
+export interface HeldClone {
+  upstream: string;
+  kind: CloneKind;
+  /** The source asset's sha256, with a suffix for an element. */
+  sourceKey: string;
+}
+
+/**
+ * The cache key of the clone one call makes: a voice or vocal clone is keyed by the sha256 of the source its param
+ * carries, an element by the sha256 of its item and its place in the list (`{sha}:Element {n}`, `n` from 1).
+ * @param kind - The call's kind (`voice` for a binding's own call when it has `reused_by`).
+ * @param param - The param the call reads its source from (`reused_by` for a voice, the step's `for_param` otherwise).
+ * @param params - Our params.
+ * @param sourceKeys - Source url to the sha256 key of the asset behind it.
+ * @param itemIndex - For an element, its place in the list.
+ * @returns The kind and key, or undefined for a call that makes no clone or a source without a key.
+ */
+export function cloneKeyOf(
+  kind: string,
+  param: string | undefined,
+  params: Readonly<Record<string, unknown>>,
+  sourceKeys: Readonly<Record<string, string>>,
+  itemIndex: number | null,
+): { kind: CloneKind; sourceKey: string } | undefined {
+  if (param === undefined) return undefined;
+  const value = params[param];
+  if (kind === "voice" || kind === "vocal") {
+    const sha = typeof value === "string" ? sourceKeys[value] : undefined;
+    return sha === undefined ? undefined : { kind, sourceKey: sha };
+  }
+  if (kind === "element") {
+    const index = itemIndex ?? 0;
+    const item: unknown = Array.isArray(value) ? value[index] : undefined;
+    const sha = typeof item === "string" ? sourceKeys[item] : undefined;
+    return sha === undefined ? undefined : { kind, sourceKey: `${sha}:Element ${index + 1}` };
+  }
+  return undefined;
 }
 
 /** How sure an estimate is. */
@@ -88,6 +139,8 @@ const upstreamPricingSchema = z.looseObject({
   pricing: pricingRuleSchema,
   /** Calls the run makes besides the model's own. */
   steps: z.array(z.looseObject({
+    /** What the step does; a clone's kind keys the clone it makes. */
+    kind: z.string(),
     /** The param the step serves; the step is skipped when it carries nothing. */
     for_param: z.string().optional(),
     /** Whether the step runs once per item of its param. */
@@ -207,12 +260,11 @@ function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Rec
  * @param run - The run in the upstream's field names (`upstreamRun`); its prompt field is set here.
  * @param run.fields - The fields.
  * @param run.durations - The clip lengths.
- * @param cloned - Whether this upstream already holds a live clone of the source `reused_by` names, so the run skips the model's own call.
  * @returns The estimate.
  * @throws {jsonata.JsonataError} When a formula is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
  * @throws {Error} When a formula gives no finite total_price for this run.
  */
-async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>, cloned: boolean): Promise<Estimate> {
+async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>): Promise<Estimate> {
   const fieldOf = fieldNamer(rule);
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
   let unknown = input.placeholders.some((p) => reads(formulas, fieldOf(p)))
@@ -220,38 +272,61 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
   const promptField = rule.prompt_field;
   const textPriced = promptField !== undefined && input.prompt === "" && billsBy(formulas, "$length", promptField);
   const ownReused = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
-  // A clone this upstream already holds is skipped for sure, so it is neither priced nor a reason for `at_most`.
-  const ownSkipped = ownReused && cloned;
   const stepReused = rule.steps.some((s) => s.reused === true && (s.for_param === undefined || isPresent(input.params[s.for_param])));
+  const { clones } = input;
 
   /**
-   * The run's price with the prompt field set to one value.
+   * Whether this upstream holds the clone a call makes, by the caller's live clones.
+   * @param kind - The call's kind.
+   * @param param - The param it reads its source from.
+   * @param itemIndex - For an element, its place in the list.
+   * @returns False when the caller does not know its clones.
+   */
+  const held = (kind: string, param: string | undefined, itemIndex: number | null): boolean => {
+    const key = clones === undefined ? undefined : cloneKeyOf(kind, param, input.params, input.sourceKeys ?? {}, itemIndex);
+    return key !== undefined && clones!.some((c) => c.upstream === rule.upstream && c.kind === key.kind && c.sourceKey === key.sourceKey);
+  };
+
+  /**
+   * The run's price with the prompt field set to one value. A reused call this upstream holds is left out; one the
+   * caller does not know about is counted for the upper bound and left out of the price every run pays.
    * @param prompt - What the prompt field carries.
-   * @param skippable - Whether to count the calls a reused source skips.
+   * @param everyRun - Whether to leave out every reused call the caller does not know is made.
    * @returns USD.
    */
-  const priceAt = async (prompt: string, skippable: boolean): Promise<number> => {
+  const priceAt = async (prompt: string, everyRun: boolean): Promise<number> => {
     if (promptField !== undefined) fields[promptField] = mentionsWritten(rule.mentions, prompt);
-    let usd = (skippable && !ownSkipped) || !ownReused ? await priceUsd(contractOf(rule.pricing), fields, durations) : 0;
+    /**
+     * Whether one call is left out.
+     * @param reused - Whether a held clone lets the run skip it.
+     * @param kind - The call's kind.
+     * @param param - The param it reads its source from.
+     * @param itemIndex - For an element, its place in the list.
+     * @returns True when it is.
+     */
+    const skipped = (reused: boolean, kind: string, param: string | undefined, itemIndex: number | null): boolean =>
+      reused && ((everyRun && clones === undefined) || held(kind, param, itemIndex));
+    let usd = skipped(ownReused, "voice", rule.reused_by, null) ? 0 : await priceUsd(contractOf(rule.pricing), fields, durations);
     for (const step of rule.steps) {
-      if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : input.params[step.for_param];
       if (step.for_param !== undefined && !isPresent(source)) continue;
       if (step.pricing === undefined) continue;
-      const calls = step.per_item === true && Array.isArray(source) ? source.length : 1;
-      usd += calls * (await priceUsd(contractOf(step.pricing), fields, durations));
+      const items = step.per_item === true && Array.isArray(source) ? source.map((_, i) => i) : [null];
+      const calls = items.filter((i) => !skipped(step.reused === true, step.kind, step.for_param, i)).length;
+      if (calls > 0) usd += calls * (await priceUsd(contractOf(step.pricing), fields, durations));
     }
     return usd;
   };
 
-  const usd = await priceAt(input.prompt, true);
-  const everyRun = await priceAt(input.prompt, false);
+  const usd = await priceAt(input.prompt, false);
+  const everyRun = await priceAt(input.prompt, true);
   if (textPriced) {
-    if (everyRun === 0) return { usd: await priceAt(SAMPLE_TEXT, false), bound: "per_thousand_chars", upstream: rule.upstream };
+    if (everyRun === 0) return { usd: await priceAt(SAMPLE_TEXT, true), bound: "per_thousand_chars", upstream: rule.upstream };
     unknown = true;
   }
   if (unknown) return { usd: everyRun, bound: "at_least", upstream: rule.upstream };
-  return { usd, bound: (ownReused && !ownSkipped) || stepReused ? "at_most" : "exact", upstream: rule.upstream };
+  // Only a caller that does not know its clones leaves a reused call in doubt.
+  return { usd, bound: clones === undefined && (ownReused || stepReused) ? "at_most" : "exact", upstream: rule.upstream };
 }
 
 /**
@@ -282,10 +357,9 @@ export function parsePricingRules(raw: unknown): PricingRules {
  * estimate leave it out alike.
  * @param rule - The upstream's pricing entry.
  * @param input - The prepared run.
- * @param cloned - Whether the upstream already holds a live clone of the run's reused source.
  * @returns Why it cannot take the run, or what it would charge.
  */
-async function assessed(rule: UpstreamPricing, input: EstimateInput, cloned: boolean): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
+async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate }> {
   const allowed = [...Object.entries(rule.limits ?? {}), ...Object.entries(rule.voices ?? {})];
   for (const [param, values] of allowed) {
     const value = input.params[param];
@@ -303,7 +377,7 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput, cloned: boo
     }
   }
   try {
-    return { estimate: await estimateOn(rule, input, run, cloned) };
+    return { estimate: await estimateOn(rule, input, run) };
   } catch (error) {
     return { rejected: { reason: `${rule.upstream}'s price for this run could not be computed`, evaluationError: evaluationMessage(error) } };
   }
@@ -330,15 +404,13 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
  * condition to read; neither is an empty prompt. The prompt is read as the upstream is sent it, each reference written its way.
  * @param rules - The model's pricing rules, whose entries carry each upstream's input limits.
  * @param upstream - The upstream.
- * @param input - The prepared run.
- * @param cloned - Whether the upstream already holds a live clone of the source the binding's `reused_by` names; its
- *   estimate then leaves out the clone call, which the run skips.
+ * @param input - The prepared run, with the caller's live clones when it knows them.
  * @returns The param and value it cannot take, the reason of its condition, or the reason and the evaluation error; or
  *   the estimate; undefined when the rules list no such upstream.
  */
-export async function assess(rules: PricingRules, upstream: string, input: EstimateInput, cloned = false): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
+export async function assess(rules: PricingRules, upstream: string, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
   const rule = ruleOf(rules, upstream);
-  return rule === undefined ? undefined : assessed(rule, input, cloned);
+  return rule === undefined ? undefined : assessed(rule, input);
 }
 
 /**

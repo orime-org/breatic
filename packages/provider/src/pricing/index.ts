@@ -3,13 +3,16 @@
 
 export { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 export {
+  cloneKeyOf,
   estimateCost,
   orderByPrice,
   parsePricingRules,
   type Availability,
+  type CloneKind,
   type Estimate,
   type EstimateBound,
   type EstimateInput,
+  type HeldClone,
   type PricingRules,
   type Route,
 } from "@provider/pricing/estimate.js";

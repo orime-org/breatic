@@ -10,7 +10,7 @@ import { boundSignal } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
-import { assess, isPresent } from "@provider/pricing/estimate.js";
+import { assess, cloneKeyOf, isPresent, type CloneKind } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -370,36 +370,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   };
 
   /**
-   * The sha256 key a source is cached under.
-   * @param ticket - The ticket.
-   * @param url - The source.
-   * @returns The key, or undefined when the source is not an asset the caller knows.
-   */
-  const shaOf = (ticket: Ticket, url: unknown): string | undefined => (typeof url === "string" ? ticket.sourceKeys[url] : undefined);
-
-  /**
-   * The cache key of the clone a step makes, and its kind.
+   * The cache key of the clone a step makes, and its kind, by the rule every estimate keys clones with.
    * @param ticket - The ticket.
    * @param step - The step.
    * @returns The kind and key, or undefined for a step that makes no clone or a source without a key.
    */
-  const cloneKeyOf = (ticket: Ticket, step: Step): { kind: MediaClone["kind"]; sourceKey: string } | undefined => {
-    const params = ticket.input.params;
-    if (step.kind === "vocal") {
-      const sha = shaOf(ticket, params[step.param ?? ""]);
-      return sha === undefined ? undefined : { kind: "vocal", sourceKey: sha };
-    }
-    if (step.kind === "voice") {
-      const sha = shaOf(ticket, params[bindingOf(ticket).reused_by ?? ""]);
-      return sha === undefined ? undefined : { kind: "voice", sourceKey: sha };
-    }
-    if (step.kind === "element") {
-      const list = params[step.param ?? ""];
-      const sha = shaOf(ticket, Array.isArray(list) ? list[step.itemIndex ?? 0] : undefined);
-      return sha === undefined ? undefined : { kind: "element", sourceKey: `${sha}:Element ${(step.itemIndex ?? 0) + 1}` };
-    }
-    return undefined;
-  };
+  const stepCloneKey = (ticket: Ticket, step: Step): { kind: CloneKind; sourceKey: string } | undefined =>
+    cloneKeyOf(step.kind, step.kind === "voice" ? bindingOf(ticket).reused_by : step.param, ticket.input.params, ticket.sourceKeys, step.itemIndex);
 
   /**
    * The output a step has when the caller's cache already holds its clone.
@@ -408,7 +385,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The cached output, or undefined.
    */
   const cachedOutput = (ticket: Ticket, step: Step): StepOutput | undefined => {
-    const key = cloneKeyOf(ticket, step);
+    const key = stepCloneKey(ticket, step);
     const hit = key === undefined
       ? undefined
       : ticket.clones.find((c) => c.upstream === ticket.upstream && c.kind === key.kind && c.sourceKey === key.sourceKey);
@@ -568,7 +545,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The clone, or none.
    */
   const madeClones = (ticket: Ticket, step: Step): MediaClone[] => {
-    const key = cloneKeyOf(ticket, step);
+    const key = stepCloneKey(ticket, step);
     const id = step.output?.id ?? step.output?.voiceId ?? step.output?.elementId;
     return key === undefined || id === undefined || step.output?.cached === true ? [] : [{ upstream: ticket.upstream, ...key, upstreamId: id }];
   };
@@ -700,14 +677,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const { durations } = planOptions;
     // A source sent without a known length is priced as a lower bound, and ranks after every known price.
     const durationsMissing = Object.keys(input.params).filter((p) => isPresent(input.params[p]) && durations[p] === undefined);
-    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing };
+    // The live clones leave out each call an upstream holds, as planSteps does.
+    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, sourceKeys: planOptions.sourceKeys, clones: planOptions.clones };
     const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
-      // An upstream already holding the voice clone of the run's source skips the clone call, as planSteps does.
-      const reusedBy = bindingOf({ model, upstream: c.upstream }).reused_by;
-      const source = reusedBy === undefined ? undefined : input.params[reusedBy];
-      const sourceKey = typeof source === "string" ? planOptions.sourceKeys[source] : undefined;
-      const cloned = sourceKey !== undefined && planOptions.clones.some((k) => k.upstream === c.upstream && k.kind === "voice" && k.sourceKey === sourceKey);
-      const read = await assess(rules, c.upstream, run, cloned);
+      const read = await assess(rules, c.upstream, run);
       if (read === undefined) return c;
       return "rejected" in read ? { ...c, unsupported: read.rejected } : { ...c, estimate: { usd: read.estimate.usd, atLeast: read.estimate.bound === "at_least" } };
     }));
