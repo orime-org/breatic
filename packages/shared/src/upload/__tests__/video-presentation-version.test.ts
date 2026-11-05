@@ -49,7 +49,7 @@ interface Plan {
 }
 interface EditSpan { sourceStart: Rational; sourceEnd: Rational; presentationStart: Rational; rate: Rational }
 /** S6e E3 (design §3.2 item 7, inner 960d483f): physical encode facts beside the plan, outside its identity. */
-interface Encoding { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number; sourceKeyframes?: { pts: Rational; dts: Rational }[]; firstPacketDts?: Rational }
+interface Encoding { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number; sourceKeyframes: { pts: Rational; dts: Rational }[]; firstPacketDts: Rational }
 interface Ledger { schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: { jobId: string; deadlineAt: number }; plan: Plan; encoding: Encoding }
 interface Compact { sourceFingerprint: string; toolInputId: string; planSha256: string; presentation: VideoPresentationTable }
 interface VersionInput {
@@ -226,7 +226,7 @@ function singlePlan(): Plan {
  */
 function ledger(plan: Plan = cfrPlan()): Ledger {
   return { schemaVersion: 2, sourceFingerprint: H, toolInputId: TOOL, planSha256: PLAN, attempt: { ...ATTEMPT }, plan,
-    encoding: { keyframeOrdinals: [0], codedWidth: plan.display.width, codedHeight: plan.display.height } };
+    encoding: { keyframeOrdinals: [0], codedWidth: plan.display.width, codedHeight: plan.display.height, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } };
 }
 
 const PLANS = [['cfr', cfrPlan], ['lead, gap and hold', gapHoldPlan], ['rebased gap', gapPlan], ['matroska previous-max', matroskaPlan], ['single frame', singlePlan]] as const;
@@ -646,31 +646,31 @@ describe('E §3.2 item 7 the full ledger\'s encode facts (inner 960d483f)', () =
   });
 
   it.each([
-    ['keyframes out of order', { keyframeOrdinals: [0, 8, 4], codedWidth: 64, codedHeight: 48 }],
-    ['a repeated keyframe', { keyframeOrdinals: [0, 4, 4], codedWidth: 64, codedHeight: 48 }],
-    ['a keyframe past the last presented frame', { keyframeOrdinals: [0, 17], codedWidth: 64, codedHeight: 48 }],
-    ['a negative keyframe', { keyframeOrdinals: [-1, 0], codedWidth: 64, codedHeight: 48 }],
-    ['a fractional keyframe', { keyframeOrdinals: [0, 1.5], codedWidth: 64, codedHeight: 48 }],
-    ['a zero coded width', { keyframeOrdinals: [0], codedWidth: 0, codedHeight: 48 }],
-    ['a fractional coded height', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48.5 }],
-    ['an unknown key', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48, gop: 12 }],
+    ['keyframes out of order', { keyframeOrdinals: [0, 8, 4], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a repeated keyframe', { keyframeOrdinals: [0, 4, 4], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a keyframe past the last presented frame', { keyframeOrdinals: [0, 17], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a negative keyframe', { keyframeOrdinals: [-1, 0], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a fractional keyframe', { keyframeOrdinals: [0, 1.5], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a zero coded width', { keyframeOrdinals: [0], codedWidth: 0, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['a fractional coded height', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48.5, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
+    ['an unknown key', { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48, gop: 12, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) }],
   ])('E02 rejects encoding with %s', (_, encoding) => {
     const schema = required('videoPresentationLedgerSchema');
-    expect(schema.safeParse({ ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 16], codedWidth: 64, codedHeight: 48 } }).success).toBe(true);
+    expect(schema.safeParse({ ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 16], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } }).success).toBe(true);
     expect(schema.safeParse({ ...ledger(), encoding }).success).toBe(false);
   });
 
   it('E03 the encode facts stay outside the plan identity: planSha256 and toolInputId do not change with them', async () => {
     const planSha = required('videoPresentationPlanSha256');
     const toolInputId = required('videoPresentationToolInputId');
-    const a = { ...ledger(), encoding: { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48 } };
-    const b = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 12, 16], codedWidth: 1920, codedHeight: 1088 } };
+    const a = { ...ledger(), encoding: { keyframeOrdinals: [0], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } };
+    const b = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 8, 12, 16], codedWidth: 1920, codedHeight: 1088, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } };
     expect(await planSha(a.plan)).toBe(await planSha(b.plan));
     expect(await toolInputId({ sourceFingerprint: H, planSha256: await planSha(a.plan) })).toBe(await toolInputId({ sourceFingerprint: H, planSha256: await planSha(b.plan) }));
   });
 
   it('E04 the compact projection carries no encode facts', () => {
-    const compact = required('projectVideoPresentationCompact')({ ...ledger(), encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48 } });
+    const compact = required('projectVideoPresentationCompact')({ ...ledger(), encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } });
     expect(Object.keys(compact).sort()).toEqual(['planSha256', 'presentation', 'sourceFingerprint', 'toolInputId']);
   });
 
@@ -703,7 +703,7 @@ describe('E §3.2 item 7 the full ledger\'s encode facts (inner 960d483f)', () =
 
   it('E05 the keyframe flags expand the ordinals to one flag per presented frame, ready for planVideoEncodeChunks', () => {
     const flags = required('videoPresentationKeyframeFlags');
-    const value = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 9], codedWidth: 64, codedHeight: 48 } };
+    const value = { ...ledger(), encoding: { keyframeOrdinals: [0, 4, 9], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } };
     const expected = Array.from({ length: 17 }, (_, index) => [0, 4, 9].includes(index));
     expect(flags(value)).toEqual(expected);
   });

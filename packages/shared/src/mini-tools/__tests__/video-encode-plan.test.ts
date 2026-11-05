@@ -40,6 +40,7 @@ interface RouteInput {
   colorMatrixTagged: boolean;
   codec: string;
   copyPreservesTimeline: boolean;
+  audioCopyable: boolean;
   sourceBytes: number;
   copyDiskMarginBytes: number;
   basicDiskBytes: number;
@@ -116,7 +117,8 @@ const GiB = 1024 ** 3;
 function routeInput(overrides: Partial<RouteInput> = {}): RouteInput {
   return {
     plan: { planSha256: P, producerVersion: 1, profileVersion: 1 }, selected: null, hdr: false, alpha: 'confirmed_opaque',
-    identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, sourceBytes: GiB, copyDiskMarginBytes: GiB / 2, basicDiskBytes: 4 * GiB, ...overrides,
+    // §93 D6: the selected audio's codec is listed in identity_formats (required route fact since the round-2 audio rule).
+    identityQualified: false, colorMatrixTagged: true, codec: 'h264', copyPreservesTimeline: false, audioCopyable: true, sourceBytes: GiB, copyDiskMarginBytes: GiB / 2, basicDiskBytes: 4 * GiB, ...overrides,
   };
 }
 

@@ -82,7 +82,7 @@ beforeEach(async () => {
   const planSha256 = await (entry as unknown as { videoPresentationPlanSha256: (value: unknown) => Promise<string> }).videoPresentationPlanSha256(plan);
   const toolInputId = await (entry as unknown as { videoPresentationToolInputId: (value: unknown) => Promise<string> }).videoPresentationToolInputId({ sourceFingerprint: H, planSha256 });
   ledger = { schemaVersion: 2, sourceFingerprint: H, toolInputId, planSha256, attempt: { jobId: 'video-presentation:job-1', deadlineAt: 1_900_000_000_000 }, plan,
-    encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48 } };
+    encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48, sourceKeyframes: [{ pts: { numerator: '0', denominator: '1' }, dts: { numerator: '0', denominator: '1' } }], firstPacketDts: { numerator: '0', denominator: '1' } } };
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
 });

@@ -41,7 +41,7 @@ const accept = {
   // S6e E2-1: the encoding parameters are frozen at admission.
   encoding: {
     chunkShare: 0.5, maxParallelChunks: 8,
-    encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 } },
+    encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
     copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
   },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
@@ -146,11 +146,12 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
   const sourceBinding = { storageKey: 'video/canonical.webm', sourceFingerprint: fingerprint };
   // Stages are the §7.1 route stages.
   const preparation = { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'encode', failure: null };
-  const ready = { sourceBinding, presentation: bundle, preparation, ledger: { state: 'ready', receipt, failure: null } };
+  // §93 D6: the snapshot carries the DO's readmit fact (required).
+  const ready = { sourceBinding, presentation: bundle, preparation, ledger: { state: 'ready', receipt, failure: null }, readmit: false };
 
   it.each([
-    ['nothing admitted yet', { sourceBinding, presentation: null, preparation: null, ledger: null }],
-    ['work in preparation without a selected version', { sourceBinding, presentation: null, preparation, ledger: null }],
+    ['nothing admitted yet', { sourceBinding, presentation: null, preparation: null, ledger: null, readmit: false }],
+    ['work in preparation without a selected version', { sourceBinding, presentation: null, preparation, ledger: null, readmit: false }],
     ['a selected version with its ready ledger', ready],
     ['a selected version whose ledger is pending', { ...ready, ledger: { state: 'pending', receipt: null, failure: null } }],
     ['a selected version whose ledger failed transiently', { ...ready, ledger: { state: 'failed', receipt: null, failure: 'source_ledger_invalid' } }],
@@ -162,7 +163,7 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
   });
 
   it.each([
-    ['the earlier v2 shape', { presentation: null, attempt: null }],
+    ['the earlier v2 shape', { presentation: null, attempt: null, readmit: false }],
     ['a full frame array', { ...ready, frames: [] }],
     ['all ledger instances', { ...ready, ledgers: {} }],
     ['the earlier sourceLedger field', { ...ready, sourceLedger: null }],
@@ -171,7 +172,7 @@ describe('S6c snapshot: source binding, selected bundle, preparation and the sel
     ['a failed ledger without its code', { ...ready, ledger: { state: 'failed', receipt: null, failure: null } }],
     ['a pending ledger with a receipt', { ...ready, ledger: { state: 'pending', receipt, failure: null } }],
     ['a ledger receipt for another toolInputId', { ...ready, ledger: { state: 'ready', receipt: { ...receipt, toolInputId: 'b'.repeat(64) }, failure: null } }],
-    ['a ledger without a selected version', { sourceBinding, presentation: null, preparation, ledger: { state: 'pending', receipt: null, failure: null } }],
+    ['a ledger without a selected version', { sourceBinding, presentation: null, preparation, ledger: { state: 'pending', receipt: null, failure: null }, readmit: false }],
     ['an internal ledger state name', { ...ready, ledger: { state: 'failed-transient', receipt: null, failure: 'source_ledger_invalid' } }],
     ['a preparation without the target policy version', { ...ready, preparation: { jobId: 'video-presentation-a', stage: 'encode', failure: null } }],
     ['an unknown preparation key', { ...ready, preparation: { ...preparation, attempt: null } }],
