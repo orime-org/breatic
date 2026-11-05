@@ -942,7 +942,7 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-test('T1 and T9: a table pasted below a list in a cell becomes its blocks on both pages', async ({ browser }) => {
+test('T1 and T9: a table nested below a list, pasted in a cell, is refused and leaves both pages as they were (inner#1312 A14)', async ({ browser }) => {
   const spaceId = await openFreshDocument(page);
   await smallTable(page);
   const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
@@ -956,7 +956,9 @@ test('T1 and T9: a table pasted below a list in a cell becomes its blocks on bot
 
     await pasteHtml(page, '<ul><li>Outer<ul><li>Inner<table><tr><td>nested1</td><td>nested2</td></tr></table></li></ul></li></ul>', 'Outer\nInner\nnested1\tnested2');
 
-    const expected = [[['a1OuterInnernested1nested2', 'b1'], ['a2', 'b2']]];
+    // A table with other content is refused in a cell (inner#1312 A14).
+    await expect(page.getByText('This format cannot be pasted here')).toBeVisible();
+    const expected = [[['a1', 'b1'], ['a2', 'b2']]];
     await expect.poll(() => grids(page)).toEqual(expected);
     await expect.poll(() => grids(other)).toEqual(expected);
     await expect(page.locator(`${EDITOR} td table, ${EDITOR} th table`)).toHaveCount(0);
