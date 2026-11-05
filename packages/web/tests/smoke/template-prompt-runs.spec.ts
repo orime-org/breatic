@@ -238,13 +238,26 @@ async function promptText(editorId = 'generate-prompt-editor'): Promise<string> 
 }
 
 /**
- * Pick a node into one frame of the open video panel, the way a reader does: the frame, then the node.
+ * Pick a node into one frame of the open video panel, the way a reader does: the frame, then the
+ * part of the node still showing, since a tall result next to it can cover its centre.
  * @param slot - The frame.
  * @param nodeId - The node.
+ * @throws {Error} When no part of the node is showing.
  */
 async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string): Promise<void> {
   await page.getByTestId(`generate-video-tool-${slot}`).click();
-  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click();
+  const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    for (let y = 0.1; y < 1; y += 0.1) {
+      for (let x = 0.1; x < 1; x += 0.1) {
+        const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+        if (document.elementFromPoint(at.x, at.y)?.closest('.react-flow__node') === node) return at;
+      }
+    }
+    return null;
+  });
+  if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
+  await page.mouse.click(point.x, point.y);
   await expect(page.getByTestId(`generate-video-${slot}-thumbnail`)).toBeVisible({ timeout: 30_000 });
 }
 
