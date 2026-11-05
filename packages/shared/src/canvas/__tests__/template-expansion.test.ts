@@ -8,10 +8,13 @@
  * locale strings are injected here, so the registry's own templates stay out.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import fc from 'fast-check';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { GenerationTemplate, TemplateNodeKey } from '@shared/canvas/generation-templates.js';
+import { GENERATION_TEMPLATES, type GenerationTemplate, type TemplateNodeKey } from '@shared/canvas/generation-templates.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import {
   expandTemplate,
@@ -26,7 +29,7 @@ import {
   type TemplateGraphNode,
   type TemplateSkeleton,
 } from '@shared/canvas/template-expansion.js';
-import { resetLocales, setLocale, setLocaleMessages } from '@shared/i18n/index.js';
+import { resetLocales, setLocale, setLocaleMessages, t } from '@shared/i18n/index.js';
 import {
   promptPlainText,
   type ProposalNode,
@@ -1064,5 +1067,81 @@ describe('expandTemplate over random templates', () => {
         ]);
       }),
     );
+  });
+});
+
+describe('expandTemplate on registered templates with shots and slots (inner#1816)', () => {
+  beforeEach(() => {
+    const file = resolve(import.meta.dirname, '../../../../../locales/en.json');
+    setLocaleMessages('en', JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
+    setLocale('en');
+  });
+
+  /**
+   * A template of the registry by id.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const registered = (id: string): GenerationTemplate => {
+    const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+    if (!template) throw new Error(`template ${id} missing`);
+    return template;
+  };
+
+  /**
+   * Where an appended node stands in a fresh expansion (anchor at 0, appended from 1).
+   * @param result - The expansion.
+   * @param key - Its template or input key.
+   * @param input - Whether it is an input's node.
+   * @returns Its index, or 0 when nothing was appended for it.
+   */
+  const indexIn = (result: TemplateExpansionResult, key: string, input: boolean): number =>
+    1 + result.appended.findIndex((node) => node.templateNode?.key === key && (node.templateNode.input === true) === input);
+
+  it('writes the quick tip anchor as five shots of three seconds and no prompt, each @ing the subject, its note on top of the first shot only', () => {
+    const result = expandTemplate(registered('vertical-15s-quick-tip'), FRESH);
+    const anchor = result.rewritten.get(0);
+    expect(anchor).toMatchObject({ mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+    expect(anchor).not.toHaveProperty('prompt');
+    const shots = anchor?.shots ?? [];
+    expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);
+    const subject = indexIn(result, 'subject', true);
+    expect(subject).toBeGreaterThan(0);
+    expect(result.edges).toEqual([{ fromIndex: subject, toIndex: 0, into: 'pool' }]);
+    const subjectNote = note(t('canvas.template.vertical-15s-quick-tip.input.subject.note'));
+    for (const [at, shot] of shots.entries()) {
+      const where = `shot ${String(at + 1)}`;
+      expect(shot.prompt, where).toContainEqual({ ref: subject });
+      expect(shot.prompt.map((segment) => segment.text ?? '').join('').trim().length, where).toBeGreaterThan(0);
+      if (at === 0) expect(shot.prompt[0], where).toEqual(subjectNote);
+      else expect(shot.prompt, where).not.toContainEqual(subjectNote);
+    }
+  });
+
+  it('expands the carried-object transition into two scene pictures going into the first and last frame, the object in both pools, the anchor noting both and @ing neither', () => {
+    const result = expandTemplate(registered('carried-object-transition'), FRESH);
+    const sceneA = indexIn(result, 'scene-a', false);
+    const sceneB = indexIn(result, 'scene-b', false);
+    const object = indexIn(result, 'object', true);
+    for (const at of [sceneA, sceneB]) {
+      expect(result.appended[at - 1]).toMatchObject({ role: 'generate', type: 'image', mode: 'i2i', model: 'nano-banana-pro-edit-ultra' });
+    }
+    expect(object).toBeGreaterThan(0);
+    expect(result.edges).toEqual([
+      { fromIndex: sceneA, toIndex: 0, into: 'image' },
+      { fromIndex: sceneB, toIndex: 0, into: 'end_image' },
+      { fromIndex: object, toIndex: sceneA, into: 'pool' },
+      { fromIndex: object, toIndex: sceneB, into: 'pool' },
+    ]);
+    const anchor = result.rewritten.get(0);
+    expect(anchor).toMatchObject({ mode: 'first_last', model: 'seedance-2.5-image-to-video' });
+    const prompt = anchor?.prompt ?? [];
+    expect(prompt.filter((segment) => segment.slot?.kind === 'note')).toHaveLength(2);
+    expect(prompt.filter((segment) => segment.ref !== undefined)).toEqual([]);
+    for (const at of [sceneA, sceneB]) {
+      const words = result.appended[at - 1]?.prompt ?? [];
+      expect(words[0], `scene ${String(at)}`).toEqual(note(t('canvas.template.carried-object-transition.input.object.note')));
+      expect(words, `scene ${String(at)}`).toContainEqual({ ref: object });
+    }
   });
 });
