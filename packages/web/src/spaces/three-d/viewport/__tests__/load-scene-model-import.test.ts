@@ -481,6 +481,30 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     expect(await parseIn(model, true)).toBe('accepted');
   });
 
+  it('counts the uploads a sampler value naming an inherited property makes, as GLTFLoader reads it', async () => {
+    const model = triangle({ images: [{ uri: 'atlas.png' }], textures: [{ source: 0 }, { source: 0, sampler: 0 }, { source: 0, sampler: 1 }],
+      samplers: [{ minFilter: 'toString' }, { wrapS: 'valueOf' }], meshes: [{ primitives: [0, 1, 2].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 1, 2].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['atlas.png', png(6144)]]);
+    expect(await parseIn(model, true)).toEqual(overBudget);
+  });
+
+  it('counts each image entry naming one file again under its own sampler, as GLTFLoader loads each entry\'s source', async () => {
+    const model = triangle({ images: [0, 1, 2].map(() => ({ uri: 'atlas.png' })), textures: [0, 1, 2].map((source) => ({ source, sampler: source })), samplers: [{}, {}, {}],
+      meshes: [{ primitives: [0, 1, 2].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 1, 2].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['atlas.png', png(6144)]]);
+    expect(await parseIn(model, true)).toEqual(overBudget);
+  });
+
+  it('counts the largest image among entries GLTFLoader caches under one key', async () => {
+    const big = png(6144);
+    const model = triangle({ images: [{ uri: 's.png' }, { uri: 's.png', bufferView: 1 }], textures: [{ source: 1 }, { source: 0 }, { source: 1, sampler: 0 }, { source: 0, sampler: 0 }],
+      samplers: [{ wrapS: 33071 }], bufferViews: [{ buffer: 0, byteLength: geometry.byteLength }, { buffer: 1, byteLength: big.byteLength }],
+      buffers: [{ byteLength: geometry.byteLength, uri: embedded }, { byteLength: big.byteLength, uri: `data:application/octet-stream;base64,${btoa(String.fromCharCode(...big))}` }],
+      meshes: [{ primitives: [0, 1, 2, 3].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 1, 2, 3].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['s.png', png(16)]]);
+    expect(await parseIn(model, true)).toEqual(overBudget);
+  });
+
   it('loads a model whose unused texture has no source', async () => {
     const root = await parseSceneModel(triangle({ textures: [{ sampler: 0 }], samplers: [{}] }), new AbortController().signal, IMPORT_LIMITS);
     templates.add(root);

@@ -33,19 +33,21 @@ function png(width: number, height: number): Uint8Array<ArrayBuffer> {
  * @param width - The container's pixel width.
  * @param height - The container's pixel height.
  * @param levels - The container's declared mip level count.
+ * @param fields - Header fields to override, by byte offset, on a Basis Universal 2D texture.
  * @returns The fixed metadata header.
  * @throws {never} Never directly.
  */
-function ktx2(width: number, height: number, levels = 1): Uint8Array<ArrayBuffer> {
+function ktx2(width: number, height: number, levels = 1, fields: Record<number, number> = {}): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(80);
   bytes.set([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
   const view = new DataView(bytes.buffer);
-  view.setUint32(12, 37, true);
+  view.setUint32(12, 0, true);
   view.setUint32(16, 1, true);
   view.setUint32(20, width, true);
   view.setUint32(24, height, true);
   view.setUint32(36, 1, true);
   view.setUint32(40, levels, true);
+  for (const [offset, value] of Object.entries(fields)) view.setUint32(Number(offset), value, true);
   return bytes;
 }
 
@@ -236,8 +238,17 @@ describe('model texture metadata dimensions before decoding', () => {
     expect(() => validateModelTextureMetadata(source, { ...limits, maxTextureEdge: 31 })).toThrow(Error);
   });
 
-  it.each([[3, 3], [99, 6]])('reads a KTX2 image\'s declared mip levels (%i declared), bounded by its full chain', (declared, levels) => {
+  it.each([[0, 1], [3, 3], [99, 6]])('reads a KTX2 image\'s declared mip levels (%i declared), bounded by its full chain', (declared, levels) => {
     expect(validateModelTextureMetadata(externalImage(ktx2(32, 16, declared), 'image/ktx2'), IMPORT_LIMITS).get(0)).toEqual({ width: 32, height: 16, levels });
+  });
+
+  it.each([['a raw vkFormat', { 12: 37 }], ['a depth', { 28: 4 }], ['array layers', { 32: 2 }], ['cube faces', { 36: 6 }]])('refuses a KTX2 image with %s, which KHR_texture_basisu excludes', (_label, fields) => {
+    expect(() => validateModelTextureMetadata(externalImage(ktx2(32, 16, 1, fields), 'image/ktx2'), IMPORT_LIMITS))
+      .toThrow(expect.objectContaining({ code: 'invalid', detail: 'models/textures/Character Color' }));
+  });
+
+  it('accepts a KTX2 image that declares a single array layer', () => {
+    expect(() => validateModelTextureMetadata(externalImage(ktx2(32, 16, 1, { 32: 1 }), 'image/ktx2'), IMPORT_LIMITS)).not.toThrow();
   });
 
   it('checks every image a material uses through a texture', () => {
