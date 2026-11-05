@@ -113,7 +113,11 @@ async function play(docs: readonly Y.Doc[], sessions: readonly TimelineEditSessi
       const command = commandFor(doc, step.kind === 'untracked-delete' ? { ...step, kind: 'delete' } : step, next);
       if (command !== null) {
         if (step.kind === 'untracked-delete') applyTimelineEdit(doc, command, UNTRACKED);
-        else session.edit(command, step.kind === 'move' ? { hold: step.join ? 'continue' as const : 'start' as const } : {});
+        else {
+          // A fresh press ends any hold before holding again; a repeat keeps holding (inner#1708 Q1).
+          if (step.kind === 'move' && !step.join) session.endHold();
+          session.edit(command, step.kind === 'move' ? { hold: true } : {});
+        }
       }
     }
     if (step.syncAfter) {

@@ -78,18 +78,18 @@ describe('timelineKeyAction without modifiers', () => {
   it('maps N typed with Caps Lock on to toggle snapping', () => {
     expect(timelineKeyAction(press('N'), FPS24)).toEqual({ kind: 'toggle_snap' });
   });
-  it('maps arrows to one-frame nudges and carries repeat', () => {
-    expect(timelineKeyAction(press('ArrowLeft'), FPS24)).toEqual({ kind: 'nudge', frames: -1, repeat: false });
-    expect(timelineKeyAction(press('ArrowRight'), FPS24)).toEqual({ kind: 'nudge', frames: 1, repeat: false });
-    expect(timelineKeyAction(press('ArrowRight', { repeat: true }), FPS24)).toEqual({ kind: 'nudge', frames: 1, repeat: true });
+  it('maps arrows to one-frame nudges, held or not (inner#1708 Q1)', () => {
+    expect(timelineKeyAction(press('ArrowLeft'), FPS24)).toEqual({ kind: 'nudge', frames: -1 });
+    expect(timelineKeyAction(press('ArrowRight'), FPS24)).toEqual({ kind: 'nudge', frames: 1 });
+    expect(timelineKeyAction(press('ArrowRight', { repeat: true }), FPS24)).toEqual({ kind: 'nudge', frames: 1 });
   });
   it.each([
     { fps: FPS24, step: 24 },
     { fps: NTSC, step: 30 },
     { fps: { num: 25, den: 2 }, step: 13 },
   ])('maps Shift+arrows to one second of $step frames', ({ fps, step }) => {
-    expect(timelineKeyAction(press('ArrowRight', { shiftKey: true }), fps)).toEqual({ kind: 'nudge', frames: step, repeat: false });
-    expect(timelineKeyAction(press('ArrowLeft', { shiftKey: true, repeat: true }), fps)).toEqual({ kind: 'nudge', frames: -step, repeat: true });
+    expect(timelineKeyAction(press('ArrowRight', { shiftKey: true }), fps)).toEqual({ kind: 'nudge', frames: step });
+    expect(timelineKeyAction(press('ArrowLeft', { shiftKey: true, repeat: true }), fps)).toEqual({ kind: 'nudge', frames: -step });
   });
   it('maps Alt+Up and Alt+Down to a track change', () => {
     expect(timelineKeyAction(press('ArrowUp', { altKey: true }), FPS24)).toEqual({ kind: 'change_track', direction: 1, repeat: false });
