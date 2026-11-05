@@ -171,11 +171,15 @@ export const videoPresentationPlanSchema = planShape.transform((value, ctx) => {
 });
 
 /**
- * The physical encode facts beside the plan (§3.2 item 7): each presented frame's source keyframe ordinal and the coded
- * size. They do not change the presentation, so they stay outside planSha256 and toolInputId; the receipt digest binds them.
+ * The physical encode facts beside the plan (§3.2 item 7): each presented frame's source keyframe ordinal, the coded
+ * size, every source keyframe's pts and dts (presented or not) and the stream's first packet dts, read with the edit list
+ * ignored; a dts may be negative (negative CTS offsets), a pts may not. They do not change the presentation, so they stay
+ * outside planSha256 and toolInputId; the receipt digest binds them.
  */
 export const videoPresentationLedgerEncodingSchema = z.strictObject({
   keyframeOrdinals: z.array(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)), codedWidth: pixel, codedHeight: pixel,
+  sourceKeyframes: z.array(z.strictObject({ pts: exactTime.refine((value) => !value.numerator.startsWith('-'), 'Expected a non-negative pts'), dts: exactTime })),
+  firstPacketDts: exactTime,
 });
 
 /** The full ledger: the complete plan with its origin mapping and the encode facts, bound to toolInputId and planSha256. */
