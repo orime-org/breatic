@@ -28,6 +28,13 @@ export const COLLAB_REAUTH_REASONS = {
   sessionEnded: "Session ended",
 } as const;
 
+/**
+ * Why collab closed one document because an update would take it past its
+ * size limit. It is not a re-auth reason: the client drops its copy of the
+ * document and syncs a fresh one instead of re-sending the refused update.
+ */
+export const COLLAB_DOCUMENT_TOO_LARGE_REASON = "Document size limit reached";
+
 const REAUTH_REASONS: ReadonlySet<string> = new Set(Object.values(COLLAB_REAUTH_REASONS));
 
 /**
