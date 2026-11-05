@@ -478,27 +478,32 @@ function matrixTag(codec: string, matrix: string): string | null {
 }
 
 /**
- * Stream-copy the first video and audio into MP4 with `+faststart`, every packet time kept, writing only the plan's matrix
- * tag (§4.1, §91 D2-5); the basic copy and the standard-4 `copy_carrier` recipe both write the copy this way.
+ * Stream-copy the first video into MP4 with `+faststart`, every packet time kept, writing only the plan's matrix tag (§4.1,
+ * §91 D2-5); the basic copy and the standard-4 `copy_carrier` recipe both write the copy this way. The first audio is
+ * copied as well, left out, or encoded by the caller's filter chain on a second input of the same source (§7.17).
  * @param input - The downloaded source.
  * @param output - The local MP4 to write.
  * @param matrix - The plan's colour matrix.
  * @param run - The lifetime and frozen process IO bounds.
  * @param run.signal - The lifetime.
  * @param run.limits - The bounds.
+ * @param audio - `copy`, null for no audio, or the input arguments and filter chain ending at `[a]` to encode to AAC 48 kHz.
  * @returns Nothing once the file is written.
  * @throws {ProbeFailure} When the source has no video or the matrix has no tag value.
  * @throws {Error} When a process fails.
  */
 export async function copyWithMatrixTag(input: string, output: string, matrix: string,
-  run: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } }): Promise<void> {
+  run: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } },
+  audio: 'copy' | null | { args: string[]; graph: string } = 'copy'): Promise<void> {
   const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', input],
     { signal: run.signal, stdoutBytes: run.limits.probeStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes }));
   const video = (Array.isArray(raw.streams) ? raw.streams.map(record) : []).find((stream) => stream.codec_type === 'video');
   if (video === undefined) throw new ProbeFailure('classification_unknown');
   const tag = matrixTag(String(video.codec_name), matrix);
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`, '-map', '0:a:0?',
-    '-c', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), '-movflags', '+faststart', '-f', 'mp4', output],
+  const sound = audio === 'copy' ? ['-map', '0:a:0?', '-c:a', 'copy'] : audio === null ? ['-an']
+    : ['-filter_complex', audio.graph, '-map', '[a]', '-c:a', 'aac', '-ar', '48000'];
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, ...(typeof audio === 'object' && audio !== null ? [...audio.args, input] : []),
+    '-map', `0:${String(video.index)}`, '-c:v', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), ...sound, '-movflags', '+faststart', '-f', 'mp4', output],
   { signal: run.signal, stdoutBytes: run.limits.analysisStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes });
 }
 

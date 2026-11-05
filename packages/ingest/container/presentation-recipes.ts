@@ -454,6 +454,27 @@ async function stitch(recipe: Extract<PresentationRecipe, { kind: "stitch" }>, f
 }
 
 /**
+ * Copy the carrier (§7.17 copy_carrier row): the video packets as they are with the plan's matrix tag; the audio copied,
+ * encoded to AAC 48 kHz over the stitch's audio entries (§4.2), or left out.
+ * @param recipe - The copy recipe.
+ * @param source - The downloaded source.
+ * @param output - The MP4 to write.
+ * @param bounds - The lifetime and frozen process IO bounds for the copy.
+ * @param bounds.signal - The lifetime.
+ * @param bounds.limits - The bounds.
+ * @param run - The lifetime and IO bounds for reading the source facts.
+ * @returns Nothing once written.
+ * @throws {Error} When FFmpeg fails.
+ */
+async function copyCarrier(recipe: Extract<PresentationRecipe, { kind: "copy_carrier" }>, source: string, output: string,
+  bounds: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } }, run: Run): Promise<void> {
+  const { audio } = recipe;
+  if (audio === null || audio.kind === "copy") { await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, audio === null ? null : "copy"); return; }
+  const { kind: _kind, ...entries } = audio;
+  await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, (await sourceFacts(source, run)).audio ? audioOf(1, entries) : null);
+}
+
+/**
  * A bound input's downloaded file.
  * @param files - The downloaded inputs by id.
  * @param inputId - The input.
@@ -608,7 +629,7 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
     else await detectScenes(recipe, local(inputs, recipe.inputId), output, request, run);
     return { width: null, height: null, durationSeconds: null, cover: null };
   }
-  if (recipe.kind === "copy_carrier") await copyWithMatrixTag(local(inputs, recipe.inputId), output, recipe.colorMatrix, { signal, limits });
+  if (recipe.kind === "copy_carrier") await copyCarrier(recipe, local(inputs, recipe.inputId), output, { signal, limits }, run);
   else if (recipe.kind === "stitch") await stitch(recipe, inputs, directory, output, run);
   else await renderWindow(recipe, local(inputs, recipe.inputId), output, run);
   const metadata = pickMediaMetadata(readProbeOutput((await runPlanCommand("ffprobe", probeArgs(output, "own-file"),
