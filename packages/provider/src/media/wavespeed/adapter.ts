@@ -17,7 +17,7 @@ import { fetchJson, parsed } from "@provider/http/request.js";
 import {
   bearerHeaders as headers,
   billingFailure,
-  limits,
+  readOptions,
   minimaxVoiceGone,
   outputField,
   outputUrls,
@@ -97,7 +97,7 @@ async function submit(reach: Reach, endpoint: string, body: Record<string, unkno
 async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
   const answer = await fetchJson(
     { url: `${reach.decl.base_url}/predictions/${encodeURIComponent(predictionId)}/result`, method: "GET", headers: headers(reach) },
-    { replaySafe: true, ...bounds, ...limits(bounds) },
+    readOptions(bounds),
   );
   const parsed = resultSchema.safeParse(answer);
   const data = parsed.success ? parsed.data.data : undefined;
@@ -121,7 +121,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
   try {
     body = await fetchJson(
       { url: `${reach.decl.base_url}/billings/search`, method: "POST", headers: headers(reach), body: JSON.stringify({ prediction_uuids: [predictionId] }) },
-      { replaySafe: true, ...bounds, ...limits(bounds) },
+      readOptions(bounds),
     );
   } catch (error) {
     const code = billingFailure(error);

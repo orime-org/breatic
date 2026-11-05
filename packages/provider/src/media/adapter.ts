@@ -11,7 +11,7 @@ import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, isSuccess, send } from "@provider/http/request.js";
+import { answerText, isSuccess, send, type ReadOptions } from "@provider/http/request.js";
 import { buildBody } from "@provider/media/body.js";
 import type { MediaWarning, StepKind } from "@provider/media/runner.js";
 
@@ -137,6 +137,15 @@ const FINAL_ASK_IDLE_MS = 60_000;
 export function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
   const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
   return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
+}
+
+/**
+ * The options of a replay-safe JSON read (a poll, a result or a billing query) within the JSON read limits.
+ * @param bounds - The request's bounds.
+ * @returns The options.
+ */
+export function readOptions(bounds: RequestBounds): ReadOptions {
+  return { replaySafe: true, ...bounds, ...limits(bounds) };
 }
 
 /**

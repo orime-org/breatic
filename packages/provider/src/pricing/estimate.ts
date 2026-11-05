@@ -71,7 +71,9 @@ export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.
  * check that could not be made on this run (one of its limits, or its price, failed to evaluate), with the
  * evaluator's message.
  */
-export type RejectedInput = { param: string; value: unknown } | { reason: string } | { reason: string; evaluationError: string };
+export type RejectedInput =
+  | { param: string; value: unknown }
+  | { reason: string; /** The evaluator's message, when the check could not be made. */ evaluationError?: string };
 
 /**
  * What the browser needs to price a run on one upstream: the one description of the entry the
@@ -202,14 +204,16 @@ function upstreamRun(rule: UpstreamPricing, input: EstimateInput): { fields: Rec
  * What one upstream would charge for a run, and how sure that is; the prompt is priced as it is sent.
  * @param rule - The upstream's pricing.
  * @param input - The prepared run.
+ * @param run - The run in the upstream's field names (`upstreamRun`); its prompt field is set here.
+ * @param run.fields - The fields.
+ * @param run.durations - The clip lengths.
  * @returns The estimate.
- * @throws {Error} When a formula fails to evaluate (JSONata's own error object).
- * @throws {NoTotalPrice} When a formula produces no finite price for this run.
+ * @throws {jsonata.JsonataError} When a formula is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
+ * @throws {Error} When a formula gives no finite total_price for this run.
  */
-async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<Estimate> {
+async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields, durations }: ReturnType<typeof upstreamRun>): Promise<Estimate> {
   const fieldOf = fieldNamer(rule);
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
-  const { fields, durations } = upstreamRun(rule, input);
   let unknown = input.placeholders.some((p) => reads(formulas, fieldOf(p)))
     || input.durationsMissing.some((p) => billsBy(formulas, "get_duration", fieldOf(p)));
   const promptField = rule.prompt_field;
@@ -284,7 +288,8 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ 
     if (!isPresent(value)) continue;
     if (!values.some((v) => String(v) === String(value))) return { rejected: { param, value } };
   }
-  const { fields, durations } = upstreamRun(rule, input);
+  const run = upstreamRun(rule, input);
+  const { fields, durations } = run;
   if (rule.prompt_field !== undefined && input.prompt !== "") fields[rule.prompt_field] = mentionsWritten(rule.mentions, input.prompt);
   for (const { when, reason } of rule.rejects ?? []) {
     try {
@@ -294,7 +299,7 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ 
     }
   }
   try {
-    return { estimate: await estimateOn(rule, input) };
+    return { estimate: await estimateOn(rule, input, run) };
   } catch (error) {
     return { rejected: { reason: `${rule.upstream}'s price for this run could not be computed`, evaluationError: evaluationMessage(error) } };
   }
@@ -312,14 +317,43 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput): Promise<{ 
  * @returns The param and value it cannot take, the reason of its condition, or the reason and the evaluation error; undefined when it takes the run or has no entry.
  */
 export async function rejectedInput(rules: PricingRules, upstream: string, input: EstimateInput): Promise<RejectedInput | undefined> {
-  const rule = ruleOf(rules, upstream);
-  if (rule === undefined) return undefined;
-  const read = await assessed(rule, input);
-  return "rejected" in read ? read.rejected : undefined;
+  const read = await assess(rules, upstream, input);
+  return read !== undefined && "rejected" in read ? read.rejected : undefined;
 }
 
 /**
- * Every configured upstream's estimate for a run, cheapest first and equal prices by weight.
+ * One upstream's whole answer on a run, worked out once: why it cannot take the run (as `rejectedInput` answers), or
+ * what it would charge (as each estimate reads it).
+ * @param rules - The model's pricing rules.
+ * @param upstream - The upstream.
+ * @param input - The prepared run.
+ * @returns The rejection or the estimate; undefined when the rules list no such upstream.
+ */
+export async function assess(rules: PricingRules, upstream: string, input: EstimateInput): Promise<{ rejected: RejectedInput } | { estimate: Estimate } | undefined> {
+  const rule = ruleOf(rules, upstream);
+  return rule === undefined ? undefined : assessed(rule, input);
+}
+
+/**
+ * The order of two priced upstreams: an estimate with a known price before one that is only a lower bound (a source
+ * whose length is not known is priced at none), then the cheaper, then the lower weight.
+ * @param a - One upstream's price.
+ * @param a.usd - Its estimate.
+ * @param a.atLeast - Whether the estimate is only a lower bound.
+ * @param a.weight - Its weight.
+ * @param b - The other.
+ * @param b.usd - Its estimate.
+ * @param b.atLeast - Whether the estimate is only a lower bound.
+ * @param b.weight - Its weight.
+ * @returns Negative when `a` goes first.
+ */
+export function byPrice(a: { usd: number; atLeast: boolean; weight: number }, b: { usd: number; atLeast: boolean; weight: number }): number {
+  return Number(a.atLeast) - Number(b.atLeast) || a.usd - b.usd || a.weight - b.weight;
+}
+
+/**
+ * Every configured upstream's estimate for a run, cheapest first and equal prices by weight; an estimate that is
+ * only a lower bound (`at_least`) after every one with a known price.
  * @param rules - The model's pricing rules.
  * @param availability - Which upstreams are configured.
  * @param input - The prepared run.
@@ -328,12 +362,11 @@ export async function rejectedInput(rules: PricingRules, upstream: string, input
 export async function orderByPrice(rules: PricingRules, availability: Availability, input: EstimateInput): Promise<(Estimate & { weight: number })[]> {
   const out: (Estimate & { weight: number })[] = [];
   for (const { upstream, weight, configured } of availability.upstreams) {
-    const rule = ruleOf(rules, upstream);
-    if (!configured || rule === undefined) continue;
-    const read = await assessed(rule, input);
-    if ("estimate" in read) out.push({ ...read.estimate, weight });
+    if (!configured) continue;
+    const read = await assess(rules, upstream, input);
+    if (read !== undefined && "estimate" in read) out.push({ ...read.estimate, weight });
   }
-  return out.sort((a, b) => a.usd - b.usd || a.weight - b.weight);
+  return out.sort((a, b) => byPrice({ ...a, atLeast: a.bound === "at_least" }, { ...b, atLeast: b.bound === "at_least" }));
 }
 
 /**
@@ -352,10 +385,8 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
   const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
   const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
   for (const { upstream } of pool) {
-    const rule = ruleOf(rules, upstream);
-    if (rule === undefined) continue;
-    const read = await assessed(rule, input);
-    if ("estimate" in read) return read.estimate;
+    const read = await assess(rules, upstream, input);
+    if (read !== undefined && "estimate" in read) return read.estimate;
   }
   return null;
 }

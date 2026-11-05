@@ -41,27 +41,12 @@ export interface PriceContract {
 }
 
 /**
- * A formula that evaluated without a JSONata error and produced no finite `total_price` (a run that leaves out a
- * field the formula multiplies by gets this); the price of the run cannot be computed.
- */
-export class NoTotalPrice extends Error {
-  /**
-   * Record the formula.
-   * @param formula - The formula.
-   */
-  constructor(formula: string) {
-    super(`Pricing formula produced no finite total_price: ${formula}`);
-    this.name = "NoTotalPrice";
-  }
-}
-
-/**
  * Compile one expression in WaveSpeed's formula dialect, `get_duration` registered over the clip lengths
  * and `$word` (whether a value is a string of word characters) beside it.
  * @param formula - The expression.
  * @param durations - Clip lengths in seconds, keyed by upstream field.
  * @returns The compiled expression.
- * @throws {Error} When the expression is not valid JSONata.
+ * @throws {jsonata.JsonataError} When the expression is not valid JSONata (a plain object, not an Error instance).
  */
 function compiled(formula: string, durations: Readonly<Record<string, readonly number[]>>): jsonata.Expression {
   const expression = jsonata(formula.replace(
@@ -111,7 +96,7 @@ export function formulaProblem(formula: string): string | undefined {
  * @param fields - The request in the upstream's field names.
  * @param durations - Clip lengths in seconds, keyed by upstream field, for `get_duration`.
  * @returns True only when it evaluates to true.
- * @throws {Error} When the condition is not valid JSONata or fails to evaluate.
+ * @throws {jsonata.JsonataError} When the condition is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
  */
 export async function holds(
   condition: string,
@@ -127,8 +112,8 @@ export async function holds(
  * @param fields - The request in the upstream's field names.
  * @param durations - Clip lengths in seconds, keyed by upstream field, for `get_duration`.
  * @returns USD after the discount.
- * @throws {Error} When the formula is not valid JSONata or fails to evaluate (JSONata's own error object).
- * @throws {NoTotalPrice} When the formula evaluates without producing a finite `total_price`.
+ * @throws {jsonata.JsonataError} When the formula is not valid JSONata or fails to evaluate (a plain object, not an Error instance).
+ * @throws {Error} When the formula gives no finite `total_price` (a run that leaves out a field the formula multiplies by gets this).
  */
 export async function priceUsd(
   contract: PriceContract,
@@ -140,7 +125,7 @@ export async function priceUsd(
   const result: unknown = await compiled(contract.formula, durations).evaluate({ ...fields, base_price: contract.basePrice });
   const total = (result as { total_price?: unknown } | undefined)?.total_price;
   if (typeof total !== "number" || !Number.isFinite(total)) {
-    throw new NoTotalPrice(contract.formula);
+    throw new Error(`Pricing formula produced no finite total_price: ${contract.formula}`);
   }
   return (total / MICRO_USD_PER_USD) * discount;
 }

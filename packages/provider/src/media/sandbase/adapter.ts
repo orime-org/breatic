@@ -21,7 +21,7 @@ import {
   bearerHeaders as headers,
   billingFailure,
   inlineLimits,
-  limits,
+  readOptions,
   minimaxVoiceGone,
   outputField,
   resellerVoiceClone,
@@ -162,7 +162,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
   try {
     body = await fetchJson(
       { url: `${reach.decl.base_url}/tasks/${encodeURIComponent(predictionId)}/cost`, method: "GET", headers: headers(reach) },
-      { replaySafe: true, ...bounds, ...limits(bounds) },
+      readOptions(bounds),
     );
   } catch (error) {
     const detail = { upstream: reach.name, predictionId, error: String(error) };

@@ -58,6 +58,8 @@ const paramSchema = z.strictObject({
   item_key: z.string().optional(),
   /** Holding this value sends nothing. */
   absent_value: choice.optional(),
+  /** Written to the field when the run's value is null or absent, where the upstream's own default differs from leaving it out elsewhere. */
+  unset: choice.optional(),
   /** `pronunciation_pairs` writes `{ text, pronunciation }` items as `text/pronunciation` strings. */
   transform: z.literal("pronunciation_pairs").optional(),
 });

@@ -18,7 +18,7 @@ import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { fetchJson, parsed } from "@provider/http/request.js";
 import {
   billingFailure,
-  limits,
+  readOptions,
   minimaxVoiceGone,
   outputField,
   resellerVoiceClone,
@@ -138,7 +138,7 @@ function wordsOf(detail: unknown): string {
 async function ask(reach: Reach, _predictionId: string, bounds: RequestBounds, context: AskContext): Promise<Asked> {
   const handle = context.handle;
   if (handle?.status_url === undefined || handle.response_url === undefined) throw new Error(`${reach.name} has no status and result addresses for this request`);
-  const read = { replaySafe: true, ...bounds, ...limits(bounds) };
+  const read = readOptions(bounds);
   const status = statusSchema.safeParse(await fetchJson({ url: handle.status_url, method: "GET", headers: headers(reach) }, read));
   if (!status.success || status.data.status !== "COMPLETED") return { state: "running" };
   if (status.data.error !== undefined && status.data.error !== null) return { state: "failed", error: wordsOf(status.data.error) };
@@ -173,7 +173,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
     body = await fetchJson(
       // The configuration load refuses a fal upstream without billing_url.
       { url: `${reach.decl.billing_url!}/models/billing-events?${query.toString()}`, method: "GET", headers: headers(reach) },
-      { replaySafe: true, ...bounds, ...limits(bounds) },
+      readOptions(bounds),
     );
   } catch (error) {
     const detail = { upstream: reach.name, predictionId, error: String(error) };
@@ -238,8 +238,9 @@ export const falAdapter: MediaAdapter = {
     speak: {
       body: (context) => {
         if (context.voiceId === undefined) throw new Error("No cloned voice to speak with");
-        // fal leaves emotion to MiniMax; WaveSpeed's and SandBase's speech default it to happy.
-        return { prompt: context.prompt, voice_setting: { voice_id: context.voiceId, emotion: "happy" } };
+        // fal leaves emotion to MiniMax; WaveSpeed's and SandBase's speech default it to happy. fal normalizes loudness
+        // unless told not to, and WaveSpeed's speech is not normalized.
+        return { prompt: context.prompt, voice_setting: { voice_id: context.voiceId, emotion: "happy" }, normalization_setting: { enabled: false } };
       },
       output: (outputs) => ({ urls: [outputField(outputs.map((o) => at(o, "audio")), "url")] }),
     },

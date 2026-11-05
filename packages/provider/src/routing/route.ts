@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { NoUpstreamAvailable, UpstreamRequestRejected, type UnavailableReason } from "@provider/errors.js";
-import type { RejectedInput, Route } from "@provider/pricing/estimate.js";
+import { byPrice, type RejectedInput, type Route } from "@provider/pricing/estimate.js";
 
 export type { Route } from "@provider/pricing/estimate.js";
 
@@ -17,6 +17,8 @@ export interface Candidate {
   envVar: string;
   /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
   estimateUsd?: number;
+  /** Whether that estimate is only a lower bound (a source it bills by the length of has no known length); it then ranks after every known price. */
+  estimateAtLeast?: boolean;
   /** Why the upstream cannot take this run (a param and value, one of its own limits, or a check that failed to evaluate); it is then skipped. */
   unsupported?: RejectedInput;
 }
@@ -47,7 +49,11 @@ export function planRoute(model: string, route: Route, candidates: readonly Cand
     }
   }
   if (route.mode === "cheapest") {
-    pool.sort((a, b) => (a.estimateUsd ?? Infinity) - (b.estimateUsd ?? Infinity) || a.weight - b.weight);
+    pool.sort((a, b) => byPrice(
+      // No estimate at all is no more known than a lower bound.
+      { usd: a.estimateUsd ?? Infinity, atLeast: a.estimateAtLeast === true || a.estimateUsd === undefined, weight: a.weight },
+      { usd: b.estimateUsd ?? Infinity, atLeast: b.estimateAtLeast === true || b.estimateUsd === undefined, weight: b.weight },
+    ));
   }
   const skipped: UnavailableReason[] = pool.flatMap((c): UnavailableReason[] => {
     if (!c.configured) return [{ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }];

@@ -49,6 +49,8 @@ export interface SchemaSnapshot {
   outputs?: Record<string, Leaf[]>;
   /** The execution modes the upstream runs the endpoint in (SandBase). */
   modes?: string[];
+  /** Who serves the model behind the upstream, as its model list says (SandBase's `owned_by`, `fal.ai` for a model it passes on to fal). */
+  owned_by?: string;
 }
 
 /** A JSON schema node as read. */
