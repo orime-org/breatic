@@ -947,8 +947,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
-      "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
-      "that box is shown.",
+      "at once from every box of the mode on screen, folded ones included, and from another mode's prompt, or " +
+      "from the shots while another mode is showing, the next time that box is shown.",
     "",
     "## Mini-tools",
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +

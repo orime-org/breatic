@@ -2498,7 +2498,7 @@ describe('the multi-shot mode', () => {
     expect(caretIn(2)).toBe(false);
   });
 
-  it('keeps the shot open by default open when a collaborator brings back a shot before it (#1201)', async () => {
+  it('keeps the shot that opened in place of a removed one open when a collaborator brings that one back before it (#1201)', async () => {
     await openOn('multi_shot', threeShots);
     const shots = shotListOf('p', 's', 'target');
     if (!shots) throw new Error('no shots');
