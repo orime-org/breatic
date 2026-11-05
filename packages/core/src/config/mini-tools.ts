@@ -60,6 +60,8 @@ const encoderDefaults = {
   decode_convert_pixels_per_second: {
     sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000,
   },
+  // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
+  aac_encode_seconds_per_second: 100,
 };
 const pixelRate = z.number().positive().finite();
 const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults };
@@ -74,6 +76,7 @@ const encodingSchema = z.strictObject({
     encode_pixels_per_second: pixelRate.default(encoderDefaults.encode_pixels_per_second),
     decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate })
       .default(encoderDefaults.decode_convert_pixels_per_second),
+    aac_encode_seconds_per_second: z.number().positive().finite().default(encoderDefaults.aac_encode_seconds_per_second),
   }).default(encoderDefaults),
   // Derived from the ledger byte caps, never configured: a value carried by an already parsed configuration is replaced.
   copy_disk_margin_bytes: z.number().optional(),

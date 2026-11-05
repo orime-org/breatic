@@ -147,7 +147,8 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     policy: { chunkRetries: config.encoding.chunk_retries, maxAutoRepairs: ledger.max_auto_repairs },
     encoding: {
       chunkShare: config.encoding.chunk_share, maxParallelChunks: config.encoding.max_parallel_chunks,
-      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second },
+      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second,
+        aacEncodeSecondsPerSecond: encoder.aac_encode_seconds_per_second },
       copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
       carrier: { maxShortSide: settings.carrier.max_short_side, color: settings.carrier.color },
     },

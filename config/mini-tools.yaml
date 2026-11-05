@@ -58,6 +58,9 @@ encoding:
       hdr_8bit: 106000000
       hdr_10bit: 102000000
       hdr_12bit: 109000000
+    # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
+    # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
+    aac_encode_seconds_per_second: 100
 
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:
