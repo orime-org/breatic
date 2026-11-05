@@ -12,10 +12,10 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
  * Render the 3D left rail.
  * @returns The render result.
  */
-function renderMenu(): ReturnType<typeof render> {
+function renderMenu(importing = false): ReturnType<typeof render> {
   return render(
     <TooltipProvider>
-      <SceneCreationMenu canEdit onAdd={vi.fn()} onImport={vi.fn()} />
+      <SceneCreationMenu canEdit importing={importing} onAdd={vi.fn()} onImport={vi.fn()} />
     </TooltipProvider>,
   );
 }
@@ -36,5 +36,12 @@ describe('SceneCreationMenu controls entry', () => {
     await user.click(screen.getByRole('button', { name: 'Controls' }));
     const dialog = await screen.findByRole('dialog', { name: 'Controls' });
     expect(dialog).toHaveTextContent('Drag empty space to orbit');
+  });
+
+  it.each([[false, 'Import model'], [true, 'View import progress']])('names the import item for a running import (%s) after what it opens', async (importing, label) => {
+    const user = userEvent.setup();
+    renderMenu(importing);
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await screen.findByRole('menuitem', { name: label })).toBeInTheDocument();
   });
 });

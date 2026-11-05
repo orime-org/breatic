@@ -2015,6 +2015,7 @@
       "closePanel": "닫기",
       "importModel": {
         "title": "모델 가져오기",
+        "viewProgress": "가져오기 진행 상황 보기",
         "description": "GLB, glTF 또는 ZIP을 선택하고 모델의 관련 파일도 포함하세요.",
         "chooseFiles": "파일 선택",
         "chooseFolder": "폴더 선택",

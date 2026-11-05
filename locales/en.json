@@ -2015,6 +2015,7 @@
       "closePanel": "Close",
       "importModel": {
         "title": "Import model",
+        "viewProgress": "View import progress",
         "description": "Choose GLB, glTF or ZIP; include the model’s accompanying files.",
         "chooseFiles": "Choose files",
         "chooseFolder": "Choose folder",

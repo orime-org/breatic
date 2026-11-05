@@ -2015,6 +2015,7 @@
       "closePanel": "閉じる",
       "importModel": {
         "title": "モデルをインポート",
+        "viewProgress": "インポートの進行状況を表示",
         "description": "GLB、glTF または ZIP を選択し、モデルの関連ファイルも含めてください。",
         "chooseFiles": "ファイルを選択",
         "chooseFolder": "フォルダーを選択",

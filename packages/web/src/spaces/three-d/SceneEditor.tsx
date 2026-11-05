@@ -36,6 +36,13 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
 const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneModelImportHost'));
+
+/**
+ * Subscribe to nothing while the document has no import owner yet.
+ * @returns A no-op unsubscribe.
+ * @throws {never} Never.
+ */
+const noImportUpdates = (): (() => void) => () => undefined;
 const lockIcon = <Lock className='size-4' />;
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
@@ -223,6 +230,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const [importOpen, setImportOpen] = useExclusiveOverlay(`scene:${spaceId}:model-import`);
   const [importController, setImportController] = React.useState<ModelImportController | null>(null);
   const importLimits = controls.data?.import;
+  const importPhase = React.useSyncExternalStore(importController?.subscribe ?? noImportUpdates, () => importController?.getSnapshot().phase);
   /** Inspect in an operation-owned worker and validate a real native preview. */
   const prepareImport = React.useCallback(async (files: readonly ModelSource[], entry: string | undefined, signal: AbortSignal): Promise<PreparedModel> => {
     if (!importLimits) throw new Error('Scene model import configuration is unavailable');
@@ -430,7 +438,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
     </div>
-    <SceneCreationMenu canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport} />
+    <SceneCreationMenu canEdit={snapshot.canEdit && importController !== null} importing={importPhase === 'uploading' || importPhase === 'registering'} onAdd={addBuiltin} onImport={showImport} />
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onPlaced={imported} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}

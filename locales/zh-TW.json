@@ -2015,6 +2015,7 @@
       "closePanel": "關閉",
       "importModel": {
         "title": "匯入模型",
+        "viewProgress": "查看匯入進度",
         "description": "選擇 GLB、glTF 或 ZIP；可同時選擇模型的配套檔案。",
         "chooseFiles": "選擇檔案",
         "chooseFolder": "選擇資料夾",
