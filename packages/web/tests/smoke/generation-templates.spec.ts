@@ -361,6 +361,43 @@ test('picking the carried-object transition places two scene pictures for the fi
   await page.screenshot({ path: test.info().outputPath('carried-object-applied.png') });
 });
 
+test('picking the carried-object transition feeds a picture already wired into the video node into both scenes', async () => {
+  const nodeId = await openPanelOnNewNode('video');
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const photoId = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, id, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id,
+        type: 'image',
+        position: { x: -600, y: 0 },
+        data: { name: 'Hero photo', createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [] },
+      });
+    },
+    [projectId, spaceId, photoId, canvasAt] as [string, string, string, string],
+  );
+  await wire(page, { projectId, spaceId }, photoId, nodeId);
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the photo, the two scenes and the group the two new scenes form; no empty object.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Hero photo', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
+    edges: [
+      'Hero photo -> Scene A',
+      'Hero photo -> Scene B',
+      'Hero photo -> video-template',
+      'Scene A -> video-template',
+      'Scene B -> video-template',
+    ],
+  });
+});
+
 test('a panel with no templates says so', async () => {
   await openPanelOnNewNode('audio');
   await page.getByTestId('generate-template-trigger').click();

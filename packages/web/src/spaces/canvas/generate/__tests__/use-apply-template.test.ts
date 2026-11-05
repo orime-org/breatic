@@ -760,6 +760,40 @@ describe('useApplyTemplate', () => {
     });
   });
 
+  describe('a template whose input feeds only nodes it places (inner#1816)', () => {
+    const SEEDANCE_I2V = {
+      name: 'seedance-2.5-image-to-video',
+      mode: 'first_last',
+      params: {
+        duration: { description: '', min: 4, max: 15, default: 5 },
+        generate_audio: { description: '', values: [true, false], default: true },
+      },
+    } as unknown as ModelEntry;
+
+    it('gives the carried object the picture wired into the video node: no Object node, the picture fed into both scenes and @\'d in both', () => {
+      const template = GENERATION_TEMPLATES.find((one) => one.id === 'carried-object-transition');
+      expect(template).toBeDefined();
+      if (!template) return;
+      seed('target', 'video');
+      seed('photo', 'image', { name: 'Hero photo', content: 'https://cdn/photo.png' });
+      wire('photo', 'target');
+      const place = vi.fn();
+      apply(template, 'target', [SEEDANCE_I2V, ULTRA], place);
+
+      const { proposal, existing } = placed(place);
+      expect(appendedOf(proposal, existing).filter((node) => node.templateNode?.input === true)).toEqual([]);
+      const sceneA = `new:${t('canvas.template.carried-object-transition.node.scene-a.name')}`;
+      const sceneB = `new:${t('canvas.template.carried-object-transition.node.scene-b.name')}`;
+      expect(edgesOf(proposal, existing)).toEqual([`photo->${sceneA}`, `photo->${sceneB}`, `${sceneA}->target`, `${sceneB}->target`].sort());
+      const objectNote = { slot: { kind: 'note', label: t('canvas.template.carried-object-transition.input.object.note') } };
+      for (const scene of [sceneA, sceneB]) {
+        const index = proposal.nodes.findIndex((_, i) => who(proposal, existing, i) === scene);
+        expect(refsOf(proposal, existing, index), scene).toEqual(['photo']);
+        expect(proposal.nodes[index]?.prompt, scene).not.toContainEqual(objectNote);
+      }
+    });
+  });
+
   it('says applying failed when placing throws (6.5 step 8)', () => {
     seed('target', 'image');
     seed('src', 'image', { name: 'Hero', content: 'https://cdn/hero.png' });

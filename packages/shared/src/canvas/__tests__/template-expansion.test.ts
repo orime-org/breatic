@@ -1070,23 +1070,23 @@ describe('expandTemplate over random templates', () => {
   });
 });
 
+/**
+ * A template of the registry by id.
+ * @param id - The id.
+ * @returns The template.
+ */
+const registered = (id: string): GenerationTemplate => {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  if (!template) throw new Error(`template ${id} missing`);
+  return template;
+};
+
 describe('expandTemplate on registered templates with shots and slots (inner#1816)', () => {
   beforeEach(() => {
     const file = resolve(import.meta.dirname, '../../../../../locales/en.json');
     setLocaleMessages('en', JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
     setLocale('en');
   });
-
-  /**
-   * A template of the registry by id.
-   * @param id - The id.
-   * @returns The template.
-   */
-  const registered = (id: string): GenerationTemplate => {
-    const template = GENERATION_TEMPLATES.find((one) => one.id === id);
-    if (!template) throw new Error(`template ${id} missing`);
-    return template;
-  };
 
   /**
    * Where an appended node stands in a fresh expansion (anchor at 0, appended from 1).
@@ -1143,5 +1143,104 @@ describe('expandTemplate on registered templates with shots and slots (inner#181
       expect(words[0], `scene ${String(at)}`).toEqual(note(t('canvas.template.carried-object-transition.input.object.note')));
       expect(words, `scene ${String(at)}`).toContainEqual({ ref: object });
     }
+  });
+});
+
+describe('matchTemplateInstance, an input fed only into nodes not placed yet takes a picture wired into the anchor (inner#1816)', () => {
+  const CARRIED = 'carried-object-transition';
+  const carried = (): TemplateSkeleton => templateSkeleton(registered(CARRIED));
+
+  it('gives the carried object the first picture wired into the video node on both scenes, passing a video wired in before it', () => {
+    const graph = graphOf(
+      [plain('V', 'video'), plain('clip', 'video'), plain('photo'), plain('other')],
+      [['clip', 'V'], ['photo', 'V'], ['other', 'V']],
+    );
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'missing' }], ['scene-b', { kind: 'missing' }]]));
+    expect(match.inputs.get('object')).toEqual(new Map([['scene-a', 'photo'], ['scene-b', 'photo']]));
+    expect(match.unassigned).toEqual([]);
+  });
+
+  it('passes a node tagged as one of the template’s own nodes, and leaves to inputs fed into the anchor the pictures they take', () => {
+    // The sheet is not placed yet, so pose has no node it feeds on the graph.
+    const graph = graphOf(
+      [plain('A'), tagged('R', 'style'), plain('H'), plain('L'), plain('C'), plain('P')],
+      [['R', 'A'], ['H', 'A'], ['L', 'A'], ['C', 'A'], ['P', 'A']],
+    );
+    const match = matchTemplateInstance(SKELETON, graph, 'A');
+    expect(match.keys.get('sheet')).toEqual({ kind: 'missing' });
+    expect(match.inputs).toEqual(
+      new Map([
+        ['hero', new Map([['final', 'H']])],
+        ['place', new Map([['final', 'L']])],
+        ['palette', new Map([['final', 'C']])],
+        ['pose', new Map([['sheet', 'P']])],
+      ]),
+    );
+    expect(match.unassigned).toEqual([]);
+  });
+
+  it('leaves the picture wired only into the video node alone once both scenes are on the graph', () => {
+    const graph = graphOf(
+      [plain('V', 'video'), tagged('SA', 'scene-a', 'image', CARRIED), tagged('SB', 'scene-b', 'image', CARRIED), plain('photo')],
+      [['SA', 'V', 'image'], ['SB', 'V', 'end_image'], ['photo', 'V']],
+    );
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'one', node: 'SA' }], ['scene-b', { kind: 'one', node: 'SB' }]]));
+    expect(match.inputs.has('object')).toBe(false);
+    expect(byInputAndFed(match.unassigned)).toEqual([
+      { input: 'object', fed: 'scene-a' },
+      { input: 'object', fed: 'scene-b' },
+    ]);
+  });
+
+  it('leaves the picture alone when the video node left the template settings, so the scenes are unreached', () => {
+    const graph = graphOf([{ id: 'V', type: 'video', keeps: false }, plain('photo')], [['photo', 'V']]);
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'unreached' }], ['scene-b', { kind: 'unreached' }]]));
+    expect(match.inputs.has('object')).toBe(false);
+  });
+
+  describe('expanded the way the panel hands the match over', () => {
+    beforeEach(() => {
+      const file = resolve(import.meta.dirname, '../../../../../locales/en.json');
+      setLocaleMessages('en', JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
+      setLocale('en');
+    });
+
+    it('places no Object node, feeds the picture into both scenes and @s it in both, with no note', () => {
+      const graph = graphOf([plain('V', 'video'), plain('photo')], [['photo', 'V']]);
+      const match = matchTemplateInstance(carried(), graph, 'V');
+      // As `useApplyTemplate` does: the anchor at 0, every given node after it in the order asked for.
+      const held = ['V'];
+      const at = (id: string): number => (held.includes(id) ? held.indexOf(id) : held.push(id) - 1);
+      const inputs = new Map([...match.inputs].map(([key, fed]) => [key, new Map([...fed].map(([where, id]) => [where, at(id)]))]));
+      const photo = held.indexOf('photo');
+      expect(photo, 'the picture is given to the object').toBe(1);
+      const result = expandTemplate(registered(CARRIED), {
+        anchorAt: 0,
+        base: held.length,
+        inputs,
+        wired: [{ fromIndex: photo, toIndex: 0 }],
+        reuse: new Map(),
+        guide: true,
+      });
+
+      expect(result.appended.filter((node) => node.templateNode?.input === true)).toEqual([]);
+      const scene = (key: string): number => held.length + result.appended.findIndex((node) => node.templateNode?.key === key);
+      const sceneA = scene('scene-a');
+      const sceneB = scene('scene-b');
+      expect(result.edges).toEqual([
+        { fromIndex: sceneA, toIndex: 0, into: 'image' },
+        { fromIndex: sceneB, toIndex: 0, into: 'end_image' },
+        { fromIndex: photo, toIndex: sceneA, into: 'pool' },
+        { fromIndex: photo, toIndex: sceneB, into: 'pool' },
+      ]);
+      for (const index of [sceneA, sceneB]) {
+        const words = result.appended[index - held.length]?.prompt ?? [];
+        expect(words, `scene at ${String(index)}`).toContainEqual({ ref: photo });
+        expect(words.filter((segment) => segment.slot?.kind === 'note'), `scene at ${String(index)}`).toEqual([]);
+      }
+    });
   });
 });
