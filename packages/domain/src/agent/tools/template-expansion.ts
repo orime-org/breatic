@@ -17,6 +17,7 @@
 import {
   GENERATION_TEMPLATES,
   markedSegments,
+  MULTI_SHOT_MODE,
   t,
   templateMarkTargets,
   templateNodeDefaults,
@@ -141,9 +142,9 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
     const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    // A node moved off the template's multi-shot mode takes a prompt, whatever form the template's words have.
+    // The words a node takes follow the mode it is sent in, whatever form the template's words have.
     const shotList = own?.role === "generate" && own.shots !== undefined;
-    const asks = shotList && filled.mode === own.mode ? "shots" : "prompt";
+    const asks = filled.mode === MULTI_SHOT_MODE ? "shots" : "prompt";
     return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${asks}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, asks === "shots" ? "write the shots." : "write a prompt."));
   }
   return { ok: true, node: filled };
