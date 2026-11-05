@@ -469,6 +469,21 @@ describe('texture files a collaborator browser loads (inner#1690)', () => {
     expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: true })).toThrow('color.png');
   });
 
+  it('names a required AVIF this browser cannot decode before asking for its files', () => {
+    const files = new Map([['scene.gltf', avifModel({ extensions: { EXT_texture_avif: { source: 1 } } }, true)], ['mesh.bin', Uint8Array.from(GEOMETRY)]]);
+    expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: false }))
+      .toThrow(expect.objectContaining({ code: 'unsupported', detail: 'EXT_texture_avif' }));
+  });
+
+  it('names a required extension the loader lacks before asking for its files', () => {
+    const json = textBytes(JSON.stringify({ asset: { version: '2.0' }, extensionsUsed: ['VENDOR_unknown'], extensionsRequired: ['VENDOR_unknown'],
+      scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      buffers: [{ uri: 'mesh.bin', byteLength: GEOMETRY.byteLength }], bufferViews: [{ buffer: 0, byteLength: GEOMETRY.byteLength }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }] }));
+    expect(() => inspectModelFiles(new Map([['scene.gltf', json]]), 'scene.gltf', IMPORT_LIMITS, TEXTURE_FORMATS))
+      .toThrow(expect.objectContaining({ code: 'unsupported', detail: 'VENDOR_unknown' }));
+  });
+
   it('requires the AVIF image on a browser that cannot decode it', () => {
     const files = new Map([['scene.gltf', avifModel(fallback)], ['mesh.bin', Uint8Array.from(GEOMETRY)], ['color.png', new Uint8Array(8)]]);
     expect(() => inspectModelFiles(files, 'scene.gltf', IMPORT_LIMITS, { webp: true, avif: false })).toThrow('color.avif');

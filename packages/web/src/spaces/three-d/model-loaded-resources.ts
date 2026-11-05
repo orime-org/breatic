@@ -23,6 +23,38 @@ const TRIANGLE_MODES: ReadonlySet<unknown> = new Set([undefined, 4, 5, 6]);
 const MORPH_ATTRIBUTES = ['POSITION', 'NORMAL', 'COLOR_0'] as const;
 
 /** A texture GLTFLoader loads, with the image it decodes, or undefined when the declaration names no existing image. */
+/** Capabilities registered by the installed r173 GLTFLoader and its decoders. */
+const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
+  'KHR_binary_glTF', 'KHR_draco_mesh_compression', 'KHR_lights_punctual',
+  'KHR_materials_clearcoat', 'KHR_materials_dispersion', 'KHR_materials_ior',
+  'KHR_materials_sheen', 'KHR_materials_specular', 'KHR_materials_transmission',
+  'KHR_materials_iridescence', 'KHR_materials_anisotropy', 'KHR_materials_unlit',
+  'KHR_materials_volume', 'KHR_texture_basisu', 'KHR_texture_transform',
+  'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'EXT_materials_bump',
+  'EXT_texture_webp', 'EXT_texture_avif', 'EXT_meshopt_compression', 'EXT_mesh_gpu_instancing',
+]);
+
+/**
+ * Report extensions outside the capabilities registered by this exact loader, and required WebP or AVIF textures this browser cannot decode.
+ * @param json - The glTF document with its original extension declarations.
+ * @param support - This browser's WebP and AVIF support.
+ * @returns Unsupported required and optional extension identifiers.
+ * @throws {never} Never.
+ */
+export function getUnsupportedModelExtensions(json: GltfDocument, support: TextureFormatSupport): { required: string[]; optional: string[] } {
+  /**
+   * Whether this browser cannot decode the texture format an extension names.
+   * @param value - An extension identifier.
+   * @returns True for WebP or AVIF this browser cannot decode.
+   * @throws {never} Never.
+   */
+  const undecodable = (value: string): boolean => (value === 'EXT_texture_webp' && !support.webp) || (value === 'EXT_texture_avif' && !support.avif);
+  const required = json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) || undecodable(value)) ?? [];
+  const requiredSet = new Set(json.extensionsRequired ?? []);
+  const optional = json.extensionsUsed?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) && !requiredSet.has(value)) ?? [];
+  return { required, optional };
+}
+
 interface LoadedTexture {
   texture: number;
   image: number | undefined;

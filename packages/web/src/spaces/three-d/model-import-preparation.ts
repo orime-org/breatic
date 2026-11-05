@@ -8,7 +8,7 @@ import type { PreparedModel } from '@web/spaces/three-d/model-import-controller'
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { inspectModelSelectionInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
-import { getUnsupportedModelExtensions } from '@web/spaces/three-d/viewport/model-decoder-173';
+import { getUnsupportedModelExtensions } from '@web/spaces/three-d/model-loaded-resources';
 import { disposeModelTemplate, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
 /**
@@ -26,7 +26,7 @@ export async function prepareSceneModel(files: readonly ModelSource[], entry: st
   const selection = await inspectModelSelectionInWorker(files, entry, signal, limits);
   signal.throwIfAborted();
   const info = { entries: selection.entries, paths: selection.paths, missing: [] };
-  const extensions = getUnsupportedModelExtensions(selection.model);
+  const extensions = getUnsupportedModelExtensions(selection.model.json, selection.model.support);
   let renderer: WebGLRenderer | undefined;
   let root: Group | undefined;
   try {

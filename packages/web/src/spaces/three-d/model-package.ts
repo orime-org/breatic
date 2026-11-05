@@ -5,7 +5,7 @@ import { strToU8, unzipSync, zipSync } from 'three/addons/libs/fflate.module.js'
 import { z } from 'zod';
 import type { SceneImportLimits } from '@breatic/shared';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
-import { loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
+import { getUnsupportedModelExtensions, loadedResourcesInEveryBrowser } from '@web/spaces/three-d/model-loaded-resources';
 import type { LoadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
@@ -118,14 +118,19 @@ export function readModelJson(bytes: Uint8Array, entry: string, limits: SceneImp
  * @param files - Original selected resources indexed by normalized path.
  * @param entry - Selected model entry.
  * @param limits - Configured model budgets.
- * @param support - This browser's WebP and AVIF support, kept for the preview and parse; the checks cover every browser.
+ * @param support - This browser's WebP and AVIF support: it decides which required extensions load here, and is kept for the preview and parse;
+ * the resource checks cover every browser.
  * @returns A model package ready for the installed loader.
- * @throws {ModelImportError} When the entry or a loaded dependency is missing, unreadable or shorter than declared.
+ * @throws {ModelImportError} When the model requires an extension this browser cannot load, or the entry or a loaded dependency is missing,
+ * unreadable or shorter than declared.
  */
 export function inspectModelFiles(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>, entry: string, limits: SceneImportLimits, support: TextureFormatSupport): ModelPackage {
   const bytes = files.get(entry);
   if (!bytes) throw new ModelImportError('invalid', `Missing model entry: ${entry}`, { detail: entry });
   const json = readModelJson(bytes, entry, limits);
+  // A required extension this browser cannot load refuses the model whatever files the selection adds.
+  const unsupported = getUnsupportedModelExtensions(json, support).required;
+  if (unsupported.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: unsupported.join(', ') });
   // Every declared URI must stay inside the selection; presence and length matter only for what the loader reads.
   for (const resource of [...json.buffers ?? [], ...json.images ?? []]) {
     if (resource.uri !== undefined && !resource.uri.startsWith('data:')) resolveModelDependency(entry, resource.uri);

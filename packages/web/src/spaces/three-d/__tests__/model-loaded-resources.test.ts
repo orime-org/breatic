@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { REVISION } from 'three';
-import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
+import { getUnsupportedModelExtensions, loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 
@@ -222,5 +222,26 @@ describe('loadedResources follows GLTFLoader r173 (inner#1690)', () => {
     expect(derive({ scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: {}, extensions: draco }] }] }).draco).toBe(true);
     expect(derive({ extensionsUsed: ['KHR_draco_mesh_compression'], scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
       meshes: [{ primitives: [{ attributes: {} }] }, { primitives: [{ attributes: {}, extensions: draco }] }] }).draco).toBe(false);
+  });
+});
+
+describe('required texture formats this browser cannot decode', () => {
+  /**
+   * A glTF document that requires the given extensions.
+   * @param required - The extensionsRequired list.
+   * @returns The document.
+   * @throws {never} Never.
+   */
+  const requiring = (required: string[]): GltfDocument => ({ asset: { version: '2.0' }, extensionsUsed: required, extensionsRequired: required });
+
+  it('names a required AVIF or WebP format as unsupported where this browser cannot decode it', () => {
+    expect(getUnsupportedModelExtensions(requiring(['EXT_texture_avif']), { webp: true, avif: false }).required).toEqual(['EXT_texture_avif']);
+    expect(getUnsupportedModelExtensions(requiring(['EXT_texture_webp']), { webp: false, avif: true }).required).toEqual(['EXT_texture_webp']);
+  });
+
+  it('accepts a required AVIF or WebP format this browser decodes', () => {
+    expect(getUnsupportedModelExtensions(requiring(['EXT_texture_avif', 'EXT_texture_webp']), { webp: true, avif: true }).required).toEqual([]);
+    expect(getUnsupportedModelExtensions(requiring(['EXT_texture_webp']), { webp: true, avif: false }).required).toEqual([]);
+    expect(getUnsupportedModelExtensions(requiring(['EXT_texture_avif']), { webp: false, avif: true }).required).toEqual([]);
   });
 });

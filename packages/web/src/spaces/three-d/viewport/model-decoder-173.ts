@@ -18,42 +18,11 @@ import { resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 
-/** Capabilities registered by the installed r173 GLTFLoader and its decoders. */
-const SUPPORTED_REQUIRED_EXTENSIONS: ReadonlySet<string> = new Set([
-  'KHR_binary_glTF', 'KHR_draco_mesh_compression', 'KHR_lights_punctual',
-  'KHR_materials_clearcoat', 'KHR_materials_dispersion', 'KHR_materials_ior',
-  'KHR_materials_sheen', 'KHR_materials_specular', 'KHR_materials_transmission',
-  'KHR_materials_iridescence', 'KHR_materials_anisotropy', 'KHR_materials_unlit',
-  'KHR_materials_volume', 'KHR_texture_basisu', 'KHR_texture_transform',
-  'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'EXT_materials_bump',
-  'EXT_texture_webp', 'EXT_texture_avif', 'EXT_meshopt_compression', 'EXT_mesh_gpu_instancing',
-]);
-
 export interface ModelDecoder {
   loader: GLTFLoader;
   /** Download the decoders the model declares, so a failed download surfaces before parsing as a plain, retryable error. */
   prepare: () => Promise<void>;
   dispose: () => void;
-}
-
-/**
- * Report extensions outside the capabilities registered by this exact loader, and required WebP or AVIF textures this browser cannot decode.
- * @param model - Checked model envelope with original extension declarations.
- * @returns Unsupported required and optional extension identifiers.
- * @throws {never} Never.
- */
-export function getUnsupportedModelExtensions(model: ModelPackage): { required: string[]; optional: string[] } {
-  /**
-   * Whether this browser cannot decode the texture format an extension names.
-   * @param value - An extension identifier.
-   * @returns True for WebP or AVIF this browser cannot decode.
-   * @throws {never} Never.
-   */
-  const undecodable = (value: string): boolean => (value === 'EXT_texture_webp' && !model.support.webp) || (value === 'EXT_texture_avif' && !model.support.avif);
-  const required = model.json.extensionsRequired?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) || undecodable(value)) ?? [];
-  const requiredSet = new Set(model.json.extensionsRequired ?? []);
-  const optional = model.json.extensionsUsed?.filter((value) => !SUPPORTED_REQUIRED_EXTENSIONS.has(value) && !requiredSet.has(value)) ?? [];
-  return { required, optional };
 }
 
 /**
@@ -65,12 +34,9 @@ export function getUnsupportedModelExtensions(model: ModelPackage): { required: 
  * @param decoders.basisu - Whether a loaded texture decodes through KHR_texture_basisu.
  * @param decoders.draco - Whether a reached primitive is Draco compressed.
  * @returns A loader with explicitly owned workers and object URLs.
- * @throws {ModelImportError} When the model requires an extension this loader lacks.
  * @throws {Error} When KTX2 textures need a renderer that was not given.
  */
 export function createModelDecoder(model: ModelPackage, limits: SceneImportLimits, renderer: WebGLRenderer | undefined, decoders: { basisu: boolean; draco: boolean }): ModelDecoder {
-  const unsupported = getUnsupportedModelExtensions(model).required;
-  if (unsupported.length) throw new ModelImportError('unsupported', 'Unsupported required model extensions', { detail: unsupported.join(', ') });
   const { basisu, draco: dracoUsed } = decoders;
   if (basisu && !renderer) throw new Error('KTX2 decoding requires the current viewport capabilities');
   const decoderAssets = new Map([
