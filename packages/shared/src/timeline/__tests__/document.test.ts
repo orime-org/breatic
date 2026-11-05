@@ -9,7 +9,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 
-import { initializeTimelineDocument, readTimelineContent, readTimelineDocument } from "../document.js";
+import * as spaceContent from "../../space-content.js";
+import { initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource } from "../document.js";
 import { TimelineDocumentV1Schema } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -237,5 +238,77 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
     const unsupported = seededDoc();
     unsupported.getMap("timeline").set("schemaVersion", 2);
     expect(() => readTimelineContent(unsupported)).toThrow(Error);
+  });
+});
+
+describe("Timeline sources read one by one (inner#1708 F1)", () => {
+  const OTHER_ID = "10000000-0000-4000-8000-0000000000bb";
+  const MAP_ID = "10000000-0000-4000-8000-0000000000cc";
+
+  /**
+   * Store a value under a key of the sources map.
+   * @param doc - The document.
+   * @param key - The map key.
+   * @param value - The stored value.
+   * @throws {Error} When Yjs refuses the value.
+   */
+  function store(doc: Y.Doc, key: string, value: unknown): void {
+    doc.transact(() => doc.getMap("sources").set(key, value), "peer");
+  }
+
+  /**
+   * Store a source as a Y.Map holding its fields.
+   * @param doc - The document.
+   * @param value - The source.
+   * @param value.id - Its key.
+   * @returns The attached map.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function storeAsMap(doc: Y.Doc, value: { id: string }): Y.Map<unknown> {
+    const record = new Y.Map<unknown>();
+    doc.transact(() => {
+      doc.getMap("sources").set(value.id, record);
+      for (const [key, field] of Object.entries(value)) record.set(key, field);
+    }, "peer");
+    return record;
+  }
+
+  it("reads a valid plain source stored under its own id", () => {
+    expect(readTimelineSource(source, source.id)).toEqual(source);
+  });
+
+  it("reads a valid source stored as a Y.Map", () => {
+    const doc = seededDoc();
+    expect(readTimelineSource(storeAsMap(doc, { ...source, id: MAP_ID }), MAP_ID)).toEqual({ ...source, id: MAP_ID });
+  });
+
+  it.each([
+    ["a number", 42],
+    ["a record missing fields", { id: source.id, kind: "video" }],
+    ["null", null],
+    ["a string", "https://cdn.example/video.mp4"],
+  ])("reads %s as no source", (_name, value) => {
+    expect(readTimelineSource(value, source.id)).toBe(undefined);
+  });
+
+  it("reads a valid source stored under another key as no source", () => {
+    expect(readTimelineSource({ ...source, id: OTHER_ID }, source.id)).toBe(undefined);
+  });
+
+  it("is exported from the space-content entry", () => {
+    expect(typeof spaceContent.readTimelineSource).toBe("function");
+    expect(spaceContent.readTimelineSource).toBe(readTimelineSource);
+  });
+
+  it("leaves out unreadable sources and keeps the readable ones, without throwing", () => {
+    const doc = seededDoc();
+    attachClip(doc);
+    store(doc, "10000000-0000-4000-8000-0000000000a1", 42);
+    store(doc, "10000000-0000-4000-8000-0000000000a2", { id: "10000000-0000-4000-8000-0000000000a2", kind: "video" });
+    store(doc, "10000000-0000-4000-8000-0000000000a3", { ...source, id: OTHER_ID });
+    storeAsMap(doc, { ...source, id: MAP_ID });
+    expect(() => readTimelineContent(doc)).not.toThrow();
+    expect(readTimelineContent(doc).document.sources).toEqual({ [source.id]: source, [MAP_ID]: { ...source, id: MAP_ID } });
+    expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
   });
 });

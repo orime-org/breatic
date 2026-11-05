@@ -274,6 +274,14 @@ describe("semantic Space media references", () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
+  it("counts a valid source stored under another key, as before (inner#1708 F1)", () => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    const assetId = "20000000-0000-4000-8000-000000000001";
+    doc.getMap("sources").set("10000000-0000-4000-8000-0000000000aa", { ...sourceTemplate, id: "10000000-0000-4000-8000-0000000000bb", assetId });
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
+  });
+
   it("does not infer source identities from an unsupported Timeline version", () => {
     const doc = trackedDoc();
     initializeTimelineDocument(doc, settings);
