@@ -1,12 +1,9 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bria/background/remove",
   "fields": {
-    "prompt": [
+    "image_url": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
     "sync_mode": [
@@ -15,9 +12,12 @@
         "default": false
       }
     ],
-    "image_url": [
+    "prompt": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   },
@@ -25,9 +25,12 @@
     "image_url"
   ],
   "outputs": {
-    "image.url": [
+    "image.content_type": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "image.file_size": [
@@ -38,9 +41,9 @@
         "type": "null"
       }
     ],
-    "image.content_type": [
+    "image.width": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
@@ -54,17 +57,14 @@
         "type": "null"
       }
     ],
+    "image.url": [
+      {
+        "type": "string"
+      }
+    ],
     "image.file_name": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image.width": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"

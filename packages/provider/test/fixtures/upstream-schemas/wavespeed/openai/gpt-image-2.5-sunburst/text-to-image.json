@@ -24,18 +24,6 @@
         "default": "1:1"
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "enable_sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "output_format": [
       {
         "type": "string",

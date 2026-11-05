@@ -36,18 +36,6 @@
         "default": "happy"
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "enable_sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "english_normalization": [
       {
         "type": "boolean",

@@ -63,5 +63,6 @@
   ],
   "modes": [
     "async"
-  ]
+  ],
+  "owned_by": "minimax"
 }

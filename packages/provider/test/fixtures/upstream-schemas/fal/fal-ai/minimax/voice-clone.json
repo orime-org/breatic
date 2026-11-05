@@ -1,6 +1,24 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/voice-clone",
   "fields": {
+    "model": [
+      {
+        "type": "string",
+        "enum": [
+          "speech-02-hd",
+          "speech-02-turbo",
+          "speech-01-hd",
+          "speech-01-turbo"
+        ],
+        "default": "speech-02-hd"
+      }
+    ],
+    "need_volume_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "accuracy": [
       {
         "type": "number",
@@ -17,10 +35,10 @@
         "default": false
       }
     ],
-    "need_volume_normalization": [
+    "enable_safety_checker": [
       {
         "type": "boolean",
-        "default": false
+        "default": true
       }
     ],
     "text": [
@@ -34,27 +52,9 @@
         "default": "Hello, this is a preview of your cloned voice! I hope you like it!"
       }
     ],
-    "model": [
-      {
-        "type": "string",
-        "enum": [
-          "speech-02-hd",
-          "speech-02-turbo",
-          "speech-01-hd",
-          "speech-01-turbo"
-        ],
-        "default": "speech-02-hd"
-      }
-    ],
     "audio_url": [
       {
         "type": "string"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
       }
     ]
   },
@@ -63,11 +63,6 @@
   ],
   "outputs": {
     "custom_voice_id": [
-      {
-        "type": "string"
-      }
-    ],
-    "audio.url": [
       {
         "type": "string"
       }
@@ -94,6 +89,11 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
       }
     ],
     "audio": [

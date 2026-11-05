@@ -1,6 +1,11 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/api/voice/clone",
   "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
     "description": [
       {
         "type": "string",
@@ -8,11 +13,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "audio_url": [
-      {
-        "type": "string"
       }
     ]
   },
@@ -25,17 +25,17 @@
         "type": "string"
       }
     ],
-    "description": [
+    "created_at": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "created_at": [
+    "description": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"

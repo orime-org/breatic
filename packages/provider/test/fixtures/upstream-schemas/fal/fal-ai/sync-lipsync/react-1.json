@@ -41,6 +41,14 @@
         "default": "bounce"
       }
     ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
     "emotion": [
       {
         "type": "string",
@@ -52,14 +60,6 @@
           "surprised",
           "neutral"
         ]
-      }
-    ],
-    "temperature": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.5
       }
     ]
   },
@@ -77,22 +77,30 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.height": [
       {
-        "type": "string"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "video.height": [
+    "video.num_frames": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -106,22 +114,6 @@
         "type": "null"
       }
     ],
-    "video.duration": [
-      {
-        "type": "number"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "video.width": [
       {
         "type": "integer"
@@ -130,9 +122,17 @@
         "type": "null"
       }
     ],
-    "video.num_frames": [
+    "video.file_name": [
       {
-        "type": "integer"
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
+      {
+        "type": "number"
       },
       {
         "type": "null"

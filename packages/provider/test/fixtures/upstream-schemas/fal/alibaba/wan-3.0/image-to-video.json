@@ -1,29 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=alibaba/wan-3.0/image-to-video",
   "fields": {
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 2,
-        "maximum": 30,
-        "default": 5
-      },
-      {
-        "type": "null",
-        "default": 5
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480p",
-          "720p",
-          "1080p"
-        ],
-        "default": "1080p"
-      }
-    ],
     "seed": [
       {
         "type": "integer",
@@ -32,11 +9,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "start_image_url": [
-      {
-        "type": "string"
       }
     ],
     "enable_safety_checker": [
@@ -54,30 +26,15 @@
         "type": "null"
       }
     ],
-    "enable_prompt_expansion": [
+    "resolution": [
       {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "audio": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "end_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_thinking": [
-      {
-        "type": "boolean",
-        "default": false
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "default": "1080p"
       }
     ],
     "aspect_ratio": [
@@ -93,47 +50,66 @@
         ],
         "default": "adaptive"
       }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "end_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_thinking": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "start_image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 30,
+        "default": 5
+      },
+      {
+        "type": "null",
+        "default": 5
+      }
     ]
   },
   "required": [
     "start_image_url"
   ],
   "outputs": {
+    "actual_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.file_size": [
       {
         "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.width": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.duration": [
-      {
-        "type": "number"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
       },
       {
         "type": "null"
@@ -147,7 +123,36 @@
         "type": "null"
       }
     ],
-    "video.fps": [
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.width": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.height": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
       {
         "type": "number"
       },
@@ -155,14 +160,17 @@
         "type": "null"
       }
     ],
-    "video.url": [
+    "video.content_type": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
-    "video.height": [
+    "video.fps": [
       {
-        "type": "integer"
+        "type": "number"
       },
       {
         "type": "null"
@@ -184,14 +192,6 @@
     "seed": [
       {
         "type": "integer"
-      }
-    ],
-    "actual_prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
       }
     ]
   }

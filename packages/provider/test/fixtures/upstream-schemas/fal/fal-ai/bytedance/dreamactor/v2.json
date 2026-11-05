@@ -1,9 +1,10 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/dreamactor/v2",
   "fields": {
-    "image_url": [
+    "trim_first_second": [
       {
-        "type": "string"
+        "type": "boolean",
+        "default": true
       }
     ],
     "enable_safety_checker": [
@@ -17,10 +18,9 @@
         "type": "string"
       }
     ],
-    "trim_first_second": [
+    "image_url": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string"
       }
     ]
   },
@@ -29,19 +29,6 @@
     "video_url"
   ],
   "outputs": {
-    "video.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "video.file_name": [
       {
         "type": "string"
@@ -50,9 +37,22 @@
         "type": "null"
       }
     ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
     "video.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"

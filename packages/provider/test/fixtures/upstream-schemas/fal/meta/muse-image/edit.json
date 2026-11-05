@@ -1,12 +1,32 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=meta/muse-image/edit",
   "fields": {
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "webp"
+      }
+    ],
     "num_images": [
       {
         "type": "integer",
         "minimum": 1,
         "maximum": 10,
         "default": 1
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$"
+      },
+      {
+        "type": "null"
       }
     ],
     "image_urls": [
@@ -24,26 +44,6 @@
           },
           "required": []
         }
-      }
-    ],
-    "aspect_ratio": [
-      {
-        "type": "string",
-        "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "webp"
       }
     ],
     "sync_mode": [
@@ -69,15 +69,15 @@
         "type": "array",
         "items": {
           "fields": {
-            "content_type": [
+            "height": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "height": [
+            "file_size": [
               {
                 "type": "integer"
               },
@@ -90,6 +90,14 @@
                 "type": "string"
               }
             ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "file_name": [
               {
                 "type": "string"
@@ -99,14 +107,6 @@
               }
             ],
             "width": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_size": [
               {
                 "type": "integer"
               },

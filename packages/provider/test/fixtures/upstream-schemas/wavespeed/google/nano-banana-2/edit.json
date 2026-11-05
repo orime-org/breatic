@@ -22,19 +22,7 @@
         ]
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "enable_image_search": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "enable_sync_mode": [
       {
         "type": "boolean",
         "default": false

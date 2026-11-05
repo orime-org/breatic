@@ -22,7 +22,11 @@
  * `unit_price`, except where the unit changed.
  * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
  * against WaveSpeed's own price for sample params; for every other model it
- * lists where the live price differs from the binding's. Last it regenerates
+ * lists where the live base price differs from the binding's, and where the
+ * binding's price for the catalog's default run differs from what WaveSpeed's
+ * `/model/price` charges for it (`discounted_price`), without rewriting it.
+ * SandBase: each snapshot also records who serves the model (`owned_by` in
+ * SandBase's model list). Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
  *
@@ -35,8 +39,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
+import type { ProviderConfigInput } from "../packages/provider/src/config/schema.js";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
+import { buildBody } from "../packages/provider/src/media/body.js";
+import { assess } from "../packages/provider/src/pricing/estimate.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
+import { createProvider } from "../packages/provider/src/provider.js";
 import { priceFactDrift } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
@@ -64,6 +72,8 @@ const SANDBASE_MODELS = "https://api.sandbase.ai/v1/models";
 
 /** A sample input whose clip or file WaveSpeed's price endpoint does not read. */
 const SAMPLE_IMAGE = "https://example.com/sample.png";
+/** The prompt of a default run. */
+const SAMPLE_PROMPT = "a red fox running through fresh snow at dawn";
 
 /**
  * The 3D models' WaveSpeed prices, written by hand from the model pages and checked
@@ -233,6 +243,32 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
     }
   }
   process.stdout.write(`${upstream}: ${differences.length} live base prices differ from the binding's\n${differences.map((d) => `  ${d}\n`).join("")}`);
+
+  // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
+  const media = Object.assign({}, ...[...docs.values()].map((doc) => (doc.toJS() as { models: Record<string, unknown> }).models)) as ProviderConfigInput["media"]["models"];
+  const provider = createProvider({ config: { upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: media } }, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+  const defaults = new Map(CATALOG.flatMap((file) => yaml<{ models: { name: string; params?: Record<string, { default?: unknown }> }[] }>(`config/models/${file}`).models)
+    .map((m) => [m.name, m.params ?? {}]));
+  const charged: string[] = [];
+  for (const { modality, model } of list) {
+    if (modality === "three_d") continue;
+    const binding = provider.config.models[model]?.find((b) => b.upstream === upstream);
+    if (binding === undefined) continue;
+    const params = Object.fromEntries(Object.entries(defaults.get(model) ?? {}).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));
+    const prompt = binding.prompt_field === undefined ? "" : SAMPLE_PROMPT;
+    const inputs = buildBody(binding, { params, prompt });
+    const read = await assess(provider.pricingRules(model), upstream, { params, prompt, durations: {}, placeholders: [], durationsMissing: [] });
+    const local = read === undefined ? "no rule" : "rejected" in read ? `refused (${JSON.stringify(read.rejected)})` : read.estimate.usd;
+    let live: number | string;
+    try {
+      const answer = await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) });
+      live = Number(at(answer, "data", "discounted_price") ?? at(answer, "data", "price"));
+    } catch (error) {
+      live = `not priced (${(error as Error).message.slice(0, 120)})`;
+    }
+    if (typeof local !== "number" || typeof live !== "number" || Math.abs(local - live) > 1e-9) charged.push(`${model} ${JSON.stringify(inputs)}: WaveSpeed ${live}, binding ${local}`);
+  }
+  process.stdout.write(`${upstream}: ${charged.length} default runs priced differently from what WaveSpeed charges\n${charged.map((d) => `  ${d}\n`).join("")}`);
 }
 
 /**
@@ -299,13 +335,18 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
 }
 
 /**
- * Sync the SandBase bindings: snapshots with execution modes of the model and its extra steps, and the stored price formulas.
+ * Sync the SandBase bindings: snapshots with execution modes and owner of the model and its extra steps, and the stored price formulas.
  * @param upstream - The upstream's name.
  * @param list - Its bindings.
  */
 async function syncSandBase(upstream: string, list: typeof bindings): Promise<void> {
   const key = keyOf(upstream);
   if (key === undefined) return;
+  // The bare list holds only the language models; each media type is listed under its own `type`.
+  const owners = new Map<string, string | undefined>();
+  for (const type of ["", "?type=image", "?type=video", "?type=audio"]) {
+    for (const m of at(await json(`${SANDBASE_MODELS}${type}`, { headers: { Authorization: `Bearer ${key}` } }), "data") as { id: string; owned_by?: string }[]) owners.set(m.id, m.owned_by);
+  }
   let written = 0;
   for (const { model, binding } of list) {
     for (const endpoint of [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)]) {
@@ -318,7 +359,8 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
         continue;
       }
       const modes = [at(answer, "execution_mode"), ...((at(answer, "supported_modes") as unknown[] | null) ?? [])].filter((m): m is string => typeof m === "string");
-      writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), modes: [...new Set(modes)] });
+      const owner = owners.get(endpoint);
+      writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), modes: [...new Set(modes)], ...(owner === undefined ? {} : { owned_by: owner }) });
       written += 1;
       const formula = at(answer, "model_card", "price_formula") ?? null;
       priceFactKept(upstream, endpoint, `${model} ${endpoint} on ${upstream}: price_formula`, "price_formula", { source, price_formula: formula });

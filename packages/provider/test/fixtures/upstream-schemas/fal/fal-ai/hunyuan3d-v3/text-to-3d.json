@@ -1,18 +1,16 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/hunyuan3d-v3/text-to-3d",
   "fields": {
-    "enable_safety_checker": [
+    "prompt": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "maxLength": 1024
       }
     ],
-    "face_count": [
+    "enable_pbr": [
       {
-        "type": "integer",
-        "minimum": 40000,
-        "maximum": 1500000,
-        "default": 500000
+        "type": "boolean",
+        "default": false
       }
     ],
     "generate_type": [
@@ -26,6 +24,12 @@
         "default": "Normal"
       }
     ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "polygon_type": [
       {
         "type": "string",
@@ -36,16 +40,12 @@
         "default": "triangle"
       }
     ],
-    "prompt": [
+    "face_count": [
       {
-        "type": "string",
-        "maxLength": 1024
-      }
-    ],
-    "enable_pbr": [
-      {
-        "type": "boolean",
-        "default": false
+        "type": "integer",
+        "minimum": 40000,
+        "maximum": 1500000,
+        "default": 500000
       }
     ]
   },
@@ -53,15 +53,7 @@
     "prompt"
   ],
   "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.content_type": [
+    "model_glb.file_name": [
       {
         "type": "string"
       },
@@ -82,7 +74,7 @@
         "type": "null"
       }
     ],
-    "model_glb.file_name": [
+    "model_glb.content_type": [
       {
         "type": "string"
       },
@@ -98,7 +90,15 @@
         ]
       }
     ],
-    "thumbnail.content_type": [
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.file_name": [
       {
         "type": "string"
       },
@@ -119,7 +119,7 @@
         "type": "null"
       }
     ],
-    "thumbnail.file_name": [
+    "thumbnail.content_type": [
       {
         "type": "string"
       },
@@ -138,7 +138,7 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.content_type": [
+    "model_urls.fbx.file_name": [
       {
         "type": "string"
       },
@@ -159,7 +159,7 @@
         "type": "null"
       }
     ],
-    "model_urls.fbx.file_name": [
+    "model_urls.fbx.content_type": [
       {
         "type": "string"
       },
@@ -178,47 +178,7 @@
         "type": "null"
       }
     ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.glb.content_type": [
+    "model_urls.glb.file_name": [
       {
         "type": "string"
       },
@@ -239,7 +199,7 @@
         "type": "null"
       }
     ],
-    "model_urls.glb.file_name": [
+    "model_urls.glb.content_type": [
       {
         "type": "string"
       },
@@ -258,7 +218,47 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.content_type": [
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.file_name": [
       {
         "type": "string"
       },
@@ -279,7 +279,7 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.file_name": [
+    "model_urls.usdz.content_type": [
       {
         "type": "string"
       },

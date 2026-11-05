@@ -6,7 +6,17 @@
         "type": "string"
       }
     ],
-    "sync_mode": [
+    "mask_type": [
+      {
+        "type": "string",
+        "enum": [
+          "manual",
+          "automatic"
+        ],
+        "default": "manual"
+      }
+    ],
+    "preserve_alpha": [
       {
         "type": "boolean",
         "default": false
@@ -17,20 +27,10 @@
         "type": "string"
       }
     ],
-    "preserve_alpha": [
+    "sync_mode": [
       {
         "type": "boolean",
         "default": false
-      }
-    ],
-    "mask_type": [
-      {
-        "type": "string",
-        "enum": [
-          "manual",
-          "automatic"
-        ],
-        "default": "manual"
       }
     ]
   },
@@ -39,9 +39,12 @@
     "mask_url"
   ],
   "outputs": {
-    "image.url": [
+    "image.content_type": [
       {
         "type": "string"
+      },
+      {
+        "type": "null"
       }
     ],
     "image.file_size": [
@@ -52,9 +55,9 @@
         "type": "null"
       }
     ],
-    "image.content_type": [
+    "image.width": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
@@ -68,17 +71,14 @@
         "type": "null"
       }
     ],
+    "image.url": [
+      {
+        "type": "string"
+      }
+    ],
     "image.file_name": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image.width": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"

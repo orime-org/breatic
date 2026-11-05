@@ -1,6 +1,14 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=openai/gpt-image-2.5/sunburst/text-to-image",
   "fields": {
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
     "prompt": [
       {
         "type": "string",
@@ -8,10 +16,24 @@
         "maxLength": 32000
       }
     ],
-    "sync_mode": [
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high"
+      }
+    ],
+    "enable_safety_checker": [
       {
         "type": "boolean",
-        "default": false
+        "default": true
       }
     ],
     "background": [
@@ -23,6 +45,33 @@
           "opaque"
         ],
         "default": "auto"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "png"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "output_compression": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      {
+        "type": "null"
       }
     ],
     "image_size.height": [
@@ -59,55 +108,6 @@
         ],
         "default": "landscape_4_3"
       }
-    ],
-    "output_compression": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 100
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "auto",
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "default": "high"
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "png"
-      }
-    ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
     ]
   },
   "required": [
@@ -124,9 +124,9 @@
                 "type": "string"
               }
             ],
-            "height": [
+            "file_name": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -140,17 +140,9 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "height": [
               {
                 "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_name": [
-              {
-                "type": "string"
               },
               {
                 "type": "null"
@@ -159,6 +151,14 @@
             "content_type": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
               },
               {
                 "type": "null"

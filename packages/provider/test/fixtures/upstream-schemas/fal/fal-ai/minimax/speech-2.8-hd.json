@@ -1,193 +1,7 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/speech-2.8-hd",
   "fields": {
-    "normalization_setting.target_range": [
-      {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 20,
-        "default": 8
-      }
-    ],
-    "normalization_setting.enabled": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "normalization_setting.target_loudness": [
-      {
-        "type": "number",
-        "minimum": -70,
-        "maximum": -10,
-        "default": -18
-      }
-    ],
-    "normalization_setting.target_peak": [
-      {
-        "type": "number",
-        "minimum": -3,
-        "maximum": 0,
-        "default": -0.5
-      }
-    ],
-    "normalization_setting": [
-      {
-        "type": "object"
-      }
-    ],
-    "audio_setting.channel": [
-      {
-        "type": "integer",
-        "enum": [
-          1,
-          2
-        ],
-        "default": 1
-      }
-    ],
-    "audio_setting.bitrate": [
-      {
-        "type": "integer",
-        "enum": [
-          32000,
-          64000,
-          128000,
-          256000
-        ],
-        "default": 128000
-      }
-    ],
-    "audio_setting.format": [
-      {
-        "type": "string",
-        "enum": [
-          "mp3",
-          "pcm",
-          "flac"
-        ],
-        "default": "mp3"
-      }
-    ],
-    "audio_setting.sample_rate": [
-      {
-        "type": "integer",
-        "enum": [
-          8000,
-          16000,
-          22050,
-          24000,
-          32000,
-          44100
-        ],
-        "default": 32000
-      }
-    ],
-    "audio_setting": [
-      {
-        "type": "object"
-      }
-    ],
-    "pronunciation_dict.tone_list": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "required": []
-        }
-      }
-    ],
-    "pronunciation_dict": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "url",
-          "hex"
-        ],
-        "default": "hex"
-      }
-    ],
-    "voice_setting.speed": [
-      {
-        "type": "number",
-        "minimum": 0.5,
-        "maximum": 2,
-        "default": 1
-      }
-    ],
-    "voice_setting.vol": [
-      {
-        "type": "number",
-        "minimum": 0.01,
-        "maximum": 10,
-        "default": 1
-      }
-    ],
-    "voice_setting.voice_id": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "default": "Wise_Woman"
-      }
-    ],
-    "voice_setting.pitch": [
-      {
-        "type": "integer",
-        "minimum": -12,
-        "maximum": 12,
-        "default": 0
-      }
-    ],
-    "voice_setting.english_normalization": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "voice_setting.emotion": [
-      {
-        "type": "string",
-        "enum": [
-          "happy",
-          "sad",
-          "angry",
-          "fearful",
-          "disgusted",
-          "surprised",
-          "neutral"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "voice_setting": [
-      {
-        "type": "object",
-        "default": {
-          "vol": 1,
-          "voice_id": "Wise_Woman",
-          "pitch": 0,
-          "english_normalization": false,
-          "speed": 1
-        }
-      }
-    ],
-    "voice_modify.intensity": [
+    "voice_modify.pitch": [
       {
         "type": "integer",
         "minimum": -100,
@@ -195,7 +9,7 @@
         "default": 0
       }
     ],
-    "voice_modify.pitch": [
+    "voice_modify.intensity": [
       {
         "type": "integer",
         "minimum": -100,
@@ -217,6 +31,82 @@
       },
       {
         "type": "null"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "url",
+          "hex"
+        ],
+        "default": "hex"
+      }
+    ],
+    "voice_setting.pitch": [
+      {
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12,
+        "default": 0
+      }
+    ],
+    "voice_setting.emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "fearful",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice_setting.speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "voice_setting.voice_id": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "default": "Wise_Woman"
+      }
+    ],
+    "voice_setting.vol": [
+      {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
+    "voice_setting.english_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "voice_setting": [
+      {
+        "type": "object",
+        "default": {
+          "pitch": 0,
+          "voice_id": "Wise_Woman",
+          "speed": 1,
+          "vol": 1,
+          "english_normalization": false
+        }
       }
     ],
     "language_boost": [
@@ -273,11 +163,121 @@
         "default": true
       }
     ],
+    "pronunciation_dict.tone_list": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "pronunciation_dict": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "prompt": [
       {
         "type": "string",
         "minLength": 1,
         "maxLength": 10000
+      }
+    ],
+    "audio_setting.bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ],
+        "default": 128000
+      }
+    ],
+    "audio_setting.format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "pcm",
+          "flac"
+        ],
+        "default": "mp3"
+      }
+    ],
+    "audio_setting.sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ],
+        "default": 32000
+      }
+    ],
+    "audio_setting.channel": [
+      {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ],
+        "default": 1
+      }
+    ],
+    "audio_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "normalization_setting.target_loudness": [
+      {
+        "type": "number",
+        "minimum": -70,
+        "maximum": -10,
+        "default": -18
+      }
+    ],
+    "normalization_setting.enabled": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "normalization_setting.target_range": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 20,
+        "default": 8
+      }
+    ],
+    "normalization_setting.target_peak": [
+      {
+        "type": "number",
+        "minimum": -3,
+        "maximum": 0,
+        "default": -0.5
+      }
+    ],
+    "normalization_setting": [
+      {
+        "type": "object"
       }
     ]
   },
@@ -285,16 +285,6 @@
     "prompt"
   ],
   "outputs": {
-    "duration_ms": [
-      {
-        "type": "integer"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
-      }
-    ],
     "audio.file_name": [
       {
         "type": "string"
@@ -319,12 +309,22 @@
         "type": "null"
       }
     ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
     "audio": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      }
+    ],
+    "duration_ms": [
+      {
+        "type": "integer"
       }
     ]
   }

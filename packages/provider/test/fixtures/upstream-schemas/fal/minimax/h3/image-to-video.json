@@ -1,6 +1,61 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/image-to-video",
   "fields": {
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "end_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "target_audio_url": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "prompt_expansion_mode": [
+      {
+        "type": "string",
+        "default": "balanced"
+      },
+      {
+        "type": "null",
+        "default": "balanced"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "duration": [
       {
         "type": "integer",
@@ -21,62 +76,7 @@
         "default": "2K"
       }
     ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "target_audio_url": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "pattern": "\\S"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt_expansion_mode": [
-      {
-        "type": "string",
-        "default": "balanced"
-      },
-      {
-        "type": "null",
-        "default": "balanced"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 50000
-      }
-    ],
     "image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "end_image_url": [
       {
         "type": "string"
       },
@@ -94,17 +94,17 @@
         "type": "string"
       }
     ],
-    "video.content_type": [
+    "video.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "video.file_size": [
+    "video.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"

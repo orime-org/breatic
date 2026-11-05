@@ -14,12 +14,6 @@
         "default": "1:1"
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "image": [
       {
         "type": "string"

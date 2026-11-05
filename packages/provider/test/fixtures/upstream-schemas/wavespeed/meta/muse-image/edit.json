@@ -16,18 +16,6 @@
         ]
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "enable_sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "images": [
       {
         "type": "array",

@@ -1,6 +1,13 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=krea/v2/large/text-to-image",
   "fields": {
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
     "image_style_references": [
       {
         "type": "array",
@@ -8,17 +15,17 @@
         "default": [],
         "items": {
           "fields": {
-            "image_url": [
-              {
-                "type": "string"
-              }
-            ],
             "strength": [
               {
                 "type": "number",
                 "minimum": -2,
                 "maximum": 2,
                 "default": 1
+              }
+            ],
+            "image_url": [
+              {
+                "type": "string"
               }
             ],
             "": [
@@ -34,62 +41,6 @@
             "image_url"
           ]
         }
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "moodboards": [
-      {
-        "type": "array",
-        "maxItems": 1,
-        "default": [],
-        "items": {
-          "fields": {
-            "id": [
-              {
-                "type": "string"
-              }
-            ],
-            "strength": [
-              {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1,
-                "default": 0.23
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "id"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "id"
-          ]
-        }
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
       }
     ],
     "aspect_ratio": [
@@ -108,6 +59,12 @@
         "default": "1:1"
       }
     ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "creativity": [
       {
         "type": "string",
@@ -120,6 +77,14 @@
         "default": "medium"
       }
     ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "styles": [
       {
         "type": "array",
@@ -127,17 +92,52 @@
         "default": [],
         "items": {
           "fields": {
-            "id": [
-              {
-                "type": "string"
-              }
-            ],
             "strength": [
               {
                 "type": "number",
                 "minimum": -2,
                 "maximum": 2,
                 "default": 1
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "moodboards": [
+      {
+        "type": "array",
+        "maxItems": 1,
+        "default": [],
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.23
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
               }
             ],
             "": [
@@ -160,12 +160,17 @@
     "prompt"
   ],
   "outputs": {
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
     "images": [
       {
         "type": "array",
         "items": {
           "fields": {
-            "content_type": [
+            "file_name": [
               {
                 "type": "string"
               },
@@ -186,14 +191,6 @@
                 "type": "null"
               }
             ],
-            "width": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "height": [
               {
                 "type": "integer"
@@ -202,7 +199,15 @@
                 "type": "null"
               }
             ],
-            "file_name": [
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "content_type": [
               {
                 "type": "string"
               },
@@ -223,11 +228,6 @@
             "url"
           ]
         }
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
       }
     ]
   }

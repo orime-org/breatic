@@ -9,6 +9,33 @@
         "default": 0.5
       }
     ],
+    "timestamps": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "language_code": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "default": "Rachel"
+      }
+    ],
     "apply_text_normalization": [
       {
         "type": "string",
@@ -19,65 +46,12 @@
         ],
         "default": "auto"
       }
-    ],
-    "timestamps": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "voice": [
-      {
-        "type": "string",
-        "default": "Rachel"
-      }
-    ],
-    "text": [
-      {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
-      }
-    ],
-    "language_code": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
     ]
   },
   "required": [
     "text"
   ],
   "outputs": {
-    "timestamps": [
-      {
-        "type": "array",
-        "items": {
-          "fields": {
-            "": [
-              {
-                "type": "any"
-              }
-            ]
-          },
-          "required": []
-        }
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "audio.url": [
       {
         "type": "string"
@@ -86,6 +60,14 @@
     "audio.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -105,6 +87,24 @@
         "required": [
           "url"
         ]
+      }
+    ],
+    "timestamps": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "any"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
       }
     ]
   }

@@ -1,11 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=blackforestlabs/flux-3/first-last-frame-to-video",
   "fields": {
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "duration": [
       {
         "type": "integer",
@@ -30,29 +25,10 @@
         "default": 5
       }
     ],
-    "start_image_url": [
+    "generate_audio": [
       {
-        "type": "string"
-      }
-    ],
-    "safety_tolerance": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 4,
-        "default": 2
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "720p",
-          "1080p",
-          "1440p",
-          "2160p"
-        ],
-        "default": "720p"
+        "type": "boolean",
+        "default": true
       }
     ],
     "aspect_ratio": [
@@ -71,15 +47,39 @@
         "default": "auto"
       }
     ],
-    "end_image_url": [
+    "prompt": [
       {
         "type": "string"
       }
     ],
-    "generate_audio": [
+    "resolution": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p",
+          "1440p",
+          "2160p"
+        ],
+        "default": "720p"
+      }
+    ],
+    "start_image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "safety_tolerance": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "default": 2
+      }
+    ],
+    "end_image_url": [
+      {
+        "type": "string"
       }
     ]
   },
@@ -89,22 +89,9 @@
     "end_image_url"
   ],
   "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
     "video.url": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
     "video.file_size": [
@@ -123,12 +110,25 @@
         "type": "null"
       }
     ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video": [
       {
         "type": "object",
         "required": [
           "url"
         ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ]
   }

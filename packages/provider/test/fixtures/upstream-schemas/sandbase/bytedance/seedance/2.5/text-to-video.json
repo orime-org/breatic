@@ -107,5 +107,6 @@
   ],
   "modes": [
     "async"
-  ]
+  ],
+  "owned_by": "bytedance"
 }

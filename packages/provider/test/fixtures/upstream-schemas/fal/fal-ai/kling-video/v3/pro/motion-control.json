@@ -1,11 +1,59 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/pro/motion-control",
   "fields": {
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "keep_original_sound": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "character_orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "image",
+          "video"
+        ]
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500
+      },
+      {
+        "type": "null"
+      }
+    ],
     "elements": [
       {
         "type": "array",
         "items": {
           "fields": {
+            "frontal_image_url": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "reference_image_urls": [
               {
                 "type": "array",
@@ -24,14 +72,6 @@
                 "type": "null"
               }
             ],
-            "frontal_image_url": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "": [
               {
                 "type": "object"
@@ -44,46 +84,6 @@
       {
         "type": "null"
       }
-    ],
-    "character_orientation": [
-      {
-        "type": "string",
-        "enum": [
-          "image",
-          "video"
-        ]
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "image_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 2500
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "keep_original_sound": [
-      {
-        "type": "boolean",
-        "default": true
-      }
     ]
   },
   "required": [
@@ -92,6 +92,22 @@
     "character_orientation"
   ],
   "outputs": {
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.content_type": [
       {
         "type": "string"
@@ -103,22 +119,6 @@
     "video.url": [
       {
         "type": "string"
-      }
-    ],
-    "video.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
       }
     ],
     "video": [

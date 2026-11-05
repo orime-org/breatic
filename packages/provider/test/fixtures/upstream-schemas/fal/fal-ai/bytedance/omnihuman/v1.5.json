@@ -1,6 +1,14 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/omnihuman/v1.5",
   "fields": {
+    "prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "audio_url": [
       {
         "type": "string"
@@ -34,14 +42,6 @@
       {
         "type": "string"
       }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
     ]
   },
   "required": [
@@ -54,19 +54,6 @@
         "type": "number"
       }
     ],
-    "video.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "video.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "video.file_name": [
       {
         "type": "string"
@@ -75,9 +62,22 @@
         "type": "null"
       }
     ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
     "video.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"

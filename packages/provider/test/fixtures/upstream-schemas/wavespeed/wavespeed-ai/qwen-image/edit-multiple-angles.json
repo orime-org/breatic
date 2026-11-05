@@ -9,18 +9,6 @@
         "default": 1
       }
     ],
-    "enable_base64_output": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "enable_sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "horizontal_angle": [
       {
         "type": "integer",

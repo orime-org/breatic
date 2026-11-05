@@ -1,44 +1,31 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=minimax/h3/text-to-video",
   "fields": {
-    "duration": [
+    "prompt": [
       {
-        "type": "integer",
-        "minimum": 5,
-        "maximum": 15,
-        "default": 5
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "default": "16:9"
       }
     ],
     "enable_safety_checker": [
       {
         "type": "boolean",
         "default": true
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "480P",
-          "768P",
-          "2K",
-          "4K"
-        ],
-        "default": "2K"
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
       }
     ],
     "target_audio_url": [
@@ -61,25 +48,38 @@
         "default": "balanced"
       }
     ],
-    "prompt": [
+    "sync_mode": [
       {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 50000
+        "type": "boolean",
+        "default": false
       }
     ],
-    "aspect_ratio": [
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "resolution": [
       {
         "type": "string",
         "enum": [
-          "21:9",
-          "16:9",
-          "4:3",
-          "1:1",
-          "3:4",
-          "9:16"
+          "480P",
+          "768P",
+          "2K",
+          "4K"
         ],
-        "default": "16:9"
+        "default": "2K"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 15,
+        "default": 5
       }
     ]
   },
@@ -92,17 +92,17 @@
         "type": "string"
       }
     ],
-    "video.content_type": [
+    "video.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "video.file_size": [
+    "video.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"

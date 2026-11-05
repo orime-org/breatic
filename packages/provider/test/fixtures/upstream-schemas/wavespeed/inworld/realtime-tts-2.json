@@ -1,12 +1,6 @@
 {
   "source": "https://api.wavespeed.ai/api/v3/models",
   "fields": {
-    "enable_sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "output_format": [
       {
         "type": "string",

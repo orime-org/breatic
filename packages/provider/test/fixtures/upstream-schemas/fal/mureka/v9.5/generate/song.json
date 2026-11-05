@@ -1,36 +1,13 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/v9.5/generate/song",
   "fields": {
-    "lyrics": [
+    "gender": [
       {
         "type": "string",
-        "minLength": 1,
-        "maxLength": 5000
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer",
-        "minimum": 120,
-        "maximum": 300
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "vocal_id": [
-      {
-        "type": "string",
-        "minLength": 1
+        "enum": [
+          "female",
+          "male"
+        ]
       },
       {
         "type": "null"
@@ -46,7 +23,17 @@
         "type": "null"
       }
     ],
-    "reference_id": [
+    "lyrics": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "vocal_id": [
       {
         "type": "string",
         "minLength": 1
@@ -55,25 +42,10 @@
         "type": "null"
       }
     ],
-    "melody_id": [
+    "enable_safety_checker": [
       {
-        "type": "string",
-        "minLength": 1
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "gender": [
-      {
-        "type": "string",
-        "enum": [
-          "female",
-          "male"
-        ]
-      },
-      {
-        "type": "null"
+        "type": "boolean",
+        "default": true
       }
     ],
     "styles": [
@@ -109,53 +81,101 @@
       {
         "type": "null"
       }
+    ],
+    "reference_id": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 120,
+        "maximum": 300
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "melody_id": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
+      }
     ]
   },
   "required": [],
   "outputs": {
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "lyrics_sections": [
       {
         "type": "array",
         "items": {
           "fields": {
-            "start": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "section_type": [
-              {
-                "type": "string",
-                "enum": [
-                  "intro",
-                  "verse",
-                  "pre-chorus",
-                  "chorus",
-                  "bridge",
-                  "break",
-                  "outro"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "end": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "lines": [
               {
                 "type": "array",
                 "items": {
                   "fields": {
+                    "end": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
                     "start": [
                       {
                         "type": "integer"
@@ -172,19 +192,19 @@
                         "type": "null"
                       }
                     ],
-                    "end": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
                     "words": [
                       {
                         "type": "array",
                         "items": {
                           "fields": {
+                            "end": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
                             "start": [
                               {
                                 "type": "integer"
@@ -196,14 +216,6 @@
                             "text": [
                               {
                                 "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ],
-                            "end": [
-                              {
-                                "type": "integer"
                               },
                               {
                                 "type": "null"
@@ -235,6 +247,39 @@
                 "type": "null"
               }
             ],
+            "end": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "start": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "section_type": [
+              {
+                "type": "string",
+                "enum": [
+                  "intro",
+                  "verse",
+                  "pre-chorus",
+                  "chorus",
+                  "bridge",
+                  "break",
+                  "outro"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
             "": [
               {
                 "type": "object"
@@ -246,51 +291,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "duration": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "audio.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "audio": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
       }
     ],
     "song_id": [

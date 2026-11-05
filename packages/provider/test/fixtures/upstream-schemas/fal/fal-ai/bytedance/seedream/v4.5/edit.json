@@ -1,12 +1,23 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4.5/edit",
   "fields": {
-    "seed": [
+    "prompt": [
       {
-        "type": "integer"
-      },
+        "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
       {
-        "type": "null"
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 1
       }
     ],
     "image_urls": [
@@ -24,7 +35,21 @@
         }
       }
     ],
-    "image_size.width": [
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -32,7 +57,7 @@
         "default": 512
       }
     ],
-    "image_size.height": [
+    "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -44,8 +69,8 @@
       {
         "type": "object",
         "default": {
-          "width": 2048,
-          "height": 2048
+          "height": 2048,
+          "width": 2048
         }
       },
       {
@@ -61,20 +86,9 @@
           "auto_4K"
         ],
         "default": {
-          "width": 2048,
-          "height": 2048
+          "height": 2048,
+          "width": 2048
         }
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
-    "enable_safety_checker": [
-      {
-        "type": "boolean",
-        "default": true
       }
     ],
     "max_images": [
@@ -83,20 +97,6 @@
         "minimum": 1,
         "maximum": 6,
         "default": 1
-      }
-    ],
-    "num_images": [
-      {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 6,
-        "default": 1
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "boolean",
-        "default": false
       }
     ]
   },
@@ -110,9 +110,9 @@
         "type": "array",
         "items": {
           "fields": {
-            "width": [
+            "file_name": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -121,22 +121,6 @@
             "url": [
               {
                 "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
               }
             ],
             "file_size": [
@@ -150,6 +134,22 @@
             "height": [
               {
                 "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
               },
               {
                 "type": "null"

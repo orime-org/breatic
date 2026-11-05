@@ -1,17 +1,12 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=recraft/v4/style/text-to-image",
   "fields": {
-    "enable_safety_checker": [
+    "style_id": [
       {
-        "type": "boolean",
-        "default": true
-      }
-    ],
-    "prompt": [
+        "type": "string"
+      },
       {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10000
+        "type": "null"
       }
     ],
     "colors": [
@@ -20,7 +15,7 @@
         "default": [],
         "items": {
           "fields": {
-            "g": [
+            "r": [
               {
                 "type": "integer",
                 "minimum": 0,
@@ -28,7 +23,7 @@
                 "default": 0
               }
             ],
-            "r": [
+            "g": [
               {
                 "type": "integer",
                 "minimum": 0,
@@ -54,51 +49,7 @@
         }
       }
     ],
-    "style_match": [
-      {
-        "type": "string",
-        "enum": [
-          "precise",
-          "flexible"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "background_color.g": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.r": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color.b": [
-      {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 0
-      }
-    ],
-    "background_color": [
-      {
-        "type": "object"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "image_size.width": [
+    "image_size.height": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -106,7 +57,7 @@
         "default": 512
       }
     ],
-    "image_size.height": [
+    "image_size.width": [
       {
         "type": "integer",
         "exclusiveMinimum": 0,
@@ -132,6 +83,51 @@
         "default": "square_hd"
       }
     ],
+    "background_color.r": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color.g": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color.b": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      }
+    ],
+    "background_color": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "image_urls": [
       {
         "type": "array",
@@ -152,9 +148,13 @@
         "type": "null"
       }
     ],
-    "style_id": [
+    "style_match": [
       {
-        "type": "string"
+        "type": "string",
+        "enum": [
+          "precise",
+          "flexible"
+        ]
       },
       {
         "type": "null"
@@ -178,6 +178,19 @@
         "type": "array",
         "items": {
           "fields": {
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "content_type": [
               {
                 "type": "string"
@@ -186,22 +199,9 @@
                 "type": "null"
               }
             ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
             "file_name": [
               {
                 "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_size": [
-              {
-                "type": "integer"
               },
               {
                 "type": "null"

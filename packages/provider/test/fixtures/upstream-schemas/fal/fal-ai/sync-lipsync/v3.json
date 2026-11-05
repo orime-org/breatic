@@ -7,27 +7,27 @@
         "default": true
       }
     ],
-    "audio_url": [
+    "video_url": [
       {
         "type": "string"
       }
     ],
-    "options.temperature": [
+    "sync_mode": [
       {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-      },
-      {
-        "type": "null"
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ],
+        "default": "cut_off"
       }
     ],
-    "options.occlusion_detection_enabled": [
+    "audio_url": [
       {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
+        "type": "string"
       }
     ],
     "options.active_speaker_detection.face_image": [
@@ -38,32 +38,7 @@
         "type": "null"
       }
     ],
-    "options.active_speaker_detection.frame_number": [
-      {
-        "type": "integer",
-        "minimum": 0
-      },
-      {
-        "type": "null"
-      }
-    ],
     "options.active_speaker_detection.use_v2": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "options.active_speaker_detection.auto_detect": [
-      {
-        "type": "boolean"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "options.active_speaker_detection.v3": [
       {
         "type": "boolean"
       },
@@ -91,9 +66,17 @@
         "type": "null"
       }
     ],
-    "options.active_speaker_detection.bounding_boxes_url": [
+    "options.active_speaker_detection.auto_detect": [
       {
-        "type": "string"
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.v3": [
+      {
+        "type": "boolean"
       },
       {
         "type": "null"
@@ -130,9 +113,34 @@
         "type": "null"
       }
     ],
+    "options.active_speaker_detection.frame_number": [
+      {
+        "type": "integer",
+        "minimum": 0
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.bounding_boxes_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "options.active_speaker_detection": [
       {
         "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.occlusion_detection_enabled": [
+      {
+        "type": "boolean"
       },
       {
         "type": "null"
@@ -148,6 +156,21 @@
           "disgusted",
           "surprised",
           "neutral"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.sync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
         ]
       },
       {
@@ -170,16 +193,11 @@
         "type": "null"
       }
     ],
-    "options.sync_mode": [
+    "options.temperature": [
       {
-        "type": "string",
-        "enum": [
-          "cut_off",
-          "loop",
-          "bounce",
-          "silence",
-          "remap"
-        ]
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
       },
       {
         "type": "null"
@@ -191,24 +209,6 @@
       },
       {
         "type": "null"
-      }
-    ],
-    "video_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "sync_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "cut_off",
-          "loop",
-          "bounce",
-          "silence",
-          "remap"
-        ],
-        "default": "cut_off"
       }
     ]
   },
@@ -225,6 +225,14 @@
         "type": "null"
       }
     ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
     "video.url": [
       {
         "type": "string"
@@ -233,14 +241,6 @@
     "video.file_name": [
       {
         "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "video.file_size": [
-      {
-        "type": "integer"
       },
       {
         "type": "null"

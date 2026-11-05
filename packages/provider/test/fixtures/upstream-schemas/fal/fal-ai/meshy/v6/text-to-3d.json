@@ -1,98 +1,6 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/meshy/v6/text-to-3d",
   "fields": {
-    "enable_animation": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "texture_image_url": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "texture_prompt": [
-      {
-        "type": "string",
-        "maxLength": 600
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "mode": [
-      {
-        "type": "string",
-        "enum": [
-          "preview",
-          "full"
-        ],
-        "default": "full"
-      }
-    ],
-    "enable_pbr": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string",
-        "maxLength": 600
-      }
-    ],
-    "topology": [
-      {
-        "type": "string",
-        "enum": [
-          "quad",
-          "triangle"
-        ],
-        "default": "triangle"
-      }
-    ],
-    "pose_mode": [
-      {
-        "type": "string",
-        "enum": [
-          "a-pose",
-          "t-pose",
-          ""
-        ],
-        "default": ""
-      }
-    ],
-    "model_type": [
-      {
-        "type": "string",
-        "enum": [
-          "standard",
-          "lowpoly",
-          "smart-topology",
-          "smart-topology-t2"
-        ],
-        "default": "standard"
-      }
-    ],
-    "enable_prompt_expansion": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "target_polycount": [
       {
         "type": "integer",
@@ -107,12 +15,6 @@
         "default": true
       }
     ],
-    "animation_action_id": [
-      {
-        "type": "integer",
-        "default": 92
-      }
-    ],
     "rigging_height_meters": [
       {
         "type": "number",
@@ -120,10 +22,15 @@
         "default": 1.7
       }
     ],
-    "enable_safety_checker": [
+    "pose_mode": [
       {
-        "type": "boolean",
-        "default": true
+        "type": "string",
+        "enum": [
+          "a-pose",
+          "t-pose",
+          ""
+        ],
+        "default": ""
       }
     ],
     "enable_rigging": [
@@ -132,10 +39,70 @@
         "default": false
       }
     ],
-    "is_a_t_pose": [
+    "model_type": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "smart-topology",
+          "smart-topology-t2"
+        ],
+        "default": "standard"
+      }
+    ],
+    "topology": [
+      {
+        "type": "string",
+        "enum": [
+          "quad",
+          "triangle"
+        ],
+        "default": "triangle"
+      }
+    ],
+    "mode": [
+      {
+        "type": "string",
+        "enum": [
+          "preview",
+          "full"
+        ],
+        "default": "full"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_pbr": [
       {
         "type": "boolean",
         "default": false
+      }
+    ],
+    "enable_animation": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "texture_prompt": [
+      {
+        "type": "string",
+        "maxLength": 600
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 600
       }
     ],
     "symmetry_mode": [
@@ -148,26 +115,50 @@
         ],
         "default": "auto"
       }
+    ],
+    "enable_prompt_expansion": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "is_a_t_pose": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "animation_action_id": [
+      {
+        "type": "integer",
+        "default": 92
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_image_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
     ]
   },
   "required": [
     "prompt"
   ],
   "outputs": {
-    "thumbnail.url": [
+    "model_glb.url": [
       {
         "type": "string"
       }
     ],
-    "thumbnail.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "thumbnail.file_size": [
+    "model_glb.file_size": [
       {
         "type": "integer"
       },
@@ -175,7 +166,7 @@
         "type": "null"
       }
     ],
-    "thumbnail.file_name": [
+    "model_glb.content_type": [
       {
         "type": "string"
       },
@@ -183,26 +174,205 @@
         "type": "null"
       }
     ],
-    "thumbnail": [
+    "model_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_glb": [
       {
         "type": "object",
         "required": [
           "url"
         ]
-      },
-      {
-        "type": "null"
       }
     ],
-    "seed": [
+    "prompt": [
       {
-        "type": "integer"
-      },
-      {
-        "type": "null"
+        "type": "string"
       }
     ],
-    "actual_prompt": [
+    "texture_urls": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "normal.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "normal.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "normal": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "metallic.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "metallic": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "base_color.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "base_color": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ],
+            "roughness.url": [
+              {
+                "type": "string"
+              }
+            ],
+            "roughness.file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness.file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "roughness": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "base_color"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "base_color"
+          ]
+        }
+      }
+    ],
+    "rig_task_id": [
       {
         "type": "string"
       },
@@ -215,17 +385,17 @@
         "type": "string"
       }
     ],
-    "model_urls.blend.content_type": [
+    "model_urls.blend.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "model_urls.blend.file_size": [
+    "model_urls.blend.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -250,102 +420,22 @@
         "type": "null"
       }
     ],
-    "model_urls.obj.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.obj.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.obj": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_urls.stl.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_urls.stl": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
     "model_urls.fbx.url": [
       {
         "type": "string"
       }
     ],
-    "model_urls.fbx.content_type": [
+    "model_urls.fbx.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "model_urls.fbx.file_size": [
+    "model_urls.fbx.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -370,12 +460,20 @@
         "type": "null"
       }
     ],
-    "model_urls.glb.url": [
+    "model_urls.stl.url": [
       {
         "type": "string"
       }
     ],
-    "model_urls.glb.content_type": [
+    "model_urls.stl.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl.content_type": [
       {
         "type": "string"
       },
@@ -383,9 +481,41 @@
         "type": "null"
       }
     ],
+    "model_urls.stl.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.stl": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
     "model_urls.glb.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -410,12 +540,20 @@
         "type": "null"
       }
     ],
-    "model_urls.usdz.url": [
+    "model_urls.obj.url": [
       {
         "type": "string"
       }
     ],
-    "model_urls.usdz.content_type": [
+    "model_urls.obj.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj.content_type": [
       {
         "type": "string"
       },
@@ -423,9 +561,41 @@
         "type": "null"
       }
     ],
+    "model_urls.obj.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.obj": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.url": [
+      {
+        "type": "string"
+      }
+    ],
     "model_urls.usdz.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.usdz.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -455,75 +625,22 @@
         "type": "object"
       }
     ],
-    "rig_task_id": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "rigged_character_fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "rigged_character_fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "prompt": [
-      {
-        "type": "string"
-      }
-    ],
     "rigged_character_glb.url": [
       {
         "type": "string"
       }
     ],
-    "rigged_character_glb.content_type": [
+    "rigged_character_glb.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "rigged_character_glb.file_size": [
+    "rigged_character_glb.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -548,139 +665,22 @@
         "type": "null"
       }
     ],
-    "model_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "model_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "model_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      }
-    ],
-    "animation_fbx.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "animation_fbx.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_fbx": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "animation_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "animation_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
     "basic_animations.running_glb.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.running_glb.content_type": [
+    "basic_animations.running_glb.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "basic_animations.running_glb.file_size": [
+    "basic_animations.running_glb.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -710,17 +710,17 @@
         "type": "string"
       }
     ],
-    "basic_animations.running_fbx.content_type": [
+    "basic_animations.running_fbx.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "basic_animations.running_fbx.file_size": [
+    "basic_animations.running_fbx.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -745,102 +745,22 @@
         "type": "null"
       }
     ],
-    "basic_animations.running_armature_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.running_armature_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.running_armature_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_armature_glb.url": [
-      {
-        "type": "string"
-      }
-    ],
-    "basic_animations.walking_armature_glb.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_armature_glb.file_size": [
-      {
-        "type": "integer"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_armature_glb.file_name": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
-    "basic_animations.walking_armature_glb": [
-      {
-        "type": "object",
-        "required": [
-          "url"
-        ]
-      },
-      {
-        "type": "null"
-      }
-    ],
     "basic_animations.walking_glb.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.walking_glb.content_type": [
+    "basic_animations.walking_glb.file_size": [
       {
-        "type": "string"
+        "type": "integer"
       },
       {
         "type": "null"
       }
     ],
-    "basic_animations.walking_glb.file_size": [
+    "basic_animations.walking_glb.content_type": [
       {
-        "type": "integer"
+        "type": "string"
       },
       {
         "type": "null"
@@ -865,12 +785,20 @@
         "type": "null"
       }
     ],
-    "basic_animations.walking_fbx.url": [
+    "basic_animations.running_armature_glb.url": [
       {
         "type": "string"
       }
     ],
-    "basic_animations.walking_fbx.content_type": [
+    "basic_animations.running_armature_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb.content_type": [
       {
         "type": "string"
       },
@@ -878,9 +806,41 @@
         "type": "null"
       }
     ],
+    "basic_animations.running_armature_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.running_armature_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
     "basic_animations.walking_fbx.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_fbx.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -905,6 +865,46 @@
         "type": "null"
       }
     ],
+    "basic_animations.walking_armature_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "basic_animations.walking_armature_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_armature_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_armature_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "basic_animations.walking_armature_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
     "basic_animations": [
       {
         "type": "object"
@@ -913,181 +913,180 @@
         "type": "null"
       }
     ],
-    "texture_urls": [
+    "seed": [
       {
-        "type": "array",
-        "items": {
-          "fields": {
-            "metallic.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "metallic.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "metallic": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "roughness.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "roughness": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "base_color.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "base_color": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              }
-            ],
-            "normal.url": [
-              {
-                "type": "string"
-              }
-            ],
-            "normal.content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.file_size": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal.file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "normal": [
-              {
-                "type": "object",
-                "required": [
-                  "url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "": [
-              {
-                "type": "object",
-                "required": [
-                  "base_color"
-                ]
-              }
-            ]
-          },
-          "required": [
-            "base_color"
-          ]
-        }
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "thumbnail.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "thumbnail": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "animation_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "rigged_character_fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rigged_character_fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "animation_glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "animation_glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "actual_prompt": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
       }
     ]
   }

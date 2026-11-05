@@ -1,10 +1,10 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=xai/grok-imagine-image/v2.0/text-to-image",
   "fields": {
-    "sync_mode": [
+    "enable_safety_checker": [
       {
         "type": "boolean",
-        "default": false
+        "default": true
       }
     ],
     "num_images": [
@@ -15,10 +15,43 @@
         "default": 1
       }
     ],
-    "enable_safety_checker": [
+    "sync_mode": [
       {
         "type": "boolean",
-        "default": true
+        "default": false
+      }
+    ],
+    "quality": [
+      {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "auto"
+        ],
+        "default": "medium"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "1k",
+          "1.5k",
+          "2k"
+        ],
+        "default": "1k"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "jpeg"
       }
     ],
     "aspect_ratio": [
@@ -50,39 +83,6 @@
         "type": "string",
         "maxLength": 8000
       }
-    ],
-    "output_format": [
-      {
-        "type": "string",
-        "enum": [
-          "jpeg",
-          "png",
-          "webp"
-        ],
-        "default": "jpeg"
-      }
-    ],
-    "resolution": [
-      {
-        "type": "string",
-        "enum": [
-          "1k",
-          "1.5k",
-          "2k"
-        ],
-        "default": "1k"
-      }
-    ],
-    "quality": [
-      {
-        "type": "string",
-        "enum": [
-          "low",
-          "medium",
-          "auto"
-        ],
-        "default": "medium"
-      }
     ]
   },
   "required": [
@@ -102,14 +102,9 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
+            "height": [
               {
-                "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -123,15 +118,20 @@
                 "type": "null"
               }
             ],
-            "height": [
+            "url": [
               {
-                "type": "integer"
+                "type": "string"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
               },

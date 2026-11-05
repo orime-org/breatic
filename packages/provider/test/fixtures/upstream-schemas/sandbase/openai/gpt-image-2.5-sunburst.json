@@ -73,5 +73,6 @@
   "modes": [
     "sync",
     "async"
-  ]
+  ],
+  "owned_by": "openai"
 }

@@ -108,5 +108,6 @@
   "required": [],
   "modes": [
     "async"
-  ]
+  ],
+  "owned_by": "elevenlabs"
 }

@@ -1,6 +1,17 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/elevenlabs/voice-changer",
   "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "remove_background_noise": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "output_format": [
       {
         "type": "string",
@@ -28,17 +39,6 @@
         "default": "mp3_44100_128"
       }
     ],
-    "audio_url": [
-      {
-        "type": "string"
-      }
-    ],
-    "remove_background_noise": [
-      {
-        "type": "boolean",
-        "default": false
-      }
-    ],
     "voice": [
       {
         "type": "string",
@@ -55,19 +55,6 @@
     "audio_url"
   ],
   "outputs": {
-    "seed": [
-      {
-        "type": "integer"
-      }
-    ],
-    "audio.content_type": [
-      {
-        "type": "string"
-      },
-      {
-        "type": "null"
-      }
-    ],
     "audio.url": [
       {
         "type": "string"
@@ -76,6 +63,14 @@
     "audio.file_size": [
       {
         "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
       },
       {
         "type": "null"
@@ -95,6 +90,11 @@
         "required": [
           "url"
         ]
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
       }
     ]
   }

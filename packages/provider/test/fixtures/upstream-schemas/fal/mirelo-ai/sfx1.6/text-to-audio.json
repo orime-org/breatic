@@ -1,6 +1,30 @@
 {
   "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mirelo-ai/sfx1.6/text-to-audio",
   "fields": {
+    "seed": [
+      {
+        "type": "integer",
+        "minimum": -1,
+        "maximum": 18446744073709552000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "duration": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 60,
+        "default": 10
+      }
+    ],
+    "double_output": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
     "num_samples": [
       {
         "type": "integer",
@@ -15,30 +39,6 @@
         "default": false
       }
     ],
-    "text_prompt": [
-      {
-        "type": "string",
-        "minLength": 4
-      }
-    ],
-    "duration": [
-      {
-        "type": "number",
-        "minimum": 0.1,
-        "maximum": 60,
-        "default": 10
-      }
-    ],
-    "seed": [
-      {
-        "type": "integer",
-        "minimum": -1,
-        "maximum": 18446744073709552000
-      },
-      {
-        "type": "null"
-      }
-    ],
     "upload_audio_format": [
       {
         "type": "string",
@@ -51,10 +51,10 @@
         "default": "wav"
       }
     ],
-    "double_output": [
+    "text_prompt": [
       {
-        "type": "boolean",
-        "default": false
+        "type": "string",
+        "minLength": 4
       }
     ]
   },
@@ -75,6 +75,14 @@
                 "type": "null"
               }
             ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "file_name": [
               {
                 "type": "string"
@@ -86,14 +94,6 @@
             "url": [
               {
                 "type": "string"
-              }
-            ],
-            "content_type": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
               }
             ],
             "": [
