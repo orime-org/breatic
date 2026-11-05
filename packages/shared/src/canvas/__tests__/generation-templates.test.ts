@@ -103,6 +103,13 @@ const wordsOf = (locale: string, template: GenerationTemplate, node: TemplateGen
   wordKeysOf(template, node).flatMap((rest) => markedSegments(raw(locale, textKey(template, rest)) ?? ''));
 
 /**
+ * The kinds of marks a prompt carries, in order.
+ * @param text - The prompt.
+ * @returns One entry per mark.
+ */
+const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => (s.slot ? [s.slot.kind] : []));
+
+/**
  * The names a generate node's reference marks may use in one language: each
  * input feeding it and each template node wired into its pool.
  * @param locale - The locale.
@@ -435,6 +442,35 @@ describe('creative goals and triggers', () => {
 });
 
 describe('generation template registry checks', () => {
+  it('carries the same marks in the same order in every language, for every template prompt', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+        const reference = marksOf(raw('en', key) ?? '');
+        for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
+      }
+    }
+  });
+
+  it('names the frame in a video template\'s agent note as its anchor\'s aspect ratio sets it', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const anchor = template.nodes.find((node) => node.key === template.anchor);
+      if (anchor?.role !== 'generate' || anchor.type !== 'video') continue;
+      const ratio = anchor.params.aspect_ratio;
+      const note = template.agentNote;
+      const at = `${template.id} ${String(ratio)}`;
+      if (ratio === '9:16') {
+        expect.soft(note, at).toContain('vertical');
+        expect.soft(note, at).not.toContain('landscape');
+      } else if (ratio === '16:9') {
+        expect.soft(note, at).toContain('landscape');
+        expect.soft(note, at).not.toContain('vertical');
+      } else {
+        expect.soft(note, at).not.toContain('vertical');
+        expect.soft(note, at).not.toContain('landscape');
+      }
+    }
+  });
+
   it('keeps template ids, node keys and input keys unique, and no node takes the guide key', () => {
     const ids = GENERATION_TEMPLATES.map((template) => template.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -652,13 +688,6 @@ describe('character template layouts (inner#1846)', () => {
   const EXPRESSION_PROMPT = 'canvas.template.expression-sheet.prompt';
 
   /**
-   * The kinds of marks a prompt carries, in order.
-   * @param text - The prompt.
-   * @returns One entry per mark.
-   */
-  const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => (s.slot ? [s.slot.kind] : []));
-
-  /**
    * Whether a text gives these panel counts in this order, read as whole numbers so 48% is not an 8.
    * @param text - The prompt.
    * @param counts - The counts, in the order the rows give them.
@@ -709,15 +738,6 @@ describe('character template layouts (inner#1846)', () => {
   it('locks the rendering on the sheet made from text, and leaves it to the picked style on the character bible', () => {
     expect(raw('en', 'canvas.template.character-bible.prompt')).not.toContain("reference's exact rendering");
     expect(raw('en', 'canvas.template.character-design-from-text.prompt')).toContain("Keep the reference's exact rendering");
-  });
-
-  it('carries the same marks in the same order in every language, for every template prompt', () => {
-    for (const template of GENERATION_TEMPLATES) {
-      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
-        const reference = marksOf(raw('en', key) ?? '');
-        for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
-      }
-    }
   });
 
   it('tells the agent what to do when a face drifts and what to look for after an orbit', () => {
