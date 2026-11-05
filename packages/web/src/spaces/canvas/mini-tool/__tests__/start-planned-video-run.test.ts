@@ -35,12 +35,16 @@ function draft(): VideoToolDraftById['video.remove-bg'] {
   };
 }
 
+// §95 (design §10.8 请求行, §7.11): the press carries the selected bundle's identity as the request's presentation_ref, input
+// id to {toolInputId, planSha256}; the field the press holds it in is `presentationRef` (question D9-4).
+const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
+
 /** Existing Canvas capabilities attached to a real source document. @throws {never} Never. */
 function press(over: Partial<PlannedVideoRun> = {}): PlannedVideoRun {
-  return { projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.remove-bg', draft: draft(), analyses: [],
+  return { projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.remove-bg', draft: draft(), analyses: [], presentationRef: PRESENTATION_REF,
     source: { id: SOURCE, name: 'ORIGINAL', position: { x: 30, y: 40 }, groupOrigin: null, width: 400, height: 200, mimeType: 'video/webm' },
     sourceExists: () => getDoc(docName.canvasSpace(PROJECT, SPACE)).getMap(CANVAS_NODES_KEY).has(SOURCE),
-    canWrite: () => true, stillOpen: () => true, onBuilt: vi.fn(), ...over };
+    canWrite: () => true, stillOpen: () => true, onBuilt: vi.fn(), ...over } as PlannedVideoRun;
 }
 
 /** The actual newly created destination nodes. @throws {never} Never. */
@@ -67,13 +71,13 @@ describe('planned video press: independent frozen body and original graph', () =
     expect(body).not.toBeNull();
     if (body === null) throw new Error('Expected prepared request');
     expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
-    expect(body).toEqual({ tool: 'video.remove-bg', project_id: PROJECT, space_id: SPACE, run_id: expect.any(String), draft: draft(), analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'remove-bg' } }] });
+    expect(body).toEqual({ tool: 'video.remove-bg', project_id: PROJECT, space_id: SPACE, run_id: expect.any(String), draft: draft(), analysis_refs: [], presentation_ref: PRESENTATION_REF, outputs: [{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'remove-bg' } }] });
     expect(body.outputs[0]!.nodeId).not.toBe(SOURCE);
     expect(targets()).toHaveLength(1);
     expect(targets()[0]).toMatchObject({ id: body.outputs[0]!.nodeId, type: 'video', data: { name: 'MATTE-ORIGINAL' } });
     expect(readEdges(doc)).toEqual([expect.objectContaining({ source: SOURCE, target: body.outputs[0]!.nodeId, toolId: 'video.remove-bg' })]);
     expect(JSON.stringify(original)).toBe(sourceBefore);
-    expect(Object.keys(body).sort()).toEqual(['analysis_refs', 'draft', 'outputs', 'project_id', 'run_id', 'space_id', 'tool']);
+    expect(Object.keys(body).sort()).toEqual(['analysis_refs', 'draft', 'outputs', 'presentation_ref', 'project_id', 'run_id', 'space_id', 'tool']);
     expect(run.onBuilt).toHaveBeenCalledOnce();
   });
 

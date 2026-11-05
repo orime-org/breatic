@@ -19,7 +19,9 @@ const TARGET = '20000000-0000-4000-8000-000000000004';
 const BODY: MiniToolPlannedRequest = {
   tool: 'video.remove-bg', project_id: PROJECT, space_id: '20000000-0000-4000-8000-000000000005', run_id: RUN,
   draft: { version: 1, draftId: '20000000-0000-4000-8000-000000000006', revision: '20000000-0000-4000-8000-000000000007', source: { nodeId: SOURCE, canonicalURL: 'https://assets.example.test/source.webm', mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: {} },
-  analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'remove-bg' } }],
+  // §95: the planned request now carries the selected bundle's presentation_ref (design §10.8; fixture migration, 4.4.5).
+  analysis_refs: [], presentation_ref: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } },
+  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'remove-bg' } }],
 };
 const RECORD: MiniToolExecutionRecord = {
   schemaVersion: 1, runId: RUN, status: 'completed', planFingerprint: 'b'.repeat(64), resultVersion: 1,
