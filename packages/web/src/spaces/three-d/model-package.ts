@@ -383,7 +383,7 @@ export function readRegisteredModelPackage(bytes: Uint8Array, limits: SceneImpor
  * @param model - The model package inspectModelFiles checked from the selected resources and entry.
  * @param limits - Configured output budgets.
  * @returns An original self-contained GLB or the versioned ZIP bytes.
- * @throws {ModelImportError} When an output budget is exceeded.
+ * @throws {ModelImportError} When a resource path is not canonical or an output budget is exceeded.
  */
 export function packModelFiles(model: ModelPackage, limits: SceneImportLimits): Uint8Array<ArrayBuffer> {
   const { files, entry } = model;
