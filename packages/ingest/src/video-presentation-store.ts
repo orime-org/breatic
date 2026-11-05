@@ -142,6 +142,8 @@ interface JobRecord {
   receipts?: Record<string, VideoPresentationOutputReceipt[]>;
   /** The basic copy's carrier writes by key: claimed before any byte, then the Worker's measurement (§91 D2-2). */
   carrierWrites?: Record<string, CarrierWrite>;
+  /** The ready selected version at the grant that planned, which a reuse route copies (§7.1 路线表). */
+  reuseFrom?: string;
 }
 /** One claimed carrier write; insert-only, so a key is written once. */
 interface CarrierWrite { owner: string; byteLength: number; contentType: string; measured: PresentationCarrierMeasurement | null }
@@ -342,8 +344,9 @@ export class VideoPresentationStore {
       if (found.kind === 'ledger') return { ...none, capability, ledgerOnly: found.job.toolInputId, admission: found.job.admission };
       const step = await this.candidateEvent(state, found.job, { kind: 'St', jobId: identity.jobId, now });
       if (step.rejected) return none;
-      await this.save(state);
       const selected = state.selected.kind === 'ready' ? state.presentation : null;
+      if (found.job.candidate.route === null && selected !== null) found.job.reuseFrom = selected.versionId;
+      await this.save(state);
       return { capability, planned: found.job.candidate.route !== null || found.job.candidate.state !== 'building', ledgerOnly: null, admission: found.job.admission,
         selected: selected === null ? null : { planSha256: selected.planSha256, producerVersion: selected.producerVersion, profileVersion: selected.profileVersion } };
     });
@@ -632,6 +635,12 @@ export class VideoPresentationStore {
       const selected = state?.presentation;
       if (state === undefined || found?.kind !== 'current' || found.job.prepared?.route !== 'reuse' || selected === null || selected === undefined) return false;
       const job = found.job;
+      // The selected version is no longer the ready one the route was planned from: a temporary failure the readmit covers (§10.6).
+      if (state.selected.kind !== 'ready' || state.selected.version.versionId !== job.reuseFrom) {
+        await this.candidateEvent(state, job, { kind: 'Er', jobId: identity.jobId, code: 'reuse_source_invalid' });
+        await this.save(state);
+        return false;
+      }
       const bundle = await this.assembleVersion(job, job.prepared!, selected.playback.carrier);
       const step = advancePresentationCandidate(job.candidate, { kind: 'Ev', jobId: identity.jobId, fact: { kind: 'verified' } }, this.policy(job.admission));
       if (step.next.state === 'verified') job.bundle = { ...bundle, playback: selected.playback };
@@ -1194,15 +1203,19 @@ export class VideoPresentationStore {
   }
 
   /**
-   * Whether P is invalid(V) with V's publisher still the current candidate, and how that candidate was admitted (§3.5).
+   * Whether P is invalid(V) with the current candidate V's publisher or a reuse of V that failed reuse_source_invalid, and
+   * how that candidate was admitted (§3.5, §7.1 路线表).
    * @param state - The state.
    * @returns `readmit` without readmitOf, `presentation_invalid` with it, or null when P is not invalid or another candidate is current.
    * @throws {never} Never.
    */
   private invalidPublisher(state: PresentationState): 'readmit' | 'presentation_invalid' | null {
     const current = state.current;
-    if (state.selected.kind !== 'invalid' || current === null || current.candidate.archived ||
-      (current.bundle as { versionId?: unknown } | null)?.versionId !== state.selected.version.versionId) return null;
+    if (state.selected.kind !== 'invalid' || current === null || current.candidate.archived) return null;
+    const version = state.selected.version.versionId;
+    const publisher = (current.bundle as { versionId?: unknown } | null)?.versionId === version;
+    const failedReuse = current.candidate.failure === 'reuse_source_invalid' && current.reuseFrom === version;
+    if (!publisher && !failedReuse) return null;
     return current.admission.readmitOf === undefined ? 'readmit' : 'presentation_invalid';
   }
 
