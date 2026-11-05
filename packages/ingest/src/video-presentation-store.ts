@@ -128,6 +128,8 @@ export interface PresentationPlanFacts {
   display: VideoPresentationVersion['display'];
   playbackClock: VideoPresentationVersion['playbackClock'];
   work: VideoPresentationPrepareAnswer['work'];
+  /** The source audio for a dispatched copy, from the probe: copied when audioCopyable, encoded otherwise, null without audio. */
+  copyAudio: 'copy' | 'encode' | null;
 }
 interface JobRecord {
   admission: VideoPresentationAdmission;
@@ -392,7 +394,7 @@ export class VideoPresentationStore {
       const frozen = admission?.pricing === undefined || admission.actorUserId === undefined || admission.limits === undefined || admission.encoding === undefined ? null
         : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null,
           carrier: { crf: admission.limits.crf, preset: admission.limits.preset, maxShortSide: admission.encoding.carrier.maxShortSide } };
-      return { ...snapshot, capability, plan, work: facts?.work ?? { kind: 'none' },
+      return { ...snapshot, capability, plan, work: facts?.work ?? { kind: 'none' }, ...(facts?.route === 'dispatch_copy' ? { copyAudio: facts.copyAudio } : {}),
         candidateLedger: plan === null ? null : wireLedger(state?.ledgers[plan.toolInputId]?.instance), units, frozen };
     });
   }
@@ -1380,7 +1382,8 @@ async function planAndProduce(store: VideoPresentationStore, capability: Present
     : route === 'encode' && tooLong === null ? { kind: 'encode', chunks } : { kind: 'none' };
   const { planSha256, producerVersion, profileVersion } = probe.routeInput.plan;
   const facts: PresentationPlanFacts = { route, toolInputId: probe.toolInputId, planSha256, producerVersion, profileVersion,
-    display: probe.display, playbackClock: probe.playbackClock, work };
+    display: probe.display, playbackClock: probe.playbackClock, work,
+    copyAudio: probe.work.audioSeconds === 0 ? null : probe.routeInput.audioCopyable ? 'copy' : 'encode' };
   const { writer, view } = await store.planPresentation(capability, { route, toolInputId: probe.toolInputId, planSha256 }, facts);
   if (writer) await writeLedgerOrFail(store, port, capability, probe.toolInputId, probe.encoding);
   if (view.candidate.state !== 'building') return;

@@ -197,6 +197,8 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
     z.strictObject({ kind: z.literal('encode'), chunks: z.array(z.strictObject({ start: index, end: index })).min(1) }),
   ]),
   candidateLedger: videoPresentationIngestLedgerSchema.nullable(),
+  // A dispatched copy's audio, from the probe's audioCopyable (§7.17 copy_carrier row): copied, encoded to AAC, or none.
+  copyAudio: z.enum(['copy', 'encode']).nullable().optional(),
   units: z.record(z.string().min(1), z.strictObject({
     state: z.enum(['none', 'open', 'done', 'failed']), attempt: index,
     attempts: z.array(z.strictObject({ attempt: attemptNumber, jobId: z.string().min(1), state: z.enum(['pending', 'done', 'failed']), usageRecorded: z.boolean() })),
@@ -213,6 +215,7 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
   if (value.capability === null && plan !== null) ctx.addIssue({ code: 'custom', path: ['plan'], message: 'Only a granted job has a plan' });
   if (plan !== null && plan.stages.join() !== videoCarrierRouteStages(plan.route).join()) ctx.addIssue({ code: 'custom', path: ['plan', 'stages'], message: 'The stages are not the route\'s' });
   if (work.kind !== 'none' && plan?.route !== work.kind) ctx.addIssue({ code: 'custom', path: ['work'], message: 'The work does not belong to the route' });
+  if ((value.copyAudio !== undefined) !== (plan?.route === 'dispatch_copy')) ctx.addIssue({ code: 'custom', path: ['copyAudio'], message: 'Exactly a dispatched copy names its audio' });
   if (work.kind === 'encode') {
     let cursor = 0;
     for (const chunk of work.chunks) {
