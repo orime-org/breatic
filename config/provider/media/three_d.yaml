@@ -212,15 +212,3 @@ models:
           base_price: 270000
           formula: ""
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d
-        output_field: model_glb
-        params:
-          image:
-            field: input_image_url
-        pricing:
-          kind: formula
-          base_price: 15000
-          formula: '{"total_price": base_price * 15}'
-          discount_rate: 100

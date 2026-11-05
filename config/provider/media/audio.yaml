@@ -243,6 +243,8 @@ models:
             field: duration
           num_samples:
             field: num_samples
+        fixed:
+          upload_audio_format: mp3
         rejects:
           - when: ambience = true and duration < 1
             reason: "fal duration: The minimum is 0.1s for ordinary sound effects and 1s when ambience=true"

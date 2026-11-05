@@ -43,8 +43,6 @@ models:
               1:1: square_hd
               4:3: landscape_4_3
               3:4: portrait_4_3
-              16:9: landscape_16_9
-              9:16: portrait_16_9
             supported:
               - 1:1
               - 4:3
@@ -60,7 +58,7 @@ models:
         pricing:
           kind: formula
           base_price: 1000000
-          formula: '{"total_price": base_price * $lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : ((image_size in ["16:9", "9:16"]) ? {"low": 0.00441, "medium": 0.00951, "high": 0.03945, "xhigh": 0.07014, "max": 0.1578} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}), $exists(quality) ? quality : "high")}'
+          formula: '{"total_price": base_price * $lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, $exists(quality) ? quality : "high")}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
@@ -546,36 +544,6 @@ models:
           base_price: 90000
           formula: ""
           discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/ideogram/v3
-        prompt_field: prompt
-        output_field: images
-        params:
-          aspect_ratio:
-            field: image_size
-            values:
-              1:1: square_hd
-              16:9: landscape_16_9
-              9:16: portrait_16_9
-              4:3: landscape_4_3
-              3:4: portrait_4_3
-          rendering:
-            field: style
-            values:
-              Auto: AUTO
-              General: GENERAL
-              Realistic: REALISTIC
-              Design: DESIGN
-          style_images:
-            field: image_urls
-        fixed:
-          rendering_speed: QUALITY
-        pricing:
-          kind: formula
-          base_price: 30000
-          formula: '{"total_price": base_price * 3}'
-          discount_rate: 100
       - upstream: sandbase
         weight: 3
         model_id: ideogram-ai/ideogram-v3
@@ -661,8 +629,6 @@ models:
               1:1: square_hd
               4:3: landscape_4_3
               3:4: portrait_4_3
-              16:9: landscape_16_9
-              9:16: portrait_16_9
             supported:
               - 1:1
               - 4:3
@@ -683,7 +649,7 @@ models:
         pricing:
           kind: formula
           base_price: 1000000
-          formula: '{"total_price": base_price * ($lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : ((image_size in ["16:9", "9:16"]) ? {"low": 0.00441, "medium": 0.00951, "high": 0.03945, "xhigh": 0.07014, "max": 0.1578} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}), $exists(quality) ? quality : "high") + 0.008 * $count(image_urls))}'
+          formula: '{"total_price": base_price * ($lookup((image_size in ["4:3", "3:4"]) ? {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.0642, "max": 0.14445} : {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072}, $exists(quality) ? quality : "high") + 0.012 * $count(image_urls))}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
@@ -930,6 +896,8 @@ models:
             field: image_url
           mask_image:
             field: mask_url
+        fixed:
+          preserve_alpha: true
         pricing:
           kind: formula
           base_price: 40000
@@ -972,6 +940,7 @@ models:
           images:
             field: images
         fixed:
+          output_format: jpeg
           mode: async
         rejects:
           - when: $length(prompt) > 50000

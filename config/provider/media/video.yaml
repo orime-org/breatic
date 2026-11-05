@@ -421,8 +421,6 @@ models:
             field: aspect_ratio
           duration:
             field: duration
-          multi_prompt:
-            field: multi_prompt
           shot_type:
             field: shot_type
           auto_shots:
@@ -434,15 +432,14 @@ models:
             field: generate_audio
         drops:
           negative_prompt: []
+          multi_prompt: []
         fixed:
           mode: async
         rejects:
           - when: $length(prompt) > 2500
             reason: SandBase prompt maxLength 2500
-          - when: $not($exists(prompt) or $exists(multi_prompt))
-            reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
-          - when: $exists(multi_prompt)
-            reason: "SandBase prompt: required by its schema; a storyboard run sends multi_prompt and no prompt"
+          - when: $not($exists(prompt))
+            reason: "SandBase prompt: required"
         pricing:
           kind: formula
           base_price: 420000
@@ -888,8 +885,6 @@ models:
             field: duration
           image:
             field: image
-          multi_prompt:
-            field: multi_prompt
           shot_type:
             field: shot_type
           auto_shots:
@@ -901,15 +896,14 @@ models:
             field: generate_audio
         drops:
           elements: []
+          multi_prompt: []
         fixed:
           mode: async
         rejects:
           - when: $length(prompt) > 2500
             reason: SandBase prompt maxLength 2500
-          - when: $not($exists(prompt) or $exists(multi_prompt))
-            reason: "SandBase prompt: Either prompt or multi_prompt must be provided"
-          - when: $exists(multi_prompt)
-            reason: "SandBase prompt: required by its schema; a storyboard run sends multi_prompt and no prompt"
+          - when: $not($exists(prompt))
+            reason: "SandBase prompt: required"
         pricing:
           kind: formula
           base_price: 420000
@@ -1380,7 +1374,7 @@ models:
         pricing:
           kind: formula
           base_price: 140000
-          formula: '{"total_price": base_price * duration * (resolution = "1080p" ? 18 / 14 : 1)}'
+          formula: '{"total_price": base_price * (duration ? duration : 5) * (resolution = "1080p" ? 18 / 14 : 1)}'
           discount_rate: 100
       - upstream: sandbase
         weight: 3
@@ -1478,71 +1472,6 @@ models:
           base_price: 1100000
           formula: '{"total_price": 110000 * (resolution = "4k" ? 10 : resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(video, min=2, max=30, total=30)), 30])]) + (duration ? duration : 5))}'
           discount_rate: 90
-      - upstream: fal
-        weight: 2
-        model_id: bytedance/seedance-2.5/us/reference-to-video
-        prompt_field: prompt
-        output_field: video
-        params:
-          duration:
-            field: duration
-            as: string
-          generate_audio:
-            field: generate_audio
-          resolution:
-            field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
-          video:
-            field: video_urls
-            as: list
-        fixed:
-          task: extension
-        rejects:
-          - when: get_duration(video_urls) > 30.2
-            reason: "fal video_urls: Each video must be 1.8 to 30.2 seconds; combined duration must not exceed 30.2 seconds"
-          - when: get_duration(video_urls, min=1.8, max=1000000, total=1000000) > get_duration(video_urls)
-            reason: "fal video_urls: Each video must be 1.8 to 30.2 seconds"
-        pricing:
-          kind: formula
-          base_price: 21400
-          formula: '{"total_price": base_price * 0.6 * (resolution = "1080p" ? 1.164 : resolution = "720p" ? 0.473 : 0.2205) / 0.0214 * ($max([2, $min([$ceil(get_duration(video_urls)), 30])]) + (duration ? duration : 5))}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: bytedance/seedance/2.5/reference-to-video
-        prompt_field: prompt
-        params:
-          duration:
-            field: duration
-          generate_audio:
-            field: generate_audio
-          resolution:
-            field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
-          video:
-            field: videos
-            as: list
-        fixed:
-          task_type: extend
-          mode: async
-        rejects:
-          - when: $length(prompt) > 50000
-            reason: SandBase prompt maxLength 50000
-          - when: get_duration(videos) > 30
-            reason: "SandBase videos: combined duration must not exceed 30 seconds"
-          - when: $length(prompt) < 3
-            reason: SandBase prompt minLength 3
-        pricing:
-          kind: formula
-          base_price: 110000
-          formula: '{"total_price": base_price * (resolution = "1080p" ? 5 : resolution = "720p" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(videos)), 30])]) + (duration ? duration : 5))}'
-          discount_rate: 100
   wan-3.0-video-edit:
     upstreams:
       - upstream: wavespeed
@@ -1857,6 +1786,8 @@ models:
             field: model_mode
           video:
             field: video_url
+        fixed:
+          lipsync_mode: loop
         rejects:
           - when: get_duration(audio_url) > 15
             reason: "fal audio_url: Must be 15 seconds or shorter"
@@ -1899,44 +1830,6 @@ models:
           kind: formula
           base_price: 100000
           formula: '{"total_price": ($billed_duration := $min([$max([$ceil(get_duration(video)), 3]), 600]); $rate := (target_resolution = "4k" ? 300000 : target_resolution = "2k" ? 250000 : target_resolution = "1080p" ? 200000 : 100000); $billed_duration / 5 * $rate)}'
-          discount_rate: 100
-      - upstream: fal
-        weight: 2
-        model_id: fal-ai/seedvr/upscale/video
-        output_field: video
-        params:
-          target_resolution:
-            field: target_resolution
-            values:
-              2k: 1440p
-              4k: 2160p
-          video:
-            field: video_url
-        fixed:
-          upscale_mode: target
-        pricing:
-          kind: formula
-          base_price: 1000
-          formula: '{"total_price": base_price * (target_resolution = "4k" ? 3840 * 2160 : target_resolution = "2k" ? 2560 * 1440 : target_resolution = "1080p" ? 1920 * 1080 : 1280 * 720) / 1000000 * 30 * get_duration(video_url)}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: bytedance/seedvr/upscale/video
-        params:
-          target_resolution:
-            field: target_resolution
-            values:
-              2k: 1440p
-              4k: 2160p
-          video:
-            field: video
-        fixed:
-          upscale_mode: target
-          mode: async
-        pricing:
-          kind: formula
-          base_price: 1000
-          formula: '{"total_price": base_price * (target_resolution = "4k" ? 3840 * 2160 : target_resolution = "2k" ? 2560 * 1440 : target_resolution = "1080p" ? 1920 * 1080 : 1280 * 720) / 1000000 * 30 * get_duration(video)}'
           discount_rate: 100
   rife-interpolation:
     upstreams:
