@@ -43,6 +43,20 @@ import {
 import { fakeStreams, type FakeStream } from './ai-stream-fake';
 
 let calls: FakeStream[] = [];
+/** Whether the connection says it may write; the harness has no connection of its own. */
+const connection = vi.hoisted(() => ({ granted: false }));
+
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  return {
+    ...actual,
+    useSpaceConnection: (...args: Parameters<typeof actual.useSpaceConnection>) => {
+      const real = actual.useSpaceConnection(...args);
+      return connection.granted ? { ...real, writeAccess: 'granted' as const } : real;
+    },
+  };
+});
+
 let toastError: MockInstance<typeof toast.error>;
 
 beforeEach(() => {
@@ -887,5 +901,46 @@ describe('an answer in the wrong format (design §6.2 E3)', () => {
     });
     expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
     expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
+  });
+});
+
+describe('pressing replace and insert (A6)', () => {
+  beforeEach(() => {
+    connection.granted = true;
+  });
+  afterEach(() => {
+    connection.granted = false;
+  });
+
+  it('replace writes the answer over the selected words', async () => {
+    const { editor, call } = await polishing();
+    await streams(call, ['Hi'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-replace')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-replace'));
+    });
+
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe('Hi world');
+    });
+  });
+
+  it('insert writes the answer under the block', async () => {
+    const { editor, call } = await polishing();
+    await streams(call, ['Hi'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-insert'));
+    });
+
+    await waitFor(() => {
+      expect((editor.document as Array<{ content: Array<{ text?: string }> }>).map((b) => b.content.map((c) => c.text ?? '').join(''))).toEqual(['hello world', 'Hi']);
+    });
   });
 });

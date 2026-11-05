@@ -94,7 +94,7 @@ import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { aimAt, type LocalRange } from '@web/spaces/document/document-local-range';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
-import { ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
+import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -293,16 +293,19 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         const at = openedRef.current;
         const command = sessionRef.current?.command.id;
         if (at === null || command === undefined) return;
-        const { how, result } = effect;
-        void ourMediaPrefixReady().then((ourPrefix) => {
-          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, result, command, ourPrefix);
-          if (how === 'insert') {
-            return at.insertBlockId === null ? null : insertAiAnswer({ editor }, at.insertBlockId, answer, admission);
+        // Written at the press: the original range is cleared as the session
+        // closes, right after this. The panel fetched the media prefix as it opened.
+        try {
+          const answer = aiAnswer(editor, editor.prosemirrorState.doc, at.units, effect.result, command, ourMediaPrefix());
+          if (effect.how === 'insert') {
+            if (at.insertBlockId !== null) told(insertAiAnswer({ editor }, at.insertBlockId, answer, admission));
+            return;
           }
-          return replaceAiAnswer({ editor }, answer, originalSegments(editor), admission);
-        }).then((outcome) => {
-          if (outcome !== null) told(outcome);
-        }, failed);
+          told(replaceAiAnswer({ editor }, answer, originalSegments(editor), admission));
+        } catch (err) {
+          failed();
+          throw err;
+        }
       }
     }
   };

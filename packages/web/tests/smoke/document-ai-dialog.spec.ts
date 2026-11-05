@@ -235,7 +235,7 @@ test('translate into Japanese names the language in the title and the request', 
 
   await expect(page.getByTestId('doc-ai-title')).toContainText('日本語');
   await expect(page.getByTestId('doc-ai-preview')).toContainText('アルファ', { timeout: 10_000 });
-  expect(sent[0]).toMatchObject({ tool: 'translate', language: 'ja', selection: 'alpha bravo' });
+  expect(sent[0]).toMatchObject({ tool: 'translate', language: 'ja', selection: '<u id="1" kind="paragraph">alpha bravo</u>' });
 });
 
 test('a custom instruction goes out with Enter', async ({ page }) => {
