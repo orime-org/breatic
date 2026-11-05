@@ -46,6 +46,8 @@ function analysisRecords(queries: readonly UseQueryResult<MiniToolAnalysisRecord
 /** Authoritative presentation facts supplied by the video node owner. */
 export interface VideoToolPresentation {
   panelState?: VideoToolPanelState;
+  /** The selected version's tool input, named by every analysis and run of this source (§7.11, §10.8). */
+  presentationRef?: MiniToolAnalysisRequest['presentationRef'];
   retrying?: boolean;
   onRetry?: () => void;
   previewSource?: VideoPresentationSource | null;
@@ -255,6 +257,8 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
    */
   const analyse = React.useCallback((kind: MiniToolAnalysisKind): void => {
     if (current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || presentation.sourceURL !== current.source.canonicalURL) return;
+    const { presentationRef } = presentation;
+    if (presentationRef === undefined) return;
     const actualTime = presentedTimeOf(presentation);
     if (kind !== 'scene_cuts' && actualTime === null) return;
     const frame = actualTime === null ? undefined : planVideoFrames(presentation.frameTable, { mode: 'current', currentTime: actualTime })[0];
@@ -264,7 +268,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     if (!change(frozen)) return;
     const held = readVideoToolDraft(doc, nodeId, toolId);
     if (held.state !== 'supported') return;
-    const base = { analysisRunId: newId(), projectId, spaceId, hostNodeId: nodeId, draftId: held.draft.draftId, revision: held.draft.revision, source: held.draft.source };
+    const base = { analysisRunId: newId(), projectId, spaceId, hostNodeId: nodeId, draftId: held.draft.draftId, revision: held.draft.revision, source: held.draft.source, presentationRef };
     const request: MiniToolAnalysisRequest = kind === 'people' ? { ...base, kind, params: { anchor: anchor! } } : kind === 'scene_cuts' ? { ...base, kind, params: { range: { start: 0, end: held.draft.source.mediaInfo.duration } } } : { ...base, kind, params: (held.draft as VideoToolDraftById['video.erase']).params };
     if (request.kind === 'tracked_mask') request.params = { range: request.params.range, anchor: request.params.anchor, region: request.params.region, trackingPrompt: request.params.trackingPrompt };
     void runOnce(intent, { scope: 'mini-tool', prepare: () => request, send: (key, body) => miniToolAnalysesApi.start(body, key), onDone: (record) => {
@@ -272,7 +276,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
       const owner = record.kind === 'people' ? 'video.lip-sync' : record.kind === 'scene_cuts' ? 'video.split' : 'video.erase';
       commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: owner, kind: record.kind, draftId: record.draftId, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint } as Parameters<typeof commitVideoToolAnalysisRef>[2]);
       return undefined;
-    }, onFailure: () => toast.error(t('canvas.miniTool.videoUI.analysisFailed')) });
+    }, onFailure: () => { toast.error(t('canvas.miniTool.videoUI.analysisFailed')); } });
   }, [current, disabled, presentation, change, doc, nodeId, toolId, projectId, spaceId, intent, queryClient, t]);
   React.useEffect(() => {
     if (toolId !== 'video.lip-sync' || current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || autoPeople.current === current.draftId || refs.some((reference) => reference.toolId === toolId && reference.draftId === current.draftId)) return;

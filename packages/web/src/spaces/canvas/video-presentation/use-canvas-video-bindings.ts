@@ -18,6 +18,9 @@ export interface VideoToolPanelStateInput {
   sourceURL: string;
   presentationStatus: 'loading' | 'ready' | 'failed';
   response: VideoPresentationResponse | undefined;
+  /** The version the surface currently shows, null without a ready resource (§7.12 step 3). */
+  resourceVersionId: string | null;
+  /** The compact table, keyed by the canonical URL and the toolInputId it was read for. */
   table: CanonicalVideoFrameTable | null;
   tableStatus: 'pending' | 'success' | 'error';
   retrying: boolean;
@@ -32,22 +35,58 @@ export interface CanvasVideoSourceFacts {
 }
 
 /**
- * Derive the panel's five states solely from current source authority.
+ * A failure code's display state by the shared classification (§10.6): content is unsupported, everything else retryable.
+ * @param code - The candidate's or the ledger's failure code.
+ * @returns The state.
+ * @throws {never} Never.
+ */
+function failedState(code: string): VideoToolPanelState {
+  return classifyVideoSourceLedgerFailure(code) === 'content' ? 'unsupported' : 'retryable';
+}
+
+/**
+ * Derive the panel's five states solely from current source authority, taking the first of design §7.12 steps 1–5
+ * that holds: the response for this source, the selected version P or the target candidate, the version the surface
+ * shows, P's ledger L and the compact table read for P's toolInputId.
  * @param input - Current node, response, validated table and press facts.
  * @returns The one display state for this source.
  * @throws {never} Never.
  */
 export function deriveVideoToolPanelState(input: VideoToolPanelStateInput): VideoToolPanelState {
-  const binding = input.response?.sourceBinding;
-  const descriptor = input.response?.presentation;
-  if (input.presentationStatus !== 'ready' || binding?.canonicalURL !== input.sourceURL ||
-    descriptor?.sourceFingerprint !== binding.contentHash || (descriptor.state !== 'native' && descriptor.state !== 'alpha_ready')) return 'waiting-presentation';
-  if (input.retrying) return 'waiting-table';
-  const ledger = input.response?.sourceLedger;
-  if (ledger?.state === 'failed' && ledger.sourceFingerprint === binding.contentHash) return classifyVideoSourceLedgerFailure(ledger.errorCode) === 'content' ? 'unsupported' : 'retryable';
-  if (ledger?.state !== 'ready' || ledger.receipt.schemaVersion !== 2 || ledger.receipt.sourceFingerprint !== binding.contentHash) return 'waiting-table';
+  const response = input.response;
+  // Step 1: no current read for this source.
+  if (input.presentationStatus !== 'ready' || response === undefined || response.sourceBinding.canonicalURL !== input.sourceURL) return 'waiting-presentation';
+  const selected = response.presentation;
+  // Step 2: nothing selected; the target candidate's failure decides, otherwise it is still being prepared.
+  if (selected === null) {
+    const failure = response.preparation?.failure ?? null;
+    return failure === null || input.retrying ? 'waiting-presentation' : failedState(failure);
+  }
+  // Step 3: the surface does not show the selected version.
+  if (input.resourceVersionId !== selected.versionId) return 'waiting-presentation';
+  // Step 4: P's ledger, a retry press and the compact read.
+  const ledger = response.ledger;
+  if (input.retrying || ledger === null || ledger.state === 'pending') return 'waiting-table';
+  if (ledger.state === 'failed') return failedState(ledger.failure);
   if (input.tableStatus === 'error') return 'retryable';
-  return input.tableStatus === 'success' && input.table?.sourceKey === JSON.stringify([binding.canonicalURL, binding.contentHash]) ? 'usable' : 'waiting-table';
+  // Step 5: the table read for P's toolInputId.
+  return input.tableStatus === 'success' && input.table?.sourceKey === JSON.stringify([input.sourceURL, selected.toolInputId]) ? 'usable' : 'waiting-table';
+}
+
+/** One input's derived state and its reason code, for a panel over several inputs. */
+export interface RankedVideoToolPanelState { state: VideoToolPanelState; reason: string | null }
+const WORST_FIRST: readonly VideoToolPanelState[] = ['unsupported', 'retryable', 'waiting-presentation', 'waiting-table', 'usable'];
+
+/**
+ * The state of a multi-input panel (§7.12, last paragraph): each input is derived on its own and the worst, in the order
+ * unsupported, retryable, waiting-presentation, waiting-table, usable, is shown with that input's reason code.
+ * @param inputs - Each input's state and reason, at least one.
+ * @returns The worst input's state and reason.
+ * @throws {RangeError} When no input is given.
+ */
+export function worstVideoToolPanelState(inputs: readonly RankedVideoToolPanelState[]): RankedVideoToolPanelState {
+  if (inputs.length === 0) throw new RangeError('A panel has at least one input');
+  return inputs.reduce((worst, input) => (WORST_FIRST.indexOf(input.state) < WORST_FIRST.indexOf(worst.state) ? input : worst));
 }
 
 /** Existing node notifications and the active tool's current runtime attachment. */
@@ -134,9 +173,13 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         return frame && frame.sourceKey === binding!.sourceKey && frame.sourceEpoch === binding!.sourceEpoch && frame.seekEpoch === binding!.getSeekEpoch() ? frame : null;
       }
       const frame = actualFrame();
-      const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, table: frameTable?.sourceKey === binding.sourceKey ? frameTable : null, tableStatus: facts.tableStatus, retrying: facts.retrying });
-      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable?.sourceKey === binding.sourceKey && (panelState === undefined || panelState === 'usable') ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
+      // ponytail: the ready surface is taken to show the read's selected version, as the node renders that same read;
+      // the resource's own versionId replaces this once the binding reports it (question D9-1).
+      const resourceVersionId = snapshot?.status === 'ready' ? facts?.response?.presentation?.versionId ?? null : null;
+      const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, resourceVersionId, table: frameTable, tableStatus: facts.tableStatus, retrying: facts.retrying });
+      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable !== null && panelState === 'usable' ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
         ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
+        ...(facts?.response?.presentation ? { presentationRef: { source: { toolInputId: facts.response.presentation.toolInputId, planSha256: facts.response.presentation.planSha256 } } } : {}),
       });
     }
     return { bindings, presentations, onVideoBinding, onVideoFrame };
