@@ -16,7 +16,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, markedSegments } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
@@ -114,7 +114,8 @@ async function openPanel(nodeId: string): Promise<void> {
   if (!box) throw new Error(`node ${nodeId} has no box`);
   await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
-  await expect(page.getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
+  // A node in multi-shot mode shows its shots in place of the prompt.
+  await expect(page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor'))).toBeVisible({ timeout: 15_000 });
 }
 
 /** Pick a template from the open panel, under its own goal. */
@@ -164,11 +165,48 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
   await expect(editor).not.toContainText('{');
 }
 
+/**
+ * Scroll the canvas up over an empty spot until a control of the open panel clears the viewport toolbar, the way
+ * a reader does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
+ * @param control - The control to reach.
+ */
+async function bringIntoView(control: Locator): Promise<void> {
+  /**
+   * How far the control still reaches past the top of the viewport toolbar.
+   * @returns The overlap in pixels; zero or less once it is clear.
+   */
+  const overlap = async (): Promise<number> => {
+    const box = await control.boundingBox();
+    const toolbar = await page.getByTestId('viewport-toolbar').boundingBox();
+    return box && toolbar ? box.y + box.height - toolbar.y + 8 : 0;
+  };
+  if ((await overlap()) <= 0) return;
+  const spot = await visibleSpace(page).evaluate((root) => {
+    const pane = root.querySelector('.react-flow__pane')?.getBoundingClientRect();
+    if (!pane) return null;
+    for (let y = pane.top + 20; y < pane.bottom - 20; y += 20) {
+      for (let x = pane.left + 80; x < pane.right - 80; x += 40) {
+        if (document.elementFromPoint(x, y)?.classList.contains('react-flow__pane')) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (spot === null) throw new Error('no empty spot to scroll the canvas over');
+  await page.mouse.move(spot.x, spot.y);
+  // The canvas pans by a fraction of each wheel step, so it scrolls until the control is clear.
+  for (let step = 0; step < 10 && (await overlap()) > 0; step += 1) {
+    await page.mouse.wheel(0, (await overlap()) + 100);
+    await page.waitForTimeout(400);
+  }
+  expect(await overlap()).toBeLessThanOrEqual(0);
+}
+
 /** Press Generate on the open panel and wait until the node holds a new result. */
 async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
   const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
   await expect(button).toBeEnabled({ timeout: 20_000 });
+  await bringIntoView(button);
   await button.click();
   let content = '';
   let state = '';
@@ -449,7 +487,7 @@ const RUNS: Record<string, Run> = {
     image: 'object.jpg',
     first: [],
     fills: {},
-    shots: [['folding a T-shirt in 2 seconds'], ['pinching the shoulder and the middle'], ['crossing the hands over'], ['shaking it out and laying it flat'], []],
+    shots: [['getting a coffee-stained mug spotless in 10 seconds'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
   },
 };
 
