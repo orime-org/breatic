@@ -59,6 +59,8 @@ export interface VideoPresentationIngestSnapshot {
   presentation: VideoPresentationVersion | null;
   preparation: VideoPresentationIngestPreparation | null;
   ledger: VideoPresentationIngestLedger | null;
+  /** The DO's fact that a discovery read may readmit once: P is invalid(V) and V's publisher, admitted without readmitOf, is current. */
+  readmit?: boolean;
   usageFact?: VideoPresentationUsageFact;
 }
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
@@ -111,6 +113,7 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
   presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
   ledger: videoPresentationIngestLedgerSchema.nullable(),
+  readmit: z.boolean().optional(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
 }).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
 
@@ -151,6 +154,8 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
     original: videoPresentationOriginalSchema.nullable(),
     registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
     contentType: z.string().min(1), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
+    // A discovery read's condition, re-checked by the DO in its serial entry (§3.5): still nothing selected or prepared, or still readmit.
+    expect: z.enum(['first', 'readmit']).optional(),
     limits: videoPresentationProcessLimitsSchema,
     pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }),
     targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
