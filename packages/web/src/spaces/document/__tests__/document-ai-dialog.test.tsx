@@ -515,7 +515,7 @@ describe('closing', () => {
       expect(calls).toHaveLength(2);
     });
     expect(call.signal?.aborted).toBe(true);
-    expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: 'world' });
+    expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: '<u id="1" kind="paragraph">world</u>' });
     expect(screen.getAllByTestId('doc-ai-dialog')).toHaveLength(1);
   });
 });
@@ -662,7 +662,7 @@ describe('the custom instruction', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: 'Make it rhyme' });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: '<u id="1" kind="paragraph">hello</u>', document: 'hello world', instructions: 'Make it rhyme' });
     expect(screen.getByTestId('doc-ai-title').textContent).toBe(title);
     expect(title).not.toContain('spaces.document');
     const line = screen.getByTestId('doc-ai-instruction');
@@ -840,5 +840,48 @@ describe('the preview', () => {
     } finally {
       parse.mockRestore();
     }
+  });
+});
+
+describe('what a command sends (design §5.2)', () => {
+  it('sends the selection as tagged units', async () => {
+    await selected('<p>one</p><p>two</p>', 0, 6);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toMatchObject({ selection: '<u id="1" kind="paragraph">one</u>\n<u id="2" kind="paragraph">two</u>' });
+  });
+
+  it('starts nothing over budget measured on the tagged units, and says so without numbers', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 20, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
+    await selected('<p>hello world</p>', 0, 5);
+    const menu = await hoverOpenSlot('doc-bubble-ai');
+    await act(async () => {
+      fireEvent.click(menu.querySelector('[data-testid="doc-bubble-ai-item-refine"]')!);
+    });
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+    expect(calls).toHaveLength(0);
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(String(toastError.mock.calls[0]![0])).not.toMatch(/\d/);
+    expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
+  });
+});
+
+describe('an answer in the wrong format (design §6.2 E3)', () => {
+  it('fails with one toast and leaves close and retry when several units were sent and the answer has no tags', async () => {
+    await selected('<p>one</p><p>two</p>', 0, 6);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['ONE TWO'], true);
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+    expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
   });
 });
