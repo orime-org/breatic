@@ -342,7 +342,6 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   await send.click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
-  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
   const turn = await page.evaluate(async () => {
     const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
     const id = list?.data?.conversations?.[0]?.id as string;
@@ -350,6 +349,8 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
     return JSON.stringify((read?.data?.messages ?? []).filter((m: { role?: string }) => m.role === 'assistant').flatMap((m: { parts?: unknown[] }) => m.parts ?? []));
   });
   record({ template: 'agent', label: LABEL, ask: AGENT_ASK, parts: JSON.parse(turn) as unknown });
+  // Recorded first, so a turn that ends without a proposal still shows what it did.
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
   if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;
   const before = new Set((await graph()).nodes.map((n) => n.id));
   await page.getByTestId('proposal-card').last().getByTestId('proposal-use').click();
