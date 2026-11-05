@@ -330,12 +330,12 @@ function skeletonVerdict(update: Uint8Array, structs: Struct[], ds: DeleteSet, s
 }
 
 /**
- * Whether stored pending content gets integrated once the update's structs
- * are, for an update that cannot pend: yjs retries stored structs when a
+ * Whether yjs retries stored pending content once the update's structs are
+ * in, for an update that cannot pend: it retries stored structs when a
  * missing clock is reached and replays stored deletes up to the new clocks.
  * @param store - The document's store.
  * @param reached - Reach per client after the update.
- * @returns True when some stored pending unit is integrated.
+ * @returns True when a retry runs; false means no stored unit integrates.
  */
 function integratesWithoutSkeleton(store: Store, reached: Map<number, number>): boolean {
   if (store.pendingStructs) {
@@ -553,9 +553,15 @@ export function analyze(update: Uint8Array, document: Y.Doc): UpdateAnalysis {
   }
 
   const skeletonBuilt = mayPend(structs, ds, store, reached);
+  // A reached missing clock makes yjs retry the stored pending content, which
+  // may still need clocks past what the update brings; only the skeleton
+  // tells whether any of it integrates.
   const verdict = skeletonBuilt
     ? skeletonVerdict(update, structs, ds, store)
-    : { wouldPend: false, integratesStored: integratesWithoutSkeleton(store, reached.reached) };
+    : {
+      wouldPend: false,
+      integratesStored: integratesWithoutSkeleton(store, reached.reached) && skeletonVerdict(update, structs, ds, store).integratesStored,
+    };
 
   const growthBound =
     (structCount > 0 ? structBytes + C * structCount : 0) + C * (liveEndpoints + liveRanges + cascadeItems + formatItems);
