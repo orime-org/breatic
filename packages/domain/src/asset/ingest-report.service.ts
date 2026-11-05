@@ -821,9 +821,12 @@ async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant,
   );
   const result = queued ? outcome : { ...outcome, peaksQueueFailed: true };
   if ((outcome.status !== 'registered' && outcome.status !== 'already_registered') || outcome.kind !== 'video') return result;
+  // Only a new upload's initialization admits unconditionally (§3.5); a dedup hit (another upload's row) or a replayed
+  // terminal of this upload admits only under the discovery read's conditions, so a running job is never archived.
+  const conditional = !(outcome.status === 'registered' && outcome.ownRow);
   const presentationQueued = await Promise.resolve().then(async () => ensureVideoPresentation({
     assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant),
-    knownAlpha: options.presentation?.knownAlpha === true, dedupWinner: !outcome.ownRow,
+    knownAlpha: options.presentation?.knownAlpha === true, dedupWinner: conditional,
   })).then(() => true, () => false);
   return presentationQueued ? result : { ...result, presentationQueueFailed: true };
 }
