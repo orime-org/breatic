@@ -164,20 +164,56 @@ function shareSeconds(config: MiniToolsConfig): number {
 }
 
 /**
- * The encode work of one frame span from the full ledger's encode facts: coded source size, display output, the plan's
- * bit depth and range, decoding from the span's previous keyframe.
+ * The decode pre-roll of a span (§5.4 estimate row, §7.17): from the latest source keyframe, presented or not, whose pts is
+ * not after the span's first source frame, in that frame's source durations, rounded up. A frame's source duration is the
+ * next source frame's start minus its own in the origin mapping; the last one ends at the declared or derived support end.
  * @param ledger - The validated full ledger.
- * @param flags - Its keyframe flags.
+ * @param first - The span's first presentation frame.
+ * @param count - Its frame count.
+ * @returns The pre-roll frames; 0 for a span without source frames.
+ * @throws {never} Never.
+ */
+function prerollFrames(ledger: VideoPresentationLedger, first: number, count: number): number {
+  const map = ledger.plan.originMapping;
+  const [baseNumerator, baseDenominator] = [BigInt(map.timeBase.numerator), BigInt(map.timeBase.denominator)];
+  const ticks: (bigint | null)[] = [];
+  for (const entry of map.entries) {
+    if (entry.kind !== "source") { ticks.push(null); continue; }
+    for (let k = 0; k < entry.count; k += 1) ticks.push(BigInt(entry.start) + BigInt(k) * BigInt(entry.step));
+  }
+  const at = ticks.slice(first, first + Math.max(count, 1)).find((tick) => tick !== null);
+  if (at === undefined || at === null) return 0;
+  // Exact times as [numerator, denominator] with a positive denominator.
+  const start: [bigint, bigint] = [at * baseNumerator, baseDenominator];
+  const later = ticks.filter((tick): tick is bigint => tick !== null && tick > at);
+  const end: [bigint, bigint] = later.length > 0 ? [later.reduce((low, tick) => (tick < low ? tick : low)) * baseNumerator, baseDenominator]
+    : [BigInt(map.lastSource.supportEnd.numerator), BigInt(map.lastSource.supportEnd.denominator)];
+  const below = (left: [bigint, bigint], right: [bigint, bigint]): boolean => left[0] * right[1] <= right[0] * left[1];
+  let keyframe: [bigint, bigint] | null = null;
+  for (const { pts } of ledger.encoding.sourceKeyframes) {
+    const time: [bigint, bigint] = [BigInt(pts.numerator), BigInt(pts.denominator)];
+    if (below(time, start) && (keyframe === null || below(keyframe, time))) keyframe = time;
+  }
+  if (keyframe === null) return 0;
+  // (start − keyframe) ÷ (end − start), rounded up.
+  const numerator = (start[0] * keyframe[1] - keyframe[0] * start[1]) * (end[1] * start[1]);
+  const denominator = (end[0] * start[1] - start[0] * end[1]) * (start[1] * keyframe[1]);
+  if (denominator <= 0n) return 0;
+  return Number((numerator + denominator - 1n) / denominator);
+}
+
+/**
+ * The encode work of one frame span from the full ledger's encode facts: coded source size, display output, the plan's
+ * bit depth and range, decoding from the span's source keyframe.
+ * @param ledger - The validated full ledger.
  * @param first - The span's first presentation frame.
  * @param count - Its frame count.
  * @returns The job work.
  * @throws {never} Never.
  */
-function spanWork(ledger: VideoPresentationLedger, flags: readonly boolean[], first: number, count: number): VideoJobWork {
-  let keyframe = first;
-  while (keyframe > 0 && flags[keyframe] !== true) keyframe -= 1;
+function spanWork(ledger: VideoPresentationLedger, first: number, count: number): VideoJobWork {
   const { plan, encoding } = ledger;
-  return { encodedFrames: Math.max(count, 1), prerollFrames: first - keyframe, sourceWidth: encoding.codedWidth, sourceHeight: encoding.codedHeight,
+  return { encodedFrames: Math.max(count, 1), prerollFrames: prerollFrames(ledger, first, count), sourceWidth: encoding.codedWidth, sourceHeight: encoding.codedHeight,
     outputWidth: plan.display.width, outputHeight: plan.display.height, bitDepth: plan.source.bitDepth > 8 ? 10 : 8, hdr: isHdrTransfer(plan.source.transfer) };
 }
 
@@ -219,7 +255,7 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
   const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
   const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? framesIn(table, recipe.range) : { first: 0, count: 1 }));
-  const works = spans.map(({ first, count }) => estimateVideoJobSeconds(spanWork(ledger, flags, first, count), rates) - rates.startSeconds);
+  const works = spans.map(({ first, count }) => estimateVideoJobSeconds(spanWork(ledger, first, count), rates) - rates.startSeconds);
   const share = shareSeconds(config);
   const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: config.executions[tool].max_outputs_per_job, shareSeconds: share, fixedSeconds: rates.startSeconds });
   const encodes = oversized.map((index) => {
@@ -243,7 +279,7 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], table: 
 function preparationLayout(ledger: VideoPresentationLedger, config: MiniToolsConfig): { chunks: VideoEncodeChunk[]; jobs: number; seconds: number } {
   const rates = encoderRates(config);
   const flags = videoPresentationKeyframeFlags(ledger);
-  const work = estimateVideoJobSeconds(spanWork(ledger, flags, 0, flags.length), rates) - rates.startSeconds;
+  const work = estimateVideoJobSeconds(spanWork(ledger, 0, flags.length), rates) - rates.startSeconds;
   const share = shareSeconds(config);
   if (rates.startSeconds + work <= share) return { chunks: [{ start: 0, end: flags.length }], jobs: 1, seconds: rates.startSeconds + work };
   const chunks = planVideoEncodeChunks({ keyframes: flags, frameSeconds: work / flags.length, targetSeconds: share - rates.startSeconds });
