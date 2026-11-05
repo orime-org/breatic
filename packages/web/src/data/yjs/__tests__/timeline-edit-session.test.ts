@@ -1018,3 +1018,33 @@ describe('Timeline edit session joins a key hold only to its own step (inner#170
     expect(readTimelineDocument(mine).clips[OTHER]?.startFrame).toBe(150);
   });
 });
+
+describe('Timeline edit session ends a hold on request and on selection (inner#1708 T1)', () => {
+  const OTHER = cid(130);
+  const fresh = (): ReturnType<typeof pair> => pair([clip(X, 'v2', 0, 20), clip(OTHER, 'v2', 100, 20)]);
+
+  it('starts a new step for a continued hold after endHold', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(X, 1), { hold: 'start' }).ok).toBe(true);
+    expect(session.edit(move(X, 2), { hold: 'continue' }).ok).toBe(true);
+    session.endHold();
+    expect(session.edit(move(X, 3), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(2);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(0);
+    expect(session.getSnapshot().canUndo).toBe(false);
+  });
+
+  it('starts a new step for a continued hold after the selection changed', () => {
+    const { mine, session } = fresh();
+    expect(session.edit(move(X, 1), { hold: 'start' }).ok).toBe(true);
+    expect(session.edit(move(X, 2), { hold: 'continue' }).ok).toBe(true);
+    session.select(OTHER);
+    expect(session.edit(move(OTHER, 101), { hold: 'continue' }).ok).toBe(true);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[OTHER]?.startFrame).toBe(100);
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(2);
+    expect(session.getSnapshot().canUndo).toBe(true);
+  });
+});

@@ -1525,6 +1525,24 @@ describe('TimelineSpace round-three review fixes (inner#1708 E1, E2, E4)', () =>
 });
 
 describe('TimelineSpace drags (inner#1708 G8, G5, C4)', () => {
+  it('cancels a drag on Escape without writing (inner#1708 T2)', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    const before = Y.encodeStateAsUpdate(doc);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 40);
+    expect(dragGhost('v2')).not.toBe(null);
+    act(() => { fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' }); });
+    expect(dragGhost('v2')).toBe(null);
+    pointer(document, 'pointerUp', 40);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+    expect(layout().clips[X]?.startFrame).toBe(10);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
   it('draws no drag preview once the role turns Viewer during a drag', async () => {
     seedLayout([clipAt(X, 'v2', 10, 14)]);
     const { view, client } = showTimeline();
@@ -2068,5 +2086,58 @@ describe('TimelineSpace round-ten review fixes (inner#1708 S1, S2, S3, Q1)', () 
         .map((element) => element.getAttribute('data-testid'));
       expect(order).toEqual([`timeline-clip-${added?.id ?? ''}`, `timeline-clip-${CLIP.id}`]);
     });
+  });
+});
+
+describe('TimelineSpace ends a key hold on every new press and selection change (inner#1708 T1)', () => {
+  const A = '30000000-0000-4000-8000-000000000091';
+  const B = '30000000-0000-4000-8000-000000000092';
+
+  /**
+   * Two sub-track clips with the magnet off; the first is moved two frames by one held ArrowRight.
+   * @returns Once A has moved to frame 2.
+   * @throws {Error} When a step fails.
+   */
+  async function holdOnA(): Promise<void> {
+    magnet(false);
+    seedLayout([clipAt(A, 'v2', 0, 10), clipAt(B, 'v2', 100, 10)]);
+    showTimeline();
+    const a = await screen.findByTestId('timeline-clip-' + A);
+    fireEvent.click(a);
+    press(a, 'ArrowRight');
+    press(a, 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[A]?.startFrame).toBe(2));
+  }
+
+  it('keeps a hold begun on another clip mid-scrub out of the earlier hold step', async () => {
+    await holdOnA();
+    fireEvent.pointerDown(screen.getByTestId('timeline-lane-v2'));
+    await waitFor(() => expect(screen.getByTestId('timeline-clip-' + A)).toHaveAttribute('aria-pressed', 'false'));
+    press(screen.getByTestId('timeline-space'), 'ArrowRight');
+    press(screen.getByTestId('timeline-space'), 'ArrowRight', { repeat: true });
+    const b = screen.getByTestId('timeline-clip-' + B);
+    fireEvent.click(b);
+    press(b, 'ArrowRight', { repeat: true });
+    press(b, 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[B]?.startFrame).toBe(102));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[B]?.startFrame).toBe(100));
+    expect(layout().clips[A]?.startFrame).toBe(2);
+    expect(screen.getByTestId('timeline-undo')).toBeEnabled();
+  });
+
+  it('keeps a hold that continues after a new key press out of the earlier hold step', async () => {
+    await holdOnA();
+    const b = screen.getByTestId('timeline-clip-' + B);
+    act(() => b.focus());
+    await waitFor(() => expect(b).toHaveAttribute('aria-pressed', 'true'));
+    press(b, 'ArrowRight', { altKey: true });
+    press(b, 'ArrowRight', { altKey: true, repeat: true });
+    press(b, 'ArrowRight', { repeat: true });
+    await waitFor(() => expect(layout().clips[B]?.startFrame).toBe(101));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[B]?.startFrame).toBe(100));
+    expect(layout().clips[A]?.startFrame).toBe(2);
+    expect(screen.getByTestId('timeline-undo')).toBeEnabled();
   });
 });
