@@ -2844,11 +2844,15 @@ describe('camera commands', () => {
     await screen.findByTestId('generate-storyboard-shot-2-editor');
     await insert('Pan left');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
-    // The insert hands focus back to the first shot on the next frame; the reader opens the second one after that.
-    await act(async () => {
-      await new Promise<void>((done) => requestAnimationFrame(() => done()));
-    });
+    // Focus lands in a box a frame after the insert or the click that sends it
+    // there, and focus landing outside the open camera picker closes it; the
+    // reader moves on once the caret is in the box, and so does this test.
+    const focusIn = (n: number): Promise<void> => waitFor(() => expect(
+      screen.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).contains(document.activeElement),
+    ).toBe(true));
+    await focusIn(1);
     fireEvent.click(screen.getByTestId('generate-storyboard-shot-2-toggle'));
+    await focusIn(2);
     await insert('Tilt up');
     await waitFor(() => expect(readShots('p', 's', 'target')?.[1]?.prompt.toString()).toContain('[Tilt up]'));
     fireEvent.click(screen.getByTestId('generate-video-execute'));
