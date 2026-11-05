@@ -49,7 +49,7 @@ interface Plan {
 }
 interface EditSpan { sourceStart: Rational; sourceEnd: Rational; presentationStart: Rational; rate: Rational }
 /** S6e E3 (design §3.2 item 7, inner 960d483f): physical encode facts beside the plan, outside its identity. */
-interface Encoding { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number }
+interface Encoding { keyframeOrdinals: number[]; codedWidth: number; codedHeight: number; sourceKeyframes?: { pts: Rational; dts: Rational }[]; firstPacketDts?: Rational }
 interface Ledger { schemaVersion: 2; sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: { jobId: string; deadlineAt: number }; plan: Plan; encoding: Encoding }
 interface Compact { sourceFingerprint: string; toolInputId: string; planSha256: string; presentation: VideoPresentationTable }
 interface VersionInput {
@@ -672,6 +672,33 @@ describe('E §3.2 item 7 the full ledger\'s encode facts (inner 960d483f)', () =
   it('E04 the compact projection carries no encode facts', () => {
     const compact = required('projectVideoPresentationCompact')({ ...ledger(), encoding: { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48 } });
     expect(Object.keys(compact).sort()).toEqual(['planSha256', 'presentation', 'sourceFingerprint', 'toolInputId']);
+  });
+
+  // §93 D6-1 (design §3.2 item 7): every source keyframe's pts and dts (presented or not) and the stream's first packet dts,
+  // as exact rationals like the ledger's other times; dts and firstPacketDts may be negative (negative CTS offsets), pts may not.
+  const KEYFRAMES = { keyframeOrdinals: [0, 8], codedWidth: 64, codedHeight: 48,
+    sourceKeyframes: [{ pts: r(0), dts: r(-1, 25) }, { pts: r(8, 25), dts: r(7, 25) }], firstPacketDts: r(-1, 25) };
+
+  it('E06 the encoding carries every source keyframe\'s pts and dts and the first packet dts, negative dts included', () => {
+    const schema = required('videoPresentationLedgerSchema');
+    const value = { ...ledger(), encoding: KEYFRAMES };
+    expect(schema.parse(value)).toEqual(value);
+    // A keyframe the plan does not present is listed too: here the source's first keyframe precedes the presentation.
+    const unpresented = { ...ledger(), encoding: { ...KEYFRAMES, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) } };
+    expect(schema.parse(unpresented)).toEqual(unpresented);
+  });
+
+  it.each([
+    ['no source keyframes field', (({ sourceKeyframes: _k, ...rest }) => rest)(KEYFRAMES)],
+    ['no first packet dts', (({ firstPacketDts: _f, ...rest }) => rest)(KEYFRAMES)],
+    ['a negative keyframe pts', { ...KEYFRAMES, sourceKeyframes: [{ pts: r(-1, 25), dts: r(-2, 25) }] }],
+    ['a keyframe time that is not reduced', { ...KEYFRAMES, sourceKeyframes: [{ pts: { numerator: '2', denominator: '50' }, dts: r(1, 25) }] }],
+    ['a tick count instead of an exact time', { ...KEYFRAMES, firstPacketDts: -1 }],
+    ['a keyframe without its dts', { ...KEYFRAMES, sourceKeyframes: [{ pts: r(0) }] }],
+  ])('E07 rejects encoding with %s', (_, encoding) => {
+    const schema = required('videoPresentationLedgerSchema');
+    expect(schema.safeParse({ ...ledger(), encoding: KEYFRAMES }).success).toBe(true);
+    expect(schema.safeParse({ ...ledger(), encoding }).success).toBe(false);
   });
 
   it('E05 the keyframe flags expand the ordinals to one flag per presented frame, ready for planVideoEncodeChunks', () => {
