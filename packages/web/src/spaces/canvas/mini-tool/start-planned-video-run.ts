@@ -20,8 +20,8 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   toolId: VideoToolId;
   draft: VideoToolDraft;
   analyses: readonly MiniToolAnalysisRecord[];
-  /** The selected version of each input, frozen at the press (§10.8 request row); without one the request is refused. */
-  presentationRef: MiniToolPlannedRequest['presentation_ref'] | undefined;
+  /** The selected version of each input, frozen at the press (§10.8 request row). */
+  presentationRef: MiniToolPlannedRequest['presentation_ref'];
   canWrite: () => boolean;
 }
 

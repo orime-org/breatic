@@ -4280,11 +4280,12 @@ function CanvasSpaceInner({
     const gate = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
     if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
     const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
+    // The run is bound to the selected version the panel shows for this host; without one it is not sent (§10.8, §7.12).
+    const presentationRef = videoRuntime.presentations.get(nodeId)?.presentationRef;
+    if (presentationRef === undefined) return Promise.resolve();
     const session = sessionStore.getState().panelSession;
     return startPlannedVideoRun({
-      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses,
-      // The run is bound to the selected version the panel shows for this host (§10.8 request row).
-      presentationRef: videoRuntime.presentations.get(nodeId)?.presentationRef,
+      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef,
       source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
         mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
       sourceExists: () => buffer.settled().some((node) => node.id === nodeId),
