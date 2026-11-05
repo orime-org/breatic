@@ -26,6 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import * as runOwner from '@ingest/container/presentation-run.js';
 import * as contractOwner from '@ingest/presentation-run-contract.js';
 import { presentationFrameCount } from '@shared/mini-tools/video-presentation-table.js';
+import { chooseVideoCarrierRoute } from '@shared/mini-tools/video-encode-plan.js';
 import { videoPresentationPlanSha256, videoPresentationToolInputId } from '@shared/upload/video-presentation-version.js';
 
 const run = promisify(execFile);
@@ -407,6 +408,32 @@ describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §9
     ['a derived last-frame support (Matroska previous-max)', 'vfr.webm'],
   ])('CT03 an altered plan does not copy: %s', async (_name, file) => {
     expect(planned(await probed(file)).routeInput.copyPreservesTimeline).toBe(false);
+  });
+});
+
+// §93 D6 (frames-split design §4.1 row 2, §4.3 audio row, round 2): a copy keeps the selected audio packets only when its
+// codec is in the MP4 entry's `audio_codecs` of `identity_formats`; any other audio goes to the dispatched copy, whose
+// standard-4 `copy_carrier` copies the video and encodes the audio to AAC. The route is chosen from the probe's own route facts.
+describe('copyable audio is identity_formats\' MP4 audio_codecs (§93 D6; design §4.1 row 2)', () => {
+  const ROOM = { selected: null, copyDiskMarginBytes: 0, basicDiskBytes: 1e12 };
+  /** The route of a probed file under a frozen identity table whose H.264 profiles never match, so identity is out. */
+  const routeOf = async (file: string, audioCodecs: string[]): Promise<string> => {
+    const table = [{ ...IDENTITY_FORMATS[0]!, profiles: ['None'], audioCodecs }];
+    const answer = planned(await probed(file, { probe: { ...PROBE, identityFormats: table } }));
+    expect(answer.routeInput.copyPreservesTimeline, `${file} keeps its timeline under a copy`).toBe(true);
+    return chooseVideoCarrierRoute({ ...(answer.routeInput as unknown as Parameters<typeof chooseVideoCarrierRoute>[0]), ...ROOM });
+  };
+
+  it('CA10 AAC audio, listed: a basic packet copy', async () => {
+    expect(await routeOf('cfr-aac.mp4', ['aac', 'none'])).toBe('copy');
+  });
+
+  it('CA11 ALAC audio, not listed: the dispatched copy that encodes the audio', async () => {
+    expect(await routeOf('alac.mp4', ['aac', 'none'])).toBe('dispatch_copy');
+  });
+
+  it('CA12 ALAC audio, listed in the frozen table: a basic packet copy', async () => {
+    expect(await routeOf('alac.mp4', ['aac', 'alac', 'none'])).toBe('copy');
   });
 });
 
