@@ -156,8 +156,9 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
 /**
  * A window's entries (§7.17, §91 D3-1): consecutive real frames of one edit form a source span from its first frame's
  * start to its last frame's end (a held last frame included), shown from the source time at its start, or from its first
- * frame when that comes later; its decode starts at the latest presented keyframe at or before that frame, or at the frame
- * itself when none is (§91 D3b-4). Each derived-empty frame is its own entry with the plan's fill.
+ * frame when that comes later; its decode starts at the latest source keyframe whose pts is not after that frame, presented
+ * or not, at the keyframe's dts less min(0, the first packet's dts) (§93 D6-1, §7.17 timeline row). Each derived-empty frame
+ * is its own entry with the plan's fill.
  * @param ledger - The full ledger.
  * @param window - The window.
  * @returns The entries in presentation order.
@@ -172,7 +173,7 @@ export function windowEntries(ledger: VideoPresentationLedger, window: FrameWind
  * @param ledger - The full ledger.
  * @param window - The window.
  * @returns The entries in presentation order with their first ordinals.
- * @throws {RangeError} When the window lies outside the presented frames.
+ * @throws {RangeError} When the window lies outside the presented frames or no source keyframe precedes a span.
  */
 function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { entry: MiniToolPlanEntry; ordinal: number }[] {
   const { plan } = ledger;
@@ -218,7 +219,9 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { 
     const edit = spans![span]!;
     return plus(q(edit.sourceStart), times(minus(at, q(edit.presentationStart)), q(edit.rate)));
   };
-  const keyframes = ledger.encoding.keyframeOrdinals;
+  const keyframes = ledger.encoding.sourceKeyframes.map(({ pts, dts }) => ({ pts: q(pts), dts: q(dts) }));
+  const firstDts = q(ledger.encoding.firstPacketDts);
+  const shift: Q = cmp(firstDts, [0n, 1n]) < 0n ? minus([0n, 1n], firstDts) : [0n, 1n];
   const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
   let open: { span: number; first: number; end: number } | null = null;
   /**
@@ -231,11 +234,12 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { 
     const firstSource = source(first.pts!);
     const displayStart = time(first.start);
     const shown = sourceAt(displayStart, open.span);
-    let decode = firstSource;
-    for (const ordinal of keyframes) {
-      const pts = ordinal <= open.first ? frames[ordinal]!.pts : null;
-      if (pts !== null && cmp(source(pts), firstSource) <= 0n && (decode === firstSource || cmp(source(pts), decode) > 0n)) decode = source(pts);
+    let keyframe: { pts: Q; dts: Q } | undefined;
+    for (const candidate of keyframes) {
+      if (cmp(candidate.pts, firstSource) <= 0n && (keyframe === undefined || cmp(candidate.pts, keyframe.pts) > 0n)) keyframe = candidate;
     }
+    if (keyframe === undefined) throw new RangeError('No source keyframe precedes the span');
+    const decode = plus(keyframe.dts, shift);
     entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(cmp(shown, firstSource) > 0n ? shown : firstSource),
       displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: open.span < 0 ? { numerator: '1', denominator: '1' } : exact(q(spans![open.span]!.rate)) } });
     open = null;
