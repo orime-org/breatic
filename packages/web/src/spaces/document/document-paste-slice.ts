@@ -13,7 +13,7 @@
  * run once the content is on its target (`document-put.ts`).
  */
 
-import { DOMParser as SchemaParser, Fragment, type Node as PMNode, type ResolvedPos, type Schema, Slice } from '@tiptap/pm/model';
+import { type ContentMatch, DOMParser as SchemaParser, Fragment, type Node as PMNode, type NodeType, type ResolvedPos, type Schema, Slice } from '@tiptap/pm/model';
 import * as pmView from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -62,7 +62,68 @@ export function readClipboardSlice(schema: Schema, html: string, text: string): 
   const doc = schema.nodes['doc']!.create(null, schema.nodes['blockGroup']!.create(null, line));
   const view = { state: { schema }, someProp: (): undefined => undefined } as unknown as EditorView;
   // Inside the one paragraph: a context that is neither code nor a cell.
-  return parseFromClipboard(view, text, html, false, doc.resolve(3)) ?? Slice.empty;
+  const slice = parseFromClipboard(view, text, html, false, doc.resolve(3)) ?? Slice.empty;
+  // The recorded context is rebuilt as written, its content unchecked: a copy
+  // the schema does not take (another editor's copy inside a stored cell)
+  // reads as the whole blocks its HTML holds.
+  if (closedValid(slice.content, slice.openStart, slice.openEnd)) return slice;
+  return readClipboardSlice(schema, html.replace(/\sdata-pm-slice="[^"]*"/g, ''), text);
+}
+
+/**
+ * The node types a node's content may hold anywhere in it.
+ * @param type - The node's type.
+ * @returns They.
+ */
+function heldTypes(type: NodeType): Set<NodeType> {
+  const held = new Set<NodeType>();
+  const seen = new Set<ContentMatch>();
+  /**
+   * Takes down the types a content match and every state after it accept.
+   * @param match - The content match.
+   */
+  const walk =(match: ContentMatch): void => {
+    if (seen.has(match)) return;
+    seen.add(match);
+    for (let i = 0; i < match.edgeCount; i += 1) {
+      const edge = match.edge(i);
+      held.add(edge.type);
+      walk(edge.next);
+    }
+  };
+  walk(type.contentMatch);
+  return held;
+}
+
+/**
+ * Whether every node a slice closes is one the schema takes; an open node
+ * lacks what lies outside the copy, so it is held only to the types it may
+ * hold, and what it holds is checked the same way.
+ * @param content - The content.
+ * @param openStart - How deep its start opens.
+ * @param openEnd - How deep its end opens.
+ * @returns True when the schema takes it.
+ */
+function closedValid(content: Fragment, openStart: number, openEnd: number): boolean {
+  let valid = true;
+  content.forEach((node, _offset, index) => {
+    const start = index === 0 ? openStart : 0;
+    const end = index === content.childCount - 1 ? openEnd : 0;
+    if (start === 0 && end === 0) {
+      try {
+        node.check();
+      } catch {
+        valid = false;
+      }
+    } else {
+      const held = heldTypes(node.type);
+      node.content.forEach((child) => {
+        if (!held.has(child.type)) valid = false;
+      });
+      if (!closedValid(node.content, Math.max(0, start - 1), Math.max(0, end - 1))) valid = false;
+    }
+  });
+  return valid;
 }
 
 /**
@@ -112,12 +173,12 @@ function lifted(top: PMNode[], open: { start: number; end: number }): { rows: PM
   let rows = top;
   let { start, end } = open;
   // A parent cut before its nested lines keeps its block group alone.
-  while (start > 2 && rows[0]?.type.name === 'blockContainer' && rows[0].firstChild!.type.name === 'blockGroup') {
+  while (start >= 2 && rows[0]?.type.name === 'blockContainer' && rows[0].firstChild!.type.name === 'blockGroup') {
     if (rows.length === 1) end -= 2;
     rows = [...nestedOf(rows[0]), ...rows.slice(1)];
     start -= 2;
   }
-  while (end > 2 && rows[rows.length - 1]?.type.name === 'blockContainer' && nestedOf(rows[rows.length - 1]!).length > 0) {
+  while (end >= 2 && rows[rows.length - 1]?.type.name === 'blockContainer' && nestedOf(rows[rows.length - 1]!).length > 0) {
     const last = rows[rows.length - 1]!;
     const nested = nestedOf(last);
     const rest = nested.slice(0, -1);
@@ -151,11 +212,12 @@ export function rowsOf(slice: Slice): Rows {
   let content = slice.content;
   let start = slice.openStart;
   let end = slice.openEnd;
-  // Into the line level: a block group open at both ends is the lines it holds.
-  while (content.childCount === 1 && content.firstChild!.type.name === 'blockGroup' && start > 0 && end > 0) {
+  // Into the line level: a lone block group is the lines it holds, an end
+  // closed at the group closed at its lines (a copy of the whole body).
+  while (content.childCount === 1 && content.firstChild!.type.name === 'blockGroup') {
     content = content.firstChild!.content;
-    start -= 1;
-    end -= 1;
+    start = Math.max(0, start - 1);
+    end = Math.max(0, end - 1);
   }
   const top: PMNode[] = [];
   content.forEach((node) => top.push(node));
