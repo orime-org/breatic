@@ -1214,3 +1214,60 @@ describe('Timeline edit session never caches a source stored under another key (
     expect(peer.getMap('sources').has(KEY)).toBe(false);
   });
 });
+
+describe('Timeline edit session restores a source a peer rewrote unreadable (inner#1708 Q2)', () => {
+  const C = cid(196);
+
+  /**
+   * Wait for any write-back a session schedules after a transaction.
+   * @returns Once queued tasks ran.
+   * @throws {never} Never.
+   */
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  /**
+   * Count the updates a replica emits from its own transactions.
+   * @param doc - The replica.
+   * @returns A reader of the live count.
+   * @throws {never} Never.
+   */
+  function ownUpdates(doc: Y.Doc): () => number {
+    let count = 0;
+    doc.on('update', (_update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => { if (transaction.local) count += 1; });
+    return () => count;
+  }
+
+  it.each([['{ id }', { id: SOURCE.id }], ['a number', 42]] as const)('writes the valid value back once when a peer rewrites it as %s', async (_name, value) => {
+    const { mine, peer, session } = pair([clip(C, MAIN, 0, 10)]);
+    session.setCanWrite(true);
+    const sent = ownUpdates(mine);
+    peer.transact(() => peer.getMap('sources').set(SOURCE.id, value), 'peer');
+    await flush();
+    await flush();
+    expect(mine.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+    expect(peer.getMap('sources').get(SOURCE.id)).toEqual(SOURCE);
+    expect(sent()).toBe(1);
+  });
+
+  it('writes nothing from a viewer session', async () => {
+    const { mine, peer } = pair([clip(C, MAIN, 0, 10)]);
+    const sent = ownUpdates(mine);
+    peer.transact(() => peer.getMap('sources').set(SOURCE.id, { id: SOURCE.id }), 'peer');
+    await flush();
+    expect(mine.getMap('sources').get(SOURCE.id)).toEqual({ id: SOURCE.id });
+    expect(sent()).toBe(0);
+  });
+
+  it('writes nothing when the session never saw a valid value', async () => {
+    const KEY = '10000000-0000-4000-8000-0000000000d1';
+    const { mine, peer, session } = pair([clip(C, 'v2', 0, 10, { sourceId: KEY })]);
+    session.setCanWrite(true);
+    const sent = ownUpdates(mine);
+    peer.transact(() => peer.getMap('sources').set(KEY, { id: KEY }), 'peer');
+    await flush();
+    expect(mine.getMap('sources').get(KEY)).toEqual({ id: KEY });
+    expect(sent()).toBe(0);
+  });
+});

@@ -312,3 +312,40 @@ describe("Timeline sources read one by one (inner#1708 F1)", () => {
     expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
   });
 });
+
+describe("Timeline records stored under a key other than their id (inner#1708 Q1)", () => {
+  const OTHER_KEY = "30000000-0000-4000-8000-0000000000ee";
+
+  /**
+   * Attach a record map under a key, with the given fields.
+   * @param doc - The document.
+   * @param map - The collection.
+   * @param key - The map key.
+   * @param fields - The record.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function attachUnder(doc: Y.Doc, map: "clips" | "tracks", key: string, fields: object): void {
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap(map).set(key, record);
+      for (const [name, value] of Object.entries(fields)) record.set(name, value);
+    }, "peer");
+  }
+
+  it("leaves a clip stored under another key out of the clips and lists it as damaged", () => {
+    const doc = seededDoc();
+    attachClip(doc);
+    attachUnder(doc, "clips", OTHER_KEY, { ...clip, id: "30000000-0000-4000-8000-0000000000ef", startFrame: 100 });
+    const content = readTimelineContent(doc);
+    expect(content.document.clips).toEqual({ [clip.id]: clip });
+    expect(content.damaged).toEqual({ clips: [OTHER_KEY] });
+  });
+
+  it("leaves a track stored under another key out of the tracks without listing it", () => {
+    const doc = seededDoc();
+    attachUnder(doc, "tracks", "track-key", { id: "track-other", kind: "visual", order: 1 });
+    const content = readTimelineContent(doc);
+    expect(content.document.tracks).toEqual({ "visual-1": { id: "visual-1", kind: "visual", order: 0 } });
+    expect(content.damaged).toEqual({ clips: [] });
+  });
+});

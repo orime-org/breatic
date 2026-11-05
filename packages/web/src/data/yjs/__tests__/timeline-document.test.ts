@@ -1134,3 +1134,73 @@ describe('Edits around a source that cannot be read (inner#1708 F1)', () => {
     expect(storedSources(doc)).toEqual([SOURCE.id]);
   });
 });
+
+describe('A clip record stored under a key other than its id (inner#1708 Q1)', () => {
+  const A = cid(190);
+  const B = cid(191);
+  const C = cid(192);
+  const KEY = cid(193);
+
+  /**
+   * Main A[0,10), a record for clip B at [10,20) stored under KEY, and C[20,30).
+   * @returns The document.
+   * @throws {Error} When Yjs cannot attach the map.
+   */
+  function misfiled(): Y.Doc {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10), fixtureClip(C, MAIN, 20, 10)], undefined, [SOURCE, SHORT_SOURCE]));
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(KEY, record);
+      for (const [name, value] of Object.entries(fixtureClip(B, MAIN, 10, 10, { sourceId: SHORT_SOURCE.id }))) record.set(name, value);
+    }, 'peer');
+    return doc;
+  }
+
+  it('reads it as damaged, not as a clip', () => {
+    const content = readTimelineContent(misfiled());
+    expect(content.damaged.clips).toEqual([KEY]);
+    expect(content.document.clips[B]).toBe(undefined);
+    expect(content.document.clips[KEY]).toBe(undefined);
+    expect(resolveTimelineArrangement(content.document).readyClipIds).toEqual([A, C].sort());
+  });
+
+  it('removes it by its key and sweeps the source only it named', () => {
+    const doc = misfiled();
+    removeTimelineClip(doc, KEY, ORIGIN);
+    expect(doc.getMap('clips').has(KEY)).toBe(false);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it('packs the magnetic main track without leaving its gap when another clip is deleted', () => {
+    // A[0,10), the misfiled B at [30,40), C[40,50): deleting A must leave the ready main clips packed from frame 0.
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 10), fixtureClip(C, MAIN, 40, 10)]));
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(KEY, record);
+      for (const [name, value] of Object.entries(fixtureClip(B, MAIN, 30, 10))) record.set(name, value);
+    }, 'peer');
+    expect(applyTimelineEdit(doc, { operation: 'delete', parameters: { clipId: A }, placement: ON }, ORIGIN).ok).toBe(true);
+    const document = readTimelineDocument(doc);
+    const ready = new Set(resolveTimelineArrangement(document).readyClipIds);
+    let at = 0;
+    for (const [id, startFrame, durationFrames] of starts(document, MAIN)) {
+      if (!ready.has(id)) continue;
+      expect(startFrame, `ready main clip ${id}`).toBe(at);
+      at += durationFrames;
+    }
+    expect(document.clips[C]?.startFrame).toBe(0);
+    expect(doc.getMap('clips').has(B)).toBe(false);
+  });
+});
+
+describe('missingTimelineSourceIds counts an unreadable stored value as missing (inner#1708 Q2)', () => {
+  it.each([
+    ['a record with only its id', { id: SOURCE.id }],
+    ['a number', 42],
+  ] as const)('lists a referenced source stored as %s', (_name, value) => {
+    const doc = docFrom(timeline([fixtureClip(cid(195), V2, 0, 10)]));
+    doc.transact(() => doc.getMap('sources').set(SOURCE.id, value), 'peer');
+    expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([SOURCE.id]);
+    expect(missingTimelineSourceIds(doc, {})).toEqual([]);
+  });
+});
