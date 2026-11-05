@@ -19,7 +19,7 @@ export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineA
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string }
 export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
-interface AdmissionOptions { parentDeadlineAt?: number; knownAlpha?: boolean; repair?: boolean; requestId?: string; userId?: string; projectId?: string }
+interface AdmissionOptions { parentDeadlineAt?: number; knownAlpha?: boolean; repair?: boolean; requestId?: string; userId?: string; projectId?: string; expect?: 'first' | 'readmit' }
 /** Automatic metadata preparation has no user task or credit hold. */
 export const VIDEO_PRESENTATION_QUEUE = 'video-presentation';
 let queue: ReturnType<typeof createQueue> | undefined;
@@ -133,6 +133,7 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
   const request: VideoPresentationIngestRequest = {
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed,
     original: originalOf(row), contentType: row.mimeType, knownAlpha: options.knownAlpha === true, repair: options.repair === true,
+    ...(options.expect === undefined ? {} : { expect: options.expect }),
     registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
     // One public base; ingest derives every object URL from it. publicUrl(key) is the base joined to the key.
@@ -201,8 +202,10 @@ export async function resolveVideoPresentation(input: ResolveVideoPresentationIn
   let snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
     action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash, targetPolicyVersion: getMiniToolsConfig().presentation.policy_version,
   });
-  // A source with nothing selected and no target work is admitted once; anything else, a failure included, is answered as it is.
-  if (snapshot.presentation === null && snapshot.preparation === null) snapshot = await accept(row, {});
+  // A read admits on its own only under a condition the DO re-checks (§3.5): nothing selected and nothing prepared, or the
+  // DO's readmit fact; anything else, a failure included, is answered as it is.
+  if (snapshot.presentation === null && snapshot.preparation === null) snapshot = await accept(row, { expect: 'first' });
+  else if (snapshot.presentation === null && snapshot.readmit === true) snapshot = await accept(row, { expect: 'readmit' });
   else await enqueue(row, snapshot);
   return response(binding, snapshot);
 }
