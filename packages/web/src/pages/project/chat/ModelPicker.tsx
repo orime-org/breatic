@@ -6,14 +6,8 @@ import { ChevronDown } from 'lucide-react';
 import type { AgentModelChoice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@web/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 import { chatApi } from '@web/data/api/chat';
 import { useChatModels } from '@web/data/use-chat-models';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -81,10 +75,27 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
     [models, stored, conversationId, projectId, saveFailed],
   );
 
+  const [open, setOpen] = React.useState(false);
+  const choose = React.useCallback(
+    (id: string): void => {
+      setOpen(false);
+      pick(id);
+    },
+    [pick],
+  );
+  // Focus goes to the menu itself, so a row shows a focus ring only once the
+  // reader moved there by keyboard; Radix would focus the first row on open.
+  const focusMenu = React.useCallback((event: Event): void => {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).focus();
+  }, []);
+
   if (shown === undefined) return null;
+  // The same menu the language and theme switchers draw: a column of rows,
+  // the current one filled.
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild disabled={!list.isSuccess}>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild disabled={!list.isSuccess}>
         <Button
           type='button'
           variant='chrome-ghost'
@@ -95,18 +106,33 @@ function ModelPickerInner({ conversationId, projectId }: ModelPickerProps): Reac
           <span className='truncate'>{shown.name}</span>
           <ChevronDown className='h-3 w-3 shrink-0' />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side='top' align='end' sideOffset={8} className='min-w-48'>
-        <DropdownMenuLabel>{t('chat.modelPicker.label')}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={shown.id} onValueChange={pick}>
+      </PopoverTrigger>
+      <PopoverContent side='top' align='end' className='w-auto min-w-48 p-1'
+        data-testid='chat-model-menu'
+        onOpenAutoFocus={focusMenu}
+      >
+        <div className='px-2 py-1.5 text-xs font-medium text-muted-foreground'>{t('chat.modelPicker.label')}</div>
+        <div className='flex flex-col gap-0.5'>
           {(models ?? []).map((m) => (
-            <DropdownMenuRadioItem key={m.id} value={m.id} className='whitespace-nowrap'>
+            <Button
+              key={m.id}
+              type='button'
+              variant='ghost'
+              size='menu-item'
+              aria-pressed={m.id === shown.id}
+              className={cn(
+                'justify-start whitespace-nowrap',
+                m.id === shown.id && 'bg-accent-strong hover-enabled:bg-accent-strong',
+              )}
+              onClick={() => choose(m.id)}
+              data-testid={`chat-model-option-${m.id}`}
+            >
               {m.name}
-            </DropdownMenuRadioItem>
+            </Button>
           ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

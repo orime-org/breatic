@@ -317,7 +317,7 @@ export function renderProductGuide(): string {
       "of the screen says so, and again for each key the full box turns away.",
     "Left of that button, the name of the model that answers this conversation shows with a small downward " +
       `arrow. Clicking it opens a menu headed ${quoted(t("chat.modelPicker.label"))} that lists the models the ` +
-      "reader can pick, the current one marked with a dot; a pick takes effect from the next message, and a reply " +
+      "reader can pick, the current one highlighted; a pick takes effect from the next message, and a reply " +
       "already being written finishes on the model it started on. Each conversation keeps its own model, the same " +
       "on every device, and a new conversation starts on the model picked last. Every model is open to every " +
       "membership. While the list cannot be read the name is greyed and does not open, and a short message at the " +

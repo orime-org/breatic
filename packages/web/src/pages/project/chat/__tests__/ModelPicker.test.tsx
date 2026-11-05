@@ -95,17 +95,31 @@ describe('the model picker', () => {
     expect(trigger()).toHaveTextContent('Claude Opus 5.5');
   });
 
-  it('lists every model the reader can pick, the current one checked', async () => {
+  it('lists every model the reader can pick, the current one filled the way the language menu fills it', async () => {
     conversations({ 'c-1': SONNET });
     const user = userEvent.setup();
     renderPicker('c-1');
     await waitFor(() => expect(trigger()).toBeEnabled());
 
     await user.click(trigger());
-    const items = await screen.findAllByRole('menuitemradio');
+    const menu = await screen.findByTestId('chat-model-menu');
+    const items = Array.from(menu.querySelectorAll('button'));
 
     expect(items.map((item) => item.textContent)).toEqual(['DeepSeek V4.1 Flash', 'Claude Sonnet 5.5', 'Claude Opus 5.5']);
-    expect(items.map((item) => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+    expect(items.map((item) => item.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+    expect(items.map((item) => item.className.includes('bg-accent-strong'))).toEqual([false, true, false]);
+  });
+
+  it('opens with focus on the menu, not on its first row', async () => {
+    conversations({ 'c-1': SONNET });
+    const user = userEvent.setup();
+    renderPicker('c-1');
+    await waitFor(() => expect(trigger()).toBeEnabled());
+
+    await user.click(trigger());
+    const menu = await screen.findByTestId('chat-model-menu');
+
+    await waitFor(() => expect(document.activeElement).toBe(menu));
   });
 
   it('shows a pick at once and saves it for the conversation', async () => {
@@ -115,7 +129,7 @@ describe('the model picker', () => {
     await waitFor(() => expect(trigger()).toBeEnabled());
 
     await user.click(trigger());
-    await user.click(await screen.findByRole('menuitemradio', { name: 'Claude Opus 5.5' }));
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
 
     expect(trigger()).toHaveTextContent('Claude Opus 5.5');
     expect(chatApi.setModel).toHaveBeenCalledWith('c-1', 'p-1', OPUS.id);
@@ -130,7 +144,7 @@ describe('the model picker', () => {
     await waitFor(() => expect(trigger()).toBeEnabled());
 
     await user.click(trigger());
-    await user.click(await screen.findByRole('menuitemradio', { name: 'Claude Opus 5.5' }));
+    await user.click(await screen.findByRole('button', { name: 'Claude Opus 5.5' }));
 
     await waitFor(() => expect(trigger()).toHaveTextContent('DeepSeek V4.1 Flash'));
     expect(useConversationRuntime.getState().conversations['c-1']?.agentModel).toEqual(DEEPSEEK);
