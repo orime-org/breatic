@@ -1073,3 +1073,30 @@ describe('missingTimelineSourceIds (inner#1708 Q2)', () => {
     expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([]);
   });
 });
+
+describe('Clip records naming an Object.prototype key as their source (inner#1708 R2)', () => {
+  const X = cid(140);
+  const Y2 = cid(141);
+  const ODD = cid(142);
+  const NAMES = ['constructor', 'toString', 'hasOwnProperty', '__proto__'] as const;
+
+  it.each(NAMES)('edits and removes other clips completely next to a record naming %s', (name) => {
+    const doc = docFrom(timeline([fixtureClip(X, MAIN, 0, 20), fixtureClip(Y2, MAIN, 20, 20)]));
+    damagedClip(doc, ODD, name);
+    expect(() => applyTimelineEdit(doc, move(X, 60, OFF), ORIGIN)).not.toThrow();
+    expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(60);
+    expect(() => removeTimelineClip(doc, Y2, ORIGIN)).not.toThrow();
+    expect(doc.getMap('clips').has(Y2)).toBe(false);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+    expect(() => removeTimelineClip(doc, ODD, ORIGIN)).not.toThrow();
+    expect(doc.getMap('clips').has(ODD)).toBe(false);
+    expect(storedSources(doc)).toEqual([SOURCE.id]);
+  });
+
+  it.each(NAMES)('finds no missing source for a record naming %s, whatever values inherit', (name) => {
+    const doc = docFrom(timeline([fixtureClip(X, MAIN, 0, 20)]));
+    damagedClip(doc, ODD, name);
+    expect(missingTimelineSourceIds(doc, {})).toEqual([]);
+    expect(missingTimelineSourceIds(doc, { [SOURCE.id]: SOURCE })).toEqual([]);
+  });
+});

@@ -2141,3 +2141,130 @@ describe('TimelineSpace ends a key hold on every new press and selection change 
     expect(screen.getByTestId('timeline-undo')).toBeEnabled();
   });
 });
+
+describe('TimelineSpace ignores edit shortcuts during a drag (inner#1708 R1)', () => {
+  /**
+   * End a drag and wait out dnd-kit's click guard.
+   * @param clientX - The release position.
+   * @returns Once the guard lapsed.
+   * @throws {Error} When a handler throws.
+   */
+  async function drop(clientX: number): Promise<void> {
+    pointer(document, 'pointerUp', clientX);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+  }
+
+  /** What the user did before the drag, so each shortcut has something it would change. */
+  type Before = 'nothing' | 'nudge' | 'nudge-undo' | 'playhead';
+
+  /**
+   * Select X[10,24) on v2, optionally prepare the history or playhead, and drag X 20 px (10 frames) right,
+   * past the activation distance.
+   * @param before - What happens before the drag: a nudge (undo has a step), a nudge then Undo (redo has one),
+   * or the playhead moved to frame 15 inside X (split applies).
+   * @returns The document, the clip button and X's start before the drag.
+   * @throws {Error} When the clip is absent.
+   */
+  async function dragging(before: Before = 'nothing'): Promise<{ doc: Y.Doc; clip: HTMLElement; start: number }> {
+    writeUserPreference(ME, { timelineSnap: false });
+    const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    let clip = await screen.findByTestId('timeline-clip-' + X);
+    if (before === 'playhead') {
+      for (let step = 0; step < 15; step += 1) press(screen.getByTestId('timeline-space'), 'ArrowRight');
+      await waitFor(() => expect(screen.getByText(t('timeline.framePosition', { frame: 15, total: 24 }))).toBeInTheDocument());
+    }
+    fireEvent.click(clip);
+    if (before === 'nudge' || before === 'nudge-undo') {
+      press(clip, 'ArrowRight');
+      await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(11));
+    }
+    if (before === 'nudge-undo') {
+      fireEvent.click(screen.getByTestId('timeline-undo'));
+      await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(10));
+      clip = screen.getByTestId('timeline-clip-' + X);
+      fireEvent.click(clip);
+    }
+    const start = layout().clips[X]?.startFrame ?? 0;
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    expect(dragGhost('v2')).not.toBe(null);
+    return { doc, clip, start };
+  }
+
+  afterEach(async () => { await drop(0); });
+
+  it('keeps the dragged clip on Delete and commits the drag on release', async () => {
+    const { clip } = await dragging();
+    vi.mocked(toast.warning).mockClear();
+    act(() => { fireEvent.keyDown(clip, { key: 'Delete' }); });
+    expect(layout().clips[X]).toBeDefined();
+    await drop(20);
+    expect(layout().clips[X]?.startFrame).toBe(20);
+    expect(vi.mocked(toast.warning).mock.calls.map(([text]) => text)).not.toContain(t('timeline.errors.clip_removed'));
+  });
+
+  it('does not undo during the drag; the drag is one undo step after release', async () => {
+    writeUserPreference(ME, { timelineSnap: false });
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    press(clip, 'ArrowRight');
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(11));
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 10);
+    pointer(document, 'pointerMove', 20);
+    act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'z', metaKey: true }); });
+    expect(layout().clips[X]?.startFrame).toBe(11);
+    await drop(20);
+    expect(layout().clips[X]?.startFrame).toBe(21);
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(11));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(10));
+  });
+
+  it.each([
+    ['Backspace', { key: 'Backspace' }, 'nothing'],
+    ['Ctrl+Z', { key: 'z', ctrlKey: true }, 'nudge'],
+    ['Cmd+Shift+Z', { key: 'z', metaKey: true, shiftKey: true }, 'nudge-undo'],
+    ['Ctrl+Y', { key: 'y', ctrlKey: true }, 'nudge-undo'],
+    ['Cmd+D', { key: 'd', metaKey: true }, 'nothing'],
+    ['Ctrl+D', { key: 'd', ctrlKey: true }, 'nothing'],
+    ['Cmd+B', { key: 'b', metaKey: true }, 'playhead'],
+    ['Ctrl+B', { key: 'b', ctrlKey: true }, 'playhead'],
+    ['ArrowLeft', { key: 'ArrowLeft' }, 'nothing'],
+    ['ArrowRight', { key: 'ArrowRight' }, 'nothing'],
+    ['Alt+ArrowUp', { key: 'ArrowUp', altKey: true }, 'nothing'],
+    ['Alt+ArrowDown', { key: 'ArrowDown', altKey: true }, 'nothing'],
+  ] as const)('writes nothing for %s during the drag', async (_name, event, before) => {
+    const { doc, clip, start } = await dragging(before);
+    const bytes = Y.encodeStateAsUpdate(doc);
+    act(() => { fireEvent.keyDown(clip, event); });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
+    await drop(20);
+    expect(layout().clips[X]).toMatchObject({ trackId: 'v2', startFrame: start + 10 });
+    expect(Object.keys(layout().clips)).toEqual([X]);
+  });
+
+  it('still toggles snapping with N during the drag', async () => {
+    const { clip } = await dragging();
+    const toggle = screen.getByTestId('timeline-toggle-snap');
+    const before = toggle.getAttribute('aria-pressed');
+    act(() => { fireEvent.keyDown(clip, { key: 'n' }); });
+    expect(toggle.getAttribute('aria-pressed')).not.toBe(before);
+  });
+
+  it('still deletes on Delete while the press has not moved past the drag threshold', async () => {
+    seedLayout([clipAt(X, 'v2', 10, 14)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + X);
+    fireEvent.click(clip);
+    pointer(clip, 'pointerDown', 0);
+    pointer(document, 'pointerMove', 1);
+    act(() => { fireEvent.keyDown(clip, { key: 'Delete' }); });
+    await waitFor(() => expect(layout().clips[X]).toBe(undefined));
+  });
+});
