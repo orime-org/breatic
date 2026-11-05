@@ -3,8 +3,8 @@
 
 import * as Y from "yjs";
 import {
-  TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema,
-  TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineSettings,
+  TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineSettings, type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
 
 /**
@@ -78,8 +78,35 @@ function validRecords(collection: Record<string, unknown>, schema: { safeParse: 
 }
 
 /**
- * Read our DTO without manufacturing initial state on the client; a damaged clip or track record is left out, and
- * damaged clips are listed, so one bad record never closes the whole Timeline.
+ * Read one stored source value; a peer may store any Yjs content under a source id.
+ * @param value - The value stored under `id` in the sources map.
+ * @param id - Its key.
+ * @returns The source, or undefined when the value is not a valid source stored under its own id.
+ * @throws {never} Never.
+ */
+export function readTimelineSource(value: unknown, id: string): TimelineVideoSource | undefined {
+  const parsed = TimelineVideoSourceSchema.safeParse(value instanceof Y.Map ? value.toJSON() : value);
+  return parsed.success && parsed.data.id === id ? parsed.data : undefined;
+}
+
+/**
+ * Every readable source by id.
+ * @param sources - The sources map.
+ * @returns The readable sources.
+ * @throws {never} Never.
+ */
+function readSources(sources: Y.Map<unknown>): Record<string, TimelineVideoSource> {
+  const valid: Record<string, TimelineVideoSource> = {};
+  sources.forEach((value, id) => {
+    const source = readTimelineSource(value, id);
+    if (source !== undefined) valid[id] = source;
+  });
+  return valid;
+}
+
+/**
+ * Read our DTO without manufacturing initial state on the client; a damaged clip, track or source record is left
+ * out, and damaged clips are listed, so one bad record never closes the whole Timeline.
  * @param doc - The content document to project.
  * @returns The readable Timeline and the damaged record ids.
  * @throws {Error} When the content is empty, unsupported or its roots are structurally invalid.
@@ -93,7 +120,7 @@ export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1;
     settings: timeline.get("settings"),
     tracks: validRecords(doc.getMap("tracks").toJSON(), TimelineTrackSchema),
     clips: validRecords(doc.getMap("clips").toJSON(), TimelineVideoClipSchema, damaged.clips),
-    sources: doc.getMap("sources").toJSON(),
+    sources: readSources(doc.getMap("sources")),
   });
   return { document, damaged };
 }
@@ -101,7 +128,7 @@ export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1;
 /**
  * Read our DTO without manufacturing initial state on the client.
  * @param doc - The content document to project.
- * @returns The readable Timeline; damaged clip and track records are left out.
+ * @returns The readable Timeline; damaged clip, track and source records are left out.
  * @throws {Error} When the content is empty, unsupported or its roots are structurally invalid.
  */
 export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {

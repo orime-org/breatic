@@ -3,6 +3,7 @@
 
 
 export {
-  attachTimelineRecord, freezeTimelineRecord, initializeTimelineDocument, readTimelineContent, readTimelineDocument, type TimelineDamagedRecords,
+  attachTimelineRecord, freezeTimelineRecord, initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource,
+  type TimelineDamagedRecords,
 } from "@shared/timeline/document.js";
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
-  assertTimelineRate as assertRate, durationToFrames, timelineDurationFraction as durationFraction,
+  assertTimelineRate as assertRate, timelineDurationFraction as durationFraction,
   type TimelineFraction as Fraction, type TimelineRate, type TimelineVideoClip, type TimelineVideoSource,
 } from '@breatic/shared';
 
@@ -156,8 +156,7 @@ export function validateTimelineRange(clip: TimelineVideoClip, source: TimelineV
   try {
     assertClip(clip);
     assertRate(fps);
-    return clip.sourceId === source.id && durationToFrames(source.durationSeconds, source.timebase) === source.extentFrames
-      && timelineSourceRoom(clip, source, fps) >= clip.durationFrames;
+    return timelineSourceRoom(clip, source, fps) >= clip.durationFrames;
   } catch (err) {
     if (err instanceof RangeError) return false;
     throw err;

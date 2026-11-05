@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from 'yjs';
-import { TimelineVideoSourceSchema } from '@breatic/shared';
+import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
@@ -138,12 +138,12 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   });
   // The clips just before the current pop, to tell the clips it revives.
   let clipsBeforePop = new Set<string>();
-  // Every valid source value seen since the session opened, as plain JSON; a source never changes once written, so
-  // any copy is current. A peer may store any Yjs content under an id; only schema-valid values are written back.
+  // Every readable source seen since the session opened, as plain JSON; a source never changes once written, so any
+  // copy is current, and only these are ever written back.
   const known: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   let canWrite = false;
   /**
-   * Remember the current valid sources and, for a session that may write, write back any referenced source a merge
+   * Remember the current readable sources and, for a session that may write, write back any referenced source a merge
    * removed. Concurrent writes to one key keep only one, so the remover's own write can win and then be swept,
    * leaving a peer's new or revived clip without its source; every editor that saw the value restores it.
    */
@@ -152,8 +152,8 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     const sources = doc.getMap<unknown>('sources');
     sources.forEach((value, id) => {
       if (Object.hasOwn(known, id)) return;
-      const parsed = TimelineVideoSourceSchema.safeParse(value instanceof Y.Map ? value.toJSON() : value);
-      if (parsed.success) known[id] = parsed.data;
+      const source = readTimelineSource(value, id);
+      if (source !== undefined) known[id] = source;
     });
     if (!canWrite) return;
     if (missingTimelineSourceIds(doc, known).length > 0) doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN);
