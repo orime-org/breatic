@@ -133,14 +133,14 @@ describe('operation-owned model inspection worker', () => {
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps entry choices on a model refused while it is parsed', async () => {
+  it('keeps entry choices and the main file on a model refused while it is parsed', async () => {
     parse.mockRejectedValueOnce(new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
       budget: { limit: 'textureBytes', allowed: 10, actual: 20 } }));
     const running = prepareSceneModel(FILES, undefined, new AbortController().signal, IMPORT_LIMITS);
     await vi.waitFor(() => expect(ControlledWorker.instances).toHaveLength(1));
     ControlledWorker.instances[0].onmessage?.(new MessageEvent('message', { data: { ok: true, selection: SELECTION } }));
     await expect(running).rejects.toMatchObject({ code: 'budget', budget: { limit: 'textureBytes', allowed: 10, actual: 20 },
-      info: { entries: SELECTION.entries, paths: SELECTION.paths, missing: [] } });
+      info: { entry: SELECTION.model.entry, entries: SELECTION.entries, paths: SELECTION.paths, missing: [] } });
   });
 
   it('cancels one worker without affecting another operation or accepting its late reply', async () => {
