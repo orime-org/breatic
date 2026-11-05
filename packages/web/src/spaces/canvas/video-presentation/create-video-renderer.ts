@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { alphaManifestMatchesPresentation, alphaManifestSchema, parseVideoPresentation } from '@breatic/shared';
-import type { AlphaManifest, VideoPresentation } from '@breatic/shared';
+import { alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationVersionSchema } from '@breatic/shared';
+import type { AlphaPackedManifest } from '@breatic/shared';
 import type { VapPlayer } from 'video-animation-player';
-import type { VideoPresentationSource, VideoRendererCallbacks, VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
+import { presentedSizeOf, type PresentedSize, type VideoPresentationSource, type VideoRendererCallbacks, type VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
 
 /** One pending platform callback, whose logical handle survives a seek rearm. */
 interface PendingFrame { logical: number; actual: number; callback: VideoFrameRequestCallback }
@@ -85,14 +85,14 @@ function guardFrameCallbacks(video: HTMLVideoElement, callbacks: VideoRendererCa
 }
 
 /**
- * Creates a paused native source only after its trusted opaque classification.
+ * Creates a paused native renderer of the selected version's carrier.
  * @param host - Effect-owned host.
- * @param source - Current canonical asset.
+ * @param carrierURL - The selected native version's carrier.
  * @param callbacks - Current instance notifications.
  * @returns Resource cleanup.
  * @throws {never} Native decode failures are reported through callbacks.
  */
-function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks): VideoRendererResource {
+function createNativeRenderer(host: HTMLElement, carrierURL: string, callbacks: VideoRendererCallbacks): VideoRendererResource {
   const video = document.createElement('video');
   video.crossOrigin = 'anonymous';
   video.playsInline = true;
@@ -128,7 +128,7 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
   video.addEventListener('error', error);
   host.append(video);
   if (typeof video.requestVideoFrameCallback === 'function') frameHandle = video.requestVideoFrameCallback(frame);
-  video.src = source.playbackURL ?? source.canonicalURL;
+  video.src = carrierURL;
   video.pause();
   video.load();
   return { dispose: () => {
@@ -147,15 +147,15 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
 }
 
 /**
- * Adapts owned pixel rectangles into the fixed library's ephemeral configuration.
- * @param manifest - Validated packed object geometry.
- * @param presentation - Original canonical dimensions.
+ * Adapts the manifest's own fields into the fixed library's ephemeral configuration (§3.5 alpha manifest row).
+ * @param manifest - The verified manifest: packed size and the logical colour and alpha rectangles.
+ * @param size - The version's display size.
  * @returns VAP-only data, never persisted or written to canvas fields.
  * @throws {never} Never.
  */
-function vapConfig(manifest: AlphaManifest, presentation: VideoPresentation): Record<string, unknown> {
+function vapConfig(manifest: AlphaPackedManifest, size: PresentedSize): Record<string, unknown> {
   return { info: {
-    v: 2, f: 0, w: presentation.original.width, h: presentation.original.height,
+    v: 2, f: 0, w: size.width, h: size.height,
     videoW: manifest.packedWidth, videoH: manifest.packedHeight, orien: 0,
     // VAP uses this only for optional per-frame effects, which this adapter has
     // none of. Its draw clock always comes from the browser, never this rate.
@@ -174,11 +174,12 @@ function vapConfig(manifest: AlphaManifest, presentation: VideoPresentation): Re
  * @throws {never} Initialization failures are reported through callbacks.
  */
 function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks): VideoRendererResource {
-  const manifest = alphaManifestSchema.safeParse(source.manifest);
-  if (!manifest.success || !alphaManifestMatchesPresentation(manifest.data, source.presentation)) {
+  const manifest = alphaPackedManifestSchema.safeParse(source.manifest);
+  if (!manifest.success || !alphaPackedManifestMatchesVersion(manifest.data, source.presentation)) {
     callbacks.error('invalid-alpha-manifest');
     return { dispose: () => {} };
   }
+  const size = presentedSizeOf(source.presentation);
   const root = document.createElement('div');
   root.style.cssText = 'width:100%;height:100%';
   host.append(root);
@@ -326,7 +327,7 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
       queueMicrotask(fallbackDraw);
       return Promise.resolve();
     };
-    instance.play({ container: root, src: manifest.data.packedURL, config: vapConfig(manifest.data, source.presentation), width: source.presentation.original.width, height: source.presentation.original.height, loop: false, mute: false, accurate: true, precache: false, onLoadError: mediaError });
+    instance.play({ container: root, src: manifest.data.packed.url, config: vapConfig(manifest.data, size), width: size.width, height: size.height, loop: false, mute: false, accurate: true, precache: false, onLoadError: mediaError });
   }).catch(() => { if (live) callbacks.error('renderer-initialization-failed'); });
 
   return { dispose: () => {
@@ -353,16 +354,17 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
 /**
  * Creates the approved native or packed-alpha renderer for a ready source.
  * @param host - Effect-owned presentation host.
- * @param source - Canonical descriptor and optional owned alpha manifest.
+ * @param source - The selected version and, when alpha-packed, its verified manifest.
  * @param callbacks - Identity-checked resource notifications.
  * @returns Cleanup for every resource, including partially initialized ones.
  * @throws {never} Resource errors are reported through callbacks.
  */
 export function createVideoRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks): VideoRendererResource {
-  const descriptor = parseVideoPresentation(source.presentation, source.sourceFingerprint);
-  if (!descriptor || (descriptor.state !== 'native' && descriptor.state !== 'alpha_ready')) {
+  const version = videoPresentationVersionSchema.safeParse(source.presentation);
+  if (!version.success || version.data.sourceFingerprint !== source.sourceFingerprint) {
     callbacks.error('invalid-presentation');
     return { dispose: () => {} };
   }
-  return descriptor.state === 'native' ? createNativeRenderer(host, source, callbacks) : createAlphaRenderer(host, source, callbacks);
+  const { playback } = version.data;
+  return playback.kind === 'native' ? createNativeRenderer(host, playback.carrier.url, callbacks) : createAlphaRenderer(host, source, callbacks);
 }

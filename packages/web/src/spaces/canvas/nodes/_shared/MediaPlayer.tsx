@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type { VideoPresentationSourceBinding } from '@breatic/shared';
-import type { VideoPresentationSource, MediaSurfaceSnapshot, PresentedMediaFrame, MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
+import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type MediaSurfaceSnapshot, type PresentedMediaFrame, type MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
@@ -174,7 +174,7 @@ export function MediaPlayer({
   const ref = React.useRef<HTMLMediaElement>(null);
   const isVideo = modality === 'video';
   const ownsVideo = isVideo && videoSource !== undefined;
-  const key = videoSource ? JSON.stringify([videoSource.canonicalURL, videoSource.sourceFingerprint]) : JSON.stringify([src, null]);
+  const key = videoSource ? runtimeSourceKeyOf(videoSource) : JSON.stringify([src, null]);
   const wanted = React.useRef({ key, active });
   wanted.current = { key, active };
   const consumers = React.useRef({ onVideoBinding, onPresentedFrame, onDimensions });
@@ -419,7 +419,7 @@ export function MediaPlayer({
   );
 
   if (ownsVideo) {
-    const original = videoSource?.presentation.original ?? size;
+    const original = videoSource ? presentedSizeOf(videoSource.presentation) : size;
     const loadingOwner = snapshot?.status !== 'ready';
     return <div className={cn('@container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
       <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame}>

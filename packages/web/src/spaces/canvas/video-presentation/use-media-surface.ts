@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { parseVideoPresentation } from '@breatic/shared';
+import { videoPresentationVersionSchema } from '@breatic/shared';
 import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
 import { createPresentedFrameClock, type PresentedFrameClock } from '@web/spaces/canvas/video-presentation/presented-frame-clock';
-import type { PresentedMediaFrame, MediaSurfaceBinding, MediaSurfaceSnapshot, VideoPresentationSource, VideoRendererFactory, VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
+import { presentedSizeOf, runtimeSourceKeyOf, type PresentedMediaFrame, type MediaSurfaceBinding, type MediaSurfaceSnapshot, type VideoPresentationSource, type VideoRendererFactory, type VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
 
 /** Options for one effect-owned canvas video surface. */
 export interface MediaSurfaceOptions {
@@ -42,14 +42,15 @@ export function useMediaSurface({ host, container, source, active, createRendere
 
   React.useEffect(() => {
     if (!active || !source || !host.current) { setSnapshot(DETACHED); return; }
-    const descriptor = parseVideoPresentation(source.presentation, source.sourceFingerprint);
-    if (!descriptor) { setSnapshot({ status: 'failed', binding: null, error: 'invalid-presentation' }); return; }
-    if (descriptor.state === 'failed') { setSnapshot({ status: 'failed', binding: null, error: descriptor.error ?? 'presentation-failed' }); return; }
+    // Only a selected version of this very source reaches a renderer (§7.8).
+    const version = videoPresentationVersionSchema.safeParse(source.presentation);
+    if (!version.success || version.data.sourceFingerprint !== source.sourceFingerprint) { setSnapshot({ status: 'failed', binding: null, error: 'invalid-presentation' }); return; }
+    const original = presentedSizeOf(version.data);
     setSnapshot({ status: 'loading', binding: null, error: null });
-    if (descriptor.state !== 'native' && descriptor.state !== 'alpha_ready') return;
 
     const epoch = ++sourceEpoch.current;
-    const sourceKey = JSON.stringify([source.canonicalURL, source.sourceFingerprint]);
+    // The key names the version this resource shows; no binding reports it before the resource is ready (§3.3).
+    const sourceKey = runtimeSourceKeyOf(source);
     let live = true;
     let terminal = false;
     let contextLost = false;
@@ -92,7 +93,7 @@ export function useMediaSurface({ host, container, source, active, createRendere
           clock = createPresentedFrameClock(element, surface, sourceKey, epoch);
           const frameClock = clock;
           binding = {
-            sourceKey, sourceEpoch: epoch, element, surface, container: container?.current ?? host.current!, original: descriptor.original,
+            sourceKey, sourceEpoch: epoch, element, surface, container: container?.current ?? host.current!, original,
             getSeekEpoch: frameClock.getSeekEpoch,
             getPresentedFrame: frameClock.getFrame,
             seek: (seconds) => {

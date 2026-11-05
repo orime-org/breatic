@@ -62,8 +62,8 @@ async function readThumbnails(source: VideoPresentationSource, frames: readonly 
     const element = video! as HTMLVideoElement;
     const image = surface! as HTMLVideoElement | HTMLCanvasElement;
     const canvas = document.createElement('canvas');
-    canvas.width = source.presentation.original.width;
-    canvas.height = source.presentation.original.height;
+    canvas.width = source.presentation.display.width;
+    canvas.height = source.presentation.display.height;
     const context = canvas.getContext('2d');
     if (context === null) throw new Error('Thumbnail canvas unavailable');
     const result: VideoThumbnail[] = [];

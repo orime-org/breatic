@@ -34,7 +34,7 @@ export function VideoPresentationSurface({ source, active, onBinding, onPresente
   const container = React.useRef<HTMLDivElement>(null);
   const { status, binding, error } = useMediaSurface({ host, container, source, active, onPresentedFrame });
   const snapshot = React.useMemo(() => ({ status, binding, error }), [status, binding, error]);
-  const style = React.useMemo(() => source ? { aspectRatio: `${source.presentation.original.width}/${source.presentation.original.height}` } : undefined, [source]);
+  const style = React.useMemo(() => source ? { aspectRatio: `${source.presentation.display.width}/${source.presentation.display.height}` } : undefined, [source]);
   React.useEffect(() => { onBinding(snapshot); }, [snapshot, onBinding]);
   React.useEffect(() => () => onBinding(DETACHED), [onBinding]);
   return (
