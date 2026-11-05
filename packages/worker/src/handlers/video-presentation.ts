@@ -120,7 +120,14 @@ async function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobI
   const windows = answer.work.kind === 'encode' ? answer.work.chunks : [];
   const inputs = [{ inputId: SOURCE_INPUT_ID, storageKey: identity.storageKey }];
   let recipe: MiniToolPlanRecipe;
-  if (unit.kind === 'presentation-copy') recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: (await ledgerOf(pickup)).plan.colorMatrix };
+  if (unit.kind === 'presentation-copy') {
+    // The audio choice is the DO's, from the probe's audioCopyable (§7.17 copy_carrier row); encoding uses the stitch's entries.
+    const ledger = await ledgerOf(pickup);
+    const choice = answer.copyAudio;
+    if (choice === undefined) return null;
+    recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: ledger.plan.colorMatrix,
+      audio: choice === null ? null : choice === 'copy' ? { kind: 'copy' } : { kind: 'encode', ...audioOf(ledger) } };
+  }
   else if (unit.kind === 'presentation-chunk') {
     const window = windows[unit.chunk];
     if (window === undefined) return null;
