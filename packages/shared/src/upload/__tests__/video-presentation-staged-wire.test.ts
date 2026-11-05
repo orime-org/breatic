@@ -339,6 +339,12 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
     expect(parse({ ...answer, units })).toBe(true);
   });
 
+  const DISPATCHED_COPY = { plan: { ...answer.plan, route: 'dispatch_copy', stages: ['plan', 'dispatch_copy', 'publish'] }, work: { kind: 'dispatch_copy' } };
+
+  it.each(['copy', 'encode', null])('PA04 parses a dispatched copy whose audio is %s (§94 D8)', (copyAudio) => {
+    expect(parse({ ...answer, ...DISPATCHED_COPY, copyAudio })).toBe(true);
+  });
+
   it('PA02 parses a job that was not granted: no capability, plan or work', () => {
     expect(parse({ ...answer, capability: null, plan: null, work: { kind: 'none' }, candidateLedger: null, units: {} })).toBe(true);
   });
@@ -360,6 +366,9 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
     ['no frozen carrier parameters', { frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null } }],
     ['a frozen crf out of range', { frozen: { ...answer.frozen, carrier: { crf: 52, preset: 'medium', maxShortSide: 1080 } } }],
     ['a deadline outside the capability', { deadlineAt: D }],
+    // §94 D8 (design §7.17 copy_carrier row): exactly a dispatched copy names its audio, from the probe's audioCopyable.
+    ['a dispatched copy without its copyAudio', DISPATCHED_COPY],
+    ['copyAudio under an encode route', { copyAudio: 'copy' }],
   ])('PA03 rejects an answer with %s', (_name, change) => {
     expect(parse(answer)).toBe(true);
     expect(parse({ ...answer, ...change })).toBe(false);
