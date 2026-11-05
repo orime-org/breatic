@@ -495,6 +495,13 @@ describe('checks follow the resources GLTFLoader loads (inner#1690)', () => {
     expect(await parseIn(model, true)).toEqual(overBudget);
   });
 
+  it('counts an image once under two samplers with the same values, as WebGLRenderer shares its source', async () => {
+    const model = triangle({ images: [{ uri: 'atlas.png' }], textures: [{ source: 0, sampler: 0 }, { source: 0, sampler: 1 }], samplers: [{}, {}],
+      meshes: [{ primitives: [0, 1].map((material) => ({ attributes: { POSITION: 0 }, material })) }],
+      materials: [0, 1].map((index) => ({ pbrMetallicRoughness: { baseColorTexture: { index } } })) }, [['atlas.png', png(6144)]]);
+    expect(await parseIn(model, true)).toBe('accepted');
+  });
+
   it('counts the largest image among entries GLTFLoader caches under one key', async () => {
     const big = png(6144);
     const model = triangle({ images: [{ uri: 's.png' }, { uri: 's.png', bufferView: 1 }], textures: [{ source: 1 }, { source: 0 }, { source: 1, sampler: 0 }, { source: 0, sampler: 0 }],
