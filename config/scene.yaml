@@ -1,13 +1,22 @@
 # Uniform-scale screen-drag sensitivity for the versioned Three controls adapter.
 scale_sensitivity: 0.01
 
-# Bounded local model preparation and registered-asset rendering.
+# Model import budgets, served to Project Viewers by GET /projects/:id/three-d/config and applied
+# when a model is imported and whenever a registered model is opened.
 import:
+  # Total bytes of the selected files; an imported ZIP counts by its own size.
   max_input_bytes: 67108864
+  # Uncompressed bytes of a ZIP's entries, and the bytes a model package holds.
   max_expanded_bytes: 268435456
+  # Bytes of the registered GLB or model package, when it is packed and when it is read back.
   max_artifact_bytes: 268435456
+  # Files in a selection, archive or package; a package's manifest.json is not counted.
   max_files: 4096
+  # Bytes of the glTF JSON (the .gltf file or the GLB JSON chunk) and of a package manifest.
   max_entry_json_bytes: 4194304
+  # Workers each of the Draco and KTX2 decoders may start.
   decoder_worker_limit: 1
+  # Largest declared texture edge in pixels; a device with a smaller GPU limit applies its own to what it decodes.
   max_texture_edge: 8192
+  # Cumulative texture upload bytes for any browser that can open the model, counted from the declarations.
   max_texture_bytes: 268435456

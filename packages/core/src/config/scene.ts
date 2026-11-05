@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
-/** Runtime parameters for the versioned 3D scene controls adapter. */
+/** Runtime parameters for the versioned 3D scene controls adapter and the model import budgets. */
 export const sceneConfigSchema = z.object({
   scale_sensitivity: z.number().finite().positive().default(0.01),
   import: z.object({

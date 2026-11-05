@@ -43,9 +43,10 @@ export interface UploadTicket {
 }
 
 /**
- * Where an upload lands, and what a picture is uploaded to become (filed as
- * the asset's source): a project, which may be uploading its cover, or a
- * studio, which uploads nothing but its avatar.
+ * Where an upload lands and what it is for: a project, which may be uploading
+ * its cover (filed as the asset's source) or a 3D scene model (filed as an
+ * ordinary upload with no node), or a studio, which uploads nothing but its
+ * avatar (filed as the asset's source).
  */
 export type UploadTargetParams =
   | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' }
