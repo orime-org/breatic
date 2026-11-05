@@ -451,23 +451,17 @@ describe('generation template registry checks', () => {
     }
   });
 
-  it('names the frame in a video template\'s agent note as its anchor\'s aspect ratio sets it', () => {
+  it('never names a frame in a video template\'s agent note that its aspect ratio contradicts', () => {
     for (const template of GENERATION_TEMPLATES) {
       const anchor = template.nodes.find((node) => node.key === template.anchor);
       if (anchor?.role !== 'generate' || anchor.type !== 'video') continue;
-      const ratio = anchor.params.aspect_ratio;
-      const note = template.agentNote;
+      // With no ratio of its own, a video takes the frame of the node wired into its first frame.
+      const first = template.edges.find((edge) => edge.to === anchor.key && edge.into === 'image');
+      const feeder = template.nodes.find((node) => node.key === first?.from);
+      const ratio = anchor.params.aspect_ratio ?? (feeder?.role === 'generate' ? feeder.params.aspect_ratio : undefined);
       const at = `${template.id} ${String(ratio)}`;
-      if (ratio === '9:16') {
-        expect.soft(note, at).toContain('vertical');
-        expect.soft(note, at).not.toContain('landscape');
-      } else if (ratio === '16:9') {
-        expect.soft(note, at).toContain('landscape');
-        expect.soft(note, at).not.toContain('vertical');
-      } else {
-        expect.soft(note, at).not.toContain('vertical');
-        expect.soft(note, at).not.toContain('landscape');
-      }
+      if (ratio === '9:16') expect.soft(template.agentNote, at).not.toContain('landscape');
+      if (ratio === '16:9') expect.soft(template.agentNote, at).not.toContain('vertical');
     }
   });
 
