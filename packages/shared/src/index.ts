@@ -1073,14 +1073,10 @@ export {
 
 export {
   videoPresentationOriginalSchema,
-  alphaManifestSchema,
   videoPresentationKeyFor,
-  parseVideoPresentation,
-  alphaManifestMatchesPresentation,
   packedGeometrySchema,
   type PackedGeometry,
   type VideoPresentation,
-  type AlphaManifest,
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
 export {

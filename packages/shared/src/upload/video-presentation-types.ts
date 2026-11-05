@@ -19,16 +19,6 @@ export interface VideoPresentation {
   attempt?: { jobId: string; deadlineAt: number };
   error?: string;
 }
-/** Geometry and URL of one verified packed-alpha derivative. */
-export interface AlphaManifest {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  packedURL: string;
-  packedWidth: number;
-  packedHeight: number;
-  colorRect: VideoPresentationRect;
-  alphaRect: VideoPresentationRect;
-}
 /** Frozen operational and subprocess ceilings for one auxiliary attempt. */
 export interface VideoPresentationProcessLimits {
   sourceLedger?: VideoSourceLedgerProcessLimits;
