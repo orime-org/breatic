@@ -759,7 +759,9 @@ export function renderProductGuide(): string {
       `prompt, the line ${quoted(t("canvas.generatePanel.promptNotUsed"))} stands in its place; on the sound ` +
       "panel the box stays, but nothing typed in it is sent. On the music modes the box is " +
       `labelled ${quoted(t("canvas.generatePanel.musicStyleLabel"))}, and some music models add a second box ` +
-      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it.`,
+      `labelled ${quoted(t("canvas.generatePanel.musicLyricsLabel"))} under it. Only one of the two is open at a ` +
+      "time: the other is a row with its name and the first line of its words, and clicking that row opens it " +
+      "and folds the open one. The style box is the open one when the panel opens.",
     "The bottom row, left to right: the mode, named in English on every screen (for example Text to Image); the " +
       "model's maker icon and name; a pill showing the current settings (for example 1k · 1:1 · Medium, or " +
       `${quoted(t("canvas.generatePanel.videoParams"))} or ${quoted(t("canvas.generatePanel.audioSettings"))} ` +
@@ -832,15 +834,20 @@ export function renderProductGuide(): string {
       "The picks show as their bracket beside the count at the bottom. " +
       `${quoted(t("canvas.generatePanel.cameraCommandsInsert"))} writes the picks into the prompt as one bracket, ` +
       "such as [Push in,Zoom out], at the caret last left in the prompt box, or at its end if none was; in " +
-      "Multi-Shot it goes into the shot box clicked into last, or the first shot. The bracket is ordinary text " +
+      "Multi-Shot it goes into the open shot. The bracket is ordinary text " +
       "that can be edited or deleted. Inserting again adds another bracket, and separate brackets run in the order " +
       "they appear in the prompt.",
     `- Multi-Shot, a mode in the video panel's mode picker: the prompt box gives way to one card per shot, and ` +
       "switching into it with no shots lays out two, splitting the video's length. A card, such as " +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
-      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in the shot box clicked into last, or in the first shot. Under the " +
+      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt. ` +
+      "Only one shot is open at a time, the first when the panel opens: each other shot is one row showing its " +
+      "number, its seconds and the first line of its words, and its minus, plus and " +
+      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} still work there. Clicking a row opens that ` +
+      "shot and folds the open one; an added shot opens; removing the open shot opens the one after it, or the " +
+      "one before it when it was the last; and " +
+      "clicking a chip in the strip puts it in the open shot's box. Under the " +
       `cards, in the middle, is ${quoted(t("canvas.generatePanel.storyboard.addShot"))}. The shots' seconds keep ` +
       "adding up to the video's length: the plus takes a second from another shot and the minus gives one to " +
       "the shot after it, or to the one before it on the last shot, so the minus is greyed at one second or " +
@@ -940,8 +947,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
       "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
-      "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
-      "that box is shown.",
+      "at once from every box of the mode on screen, folded ones included, and from another mode's prompt, or " +
+      "from the shots while another mode is showing, the next time that box is shown.",
     "",
     "## Mini-tools",
     `Right-click a picture, video or sound node and point at ${quoted(t("canvas.nodeMenu.tools"))}: a list opens to ` +

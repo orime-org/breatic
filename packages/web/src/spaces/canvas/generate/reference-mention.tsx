@@ -18,6 +18,7 @@ import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { Crop } from 'lucide-react';
 import * as React from 'react';
+import type * as Y from 'yjs';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
@@ -55,6 +56,18 @@ export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
 export const MENTION_LABEL_ATTR = 'label';
 /** Attr key on a reference-mention node carrying the source node modality (icon fallback). */
 export const MENTION_KIND_ATTR = 'kind';
+
+/**
+ * A stored reference chip read as the name its pill shows.
+ * @param element - An element inside a prompt fragment.
+ * @param fallback - The name for a chip that carries none.
+ * @returns `@` and the name, or undefined when the element is not a chip.
+ */
+export function chipDisplayText(element: Y.XmlElement, fallback: string): string | undefined {
+  if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
+  const label = element.getAttribute(MENTION_LABEL_ATTR);
+  return `@${typeof label === 'string' && label !== '' ? label : fallback}`;
+}
 
 /**
  * Builds the ProseMirror content for a reference-mention atom from a pool row,
