@@ -393,3 +393,37 @@ describe('queueing and recovery after admission (inner#1306 §5.1 step 1, §7.1.
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'failed-job' }), expect.objectContaining({ jobId: 'failed-job' }));
   });
 });
+
+// §93 D6 (frames-split design §3.5 web→server and server/worker→ingest rows, §7.2 invalid×New): a discovery read admits on its
+// own only under a condition the DO re-checks: `expect: 'first'` when nothing is selected and nothing is being prepared,
+// `expect: 'readmit'` when nothing is selected and the snapshot's `readmit` is true. A user repair carries no `expect`.
+describe('conditional admissions from the discovery read (§93 D6; design §3.5)', () => {
+  it('DE01 nothing selected and nothing prepared: the read admits with expect first', async () => {
+    ingest(snapshot());
+    await resolveVideoPresentation(input);
+    expect(acceptSent()).toMatchObject({ expect: 'first' });
+  });
+
+  it('DE02 nothing selected and readmit true: the read admits with expect readmit', async () => {
+    ingest(snapshot({ preparation: prep('video-presentation-a', 'publish'), readmit: true }));
+    await resolveVideoPresentation(input);
+    expect(acceptSent()).toMatchObject({ expect: 'readmit' });
+  });
+
+  it('DE03 nothing selected, a preparation present and readmit false: the read admits nothing', async () => {
+    ingest(snapshot({ preparation: prep('video-presentation-a', 'publish', 'presentation_invalid'), readmit: false }));
+    await resolveVideoPresentation(input);
+    expect(sent().map((request) => request.action)).toEqual(['read']);
+  });
+
+  it('DE04 a user repair admits without expect', async () => {
+    ingest(snapshot());
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
+    expect(acceptSent()).not.toHaveProperty('expect');
+  });
+
+  it('DE05 a registration-time initialization admits without expect', async () => {
+    await ensureVideoPresentation({ assetId: asset.id });
+    expect(acceptSent()).not.toHaveProperty('expect');
+  });
+});
