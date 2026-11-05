@@ -779,12 +779,14 @@ function putInLine(view: EditorView, blocks: readonly ReadBlock[], $caret: Resol
       tr.replaceWith(start, end, laid);
       caret = startOf(laid, laid.length - 1) + 2 + tail.firstChild!.content.size;
       to = caret;
-    } else if (!nonParagraph && WORDS.has(lastInReading(content[content.length - 1]!).type)) {
-      // An empty plain line becomes the last pasted block when the content
-      // ends in words, its type, attributes and nested blocks, keeping the
-      // line's id and nested blocks (§5.4.3), and a moved line keeping its
-      // own id (A19); content ending in a medium leaves the line for the caret.
-      const tail = nodes[nodes.length - 1]!;
+    } else if (WORDS.has(lastInReading(content[content.length - 1]!).type)) {
+      // An empty line becomes the last pasted block when the content ends in
+      // words, keeping the line's id and nested blocks (§5.4.3), and a moved
+      // line keeping its own id (A19): an empty plain line takes the block's
+      // type and attributes, an empty heading, list item or to-do keeps its own
+      // and takes the block's words and nested lines. Content ending in a
+      // medium leaves the line for the caret.
+      const tail = nonParagraph ? retyped(nodes[nodes.length - 1]!, line.node) : nodes[nodes.length - 1]!;
       const id = carriedId(content[content.length - 1]![BODY_NODE]) ?? line.node.attrs['id'];
       const put = [...nodes.slice(0, -1), tail.type.create({ ...tail.attrs, id }, tail.content)];
       laid = nestLast(put, line.node);

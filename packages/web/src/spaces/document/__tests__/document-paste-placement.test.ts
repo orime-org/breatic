@@ -346,6 +346,23 @@ describe.each(SOURCES)('%s with words then a picture, on an empty line that is n
   });
 });
 
+describe('an empty line that is not a paragraph, taking content whose last line has lines nested under it', () => {
+  it.each([
+    ['list item', { type: 'bulletListItem' }, 'bulletListItem'],
+    ['heading', { type: 'heading', props: { level: 2 } }, 'heading#2'],
+    ['to-do', { type: 'checkListItem' }, 'checkListItem'],
+  ])('a %s gives its type to that line, keeps what is nested under it, and leaves no line behind', async (_name, line, label) => {
+    const editor = open([{ type: 'paragraph', content: 'top' }, line, { type: 'paragraph', content: 'end' }]);
+    caretIn(editor, 1);
+    paste(editor, '<ul><li>a<ul><li>b</li></ul></li></ul>', 'a\nb');
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['paragraph:top', `${label}:a`, '  bulletListItem:b', 'paragraph:end'],
+      caret: 'b@1',
+    });
+  });
+});
+
 describe('a line the content\'s last words join', () => {
   it('keeps the reader\'s type', async () => {
     const editor = open([{ type: 'heading', content: 'abcd', props: { level: 2 } }]);
