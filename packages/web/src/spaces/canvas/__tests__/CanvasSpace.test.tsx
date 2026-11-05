@@ -122,6 +122,7 @@ import { hashFile } from '@web/data/upload/hash';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 import { hasRetryFile, resetRetryFilesForTests } from '@web/spaces/canvas/upload-retry-files';
+import { presentedBinding, presentedBundle, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -3809,15 +3810,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const queryKey = videoPresentationQuery({ projectId: 'p', canonicalURL: 'https://cdn/clip.mp4', active: true }).queryKey;
     const sourceFingerprint = 'a'.repeat(64);
-    const source: VideoPresentationResponse = {
-      sourceBinding: {
-        assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14',
-        canonicalURL: 'https://cdn/clip.mp4', contentHash: sourceFingerprint, kind: 'video',
-        mediaInfo: { width: 800, height: 600, duration: 10, mimeType: 'video/mp4' },
-      },
-      presentation: { schemaVersion: 1, state: 'native', sourceFingerprint, original: { width: 800, height: 600, duration: 10 } },
-      preparation: null, pollAfterMs: null,
-    };
+    // §95: the selected bundle with its ready ledger (fixture migrated from the earlier `state: 'native'` descriptor, 4.4.5).
+    const selected = presentedBundle('https://cdn/clip.mp4', { sourceFingerprint, display: { width: 800, height: 600, duration: { numerator: '10', denominator: '1' } } });
+    const source: VideoPresentationResponse = presentedResponse(presentedBinding('https://cdn/clip.mp4', { width: 800, height: 600, duration: 10, mimeType: 'video/mp4' }, sourceFingerprint),
+      { presentation: selected, ledger: readyLedger(selected, 250) });
     client.setQueryDefaults(queryKey, { staleTime: Infinity });
     client.setQueryData(queryKey, source);
     renderSpace(false, client);

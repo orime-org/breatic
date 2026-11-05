@@ -13,6 +13,7 @@ import { QueryClientProvider, queryClient } from '@web/app/providers/QueryClient
 import { videoPresentationQuery } from '../../../video-presentation/video-presentation-query';
 import type { VideoPresentationResponse } from '@breatic/shared';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../../../video-presentation/types';
+import { presentedBundle } from '@web/test-utils/video-presentation';
 
 const driver = vi.hoisted(() => ({ sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[] }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
@@ -129,7 +130,9 @@ vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async 
     queryKey: ['video-presentation', 1, input.projectId, input.canonicalURL], enabled: input.active,
     queryFn: async (): Promise<VideoPresentationResponse> => ({
       sourceBinding: { assetId: '10000000-0000-4000-8000-000000000001', contentHash: source.sourceFingerprint, canonicalURL: input.canonicalURL, kind: 'video', mediaInfo: { width: 160, height: 240, duration: 10, mimeType: 'video/webm' } },
-      presentation: source.presentation, manifest: source.manifest, preparation: null, pollAfterMs: null,
+      // §95: the read carries the selected bundle and its ledger; the manifest is a bundle receipt, not a response field (4.4.5).
+      presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: source.sourceFingerprint, display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } } }),
+      preparation: null, ledger: null, pollAfterMs: 5000,
     }),
   })),
 }));
