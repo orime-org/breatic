@@ -415,7 +415,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }, {
     // A multi_shot generate node naming a template and sending no shots.
     meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['"Clip" names template "fixture-shots" and sends no prompt.', 'On node 1 ("Clip"), write a prompt.'],
+    states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],
