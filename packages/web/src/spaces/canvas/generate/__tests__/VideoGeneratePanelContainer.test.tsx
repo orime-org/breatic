@@ -2702,6 +2702,18 @@ describe('the multi-shot mode', () => {
     await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
   });
 
+  it('keeps the open shot open across a model switch in the multi-shot mode (#1201)', async () => {
+    await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
+    // The caret lands in the box a frame later, and would close a menu opened before it.
+    await waitFor(() => expect(caretIn(2)).toBe(true));
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    await userEvent.click(await screen.findByTestId('generate-model-option-wan-3'));
+    await waitFor(() => expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([4, 6]));
+    expect(screen.getByTestId('generate-storyboard-shot-2-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-storyboard-shot-1-editor')).not.toBeVisible();
+  });
+
   it('re-splits the shots to the new model\'s total on a model switch in the multi-shot mode', async () => {
     await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     const name = docName.canvasSpace('p', 's');
