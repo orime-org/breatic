@@ -22,7 +22,7 @@
  * alone, empty lines): nothing is taken away for it.
  */
 
-import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import type { Slice } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
@@ -32,24 +32,11 @@ import { t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { landingAsDrop, landingSlice, withoutRowIdsIn } from '@web/spaces/document/document-comment-paste';
 import { readClipboardSlice, rowsOf } from '@web/spaces/document/document-paste-slice';
-import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
+import { storedTableRange } from '@web/spaces/document/document-table-copy';
+import { holdsContent, holdsNode, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
 /** The editor a drop is put by. */
 type Editor = Parameters<typeof putContent>[0];
-
-/**
- * Whether a slice holds a stored (legacy) table.
- * @param slice - The slice.
- * @returns True when one is in it.
- */
-function holdsStoredTable(slice: Slice): boolean {
-  let found = false;
-  slice.content.descendants((node: PMNode) => {
-    if (node.type.name === 'table') found = true;
-    return !found;
-  });
-  return found;
-}
 
 /**
  * Puts a drag within the body as its paste at the drop point.
@@ -59,6 +46,7 @@ function holdsStoredTable(slice: Slice): boolean {
  * @param slice - The dragged content as ProseMirror hands it to `handleDrop`, read when the drag's own is not there.
  * @param moved - Whether the drop moves it, as ProseMirror reads the keys at the drop.
  * @returns True when the drop was handled here.
+ * @throws {Error} What the placement threw, the dragged content given back first.
  */
 export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, slice: Slice, moved: boolean): boolean {
   const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
@@ -73,18 +61,21 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   const node = (view.dragging as { node?: { replace: (tr: Transaction) => void } } | null)?.node;
   const removes = moved && (node !== undefined || !selection.empty);
   const tr = view.state.tr;
-  if (removes && node === undefined) tr.deleteSelection();
+  const stored = storedTableRange(selection);
+  if (removes && stored !== null) tr.delete(stored.from, stored.to);
+  else if (removes && node === undefined) tr.deleteSelection();
   else if (removes) node!.replace(tr);
   // The drag's own content as ProseMirror took it at dragstart, through the
   // copy transforms (`document-table-copy.ts`); the slice it hands over has
   // also been through the paste transforms against the selection the drag
   // began from. Its comments and row ids are settled here at the drop point.
   const dragged = view.dragging?.slice ?? slice;
-  const landed = withoutRowIdsIn(removes ? dragged : landingSlice(dragged, view, true), tr.doc);
   // A stored table, whole or left, is read as its copy is, as a table whose
-  // cells hold blocks (temporary, with #1362's stored tables).
-  const parsed = holdsStoredTable(landed);
-  const content = parsed ? readClipboardSlice(view.state.schema, view.serializeForClipboard(landed).dom.innerHTML, '') : landed;
+  // cells hold blocks (temporary, with #1362's stored tables), before its
+  // comments and row ids are settled, which the HTML would not carry.
+  const parsed = holdsNode(dragged.content, 'table');
+  const read = parsed ? readClipboardSlice(view.state.schema, view.serializeForClipboard(dragged).dom.innerHTML, '') : dragged;
+  const content = withoutRowIdsIn(removes ? read : landingSlice(read, view, true), tr.doc);
   const { rows } = rowsOf(content);
   if (!holdsContent(rows, parsed)) return true;
   if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, rows)) {
@@ -100,20 +91,28 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   // while it puts the drop as a paste there.
   const dragging = view.dragging;
   view.dragging = null;
+  /** Gives the dragged content back where the move took it from. */
+  const giveBack = (): void => {
+    const back = view.state.tr;
+    for (let i = tr.steps.length - 1; i >= 0; i -= 1) back.step(tr.steps[i]!.invert(tr.docs[i]!));
+    view.dispatch(back.setSelection(selection.getBookmark().resolve(back.doc)));
+  };
   let placed: Placed | null;
   try {
     placed = landingAsDrop(removes, () =>
       putContent(editor, { source: { kind: 'slice', slice: content, parsed }, lost: 0, plain: null }, { wordsIntoTarget: true, judge: (props) => props, dropAt: point, byPaste: true, landed: true }),
     );
+  } catch (error) {
+    // The placement put the body back as the move left it; the move goes too.
+    if (removes) giveBack();
+    throw error;
   } finally {
     view.dragging = dragging;
   }
   // A move whose drop puts nothing gives the dragged content back, as
   // ProseMirror's own drop gives up when its insertion changes nothing.
   if (removes && view.state.doc.eq(taken)) {
-    const back = view.state.tr;
-    for (let i = tr.steps.length - 1; i >= 0; i -= 1) back.step(tr.steps[i]!.invert(tr.docs[i]!));
-    view.dispatch(back.setSelection(selection.getBookmark().resolve(back.doc)));
+    giveBack();
     return true;
   }
   if (placed !== null) selectPlaced(view, placed);
