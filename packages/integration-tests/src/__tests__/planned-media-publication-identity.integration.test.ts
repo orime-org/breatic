@@ -126,20 +126,23 @@ describe("planned publication keeps SQL output identity across real Redis entrie
     await expectPersistence(f, source, "done");
   });
 
-  it("P02 terminal replay publishes another transport entry with the same origin and one canonical history row", async () => {
+  // Contract change (design §7.11, §10.8 失败与提交; round 4, user 2026-11-05): the terminal commit delivers only positions still
+  // pending, so a replayed terminal finds the slot published and delivers nothing again; the node keeps the delivered result.
+  it("P02 a terminal replay delivers nothing again: one transport entry, the delivered node result and its history unchanged", async () => {
     const f = await fixture(); const source = await sourceHistory(f);
     const first = await finishMiniToolExecutionAndNotify(f.taskId, completion(f), getStreamRedis());
     const firstHistory = await expectPersistence(f, source, "done");
+    const delivered = await events(f); expect(delivered).toHaveLength(1);
+    expectMediaEvent(delivered[0]!.payload, f);
     const held = await executionSnapshot(pg, f);
+    expect((held.result.miniToolDelivery as { outputs: { outputIndex: number; state: string }[] }).outputs).toEqual([{ outputIndex: 0, state: "published" }]);
     const replay = { planFingerprint: first.record.planFingerprint, expectedVersion: first.record.resultVersion,
       outputs: structuredClone(first.record.outputs), error: first.record.error, consumptionSet: "complete" as const };
     const second = await finishMiniToolExecutionAndNotify(f.taskId, replay, getStreamRedis());
     expect(second.record).toEqual(first.record);
     expect(await executionSnapshot(pg, f)).toEqual(held);
-    const actual = await events(f); expect(actual).toHaveLength(2);
-    expect(actual[1]!.id).not.toBe(actual[0]!.id);
-    for (const event of actual) expectMediaEvent(event.payload, f);
-    expect(actual[1]!.payload.resultOrigin).toEqual(actual[0]!.payload.resultOrigin);
+    // No second delivery event: the stream still holds only the first entry for this node.
+    expect(await events(f)).toEqual(delivered);
     expect(await expectPersistence(f, source, "done")).toBe(firstHistory);
   });
 
