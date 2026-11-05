@@ -346,6 +346,25 @@ describe('plan, ledger writer and route inside one basic execution (inner#1306 �
     });
   });
 
+  // §94 D8 (frames-split design §7.17 copy_carrier row): the DO names the dispatched copy's audio from the probe's facts,
+  // the one source the worker reads: none when the probe measured no audio, copied when audioCopyable (dispatched only for
+  // its size), encoded otherwise. The default budget leaves every case within the copy's share.
+  it.each([
+    ['copyable audio, dispatched for its size: copy', DISPATCH_ROUTE, 20, 'copy'],
+    ['audio that is not copyable: encode', { ...COPY_ROUTE, audioCopyable: false }, 20, 'encode'],
+    ['no audio, dispatched for its size: null', DISPATCH_ROUTE, 0, null],
+    ['no audio on a route input that names it not copyable: null', { ...COPY_ROUTE, audioCopyable: false }, 0, null],
+  ] as const)('DC02 a dispatched copy names its audio from the probe: %s', async (_name, route, audioSeconds, copyAudio) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const port = fakePort(store, key, planned(route, keyframes(96, 24), { ...WORK, audioSeconds }));
+      const answer = await admitAndPrepare(store, key, 'job-a', port);
+      expect(answer.plan?.route).toBe('dispatch_copy');
+      expect(answer.work).toEqual({ kind: 'dispatch_copy' });
+      expect((answer as Answer & { copyAudio?: unknown }).copyAudio).toBe(copyAudio);
+    });
+  });
+
   it('PR09 a job that is not the writer of its toolInputId does not write, and answers the ready ledger', async () => {
     const key = await source();
     await withStore(key, async (store) => {
