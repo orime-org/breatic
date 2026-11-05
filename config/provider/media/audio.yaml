@@ -57,6 +57,15 @@ models:
               base_price: 7500000
               formula: ""
               discount_rate: 100
+        rejects:
+          - when: $length(prompt) > 1024
+            reason: "WaveSpeed prompt: Official limit: up to 1024 characters"
+          - when: $length(lyrics) > 5000
+            reason: "WaveSpeed lyrics: Maximum length: 5000 characters"
+          - when: get_duration(reference_id, min=30, max=1000000, total=1000000) > get_duration(reference_id)
+            reason: "Mureka files/upload reference: supported duration range is [30,30] seconds"
+          - when: get_duration(melody_id, min=5, max=1000000, total=1000000) > get_duration(melody_id)
+            reason: "Mureka files/upload melody: supported duration range is [5,60] seconds"
         pricing:
           kind: formula
           base_price: 225000
@@ -118,6 +127,10 @@ models:
             reason: fal lyrics maxLength 5000
           - when: get_duration(vocal_id) > 30 or get_duration(vocal_id, min=15, max=1000000, total=1000000) > get_duration(vocal_id)
             reason: "fal mureka/api/voice/clone audio_url: a vocal sample between 15 and 30 seconds"
+          - when: get_duration(reference_id, min=30, max=1000000, total=1000000) > get_duration(reference_id)
+            reason: "Mureka files/upload reference: supported duration range is [30,30] seconds"
+          - when: get_duration(melody_id, min=5, max=1000000, total=1000000) > get_duration(melody_id)
+            reason: "Mureka files/upload melody: supported duration range is [5,60] seconds"
         pricing:
           kind: formula
           base_price: 5000
@@ -129,6 +142,9 @@ models:
         weight: 1
         model_id: mureka-ai/mureka-v9.5/generate-bgm
         prompt_field: prompt
+        rejects:
+          - when: $length(prompt) > 1024
+            reason: "WaveSpeed prompt: Official limit: up to 1024 characters"
         pricing:
           kind: formula
           base_price: 225000
@@ -362,3 +378,5 @@ models:
           base_price: 10000
           formula: '{"total_price": base_price * append_duration * num_samples}'
           discount_rate: 100
+        fixed:
+          upload_audio_format: mp3

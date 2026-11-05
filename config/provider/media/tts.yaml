@@ -689,6 +689,8 @@ models:
           base_price: 100000
           formula: '{"total_price": base_price * $length(prompt) / 1000}'
           discount_rate: 100
+        fixed:
+          normalization_setting.enabled: false
       - upstream: sandbase
         weight: 3
         model_id: minimax/speech/2.8/hd
@@ -1337,7 +1339,7 @@ models:
           custom_voice_id:
             all_values: fal makes the clone id itself and answers it as custom_voice_id; the voice step never sends ours
           model:
-            all_values: picks only the TTS model of the clone call's preview; the run's audio comes from the speak step on speech-2.8-hd whatever the value (design table; fal takes none of our values and has no such field)
+            all_values: fal's model field picks only the TTS model of the clone call's preview (speech-02 and speech-01 values, none of ours); the run's audio comes from the speak step on speech-2.8-hd whatever the value
         extra_steps:
           - kind: speak
             endpoint: fal-ai/minimax/speech-2.8-hd
@@ -1351,6 +1353,9 @@ models:
         output_field: audio
         fixed:
           accuracy: 0.7
+        rejects:
+          - when: get_duration(audio_url, min=10, max=1000000, total=1000000) > get_duration(audio_url)
+            reason: "fal audio_url: Should be at least 10 seconds long"
         pricing:
           kind: formula
           base_price: 1500000
@@ -1383,6 +1388,9 @@ models:
         fixed:
           mode: async
           accuracy: 0.7
+        rejects:
+          - when: get_duration(audio, min=10, max=1000000, total=1000000) > get_duration(audio)
+            reason: "SandBase audio: Reference recording, 10 seconds or longer"
         pricing:
           kind: formula
           base_price: 1500000
@@ -1414,6 +1422,9 @@ models:
             field: audio
           voice_id:
             field: voice_id
+        rejects:
+          - when: get_duration(audio) > 300
+            reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes"
         pricing:
           kind: formula
           base_price: 4000

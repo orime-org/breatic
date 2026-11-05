@@ -500,6 +500,9 @@ models:
           style_images:
             field: reference
             item_key: image
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: "WaveSpeed prompt: Supports 1-5000 characters"
         pricing:
           kind: formula
           base_price: 60000
@@ -543,26 +546,6 @@ models:
           kind: formula
           base_price: 90000
           formula: ""
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: ideogram-ai/ideogram-v3
-        prompt_field: prompt
-        params:
-          aspect_ratio:
-            field: aspect_ratio
-          style_images:
-            field: images
-        drops:
-          rendering:
-            - General
-        fixed:
-          rendering_speed: QUALITY
-          mode: async
-        pricing:
-          kind: formula
-          base_price: 60000
-          formula: '{"total_price": 90000}'
           discount_rate: 100
   recraft-v4-style-text-to-image:
     upstreams:
@@ -781,37 +764,6 @@ models:
         pricing:
           kind: formula
           base_price: 25000
-          formula: ""
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: alibaba/qwen-image-edit/2511/multiple-angles
-        prompt_field: additional_prompt
-        params:
-          distance:
-            field: zoom
-            values:
-              "0": 10
-              "1": 5
-              "2": 0
-          horizontal_angle:
-            field: horizontal_angle
-          images:
-            field: images
-          output_format:
-            field: output_format
-            supported:
-              - jpeg
-              - png
-          vertical_angle:
-            field: vertical_angle
-        mentions:
-          images: image {n}
-        fixed:
-          mode: async
-        pricing:
-          kind: formula
-          base_price: 35000
           formula: ""
           discount_rate: 100
   pro-upscaler:

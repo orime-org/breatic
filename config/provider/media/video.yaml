@@ -179,6 +179,11 @@ models:
           audios: "@audio{n}"
           images: "@image{n}"
           videos: "@video{n}"
+        rejects:
+          - when: get_duration(reference_audios) > 30
+            reason: "WaveSpeed reference_audios: total length must not exceed 30 seconds"
+          - when: get_duration(reference_videos) > 30
+            reason: "WaveSpeed reference_videos: total length must not exceed 30 seconds"
         pricing:
           kind: formula
           base_price: 900000
@@ -396,6 +401,7 @@ models:
             absent_value: false
           negative_prompt:
             field: negative_prompt
+            unset: ""
           generate_audio:
             field: generate_audio
         rejects:
@@ -939,6 +945,9 @@ models:
             field: image
           video:
             field: video
+        rejects:
+          - when: get_duration(video) > 30
+            reason: "WaveSpeed video: Max 30 seconds"
         pricing:
           kind: formula
           base_price: 50000
@@ -1005,6 +1014,12 @@ models:
         rejects:
           - when: $length(prompt) > 7000
             reason: WaveSpeed prompt maxLength 7000
+          - when: $exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))
+            reason: "WaveSpeed reference_audios: Audio cannot be provided alone"
+          - when: get_duration(reference_videos) > 15
+            reason: "WaveSpeed reference_videos: the combined reference-video duration is capped at 15 seconds"
+          - when: get_duration(reference_videos, min=2, max=1000000, total=1000000) > get_duration(reference_videos)
+            reason: "WaveSpeed reference_videos: each clip is normalized to 2-15 seconds"
         pricing:
           kind: formula
           base_price: 700000
@@ -1133,7 +1148,10 @@ models:
           shots: "*"
         mentions:
           images: <IMAGE_REF_{i}>
-          videos: the reference video {n}
+          videos: <VIDEO_REF_{i}>
+        rejects:
+          - when: get_duration(reference_videos) > get_duration(reference_videos, min=0, max=3, total=1000000)
+            reason: "WaveSpeed reference_videos: Each video must be no longer than 3 seconds"
         pricing:
           kind: formula
           base_price: 100000
@@ -1232,6 +1250,15 @@ models:
           audios: Audio {n}
           images: Image {n}
           videos: Video {n}
+        rejects:
+          - when: "(duration ? duration : 5) + get_duration(reference_videos) > 30"
+            reason: "WaveSpeed duration: the total input video duration plus the generated output duration must not exceed 30 seconds"
+          - when: get_duration(reference_videos) > 15
+            reason: "WaveSpeed reference_videos: Total input video duration must not exceed 15 seconds"
+          - when: get_duration(reference_videos, min=1, max=1000000, total=1000000) > get_duration(reference_videos)
+            reason: "WaveSpeed reference_videos: 1-15 seconds each"
+          - when: get_duration(reference_audios) > 15
+            reason: "WaveSpeed reference_audios: Total input audio duration must not exceed 15 seconds"
         pricing:
           kind: formula
           base_price: 500000
@@ -1319,6 +1346,8 @@ models:
             reason: "SandBase videos: 1-15s each, 15s total"
           - when: get_duration(videos, min=1, max=1000000, total=1000000) > get_duration(videos)
             reason: "SandBase videos: 1-15s each, 15s total"
+          - when: "(duration ? duration : 5) + get_duration(videos) > 30"
+            reason: "SandBase videos: Reference video length plus output length must stay within 30 seconds"
         pricing:
           kind: formula
           base_price: 100000
@@ -1542,6 +1571,8 @@ models:
             reason: fal prompt maxLength 2500
           - when: 'get_duration(video_url) > (character_orientation = "image" ? 10 : 30)'
             reason: "fal video_url: Duration limit depends on character_orientation: 10s max for 'image', 30s max for 'video'"
+          - when: get_duration(video_url, min=3, max=1000000, total=1000000) > get_duration(video_url)
+            reason: "fal video_url: Min duration: 3.0s"
         pricing:
           kind: formula
           base_price: 168000
@@ -1704,33 +1735,13 @@ models:
             field: resolution
           video:
             field: video
+        rejects:
+          - when: get_duration(audio) > 600
+            reason: "WaveSpeed audio: Max clip length per job: 10 minutes"
         pricing:
           kind: formula
           base_price: 150000
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(audio)), 600])]) / 5 * base_price * (resolution = "720p" ? 2 : 1)}'
-          discount_rate: 100
-      - upstream: sandbase
-        weight: 3
-        model_id: meigen/infinitetalk/video-to-video
-        prompt_field: prompt
-        send_empty: true
-        params:
-          audio:
-            field: audio
-          resolution:
-            field: resolution
-          video:
-            field: video
-        fixed:
-          num_frames: 241
-          mode: async
-        rejects:
-          - when: get_duration(audio) > 9.64
-            reason: "SandBase num_frames: Maximum frames to generate (41–241, 25 fps); sent as 241, audio past 9.64 s is cut"
-        pricing:
-          kind: formula
-          base_price: 300000
-          formula: '{"total_price": base_price * $min([get_duration(audio), 241 / 25]) * (resolution = "720p" ? 2 : 1)}'
           discount_rate: 100
   infinitetalk-multi:
     upstreams:
@@ -1768,6 +1779,11 @@ models:
             field: model_mode
           video:
             field: video
+        rejects:
+          - when: get_duration(audio) > 15
+            reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit"
+          - when: get_duration(video) > 15
+            reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit"
         pricing:
           kind: formula
           base_price: 835000
@@ -1826,6 +1842,9 @@ models:
             field: target_resolution
           video:
             field: video
+        rejects:
+          - when: get_duration(video) > 600
+            reason: "WaveSpeed video: Max clip length per job: up to 10 minutes"
         pricing:
           kind: formula
           base_price: 100000
@@ -1839,6 +1858,9 @@ models:
         params:
           video:
             field: video
+        rejects:
+          - when: get_duration(video) > 600
+            reason: "WaveSpeed video: The maximum supported video duration is 10 minutes"
         pricing:
           kind: formula
           base_price: 10000

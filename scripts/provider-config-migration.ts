@@ -89,7 +89,8 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
  * when it is not the catalog's. `spellings`: a param's `values` and
  * `absent_value` where WaveSpeed's field takes other values than ours.
  * `rejects`: the limits of WaveSpeed's schema our catalog lets a run break,
- * written as the binding's `rejects`.
+ * written as the binding's `rejects`. `mentions`: how WaveSpeed's schema names a
+ * param's references in the prompt where the catalog's mention differs.
  */
 const WAVESPEED: Readonly<Record<string, {
   renames?: Readonly<Record<string, string>>;
@@ -100,13 +101,25 @@ const WAVESPEED: Readonly<Record<string, {
   modelId?: string;
   spellings?: Readonly<Record<string, { values?: Readonly<Record<string, string>>; absent_value?: string | number | boolean }>>;
   rejects?: readonly { when: string; reason: string }[];
+  mentions?: Readonly<Record<string, string>>;
 }>> = {
   "flux-3-start-end-to-video": { renames: { start_image: "image", end_image: "last_image" } },
   "muse-image-edit": { renames: { image_urls: "images" }, refuses: { aspect_ratio: ["9:21"] } },
   "wan-3.0-text-to-video": { renames: { enable_audio: "generate_audio" } },
   "wan-3.0-image-to-video": { renames: { enable_audio: "generate_audio" } },
-  "wan-3.0-reference-to-video": { renames: { enable_audio: "generate_audio" } },
-  "hunyuan3d-v3": { refuses: { generate_type: ["LowPoly"] } },
+  "wan-3.0-reference-to-video": {
+    renames: { enable_audio: "generate_audio" },
+    rejects: [
+      { when: "(duration ? duration : 5) + get_duration(reference_videos) > 30", reason: "WaveSpeed duration: the total input video duration plus the generated output duration must not exceed 30 seconds" },
+      { when: "get_duration(reference_videos) > 15", reason: "WaveSpeed reference_videos: Total input video duration must not exceed 15 seconds" },
+      { when: "get_duration(reference_videos, min=1, max=1000000, total=1000000) > get_duration(reference_videos)", reason: "WaveSpeed reference_videos: 1-15 seconds each" },
+      { when: "get_duration(reference_audios) > 15", reason: "WaveSpeed reference_audios: Total input audio duration must not exceed 15 seconds" },
+    ],
+  },
+  "hunyuan3d-v3": {
+    refuses: { generate_type: ["LowPoly"] },
+    rejects: [{ when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Supports up to 1024 UTF-8 characters" }],
+  },
   "hunyuan3d-v3-i23d": { refuses: { generate_type: ["LowPoly"] }, noPrompt: true },
   "hunyuan3d-v3.1-rapid": { noPrompt: true },
   "nano-banana-2-relight": { refuses: { output_format: ["webp"] } },
@@ -118,7 +131,47 @@ const WAVESPEED: Readonly<Record<string, {
   },
   "minimax-h3-text-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
   "minimax-h3-image-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
-  "minimax-h3-reference-to-video": { rejects: [{ when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" }] },
+  "minimax-h3-reference-to-video": {
+    rejects: [
+      { when: "$length(prompt) > 7000", reason: "WaveSpeed prompt maxLength 7000" },
+      { when: "$exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))", reason: "WaveSpeed reference_audios: Audio cannot be provided alone" },
+      { when: "get_duration(reference_videos) > 15", reason: "WaveSpeed reference_videos: the combined reference-video duration is capped at 15 seconds" },
+      { when: "get_duration(reference_videos, min=2, max=1000000, total=1000000) > get_duration(reference_videos)", reason: "WaveSpeed reference_videos: each clip is normalized to 2-15 seconds" },
+    ],
+  },
+  "mureka-v9.5-generate-song": {
+    rejects: [
+      { when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Official limit: up to 1024 characters" },
+      { when: "$length(lyrics) > 5000", reason: "WaveSpeed lyrics: Maximum length: 5000 characters" },
+      { when: "get_duration(reference_id, min=30, max=1000000, total=1000000) > get_duration(reference_id)", reason: "Mureka files/upload reference: supported duration range is [30,30] seconds" },
+      { when: "get_duration(melody_id, min=5, max=1000000, total=1000000) > get_duration(melody_id)", reason: "Mureka files/upload melody: supported duration range is [5,60] seconds" },
+    ],
+  },
+  "mureka-v9.5-generate-bgm": { rejects: [{ when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Official limit: up to 1024 characters" }] },
+  "krea-v2-large-text-to-image": { rejects: [{ when: "$length(prompt) > 5000", reason: "WaveSpeed prompt: Supports 1-5000 characters" }] },
+  "elevenlabs-voice-changer": {
+    rejects: [{ when: "get_duration(audio) > 300", reason: "WaveSpeed audio: Maximum audio duration is 5 minutes per job; longer audio is automatically trimmed to the first 5 minutes" }],
+  },
+  "seedance-2.5-text-to-video": {
+    rejects: [
+      { when: "get_duration(reference_audios) > 30", reason: "WaveSpeed reference_audios: total length must not exceed 30 seconds" },
+      { when: "get_duration(reference_videos) > 30", reason: "WaveSpeed reference_videos: total length must not exceed 30 seconds" },
+    ],
+  },
+  "dreamactor-v2": { rejects: [{ when: "get_duration(video) > 30", reason: "WaveSpeed video: Max 30 seconds" }] },
+  "gemini-omni-1.1-flash-reference-to-video": {
+    mentions: { images: "<IMAGE_REF_{i}>", videos: "<VIDEO_REF_{i}>" },
+    rejects: [{ when: "get_duration(reference_videos) > get_duration(reference_videos, min=0, max=3, total=1000000)", reason: "WaveSpeed reference_videos: Each video must be no longer than 3 seconds" }],
+  },
+  "infinitetalk-video-to-video": { rejects: [{ when: "get_duration(audio) > 600", reason: "WaveSpeed audio: Max clip length per job: 10 minutes" }] },
+  "sync-react-1": {
+    rejects: [
+      { when: "get_duration(audio) > 15", reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit" },
+      { when: "get_duration(video) > 15", reason: "WaveSpeed: Keep both audio and video inputs within the supported 15-second limit" },
+    ],
+  },
+  "seedvr2-video": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: Max clip length per job: up to 10 minutes" }] },
+  "rife-interpolation": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: The maximum supported video duration is 10 minutes" }] },
   // Relisted as meshy/v6/text-to-3d (/api/v3/models, 2026-11-03); the old id stays delisted.
   "meshy6-t23d": {
     modelId: "meshy/v6/text-to-3d",
@@ -229,7 +282,8 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
   const mentions: Record<string, string> = {};
   const drops: Record<string, NonNullable<(typeof facts)["drops"]>[string] | "*"> = {};
   for (const [name, spec] of Object.entries(model.params ?? {})) {
-    if (spec.mention !== undefined) mentions[name] = spec.mention;
+    const mention = facts.mentions?.[name] ?? spec.mention;
+    if (mention !== undefined) mentions[name] = mention;
     // A slot that joins a pool travels inside it; no field carries the slot itself.
     if (skipped.has(name) || spec.into_prompt !== undefined || spec.joins !== undefined) {
       drops[name] = "*";

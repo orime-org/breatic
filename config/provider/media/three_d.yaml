@@ -92,6 +92,9 @@ models:
             field: enable_pbr
           face_count:
             field: face_count
+        rejects:
+          - when: $length(prompt) > 1024
+            reason: "WaveSpeed prompt: Supports up to 1024 UTF-8 characters"
         pricing:
           kind: formula
           base_price: 450000
