@@ -10,9 +10,9 @@
 
 import { tableBlock } from './table-fixtures';
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 
-import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
-
+import { canvasClipboardOf } from './canvas-clipboard-fixture';
 import { open as openBody, pasteFormats, unmountAll, type Editor } from './paste-harness';
 import { CONTENTS, EXPECTED, NEW, TARGETS, expected, setText, shape, where, type Piece } from './paste-matrix';
 import { positionOf } from './paste-harness';
@@ -44,24 +44,21 @@ function ownBlocks(pieces: readonly Piece[]): unknown[] {
 }
 
 /**
- * The pieces as a canvas clipboard, top to bottom.
+ * The pieces as the reader's copy from another body: a selection from the
+ * first piece's start to the last piece's end, written out the way the
+ * body's copy writes it.
  * @param pieces - The pieces.
- * @returns Its plain text.
+ * @returns The clipboard's HTML and plain text.
  */
-function canvasClipboard(pieces: readonly Piece[]): string {
-  const nodes = pieces.map(
-    (p, index): ClipboardNode =>
-      p === 'P'
-        ? ({ id: `n${index}`, type: 'image', position: { x: 0, y: index * 300 }, height: 100, data: { content: NEW } })
-        : ({
-          id: `n${index}`,
-          type: 'text',
-          position: { x: 0, y: index * 300 },
-          height: 100,
-          data: { body: { $y: 'xml', children: [{ el: 'paragraph', attrs: {}, children: [{ text: [{ insert: p }] }] }] } },
-        }),
-  );
-  return serializeClipboard({ version: 2, picked: nodes.map((n) => n.id), nodes, edges: [] } as ClipboardPayload);
+function ownSelectionCopy(pieces: readonly Piece[]): { html: string; text: string } {
+  const { editor } = openBody(ownBlocks(pieces));
+  const view = editor.prosemirrorView;
+  const { doc } = view.state;
+  // A text piece is copied from inside its paragraph, a medium or a table whole.
+  const from = pieces[0] === 'P' || pieces[0] === 'T' ? 1 : 3;
+  const to = doc.content.size - (pieces[pieces.length - 1] === 'P' || pieces[pieces.length - 1] === 'T' ? 1 : 3);
+  const { dom, text } = view.serializeForClipboard(doc.slice(from, to));
+  return { html: dom.innerHTML, text };
 }
 
 /** How each source delivers a paste. */
@@ -71,7 +68,11 @@ const SOURCES: Record<string, (editor: Editor, pieces: readonly Piece[]) => void
     const html = editor.blocksToFullHTML(ownBlocks(pieces) as never);
     pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
   },
-  canvas: (editor, pieces) => pasteFormats(editor, { 'text/plain': canvasClipboard(pieces) }),
+  ownSelection: (editor, pieces) => {
+    const { html, text } = ownSelectionCopy(pieces);
+    pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': text });
+  },
+  canvas: (editor, pieces) => pasteFormats(editor, { 'text/plain': canvasClipboardOf(pieces, NEW) }),
 };
 
 describe.each(Object.keys(SOURCES))('content pasted from %s', (source) => {
@@ -94,12 +95,15 @@ describe.each(Object.keys(SOURCES))('content pasted from %s', (source) => {
  * @param editor - The editor.
  * @param at - Where the pointer is.
  * @param formats - Each format the drag carries.
+ * @param copyKey - Whether the platform's copy key is held at the drop.
  */
-function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>): void {
+function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>, copyKey = false): void {
   const view = editor.prosemirrorView;
+  const box = { x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) } as DOMRect;
+  for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
   view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
   const event = new Event('drop', { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: 1, clientY: 1 });
+  Object.assign(event, { clientX: 1, clientY: 1, altKey: copyKey, ctrlKey: copyKey });
   Object.defineProperty(event, 'dataTransfer', {
     value: { types: Object.keys(formats), files: [], items: [], getData: (type: string): string => formats[type] ?? '' },
   });
@@ -113,6 +117,10 @@ const DROPS: Record<string, (editor: Editor, at: number, pieces: readonly Piece[
     const html = editor.blocksToFullHTML(ownBlocks(pieces) as never);
     dropFormats(editor, at, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'copied' });
   },
+  ownSelection: (editor, at, pieces) => {
+    const { html, text } = ownSelectionCopy(pieces);
+    dropFormats(editor, at, { 'blocknote/html': html, 'text/html': html, 'text/plain': text });
+  },
 };
 
 describe.each(Object.keys(DROPS))('content dropped from %s lands as it pastes at the drop point', (source) => {
@@ -124,5 +132,29 @@ describe.each(Object.keys(DROPS))('content dropped from %s lands as it pastes at
     setText(editor, positionOf(editor, 'lead', 0));
     DROPS[source]!(editor, TARGETS[target]!.dropAt!(editor), CONTENTS[content]!);
     expect(shape(editor)).toBe(expected(target, content, false)[0]);
+  });
+});
+
+describe('content dragged inside the body with the copy key lands as it pastes at the drop point', () => {
+  const cells = Object.entries(TARGETS)
+    .filter(([, target]) => target.dropAt !== undefined)
+    .flatMap(([target]) => Object.keys(EXPECTED[target]!).map((content): [string, string] => [target, content]));
+  it.each(cells)('%s, %s', (target, content) => {
+    const pieces = CONTENTS[content]!;
+    const { editor: alone } = openBody(ownBlocks(pieces));
+    const source = shape(alone);
+    const { editor } = openBody([...ownBlocks(pieces), ...TARGETS[target]!.blocks]);
+    const view = editor.prosemirrorView;
+    const { doc } = view.state;
+    let end = 0;
+    for (let index = 0; index < pieces.length; index += 1) end += doc.firstChild!.child(index).nodeSize;
+    const from = pieces[0] === 'P' || pieces[0] === 'T' ? 1 : 3;
+    const to = 1 + end - (pieces[pieces.length - 1] === 'P' || pieces[pieces.length - 1] === 'T' ? 0 : 2);
+    view.dispatch(view.state.tr.setSelection(TextSelection.between(doc.resolve(from), doc.resolve(to))));
+    (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(doc.slice(from, to)).slice, move: false };
+    // Where the drop points in the target alone, moved past the dragged blocks above it.
+    const { editor: targetAlone } = openBody(TARGETS[target]!.blocks);
+    dropFormats(editor, TARGETS[target]!.dropAt!(targetAlone) + end, { 'text/html': '<p>x</p>' }, true);
+    expect(shape(editor)).toBe(`${source}|${expected(target, content, false)[0]}`);
   });
 });
