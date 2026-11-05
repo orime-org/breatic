@@ -13,9 +13,10 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { GENERATION_TEMPLATES, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
+import { formatCredits, GENERATION_TEMPLATES, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
@@ -61,6 +62,24 @@ export function describeTemplate(template: GenerationTemplate): string {
   );
 }
 
+/**
+ * What one apply of a template costs on this deployment, priced live: the
+ * price list and its multiplier belong to the deployment, so a number
+ * written into the template would be wrong elsewhere.
+ * @param template - The template.
+ * @returns The sentence, or "" when none of its generate nodes is priced.
+ */
+async function applyCost(template: GenerationTemplate): Promise<string> {
+  const prices = await Promise.all(
+    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: node.params })] : [])),
+  );
+  const priced = prices.filter((price) => price !== undefined);
+  if (priced.length === 0) return "";
+  const sum = priced.reduce((total, price) => total + price.credits, 0);
+  const exact = priced.length === prices.length && priced.every((price) => price.bound === "exact");
+  return `One apply of this template costs ${exact ? "" : "at least "}${formatCredits(sum, "en-US")} credits at its settings.`;
+}
+
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
 export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
   description:
@@ -79,6 +98,7 @@ export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
     const template = GENERATION_TEMPLATES.find((one) => one.id === id);
     // The input schema admits only registered ids.
     if (template === undefined) throw new Error(`No template "${id}".`);
-    return [describeTemplate(template), HOW_TO_SEND, templateCraft(template)].join("\n\n");
+    const cost = await applyCost(template);
+    return [describeTemplate(template), ...(cost === "" ? [] : [cost]), HOW_TO_SEND, templateCraft(template)].join("\n\n");
   },
 });
