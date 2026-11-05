@@ -10,11 +10,13 @@
  * and neither writes without write access.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
+import { aiEdgeBlocks, aiReplaceSpan } from '@web/spaces/document/document-ai-launch';
 import { aiRangeIn, DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import { insertAiResult, replaceAiResult } from '@web/spaces/document/document-ai-write';
 import {
@@ -24,6 +26,15 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import type { ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+
+/** Our own asset host, so media there is ours and survives a write. */
+const OURS = 'https://assets.example/';
+
+vi.mock('@web/spaces/document/document-external-media', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ourMediaPrefix: () => OURS,
+  ourMediaPrefixReady: async () => OURS,
+}));
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -264,5 +275,71 @@ describe('replace', () => {
 
     expect(thrown).toBeNull();
     await expect(promise).rejects.toThrow();
+  });
+});
+
+/**
+ * The top-level blocks as a reader sees them: an image by its address, any
+ * other block by its words.
+ * @param handle - The document.
+ * @returns One entry per block.
+ */
+function shown(handle: DocumentEditorHandle): string[] {
+  return (handle.editor.document as Array<{ type: string; props: Record<string, unknown> }>).map((block, index) => (
+    block.type === 'image' ? `image ${String(block.props['url'])}` : texts(handle)[index]!
+  ));
+}
+
+/**
+ * Selects from one position to another, opens the AI range on it the way the
+ * dialog does, and reads back what a replace would cover.
+ * @param handle - The document.
+ * @param from - Where the selection starts.
+ * @param to - Where it ends.
+ * @returns The span a replace writes over, and the blocks at its edges.
+ */
+function openOn(handle: DocumentEditorHandle, from: number, to: number): { span: () => { from: number; to: number } } {
+  const view = handle.editor.prosemirrorView!;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+  const edges = aiEdgeBlocks(view.state);
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, view.state.selection.ranges.map((r) => ({ from: r.$from.pos, to: r.$to.pos }))));
+  return {
+    span: () => {
+      const range = aiRangeIn(view.state);
+      if (range === null || range.kind !== 'present') throw new Error('the range should still be there');
+      return aiReplaceSpan(view.state.doc, { from: range.segments[0]!.from, to: range.segments.at(-1)!.to }, edges);
+    },
+  };
+}
+
+describe('replace over a selection whose edge is a block without words', () => {
+  const IMAGE = `![pic](${OURS}a.png)`;
+
+  it('swaps the image the selection ends on, leaving one', async () => {
+    const handle = await open(`Hello world\n\n${IMAGE}\n\nAfter`);
+    const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'After').from);
+
+    await replaceAiResult(handle, span(), `Hello, world.\n\n${IMAGE}`, WRITABLE);
+
+    expect(shown(handle)).toEqual(['Hello, world.', `image ${OURS}a.png`, 'After']);
+  });
+
+  it('swaps the image the selection starts on, leaving one', async () => {
+    const handle = await open(`Before\n\n${IMAGE}\n\nHello world`);
+    const { span } = openOn(handle, rangeOf(handle, 'Before').to, rangeOf(handle, 'world').to);
+
+    await replaceAiResult(handle, span(), `${IMAGE}\n\nHello, world.`, WRITABLE);
+
+    expect(shown(handle)).toEqual(['Before', `image ${OURS}a.png`, 'Hello, world.']);
+  });
+
+  it('stops at words the reader wrote between the selected words and the image', async () => {
+    const handle = await open(`Hello world\n\n${IMAGE}\n\nAfter`);
+    const { span } = openOn(handle, rangeOf(handle, 'Hello').from, rangeOf(handle, 'After').from);
+    handle.editor.insertBlocks([{ type: 'paragraph', content: 'New' }] as never, ids(handle)[0]!, 'after');
+
+    await replaceAiResult(handle, span(), 'Hello, world.', WRITABLE);
+
+    expect(shown(handle)).toEqual(['Hello, world.', 'New', `image ${OURS}a.png`, 'After']);
   });
 });

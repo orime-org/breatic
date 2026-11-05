@@ -244,7 +244,7 @@ function chargedKeys(): string[] {
 }
 
 /** The pattern the shipped same-language instruction is written in. */
-const SAME_LANGUAGE = /respond in the language of the selected text|same language as the user's input|match the input language/i;
+const SAME_LANGUAGE = /respond in the language of the selected text/i;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -526,6 +526,12 @@ describe("the model call", () => {
       expect(prompt).not.toMatch(/document or selection/i);
     },
   );
+
+  it("tells a tool with no selection to answer in the language of the user's request", async () => {
+    await run(bodyFor("generate"));
+
+    expect(promptOf(model.calls[0])).toMatch(/with no selected text, the language of the user's request/i);
+  });
 
   it("lets custom follow the user's own request, language included", async () => {
     const instructions = "Answer in French, as a haiku";

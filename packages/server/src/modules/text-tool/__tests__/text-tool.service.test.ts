@@ -21,6 +21,12 @@ const modelRun = vi.hoisted(() => ({
   /** When set, the call sends this generation id and breaks off unrecorded. */
   cutOffAfter: null as string | null,
   provider: "",
+  /**
+   * When set, the stream reports this error as a part, the way the SDK does
+   * for a call the provider refused or broke off: after `textBefore`, if any.
+   */
+  streamError: null as Error | null,
+  textBefore: "",
 }));
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
@@ -63,6 +69,11 @@ vi.mock("@breatic/domain", async () => ({
     if (modelRun.failsWith) throw modelRun.failsWith;
     return {
       fullStream: (async function* () {
+        if (modelRun.streamError !== null) {
+          if (modelRun.textBefore !== "") yield { type: "text-delta", text: modelRun.textBefore };
+          yield { type: "error", error: modelRun.streamError };
+          return;
+        }
         if (modelRun.cutOffAfter !== null) {
           if (opts.includeRawChunks) {
             opts.onChunk?.({ chunk: { type: "raw", rawValue: { id: modelRun.cutOffAfter } } });
@@ -162,6 +173,8 @@ beforeEach(() => {
   modelRun.failsWith = null;
   modelRun.cutOffAfter = null;
   modelRun.provider = "";
+  modelRun.streamError = null;
+  modelRun.textBefore = "";
 });
 
 describe("扣费失败", () => {
@@ -208,6 +221,25 @@ describe("扣费失败", () => {
 
     expect(charge.calls).toHaveLength(0);
     expect(logError).not.toHaveBeenCalled();
+  });
+});
+
+describe("a model call the provider refuses or breaks off", () => {
+  it("ends with an error event when the call is refused before any words", async () => {
+    modelRun.streamError = new Error("provider refused");
+
+    const events = await run();
+
+    expect(events.map((event) => event.type)).toEqual(["error"]);
+  });
+
+  it("ends with an error event, not done, when it breaks off after some words", async () => {
+    modelRun.streamError = new Error("provider broke off");
+    modelRun.textBefore = "half an ans";
+
+    const events = await run();
+
+    expect(events.map((event) => event.type)).toEqual(["text_delta", "error"]);
   });
 });
 
