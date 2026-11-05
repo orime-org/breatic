@@ -5,7 +5,7 @@ import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { sanitizeModelCatalog, type VideoPresentationResponse } from '@breatic/shared';
+import { sanitizeModelCatalog, t, type VideoPresentationResponse } from '@breatic/shared';
 import type * as CanvasModule from '@web/data/yjs/canvas-space';
 import type * as StartModule from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import type { VideoToolId } from '@breatic/shared/mini-tools';
@@ -16,7 +16,7 @@ import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { modelsApi } from '@web/data/api/models';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
-import { readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import * as request from '@web/data/api/request';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -25,6 +25,8 @@ import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { videoPresentationQuery } from '../video-presentation/video-presentation-query';
 import { PRESENTED, presentedBinding, presentedBundle, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
+
+const PRESENTATION_REF = { source: { toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256 } };
 
 vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<typeof CanvasModule>()), useCanvasSpace: vi.fn() }));
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
@@ -161,8 +163,32 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
     mount('video.lip-sync');
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: 2, pts: 2.5 } } });
+    // §95 D9-4 (design §7.11 analysis admission): every analysis request names the selected bundle's tool input.
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: 2, pts: 2.5 } }, presentationRef: PRESENTATION_REF });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(tableURL);
+  });
+  it('C10 scene detection requests the analysis against the selected bundle\'s tool input (§95 D9-4)', async () => {
+    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
+    mount('video.split');
+    const detect = await screen.findByTestId('video-detect-scenes');
+    await waitFor(() => expect(detect).not.toBeDisabled());
+    fireEvent.click(detect);
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'scene_cuts', presentationRef: PRESENTATION_REF });
+  });
+  it('C11 object tracking requests the analysis against the selected bundle\'s tool input (§95 D9-4)', async () => {
+    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
+    mount('video.erase');
+    const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));
+    await waitFor(() => expect(readVideoToolDraft(doc, SOURCE, 'video.erase').state).toBe('supported'));
+    const held = readVideoToolDraft(doc, SOURCE, 'video.erase');
+    if (held.state !== 'supported') throw new Error('Expected the persisted erase draft');
+    act(() => { commitVideoToolDraft(doc, SOURCE, 'video.erase', { ...held.draft, params: { ...held.draft.params, region: { box: null, points: [{ x: 0.5, y: 0.5, label: 'positive' }] } } }); });
+    const track = await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.trackObject') });
+    await waitFor(() => expect(track).not.toBeDisabled());
+    fireEvent.click(track);
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', presentationRef: PRESENTATION_REF });
   });
   it('C09 compact read validation errors offer retry without exposing the previous table', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
