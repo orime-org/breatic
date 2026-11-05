@@ -329,15 +329,15 @@ describe("agent config — the models the reader can pick", () => {
 
 // breatic#1363: a fold stops short of the keep line by the room the memory it
 // writes may take in the next prompt. Memory is now an index of titles, a
-// progress note and, until they are split, the migrated blocks in full.
+// progress note; a migrated block is already in what the fold measured.
 describe("agent config — the room a fold holds back for memory", () => {
-  it("counts the index, the progress note and two migrated blocks", async () => {
+  it("counts a full index and the progress note", async () => {
     const { memoryReserveTokens, MEMORY_TITLE_MAX_CHARS } = await import("@core/config/loader.js");
     const reserve = memoryReserveTokens({ memory_index_max_entries: 10, memory_progress_max_chars: 500 });
     expect(MEMORY_TITLE_MAX_CHARS).toBe(120);
     // Each index line is the full id (36), a separator (3) and the title
-    // (120): 2 × (10 × 159 + 500 + 2 × 8192).
-    expect(reserve).toBe(36948);
+    // (120): 2 × (10 × 159 + 500).
+    expect(reserve).toBe(4180);
   });
 
   it("refuses an index so large that the reserve reaches the keep line", async () => {

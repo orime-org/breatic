@@ -123,6 +123,7 @@ export {
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";

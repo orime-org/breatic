@@ -58,6 +58,7 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
   NodeType,
   AttachRef,
   FocusImage,

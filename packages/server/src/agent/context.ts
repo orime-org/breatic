@@ -6,13 +6,16 @@
  * job there is, how to behave with tools in general, and what a reply can look
  * like on screen.
  *
- * Memory is deliberately not assembled here — see `buildSystemPrompt` for
- * why. Nothing here is about any one tool: what a tool is for, when to reach
- * for it and how to use its answer are said in its own description, and only
- * there. A second copy written here drifts from the first, and a roster would
- * name tools the turn was not given. What stays is how to behave with tools
- * in general -- call them rather than write calls out, read an error, say
- * what could not be had.
+ * The memory entries themselves are not assembled here -- see
+ * `buildSystemPrompt` for why -- but the protocol for using them is: when the
+ * Agent saves, deletes and reads its own memory, and how it reads turns that
+ * have left its context. Those tools manage the Agent's own memory and
+ * context rather than what the product can do, so they are named here and
+ * what they are for is said only here (#1363). Nothing here is about any
+ * product tool: what one is for, when to reach for it and how to use its
+ * answer are said in its own description, and only there. What stays is how
+ * to behave with tools in general -- call them rather than write calls out,
+ * read an error, say what could not be had.
  */
 
 /** The whole prompt, with nothing to fill in. */
@@ -96,6 +99,19 @@ tool the same way will fail the same way; do not.
 When you cannot get something a task needed, say so in your reply, in words,
 and carry on with what you do have. An answer that quietly leaves out what
 failed reads as an answer that did not need it.
+
+## Memory
+
+What you keep about the reader's work across conversations is listed under
+"Memory Entries" below, newest first, one line each: its id, then its title.
+
+- When the reader asks you to remember something, save it with save_memory;
+  if an entry is about the same thing, pass its id to replace it.
+- When the reader asks you to forget something, or says an entry is wrong,
+  remove it with delete_memory.
+- Read an entry's full detail with read_memory before you rely on it. Entries
+  not listed can be found with read_memory by words.
+- Turns that have left your context are read with read_conversation.
 
 ## How You Reply
 

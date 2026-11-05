@@ -28,7 +28,7 @@ const foldIfTooLong = vi.fn(async () => "none");
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 const buildTurnContext = vi.fn(async () => ({
-  memoryContext: { projectMemory: "", conversationMemory: "" },
+  memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
   history: [],
 }));
 
@@ -130,7 +130,7 @@ describe("the name a turn gives its conversation", () => {
         new Promise((resolve) => {
           releaseTheSlowWork = (): void => {
             resolve({
-              memoryContext: { projectMemory: "", conversationMemory: "" },
+              memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
               history: [],
             });
           };

@@ -89,14 +89,14 @@ describe("the user memory layer", () => {
     expect(signature).not.toContain("Scenario");
   });
 
-  it("leaves the context builder describing the two layers it has", () => {
+  it("leaves the context builder describing the memory it has", () => {
     const service = readFileSync(
       join(PACKAGES, "server", "src", "modules", "memory", "memory.service.ts"),
       "utf8",
     );
     const docstring = service.slice(0, service.indexOf("export async function buildContext"));
 
-    expect(docstring).toContain("project + conversation memory");
+    expect(docstring).toContain("memory entries and each conversation's");
     expect(docstring).not.toContain("user +");
   });
 });

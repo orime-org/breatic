@@ -20,7 +20,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { READER_LANGUAGE_REMINDER } from "@server/agent/user-turn.js";
-import { TOOL_MAP } from "@breatic/domain";
+import { TOOL_MAP, instructionsForAgentMemory, instructionsText } from "@breatic/domain";
 
 describe("the system prompt", () => {
   // The template is hard-wrapped, so any phrase long enough to be worth
@@ -91,14 +91,51 @@ describe("the system prompt", () => {
     expect(wording()).toMatch(/say so in your reply/i);
   });
 
-  it("names no tools", () => {
+  it("names none of the product's tools, in the whole prompt the model is sent (#1363)", () => {
     // The drift this prevents: a roster in the prompt outliving the tool set.
     // Checked against every registered tool rather than a copy of the list,
-    // so adding a tool and pasting its name into the prompt fails here.
-    const prompt = buildSystemPrompt();
-    for (const name of Object.keys(TOOL_MAP)) {
-      expect(prompt).not.toContain(name);
+    // and against the prompt as the model reads it -- base, memory entries
+    // and progress note together -- so a tool name reaching it through any
+    // part fails here. The tools the Agent keeps its own memory and context
+    // with are the one exception: the memory protocol says when to use each.
+    const AGENT_RUNTIME = new Set(["save_memory", "delete_memory", "read_memory", "search_conversations", "read_conversation"]);
+    const contexts = [
+      { entries: [], migrated: [], olderCount: 0, progress: "" },
+      { entries: [{ id: "44444444-4444-4444-8444-444444444444", title: "Palette" }], migrated: [], olderCount: 3, progress: "Settled the look." },
+      { entries: [], migrated: [{ id: "55555555-5555-4555-8555-555555555555", title: "Earlier project memory", content: "Noir short." }], olderCount: 0, progress: "" },
+    ];
+    for (const memory of contexts) {
+      const prompt = instructionsText(instructionsForAgentMemory(buildSystemPrompt(), memory));
+      for (const name of Object.keys(TOOL_MAP).filter((n) => !AGENT_RUNTIME.has(n))) {
+        expect(prompt).not.toContain(name);
+      }
     }
+  });
+});
+
+describe("what the prompt says about the Agent's memory (#1363)", () => {
+  const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
+
+  it("has a memory protocol on every turn, whatever memory there is", () => {
+    expect(buildSystemPrompt()).toContain("## Memory");
+  });
+
+  it("says to save what the reader asks to remember, replacing the entry on the same thing", () => {
+    expect(wording()).toMatch(/asks you to remember something, save it with save_memory/);
+    expect(wording()).toMatch(/pass its id to replace it/);
+  });
+
+  it("says to delete what the reader asks to forget, or says is wrong", () => {
+    expect(wording()).toMatch(/forget something, or says an entry is wrong, remove it with delete_memory/);
+  });
+
+  it("says to read an entry in full before relying on it, and how to find one not listed", () => {
+    expect(wording()).toMatch(/read_memory before you rely on it/);
+    expect(wording()).toMatch(/not listed can be found with read_memory by words/);
+  });
+
+  it("says turns that left the context are read with read_conversation", () => {
+    expect(wording()).toMatch(/left your context are read with read_conversation/);
   });
 });
 

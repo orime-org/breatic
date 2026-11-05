@@ -142,9 +142,8 @@ space_read_timeout_ms: 20000
 # when the provider turns a request away as over its context window. It takes
 # whole turns from the oldest end, at least one, until what remains is under
 # the lower of this line and the window less max_output_tokens, less the room
-# the fold may add to memory -- a full index, the progress note and two
-# migrated blocks, doubled, counted as tokens at a character each. Must be
-# below fold_trigger_tokens.
+# the fold may add to memory -- a full index and the progress note, doubled,
+# counted as tokens at a character each. Must be below fold_trigger_tokens.
 memory_keep_tokens: 300000
 
 # The provider's last reported count (input + output), in tokens, at which the

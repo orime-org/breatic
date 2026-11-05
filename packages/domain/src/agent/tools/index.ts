@@ -167,6 +167,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";

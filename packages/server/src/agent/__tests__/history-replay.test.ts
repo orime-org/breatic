@@ -238,8 +238,8 @@ describe("replaying the history as it was sent", () => {
   });
 
   it("takes the thinking out of every reply left after a fold that wrote nothing took the turns before them", () => {
-    // A discarded fold moves the watermark and leaves memory as it was: turn
-    // one is no longer read, and both replies were made with it there.
+    // A fold written from another tab moves the watermark past turn one: it
+    // is no longer read, and both replies were made with it there.
     const q1: ModelMessage = { role: "user", content: "one" };
     const q2: ModelMessage = { role: "user", content: "two" };
     const q3: ModelMessage = { role: "user", content: "three" };

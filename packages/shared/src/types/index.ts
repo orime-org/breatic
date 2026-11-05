@@ -33,6 +33,7 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 

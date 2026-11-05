@@ -259,7 +259,7 @@ export interface World {
   /** The order things happened in: `call`, `fold`, `tool`, `context`. */
   events: string[];
   /** How the folds end, fold by fold; `written` once this runs out. */
-  foldOutcomes: Array<"written" | "discarded" | "superseded" | "aborted" | "untouched">;
+  foldOutcomes: Array<"written" | "failed" | "superseded" | "aborted" | "untouched">;
   /** What each fold was handed. */
   folds: Array<Record<string, unknown>>;
   /** Reads of the context after which every further read throws. */
@@ -333,8 +333,9 @@ export const BASE_CONFIG: Record<string, unknown> = {
   fold_trigger_tokens: 750_000,
   // Above the window less the output reserve, so the window term sets the fold target.
   memory_keep_tokens: 2_000_000,
-  memory_conversation_max_size: 1000,
-  memory_project_max_size: 1000,
+  // A reserve of 2 × (10 × 159 + 410) = 4000 tokens.
+  memory_index_max_entries: 10,
+  memory_progress_max_chars: 410,
   max_tool_iterations: 8,
   llm_max_retries: 0,
   overflow_folds_per_turn: 2,
@@ -479,7 +480,7 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
   const actual = await vi.importActual<Record<string, unknown>>("@breatic/domain");
   const instructionsForAgentMemory = actual.instructionsForAgentMemory as (
     base: string,
-    memory?: { projectMemory: string; conversationMemory: string },
+    memory?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string },
   ) => unknown;
   const recorderOf = base.createUsageRecorder as (options: { operationKey: string }) => {
     recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
@@ -490,7 +491,7 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
     finalizeTurn: actual.finalizeTurn,
     resolveProvider: () => "test",
     getModel: () => scriptedModel(),
-    buildAgentConfig: async (request: { basePrompt: string; memoryContext?: { projectMemory: string; conversationMemory: string } }) => ({
+    buildAgentConfig: async (request: { basePrompt: string; memoryContext?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string } }) => ({
       modelId: "test",
       instructions: instructionsForAgentMemory(request.basePrompt, request.memoryContext),
       tools: TOOLS,
@@ -550,7 +551,7 @@ export function overflowTurnContext(): Record<string, unknown> {
         throw new Error("connection terminated unexpectedly");
       }
       return {
-        memoryContext: { projectMemory: "", conversationMemory: world.memory },
+        memoryContext: { entries: [], migrated: [], olderCount: 0, progress: world.memory },
         history: world.history.filter((row) => row.turnIndex > world.watermark && row.turnIndex < before),
         watermark: world.watermark,
       };
@@ -569,9 +570,9 @@ export function overflowConsolidator(): Record<string, unknown> {
       world.folds.push(window);
       await world.duringFold?.();
       const outcome = world.foldOutcomes.shift() ?? "written";
-      if (outcome === "written" || outcome === "superseded" || outcome === "discarded") {
+      if (outcome === "written" || outcome === "superseded") {
         world.watermark = window.newWatermark as number;
-        if (outcome !== "discarded") world.memory = `MEMORY-THROUGH-${String(window.newWatermark)}`;
+        world.memory = `MEMORY-THROUGH-${String(window.newWatermark)}`;
       }
       if (outcome === "aborted") world.controller.abort();
       return outcome;

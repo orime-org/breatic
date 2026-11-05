@@ -512,7 +512,7 @@ describe("the memory chain still sees the same messages", () => {
     });
     const before = await conversationRepo.getConversation(conv.id);
 
-    await conversationRepo.advanceConsolidatedTurn(conv.id, 1);
+    await conversationRepo.advanceConsolidatedTurn(conv.id, 0, 1);
 
     const after = await conversationRepo.getConversation(conv.id);
     expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());

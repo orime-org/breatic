@@ -127,7 +127,7 @@ describe("at the start of a turn", () => {
     expect(turn.folds).toBe(1);
     expect(turn.foldedBeforeFirstCall).toBe(true);
     expect(turn.watermarks).toEqual([1]);
-    expect(turn.firstSystem).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(turn.firstSystem).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
   });
 
   it("sizes an overflow of the first call by the newest reply's provider count", async () => {
@@ -273,7 +273,7 @@ describe("in the middle of a turn", () => {
 
     expect(world.events.filter((e) => e !== "context")).toEqual(["call", "tool", "fold", "call"]);
     expect(world.toolRuns).toBe(1);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(toolPairsOf(world.prompts[1] ?? [])).toEqual({ calls: ["c1"], results: ["c1"] });
     const stored = world.replies.at(-1)?.message.parts ?? [];
     expect(stored).toContainEqual({ type: "text", text: "done" });

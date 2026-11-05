@@ -31,6 +31,7 @@ import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -874,6 +875,7 @@ export class MainAgent {
             turnIndex,
             spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
           }),
+          memory: agentMemoryFor({ userId, projectId, conversationId }),
         }) as never,
         // One ceiling for the whole turn, every stream of it together: a
         // stream that carries on after a fold has the steps already taken

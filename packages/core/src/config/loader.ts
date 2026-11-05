@@ -32,19 +32,6 @@ export const MEMORY_TITLE_MAX_CHARS = 120;
 /** How long one memory entry's content may be, in characters (#1363). */
 export const MEMORY_CONTENT_MAX_CHARS = 4000;
 
-/**
- * The longest block of memory written before entries existed. Each was cut to
- * 8192 characters on write, and the migration carries it over whole, so an
- * entry it made can be this long until a consolidation splits it.
- */
-const MIGRATED_BLOCK_MAX_CHARS = 8192;
-
-/**
- * How many migrated blocks one prompt can carry in full: one from the
- * member's Project and one from the conversation.
- */
-const MIGRATED_BLOCKS_PER_PROMPT = 2;
-
 /** What an index line adds besides its title: the full id and a separator. */
 const INDEX_LINE_OVERHEAD_CHARS = 36 + 3;
 
@@ -52,9 +39,10 @@ const INDEX_LINE_OVERHEAD_CHARS = 36 + 3;
  * How much room a fold may add to the request it is shortening.
  *
  * What a fold measured carries the memory as it stood; what goes out
- * carries what the fold just wrote: a full index, a progress note at its
- * ceiling, and the migrated blocks still waiting to be split. A pass has to
- * stop this far short of the keep line to leave room for it.
+ * carries what the fold just wrote: at most a full index and a progress note
+ * at its ceiling. A migrated block was already in what was measured, and a
+ * fold only splits or removes it. A pass has to stop this far short of the
+ * keep line to leave room for it.
  * @param ceilings - The memory ceilings.
  * @param ceilings.memory_index_max_entries - How many index lines a prompt carries.
  * @param ceilings.memory_progress_max_chars - The progress note's ceiling.
@@ -65,8 +53,7 @@ export function memoryReserveTokens(ceilings: {
   memory_progress_max_chars: number;
 }): number {
   const index = ceilings.memory_index_max_entries * (INDEX_LINE_OVERHEAD_CHARS + MEMORY_TITLE_MAX_CHARS);
-  const migrated = MIGRATED_BLOCKS_PER_PROMPT * MIGRATED_BLOCK_MAX_CHARS;
-  return MEMORY_RESERVE_FACTOR * (index + ceilings.memory_progress_max_chars + migrated);
+  return MEMORY_RESERVE_FACTOR * (index + ceilings.memory_progress_max_chars);
 }
 
 /** One model the reader can pick in the chat panel. */
@@ -436,7 +423,7 @@ const agentConfigSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["memory_index_max_entries"],
-      message: `the reserve held back for a fold for the memory index, the progress note and the migrated blocks (${reserved}) must be below memory_keep_tokens (${config.memory_keep_tokens})`,
+      message: `the reserve held back for a fold for the memory index and the progress note (${reserved}) must be below memory_keep_tokens (${config.memory_keep_tokens})`,
     });
   }
 

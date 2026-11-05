@@ -32,8 +32,9 @@ describe("delayed internal work does not create user return activity (inner#1893
     const project = await seedActivityProject(sql);
     const [chat] = await sql<{ id: string }[]>`INSERT INTO conversations(user_id,project_id) VALUES(${project.userId},${project.projectId}) RETURNING id`;
     expect(await memoryService.commitConsolidation({ userId: project.userId, projectId: project.projectId, conversationId: chat!.id,
-      data: { conversationUpdate: "summarized conversation", projectUpdate: "summarized Project", historyEntry: "automatic fold" }, newWatermark: 2 })).toBe("written");
-    expect(await memoryService.buildContext(project.userId, chat!.id, project.projectId)).toMatchObject({ conversationMemory: "summarized conversation" });
+      watermarkBefore: 0, newWatermark: 2, progress: "summarized conversation",
+      operations: [{ op: "add", scope: "project", title: "Summarized Project", content: "automatic fold" }] })).toBe("written");
+    expect(await memoryService.buildContext(project.userId, chat!.id, project.projectId)).toMatchObject({ progress: "summarized conversation" });
     const [row] = await sql<{ last_consolidated_turn: number }[]>`SELECT last_consolidated_turn FROM conversations WHERE id=${chat!.id}`;
     expect(row?.last_consolidated_turn).toBe(2);
     expect(await activityRows(sql, project.userId)).toEqual([]);

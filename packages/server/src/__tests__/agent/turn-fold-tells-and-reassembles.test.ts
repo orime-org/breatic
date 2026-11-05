@@ -8,9 +8,9 @@
  *
  * - Every fold that starts tells the reader once (`data-memory-consolidating`);
  *   a turn that folds nothing says nothing of the sort.
- * - A fold that ends `discarded` moved the watermark without writing memory
- *   (event W), so the request in hand still carries the turns it passed: the
- *   turn reads everything again and sends that, whichever trigger folded.
+ * - A fold that ends `failed` moved nothing and wrote nothing (#1363): the
+ *   turn goes on with the request it has, and after an overflow, where that
+ *   request does not fit, it ends with an error the reader can send again.
  * - A reader who stopped before the first call is owed no paid work: no fold
  *   and no model call, even with a known count over the line.
  *
@@ -30,7 +30,6 @@ import {
   rowsOf,
   sendMessage,
   systemOf,
-  toolPairsOf,
   typesOf,
   world,
   type World,
@@ -211,58 +210,48 @@ describe("the reader is told of a precheck fold once", () => {
   });
 });
 
-describe("a fold that ended discarded is followed by a reassembly, and that is what is sent", () => {
-  it("at the start of a turn", async () => {
-    const turn = await secondTurn(LINE - 616, 616, { outcomes: ["discarded"] });
+describe("a fold that failed leaves the history as it was (#1363)", () => {
+  it("at the start of a turn, sends the request it has", async () => {
+    const turn = await secondTurn(LINE - 616, 616, { outcomes: ["failed"] });
 
     expect(turn.folds).toBe(1);
-    expect(turn.contextReads).toBe(2);
+    expect(turn.contextReads).toBe(1);
     expect(turn.prompts).toHaveLength(1);
-    // The watermark passed turn 1 and no memory was written for it.
-    expect(JSON.stringify(turn.prompts[0])).not.toContain("first answer");
+    // Turn 1 is still in the history: nothing passed it.
+    expect(JSON.stringify(turn.prompts[0])).toContain("first answer");
     expect(systemOf(turn.prompts[0])).not.toContain("MEMORY-THROUGH");
     expect(count(turn.chunks, "error")).toBe(0);
     expect(turn.reply).toContainEqual({ type: "text", text: "second" });
   });
 
-  it("in the middle of a turn, with the finished step carried over", async () => {
+  it("in the middle of a turn, carries on with the steps it has", async () => {
     threeEarlierTurns();
-    world.foldOutcomes = ["discarded"];
+    world.foldOutcomes = ["failed"];
     world.script = [callsFetch("c1", LINE, 0), answers("done")];
 
     const chunks = await sendMessage();
 
     expect(world.folds).toHaveLength(1);
-    expect(world.events.filter((e) => e === "context")).toHaveLength(2);
+    expect(world.events.filter((e) => e === "context")).toHaveLength(1);
     expect(world.prompts).toHaveLength(2);
-    const resent = JSON.stringify(world.prompts[1]);
-    expect(resent).not.toContain("TURN-1-REPLY");
-    expect(resent).toContain("TURN-2-REPLY");
-    expect(systemOf(world.prompts[1])).not.toContain("MEMORY-THROUGH");
-    expect(toolPairsOf(world.prompts[1] ?? [])).toEqual({ calls: ["c1"], results: ["c1"] });
+    expect(JSON.stringify(world.prompts[1])).toContain("TURN-1-REPLY");
     expect(world.toolRuns).toBe(1);
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "done" });
   });
 
-  it("after an overflow, carrying on in the same reply", async () => {
+  it("after an overflow, ends the turn with an error the reader can send again", async () => {
     world.window = PROBE_WINDOW;
     world.history = [...plainTurn(1, 30_000), ...plainTurn(2, 30_000)];
     world.nextTurn = 3;
-    world.foldOutcomes = ["discarded"];
+    world.foldOutcomes = ["failed"];
     world.script = [{ reject: h1() }, answers("the answer")];
 
     const chunks = await sendMessage();
 
-    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "fold", "call"]);
-    expect(world.events.filter((e) => e === "context")).toHaveLength(2);
-    const resent = JSON.stringify(world.prompts[1]);
-    expect(resent).not.toContain("TURN-1-REPLY");
-    expect(resent).toContain("TURN-2-REPLY");
-    expect(count(chunks, "error")).toBe(0);
-    expect(count(chunks, "start")).toBe(1);
-    expect(stored()).toContainEqual({ type: "text", text: "the answer" });
-    expect(stored().some((part) => part.type === "failed")).toBe(false);
+    expect(world.events.filter((e) => e !== "context")).toEqual(["call", "fold"]);
+    expect(count(chunks, "error")).toBe(1);
+    expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
   });
 });
 

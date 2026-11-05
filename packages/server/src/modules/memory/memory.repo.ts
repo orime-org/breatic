@@ -2,56 +2,104 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Memory repository — two layers, both the reader's own.
+ * Memory repository — the Agent's memory entries and each conversation's
+ * progress note (#1363).
  *
- * Layers:
- * 1. Conversation memory, one row per conversation
- * 2. Project memory, one row per member per project
- *
- * The project layer is keyed by both columns everywhere it is touched, and
- * the compiler sees neither of them: a `where` clause is one `eq` short
- * without complaint, and a conflict target names columns rather than types.
- * A member id that reaches only one of the two reads and writes a
- * neighbour's row.
+ * An entry is the member's own. One turn sees two sets of them: the
+ * member's entries of the Project (no conversation) and the entries of the
+ * conversation it runs in. Every read and write here is keyed by the member
+ * as well as the Project or conversation; the compiler sees neither, so a
+ * `where` one `eq` short reads a neighbour's memory without complaint.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import {
-  conversationMemories,
-  memoryHistoryEntries,
-  projectMemories,
-  projectMemoryEntries,
-} from "@breatic/core";
+import { agentMemories, conversationMemories } from "@breatic/core";
+import type { AgentMemoryEntity } from "@breatic/shared";
 
-// ── Conversation Memory ──────────────────────────────────────────────
+/** Whose entries a turn sees, and where. */
+export interface MemoryScopeKey {
+  userId: string;
+  projectId: string;
+  conversationId: string;
+}
+
+/** The index a turn's system prompt lists. */
+export interface MemoryIndex {
+  /** Newest first, migrated blocks left out. */
+  entries: Array<{ id: string; title: string }>;
+  /** Migrated blocks, newest first, in full. */
+  migrated: Array<{ id: string; title: string; content: string }>;
+  /** How many entries the bound left out. */
+  olderCount: number;
+}
+
+type Row = typeof agentMemories.$inferSelect;
 
 /**
- * Get conversation memory content.
- * @param conversationId - ID of the conversation whose memory is fetched.
- * @returns The stored memory content, or an empty string if none exists.
+ * One row as the rest of the server reads it.
+ * @param row - The row.
+ * @returns The entity.
+ * @throws {never} Never.
  */
-export async function getConversationMemory(conversationId: string): Promise<string> {
+function toEntity(row: Row): AgentMemoryEntity {
+  return {
+    id: row.id,
+    userId: row.userId,
+    projectId: row.projectId,
+    conversationId: row.conversationId,
+    sourceConversationId: row.sourceConversationId,
+    title: row.title,
+    content: row.content,
+    origin: row.origin as AgentMemoryEntity["origin"],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
+  };
+}
+
+/**
+ * The live entries one turn sees: the member's in the Project, and the ones
+ * of this conversation.
+ * @param scope - Whose and where.
+ * @returns The condition.
+ * @throws {never} Never.
+ */
+function visible(scope: MemoryScopeKey): SQL | undefined {
+  return and(
+    eq(agentMemories.userId, scope.userId),
+    isNull(agentMemories.deletedAt),
+    or(
+      and(isNull(agentMemories.conversationId), eq(agentMemories.projectId, scope.projectId)),
+      eq(agentMemories.conversationId, scope.conversationId),
+    ),
+  );
+}
+
+// ── Progress note ────────────────────────────────────────────────────
+
+/**
+ * A conversation's progress note.
+ * @param conversationId - The conversation.
+ * @returns The note, or an empty string when there is none.
+ */
+export async function getProgress(conversationId: string): Promise<string> {
   const rows = await db
     .select({ content: conversationMemories.content })
     .from(conversationMemories)
-    .where(eq(conversationMemories.conversationId, conversationId))
+    .where(and(eq(conversationMemories.conversationId, conversationId), isNull(conversationMemories.deletedAt)))
     .limit(1);
   return rows[0]?.content ?? "";
 }
 
 /**
- * Upsert conversation memory (no versioning).
- * @param conversationId - ID of the conversation to write memory for.
- * @param content - New memory content to store, replacing any existing value.
+ * Write a conversation's progress note.
+ * @param conversationId - The conversation.
+ * @param content - The note, replacing the one there.
  * @param tx - The transaction to run inside, when the caller has one.
  */
-export async function upsertConversationMemory(
-  conversationId: string,
-  content: string,
-  tx?: DbTx,
-): Promise<void> {
+export async function upsertProgress(conversationId: string, content: string, tx?: DbTx): Promise<void> {
   await (tx ?? db)
     .insert(conversationMemories)
     .values({ conversationId, content })
@@ -61,90 +109,194 @@ export async function upsertConversationMemory(
     });
 }
 
+// ── Entries ──────────────────────────────────────────────────────────
+
 /**
- * Append a consolidation history entry.
- * @param conversationId - ID of the conversation the history entry belongs to.
- * @param entry - Serialized history record describing a consolidation event.
- * @param tx - The transaction to run inside, when the caller has one.
+ * The index one turn's system prompt lists.
+ * @param scope - Whose and where.
+ * @param limit - How many entries it lists at most.
+ * @returns The index.
  */
-export async function appendHistory(
-  conversationId: string,
-  entry: string,
-  tx?: DbTx,
-): Promise<void> {
-  await (tx ?? db).insert(memoryHistoryEntries).values({ conversationId, entry });
+export async function listIndex(scope: MemoryScopeKey, limit: number): Promise<MemoryIndex> {
+  const notMigrated = and(visible(scope), ne(agentMemories.origin, "migration"));
+  const [migrated, entries, total] = await Promise.all([
+    db
+      .select({ id: agentMemories.id, title: agentMemories.title, content: agentMemories.content })
+      .from(agentMemories)
+      .where(and(visible(scope), eq(agentMemories.origin, "migration")))
+      .orderBy(desc(agentMemories.updatedAt), desc(agentMemories.id)),
+    db
+      .select({ id: agentMemories.id, title: agentMemories.title })
+      .from(agentMemories)
+      .where(notMigrated)
+      .orderBy(desc(agentMemories.updatedAt), desc(agentMemories.id))
+      .limit(limit),
+    db.select({ n: count() }).from(agentMemories).where(notMigrated),
+  ]);
+  return { entries, migrated, olderCount: Math.max(0, (total[0]?.n ?? 0) - entries.length) };
 }
 
-// ── Project Memory ───────────────────────────────────────────────────
+/**
+ * Every live entry one turn sees, migrated blocks first, then newest first.
+ * @param scope - Whose and where.
+ * @returns The entries.
+ */
+export async function listVisible(scope: MemoryScopeKey): Promise<AgentMemoryEntity[]> {
+  const rows = await db
+    .select()
+    .from(agentMemories)
+    .where(visible(scope))
+    .orderBy(
+      sql`CASE WHEN ${agentMemories.origin} = 'migration' THEN 0 ELSE 1 END`,
+      desc(agentMemories.updatedAt),
+      desc(agentMemories.id),
+    );
+  return rows.map(toEntity);
+}
 
 /**
- * Get one member's project memory.
- * @param userId - Whose memory to read.
- * @param projectId - Which project it belongs to.
- * @returns The stored memory content, or an empty string if none exists.
+ * One entry of the member's, deleted or not, wherever it belongs.
+ * @param userId - Whose.
+ * @param id - The entry.
+ * @returns It, or null when the member has no entry by that id.
  */
-export async function getProjectMemory(
-  userId: string,
-  projectId: string,
-): Promise<string> {
+export async function findOwnEntry(userId: string, id: string): Promise<AgentMemoryEntity | null> {
   const rows = await db
-    .select({ content: projectMemories.content })
-    .from(projectMemories)
+    .select()
+    .from(agentMemories)
+    .where(and(eq(agentMemories.id, id), eq(agentMemories.userId, userId)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The live entries named that one turn sees.
+ * @param scope - Whose and where.
+ * @param ids - The entries.
+ * @returns Them, in no particular order.
+ */
+export async function getVisible(scope: MemoryScopeKey, ids: readonly string[]): Promise<AgentMemoryEntity[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(agentMemories)
+    .where(and(visible(scope), inArray(agentMemories.id, [...ids])));
+  return rows.map(toEntity);
+}
+
+/**
+ * Live entries one turn sees whose title or content holds the words as
+ * written, ignoring case, newest first.
+ * @param scope - Whose and where.
+ * @param query - The words.
+ * @param page - Where the page starts and how long it is.
+ * @param page.offset - How many matches come before it.
+ * @param page.limit - How many it holds at most.
+ * @returns The page, and whether more follow.
+ */
+export async function searchVisible(
+  scope: MemoryScopeKey,
+  query: string,
+  page: { offset: number; limit: number },
+): Promise<{ items: AgentMemoryEntity[]; more: boolean }> {
+  // `%`, `_` and the escape itself are literal characters here, not patterns.
+  const pattern = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const rows = await db
+    .select()
+    .from(agentMemories)
     .where(
       and(
-        eq(projectMemories.userId, userId),
-        eq(projectMemories.projectId, projectId),
+        visible(scope),
+        or(
+          sql`${agentMemories.title} ILIKE ${pattern} ESCAPE '\\'`,
+          sql`${agentMemories.content} ILIKE ${pattern} ESCAPE '\\'`,
+        ),
       ),
     )
-    .limit(1);
-  return rows[0]?.content ?? "";
+    .orderBy(desc(agentMemories.updatedAt), desc(agentMemories.id))
+    .offset(page.offset)
+    .limit(page.limit + 1);
+  return { items: rows.slice(0, page.limit).map(toEntity), more: rows.length > page.limit };
+}
+
+/** What a new entry is written with. */
+export interface NewEntry {
+  userId: string;
+  projectId: string;
+  /** Set for an entry of this conversation alone. */
+  conversationId: string | null;
+  sourceConversationId: string;
+  title: string;
+  content: string;
+  origin: "agent" | "consolidation";
 }
 
 /**
- * Write one member's project memory, inserting the row when it is their first.
- *
- * The last write wins, which is what this layer already means: a consolidation
- * replaces this member's project memory whole. `version` is carried by the
- * column and rises with each rewrite; nothing reads it.
- * @param userId - Whose memory is written.
- * @param projectId - Which project it belongs to.
- * @param content - New memory content to store.
+ * Add an entry.
+ * @param entry - What it holds.
  * @param tx - The transaction to run inside, when the caller has one.
+ * @returns The entry.
+ * @throws {Error} When the row is refused, which leaves nothing written.
  */
-export async function upsertProjectMemory(
-  userId: string,
-  projectId: string,
-  content: string,
-  tx?: DbTx,
-): Promise<void> {
-  await (tx ?? db)
-    .insert(projectMemories)
-    .values({ userId, projectId, content, version: 1 })
-    .onConflictDoUpdate({
-      target: [projectMemories.userId, projectMemories.projectId],
-      set: { content, version: sql`${projectMemories.version} + 1`, updatedAt: new Date() },
-    });
+export async function insertEntry(entry: NewEntry, tx?: DbTx): Promise<AgentMemoryEntity> {
+  const [row] = await (tx ?? db).insert(agentMemories).values(entry).returning();
+  if (!row) throw new Error("agent_memories insert returned no row");
+  return toEntity(row);
 }
 
 /**
- * Append a project memory entry (audit log).
- * @param projectId - ID of the project the entry belongs to.
- * @param authorId - ID of the collaborator who authored the entry.
- * @param content - Memory text captured for this entry.
- * @param sourceConversationId - Optional ID of the conversation that produced the entry.
+ * Replace a live entry's title and content, and where it is read when given.
+ * @param id - The entry.
+ * @param change - What it now holds.
+ * @param change.title - Its title.
+ * @param change.content - Its content.
+ * @param change.conversationId - Set to move it to that conversation alone, null to the Project; absent, it stays.
  * @param tx - The transaction to run inside, when the caller has one.
+ * @returns The entry, or null when there is no live entry by that id.
  */
-export async function appendProjectEntry(
-  projectId: string,
-  authorId: string,
-  content: string,
-  sourceConversationId?: string,
+export async function updateEntry(
+  id: string,
+  change: { title: string; content: string; conversationId?: string | null },
   tx?: DbTx,
+): Promise<AgentMemoryEntity | null> {
+  const [row] = await (tx ?? db)
+    .update(agentMemories)
+    .set({ ...change, updatedAt: new Date() })
+    .where(and(eq(agentMemories.id, id), isNull(agentMemories.deletedAt)))
+    .returning();
+  return row ? toEntity(row) : null;
+}
+
+/**
+ * Delete a live entry, softly.
+ * @param id - The entry.
+ * @param tx - The transaction to run inside, when the caller has one.
+ * @returns The entry, or null when there is no live entry by that id.
+ */
+export async function softDeleteEntry(id: string, tx?: DbTx): Promise<AgentMemoryEntity | null> {
+  const [row] = await (tx ?? db)
+    .update(agentMemories)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(agentMemories.id, id), isNull(agentMemories.deletedAt)))
+    .returning();
+  return row ? toEntity(row) : null;
+}
+
+/**
+ * Delete the entries of conversations that are being deleted; the Project's
+ * stay.
+ * @param tx - The deleting transaction.
+ * @param conversationIds - The conversations.
+ * @param now - The deletion time the cascade stamps.
+ */
+export async function softDeleteConversationEntries(
+  tx: DbTx,
+  conversationIds: readonly string[],
+  now: Date,
 ): Promise<void> {
-  await (tx ?? db).insert(projectMemoryEntries).values({
-    projectId,
-    authorId,
-    content,
-    sourceConversationId,
-  });
+  if (conversationIds.length === 0) return;
+  await tx
+    .update(agentMemories)
+    .set({ deletedAt: now })
+    .where(and(inArray(agentMemories.conversationId, [...conversationIds]), isNull(agentMemories.deletedAt)));
 }

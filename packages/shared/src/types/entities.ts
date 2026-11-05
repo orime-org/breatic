@@ -846,6 +846,25 @@ export interface RecentItem {
   lastOpenedAt: Date;
 }
 
+/** One row of the Agent's memory (#1363): a fact the member's Agent keeps. */
+export interface AgentMemoryEntity {
+  id: string;
+  userId: string;
+  /** The Project it belongs to. */
+  projectId: string | null;
+  /** The conversation it belongs to alone; null for an entry read across the member's conversations in the Project. */
+  conversationId: string | null;
+  /** The conversation it was written in; null for an entry migrated from a Project block. */
+  sourceConversationId: string | null;
+  title: string;
+  content: string;
+  /** Who wrote it: the Agent through its memory tools, a consolidation, or the migration. */
+  origin: "agent" | "consolidation" | "migration";
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
 /**
  * The Agent's memory as one turn's system prompt carries it (#1363).
  *

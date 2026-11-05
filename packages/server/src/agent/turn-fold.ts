@@ -76,8 +76,8 @@ export type FoldTrigger =
  * How a fold check ended.
  *
  * - `none`: no fold ran; send as it stands.
- * - `moved`: the watermark moved (`written`, `superseded`, `discarded`); assemble again.
- * - `untouched`: the fold could not start or record anything.
+ * - `moved`: the watermark moved (`written`, `superseded`); assemble again.
+ * - `untouched`: the fold could not start, or failed and wrote nothing.
  * - `aborted`: the reader left during the fold.
  * - `too_long`: an overflow that no fold can fix, or one past
  *   `overflow_folds_per_turn`; end the turn as too long.
@@ -217,9 +217,13 @@ export async function foldIfTooLong(
       })),
     watermarkBefore: assembly.watermark,
     newWatermark,
+    turnIndex: who.turnIndex,
     ...(who.signal ? { signal: who.signal } : {}),
   });
 
-  if (outcome === "written" || outcome === "superseded" || outcome === "discarded") return "moved";
+  if (outcome === "written" || outcome === "superseded") return "moved";
+  // A fold that failed moved nothing: the request in hand still carries the
+  // turns, and the caller goes on with it the way it does when nothing moved.
+  if (outcome === "failed") return "untouched";
   return outcome;
 }

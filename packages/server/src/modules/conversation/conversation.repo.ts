@@ -21,6 +21,7 @@ import {
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { cascadeDeleteMessages } from "@server/modules/conversation/conversation-message.repo.js";
+import { softDeleteConversationEntries } from "@server/modules/memory/memory.repo.js";
 import { CONVERSATION_TITLE_MAX_CHARS } from "@breatic/shared";
 import type { ConversationEntity } from "@breatic/shared";
 
@@ -401,6 +402,10 @@ export async function cascadeDeleteConversations(
       ),
     );
 
+  // The conversation's own memory entries go with it; the member's Project
+  // entries written from it stay, since they belong to the Project.
+  await softDeleteConversationEntries(tx, ids, now);
+
   await tx
     .update(conversations)
     .set({ deletedAt: now, updatedAt: now })
@@ -512,11 +517,12 @@ export async function setProjectId(
 /**
  * Move the consolidation watermark forward, and say whether it moved.
  *
- * The comparison is the concurrency control. Two tabs on one conversation
- * compute different windows — the later turn's history is longer, so its
- * boundary can sit further along — and the narrower one must not overwrite
- * memory that already covers more. Refusing to move backwards is what makes
- * "everything under the watermark is in memory" hold without a lock.
+ * The comparison is the concurrency control. A fold reads the entries and
+ * the watermark, and writes its operations against what it read; two tabs on
+ * one conversation each fold from the same watermark. Moving only from the
+ * watermark the fold read means the second one writes nothing, so the same
+ * turns are never folded into entries twice, and never backwards. It is what
+ * makes "everything under the watermark is in memory" hold without a lock.
  *
  * `updated_at` is left where it is, and that is load-bearing. It orders the
  * list and decides which conversation an open lands on, and what it means
@@ -524,12 +530,14 @@ export async function setProjectId(
  * never asked for and cannot see. Touching it would lift a conversation they
  * have not opened in weeks to the top of their list.
  * @param id - Conversation UUID to update.
+ * @param from - The watermark the caller read.
  * @param turn - The watermark to move to.
  * @param tx - The transaction to run inside, when the caller has one.
- * @returns True when this call moved it; false when it was already further along.
+ * @returns True when this call moved it; false when it was no longer where the caller read it.
  */
 export async function advanceConsolidatedTurn(
   id: string,
+  from: number,
   turn: number,
   tx?: DbTx,
 ): Promise<boolean> {
@@ -540,6 +548,7 @@ export async function advanceConsolidatedTurn(
       and(
         eq(conversations.id, id),
         isNull(conversations.deletedAt),
+        eq(conversations.lastConsolidatedTurn, from),
         lt(conversations.lastConsolidatedTurn, turn),
       ),
     )

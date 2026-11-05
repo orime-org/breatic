@@ -165,13 +165,13 @@ describe("the memory keep line", () => {
     // The line the pass runs to is the keep line less the reserve. Take
     // exactly the whole of it and that line is zero: the loop's `remaining
     // <= keep` is false only while something is left, so a fold takes every
-    // turn there is. The reserve is 2 × (entries × 159 + progress + 16384),
-    // which 1000 entries and a 74616-character note bring to 500000.
+    // turn there is. The reserve is 2 × (entries × 159 + progress), which
+    // 1000 entries and a 91000-character note bring to 500000.
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
         memory_index_max_entries: 1000,
-        memory_progress_max_chars: 74_616,
+        memory_progress_max_chars: 91_000,
       }).success,
     ).toBe(false);
     // One character under it passes, which is what makes the line above a
@@ -180,7 +180,7 @@ describe("the memory keep line", () => {
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
         memory_index_max_entries: 1000,
-        memory_progress_max_chars: 74_615,
+        memory_progress_max_chars: 90_999,
       }).success,
     ).toBe(true);
   });
