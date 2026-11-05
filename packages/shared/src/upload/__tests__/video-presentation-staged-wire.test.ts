@@ -101,6 +101,25 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
   });
 });
 
+// §93 D6 (frames-split design §3.5 server/worker→ingest row): a discovery read or dedup winner may make its accept conditional
+// with `expect: 'first' | 'readmit'`, and the snapshot carries the DO's `readmit` fact.
+describe('conditional accepts and the readmit fact on the wire (§93 D6; design §3.5)', () => {
+  it.each(['first', 'readmit'])('CW10 an accept with expect %s is admitted', (condition) => {
+    expect(admits({ ...accept, expect: condition })).toBe(true);
+  });
+
+  it.each(['always', null, true])('CW11 an accept with expect %j is refused', (condition) => {
+    expect(admits({ ...accept, expect: condition })).toBe(false);
+  });
+
+  it.each([true, false])('CW12 a snapshot carrying readmit %s is admitted', (readmit) => {
+    const schema = exported<{ safeParse: (value: unknown) => { success: boolean } }>('videoPresentationIngestSnapshotSchema');
+    const snapshot = { sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, ledger: null, readmit,
+      preparation: { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'publish', failure: readmit ? null : 'presentation_invalid' } };
+    expect(schema.safeParse(snapshot).success).toBe(true);
+  });
+});
+
 describe('S6d D1 frozen probe facts on the accept (inner#1306 §91 D-6; design §5.1 step 2, §4.2.1)', () => {
   it.each([
     ['no probe facts', { probe: undefined }],
