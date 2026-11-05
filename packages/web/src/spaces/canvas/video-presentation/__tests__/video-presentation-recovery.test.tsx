@@ -141,7 +141,7 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
     fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
     await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
     await waitFor(() => expect(platform.sessions).toHaveLength(1));
-    const session = platform.sessions[0];
+    const session = platform.sessions[0]!;
     act(() => session.callbacks.ready(session.element, session.surface));
     expect(screen.getByTestId('play-toggle')).toBeEnabled();
     expect(platform.apiGet).toHaveBeenCalledOnce();
@@ -162,7 +162,7 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
     seed(ready);
     mount(timeline());
     await waitFor(() => expect(platform.sessions).toHaveLength(1));
-    act(() => platform.sessions[0].callbacks.error('media-load-failed'));
+    act(() => platform.sessions[0]!.callbacks.error('media-load-failed'));
     act(() => platform.frames.shift()!(performance.now()));
     fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
     await waitFor(() => expect(platform.sessions).toHaveLength(2));
