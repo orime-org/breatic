@@ -154,9 +154,9 @@ describe('timelineSourceOverflow', () => {
     it('counts Timeline frames past the source end in seconds, not in source frames', () => {
       // 100 Timeline frames at 25 fps last 4 s; only the first 50 fall inside the 2 s source.
       expect(timelineSourceOverflow(clip(A, V2, 0, 100), SOURCE50, FPS25)).toBe(50);
-      expect(validateTimelineRange(clip(A, V2, 0, 100), SOURCE50, FPS25).valid).toBe(false);
+      expect(validateTimelineRange(clip(A, V2, 0, 100), SOURCE50, FPS25)).toBe(false);
       expect(timelineSourceOverflow(clip(A, V2, 0, 50), SOURCE50, FPS25)).toBe(0);
-      expect(validateTimelineRange(clip(A, V2, 0, 50), SOURCE50, FPS25).valid).toBe(true);
+      expect(validateTimelineRange(clip(A, V2, 0, 50), SOURCE50, FPS25)).toBe(true);
     });
 
     it('agrees with validateTimelineRange on every in-point and duration', () => {
@@ -164,7 +164,7 @@ describe('timelineSourceOverflow', () => {
         fc.integer({ min: 0, max: 120 }), fc.integer({ min: 1, max: 120 }), fc.constantFrom({ num: 1, den: 1 }, { num: 2, den: 1 }, { num: 1, den: 2 }),
         (sourceInFrame, durationFrames, rate) => {
           const placed = clip(A, V2, 0, durationFrames, { sourceInFrame, rate });
-          expect(timelineSourceOverflow(placed, SOURCE50, FPS25) === 0).toBe(validateTimelineRange(placed, SOURCE50, FPS25).valid);
+          expect(timelineSourceOverflow(placed, SOURCE50, FPS25) === 0).toBe(validateTimelineRange(placed, SOURCE50, FPS25));
         },
       ), { numRuns: 400 });
     });

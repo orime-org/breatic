@@ -57,16 +57,16 @@ describe('Timeline source sampling', () => {
   });
 
   it('accepts the last partial frame but refuses a sample beyond the source', () => {
-    expect(validateTimelineRange(clip, source, fps)).toEqual({ valid: true });
+    expect(validateTimelineRange(clip, source, fps)).toBe(true);
     expect(timelineSourceSeconds(clip, source, fps, 48)).toBe(2);
-    expect(validateTimelineRange({ ...clip, durationFrames: 50 }, source, fps)).toEqual({ valid: false, reason: 'invalid_range' });
+    expect(validateTimelineRange({ ...clip, durationFrames: 50 }, source, fps)).toBe(false);
   });
 
   it('uses the last visible sample rather than the exclusive frame tail', () => {
-    expect(validateTimelineRange({ ...clip, sourceInFrame: 46, durationFrames: 3 }, source, fps)).toEqual({ valid: true });
-    expect(validateTimelineRange({ ...clip, sourceInFrame: 49, durationFrames: 1 }, source, fps)).toEqual({ valid: false, reason: 'invalid_range' });
-    expect(validateTimelineRange({ ...clip, durationFrames: 25, rate: { num: 2, den: 1 } }, source, fps)).toEqual({ valid: true });
-    expect(validateTimelineRange({ ...clip, durationFrames: 26, rate: { num: 2, den: 1 } }, source, fps)).toEqual({ valid: false, reason: 'invalid_range' });
+    expect(validateTimelineRange({ ...clip, sourceInFrame: 46, durationFrames: 3 }, source, fps)).toBe(true);
+    expect(validateTimelineRange({ ...clip, sourceInFrame: 49, durationFrames: 1 }, source, fps)).toBe(false);
+    expect(validateTimelineRange({ ...clip, durationFrames: 25, rate: { num: 2, den: 1 } }, source, fps)).toBe(true);
+    expect(validateTimelineRange({ ...clip, durationFrames: 26, rate: { num: 2, den: 1 } }, source, fps)).toBe(false);
   });
 
   it.each([
@@ -78,7 +78,7 @@ describe('Timeline source sampling', () => {
     { rate: { num: 0, den: 1 } },
     { rate: { num: 1, den: 0 } },
   ])('rejects invalid clip bounds %j', (changes) => {
-    expect(validateTimelineRange({ ...clip, ...changes }, source, fps)).toEqual({ valid: false, reason: 'invalid_range' });
+    expect(validateTimelineRange({ ...clip, ...changes }, source, fps)).toBe(false);
   });
 });
 
