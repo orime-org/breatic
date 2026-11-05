@@ -6,7 +6,7 @@ import * as Y from 'yjs';
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
-  applyTimelineEdit, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId, timelineReferencedSourceIds,
+  applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId,
 } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
@@ -26,6 +26,7 @@ export interface TimelineEditSession {
   undo: () => void;
   redo: () => void;
   select: (clipId: string | null) => void;
+  endHold: () => void;
   setCanWrite: (canWrite: boolean) => void;
   dispose: () => void;
 }
@@ -149,8 +150,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
     const sources = doc.getMap<unknown>('sources');
     sources.forEach((value, id) => { known[id] = value; });
     if (!canWrite) return;
-    const missing = [...timelineReferencedSourceIds(doc)].some((id) => !sources.has(id) && known[id] !== undefined);
-    if (missing) doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN);
+    if (missingTimelineSourceIds(doc, known).length > 0) doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN);
   };
   restoreMissingSources();
   doc.on('afterAllTransactions', restoreMissingSources);
@@ -210,8 +210,12 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       refresh();
     },
     select(clipId) {
+      holdStep = null;
       selected = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
       refresh();
+    },
+    endHold() {
+      holdStep = null;
     },
     setCanWrite(value) {
       canWrite = value;

@@ -54,6 +54,18 @@ export function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
 }
 
 /**
+ * The referenced sources, damaged clip records included, that `sources` lacks and `values` holds.
+ * @param doc - The content document.
+ * @param values - Source values by id that this writer may write.
+ * @returns Their ids.
+ * @throws {never} Never.
+ */
+export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, unknown>>): string[] {
+  const sources = doc.getMap<unknown>('sources');
+  return [...timelineReferencedSourceIds(doc)].filter((id) => !sources.has(id) && values[id] !== undefined);
+}
+
+/**
  * Write referenced sources inside the caller's transaction: the ones in `reset` even when present, and any that is
  * missing, each from `values` when it holds it. Concurrent writes to one key keep only one of them, so a fresh
  * write narrows the window in which a peer's removal leaves a reference without its source; writing back a missing
@@ -61,9 +73,10 @@ export function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
  * @param doc - The content document.
  * @param values - Source values by id that this writer may write.
  * @param reset - Ids of sources a reference was just created or revived for.
+ * @returns The referenced source ids.
  * @throws {never} Never.
  */
-export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
+export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): Set<string> {
   const sources = doc.getMap<unknown>('sources');
   const referenced = timelineReferencedSourceIds(doc);
   /**
@@ -76,6 +89,7 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
   };
   for (const id of new Set(reset)) if (referenced.has(id)) write(id);
   for (const id of referenced) if (!sources.has(id)) write(id);
+  return referenced;
 }
 
 /**
@@ -86,9 +100,8 @@ export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<strin
  * @throws {never} Never.
  */
 export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, unknown>>, reset: Iterable<string>): void {
-  restoreTimelineSources(doc, values, reset);
+  const referenced = restoreTimelineSources(doc, values, reset);
   const sources = doc.getMap<unknown>('sources');
-  const referenced = timelineReferencedSourceIds(doc);
   for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);
 }
 

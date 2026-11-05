@@ -56,30 +56,30 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
   });
 }
 
-/** Records left out of a read because they fail their schema; damaged clips are listed for the user to delete. */
-export interface TimelineDamagedRecords { clips: string[]; tracks: string[] }
+/** Clip records left out of a read because they fail their schema, listed for the user to delete. */
+export interface TimelineDamagedRecords { clips: string[] }
 
 /**
  * Keep the records of one collection that pass their schema.
  * @param collection - The collection as JSON.
  * @param schema - The record schema.
  * @param schema.safeParse - Validates one record.
- * @param damaged - Collects the ids of records that fail.
+ * @param damaged - Collects the ids of records that fail, when given.
  * @returns The valid records by id.
  * @throws {never} Never.
  */
-function validRecords(collection: Record<string, unknown>, schema: { safeParse: (value: unknown) => { success: boolean } }, damaged: string[]): Record<string, unknown> {
+function validRecords(collection: Record<string, unknown>, schema: { safeParse: (value: unknown) => { success: boolean } }, damaged?: string[]): Record<string, unknown> {
   const valid: Record<string, unknown> = {};
   for (const [id, record] of Object.entries(collection)) {
     if (schema.safeParse(record).success) valid[id] = record;
-    else damaged.push(id);
+    else damaged?.push(id);
   }
   return valid;
 }
 
 /**
- * Read our DTO without manufacturing initial state on the client; a damaged clip or track record is left out
- * and listed, so one bad record never closes the whole Timeline.
+ * Read our DTO without manufacturing initial state on the client; a damaged clip or track record is left out, and
+ * damaged clips are listed, so one bad record never closes the whole Timeline.
  * @param doc - The content document to project.
  * @returns The readable Timeline and the damaged record ids.
  * @throws {Error} When the content is empty, unsupported or its roots are structurally invalid.
@@ -87,11 +87,11 @@ function validRecords(collection: Record<string, unknown>, schema: { safeParse: 
 export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1; damaged: TimelineDamagedRecords } {
   if (!doc.share.has("timeline")) throw new Error("Timeline content has not been initialized");
   const timeline = doc.getMap("timeline");
-  const damaged: TimelineDamagedRecords = { clips: [], tracks: [] };
+  const damaged: TimelineDamagedRecords = { clips: [] };
   const document = TimelineDocumentV1Schema.parse({
     schemaVersion: timeline.get("schemaVersion"),
     settings: timeline.get("settings"),
-    tracks: validRecords(doc.getMap("tracks").toJSON(), TimelineTrackSchema, damaged.tracks),
+    tracks: validRecords(doc.getMap("tracks").toJSON(), TimelineTrackSchema),
     clips: validRecords(doc.getMap("clips").toJSON(), TimelineVideoClipSchema, damaged.clips),
     sources: doc.getMap("sources").toJSON(),
   });

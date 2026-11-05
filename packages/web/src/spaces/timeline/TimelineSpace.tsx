@@ -233,6 +233,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [readOnly, selected, labels.visual, commit, placement, t]);
 
   const onKeyDown = React.useCallback((event: KeyboardEvent): void => {
+    // A fresh press, whatever it does, ends the key hold so a later repeat cannot join the old step.
+    if (!event.repeat) session.endHold();
     // Text fields and Select triggers answer their own keys (a trigger's typeahead does not mark them handled).
     if (!regionOwnsKeyboard(event.target, 'space') || (event.target instanceof Element && (isEditableTarget(event.target) || event.target.closest('[role="combobox"]') !== null))) return;
     const action = timelineKeyAction(event, fps);
@@ -250,7 +252,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       case 'nudge': nudge(action.frames, action.repeat); break;
       case 'change_track': changeTrack(action.direction, action.repeat); break;
     }
-  }, [fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
+  }, [session, fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
   const root = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const element = root.current;

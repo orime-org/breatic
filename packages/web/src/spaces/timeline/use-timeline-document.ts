@@ -13,7 +13,7 @@ export interface TimelineDocumentState {
   error: Error | null;
 }
 
-const NONE: TimelineDamagedRecords = { clips: [], tracks: [] };
+const NONE: TimelineDamagedRecords = { clips: [] };
 
 /**
  * Read a supported version before binding its collection handles.
@@ -29,7 +29,7 @@ function readState(doc: Y.Doc, enabled: boolean): TimelineDocumentState {
       throw new Error('Unsupported Timeline content');
     }
     const { document, damaged } = readTimelineContent(doc);
-    return { document, damaged: damaged.clips.length === 0 && damaged.tracks.length === 0 ? NONE : damaged, error: null };
+    return { document, damaged: damaged.clips.length === 0 ? NONE : damaged, error: null };
   } catch (error) {
     return { document: null, damaged: NONE, error: error instanceof Error ? error : new Error('Invalid Timeline content') };
   }

@@ -10,23 +10,12 @@ import {
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
-/** The editing user's local placement switches, carried with each command. */
-export interface TimelineEditPlacement { magnet: boolean; linkage: boolean }
-
-/** An edit to the Timeline's collaborative layout. */
-export type TimelineEditCommand = (
-  | { operation: 'add_video'; parameters: { source: TimelineVideoSource; clip: TimelineVideoClip; newTrackId?: string } }
-  | { operation: 'move'; parameters: { clipId: string; startFrame: number; trackId?: string; newTrackId?: string } }
-  | { operation: 'set_range'; parameters: { clipId: string; startFrame: number; sourceInFrame: number; durationFrames: number } }
-  | { operation: 'split'; parameters: { clipId: string; frame: number; newClipId: string } }
-  | { operation: 'duplicate'; parameters: { clipId: string; newClipId: string } }
-  | { operation: 'delete'; parameters: { clipId: string } }
-  | { operation: 'delete_track'; parameters: { trackId: string } }
-) & { placement: TimelineEditPlacement };
-
 // The command bounds are the persisted clip format's own field schemas.
 const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity, trackId: trackIdentity } = TimelineVideoClipSchema.shape;
 const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
+
+/** The editing user's local placement switches, carried with each command. */
+export type TimelineEditPlacement = z.infer<typeof placement>;
 
 /** A normalized user-confirmed native edit. */
 export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
@@ -51,6 +40,9 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('delete'), parameters: z.object({ clipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete_track'), parameters: z.object({ trackId: trackIdentity }).strict(), placement }).strict(),
 ]);
+
+/** An edit to the Timeline's collaborative layout. */
+export type TimelineEditCommand = z.infer<typeof TimelineEditCommandSchema>;
 
 /** Why a local edit was not applied. */
 export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_range' | 'id_taken'
