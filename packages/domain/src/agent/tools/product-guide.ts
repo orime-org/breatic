@@ -684,11 +684,16 @@ export function renderProductGuide(): string {
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
+      "and writes the shots in place of the prompt, each with its seconds and its words. The pictures it needs are " +
+      "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
-      "connected and @'d, and a note at the top of the prompt says what to put in it. A template may also place " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
+      "top of the first shot). A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. When a template feeds what it needs into those nodes too, a picture already " +
+      "says to generate them first. A picture such a template places for the first or end frame is connected " +
+      "but not @'d, and its note says to pick it into that frame once it has generated. When a template feeds " +
+      "what it needs into those nodes too, a picture already " +
       "connected to the node is connected to them as well. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
       "after it generates also places a text node listing them. Picking it " +
