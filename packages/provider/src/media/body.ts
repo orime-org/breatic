@@ -88,7 +88,7 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
 /**
  * The body of a model's own call: each of our params under the binding's field
  * (dots writing nested objects), its value spelled and converted the upstream's
- * way, an absent value and an unbound param left out (a null or absent one written as its
+ * way, an absent value and an unbound param left out (a null, absent, "" or [] one written as its
  * `unset` when the binding names one), the prompt under
  * `prompt_field` when there is one (empty values and an empty prompt only when
  * the binding sets `send_empty`), and the binding's fixed fields, written at their
@@ -107,7 +107,7 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     if (out !== undefined) writeAt(body, bound.field, out);
   }
   for (const [param, bound] of Object.entries(binding.params ?? {})) {
-    if (bound.unset !== undefined && (input.params[param] === null || input.params[param] === undefined)) writeAt(body, bound.field, bound.unset);
+    if (bound.unset !== undefined && !isPresent(input.params[param])) writeAt(body, bound.field, bound.unset);
   }
   if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);
   for (const [path, value] of Object.entries(binding.fixed ?? {})) writeAt(body, path, value);

@@ -44,8 +44,14 @@ const runSchema = z.looseObject({
   error: z.unknown().optional(),
 });
 
-/** A task cost answer, as far as it is read; `cost` is a decimal string. */
-const costSchema = z.looseObject({ settled: z.boolean(), cost: z.coerce.number().nonnegative() });
+/**
+ * A task cost answer, as far as it is read: `cost` is a decimal string or a finite number; anything else (null, "",
+ * false, a list, "n/a") fails the read and leaves the cost pending.
+ */
+const costSchema = z.looseObject({
+  settled: z.boolean(),
+  cost: z.union([z.number().nonnegative(), z.string().trim().regex(/^\d+(\.\d+)?$/).transform(Number)]),
+});
 
 /** SandBase's error body. */
 const errorSchema = z.looseObject({ error: z.string() });
