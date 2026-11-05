@@ -7,7 +7,8 @@
  * generate panel and the agent may propose. Each generate node fixes its own
  * mode, model and params. Its prompt is interface text in the locale files,
  * `canvas.template.<id>.prompt` for the anchor and
- * `canvas.template.<id>.node.<key>.prompt` for the others, with the places the
+ * `canvas.template.<id>.node.<key>.prompt` for the others (a node with shots
+ * has `shot.<n>` in place of `prompt`), with the places the
  * reader acts on written as the proposal marks: `[📎 …]` for material to @,
  * `{✏️ …}` for words to fill in. What to put in an input is its
  * `canvas.template.<id>.input.<key>.note`.
@@ -46,8 +47,14 @@ export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
 export interface TemplateTriggers {
   /** What a reader says when they ask for it outright. */
   asks: readonly string[];
-  /** What the agent sees on the canvas or in the chat that makes it worth offering unasked. */
+  /** What the agent sees on the canvas or in the chat that makes it worth offering unasked; none for a template only offered when asked for. */
   offerWhen: readonly string[];
+}
+
+/** One shot of a template generate node in the multi_shot mode; its words are `…shot.<n>` in the locale, counted from 1. */
+export interface TemplateShot {
+  /** Whole seconds. */
+  seconds: number;
 }
 
 /** A template node's key: names its locale strings and lets marks point at it. */
@@ -64,6 +71,8 @@ export interface TemplateGenerateNode {
   model: string;
   /** Only the params the template fixes. */
   params: Readonly<Record<string, unknown>>;
+  /** The shots it generates, in order: given in the multi_shot mode only, where they stand in for the prompt. */
+  shots?: readonly TemplateShot[];
 }
 
 /** A node of the template that holds a file we host. */
@@ -131,6 +140,18 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
   const anchor = template.nodes.find((node) => node.key === template.anchor);
   if (anchor?.role !== "generate") throw new Error(`template ${template.id} has no generate anchor`);
   return anchor;
+}
+
+/**
+ * The shots one of a template's generate nodes writes in place of a prompt.
+ * @param template - The template.
+ * @param key - The node's key.
+ * @returns Its shots, or undefined for a node that writes a prompt.
+ * @throws {never} Never.
+ */
+export function templateNodeShots(template: GenerationTemplate, key: TemplateNodeKey): readonly TemplateShot[] | undefined {
+  const node = template.nodes.find((one) => one.key === key);
+  return node?.role === "generate" ? node.shots : undefined;
 }
 
 /**

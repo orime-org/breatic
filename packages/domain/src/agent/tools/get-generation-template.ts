@@ -26,6 +26,7 @@ const HOW_TO_SEND =
   "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep. Send each generate node's prompt as its own, rewritten in the language " +
   "the reader writes in with their story or detail in it: fill a tweak segment with words or keep it for them. " +
+  "For a node with shots, send its shots instead, each with the duration the template gives it, and no prompt. " +
   "A template with steps gets a text node listing them when it is placed, so write no node for them.";
 
 /**
@@ -45,7 +46,8 @@ export function describeTemplate(template: GenerationTemplate): string {
   const skeleton = templateSkeleton(template);
   const anchor = templateAnchor(template);
   const nodes = template.nodes.map((node) => {
-    const what = node.role === "generate" ? `generate ${node.type}, ${node.mode}, ${node.model}` : `source ${node.type} holding ${node.resource}`;
+    const shots = node.role === "generate" && node.shots !== undefined ? `, ${String(node.shots.length)} shots` : "";
+    const what = node.role === "generate" ? `generate ${node.type}, ${node.mode}, ${node.model}${shots}` : `source ${node.type} holding ${node.resource}`;
     return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}`;
   });
   const edges = skeleton.edges.map((edge) => `"${edge.from}" into "${edge.to}" by "${edge.into ?? "pool"}"`);

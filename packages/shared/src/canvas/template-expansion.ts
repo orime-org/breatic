@@ -8,7 +8,7 @@
  * the panel's own expansion.
  */
 
-import { templateAnchor, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
+import { templateAnchor, templateNodeShots, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
 import { t } from "@shared/i18n/index.js";
 import {
   TEMPLATE_GUIDE_KEY,
@@ -494,11 +494,13 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
   // A mark names its target in the reader's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
-   * A generate node's prompt, each reference mark bound by name and the notes of its new inputs on top.
+   * A generate node's words: its prompt, or its shots when it has them, each
+   * reference mark bound by name and the notes of its new inputs on top of
+   * the prompt or of the first shot.
    * @param key - The node's key.
-   * @returns The prompt.
+   * @returns The prompt or the shots.
    */
-  const promptOf = (key: TemplateNodeKey): PromptSegment[] => {
+  const wordsOf = (key: TemplateNodeKey): Pick<ProposalNode, "prompt" | "shots"> => {
     const targets = templateMarkTargets(template, key);
     const notes = skeleton.inputs
       .filter((one) => {
@@ -507,27 +509,38 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
         return fresh.has(one.key) || (given !== undefined && input.emptyNodes?.has(given) === true);
       })
       .map((one): PromptSegment => ({ slot: { kind: "note", label: text(`input.${one.key}.note`) } }));
-    const words = markedSegments(text(key === template.anchor ? "prompt" : `node.${key}.prompt`)).map((segment): PromptSegment => {
-      const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
-      const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
-      return index === undefined ? segment : { ref: index };
-    });
-    return [...notes, ...words];
+    /**
+     * One locale string as segments, each reference mark bound by name.
+     * @param rest - The key under the template's locale entry.
+     * @returns The segments.
+     */
+    const bound = (rest: string): PromptSegment[] =>
+      markedSegments(text(rest)).map((segment): PromptSegment => {
+        const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
+        const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
+        return index === undefined ? segment : { ref: index };
+      });
+    const own = key === template.anchor ? "" : `node.${key}.`;
+    const shots = templateNodeShots(template, key);
+    if (shots === undefined) return { prompt: [...notes, ...bound(`${own}prompt`)] };
+    return {
+      shots: shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(`${own}shot.${String(i + 1)}`)] })),
+    };
   };
 
   const anchorNode = templateAnchor(template);
   const rewritten = new Map<number, ProposalNode>(reusedSources);
   const anchorBase: ProposalNode = { role: "generate", type: anchorNode.type, name: text("name") };
-  rewritten.set(input.anchorAt, { ...templateNodeDefaults(template, undefined, anchorBase), prompt: promptOf(template.anchor) });
+  rewritten.set(input.anchorAt, { ...templateNodeDefaults(template, undefined, anchorBase), ...wordsOf(template.anchor) });
   for (const { index, key } of pending) {
-    const prompt = promptOf(key);
+    const words = wordsOf(key);
     if (index >= input.base) {
       const at = index - input.base;
-      appended[at] = { ...(appended[at] as ProposalNode), prompt };
+      appended[at] = { ...(appended[at] as ProposalNode), ...words };
     } else {
       const type = skeleton.nodes.get(key)?.type ?? anchorNode.type;
       const base: ProposalNode = { role: "generate", type, name: text(`node.${key}.name`) };
-      rewritten.set(index, { ...templateNodeDefaults(template, key, base), prompt });
+      rewritten.set(index, { ...templateNodeDefaults(template, key, base), ...words });
     }
   }
 

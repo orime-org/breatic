@@ -20,6 +20,7 @@ import {
   t,
   templateMarkTargets,
   templateNodeDefaults,
+  templateNodeShots,
   type GenerationTemplate,
   type ProposalNode,
   type TemplateNodeKey,
@@ -50,27 +51,38 @@ function quoted(names: readonly string[]): string {
 }
 
 /**
- * A template generate node's prompt as the segments a proposal sends: words as
- * they are, each reference mark as a ref naming what is wired in there by its
- * key, the number left for the agent to fill since it knows which node it
- * wired in for each.
+ * A template generate node's prompt, or its shots when it has them, as the
+ * segments a proposal sends: words as they are, each reference mark as a ref
+ * naming what is wired in there by its key, the number left for the agent to
+ * fill since it knows which node it wired in for each.
  * @param template - The template.
  * @param key - The generate node's key; the anchor when left out.
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
  */
 export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor): string {
-  const text = t(`canvas.template.${template.id}.${key === template.anchor ? "prompt" : `node.${key}.prompt`}`);
   const targets = templateMarkTargets(template, key);
-  const parts = markedSegments(text).map((segment) => {
-    if (segment.slot?.kind === "asset") {
-      const target = targets.get(segment.slot.label);
-      const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
-      return `{"ref": <index of the node wired in for ${named}>}`;
-    }
-    return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
-  });
-  return `[${parts.join(", ")}]`;
+  /**
+   * One locale string written out as segments.
+   * @param rest - The key under the template's locale entry.
+   * @returns The segments as JSON-like text.
+   */
+  const segments = (rest: string): string => {
+    const parts = markedSegments(t(`canvas.template.${template.id}.${rest}`)).map((segment) => {
+      if (segment.slot?.kind === "asset") {
+        const target = targets.get(segment.slot.label);
+        const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
+        return `{"ref": <index of the node wired in for ${named}>}`;
+      }
+      return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
+    });
+    return `[${parts.join(", ")}]`;
+  };
+  const own = key === template.anchor ? "" : `node.${key}.`;
+  const shots = templateNodeShots(template, key);
+  if (shots === undefined) return segments(`${own}prompt`);
+  const each = shots.map((shot, i) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(`${own}shot.${String(i + 1)}`)}}`);
+  return `shots: [${each.join(", ")}]`;
 }
 
 /**
@@ -131,7 +143,9 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
     const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, "write a prompt."));
+    const shots = templateNodeShots(template, key) !== undefined;
+    const words = shots ? "shots" : "prompt";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words}. The template's ${words}, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, shots ? "write the shots." : "write a prompt."));
   }
   return { ok: true, node: filled };
 }
