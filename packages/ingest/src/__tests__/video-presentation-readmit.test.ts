@@ -33,7 +33,7 @@ type Snapshot = ReturnType<typeof presentationSnapshot> & { readmit?: unknown };
  * @returns The admission.
  */
 function conditional(key: string, jobId: string, condition: Expect): Admission {
-  return { ...admission(key, jobId), expect: condition } as unknown as Admission;
+  return { ...admission(key, jobId), expect: condition };
 }
 
 /**
