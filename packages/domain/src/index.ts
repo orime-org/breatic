@@ -141,6 +141,15 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
+export { MemoryRefused } from "@domain/agent/memory-entries.js";
+export type {
+  AgentMemory,
+  MemoryEntry,
+  MemoryOrigin,
+  MemoryRefusalKind,
+  MemoryScope,
+  MemorySearchPage,
+} from "@domain/agent/memory-entries.js";
 export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
 export {
   createAgentPicturePreparer,

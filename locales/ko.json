@@ -410,6 +410,9 @@
       "readingConversation": "대화 확인 중",
       "readingNodeHistory": "노드 기록 확인 중",
       "readingActivity": "Project 활동 확인 중",
+      "savingMemory": "메모리에 저장 중",
+      "deletingMemory": "메모리에서 삭제 중",
+      "readingMemory": "메모리 확인 중",
       "running": "{tool} 실행 중",
       "step": {
         "webSearch": "“{query}” 검색",
@@ -426,6 +429,9 @@
         "readConversation": "대화 확인",
         "readNodeHistory": "노드 기록 확인",
         "readActivity": "Project 활동 확인",
+        "saveMemory": "메모리 저장",
+        "deleteMemory": "메모리 삭제",
+        "readMemory": "메모리 확인",
         "other": "{tool} 실행",
         "readTemplate": "템플릿 확인",
         "requestSpace": "Space 보기 요청"

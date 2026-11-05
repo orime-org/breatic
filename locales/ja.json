@@ -410,6 +410,9 @@
       "readingConversation": "会話を確認中",
       "readingNodeHistory": "ノードの履歴を確認中",
       "readingActivity": "Project アクティビティを確認中",
+      "savingMemory": "メモリに保存中",
+      "deletingMemory": "メモリから削除中",
+      "readingMemory": "メモリを確認中",
       "running": "{tool} を実行中",
       "step": {
         "webSearch": "「{query}」の検索",
@@ -426,6 +429,9 @@
         "readConversation": "会話の確認",
         "readNodeHistory": "ノードの履歴の確認",
         "readActivity": "Project アクティビティの確認",
+        "saveMemory": "メモリへの保存",
+        "deleteMemory": "メモリからの削除",
+        "readMemory": "メモリの確認",
         "other": "{tool} の実行",
         "readTemplate": "テンプレートの確認",
         "requestSpace": "Space の閲覧依頼"

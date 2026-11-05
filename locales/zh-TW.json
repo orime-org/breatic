@@ -410,6 +410,9 @@
       "readingConversation": "正在讀對話紀錄",
       "readingNodeHistory": "正在查節點的歷史",
       "readingActivity": "正在查 Project 活動",
+      "savingMemory": "正在記下",
+      "deletingMemory": "正在刪掉這條記憶",
+      "readingMemory": "正在查記憶",
       "running": "正在呼叫 {tool}",
       "step": {
         "webSearch": "搜尋「{query}」",
@@ -426,6 +429,9 @@
         "readConversation": "讀對話紀錄",
         "readNodeHistory": "查節點的歷史",
         "readActivity": "查 Project 活動",
+        "saveMemory": "記下",
+        "deleteMemory": "刪掉記憶",
+        "readMemory": "查記憶",
         "other": "呼叫 {tool}",
         "readTemplate": "讀範本",
         "requestSpace": "請求查看 Space"

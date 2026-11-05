@@ -12,26 +12,48 @@ import type { MemoryContext } from "@breatic/shared";
 export interface Instructions {
   /** The base prompt. */
   base: string;
-  /** The project's memory, when it has any. */
+  /** The memory entries; always there when the caller has memory, so the protocol in the base prompt has its section. */
   project?: string;
-  /** This conversation's memory, when it has any. */
+  /** This conversation's progress note, when it has one. */
   conversation?: string;
+}
+
+/**
+ * The index of memory entries as the system prompt shows it (#1363):
+ * migrated blocks first and in full, then one line per entry, then how many
+ * were left out.
+ * @param memory - The turn's memory.
+ * @returns The section.
+ * @throws {never} Never.
+ */
+function memoryEntriesSection(memory: MemoryContext): string {
+  const migrated = memory.migrated.map((m) => `### ${m.id} · ${m.title}\n\n${m.content}`);
+  const lines = memory.entries.map((e) => `- ${e.id} · ${e.title}`);
+  const blocks = [...migrated, ...(lines.length > 0 ? [lines.join("\n")] : [])];
+  if (blocks.length === 0) blocks.push("No entries yet.");
+  if (memory.olderCount > 0) {
+    blocks.push(
+      memory.olderCount === 1
+        ? "1 older entry is not listed here."
+        : `${String(memory.olderCount)} older entries are not listed here.`,
+    );
+  }
+  return `## Memory Entries\n\n${blocks.join("\n\n")}`;
 }
 
 /**
  * Assemble memory instructions without selecting another model or tool set.
  * @param basePrompt - The caller's base system prompt.
- * @param memoryContext - The current project and conversation memories.
+ * @param memoryContext - The turn's memory.
  * @returns The system instructions for this assembly's memory snapshot.
  * @throws {never} Never.
  */
 export function instructionsForAgentMemory(basePrompt: string, memoryContext?: MemoryContext): Instructions {
+  if (memoryContext === undefined) return { base: basePrompt };
   return {
     base: basePrompt,
-    ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
-    ...(memoryContext?.conversationMemory
-      ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
-      : {}),
+    project: memoryEntriesSection(memoryContext),
+    ...(memoryContext.progress ? { conversation: `## Conversation So Far\n\n${memoryContext.progress}` } : {}),
   };
 }
 

@@ -14,7 +14,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
-import { instructionsText } from "@domain/agent/instructions.js";
 
 vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
 vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
@@ -56,6 +55,7 @@ describe("buildAgentConfig", () => {
     const config = await buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -65,9 +65,11 @@ describe("buildAgentConfig", () => {
       "propose_canvas_action",
       "propose_document_edit",
       "read_conversation",
+      "read_memory",
       "read_node_history",
       "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
       "understand_media",
@@ -75,7 +77,15 @@ describe("buildAgentConfig", () => {
     ]);
   });
 
-  it("takes the model from config rather than a literal", async () => {
+  it("answers with the model the request names (#1363)", async () => {
+    // The reader picks the model in the chat panel, and the route hands the
+    // pick down. A value no config holds is what tells a read of the request
+    // apart from a read of the config.
+    const sentinel = "sentinel/model-the-reader-picked";
+    expect((await buildAgentConfig({ basePrompt: "base", modelId: sentinel })).modelId).toBe(sentinel);
+  });
+
+  it("takes the model from config rather than a literal when the request names none", async () => {
     // Worker used to call getModel() with no argument, landing on a literal
     // in llm.ts that happened to equal agent.yaml's default_model but was
     // not read from it. Editing the yaml moved one and not the other.
@@ -83,9 +93,7 @@ describe("buildAgentConfig", () => {
     // Asserting against getAgentConfig().default_model directly does NOT
     // catch that: the yaml's value IS that literal, so a hardcoded factory
     // and a reading one produce the same string and the test cannot tell
-    // them apart. Measured when this was written -- replacing the read with
-    // the literal left every test in this file green. So the config has to
-    // say something the literal does not.
+    // them apart. So the config has to say something the literal does not.
     const sentinel = "sentinel/model-from-config";
     vi.mocked(getAgentConfig).mockReturnValueOnce({
       ...getAgentConfig(),
@@ -94,30 +102,8 @@ describe("buildAgentConfig", () => {
     expect((await buildAgentConfig({ basePrompt: "base" })).modelId).toBe(sentinel);
   });
 
-  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", async () => {
-    const config = await buildAgentConfig({
-      basePrompt: "base",
-      memoryContext: { projectMemory: "p", conversationMemory: "c" },
-    });
-    expect(config.instructions).toEqual({
-      base: "base",
-      project: "## Project Context\np",
-      conversation: "## Conversation Memory\nc",
-    });
-  });
-
-  it("is the base prompt alone when there is no memory", async () => {
+  it("is the base prompt alone when the caller has no memory", async () => {
     expect((await buildAgentConfig({ basePrompt: "base" })).instructions).toEqual({ base: "base" });
-  });
-
-  it("reads as the same text as one prompt joined in order", async () => {
-    const config = await buildAgentConfig({
-      basePrompt: "base",
-      memoryContext: { projectMemory: "p", conversationMemory: "c" },
-    });
-    expect(instructionsText(config.instructions)).toBe(
-      "base\n\n## Project Context\np\n\n## Conversation Memory\nc",
-    );
   });
 
   it("carries the main model's window, and the configured fallback when the directory cannot say (inner#1567)", async () => {

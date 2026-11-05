@@ -847,14 +847,20 @@ export interface RecentItem {
 }
 
 /**
- * The two memory layers an LLM prompt carries.
+ * The Agent's memory as one turn's system prompt carries it (#1363).
  *
- * Both are the reader's own: project memory is keyed by member as well as
- * project, and conversation memory by conversation.
+ * All of it is the reader's own: entries of their Project and of this
+ * conversation, and this conversation's progress note.
  */
 export interface MemoryContext {
-  projectMemory: string;
-  conversationMemory: string;
+  /** The index, newest first: one line per entry, up to the configured bound. */
+  entries: Array<{ id: string; title: string }>;
+  /** Entries migrated from an earlier block of memory, carried in full until a consolidation splits them. */
+  migrated: Array<{ id: string; title: string; content: string }>;
+  /** How many entries the index leaves out. */
+  olderCount: number;
+  /** Where this conversation has got to; empty when nothing has been folded yet. */
+  progress: string;
 }
 
 

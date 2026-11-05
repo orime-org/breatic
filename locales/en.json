@@ -410,6 +410,9 @@
       "readingConversation": "Reading the conversation",
       "readingNodeHistory": "Checking the node's history",
       "readingActivity": "Checking Project activity",
+      "savingMemory": "Saving to memory",
+      "deletingMemory": "Removing from memory",
+      "readingMemory": "Reading memory",
       "running": "Calling {tool}",
       "step": {
         "webSearch": "Search for “{query}”",
@@ -426,6 +429,9 @@
         "readConversation": "Reading the conversation",
         "readNodeHistory": "Checking the node's history",
         "readActivity": "Checking Project activity",
+        "saveMemory": "Saving to memory",
+        "deleteMemory": "Removing from memory",
+        "readMemory": "Reading memory",
         "other": "Calling {tool}",
         "readTemplate": "Reading the template",
         "requestSpace": "Asking to look at Spaces"
