@@ -45,7 +45,7 @@ import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
-import { priceFactDrift } from "./provider-price-drift.mjs";
+import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
 interface Pricing { kind: "formula"; base_price: number; formula: string; discount_rate: number }
@@ -223,11 +223,11 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
       docs.get(modality)!.setIn(["models", model, "upstreams", index, "pricing"], { kind: "formula", base_price: threeD.base_price, formula: threeD.formula, discount_rate: 100 });
       for (const inputs of threeD.samples) {
         const answer = await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) });
-        const usd = Number(at(answer, "data", "price"));
+        const usd = statedPrice(answer);
         const local = await priceUsd({ basePrice: threeD.base_price, formula: threeD.formula, discountRate: 100 }, inputs, {});
         const line = `${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}`;
         process.stdout.write(`${line}\n`);
-        if (Math.abs(usd - local) > 1e-9) problems.push(`price mismatch: ${line}`);
+        if (typeof usd !== "number" || Math.abs(usd - local) > 1e-9) problems.push(`price mismatch: ${line}`);
       }
       continue;
     }
@@ -262,10 +262,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
     let live: number | string;
     try {
       const answer = await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) });
-      const price = at(answer, "data", "discounted_price");
-      // An answer without a price is a difference to look at, not a match.
-      const usd = typeof price === "number" || (typeof price === "string" && price.trim() !== "") ? Number(price) : Number.NaN;
-      live = Number.isFinite(usd) ? usd : `no discounted_price (${JSON.stringify(at(answer, "data")).slice(0, 120)})`;
+      live = statedPrice(answer);
     } catch (error) {
       live = `not priced (${(error as Error).message.slice(0, 120)})`;
     }
