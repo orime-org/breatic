@@ -1367,7 +1367,7 @@ export function renderProductGuide(): string {
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
       "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
-      "keeping their headings, lists and other blocks, with pictures from other sites left out; pasted with the " +
+      "keeping their headings, lists and other blocks; pasted with the " +
       "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
