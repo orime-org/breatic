@@ -99,8 +99,6 @@ function paintRange(state: EditorState): DecorationSet {
 /** The broadcast for the range: opening and closing it dispatch nothing but the meta. */
 const watch = watchPluginState(aiRangeIn);
 
-/** Hear about every change to the range. */
-export const onAiRangeChange: (listener: () => void) => () => void = watch.onChange;
 
 /** Who closes the open dialog when Escape is typed in a given editor's body. */
 const escapeListeners = new WeakMap<object, Set<() => void>>();

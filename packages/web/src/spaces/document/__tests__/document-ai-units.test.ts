@@ -980,6 +980,13 @@ describe('the escape pair, inline content (§5.1)', () => {
     ['italic right before bold', [{ type: 'text', text: 'x', styles: {} }, { type: 'text', text: 'a', styles: { italic: true } }, { type: 'text', text: 'b', styles: { bold: true } }, { type: 'text', text: 'y', styles: {} }]],
     ['inline code with a space at each end', [{ type: 'text', text: 'run', styles: {} }, { type: 'text', text: ' x ', styles: { code: true } }, { type: 'text', text: 'now', styles: {} }]],
     ['a hard-broken line of equals signs', [{ type: 'text', text: 'title\n===', styles: {} }]],
+    ['italic words right before a bold link', [{ type: 'text', text: 'see', styles: { italic: true } }, { type: 'link', href: 'https://a.example/', content: [{ type: 'text', text: 'docs', styles: { bold: true } }] }, { type: 'text', text: '.', styles: {} }]],
+    ['an italic link right before bold words', [{ type: 'link', href: 'https://a.example/', content: [{ type: 'text', text: 'docs', styles: { italic: true } }] }, { type: 'text', text: ' new', styles: { bold: true } }]],
+    ['a link whose words are italic then bold', [{ type: 'text', text: 'see ', styles: {} }, { type: 'link', href: 'https://a.example/', content: [{ type: 'text', text: 'a', styles: { italic: true } }, { type: 'text', text: 'b', styles: { bold: true } }] }, { type: 'text', text: ' z', styles: {} }]],
+    ['an italic sentence holding an italic link', [{ type: 'text', text: 'See the ', styles: { italic: true } }, { type: 'link', href: 'https://a.example/', content: [{ type: 'text', text: 'docs', styles: { italic: true } }] }, { type: 'text', text: ' for details.', styles: { italic: true } }]],
+    ['the words of the run marker in bold', [{ type: 'text', text: 'a ', styles: {} }, { type: 'text', text: '&aibreak;', styles: { bold: true } }, { type: 'text', text: ' b', styles: {} }]],
+    ['an ideographic space starting a line', [{ type: 'text', text: '\u3000段落开头', styles: {} }]],
+    ['no-break spaces at both ends', [{ type: 'text', text: '\u00a0a\u00a0', styles: {} }]],
   ])('writes %s back unchanged when echoed, under a fixed command and under custom', async (_name, content) => {
     for (const command of ['refine', 'custom'] as const) {
       const h = await open('');
@@ -992,14 +999,55 @@ describe('the escape pair, inline content (§5.1)', () => {
   });
 });
 
-describe('selected words that moved out of every unit (A6, A7)', () => {
-  it('turns replace off when a unit block is split inside the selected words', async () => {
+describe('edits made while the dialog is open (A7)', () => {
+  it('keeps replace available after the body was split or written into inside the selection: the reader decides, and undo takes it back', async () => {
     const h = await open('one two three');
     const o = opening(h, rangeOf(h, 'one two three'), 'refine');
     const view = h.editor.prosemirrorView!;
     view.dispatch(view.state.tr.split(rangeOf(h, 'three').from, 2));
     const answer = read(h, o, tagged({ 1: 'ONE TWO THREE' }), 'refine');
-    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(false);
+    expect(aiReplaceAvailable(h.editor.prosemirrorState.doc, answer, segments(h))).toBe(true);
+    const g = await open('');
+    g.editor.replaceBlocks(g.editor.document, [{ type: 'paragraph', content: 'one' }, { type: 'paragraph' }, { type: 'paragraph', content: 'three' }] as never);
+    const o2 = opening(g, { from: rangeOf(g, 'one').from, to: rangeOf(g, 'three').to }, 'refine');
+    const empty = flat(g)[1]!;
+    g.editor.updateBlock(empty.id, { content: 'typed' } as never);
+    const a2 = read(g, o2, tagged({ 1: 'ONE', 2: 'THREE' }), 'refine');
+    expect(aiReplaceAvailable(g.editor.prosemirrorState.doc, a2, segments(g))).toBe(true);
+    replaceAiAnswer(g, a2, segments(g), WRITABLE);
+    expect(blocks(g).map(textOf)).toEqual(['ONE', 'typed', 'THREE']);
+  });
+});
+
+describe('round 10: answers and inline content', () => {
+  it('ends a unit at the next opening tag when its closing tag is missing', async () => {
+    const h = await open('one\n\ntwo\n\nthree');
+    const o = opening(h, { from: rangeOf(h, 'one').from, to: rangeOf(h, 'three').to }, 'refine');
+    const answer = read(h, o, '<u id="1">ONE</u>\n<u id="2">TWO\n<u id="3">THREE</u>', 'refine');
+    expect(answer.preview.map((b) => textOf(b as Seen))).toEqual(['ONE', 'TWO', 'THREE']);
+  });
+
+  it('sends a backslash as one entity the model can read', async () => {
+    const h = await open('');
+    h.editor.replaceBlocks(h.editor.document, [{ type: 'paragraph', content: 'C:\\Users\\me' }] as never);
+    expect([...sent(opening(h, rangeOf(h, 'C:\\Users\\me'), 'custom').request).values()]).toEqual(['C:&#92;Users&#92;me']);
+  });
+
+  it('reads a model\'s CommonMark escapes once', async () => {
+    const h = await open('Hello world');
+    const o = opening(h, rangeOf(h, 'Hello world'), 'refine');
+    expect(read(h, o, tagged({ 1: 'a\\\\\\_b \\# c\\\\' }), 'refine').preview.map((b) => textOf(b as Seen))).toEqual(['a\\_b # c\\']);
+  });
+
+  it('writes a docTable copy with nested child answers and children kept under a split answer', async () => {
+    const h = await open('| a | b |\n| --- | --- |\n| c | other |');
+    const cell = flat(h).find((b) => textOf(b) === 'c')!;
+    h.editor.replaceBlocks([cell.id], [{ type: 'paragraph', content: 'parent', children: [{ type: 'paragraph', content: 'child' }] }] as never);
+    const o = opening(h, { from: rangeOf(h, 'parent').from, to: rangeOf(h, 'other').to }, 'expand');
+    const answer = read(h, o, tagged({ 1: 'P1\n\nP2', 2: 'CHILD', 3: 'OTHER' }), 'expand');
+    const copy = answer.preview[0] as Seen;
+    const copied = copy.children[1]!.children[0]!.children.map((b) => [textOf(b), b.children.map(textOf)]);
+    expect(copied).toEqual([['P1', []], ['P2', ['CHILD']]]);
   });
 });
 
@@ -1009,14 +1057,14 @@ const tricky = fc.stringMatching(/^[a-z *_`#>\-+.1)([\]\\&<|=~!]{1,24}$/);
 /** Words of one inline run: punctuation the parser reads, spaces, hard breaks, addresses. */
 const runText = fc.oneof(
   { weight: 6, arbitrary: fc.stringMatching(/^[a-z *_`#>\-+.1)([\]\\&<|=~!:/\n]{1,12}$/) },
-  { weight: 1, arbitrary: fc.constantFrom('https://docs.example.com/v1.2', ' see this ', '\n===', '&amp; &lt;b&gt;') },
+  { weight: 1, arbitrary: fc.constantFrom('https://docs.example.com/v1.2', ' see this ', '\n===', '&amp; &lt;b&gt;', '\u3000段落', 'a\u00a0', '&aibreak;', 'C:\\x') },
 );
 
 /** One inline run: words with any mix of the styles Markdown writes, or a link. */
 const run = fc.oneof(
   // Inline code takes no other mark in the body's schema.
   { weight: 5, arbitrary: fc.record({ text: runText, styles: fc.oneof(fc.subarray(['bold', 'italic', 'strike'] as const), fc.constant(['code'] as const)) }) },
-  { weight: 1, arbitrary: fc.record({ text: fc.stringMatching(/^[a-z_.]{1,6}$/), href: fc.constantFrom('https://a.example/x_(y)?a=1&b=2', 'https://docs.example.com/v1.2') }) },
+  { weight: 1, arbitrary: fc.record({ text: fc.stringMatching(/^[a-z_.]{1,6}$/), href: fc.constantFrom('https://a.example/x_(y)?a=1&b=2', 'https://docs.example.com/v1.2'), styles: fc.subarray(['bold', 'italic', 'strike'] as const) }) },
 );
 
 /** A block of a body: one with words, an indented code block, an image or an empty line. */
@@ -1050,7 +1098,7 @@ function build(handle: DocumentEditorHandle, seeds: readonly Seed[]): void {
     return {
       type: seed.type,
       content: seed.runs.map((r) => (r.href !== undefined
-        ? { type: 'link', href: r.href, content: [{ type: 'text', text: r.text, styles: {} }] }
+        ? { type: 'link', href: r.href, content: [{ type: 'text', text: r.text, styles: Object.fromEntries((r.styles ?? []).map((style) => [style, true])) }] }
         : { type: 'text', text: r.text, styles: Object.fromEntries((r.styles ?? []).map((style) => [style, true])) })),
     };
   }) as never);
@@ -1125,6 +1173,15 @@ describe('properties', () => {
         expect(idless(written)).toEqual(idless(r.write.kind === 'inline' ? r.write.block : null));
       });
     }), { numRuns: 40 });
+  });
+
+  it('reads any words a model escapes the CommonMark way back as those words', async () => {
+    const h = await open('Body');
+    const o = opening(h, rangeOf(h, 'Body'), 'refine');
+    fc.assert(fc.property(fc.stringMatching(/^[a-z !-/:-@[-`{-~]{1,20}$/).filter((t) => t.trim() === t && t !== ''), (words) => {
+      const escaped = words.replace(/[!-/:-@[-`{-~]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : `\\${c}`));
+      expect(read(h, o, tagged({ 1: escaped }), 'refine').preview.map((b) => textOf(b as Seen))).toEqual([words]);
+    }), { numRuns: 200 });
   });
 
   it('never changes the body before the insert block', async () => {

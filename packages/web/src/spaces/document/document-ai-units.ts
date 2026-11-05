@@ -75,8 +75,6 @@ export interface AiUnitResult {
 export interface AiAnswer {
   /** Tags were expected and no unit sent was recognised. */
   readonly formatFailed: boolean;
-  /** The units sent. */
-  readonly units: readonly AiTextUnit[];
   /** The answered units, in document order. */
   readonly results: readonly AiUnitResult[];
   /** What the preview shows and insert writes, in order. */
@@ -97,8 +95,8 @@ const KEPT_PROPS = ['quoted', 'textColor', 'backgroundColor', 'textAlignment'] a
 /** The props Markdown writes, which decide whether an answer kept a block's kind. */
 const MARKDOWN_PROPS = ['level', 'checked', 'language'] as const;
 
-/** The punctuation BlockNote 0.56's parser takes a backslash before, the backslash itself aside. */
-const BACKSLASHED = /[`*_{}[\]()#+\-.!~|>]/g;
+/** The punctuation BlockNote 0.56's parser takes a backslash before. */
+const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>]/g;
 
 /** One inline piece of a block, loosely typed. */
 interface Inline {
@@ -235,8 +233,8 @@ export function unitSpan(doc: ProseMirrorNode, unit: AiTextUnit, segments: reado
 }
 
 /**
- * Spaces a Markdown round trip would lose, spelled as entities: a space at
- * either end of a line, and every space after another one; tabs too.
+ * White space a Markdown round trip would lose, spelled as entities: any at
+ * either end of a line, and any after another; tabs too.
  * @param text - Words already escaped.
  * @param before - The character before them; a newline at a line's start.
  * @param after - The character after them; a newline at a line's end.
@@ -246,15 +244,22 @@ function keepSpaces(text: string, before: string, after: string): string {
   let out = '';
   for (let i = 0; i < text.length; i += 1) {
     const ch = text[i]!;
-    if (ch === '\t') {
-      out += '&#9;';
-      continue;
-    }
     const prev = i === 0 ? before : text[i - 1]!;
     const next = i === text.length - 1 ? after : text[i + 1]!;
-    out += ch === ' ' && (prev === '\n' || prev === ' ' || prev === '\t' || next === '\n') ? '&#32;' : ch;
+    const kept = ch === '\t' || (isSpace(ch) && (prev === '\n' || isSpace(prev) || next === '\n'));
+    out += kept ? `&#${String(ch.codePointAt(0))};` : ch;
   }
   return out;
+}
+
+/**
+ * Whether a character is white space other than a line break: the exporter
+ * trims any of them at a line's edges, an ideographic space included.
+ * @param ch - The character.
+ * @returns True for one.
+ */
+function isSpace(ch: string): boolean {
+  return ch !== '\n' && /\s/.test(ch);
 }
 
 /**
@@ -270,7 +275,7 @@ function escapeWords(text: string, code: boolean): string {
   // spelled as an entity.
   // A backslash the words hold is spelled as an entity, so every backslash
   // left after parsing is one the model wrote to escape punctuation.
-  return code ? entities : entities.replace(/\\/g, '&#92;').replace(BACKSLASHED, (c) => `\\${c}`).replace(/:\/\//g, '&#58;//');
+  return code ? entities : entities.replace(BACKSLASHED, (c) => (c === '\\' ? '&#92;' : `\\${c}`)).replace(/:\/\//g, '&#58;//');
 }
 
 /** The styles Markdown writes around words, which cannot open or close at a space. */
@@ -278,6 +283,9 @@ const EMPHASIS = ['bold', 'italic', 'strike'] as const;
 
 /** What stands between two neighbouring emphasis runs, so the parser can tell them apart; taken out on the way back. */
 const RUN_BREAK = '&aibreak;';
+
+/** The piece that carries it; known by identity, so words that read the same are escaped as words. */
+const RUN_BREAK_PIECE: Inline = { type: 'text', text: RUN_BREAK, styles: {} };
 
 /**
  * Whether a piece is emphasised, and how.
@@ -289,17 +297,35 @@ function emphasisOf(piece: Inline): string {
 }
 
 /**
- * Inline content with neighbouring runs of different emphasis kept apart, so
- * BlockNote's parser reads `*a*` and `**b**` back as two runs.
+ * The emphasis at one end of a piece: its own, or for a link that of its
+ * first or last run.
+ * @param piece - The piece.
+ * @param end - Which end.
+ * @returns The emphasis styles there.
+ */
+function edgeEmphasis(piece: Inline, end: 'start' | 'end'): string {
+  if (piece.type !== 'link') return emphasisOf(piece);
+  const runs = piece.content ?? [];
+  const edge = end === 'start' ? runs[0] : runs[runs.length - 1];
+  return edge === undefined ? '' : emphasisOf(edge);
+}
+
+/**
+ * Inline content with emphasised neighbours kept apart, inside links too.
+ * BlockNote's exporter closes and reopens emphasis at a link's edge and
+ * between runs, and its parser reads two delimiters that touch as one.
  * @param content - The content.
- * @returns It, with breaks between such runs.
+ * @returns It, with breaks between such neighbours.
  */
 function exportable(content: readonly Inline[]): Inline[] {
   const out: Inline[] = [];
-  for (const piece of content) {
+  for (const raw of content) {
+    const piece = raw.type === 'link' ? { ...raw, content: exportable(raw.content ?? []) } : raw;
     const last = out[out.length - 1];
-    if (last !== undefined && emphasisOf(last) !== '' && emphasisOf(piece) !== '' && emphasisOf(last) !== emphasisOf(piece)) {
-      out.push({ type: 'text', text: RUN_BREAK, styles: {} });
+    if (last !== undefined) {
+      const left = edgeEmphasis(last, 'end');
+      const right = edgeEmphasis(piece, 'start');
+      if (left !== '' && right !== '' && (left !== right || last.type !== piece.type)) out.push(RUN_BREAK_PIECE);
     }
     out.push(piece);
   }
@@ -330,8 +356,8 @@ function escapeContent(content: readonly Inline[]): Inline[] {
    * @returns It, escaped.
    */
   const one = (piece: Inline): Inline => {
+    if (piece === RUN_BREAK_PIECE) return piece;
     const text = piece.text ?? '';
-    if (text === RUN_BREAK) return piece;
     const before = at === 0 ? '\n' : all[at - 1]!;
     const after = at + text.length >= all.length ? '\n' : all[at + text.length]!;
     at += text.length;
@@ -342,7 +368,7 @@ function escapeContent(content: readonly Inline[]): Inline[] {
     // A code span loses one space at each end when it has both, and emphasis
     // cannot open or close at a space: those spaces are spelled as entities.
     if (code && /^ [\s\S]* $/.test(escaped)) escaped = `&#32;${escaped.slice(1, -1)}&#32;`;
-    if (emphasisOf(piece) !== '') escaped = escaped.replace(/^[ \t]+|[ \t]+$/g, (edge) => edge.replace(/ /g, '&#32;').replace(/\t/g, '&#9;'));
+    if (emphasisOf(piece) !== '') escaped = escaped.replace(/^[^\S\n]+|[^\S\n]+$/g, (edge) => [...edge].map((ch) => `&#${String(ch.codePointAt(0))};`).join(''));
     // A hard break is spelled as an entity: the exporter drops one at a unit's
     // edge, the parser ends a heading or a list item at one, and a line
     // starting with `=` or other block syntax would be read as a block.
@@ -403,8 +429,7 @@ export function aiUnitsRequest(
     if (unit.kind === CODE) {
       // A line break at either end is spelled as an entity: a raw one right
       // inside the tags is the model's own layout and is taken off (codeOf).
-      const code = doc.textBetween(span.from, span.to).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
+      const code = escapeWords(doc.textBetween(span.from, span.to), true).replace(/>/g, '&gt;').replace(/^\n/, '&#10;').replace(/\n$/, '&#10;');
       body = command === 'custom' && unit.whole
         ? exported(editor.blocksToMarkdownLossy([{ type: CODE, props: piece.props, content: code }] as never))
         : code;
@@ -429,19 +454,18 @@ export function aiUnitsRequest(
 function unitAnswers(text: string, units: readonly AiTextUnit[]): { answers: Map<number, string>; formatFailed: boolean } {
   const sent = new Set(units.map((u) => u.id));
   const answers = new Map<number, string>();
-  let rest = 0;
-  for (const m of text.matchAll(/<u id="(\d+)"[^>]*>([\s\S]*?)<\/u>/g)) {
+  // A raw `<` in an answer is always a tag (the words' own are entities), so
+  // a unit's words end at its closing tag or at the next opening one; the
+  // last unit may still be being written, without a closing tag begun.
+  const parts = text.split(/(?=<u id=")/);
+  parts.forEach((part, index) => {
+    const m = /^<u id="(\d+)"[^>]*>([\s\S]*)$/.exec(part);
+    if (m === null) return;
     const id = Number(m[1]);
-    if (sent.has(id) && !answers.has(id)) answers.set(id, m[2]!);
-    rest = m.index + m[0].length;
-  }
-  // The unit being written: its words so far, without a closing tag begun.
-  // A raw `<` in an answer is always a tag; the words' own are entities.
-  const open = /<u id="(\d+)"[^>]*>([\s\S]*)$/.exec(text.slice(rest));
-  if (open !== null) {
-    const id = Number(open[1]);
-    if (sent.has(id) && !answers.has(id)) answers.set(id, open[2]!.replace(/<\/?u?$/, ''));
-  }
+    const close = m[2]!.indexOf('</u>');
+    const words = close >= 0 ? m[2]!.slice(0, close) : index === parts.length - 1 ? m[2]!.replace(/<\/?u?$/, '') : m[2]!;
+    if (sent.has(id) && !answers.has(id)) answers.set(id, words);
+  });
   // `<` or `<u` alone is a tag still being written, not words.
   const untagged = !/<u[\s>]/.test(text) && !/^\s*<u?$/.test(text);
   if (untagged && units.length === 1) return { answers: new Map([[units[0]!.id, text]]), formatFailed: false };
@@ -516,6 +540,16 @@ function decoded(text: string): string {
 /** A backslash before ASCII punctuation, as Markdown writes it. */
 const BACKSLASH_ESCAPE = /\\([!-/:-@[-`{-~])/g;
 
+/** A backslash before the ASCII punctuation BlockNote 0.56's parser leaves escaped. */
+const LEFT_ESCAPE = /\\(["$%&',/:;<=?@^])/g;
+
+/**
+ * What an escaped backslash in an answer (`\\`) is held as while it is
+ * parsed: after parsing, a backslash left before punctuation is then always
+ * one the model wrote to escape it. It is two backslashes again in code.
+ */
+const BACKSLASH_PAIR = '&aibs;';
+
 /**
  * Inline content as written back: the space the parser puts after a hard
  * break taken out, entities decoded, a link's address unescaped.
@@ -524,15 +558,17 @@ const BACKSLASH_ESCAPE = /\\([!-/:-@[-`{-~])/g;
  * @returns The content.
  */
 function fixedInline(content: readonly Inline[], code = false): Inline[] {
-  if (code) return content.map((c) => (c.type === 'text' ? { ...c, text: decoded(c.text ?? '') } : c));
+  if (code) return content.map((c) => (c.type === 'text' ? { ...c, text: decoded(asCode(c.text ?? '')) } : c));
+  // A link the parser made from an address keeps every backslash in its
+  // address and words; those are taken out here, once.
+  const unescaped = new Set<Inline>();
   const out = content.map((c): Inline => {
     if (c.type !== 'link') return { ...c };
-    const href = decoded((c.href ?? '').replace(BACKSLASH_ESCAPE, '$1'));
-    // A link the parser made from an address in the words keeps the
-    // backslashes of its words; they are taken out with the address's.
-    const bare = (c.content ?? []).map((t) => ({ ...t, text: (t.text ?? '').replace(BACKSLASH_ESCAPE, '$1') }));
-    const autolink = bare.map((t) => t.text).join('') === href;
-    return { ...c, href, content: autolink ? bare : (c.content ?? []).map((t) => ({ ...t })) };
+    const href = decoded(asWords((c.href ?? '').replace(BACKSLASH_ESCAPE, '$1')));
+    const bare = (c.content ?? []).map((t) => ({ ...t, text: asWords((t.text ?? '').replace(BACKSLASH_ESCAPE, '$1')) }));
+    if (bare.map((t) => t.text).join('') !== href) return { ...c, href, content: (c.content ?? []).map((t) => ({ ...t })) };
+    bare.forEach((t) => unescaped.add(t));
+    return { ...c, href, content: bare };
   });
   // A hard break can end a link's words, so the space after it is looked for
   // across pieces, in reading order.
@@ -543,14 +579,33 @@ function fixedInline(content: readonly Inline[], code = false): Inline[] {
       continue;
     }
     // Outside code, a backslash before ASCII punctuation is an escape
-    // (CommonMark 0.31 §2.4) whether or not this parser takes it out.
+    // (CommonMark 0.31 §2.4); the parser takes out the ones in its own set.
     let text = (piece.text ?? '').replace(/\n /g, '\n').split(RUN_BREAK).join('');
-    if (piece.styles?.['code'] !== true) text = text.replace(BACKSLASH_ESCAPE, '$1');
+    if (piece.styles?.['code'] === true) text = asCode(text);
+    else if (!unescaped.has(piece)) text = asWords(text.replace(LEFT_ESCAPE, '$1'));
     if (afterBreak && text.startsWith(' ')) text = text.slice(1);
     afterBreak = text.endsWith('\n');
     piece.text = decoded(text);
   }
   return out;
+}
+
+/**
+ * Code with its held backslash pairs as they were written.
+ * @param text - Code as parsed.
+ * @returns It.
+ */
+function asCode(text: string): string {
+  return text.split(BACKSLASH_PAIR).join('\\\\');
+}
+
+/**
+ * Words with each held backslash pair read as the one backslash it escapes.
+ * @param text - Words as parsed, the model's own escapes taken out.
+ * @returns They.
+ */
+function asWords(text: string): string {
+  return text.split(BACKSLASH_PAIR).join('\\');
 }
 
 /**
@@ -596,7 +651,7 @@ function escapeLineStart(line: string): string {
  * @returns The blocks.
  */
 function parsed(parser: ViewedEditor, text: string, inlineOnly: boolean): Read[] {
-  let markdown = text.replace(/</g, '&lt;');
+  let markdown = text.replace(/\\\\/g, BACKSLASH_PAIR).replace(/</g, '&lt;');
   if (inlineOnly) markdown = markdown.split('\n').map(escapeLineStart).join('\n');
   return (parser.tryParseMarkdownToBlocks(markdown) as unknown as Read[]).map(fixedBlock);
 }
@@ -829,9 +884,16 @@ function docTableCopy(doc: ProseMirrorNode, tableId: string, results: readonly A
    */
   const swap = (list: readonly Read[]): Read[] => list.flatMap((block) => {
     const write = block.id === undefined ? undefined : byId.get(block.id);
-    if (write === undefined) return [{ ...block, children: swap(block.children ?? []) }];
-    if (write.kind === 'clear') return [];
-    return write.kind === 'inline' ? [{ ...(write.block as Read), children: block.children ?? [] }] : (write.blocks as Read[]);
+    const children = swap(block.children ?? []);
+    if (write === undefined) return [{ ...block, children }];
+    // The same placing replace does (writeUnit): an emptied block with
+    // children stays, the children of a split go under its last piece.
+    if (write.kind === 'clear') return children.length === 0 ? [] : [{ ...block, content: [], children }];
+    if (write.kind === 'inline') return [{ ...(write.block as Read), children }];
+    const pieces = (write.blocks as Read[]).map((b) => ({ ...b }));
+    const last = pieces[pieces.length - 1];
+    if (last !== undefined) last.children = [...(last.children ?? []), ...children];
+    return pieces;
   });
   const table = nodeToBlock(found.node, doc) as unknown as Read;
   return withoutIds({ ...table, children: swap(table.children ?? []) });
@@ -930,13 +992,13 @@ export function aiAnswer(
     leftOut += dropped;
     if (write !== null) results.push({ unit, write });
   }
-  return { formatFailed, units, results, preview: previewOf(doc, units, results), leftOut };
+  return { formatFailed, results, preview: previewOf(doc, units, results), leftOut };
 }
 
 /**
- * Whether replace can be pressed: some unit is answered, every unit with a
- * non-empty answer still has selected words, and every selected word is in
- * a unit's line.
+ * Whether replace can be pressed: some unit is answered, and every unit
+ * with a non-empty answer still has selected words. What else the body
+ * gained meanwhile is the reader's call: replace is one edit undo takes back.
  * @param doc - The body now.
  * @param answer - The answer.
  * @param segments - The original range, where it is now.
@@ -944,11 +1006,7 @@ export function aiAnswer(
  */
 export function aiReplaceAvailable(doc: ProseMirrorNode, answer: AiAnswer, segments: readonly LocalRange[]): boolean {
   const written = answer.results.filter((r) => r.write.kind !== 'clear');
-  if (written.length === 0 || !written.every((r) => unitSpan(doc, r.unit, segments) !== null)) return false;
-  // Selected words that have moved out of every unit's line (the block split
-  // inside them) would be left behind by the write.
-  const lines = new Set(answer.units.map((u) => lineOf(doc, u)?.start));
-  return [...coveredLines(doc, segments).values()].every((line) => lines.has(line.start));
+  return written.length > 0 && written.every((r) => unitSpan(doc, r.unit, segments) !== null);
 }
 
 /**
