@@ -91,6 +91,16 @@ function config(): ProviderConfigInput {
         "seedance-limited": { upstreams: seedance().map((b) => (b.upstream === "ws_a" ? { ...b, params: { ...b.params, duration: { field: "duration", supported: [5] } } } : b)) },
         "voice-clone": { upstreams: voiceClone },
         "voice-clone-both": { upstreams: [voiceClone[0]!, { ...voiceClone[0]!, upstream: "ws_b", weight: 2 }] },
+        // ws_a clones for $1.60 and ws_b for $1.52; each speaks for $0.01.
+        "voice-clone-priced": {
+          upstreams: (["ws_a", "ws_b"] as const).map((upstream, i): MediaBinding => ({
+            ...voiceClone[0]!,
+            upstream,
+            weight: i + 1,
+            extra_steps: [{ kind: "speak", endpoint: "minimax/speech-2.8-hd", at: "after", pricing: { ...pricing, base_price: 10_000 } }],
+            pricing: { ...pricing, base_price: upstream === "ws_a" ? 1_600_000 : 1_520_000 },
+          })),
+        },
         mureka: { upstreams: mureka },
         // ws_a bills $0.10 per second of the source clip, ws_b $0.30 a call.
         lipsync: {
@@ -508,6 +518,21 @@ describe("recover", () => {
     expect(answer.step.kind).toBe("generate");
     expect(answer.warnings.map((w) => w.code)).toContain("potential_duplicate_cost");
     expect(a.seen).toHaveLength(0);
+  });
+});
+
+describe("cheapest mode with a live clone", () => {
+  it("plans on the upstream that already holds the run's clone, which charges only the speech", async () => {
+    const r = runner();
+    const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+    const fresh = expectState(await r.plan("voice-clone-priced", speech, { mode: "cheapest" }, options()), "send");
+    expect((fresh.ticket as unknown as { upstream: string }).upstream).toBe("ws_b");
+    const held = expectState(await r.plan("voice-clone-priced", speech, { mode: "cheapest" }, {
+      ...options(),
+      sourceKeys: { "https://cdn.example/a.mp3": "sha-a" },
+      clones: [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "BreaticOld" }],
+    }), "send");
+    expect((held.ticket as unknown as { upstream: string }).upstream).toBe("ws_a");
   });
 });
 
