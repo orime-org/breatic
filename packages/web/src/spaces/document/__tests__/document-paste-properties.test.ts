@@ -373,8 +373,14 @@ function checkPut({ body, pieces, source, aim: chosen }: Sample): void {
   unmountAll();
 }
 
+
+/**
+ * A property runs hundreds of examples, each mounting editors: more than the
+ * suite's per-test limit when the whole suite runs at once.
+ */
+const PROPERTY_TIMEOUT = 60_000;
 describe('content holding a medium, a table or a divider, put anywhere a reader can aim', () => {
-  it('keeps the reader\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', () => {
+  it('keeps the reader\'s words, nests nothing, repeats no id, ends the caret in a line, quotes as the target and lands every medium', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(property, checkPut),
       { numRuns: 400 },
@@ -383,7 +389,7 @@ describe('content holding a medium, a table or a divider, put anywhere a reader 
 });
 
 describe('a drop', () => {
-  it('lands as a paste at its point', () => {
+  it('lands as a paste at its point', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(
         fc.record({ body, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
@@ -417,7 +423,7 @@ describe('a drop', () => {
 });
 
 describe('a drag within the body', () => {
-  it('lands as its copy pasted at the drop point', () => {
+  it('lands as its copy pasted at the drop point', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(
         fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
@@ -471,7 +477,7 @@ describe('a drag within the body', () => {
 });
 
 describe('a drag within the body that moves its content', () => {
-  it('leaves no row id twice and takes the content from where it was', () => {
+  it('leaves no row id twice and takes the content from where it was', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(
         fc.record({ body, from: fc.nat(), to: fc.nat(), at: fc.nat() }),
@@ -511,7 +517,7 @@ describe('a drag within the body that moves its content', () => {
 });
 
 describe('content put on an empty plain line (design §5.4.3)', () => {
-  it('becomes that line when it ends in words, and leaves the line for the caret otherwise', () => {
+  it('becomes that line when it ends in words, and leaves the line for the caret otherwise', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -608,7 +614,7 @@ function readerLines(doc: PMNode): string[] {
 }
 
 describe('a drop, then deleting what it selected (design §5.4.1)', () => {
-  it('keeps every line the reader wrote, its words and its own line', () => {
+  it('keeps every line the reader wrote, its words and its own line', { timeout: PROPERTY_TIMEOUT }, () => {
     fc.assert(
       fc.property(
         fc.record({ body: letteredBody, pieces: fc.array(piece, { minLength: 1, maxLength: 4 }), at: fc.nat(), source: fc.constantFrom<Source>('web', 'own') }),
@@ -654,7 +660,7 @@ describe('a drop, then deleting what it selected (design §5.4.1)', () => {
 });
 
 describe('a copy whose lines are nested (design §5.4.1)', () => {
-  it('pastes as the same lines copied at the top level', () => {
+  it('pastes as the same lines copied at the top level', { timeout: PROPERTY_TIMEOUT }, () => {
     const line = fc.oneof(readerWords, fc.constant(''));
     fc.assert(
       fc.property(
