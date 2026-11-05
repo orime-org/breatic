@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import type { VideoPresentationResponse } from '@breatic/shared';
+import { useQuery, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
+import { DEFAULT_TIMEOUT_MS, readAlphaPackedManifest, type AlphaPackedManifest, type VideoPresentationResponse, type VideoPresentationVersion } from '@breatic/shared';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 
@@ -15,7 +15,29 @@ export interface ResolvedVideoPresentation {
 }
 
 /**
- * Resolves node and timeline sources with one interpretation of the owned descriptor.
+ * Describe the read of an alpha-packed version's manifest (design §3.5 alpha manifest row): the object its receipt
+ * measures, held to the version. The receipt is immutable, so the answer never goes stale.
+ * @param version - The selected version, or null.
+ * @param active - Whether the reader is displayed.
+ * @returns Options that read nothing unless the version is alpha-packed.
+ * @throws {never} Constructing options starts no request.
+ */
+function manifestQuery(version: VideoPresentationVersion | null, active: boolean): UseQueryOptions<AlphaPackedManifest, Error, AlphaPackedManifest, readonly unknown[]> {
+  const alpha = version?.playback.kind === 'alpha-packed' ? version : null;
+  return {
+    queryKey: ['video-presentation-manifest', 1, alpha?.versionId ?? '', alpha?.playback.kind === 'alpha-packed' ? alpha.playback.manifest : null],
+    enabled: active && alpha !== null,
+    retry: false,
+    staleTime: Infinity,
+    queryFn: ({ signal }): Promise<AlphaPackedManifest> => {
+      if (alpha === null) return Promise.reject(new Error('No alpha-packed version to read'));
+      return readAlphaPackedManifest(alpha, { deadlineAt: Date.now() + DEFAULT_TIMEOUT_MS, signal });
+    },
+  };
+}
+
+/**
+ * Resolves node and timeline sources with one interpretation of the selected version (design §7.8).
  * @param projectId - The current authorized Project.
  * @param canonicalURL - The registered original video URL.
  * @param active - Whether this decoder is currently displayed.
@@ -24,19 +46,17 @@ export interface ResolvedVideoPresentation {
  */
 export function useResolvedVideoPresentation(projectId: string, canonicalURL: string, active: boolean): ResolvedVideoPresentation {
   const query = useQuery(videoPresentationQuery({ projectId, canonicalURL, active }));
+  const selected = query.data?.presentation ?? null;
+  const manifest = useQuery(manifestQuery(selected, active));
   const source = React.useMemo<VideoPresentationSource | null>(() => {
     const data = query.data;
-    const selected = data?.presentation;
-    // ponytail: an alpha-packed version also needs its manifest object read; until that read exists only native versions play.
-    if (data === undefined || !selected || selected.playback.kind !== 'native') return null;
-    const { display, sourceFingerprint } = selected;
-    return {
-      canonicalURL: data.sourceBinding.canonicalURL, sourceFingerprint, playbackURL: selected.playback.carrier.url,
-      presentation: { schemaVersion: 1, sourceFingerprint, state: 'native',
-        original: { width: display.width, height: display.height, duration: Number(display.duration.numerator) / Number(display.duration.denominator) } },
-    };
-  }, [query.data]);
-  // Nothing selected and the target candidate failed (§7.12 step 2): its code is the failure.
-  const failure = query.isError ? 'presentation-query-failed' : query.data?.presentation === null ? query.data.preparation?.failure ?? null : null;
+    if (data === undefined || selected === null) return null;
+    const base = { canonicalURL: data.sourceBinding.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash, presentation: selected };
+    if (selected.playback.kind === 'native') return { ...base, manifest: null };
+    return manifest.data === undefined ? null : { ...base, manifest: manifest.data };
+  }, [query.data, selected, manifest.data]);
+  // Nothing selected and the target candidate failed (§7.12 step 2), or the manifest is not this version's.
+  const failure = query.isError ? 'presentation-query-failed' : manifest.isError ? 'invalid-alpha-manifest'
+    : query.data?.presentation === null ? query.data.preparation?.failure ?? null : null;
   return { query, source, failure };
 }
