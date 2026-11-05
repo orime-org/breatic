@@ -216,8 +216,10 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       refresh();
     },
     select(clipId) {
-      holdStep = null;
-      selected = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
+      const next = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
+      // Focus handed back to the held clip selects it again; only a change of selection ends the hold.
+      if (next !== selected) holdStep = null;
+      selected = next;
       refresh();
     },
     endHold() {

@@ -265,6 +265,49 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // The clip button holding keyboard focus. A clip moved to another track row remounts there, and a deleted one is
+  // gone; either way the browser drops focus to <body>, so it is handed back to the clip, or to the Timeline.
+  const focusedClip = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    const element = root.current;
+    if (element === null) return;
+    /**
+     * Remember a focused clip button, or forget it when focus moves to anything else in the Timeline.
+     * @param event - The focus event.
+     * @throws {never} Never.
+     */
+    const focusIn = (event: FocusEvent): void => {
+      focusedClip.current = event.target instanceof HTMLElement && event.target.dataset.clipId !== undefined ? event.target : null;
+    };
+    /**
+     * Forget the clip when focus leaves it while it is still on the page: the user moved focus away.
+     * @param event - The focus event.
+     * @throws {never} Never.
+     */
+    const focusOut = (event: FocusEvent): void => {
+      const target = event.target;
+      if (target !== focusedClip.current) return;
+      queueMicrotask(() => { if (target instanceof HTMLElement && target.isConnected && focusedClip.current === target) focusedClip.current = null; });
+    };
+    element.addEventListener('focusin', focusIn);
+    element.addEventListener('focusout', focusOut);
+    return () => {
+      element.removeEventListener('focusin', focusIn);
+      element.removeEventListener('focusout', focusOut);
+    };
+  }, []);
+  React.useLayoutEffect(() => {
+    const clip = focusedClip.current;
+    if (clip === null) return;
+    if (clip.isConnected) {
+      if (window.document.activeElement !== clip) focusedClip.current = null;
+      return;
+    }
+    focusedClip.current = null;
+    if (window.document.activeElement !== window.document.body) return;
+    const id = clip.dataset.clipId ?? '';
+    (root.current?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(id)}"]`) ?? root.current)?.focus();
+  });
   const keyHandler = React.useRef(onKeyDown);
   keyHandler.current = onKeyDown;
   React.useEffect(() => {
@@ -293,7 +336,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const previewStyle = React.useMemo(() => ({ aspectRatio: `${document.settings.width} / ${document.settings.height}` }), [document.settings.width, document.settings.height]);
   const inConflict = clips.some((clip) => !readyIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames);
   const noSelection = selected === undefined;
-  return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} className='flex h-full min-h-0 min-w-0 flex-col bg-background'>
+  // Click-focusable, not tab-reachable: where the keyboard goes when the focused clip is deleted.
+  return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 flex-col bg-background outline-none'>
     <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
       <div data-testid='timeline-preview' data-active-clip-id={active?.id ?? ''} className='relative flex max-h-full w-full max-w-4xl items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background' style={previewStyle}>
         {source !== null && resource.data !== undefined && !resource.isError && (

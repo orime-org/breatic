@@ -94,7 +94,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const select = React.useCallback((): void => onSelect(clip.id), [onSelect, clip.id]);
   const style = React.useMemo(() => ({ left: clip.startFrame * pixelsPerFrame, width: Math.max(2, clip.durationFrames * pixelsPerFrame) }), [clip.startFrame, clip.durationFrames, pixelsPerFrame]);
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
-    <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-track-id={clip.trackId} type='button' variant={null} size={null}
+    <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
       aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 justify-start gap-2 overflow-hidden rounded-chrome border border-border bg-muted px-2 text-xs hover-enabled:bg-accent',
         !readOnly && 'cursor-grab', conflict && 'border-status-error-border bg-status-error-bg', selected && 'border-active-border')}>
