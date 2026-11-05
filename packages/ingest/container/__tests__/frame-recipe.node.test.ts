@@ -36,10 +36,10 @@ let reports: { ok: boolean }[] = [];
  * @param at - The frame's source time as numerator and denominator.
  * @returns The entry.
  */
-function frameAt(at: [number, number]): Record<string, unknown> {
+function frameAt(at: [number, number], decodeAt: [number, number] = at): Record<string, unknown> {
   const start = q(...at);
   const end = q(at[0] * 25 + at[1], at[1] * 25);
-  return { kind: 'source', decodeStart: start, clipStart: start, displayStart: start, displayEnd: end, rate: q(1) };
+  return { kind: 'source', decodeStart: q(...decodeAt), clipStart: start, displayStart: start, displayEnd: end, rate: q(1) };
 }
 
 /**
@@ -126,10 +126,12 @@ beforeEach(() => {
 
 describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', () => {
   it('FC01 the source span names the frame by its own source time, mid-GOP included: frame 25 is the white one, frame 24 is not', async () => {
-    const white = await frame('flash.mp4', { entry: frameAt([1, 1]), target: OPAQUE });
+    // §93 D6 (design §7.17 时间线 row, W7 withdrawn): decodeStart is the latest source keyframe not after the frame, frame 20
+    // at 4/5 s (flash.mp4 has no B-frames and starts at 0, so its dts is its pts and nothing is shifted).
+    const white = await frame('flash.mp4', { entry: frameAt([1, 1], [4, 5]), target: OPAQUE });
     expect(header(white)).toEqual({ width: 160, height: 96, bitDepth: 8, colorType: 2 });
     expect((await rgbaMeans(await saved(white)))[0]).toBeGreaterThan(200);
-    const before = await frame('flash.mp4', { entry: frameAt([24, 25]), target: OPAQUE });
+    const before = await frame('flash.mp4', { entry: frameAt([24, 25], [4, 5]), target: OPAQUE });
     expect((await rgbaMeans(await saved(before)))[0]).toBeLessThan(30);
   });
 
