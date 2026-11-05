@@ -120,6 +120,7 @@ export class MainAgent {
    * @param attached - What the user attached to the message, in order.
    * @param timeZone - The zone the reader's browser reported, if any.
    * @param space - The project's Spaces and the one the reader has open.
+   * @param modelId - The model the route resolved for this turn (#1363); the default when absent.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
@@ -128,8 +129,9 @@ export class MainAgent {
     attached: readonly ChatAttachedChip[] = [],
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal, timeZone, space);
+    return this.runTurn(userMessage, attached, signal, timeZone, space, modelId);
   }
 
   /**
@@ -139,6 +141,7 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client leaves
    * @param timeZone - The zone the reader's browser reported, if any
    * @param space - The project's Spaces and the one the reader has open
+   * @param modelId - The model the route resolved for this turn
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
@@ -147,6 +150,7 @@ export class MainAgent {
     signal: AbortSignal | undefined,
     timeZone: string | undefined,
     space: ChatSpaceContext,
+    modelId: string | undefined,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -200,7 +204,7 @@ export class MainAgent {
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId);
   }
 
   /**
@@ -217,6 +221,7 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param timeZone - The zone the reader's browser reported, if any.
    * @param space - The project's Spaces and the one the reader has open.
+   * @param modelId - The model the turn started on, as the route resolved it (#1363).
    * @returns The segment, as the SDK's own message chunks.
    */
   async answer(
@@ -226,6 +231,7 @@ export class MainAgent {
     signal?: AbortSignal,
     timeZone?: string,
     space: ChatSpaceContext = {},
+    modelId?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
       kind: "answer",
@@ -234,7 +240,7 @@ export class MainAgent {
       toolCallId,
       output,
     };
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId);
   }
 
   /**
@@ -277,6 +283,7 @@ export class MainAgent {
    * @param openDocument - The document the reader has open, which a document
    *   proposal goes to, or null when none can be read.
    * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param requestedModel - The model the route resolved for this turn (#1363).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -285,6 +292,7 @@ export class MainAgent {
     title: string | null,
     openDocument: OpenDocument | null,
     signal?: AbortSignal,
+    requestedModel?: string,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
@@ -477,6 +485,9 @@ export class MainAgent {
       return {
         messages,
         prefixHash: prefixHash(sent.agentConfig, ahead),
+        // The model this turn started on, which a segment resumed by an
+        // answer to its card runs on too (#1363).
+        modelId: sent.agentConfig.modelId,
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -539,6 +550,7 @@ export class MainAgent {
       const firstAssembly = fixedAgentConfig === undefined;
       fixedAgentConfig ??= await buildAgentConfig({
         basePrompt: buildSystemPrompt(), memoryContext,
+        ...(requestedModel === undefined ? {} : { modelId: requestedModel }),
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),

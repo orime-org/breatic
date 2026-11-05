@@ -59,6 +59,8 @@ export type {
   RecentItem,
   MemoryContext,
   AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   NodeType,
   AttachRef,
   FocusImage,
@@ -326,6 +328,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
@@ -364,6 +367,7 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/index.js";
 
 export {

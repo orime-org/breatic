@@ -177,6 +177,7 @@
       "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다.",
       "ask_not_found": "이 대화에 이 질문 카드가 없습니다.",
       "ask_already_answered": "이 질문 카드에는 이미 답했습니다.",
+      "model_unavailable": "선택한 모델은 더 이상 사용할 수 없습니다.",
       "answer_mismatch": "이 답변은 카드의 질문과 맞지 않습니다."
     },
     "mail": {

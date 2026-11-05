@@ -177,6 +177,7 @@
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
       "ask_not_found": "この会話にこの質問カードはありません。",
       "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "model_unavailable": "選択したモデルは利用できなくなりました。",
       "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {

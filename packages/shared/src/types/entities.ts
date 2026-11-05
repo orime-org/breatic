@@ -51,9 +51,24 @@ export interface ConversationEntity {
   projectId: string | null;
   /** Turn index up to which messages have been consolidated into memory. */
   lastConsolidatedTurn: number;
+  /** The Agent model this conversation is answered by, as stored; null before its first pick (#1363). */
+  agentModel: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+}
+
+/** One model the reader can pick in the chat panel (#1363). */
+export interface AgentModelChoice {
+  id: string;
+  /** Shown as written; English. */
+  name: string;
+}
+
+/** A conversation as the chat panel is handed it: with the model it is answered by (#1363). */
+export interface ChatConversation extends Omit<ConversationEntity, "agentModel"> {
+  /** The stored pick when it is still listed, else the reader's last pick, else the deployment's default. */
+  agentModel: AgentModelChoice;
 }
 
 /**

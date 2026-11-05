@@ -48,6 +48,7 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
     title: row.title,
     projectId: row.projectId,
     lastConsolidatedTurn: row.lastConsolidatedTurn,
+    agentModel: row.agentModel,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -61,16 +62,34 @@ function toEntity(row: typeof conversations.$inferSelect): ConversationEntity {
  * is not given one here, because a placeholder stored in the column would be
  * indistinguishable from a title someone chose.
  * @param userId - Owner of the new conversation (conversations are user-scoped)
+ * @param agentModel - The model it starts on (#1363): the owner's last pick, or the default.
  * @param tx - Optional transaction handle, so opening chat can create the
  *   conversation and stamp its project as one unit under the locks it holds
  * @returns The newly created conversation entity
  */
 export async function createConversation(
   userId: string,
+  agentModel: string,
   tx?: DbTx,
 ): Promise<ConversationEntity> {
-  const rows = await (tx ?? db).insert(conversations).values({ userId }).returning();
+  const rows = await (tx ?? db).insert(conversations).values({ userId, agentModel }).returning();
   return toEntity(rows[0]!);
+}
+
+/**
+ * Record the model a live conversation is answered by (#1363).
+ *
+ * `updated_at` is left where it is: it orders the list as "last used", and
+ * picking a model is not using the conversation.
+ * @param id - Conversation UUID.
+ * @param agentModel - The model.
+ * @param tx - The transaction to run inside, when the caller has one.
+ */
+export async function setAgentModel(id: string, agentModel: string, tx?: DbTx): Promise<void> {
+  await (tx ?? db)
+    .update(conversations)
+    .set({ agentModel, updatedAt: sql`${conversations.updatedAt}` })
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)));
 }
 
 /**

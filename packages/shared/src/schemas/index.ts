@@ -41,6 +41,7 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -79,4 +80,5 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
 } from "@shared/schemas/api.js";

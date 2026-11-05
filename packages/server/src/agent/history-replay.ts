@@ -76,6 +76,8 @@ const userForModel = z.object({
 const replyForModel = z.object({
   messages: z.array(sentMessage),
   prefixHash: z.string(),
+  /** The model the turn started on (#1363); absent from rows written before the picker. */
+  modelId: z.string().optional(),
   turnTokens: z.number(),
   endTokens: z.number(),
   /**

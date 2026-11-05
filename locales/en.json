@@ -177,6 +177,7 @@
       "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
       "ask_not_found": "This question card is not in this conversation.",
       "ask_already_answered": "This question card has already been answered.",
+      "model_unavailable": "The selected model is no longer available.",
       "answer_mismatch": "These answers do not fit the questions on the card."
     },
     "mail": {

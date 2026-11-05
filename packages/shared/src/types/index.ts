@@ -34,6 +34,8 @@ export type {
   RecentItem,
   MemoryContext,
   AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 

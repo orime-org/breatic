@@ -82,7 +82,7 @@ async function seed(): Promise<Seeded> {
  * @returns Its id.
  */
 async function newConversation(userId: string, projectId: string): Promise<string> {
-  const conv = await conversationRepo.createConversation(userId);
+  const conv = await conversationRepo.createConversation(userId, "deepseek/deepseek-v4.1-flash-1017");
   await conversationRepo.setProjectId(conv.id, projectId);
   return conv.id;
 }

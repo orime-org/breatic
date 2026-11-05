@@ -177,6 +177,7 @@
       "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。",
       "ask_not_found": "这条会话里没有这张问题卡片。",
       "ask_already_answered": "这张问题卡片已经回答过了。",
+      "model_unavailable": "所选模型已不可用。",
       "answer_mismatch": "这些答案和卡片上的问题对不上。"
     },
     "mail": {
